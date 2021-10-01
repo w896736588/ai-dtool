@@ -193,6 +193,29 @@ func DelKey(c *gin.Context) {
 	}
 }
 
+func EditTtl(c *gin.Context) {
+	var err error
+	reqBody := &define.EditTTL{}
+	requestData(c, &reqBody)
+
+	var redisCli *redis.Client
+	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+		return
+	}
+
+	if exist := checkKeyExist(c, redisCli, reqBody.CacheKey); exist == false {
+		return
+	}
+
+	dru := time.Duration(reqBody.TTL) * time.Second
+	err = redisCli.Expire(reqBody.CacheKey, dru).Err()
+	if err != nil {
+		response(c, define.ErrorCodeRunError, err.Error(), ``)
+	} else {
+		response(c, define.ErrorCodeSuccess, `设置成功`, ``)
+	}
+}
+
 func requestData(c *gin.Context, requestBody interface{}) {
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {

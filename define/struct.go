@@ -44,6 +44,12 @@ type DelKey struct {
 	CacheKey string `json:"Key"`
 }
 
+type EditTTL struct {
+	UniKey   string `json:"UniKey"`
+	CacheKey string `json:"Key"`
+	TTL      int    `json:"TTL"`
+}
+
 type Response struct {
 	Errcode int         `json:"ErrCode"`
 	Errmsg  string      `json:"ErrMsg"`
