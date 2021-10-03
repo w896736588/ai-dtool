@@ -50,8 +50,24 @@ type EditTTL struct {
 	TTL      int    `json:"TTL"`
 }
 
+type DelAllKey struct {
+	UniKey    string   `json:"UniKey"`
+	CacheKeys []string `json:"Keys"`
+}
+
 type Response struct {
 	Errcode int         `json:"ErrCode"`
 	Errmsg  string      `json:"ErrMsg"`
 	Data    interface{} `json:"Data"`
+}
+
+type CreateCache struct {
+	UniKey      string  `json:"UniKey"`
+	CacheType   string  `json:"CacheType"`
+	CacheKey    string  `json:"CacheKey"`
+	CacheField  string  `json:"CacheField"`
+	CacheValue  string  `json:"CacheValue"`
+	TTL         int     `json:"TTL"`
+	CacheMember string  `json:"CacheMember"`
+	CacheScore  float64 `json:"CacheScore"`
 }

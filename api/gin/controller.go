@@ -58,7 +58,7 @@ func Search(c *gin.Context) {
 		response(c, define.ErrorCodeRunError, `获取元素类型失败`, ``)
 		return
 	}
-	if keyType == `string` {
+	if keyType == define.CacheString {
 		var result string
 		result, err = redisCli.Get(reqBody.CacheKey).Result()
 		if err == redis.Nil {
@@ -69,7 +69,7 @@ func Search(c *gin.Context) {
 			return
 		}
 		response(c, define.ErrorCodeSuccess, `获取成功`, result)
-	} else if keyType == `hash` {
+	} else if keyType == define.CacheHash {
 		var resultMap map[string]string
 		resultMap, err = redisCli.HGetAll(reqBody.CacheKey).Result()
 		if err == redis.Nil {
@@ -80,6 +80,39 @@ func Search(c *gin.Context) {
 			return
 		}
 		response(c, define.ErrorCodeSuccess, `获取成功`, resultMap)
+	} else if keyType == define.CacheList {
+		var resultArray []string
+		resultArray, err = redisCli.LRange(reqBody.CacheKey, 0, 100000).Result()
+		if err == redis.Nil {
+			response(c, define.ErrorKeyNotExist, fmt.Sprintf(`%s 已经不存在`, reqBody.CacheKey), ``)
+			return
+		} else if err != nil {
+			response(c, define.ErrorCodeRunError, err.Error(), ``)
+			return
+		}
+		response(c, define.ErrorCodeSuccess, `获取成功`, resultArray)
+	} else if keyType == define.CacheSet {
+		var resultArray []string
+		resultArray, err = redisCli.SMembers(reqBody.CacheKey).Result()
+		if err == redis.Nil {
+			response(c, define.ErrorKeyNotExist, fmt.Sprintf(`%s 已经不存在`, reqBody.CacheKey), ``)
+			return
+		} else if err != nil {
+			response(c, define.ErrorCodeRunError, err.Error(), ``)
+			return
+		}
+		response(c, define.ErrorCodeSuccess, `获取成功`, resultArray)
+	} else if keyType == define.CacheZSet {
+		var resultArray []redis.Z
+		resultArray, err = redisCli.ZRangeWithScores(reqBody.CacheKey, 0, 100000).Result()
+		if err == redis.Nil {
+			response(c, define.ErrorKeyNotExist, fmt.Sprintf(`%s 已经不存在`, reqBody.CacheKey), ``)
+			return
+		} else if err != nil {
+			response(c, define.ErrorCodeRunError, err.Error(), ``)
+			return
+		}
+		response(c, define.ErrorCodeSuccess, `获取成功`, resultArray)
 	}
 }
 
@@ -213,6 +246,69 @@ func EditTtl(c *gin.Context) {
 		response(c, define.ErrorCodeRunError, err.Error(), ``)
 	} else {
 		response(c, define.ErrorCodeSuccess, `设置成功`, ``)
+	}
+}
+
+func DelAllKey(c *gin.Context) {
+	var err error
+	reqBody := &define.DelAllKey{}
+	requestData(c, &reqBody)
+
+	var redisCli *redis.Client
+	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+		return
+	}
+
+	err = redisCli.Del(reqBody.CacheKeys...).Err()
+	if err != nil {
+		response(c, define.ErrorCodeRunError, err.Error(), ``)
+	} else {
+		response(c, define.ErrorCodeSuccess, `删除成功`, ``)
+	}
+}
+
+func CreateCache(c *gin.Context) {
+	var err error
+	reqBody := &define.CreateCache{}
+	requestData(c, &reqBody)
+
+	var redisCli *redis.Client
+	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+		return
+	}
+
+	//判断是否存在
+	if existInt := redisCli.Exists(reqBody.CacheKey).Val(); existInt > 0 {
+		response(c, define.ErrorKeyNotExist, fmt.Sprintf(`%s 已经存在`, reqBody.CacheKey), ``)
+		return
+	}
+
+	if reqBody.CacheType == define.CacheString {
+		err = redisCli.Set(reqBody.CacheKey, reqBody.CacheValue, time.Duration(reqBody.TTL)*time.Second).Err()
+	} else if reqBody.CacheType == define.CacheHash {
+		err = redisCli.HSet(reqBody.CacheKey, reqBody.CacheField, reqBody.CacheValue).Err()
+	} else if reqBody.CacheType == define.CacheList {
+		err = redisCli.LPush(reqBody.CacheKey, reqBody.CacheValue).Err()
+	} else if reqBody.CacheType == define.CacheSet {
+		err = redisCli.SAdd(reqBody.CacheKey, reqBody.CacheMember).Err()
+	} else if reqBody.CacheType == define.CacheZSet {
+		err = redisCli.ZAdd(reqBody.CacheKey, redis.Z{
+			Score:  reqBody.CacheScore,
+			Member: reqBody.CacheMember,
+		}).Err()
+	}
+	if err != nil {
+		response(c, define.ErrorCodeRunError, err.Error(), ``)
+	}
+	//处理过期时间
+	if reqBody.TTL != 0 {
+		err = redisCli.Expire(reqBody.CacheKey, time.Duration(reqBody.TTL)*time.Second).Err()
+	}
+
+	if err != nil {
+		response(c, define.ErrorCodeRunError, err.Error(), ``)
+	} else {
+		response(c, define.ErrorCodeSuccess, `创建成功`, ``)
 	}
 }
 
