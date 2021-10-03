@@ -63,11 +63,14 @@ type Response struct {
 
 type CreateCache struct {
 	UniKey      string  `json:"UniKey"`
-	CacheType   string  `json:"CacheType"`
-	CacheKey    string  `json:"CacheKey"`
-	CacheField  string  `json:"CacheField"`
-	CacheValue  string  `json:"CacheValue"`
-	TTL         int     `json:"TTL"`
-	CacheMember string  `json:"CacheMember"`
-	CacheScore  float64 `json:"CacheScore"`
+	CacheType   string  `json:"cacheType"`
+	CacheKey    string  `json:"cacheKey"`
+	CacheField  string  `json:"cacheField"`
+	CacheValue  string  `json:"cacheValue"`
+	TTL         int     `json:"ttl"`
+	CacheMember string  `json:"cacheMember"`
+	CacheScore  float64 `json:"cacheScore"`
+	BoolCreate  bool    `json:"boolCreate"`
+	LPushValue  string  `json:"lPushValue"`
+	RPushValue  string  `json:"rPushValue"`
 }

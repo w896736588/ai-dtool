@@ -278,9 +278,11 @@ func CreateCache(c *gin.Context) {
 	}
 
 	//判断是否存在
-	if existInt := redisCli.Exists(reqBody.CacheKey).Val(); existInt > 0 {
-		response(c, define.ErrorKeyNotExist, fmt.Sprintf(`%s 已经存在`, reqBody.CacheKey), ``)
-		return
+	if reqBody.BoolCreate == true {
+		if existInt := redisCli.Exists(reqBody.CacheKey).Val(); existInt > 0 {
+			response(c, define.ErrorKeyNotExist, fmt.Sprintf(`%s 已经存在`, reqBody.CacheKey), ``)
+			return
+		}
 	}
 
 	if reqBody.CacheType == define.CacheString {
@@ -288,7 +290,13 @@ func CreateCache(c *gin.Context) {
 	} else if reqBody.CacheType == define.CacheHash {
 		err = redisCli.HSet(reqBody.CacheKey, reqBody.CacheField, reqBody.CacheValue).Err()
 	} else if reqBody.CacheType == define.CacheList {
-		err = redisCli.LPush(reqBody.CacheKey, reqBody.CacheValue).Err()
+		if reqBody.LPushValue != `` {
+			err = redisCli.LPush(reqBody.CacheKey, reqBody.LPushValue).Err()
+		} else if reqBody.RPushValue != `` {
+			err = redisCli.RPush(reqBody.CacheKey, reqBody.RPushValue).Err()
+		} else {
+			err = redisCli.RPush(reqBody.CacheKey, reqBody.CacheValue).Err()
+		}
 	} else if reqBody.CacheType == define.CacheSet {
 		err = redisCli.SAdd(reqBody.CacheKey, reqBody.CacheMember).Err()
 	} else if reqBody.CacheType == define.CacheZSet {
@@ -301,7 +309,7 @@ func CreateCache(c *gin.Context) {
 		response(c, define.ErrorCodeRunError, err.Error(), ``)
 	}
 	//处理过期时间
-	if reqBody.TTL != 0 {
+	if reqBody.BoolCreate == true && reqBody.TTL != 0 {
 		err = redisCli.Expire(reqBody.CacheKey, time.Duration(reqBody.TTL)*time.Second).Err()
 	}
 
