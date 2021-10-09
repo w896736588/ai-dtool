@@ -39,7 +39,7 @@ func InitConfig() {
 	for _, value := range allSettings {
 		cTime++
 		mapTemp := value.(map[string]interface{})
-		UniKey := cast.ToString(mapTemp[`host`]) + cast.ToString(mapTemp[`password`]) + cast.ToString(mapTemp[`sshhost`]) + cast.ToString(mapTemp[`sshport`]) + cast.ToString(mapTemp[`sshuser`]) + cast.ToString(mapTemp[`sshpassword`])
+		UniKey := cast.ToString(mapTemp[`host`]) + cast.ToString(mapTemp[`password`]) + cast.ToString(mapTemp[`sshhost`]) + cast.ToString(mapTemp[`sshport`]) + cast.ToString(mapTemp[`sshuser`]) + cast.ToString(mapTemp[`sshpassword`]) + cast.ToString(mapTemp[`name`])
 		*RedisList = append(*RedisList, define.RedisConfig{
 			Name:        cast.ToString(mapTemp[`name`]),
 			Host:        cast.ToString(mapTemp[`host`]),
