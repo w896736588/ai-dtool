@@ -1,0 +1,4 @@
+/*解决弹窗一致弹问题*/
+.el-message {
+  top: 20px !important;
+}

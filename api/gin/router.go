@@ -34,6 +34,12 @@ func InitRouter() (router *gin.Engine) {
 	router.POST(`/api/create`, CreateCache)
 	//编辑二级缓存
 	router.POST(`/api/edit/sub`, EditSub)
+	//前端页面
+	router.Static(`/static`, `./views/dist/static`)
+	router.LoadHTMLFiles(`views/dist/index.html`)
+	router.GET("/", func(context *gin.Context) {
+		context.HTML(200, "index.html", nil)
+	})
 	log.SetLevel(log.DebugLevel)
 	return router
 }
@@ -43,14 +49,15 @@ func Cors() gin.HandlerFunc {
 		method := c.Request.Method
 
 		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header(`Access-Control-Allow-Private-Network`, `*`)
 		c.Header("Access-Control-Allow-Headers", "Content-Type,AccessToken,X-CSRF-Token, Authorization, Token")
-		c.Header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-		c.Header("Access-Control-Expose-Headers", "Content-Length, Access-Control-Allow-Origin, Access-Control-Allow-Headers, Content-Type")
+		c.Header("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE, UPDATE")
+		c.Header("Access-Control-Expose-Headers", "Content-Length, Access-Control-Allow-Origin, Access-Control-Allow-Headers, Cache-Control, Content-Language, Content-Type")
 		c.Header("Access-Control-Allow-Credentials", "true")
 
 		//放行所有OPTIONS方法
 		if method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent)
+			c.AbortWithStatus(http.StatusOK)
 		}
 		// 处理请求
 		c.Next()
