@@ -27,7 +27,7 @@
       <el-card class="box-card">
         <el-row :gutter="20">
           <el-col :span="8">
-            <el-card class="box-card">
+            <el-card class="box-card" style="margin-left: -15px;margin-top:-15px;">
               <div class="grid-content bg-purple" style="height:500px;overflow:auto;">
                 <el-button type="danger" style="margin-bottom: 7px;" @click="delAll" v-if="keysResult.length > 0 "
                            size="mini">删除以下缓存
@@ -49,7 +49,7 @@
           </el-col>
           <el-col :span="16">
             <div class="grid-content bg-purple">
-              <el-card class="box-card" style="height:540px;overflow:auto;">
+              <el-card class="box-card" style="height:540px;overflow:auto;margin-left: -15px;margin-top:-15px;margin-right:-15px;">
 
                 <template v-if="cache.cacheKey !== ''">
                   <el-tag size="medium">{{ cache.cacheType }}</el-tag>
