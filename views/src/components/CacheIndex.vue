@@ -485,11 +485,11 @@ export default {
       let tempParams = {};
       if (this.keys === '') {
         params = {UniKey: this.redisCheck, Search: '*'};
-        tempParams = {UniKey: this.redisCheck, Search: '*'};
         return false;
       } else {
         params = {UniKey: this.redisCheck, Search: this.keys };
         tempParams = {UniKey: this.redisCheck, Search: '*' + this.keys + '*' };
+        this.historyCheck = this.keys;
       }
       this.loading = true;
       Vue.axios.post(this.apiHost + '/api/keys', tempParams).then(function (response) {
