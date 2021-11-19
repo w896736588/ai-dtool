@@ -40,7 +40,8 @@ func Keys(c *gin.Context) {
 	for _, cacheKey := range resultMap {
 		returnList = append(returnList, define.KeysList{
 			CacheKey: cacheKey,
-			Type:     ``,
+			Type:     ` `,
+			Loading:  true,
 		})
 	}
 	response(c, define.ErrorCodeSuccess, `获取成功`, returnList)

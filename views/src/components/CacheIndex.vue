@@ -32,14 +32,25 @@
                 <el-button type="danger" style="margin-bottom: 7px;" @click="delAll" v-if="keysResult.length > 0 "
                            size="mini">删除以下缓存
                 </el-button>
+
                 <div v-for="(value,key) in keysResult">
-                  <div style="padding: 3px;">
-                    <el-link v-if="selectRedisKey === value.CacheKey" style="padding:3px;color:#409EFF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                             @click="search(value.CacheKey)">
-                      <el-tag size="medium">{{value.Type}}</el-tag>
-                      <el-link type="primary" style="font-size: 13px;">{{value.CacheKey}}</el-link>
-                    </el-link>
-                    <el-link v-else style="padding:3px;font-size: 13px;" @click="search(value.CacheKey)"><el-tag size="medium">{{value.Type}}</el-tag> {{value.CacheKey}}</el-link>
+                  <div>
+                      <el-tag size="medium" style="margin-top:7px;">
+                        <el-link style="padding:3px;font-size: 13px;color:red;" v-if="selectRedisKey === value.CacheKey" @click="search(value.CacheKey)"> {{value.CacheKey}}</el-link>
+                        <el-link style="padding:3px;font-size: 13px;color:#409eff;" v-else @click="search(value.CacheKey)"> {{value.CacheKey}}</el-link>
+                      </el-tag>
+<!--                      <el-tag v-if="value.Loading === false" size="medium">{{value.Type}}</el-tag>11 {{value.CacheKey}}-->
+<!--                    </el-button>-->
+<!--                    <el-link v-if="selectRedisKey === value.CacheKey" style="float:left;padding:3px;color:#409EFF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"-->
+<!--                             @click="search(value.CacheKey)">-->
+<!--&lt;!&ndash;                      <el-tag size="medium" :loading="true">{{value.Type}}</el-tag>&ndash;&gt;-->
+<!--                      <el-link type="primary" style="font-size: 13px;">{{value.CacheKey}}</el-link>-->
+<!--                    </el-link>-->
+<!--                    <el-tag size="medium">{{value.Type}}</el-tag>-->
+<!--                    <el-button :inline="true" style="font-size:13px;display: inline;" size="small"   type="text" :loading="value.Loading" @click="search(value.CacheKey)">-->
+<!--                      {{value.CacheKey}}-->
+<!--                    </el-button>-->
+<!--                    <el-link v-else style="padding:3px;font-size: 13px;" @click="search(value.CacheKey)"><el-tag size="medium">{{value.Type}}</el-tag> {{value.CacheKey}}</el-link>-->
                   </div>
 
                 </div>
@@ -498,7 +509,7 @@ export default {
           _that.setCacheHistory(params);
         }
         //查找类型
-        _that.getKeysType();
+        //_that.getKeysType();
       }).finally(function () {
         _that.loading = false;
       });
@@ -509,20 +520,25 @@ export default {
       for(var key in _that.keysResult){
         keys_list.push(_that.keysResult[key].CacheKey);
       }
-      Vue.axios.post(this.apiHost + '/api/keys/type', {
-        UniKey: this.redisCheck,
-        KeysList : keys_list
-      }).then(function (response) {
-        let keysTypeResult = response.Data;
-        for(var key in _that.keysResult){
-          for(var key2 in keysTypeResult){
-            if(_that.keysResult[key].CacheKey === keysTypeResult[key2].CacheKey) {
-              _that.keysResult[key].Type = keysTypeResult[key2].Type;
+
+      let chunks = _that.chunk(keys_list,50);
+      for (let j in chunks){
+        Vue.axios.post(this.apiHost + '/api/keys/type', {
+          UniKey: this.redisCheck,
+          KeysList : chunks[j]
+        }).then(function (response) {
+          let keysTypeResult = response.Data;
+          for(let key in _that.keysResult){
+            for(let key2 in keysTypeResult){
+              if(_that.keysResult[key].CacheKey === keysTypeResult[key2].CacheKey) {
+                _that.keysResult[key].Type = keysTypeResult[key2].Type;
+                _that.keysResult[key].Loading = false;
+              }
             }
           }
-        }
-      }).finally(function () {
-      });
+        }).finally(function () {
+        });
+      }
     },
     searchHistory: function (params) {
       this.keys = params.Search;
@@ -835,6 +851,22 @@ export default {
     },
     error: function (msg) {
       this.$notify({title: '提示', message: msg, type: 'error'});
+    },
+    chunk: function (arr, size) {
+      let objArr = [];
+      let index = 0;
+      let objArrLen = arr.length/size;
+      for(let i=0;i<objArrLen;i++){
+        let arrTemp = [];
+        for(let j=0;j < size;j++){
+          arrTemp[j] = arr[index++];
+          if(index === arr.length){
+            break;
+          }
+        }
+        objArr[i] = arrTemp;
+      }
+      return objArr;
     }
   }
 }
@@ -889,4 +921,7 @@ span{
   font-size:13px !important;
 }
 
+.el-col {
+  min-width: 40px;
+}
 </style>

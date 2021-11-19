@@ -69,6 +69,7 @@ type Response struct {
 type KeysList struct {
 	CacheKey string
 	Type     string
+	Loading  bool
 }
 
 type DelSub struct {
