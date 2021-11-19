@@ -24,6 +24,11 @@ type SearchBody struct {
 	Search string `json:"search"`
 }
 
+type SearchKeysTypeBody struct {
+	UniKey   string   `json:"UniKey"`
+	KeysList []string `json:"KeysList"`
+}
+
 type SerializeBody struct {
 	SerializeStr string `json:"SerializeStr"`
 }

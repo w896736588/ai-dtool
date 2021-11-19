@@ -38,6 +38,26 @@ func Keys(c *gin.Context) {
 	//拿到key类型
 	returnList := make([]define.KeysList, 0)
 	for _, cacheKey := range resultMap {
+		returnList = append(returnList, define.KeysList{
+			CacheKey: cacheKey,
+			Type:     ``,
+		})
+	}
+	response(c, define.ErrorCodeSuccess, `获取成功`, returnList)
+}
+
+func KeysType(c *gin.Context) {
+	reqBody := &define.SearchKeysTypeBody{}
+	requestData(c, &reqBody)
+
+	var redisCli *redis.Client
+	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+		return
+	}
+
+	//拿到key类型
+	returnList := make([]define.KeysList, 0)
+	for _, cacheKey := range reqBody.KeysList {
 		keyType, err := redisCli.Type(cacheKey).Result()
 		if err == nil && keyType != `` {
 			returnList = append(returnList, define.KeysList{

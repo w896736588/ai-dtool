@@ -497,8 +497,31 @@ export default {
         if (_that.keys !== '') {
           _that.setCacheHistory(params);
         }
+        //查找类型
+        _that.getKeysType();
       }).finally(function () {
         _that.loading = false;
+      });
+    },
+    getKeysType : function (){
+      let _that = this;
+      let keys_list = [];
+      for(var key in _that.keysResult){
+        keys_list.push(_that.keysResult[key].CacheKey);
+      }
+      Vue.axios.post(this.apiHost + '/api/keys/type', {
+        UniKey: this.redisCheck,
+        KeysList : keys_list
+      }).then(function (response) {
+        let keysTypeResult = response.Data;
+        for(var key in _that.keysResult){
+          for(var key2 in keysTypeResult){
+            if(_that.keysResult[key].CacheKey === keysTypeResult[key2].CacheKey) {
+              _that.keysResult[key].Type = keysTypeResult[key2].Type;
+            }
+          }
+        }
+      }).finally(function () {
       });
     },
     searchHistory: function (params) {

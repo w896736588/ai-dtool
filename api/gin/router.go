@@ -15,6 +15,8 @@ func InitRouter() (router *gin.Engine) {
 	router.POST(`/api/search`, Search)
 	//模糊搜索key
 	router.POST(`/api/keys`, Keys)
+	//批量获取缓存类型
+	router.POST(`/api/keys/type`, KeysType)
 	//获取key类型
 	router.POST(`/api/key/type`, GetKeyType)
 	//序列化和反序列化
