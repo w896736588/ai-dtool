@@ -1,6 +1,8 @@
 <template>
   <div v-loading="loading">
+
     <template>
+      <menu></menu>
       <el-card>
         <el-input style="width:400px;margin-right:20px;" v-model="keys" @keyup.enter.native="keysSearch" placeholder="请输入key"></el-input>
         <el-select v-model="redisCheck">
@@ -283,9 +285,16 @@ import Vue from "vue";
 import JsonViewer from 'vue-json-viewer'
 import Clipboard from 'clipboard'
 import Textarea from "./textarea";
+import Menu from "./Menu";
 
 export default {
   name: "cacheIndex",
+  components : {
+    Menu,
+    Textarea,
+    JsonViewer,
+    Clipboard,
+  },
   data() {
     return {
       cacheType: {
@@ -359,11 +368,6 @@ export default {
   mounted: function () {
     this.getRedisList();
     this.addSubCache.cacheType = this.cacheType.STRING;
-  },
-  components: {
-    Textarea,
-    JsonViewer,
-    Clipboard,
   },
   methods: {
     getRedisList: function () {
