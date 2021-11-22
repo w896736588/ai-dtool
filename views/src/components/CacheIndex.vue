@@ -1,8 +1,6 @@
 <template>
   <div v-loading="loading">
-
     <template>
-      <menu></menu>
       <el-card>
         <el-input style="width:400px;margin-right:20px;" v-model="keys" @keyup.enter.native="keysSearch" placeholder="请输入key"></el-input>
         <el-select v-model="redisCheck">
@@ -17,7 +15,7 @@
         <el-button icon="el-icon-refresh-left" @click="refresh" circle></el-button>
         <el-button type="primary" icon="el-icon-plus" @click="showAddCache" circle></el-button>
         <el-row :gutter="10" style="margin-top: 10px;">
-            <el-tag type="info" closable @close="deleteHistory(value)" style="margin-left: 5px;margin-top:5px;" v-for="(value,key) in historyList">
+            <el-tag type="info" closable @close="deleteHistory(value)" style="margin-left: 5px;margin-top:5px;" v-for="(value,key) in historyList" :key="key">
 <!--              <el-radio style="word-wrap:break-word;" v-model="historyCheck" @change="searchHistory(value)" :label="value.Search">{{ value.Search }}</el-radio>-->
               <span v-if="historyCheck === value.Search " style="font-size:13px;color:blue;word-wrap:break-word;cursor:default;"  @click="searchHistory(value)"  >{{ value.Search }}</span>
               <span v-else style="font-size:13px;word-wrap:break-word;cursor:default;"  @click="searchHistory(value)"  >{{ value.Search }}</span>
@@ -285,12 +283,10 @@ import Vue from "vue";
 import JsonViewer from 'vue-json-viewer'
 import Clipboard from 'clipboard'
 import Textarea from "./textarea";
-import Menu from "./Menu";
 
 export default {
   name: "cacheIndex",
   components : {
-    Menu,
     Textarea,
     JsonViewer,
     Clipboard,
