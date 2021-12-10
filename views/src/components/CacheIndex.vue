@@ -3,7 +3,7 @@
     <template>
       <el-card>
         <el-input style="width:400px;margin-right:20px;" v-model="keys" @keyup.enter.native="keysSearch" placeholder="请输入key"></el-input>
-        <el-select v-model="redisCheck">
+        <el-select v-model="redisCheck" @change="redisDbChange">
           <el-option
             v-for="(value,key) in redisList"
             :key="value.UniKey"
@@ -376,8 +376,20 @@ export default {
             _that.keysSearch();
           }
         });
+        if(_that.redisCheck == ''){
+          _that.redisCheck = _that.redisList[0].UniKey;
+        }
+        _that.getRedisDbSelect();
         _that.getCacheHistory();
       })
+    },
+    getRedisDbSelect : function (){
+      this.redisCheck = localStorage.getItem('redisDbSelect');
+    },
+    redisDbChange : function (e){
+      localStorage.setItem('redisDbSelect',e);
+      this.historyList = [];
+      this.getCacheHistory();
     },
     search: function (key) {
       this.selectRedisKey = key;
@@ -433,24 +445,8 @@ export default {
       });
     },
     getCacheHistory: function () {
-      let historyList = localStorage.getItem('historyList');
-      this.historyList = JSON.parse(historyList);
-      //检查服务器编号还是否存在
-      let tempList = [];
-      for (let key in this.historyList) {
-        let boolFind = false;
-        for (let keyRedis in this.redisList) {
-          if (this.redisList[keyRedis].UniKey === this.historyList[key].UniKey) {
-            boolFind = true;
-            break;
-          }
-        }
-        if (boolFind === true) {
-          tempList.push(this.historyList[key]);
-        }
-      }
-      this.historyList = tempList;
-      localStorage.setItem('historyList', JSON.stringify(this.historyList));
+      let historyListTemp = localStorage.getItem(this.redisCheck + 'historyList');
+      this.historyList = JSON.parse(historyListTemp);
     },
     deleteHistory: function (params) {
       let listTemp = this.historyList;
@@ -459,14 +455,12 @@ export default {
       }
       let saveList = [];
       for (let key in listTemp) {
-        if (listTemp[key].UniKey === params.UniKey && listTemp[key].Search === params.Search) {
-
-        } else {
+        if (listTemp[key].Search !== params.Search) {
           saveList.push(listTemp[key]);
         }
       }
       this.historyList = saveList;
-      localStorage.setItem('historyList', JSON.stringify(saveList));
+      localStorage.setItem(this.redisCheck + 'historyList', JSON.stringify(saveList));
     },
     setCacheHistory: function (params) {
       if (params.Search === '') {
@@ -477,13 +471,13 @@ export default {
         listTemp = [];
       }
       for (let key in listTemp) {
-        if (listTemp[key].UniKey === params.UniKey && listTemp[key].Search === params.Search) {
+        if (listTemp[key].Search === params.Search) {
           return;
         }
       }
       listTemp.push(params);
       this.historyList = listTemp;
-      localStorage.setItem('historyList', JSON.stringify(listTemp));
+      localStorage.setItem(this.redisCheck + 'historyList', JSON.stringify(listTemp));
     },
     keysSearch: function () {
       let _that = this;
