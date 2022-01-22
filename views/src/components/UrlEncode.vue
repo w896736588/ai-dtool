@@ -23,6 +23,7 @@
           <br/>
           <el-button type="primary" @click="urlEncode">urlencode编码</el-button>
           <el-button type="primary" @click="urlDecode">urlencode解码</el-button>
+          <el-button type="primary" @click="">md5</el-button>
           <br/> <br/>
           <div class="grid-content bg-purple">
             <el-input type="textarea" :rows="10" v-model="textValueTrans" placeholder="输入需要转化的内容"></el-input>
