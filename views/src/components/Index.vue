@@ -24,7 +24,7 @@
         翻译
       </el-menu-item>
       <el-menu-item index="UrlEncode">
-        UrlEncode
+        编码
       </el-menu-item>
       <el-menu-item index="QrCode">
         二维码
