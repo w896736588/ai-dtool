@@ -384,6 +384,8 @@ export default {
       localStorage.setItem('redisDbSelect',e);
       this.historyList = [];
       this.getCacheHistory();
+      this.cacheInit();
+      this.keysResult = [];
     },
     //查询单个信息
     search: function (key) {
