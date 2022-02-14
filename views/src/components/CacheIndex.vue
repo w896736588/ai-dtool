@@ -15,21 +15,29 @@
         <el-button type="primary" @click="keysSearch">查询</el-button>
         <el-button icon="el-icon-refresh-left" @click="refresh" circle></el-button>
         <el-button type="primary" icon="el-icon-plus" @click="showAddCache" circle></el-button>
-        <el-row :gutter="10" style="margin-top: 10px;">
-            <el-tag type="info" closable @close="deleteHistory(value)" style="margin-left: 5px;margin-top:5px;" v-for="(value,key) in historyList" :key="key">
-<!--              <el-radio style="word-wrap:break-word;" v-model="historyCheck" @change="searchHistory(value)" :label="value.Search">{{ value.Search }}</el-radio>-->
+
+<!--        历史查找-->
+        <el-popover
+          placement="bottom"
+          width="1000"
+          :visible.sync="historySearchVisible"
+          trigger="click">
+          <el-row :gutter="10" style="margin-top: 10px;">
+            <el-tag type="warning" closable @close="deleteHistory(value)" style="margin-left: 5px;" v-for="(value,key) in historyList" :key="key">
+              <!--              <el-radio style="word-wrap:break-word;" v-model="historyCheck" @change="searchHistory(value)" :label="value.Search">{{ value.Search }}</el-radio>-->
               <span v-if="historyCheck === value.Search " style="font-size:13px;color:blue;word-wrap:break-word;cursor:default;"  @click="searchHistory(value)"  >{{ value.Search }}</span>
               <span v-else style="font-size:13px;word-wrap:break-word;cursor:default;"  @click="searchHistory(value)"  >{{ value.Search }}</span>
             </el-tag>
-
-        </el-row>
+          </el-row>
+          <el-button slot="reference">历史记录</el-button>
+        </el-popover>
       </el-card>
 
       <el-card class="box-card">
         <el-row :gutter="20">
           <el-col :span="8">
             <el-card class="box-card" style="margin-left: -15px;margin-top:-15px;padding:0px;">
-              <div class="grid-content bg-purple" style="height:440px;overflow:auto;">
+              <div class="grid-content bg-purple" style="height:480px;overflow:auto;">
                 <el-button type="danger" style="margin-bottom: 7px;" @click="delAll" v-if="keysResult.length > 0 "
                            size="mini">删除以下缓存
                 </el-button>
@@ -40,18 +48,6 @@
                         <el-link style="padding:3px;font-size: 13px;color:red;" v-if="selectRedisKey === value.CacheKey" @click="search(value.CacheKey)"> {{value.CacheKey}}</el-link>
                         <el-link style="padding:3px;font-size: 13px;color:#409eff;" v-else @click="search(value.CacheKey)"> {{value.CacheKey}}</el-link>
                       </el-tag>
-<!--                      <el-tag v-if="value.Loading === false" size="medium">{{value.Type}}</el-tag>11 {{value.CacheKey}}-->
-<!--                    </el-button>-->
-<!--                    <el-link v-if="selectRedisKey === value.CacheKey" style="float:left;padding:3px;color:#409EFF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"-->
-<!--                             @click="search(value.CacheKey)">-->
-<!--&lt;!&ndash;                      <el-tag size="medium" :loading="true">{{value.Type}}</el-tag>&ndash;&gt;-->
-<!--                      <el-link type="primary" style="font-size: 13px;">{{value.CacheKey}}</el-link>-->
-<!--                    </el-link>-->
-<!--                    <el-tag size="medium">{{value.Type}}</el-tag>-->
-<!--                    <el-button :inline="true" style="font-size:13px;display: inline;" size="small"   type="text" :loading="value.Loading" @click="search(value.CacheKey)">-->
-<!--                      {{value.CacheKey}}-->
-<!--                    </el-button>-->
-<!--                    <el-link v-else style="padding:3px;font-size: 13px;" @click="search(value.CacheKey)"><el-tag size="medium">{{value.Type}}</el-tag> {{value.CacheKey}}</el-link>-->
                   </div>
 
                 </div>
@@ -61,7 +57,7 @@
           </el-col>
           <el-col :span="16">
             <div class="grid-content bg-purple">
-              <el-card class="box-card" style="height:480px;overflow:auto;margin-left: -15px;margin-top:-15px;margin-right:-15px;">
+              <el-card class="box-card" style="height:520px;overflow:auto;margin-left: -15px;margin-top:-15px;margin-right:-15px;">
                 <div slot="header" class="clearfix">
                   <template v-if="cache.cacheKey !== ''">
                     <el-tag size="medium">{{ cache.cacheType }}</el-tag>
@@ -242,7 +238,7 @@
           <el-checkbox class="string-option" v-model="editSubCache.strHasJson" @change="editSubJson()">json</el-checkbox>
         </el-tag>
       </template>
-      <el-form style="margin-top: 10px;">
+      <el-form style="margin-top: 5px;">
         <el-form-item style="margin-left:0;"  v-if="editSubCache.cacheType === cacheType.HASH"  >
           <el-input v-model="editSubCache.field" autocomplete="off"></el-input>
         </el-form-item>
@@ -302,6 +298,8 @@ export default {
         SET: 'set',
         ZSET: 'zset',
       },
+      //是否显示历史搜索记录
+      historySearchVisible : true,
       //接口地址
       apiHost : 'http://localhost:7070',
       loading: false,
