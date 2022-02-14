@@ -138,15 +138,17 @@
                                          width="500" sortable>
                       </el-table-column>
 
+
+
                       <el-table-column  v-if="cache.cacheType === cacheType.HASH || cache.cacheType === cacheType.LIST"
                         prop="value"
                         label="value"
                         width="550" sortable>
                       </el-table-column>
-                      <el-table-column v-if="cache.cacheType === cacheType.ZSET"
-                        prop="score"
-                        label="score"
-                        width="300" sortable>
+                      <el-table-column v-if="cache.cacheType === cacheType.SET"
+                        prop="value"
+                        label="value"
+                        width="600" sortable>
                       </el-table-column>
                       <el-table-column
                         label="操作">
