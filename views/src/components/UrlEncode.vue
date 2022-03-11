@@ -2,7 +2,7 @@
   <div>
     <el-row>
       <br/>
-      <el-col :span="11">
+      <el-col :span="5">
         <el-card class="box-card">
           <div slot="header" class="clearfix">
             <span>历史记录</span>
@@ -15,7 +15,7 @@
       <el-col :span="1">
         &nbsp;
       </el-col>
-      <el-col :span="12">
+      <el-col :span="18">
         <el-card class="box-card">
           <div class="grid-content bg-purple">
             <el-input type="textarea" :rows="10" v-model="textValue" placeholder="输入需要转化的内容"></el-input>
@@ -23,13 +23,13 @@
           <br/>
           <el-button type="primary" @click="urlEncode">urlencode编码</el-button>
           <el-button type="primary" @click="urlDecode">urlencode解码</el-button>
-          <el-button type="primary" @click="">md5</el-button>
+          <el-button type="primary" @click="md5">md5</el-button>
           <br/> <br/>
           <div class="grid-content bg-purple">
-            <el-input type="textarea" :rows="10" v-model="textValueTrans" placeholder="输入需要转化的内容"></el-input>
+            <el-input ref="copyResult" type="textarea" :rows="10" v-model="textValueTrans" placeholder="结果"></el-input>
           </div>
           <br/>
-          <el-button type="primary">复制</el-button>
+          <el-button @click="copyResult('copyResult');" type="primary">复制</el-button>
         </el-card>
       </el-col>
 
@@ -41,6 +41,11 @@
 </template>
 
 <script>
+import md5 from 'js-md5';
+import Clipboard from "clipboard";
+import Textarea from "./textarea";
+import JsonViewer from "vue-json-viewer";
+import {Message} from "element-ui";
 export default {
   data () {
     return {
@@ -50,6 +55,9 @@ export default {
       textValueTrans : "",
       src : "http://www.jsons.cn/urlencode/",
     }
+  },
+  components : {
+    Clipboard,
   },
   mounted : function (){
     this.initHistory();
@@ -70,6 +78,10 @@ export default {
     },
     urlDecode : function (){
       this.textValueTrans = decodeURIComponent(this.textValue);
+      this.setCacheHistory();
+    },
+    md5 : function (){
+      this.textValueTrans = md5(this.textValue);
       this.setCacheHistory();
     },
     setCacheHistory : function (){
@@ -104,7 +116,46 @@ export default {
     },
     saveHistoryCache : function (){
       localStorage.setItem('encodeHistoryList' , JSON.stringify(this.history))
-    }
+    },
+    copyResult : function (elemRef){
+      let target;
+      let succeed = false;
+      if(this.$refs[elemRef]){
+        target = this.$refs[elemRef];
+        // 选择内容
+        let currentFocus = document.activeElement;
+        target.focus();
+        target.setSelectionRange(0, target.value.length);
+        // 复制内容
+        try {
+          succeed = document.execCommand("copy");
+          alert("内容复制成功");
+        } catch (e) {
+          succeed = false;
+        }
+        // 恢复焦点
+        if (currentFocus && typeof currentFocus.focus === "function") {
+          currentFocus.focus();
+        }
+      }
+      return succeed;
+    },
+    success: function (msg) {
+      Message.success(msg);
+      //this.$notify({title: '提示', message: msg, type: 'success'});
+    },
+    warning: function (msg) {
+      Message.warning(msg);
+      //this.$notify({title: '提示', message: msg, type: 'warning'});
+    },
+    info: function (msg) {
+      Message.info(msg);
+      //this.$notify({title: '提示', message: msg});
+    },
+    error: function (msg) {
+      Message.error(msg);
+      //this.$notify({title: '提示', message: msg, type: 'error'});
+    },
   }
 }
 </script>

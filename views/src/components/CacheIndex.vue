@@ -144,11 +144,17 @@
                         prop="value"
                         label="value"
                         width="550" sortable>
+                        <template slot-scope="scope">
+                          {{scope.row.value | strLenFilter}}
+                        </template>
                       </el-table-column>
                       <el-table-column v-if="cache.cacheType === cacheType.SET"
                         prop="value"
                         label="value"
                         width="600" sortable>
+                        <template slot-scope="scope">
+                          {{scope.row.value | strLenFilter}}
+                        </template>
                       </el-table-column>
                       <el-table-column
                         label="操作">
@@ -361,6 +367,16 @@ export default {
         searchResult : '',       //json  和 序列化后的值
         member : '',
         score : 0,
+      }
+    }
+  },
+  filters : {
+    strLenFilter : function (value){
+      let length = 70
+      if(value.length > length){
+        return value.substr(0,length) + '...'
+      }else{
+        return value
       }
     }
   },
