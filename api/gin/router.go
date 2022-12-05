@@ -9,6 +9,8 @@ import (
 func InitRouter() (router *gin.Engine) {
 	router = gin.Default()
 	router.Use(Cors())
+
+	//REDIS接口
 	//展示所有的
 	router.GET(`/api/redis/list`, RedisList)
 	//查询某个key
@@ -36,6 +38,12 @@ func InitRouter() (router *gin.Engine) {
 	router.POST(`/api/create`, CreateCache)
 	//编辑二级缓存
 	router.POST(`/api/edit/sub`, EditSub)
+	//找到所有启用的消费者服务
+	router.POST(`/api/supervisor/status`, SupervisorStatus)
+
+	//shell exec
+	router.POST(`/api/shell/exec`, ShellExec)
+
 	//前端页面
 	router.Static(`/static`, `./views/dist/static`)
 	router.LoadHTMLFiles(`views/dist/index.html`)

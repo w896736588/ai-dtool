@@ -13,6 +13,7 @@ import (
 	"redis_manager/base"
 	"redis_manager/define"
 	"redis_manager/helper"
+	"strings"
 	"time"
 )
 
@@ -425,6 +426,114 @@ func EditSub(c *gin.Context) {
 	} else {
 		response(c, define.ErrorCodeSuccess, `编辑成功`, ``)
 	}
+}
+
+// SupervisorStatus supervisor 状态
+// @author frog
+// @date 2022-04-11 15:22:27
+func SupervisorStatus(c *gin.Context) {
+	reqBody := &define.SshDo{}
+	requestData(c, &reqBody)
+	ret := base.Exec(reqBody, `supervisorctl status`)
+	//解析ret
+	supervisorNameList := strings.Split(strings.Replace(ret, "\n", " #ENTER# ", -1), `#ENTER#`)
+	response(c, define.ErrorCodeSuccess, `成功`, supervisorNameList)
+}
+
+// ShellExec 执行shell命令
+// @auth frog
+// @date 2022-12-02 15:00:23
+// @param c
+func ShellExec(c *gin.Context) {
+	err := recover()
+	if err != nil {
+		fmt.Println(err)
+	}
+	reqBody := &define.SshExec{}
+	requestData(c, &reqBody)
+	log.Debugf(fmt.Sprintf(`%#v`, reqBody))
+	//初始化配置
+	cliConf := base.ClientConfig{}
+	cliConf.CreateClient(reqBody.SshConfig.Host, cast.ToInt64(reqBody.SshConfig.Port), reqBody.SshConfig.Username, reqBody.SshConfig.Password)
+	//类型
+	cdCommand := `cd /var/www/docker_apps/` + reqBody.EnvName + `/`
+	//查询当前分支
+	showCurrentBranchCommand := `sudo git symbolic-ref --short -q HEAD;`
+	ignoreAllCommand := `sudo git checkout .` //忽略所有变更
+	cleanAllCommand := `sudo git clean -df`   //清理所有新增文件
+	fetchCommand := `sudo git fetch`
+	checkoutCommand := `sudo git checkout `
+	pullCommand := `sudo git pull`
+	pullOriginCommand := `sudo git pull origin `
+	runCommandList := make([]string, 0)
+	switch reqBody.ExecType {
+	case `query_current_branch`:
+		//查询当前分支
+		cdCommand += reqBody.ParamOne
+		runCommandList = append(runCommandList,
+			cdCommand,
+			showCurrentBranchCommand,
+		)
+		log.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
+		ret := cliConf.RunShell(strings.Join(runCommandList, `;`))
+		response(c, define.ErrorCodeSuccess, `成功`, ret)
+		return
+	case `change_branch`:
+		//拿到当前分支
+		cdCommand += reqBody.ParamOne
+		checkoutCommand += reqBody.ParamTwo
+		pullOriginCommand += reqBody.ParamTwo
+
+		currentBranch := cliConf.RunShell(cdCommand + `;` + showCurrentBranchCommand)
+		currentBranch = strings.Replace(currentBranch, "\n", "", -1)
+		log.Debugf(`当前分支 ` + currentBranch)
+		//如果已经包含了此分支 那么不再处理
+		if strings.Contains(currentBranch, reqBody.ParamTwo) {
+			checkoutCommand = ``
+		}
+
+		//切换分支
+		runCommandList = append(runCommandList,
+			cdCommand,
+			ignoreAllCommand,
+			cleanAllCommand,
+			fetchCommand,
+			pullCommand,
+			checkoutCommand,
+			pullOriginCommand,
+			showCurrentBranchCommand,
+		)
+		runCommandList = helper.FilterEmptyString(&runCommandList)
+		log.Debug(`指定命令 ` + strings.Join(runCommandList, `;`))
+		ret := cliConf.RunShell(strings.Join(runCommandList, `;`))
+		response(c, define.ErrorCodeSuccess, `成功`, ret)
+		return
+	case `pull_branch_origin`:
+		//更新当前分支
+		cdCommand += reqBody.ParamOne
+		checkoutCommand += reqBody.ParamTwo
+		currentBranch := cliConf.RunShell(cdCommand + `;` + showCurrentBranchCommand)
+		currentBranch = strings.Replace(currentBranch, "\n", "", -1)
+		log.Debugf(`当前分支 ` + currentBranch)
+		pullOriginCommand += currentBranch
+
+		//切换分支
+		runCommandList = append(runCommandList,
+			cdCommand,
+			ignoreAllCommand,
+			cleanAllCommand,
+			fetchCommand,
+			pullCommand,
+			pullOriginCommand,
+			showCurrentBranchCommand,
+		)
+		runCommandList = helper.FilterEmptyString(&runCommandList)
+		log.Debug(`指定命令 ` + strings.Join(runCommandList, `;`))
+		ret := cliConf.RunShell(strings.Join(runCommandList, `;`))
+		response(c, define.ErrorCodeSuccess, `成功`, ret)
+		return
+	}
+	response(c, define.ErrorCodeSuccess, `成功`, nil)
 }
 
 func requestData(c *gin.Context, requestBody interface{}) {

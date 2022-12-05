@@ -11,23 +11,8 @@
       <el-menu-item index="Redis">
         Redis缓存
       </el-menu-item>
-      <el-menu-item index="Json">
-        JSON格式化
-      </el-menu-item>
-      <el-menu-item index="Unix">
-        时间戳
-      </el-menu-item>
-      <el-menu-item index="Ip">
-        IP查询
-      </el-menu-item>
-      <el-menu-item index="Translate">
-        翻译
-      </el-menu-item>
-      <el-menu-item index="UrlEncode">
-        编码
-      </el-menu-item>
-      <el-menu-item index="QrCode">
-        二维码
+      <el-menu-item index="Consumer">
+        测试环境
       </el-menu-item>
 
       <el-submenu index="Doc">
@@ -46,27 +31,36 @@
         </el-menu-item>
       </el-submenu>
 
+      <el-submenu index="DocTool">
+        <template slot="title">工具地址</template>
+        <el-menu-item index="DocTool-1">
+          <a style="color:white;" target="_blank" href="https://www.json.cn/">Json格式化</a>
+        </el-menu-item>
+        <el-menu-item index="DocTool-2">
+          <a style="color:white;" target="_blank" href="https://tool.lu/timestamp/">时间戳</a>
+        </el-menu-item>
+        <el-menu-item index="DocTool-4">
+          <a style="color:white;" target="_blank" href="https://ip.tool.chinaz.com/github.com">Ip查询</a>
+        </el-menu-item>
+        <el-menu-item index="DocTool-3">
+          <a style="color:white;" target="_blank" href="https://fanyi.baidu.com/">翻译</a>
+        </el-menu-item>
+        <el-menu-item index="DocTool-3">
+          <a style="color:white;" target="_blank" href="https://cli.im/">二维码</a>
+        </el-menu-item>
+      </el-submenu>
+
     </el-menu>
 <!--    内容-->
     <Redis v-show="menuName === 'Redis'"></Redis>
-    <QrCode v-show="menuName === 'QrCode'"></QrCode>
-    <Json v-show="menuName === 'Json'"></Json>
-    <Unix v-show="menuName === 'Unix'"></Unix>
-    <Ip v-show="menuName === 'Ip'"></Ip>
-    <UrlEncode v-show="menuName === 'UrlEncode'"></UrlEncode>
-    <Translate v-show="menuName === 'Translate'"></Translate>
+    <Consumer v-show="menuName === 'Consumer'"></Consumer>
   </div>
 
 </template>
 
 <script>
-import Json from "./Json"
-import Unix from "./Unix"
-import Ip from "./Ip"
-import UrlEncode from "./UrlEncode"
-import Translate from "./Translate"
 import Redis from "./Cache"
-import QrCode from "./QrCode"
+import Consumer from "./Consumer"
 export default {
   data () {
     return {
@@ -80,13 +74,8 @@ export default {
     }
   },
   components : {
-    Json,
-    Unix,
-    Ip,
-    UrlEncode,
-    Translate,
     Redis,
-    QrCode,
+    Consumer,
   },
 }
 </script>

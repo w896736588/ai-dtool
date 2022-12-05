@@ -13,9 +13,36 @@ import (
 var RedisList *[]define.RedisConfig
 var ConfigViper *viper.Viper
 var ConfigRunViper *viper.Viper
+var SshConfig *map[string]define.SshConfig
+
+//  RedisWebSocket
+var RedisWebSocket define.WebSocketStruct
 
 func InitConfig() {
 	initLog()
+
+	//设置redisWebSocket配置
+	configViper := viper.New()
+	configViper.AddConfigPath(`config`)
+	configViper.SetConfigName(`config`)
+	configViper.SetConfigType(`ini`)
+	if err := configViper.ReadInConfig(); err != nil {
+		panic(`读取配置失败 config/config.ini`)
+	}
+	RedisWebSocket = define.WebSocketStruct{
+		Host: configViper.GetString(`redisWebSocket.host`),
+		Port: configViper.GetString(`redisWebSocket.port`),
+	}
+
+	initSsh()
+	initRedis()
+
+}
+
+// initRedis 初始化redis
+// @author frog
+// @date 2022-04-11 16:11:11
+func initRedis() {
 	tempRedisList := make([]define.RedisConfig, 0)
 	RedisList = &tempRedisList
 	ConfigViper = viper.New()
@@ -49,6 +76,8 @@ func InitConfig() {
 			SshPort:     cast.ToString(mapTemp[`sshport`]),
 			SshUser:     cast.ToString(mapTemp[`sshuser`]),
 			SshPassword: cast.ToString(mapTemp[`sshpassword`]),
+			SshName:     cast.ToString(mapTemp[`sshname`]),
+			SshPrefix:   cast.ToString(mapTemp[`sshprefix`]),
 			Default:     cast.ToInt(mapTemp[`default`]),
 			UniKey:      helper.Md5(UniKey),
 			Connection:  true,
@@ -65,4 +94,42 @@ func initLog() {
 		FullTimestamp:   true,
 		TimestampFormat: "2006-01-02 15:04:05",
 	})
+}
+
+// initSsh 初始化ssh配置
+// @author frog
+// @date 2022-04-11 15:37:41
+func initSsh() {
+	configViper := viper.New()
+	configViper.AddConfigPath(`config`)
+	configViper.SetConfigName(`config`)
+	configViper.SetConfigType(`ini`)
+	if err := configViper.ReadInConfig(); err != nil {
+		panic(fmt.Sprintf(`读取配置失败 config/%s.ini`, configViper.GetString(`run.sshFile`)))
+	}
+
+	configRunViper := viper.New()
+	configRunViper.AddConfigPath(`config`)
+	configRunViper.SetConfigName(configViper.GetString(`run.sshFile`))
+	configRunViper.SetConfigType(`ini`)
+	if err := configRunViper.ReadInConfig(); err != nil {
+		panic(fmt.Sprintf(`读取配置失败 config/%s.ini`, ConfigViper.GetString(`run.sshFile`)))
+	}
+	allSettings := configRunViper.AllSettings()
+	tempSshList := make(map[string]define.SshConfig, 0)
+	SshConfig = &tempSshList
+	for _, value := range allSettings {
+		mapTemp := value.(map[string]interface{})
+		log.Debugf(`mapTemp %#v`, mapTemp)
+		UniKey := cast.ToString(mapTemp[`username`]) + cast.ToString(mapTemp[`password`]) + cast.ToString(mapTemp[`host`]) + cast.ToString(mapTemp[`port`]) + cast.ToString(mapTemp[`sshtype`])
+		(*SshConfig)[cast.ToString(mapTemp[`name`])] = define.SshConfig{
+			UniKey:   UniKey,
+			Name:     cast.ToString(mapTemp[`name`]),
+			Username: cast.ToString(mapTemp[`username`]),
+			Host:     cast.ToString(mapTemp[`host`]),
+			Password: cast.ToString(mapTemp[`password`]),
+			Port:     cast.ToString(mapTemp[`port`]),
+			SshType:  cast.ToString(mapTemp[`sshtype`]),
+		}
+	}
 }

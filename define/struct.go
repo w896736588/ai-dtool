@@ -9,6 +9,8 @@ type RedisConfig struct {
 	SshPort     string
 	SshUser     string
 	SshPassword string
+	SshName     string
+	SshPrefix   string
 	Default     int
 	UniKey      string
 	Connection  bool
@@ -103,4 +105,41 @@ type EditSub struct {
 	CacheIndex  int64   `json:"index"`
 	CacheMember string  `json:"cacheMember"`
 	CacheScore  float64 `json:"cacheScore"`
+}
+type SshConfig struct {
+	UniKey   string
+	Name     string
+	Username string
+	Password string
+	Host     string
+	Port     string
+	SshType  string
+}
+type SshDo struct {
+	UniKey string `json:"UniKey"`
+}
+type CmdStruct struct {
+	ConfigFile string
+	Name       string
+}
+
+type WebSocketStruct struct {
+	Host string
+	Port string
+}
+
+type WebSocketEventStruct struct {
+	Event       string `json:"Event"`
+	ReqJsonBody string `json:"ReqBody"`
+}
+
+// SshExec xShell 执行命令操作
+// @auth frog
+// @date 2022-12-02 15:02:13
+type SshExec struct {
+	ParamOne  string    `json:"ParamOne"`  //根据ExecType定义具体代表啥内容
+	ParamTwo  string    `json:"ParamTwo"`  //根据ExecType定义具体代表啥内容
+	EnvName   string    `json:"EnvName"`   //环境名
+	ExecType  string    `json:"ExecType"`  //执行类型
+	SshConfig SshConfig `json:"SshConfig"` //ssh连接配置
 }
