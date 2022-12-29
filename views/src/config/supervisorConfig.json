@@ -63,13 +63,6 @@
     "running_status" : ""
   },
   {
-    "name" : "视频号小店发送短信",
-    "command" : "php /var/www/apps/yii_customer_service/scan/protected/yiic WeixinShopSendSms",
-    "supervisor_config" : "/var/www/dockerfiles/dev_test/docker_volumes/supervisor/etc/supervisor/conf.d/WeixinShopSendSms.conf",
-    "supervisor_name" : "WeixinShopSendSms",
-    "running_status" : ""
-  },
-  {
     "name" : "短信结果查询",
     "command" : "php /var/www/apps/yii_customer_service/scan/protected/yiic SmsSendStatusQuery",
     "supervisor_config" : "/var/www/dockerfiles/dev_test/docker_volumes/supervisor/etc/supervisor/conf.d/SmsSendStatusQuery.conf",

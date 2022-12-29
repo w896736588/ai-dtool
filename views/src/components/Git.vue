@@ -9,18 +9,8 @@
       </el-option>
     </el-select>
 
-    <!--    环境-->
-<!--    <el-select v-model="chooseEvnName" placeholder="请选择代码环境">-->
-<!--      <el-option-->
-<!--        v-for="(value,key) in codeEnvList" v-if="value.ParentType === chooseParentType"-->
-<!--        :key="value.Name"-->
-<!--        :label="value.Name"-->
-<!--        :value="value.Name">-->
-<!--      </el-option>-->
-<!--    </el-select>-->
-
     <!--    git操作类型-->
-    <el-select v-model="ExecType" placeholder="请选择git操作">
+    <el-select v-model="gitOpType" @change="gitOpTypeChange" placeholder="请选择git操作">
       <el-option
         v-for="(value,key) in gitOpTypeList"
         :key="value.ExecType"
@@ -29,14 +19,13 @@
       </el-option>
     </el-select>
 
-
-
-
     <!--    分支名-->
     <el-input v-if="ExecType === 'change_branch'" style="width:300px;margin-right:20px;"
               v-model="BranchName" placeholder="请输入分支名"></el-input>
 
-    <el-button type="primary" @click="exec" >执 行</el-button>
+    <el-button type="primary" :loading="btnLoading.exec" @click="exec" >执 行</el-button>
+
+    <el-button type="primary" :loading="btnLoading.pull" @click="gitOpType = 'pull_branch_origin';exec()">{{chooseEvnName}}切换到最新代码</el-button>
 
     <!--      代码环境-->
     <div style="margin-top: 10px;">
@@ -44,7 +33,7 @@
       <el-row :gutter="20">
         <el-col :span="4" v-for="(value,key) in codeEnvList" style="margin:5px;">
           <div>
-            <el-radio size="medium " v-model="chooseEvnName" :label="value.Name">{{value.Name}}</el-radio>
+            <el-radio @change="codeChange" size="medium " v-model="chooseEvnName" :label="value.Name">{{value.Name}}</el-radio>
           </div>
         </el-col>
       </el-row>
@@ -79,8 +68,8 @@ export default {
       dockerList: dockerList,
       //按钮状态
       btnLoading : {
-        wechatKefuStatus : false,
-        wechatKefuChange : false,
+        exec : false,
+        pull : false,
       },
       //操作业务类型
       chooseBusinessType: "git",
@@ -93,12 +82,13 @@ export default {
         // {Title: "预发布", Name: "prodTest"},
       ],
       //总的操作类型
-      ExecType: "query_current_branch",
+      ExecType: "pull_branch_origin",
       //操作类型
       dialogSshConfig: false,
       BranchName: "",  //分支名
       execResult: "",//操作结果
       gitOpTypeList: gitOpTypeList,
+      gitOpType : 'pull_branch_origin',
     }
   },
   mounted: function () {
@@ -112,6 +102,17 @@ export default {
     }
   },
   methods: {
+    //改变代码环境
+    codeChange : function (){
+      console.log(this.chooseEvnName)
+      this.gitOpType = 'query_current_branch'
+      this.exec()
+    },
+    //改变git操作类型
+    gitOpTypeChange : function (){
+      console.log(this.ExecType)
+      this.ExecType = this.gitOpType
+    },
     //改变父类类型
     changeParentType: function () {
       this.chooseEvnName = ''
@@ -138,11 +139,8 @@ export default {
         _that.error("不存在的配置");
         return
       }
-      if(env_config.ParentType === 'prodTest'){
-        env_config.SshConfig = _that.prodTestSshConfig
-      }else{
-        env_config.SshConfig = _that.sshConfig
-      }
+      env_config.SshConfig = _that.sshConfig
+      this.ExecType = this.gitOpType
       //根据类型判断
       let params = {
         SshConfig: env_config.SshConfig,
@@ -182,11 +180,7 @@ export default {
       });
     },
     setBtnLoading : function (params){
-      if(params.ExecType === 'wechat_kefu_status'){
-        this.btnLoading.wechatKefuStatus = true
-      }else if(params.ExecType === 'wechat_kefu_change'){
-        this.btnLoading.wechatKefuChange = true
-      }
+      this.btnLoading.exec = true
       let _this = this
       let _set_params = params
       setTimeout(function (){
@@ -194,11 +188,7 @@ export default {
       } , 15000)
     },
     cancelBtnLoading : function (params){
-      if(params.ExecType === 'wechat_kefu_status'){
-        this.btnLoading.wechatKefuStatus = false
-      }else if(params.ExecType === 'wechat_kefu_change'){
-        this.btnLoading.wechatKefuChange = false
-      }
+        this.btnLoading.exec = false
     },
     success: function (msg) {
       Message.success(msg);

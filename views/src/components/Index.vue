@@ -20,9 +20,6 @@
       <el-menu-item index="WechatKefu">
         微信客服
       </el-menu-item>
-      <el-menu-item index="WechatKefu">
-        Model生成
-      </el-menu-item>
       <el-menu-item index="Ssh">
         SSH配置
       </el-menu-item>

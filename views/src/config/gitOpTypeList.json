@@ -1,14 +1,14 @@
 [
   {
-    "Name": "查询当前分支",
-    "ExecType": "query_current_branch"
-  },
-  {
     "Name": "更新当前分支到最新代码",
     "ExecType": "pull_branch_origin"
   },
   {
     "Name": "切换分支并更新到最新",
     "ExecType": "change_branch"
+  },
+  {
+    "Name": "查询当前分支",
+    "ExecType": "query_current_branch"
   }
 ]

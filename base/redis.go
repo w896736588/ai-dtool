@@ -14,17 +14,16 @@ import (
 var RedisRunList map[string]*redis.Client
 
 func InitRedis() {
-	go func() {
-		RedisRunList = make(map[string]*redis.Client)
-		for _, redisConfig := range *RedisList {
-			redisRun, err := getRedisClient(&redisConfig)
-			if err != nil {
-				log.Error("普通 redis %#v 初始化 ping 异常", redisConfig)
-				continue
-			}
-			RedisRunList[redisConfig.UniKey] = redisRun
+	RedisRunList = make(map[string]*redis.Client)
+	for _, redisConfig := range *RedisList {
+		log.Debug(fmt.Sprintf(`链接redis %#v`, redisConfig))
+		redisRun, err := getRedisClient(&redisConfig)
+		if err != nil {
+			log.Error("普通 redis %#v 初始化 ping 异常", redisConfig)
+			continue
 		}
-	}()
+		RedisRunList[redisConfig.UniKey] = redisRun
+	}
 
 }
 
