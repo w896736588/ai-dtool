@@ -29,9 +29,10 @@ type Command struct {
 	runPhpCommand               string
 	wechatKefuLogCommand        string
 	SupervisorRestartAllCommand string
-	SupervisorRestartCommand 	string
-	SupervisorStatusCommand 	string
+	SupervisorRestartCommand    string
+	SupervisorStatusCommand     string
 	SupervisorConfigShowCommand string
+	GitStatusCommand            string
 }
 
 // WechatKefuStatus
@@ -141,7 +142,7 @@ func (command *Command) QueryCurrentBranch(reqBody *define.SshExec, cliConf base
 	command.cdCommand += reqBody.CodePath
 	runCommandList = append(runCommandList,
 		command.cdCommand,
-		command.showCurrentBranchCommand,
+		command.GitStatusCommand,
 	)
 	log.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
 	ret := cliConf.RunShell(strings.Join(runCommandList, `;`))
@@ -173,6 +174,7 @@ func (command *Command) Filter() {
 	command.SupervisorRestartCommand = ` supervisorctl restart %s`
 	command.SupervisorStatusCommand = `supervisorctl status `
 	command.SupervisorConfigShowCommand = `cat %s`
+	command.GitStatusCommand = `git status`
 }
 
 // WechatKefuChange 切换微信客服到当前环境
@@ -264,7 +266,7 @@ func (command *Command) SupervisorRestart(reqBody *define.SshExec, cliConf base.
 	//消费者
 	retMsgList := make([]string, 0)
 	command.cdCommand += reqBody.CodePath
-	runCommand := fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId) + ` ` + fmt.Sprintf(command.SupervisorRestartCommand , reqBody.SupervisorRestartName)
+	runCommand := fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId) + ` ` + fmt.Sprintf(command.SupervisorRestartCommand, reqBody.SupervisorRestartName)
 	log.Debugf(`执行的命令 ` + runCommand)
 	ret := cliConf.RunShell(runCommand)
 	retMsgList = append(retMsgList, ret)
@@ -297,7 +299,7 @@ func (command *Command) SupervisorStatusList(reqBody *define.SshExec, cliConf ba
 func (command *Command) SupervisorConfigShow(reqBody *define.SshExec, cliConf base.ClientConfig) []string {
 	//消费者
 	retMsgList := make([]string, 0)
-	runCommand := fmt.Sprintf(command.SupervisorConfigShowCommand , reqBody.SupervisorConfigPath)
+	runCommand := fmt.Sprintf(command.SupervisorConfigShowCommand, reqBody.SupervisorConfigPath)
 	log.Debugf(`执行的命令 ` + runCommand)
 	ret := cliConf.RunShell(runCommand)
 	retMsgList = append(retMsgList, ret)
