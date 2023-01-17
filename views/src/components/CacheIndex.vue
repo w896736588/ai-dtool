@@ -314,7 +314,7 @@ export default {
       apiHost : 'http://localhost:7070',
       loading: false,
       //数据库
-      redisCheck: '',
+      redisCheck: 'common3-xkf',
       redisList: [],
       //key
       cache: {
@@ -403,7 +403,7 @@ export default {
       let _that = this
       Vue.axios.post(this.apiHost + '/api/redis/list' , {
         sshConfig : _that.sshConfig,
-
+        redisConfigList : _that.redisConfigList
       }).then(function (response) {
         _that.redisList = response.Data;
         _that.redisCheck = _that.redisList[0].UniKey;
@@ -875,20 +875,21 @@ export default {
       this.addCacheClass = true;
     },
     success: function (msg) {
-      Message.success(msg);
-      //this.$notify({title: '提示', message: msg, type: 'success'});
+      // Message.success(msg);
+      this.$notify({title: '提示', message: msg, type: 'success' , duration : 1000});
     },
     warning: function (msg) {
-      Message.warning(msg);
-      //this.$notify({title: '提示', message: msg, type: 'warning'});
+      // Message.warning(msg);
+      this.$notify({title: '提示', message: msg, type: 'warning' , duration : 1000});
     },
     info: function (msg) {
-      Message.info(msg);
+      // Message.info(msg);
       //this.$notify({title: '提示', message: msg});
+      this.$notify({title: '提示', message: msg, type: 'info' , duration : 1000});
     },
     error: function (msg) {
-      Message.error(msg);
-      //this.$notify({title: '提示', message: msg, type: 'error'});
+      // Message.error(msg);
+      this.$notify({title: '提示', message: msg, type: 'error' , duration : 1000});
     },
     chunk: function (arr, size) {
       let objArr = [];

@@ -4,6 +4,7 @@
     "ParentType": "xkf",
     "DockerName": "common3",
     "DockerCodePath": "apps/yii_customer_service",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common3/yii_customer_service"
   },
   {
@@ -11,6 +12,7 @@
     "ParentType": "xkf",
     "DockerName": "common3",
     "DockerCodePath": "apps/yii_customer_service_sub01",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common3/yii_customer_service_sub01"
   },
   {
@@ -18,6 +20,7 @@
     "ParentType": "xkf",
     "DockerName": "common1",
     "DockerCodePath": "apps/yii_customer_service",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common1/yii_customer_service"
   },
   {
@@ -25,6 +28,7 @@
     "ParentType": "xkf",
     "DockerName": "common1",
     "DockerCodePath": "apps/yii_customer_service_sub01",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common1/yii_customer_service_sub01"
   },
   {
@@ -32,6 +36,7 @@
     "ParentType": "xkf",
     "DockerName": "common",
     "DockerCodePath": "apps/yii_customer_service",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common/yii_customer_service"
   },
   {
@@ -39,6 +44,7 @@
     "ParentType": "xkf",
     "DockerName": "common",
     "DockerCodePath": "apps/yii_customer_service_sub01",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common/yii_customer_service_sub01"
   },
   {
@@ -46,6 +52,7 @@
     "ParentType": "xkf",
     "DockerName": "common2",
     "DockerCodePath": "apps/yii_customer_service",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common2/yii_customer_service"
   },
   {
@@ -53,6 +60,7 @@
     "ParentType": "xkf",
     "DockerName": "common2",
     "DockerCodePath": "apps/yii_customer_service_sub01",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common2/yii_customer_service_sub01"
   },
   {
@@ -60,6 +68,7 @@
     "ParentType": "xkf",
     "DockerName": "common4",
     "DockerCodePath": "apps/yii_customer_service",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common4/yii_customer_service"
   },
   {
@@ -67,6 +76,7 @@
     "ParentType": "xkf",
     "DockerName": "common4",
     "DockerCodePath": "apps/yii_customer_service_sub01",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common4/yii_customer_service_sub01"
   },
   {
@@ -74,6 +84,7 @@
     "ParentType": "xkf",
     "DockerName": "common5",
     "DockerCodePath": "apps/yii_customer_service",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common5/yii_customer_service"
   },
   {
@@ -81,6 +92,7 @@
     "ParentType": "xkf",
     "DockerName": "common5",
     "DockerCodePath": "apps/yii_customer_service_sub01",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common5/yii_customer_service_sub01"
   },
   {
@@ -88,6 +100,7 @@
     "ParentType": "xkf",
     "DockerName": "common6",
     "DockerCodePath": "apps/yii_customer_service",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common6/yii_customer_service"
   },
   {
@@ -95,6 +108,7 @@
     "ParentType": "xkf",
     "DockerName": "common6",
     "DockerCodePath": "apps/yii_customer_service_sub01",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common6/yii_customer_service_sub01"
   },
   {
@@ -102,6 +116,7 @@
     "ParentType": "xkf",
     "DockerName": "common7",
     "DockerCodePath": "apps/yii_customer_service",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common7/yii_customer_service"
   },
   {
@@ -109,6 +124,7 @@
     "ParentType": "xkf",
     "DockerName": "common7",
     "DockerCodePath": "apps/yii_customer_service_sub01",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common7/yii_customer_service_sub01"
   },
   {
@@ -116,6 +132,7 @@
     "ParentType": "xkf",
     "DockerName": "mike",
     "DockerCodePath": "apps/yii_customer_service",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/mike/yii_customer_service"
   },
   {
@@ -123,6 +140,7 @@
     "ParentType": "xkf",
     "DockerName": "mike",
     "DockerCodePath": "apps/yii_customer_service_sub01",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/mike/yii_customer_service_sub01"
   },
   {
@@ -130,6 +148,7 @@
     "ParentType": "weixin_shop_golang",
     "DockerName": "common3",
     "DockerCodePath": "apps/weixin-shop-sync",
+    "LogPath" : "scan/protected/runtime/",
     "CodePath": "docker_apps/common3/weixin-shop-sync"
   },
   {

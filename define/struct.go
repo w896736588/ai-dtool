@@ -136,7 +136,7 @@ type SshExec struct {
 	BranchName            string         `json:"BranchName"`      //分支名
 	ExecType              string         `json:"ExecType"`        //执行类型
 	SshConfig             SshConfig      `json:"SshConfig"`       //ssh连接配置
-	WechatKefuAppid       string         `json:"WechatKefuAppid"` //微信客服appid
+	WechatKefuAppid       string         `json:"WechatKefuAppid"` //微信客服appid或者应用Id
 	DockerList            []DockerConfig `json:"DockerList"`
 	DockerId              string         `json:"DockerId"`              //操作哪个docker
 	DockerCodePath        string         `json:"DockerCodePath"`        //docker内代码路径
@@ -144,9 +144,33 @@ type SshExec struct {
 	SupervisorConfigPath  string         `json:"SupervisorConfigPath"`  // 消费者配置内容
 	RedisConfigList       []RedisConfig  `json:"redisConfigList"`       //redis配置列表
 	LogFile               string         `json:"LogFile"`               //日志文件名
+	DockerExecCommand     string         `json:"DockerExecCommand"`     //docker内执行的命令
+	XkfDevDbConfig        MysqlConfig    `json:"xkfDevDbConfig"`        //数据库链接
+	Account               string         `json:"Account"`               //管理员ID或者账号
+	VipLevel              interface{}    `json:"VipLevel"`              //vip版本
+	SystemType            interface{}    `json:"SystemType"`            //系统类型
 }
 
 type DockerConfig struct {
 	Name string `json:"Name"`
 	Id   string `json:"Id"`
+}
+
+type MysqlConfig struct {
+	Host     interface{} `json:"host"`
+	Port     interface{} `json:"port"`
+	Username interface{} `json:"username"`
+	Password interface{} `json:"password"`
+	Dbname   interface{} `json:"dbname"`
+}
+
+type TblWechatapp struct {
+	Appid   string `json:"app_id"`
+	AppType string `json:"app_type"`
+	UserId  string `json:"user_id"`
+}
+
+type TblUser struct {
+	Id       string `json:"_id"`
+	Username string `json:"user_name"`
 }

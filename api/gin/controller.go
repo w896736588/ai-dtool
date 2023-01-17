@@ -32,11 +32,11 @@ func RedisList(c *gin.Context) {
 		}
 	}
 
-	for key, value := range reqBody.RedisConfigList {
-		if _, ok := base.RedisRunList[value.UniKey]; !ok {
-			value.Connection = false
+	for _, value := range reqBody.RedisConfigList {
+		if base.RedisRunList[value.UniKey] != nil {
+			value.Connection = true
 		}
-		(*base.RedisList)[key] = value
+		base.RedisList = append(base.RedisList, value)
 	}
 	response(c, define.ErrorCodeSuccess, `获取成功`, base.RedisList)
 }
@@ -511,6 +511,12 @@ func ShellExec(c *gin.Context) {
 		return
 	case `show_log`:
 		response(c, define.ErrorCodeSuccess, `成功`, strings.Join(handle.ShowLog(reqBody, cliConf), ``))
+		return
+	case `docker_exec`:
+		response(c, define.ErrorCodeSuccess, `成功`, strings.Join(handle.DockerExec(reqBody, cliConf), ``))
+		return
+	case `change_vip_type`:
+		response(c, define.ErrorCodeSuccess, `成功`, strings.Join(handle.ChangeVipType(reqBody), ``))
 		return
 	}
 	response(c, define.ErrorCodeSuccess, `成功`, nil)

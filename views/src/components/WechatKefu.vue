@@ -1,26 +1,14 @@
 <template>
   <el-card>
-
-    <!--  子操作选项列表-->
     <el-card>
-<!--      微信客服-->
-      <div style="margin-top: 10px;">
-        <h3>微信客服</h3>
-        <el-row :gutter="20">
-          <el-col :span="6" v-for="(value,key) in wechatKefuList" style="margin:5px;">
-            <div>
-                <el-radio size="medium " v-model="chooseWechatKefuAppid" :label="value.appid">{{value.name}}</el-radio>
-            </div>
-          </el-col>
-        </el-row>
-        <el-input style="width:500px;margin-right:20px;"
-                  v-model="chooseWechatKefuAppid" placeholder="请输入微信客服appid"></el-input>
-      </div>
 <!--      代码环境-->
       <div style="margin-top: 10px;">
-        <h3>代码环境</h3>
+        <h3>
+          代码环境 - {{chooseEvnName}}
+          <el-input style="width:500px;display: inline-block;" v-model="chooseWechatKefuAppid" placeholder="请输入微信客服appid或应用id"></el-input>
+        </h3>  &nbsp;
         <el-row :gutter="20">
-          <el-col :span="4" v-for="(value,key) in codeEnvList" style="margin:5px;">
+          <el-col v-if="value.ParentType === 'xkf'" :span="2" v-for="(value,key) in codeEnvList" style="margin:5px;">
             <div>
               <el-radio size="medium " v-model="chooseEvnName" :label="value.Name">{{value.Name}}</el-radio>
             </div>
@@ -51,6 +39,7 @@ export default {
       apiHost: 'http://localhost:7070',
       //ssh config
       sshConfig: {},
+      xkfDevDbConfig : {},
       //选中的环境
       chooseEvnName: "common3",
       //代码环境
@@ -77,6 +66,11 @@ export default {
     let sshConfig = this.getStore('sshConfig')
     if (sshConfig !== null) {
       this.sshConfig = JSON.parse(sshConfig)
+    }
+
+    let xkfDevDbConfig = this.getStore('devTestDbConfig')
+    if (xkfDevDbConfig !== null) {
+      this.xkfDevDbConfig = JSON.parse(xkfDevDbConfig)
     }
   },
   methods: {
@@ -106,9 +100,10 @@ export default {
         DockerList: this.dockerList,
         DockerId: "",
         DockerCodePath: env_config.DockerCodePath,
+        xkfDevDbConfig : this.xkfDevDbConfig,
       }
       if (params.ExecType === 'wechat_kefu_status' && params.WechatKefuAppid === '') {
-        _that.error('选择微信客服')
+        _that.error('请输入应用id或appid')
         return
       } else if (params.ExecType === 'wechat_kefu_change' && (params.WechatKefuAppid === '' || params.CodePath === '')) {
         _that.error('选择微信客服以及代码环境')
@@ -153,20 +148,21 @@ export default {
       }
     },
     success: function (msg) {
-      Message.success(msg);
-      //this.$notify({title: '提示', message: msg, type: 'success'});
+      // Message.success(msg);
+      this.$notify({title: '提示', message: msg, type: 'success' , duration : 1000});
     },
     warning: function (msg) {
-      Message.warning(msg);
-      //this.$notify({title: '提示', message: msg, type: 'warning'});
+      // Message.warning(msg);
+      this.$notify({title: '提示', message: msg, type: 'warning' , duration : 1000});
     },
     info: function (msg) {
-      Message.info(msg);
+      // Message.info(msg);
       //this.$notify({title: '提示', message: msg});
+      this.$notify({title: '提示', message: msg, type: 'info' , duration : 1000});
     },
     error: function (msg) {
-      Message.error(msg);
-      //this.$notify({title: '提示', message: msg, type: 'error'});
+      // Message.error(msg);
+      this.$notify({title: '提示', message: msg, type: 'error' , duration : 1000});
     },
     setStore: function (key, value) {
       localStorage.setItem(key, value);

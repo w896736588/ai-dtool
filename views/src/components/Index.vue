@@ -15,13 +15,16 @@
         消费者
       </el-menu-item>
       <el-menu-item index="Git">
-        Git
+        Git/Log
       </el-menu-item>
       <el-menu-item index="WechatKefu">
         微信客服
       </el-menu-item>
+      <el-menu-item index="Vip">
+        版本变更
+      </el-menu-item>
       <el-menu-item index="Ssh">
-        SSH配置
+        服务器配置
       </el-menu-item>
 
       <el-submenu index="Doc">
@@ -66,6 +69,7 @@
     <WechatKefu v-show="menuName === 'WechatKefu'"></WechatKefu>
     <Ssh v-show="menuName === 'Ssh'"></Ssh>
     <Git v-show="menuName === 'Git'"></Git>
+    <Vip v-show="menuName === 'Vip'"></Vip>
   </div>
 
 </template>
@@ -76,6 +80,7 @@ import Consumer from "./Consumer"
 import WechatKefu from "./WechatKefu"
 import Ssh from "./Ssh"
 import Git from "./Git"
+import Vip from "./Vip"
 export default {
   data () {
     return {
@@ -94,6 +99,7 @@ export default {
     WechatKefu,
     Ssh,
     Git,
+    Vip,
   },
 }
 </script>

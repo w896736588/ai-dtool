@@ -61,5 +61,40 @@
     "supervisor_config" : "/var/www/dockerfiles/dev_test/docker_volumes/supervisor/etc/supervisor/conf.d/middleground.conf",
     "supervisor_name" : "middleground",
     "running_status" : ""
+  },
+  {
+    "name" : "视频号小店最后咨询映射",
+    "command" : "php /var/www/apps/yii_customer_service/scan/protected/yiic WeixinShopLastConsultMap",
+    "supervisor_config" : "/var/www/dockerfiles/dev_test/docker_volumes/supervisor/etc/supervisor/conf.d/weixinShopLastConsultMap.conf",
+    "supervisor_name" : "weixin_shop_last_consult_map",
+    "running_status" : ""
+  },
+  {
+    "name" : "阿里云日志",
+    "command" : "php /var/www/apps/yii_customer_service/scan/protected/yiic log_service",
+    "supervisor_config" : "/var/www/dockerfiles/dev_test/docker_volumes/supervisor/etc/supervisor/conf.d/log_service.conf",
+    "supervisor_name" : "log_service",
+    "running_status" : ""
+  },
+  {
+    "name" : "转接转入统计",
+    "command" : "php /var/www/apps/yii_customer_service/scan/protected/yiic switchStatisticsAsync",
+    "supervisor_config" : "/var/www/dockerfiles/dev_test/docker_volumes/supervisor/etc/supervisor/conf.d/switchStatisticsAsync.conf",
+    "supervisor_name" : "switchStatisticsAsync",
+    "running_status" : ""
+  },
+  {
+    "name" : "客服统计",
+    "command" : "php /var/www/apps/yii_customer_service/scan/protected/yiic statappstaff",
+    "supervisor_config" : "/var/www/dockerfiles/dev_test/docker_volumes/supervisor/etc/supervisor/conf.d/stat_app_staff.conf",
+    "supervisor_name" : "pub_statAppStaffConsumer",
+    "running_status" : ""
+  },
+  {
+    "name" : "应用统计",
+    "command" : "php /var/www/apps/yii_customer_service/scan/protected/yiic statapp",
+    "supervisor_config" : "/var/www/dockerfiles/dev_test/docker_volumes/supervisor/etc/supervisor/conf.d/stat_app.conf",
+    "supervisor_name" : "pub_statAppConsumer",
+    "running_status" : ""
   }
 ]

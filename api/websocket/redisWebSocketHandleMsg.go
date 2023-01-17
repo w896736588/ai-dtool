@@ -39,11 +39,11 @@ func RedisDistributeMsg(reqMsgByte []byte) []byte {
 }
 
 func RedisList() string {
-	for key, value := range *base.RedisList {
+	for key, value := range base.RedisList {
 		if _, ok := base.RedisRunList[value.UniKey]; !ok {
 			value.Connection = false
 		}
-		(*base.RedisList)[key] = value
+		base.RedisList[key] = value
 	}
 	return helper.JsonEncode(&define.Response{
 		Errcode: define.ErrorCodeSuccess,

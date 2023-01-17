@@ -11,3 +11,6 @@ const CacheHash = `hash`
 const CacheList = `list`
 const CacheSet = `set`
 const CacheZSet = `zset`
+
+const ENTER = `
+`

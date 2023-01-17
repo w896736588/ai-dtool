@@ -28,30 +28,36 @@
       <el-input style="width: 400px" autocomplete="off" placeholder="搜索名称" v-model="searchKey" @input="searchList"></el-input>
     </el-card>
 
-    <el-row :gutter="20" style="margin-top: 10px" >
-      <el-col :span="6" v-for="(value,key) in supervisorConfigList" style="margin-top:5px;" v-if="value.show">
-        <div class="grid-content bg-purple">
-          <el-card class="box-card">
-            <div slot="header" class="clearfix">
-              <span>{{value.name}}</span>
-              <el-button style="float: right; padding: 3px 0" type="text" @click="toTop(value)">置顶</el-button>
-            </div>
-            <div class="supervisorCommand" style="overflow:hidden;">
-              命令:{{ value.commandS }} <br/>
-            </div>
-            <div class="supervisorCommand" style="overflow:hidden;">
-              状态：{{value.running_status}}
-            </div>
+    <el-row :gutter="24" style="margin-top: 10px" >
+      <el-col :span="13">
+        <el-col :span="12" v-for="(value,key) in supervisorConfigList" style="margin-top:5px;" v-if="value.show">
+          <div class="grid-content bg-purple">
+            <el-card class="box-card">
+              <div slot="header" class="clearfix">
+                <span>{{value.name}}</span>
+                <el-button style="float: right; padding: 3px 0" type="text" @click="toTop(value)">置顶</el-button>
+              </div>
+              <div class="supervisorCommand" style="overflow:hidden;">
+                命令:{{ value.commandS }} <br/>
+              </div>
+              <div class="supervisorCommand" style="overflow:hidden;">
+                状态：{{value.running_status}}
+              </div>
 
-            <div class="bottom clearfix">
-              <el-button type="text" class="button" @click="ExecType = 'supervisor_restart';exec(value)">重新启动</el-button>
-              <el-button type="text" class="button" @click="ExecType = 'supervisor_stop';exec(value)">停止</el-button>
-              <el-button type="text" class="button" @click="ExecType = 'supervisor_config_show';exec(value)">查看配置</el-button>
-              <el-button type="text" class="button">搜索溢出进程</el-button>
-            </div>
-          </el-card>
-        </div>
+              <div class="bottom clearfix">
+                <el-button type="text" class="button" @click="ExecType = 'supervisor_restart';exec(value)">重新启动</el-button>
+                <el-button type="text" class="button" @click="ExecType = 'supervisor_stop';exec(value)">停止</el-button>
+                <el-button type="text" class="button" @click="ExecType = 'supervisor_config_show';exec(value)">查看配置</el-button>
+                <el-button type="text" class="button" @click="execDockerFunc('searchProcess' , value)">搜索溢出进程</el-button>
+              </div>
+            </el-card>
+          </div>
+        </el-col>
       </el-col>
+      <el-col :span="9">
+        <el-input style="margin-top: 20px;width:600px;" type="textarea" v-model="execResult" rows="25" ></el-input>
+      </el-col>
+
 
     </el-row>
 
@@ -68,8 +74,6 @@
         <el-button @click="supervisorConfigShow.dialog = false">取 消</el-button>
       </div>
     </el-dialog>
-
-    <el-input style="margin-top: 20px;" type="textarea" v-model="execResult" rows="25" ></el-input>
   </el-card>
 
 
@@ -129,6 +133,8 @@ export default {
       dialogSshConfig: false,
       BranchName: "",  //分支名
       execResult: "",//操作结果
+      //docker内执行的命令
+      dockerExecCommand : "",
       //搜索key
       searchKey : "",
       //消费者配置查看
@@ -162,6 +168,21 @@ export default {
     this.initSort()
   },
   methods: {
+    execDockerFunc : function (type , value){
+      if(type === 'searchProcess'){
+        this.ExecType = 'docker_exec';
+        let command = value.command
+        command = command.replaceAll('  ' , ' ')
+        let command_params = command.split(' ')
+        if(command_params.length > 1){
+          this.dockerExecCommand = 'ps -aux|grep -i ' + command_params[command_params.length - 1]
+        }else{
+          this.error('进程名找不到')
+          return
+        }
+      }
+      this.exec(value)
+    },
     //选择代码环境
     changeCode : function (){
       this.showSupervisorList()
@@ -169,27 +190,27 @@ export default {
     //搜索消费者列表
     searchList : function (){
       for(let i in supervisorConfigList){
-        if(supervisorConfigList[i].command.indexOf(this.searchKey) !== -1){
+        if(supervisorConfigList[i].command.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1){
           supervisorConfigList[i].show = true
           continue;
         }
-        if(supervisorConfigList[i].commandS.indexOf(this.searchKey) !== -1){
+        if(supervisorConfigList[i].commandS.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1){
           supervisorConfigList[i].show = true
           continue;
         }
-        if(supervisorConfigList[i].name.indexOf(this.searchKey) !== -1){
+        if(supervisorConfigList[i].name.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1){
           supervisorConfigList[i].show = true
           continue;
         }
-        if(supervisorConfigList[i].running_status.indexOf(this.searchKey) !== -1){
+        if(supervisorConfigList[i].running_status.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1){
           supervisorConfigList[i].show = true
           continue;
         }
-        if(supervisorConfigList[i].supervisor_config.indexOf(this.searchKey) !== -1){
+        if(supervisorConfigList[i].supervisor_config.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1){
           supervisorConfigList[i].show = true
           continue;
         }
-        if(supervisorConfigList[i].supervisor_name.indexOf(this.searchKey) !== -1){
+        if(supervisorConfigList[i].supervisor_name.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1){
           supervisorConfigList[i].show = true
           continue;
         }
@@ -239,6 +260,7 @@ export default {
         DockerList: this.dockerList,
         DockerId: "",
         DockerCodePath: env_config.DockerCodePath,
+        DockerExecCommand : this.dockerExecCommand,
       }
       if (params.ExecType === 'supervisor_restart_all' && params.CodePath === '') {
         _that.error('请选择代码环境')
@@ -311,10 +333,10 @@ export default {
     },
     //查看消费者配置
     supervisorConfigShowMethod : function (param){
-      this.supervisorConfigShow.dialog = true
-      this.supervisorConfigShow.path = param.supervisor_config
-      this.supervisorConfigShow.name = param.name
-      this.supervisorConfigShow.content = this.execResult
+      // this.supervisorConfigShow.dialog = true
+      // this.supervisorConfigShow.path = param.supervisor_config
+      // this.supervisorConfigShow.name = param.name
+      // this.supervisorConfigShow.content = this.execResult
     },
     //分析消费者结果
     supervisorStatusExplain : function (){
@@ -384,20 +406,21 @@ export default {
       return return_array;
     },
     success: function (msg) {
-      Message.success(msg);
-      //this.$notify({title: '提示', message: msg, type: 'success'});
+      // Message.success(msg);
+      this.$notify({title: '提示', message: msg, type: 'success' , duration : 1000});
     },
     warning: function (msg) {
-      Message.warning(msg);
-      //this.$notify({title: '提示', message: msg, type: 'warning'});
+      // Message.warning(msg);
+      this.$notify({title: '提示', message: msg, type: 'warning' , duration : 1000});
     },
     info: function (msg) {
-      Message.info(msg);
+      // Message.info(msg);
       //this.$notify({title: '提示', message: msg});
+      this.$notify({title: '提示', message: msg, type: 'info' , duration : 1000});
     },
     error: function (msg) {
-      Message.error(msg);
-      //this.$notify({title: '提示', message: msg, type: 'error'});
+      // Message.error(msg);
+      this.$notify({title: '提示', message: msg, type: 'error' , duration : 1000});
     },
     setStore: function (key, value) {
       localStorage.setItem(key, value);
