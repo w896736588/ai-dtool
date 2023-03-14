@@ -8,36 +8,10 @@ import (
 
 var RedisList []define.RedisConfig
 var ConfigViper *viper.Viper
-var ConfigRunViper *viper.Viper
-
-//  RedisWebSocket
-var RedisWebSocket define.WebSocketStruct
 
 func InitConfig() {
 	initLog()
-
 	//设置redisWebSocket配置
-	configViper := viper.New()
-	configViper.AddConfigPath(`config`)
-	configViper.SetConfigName(`config`)
-	configViper.SetConfigType(`ini`)
-	if err := configViper.ReadInConfig(); err != nil {
-		panic(`读取配置失败 config/config.ini`)
-	}
-	RedisWebSocket = define.WebSocketStruct{
-		Host: configViper.GetString(`redisWebSocket.host`),
-		Port: configViper.GetString(`redisWebSocket.port`),
-	}
-
-	initRedis()
-
-}
-
-// initRedis 初始化redis
-// @author frog
-// @date 2022-04-11 16:11:11
-func initRedis() {
-	RedisList = make([]define.RedisConfig, 0)
 	ConfigViper = viper.New()
 	ConfigViper.AddConfigPath(`config`)
 	ConfigViper.SetConfigName(`config`)
@@ -45,7 +19,6 @@ func initRedis() {
 	if err := ConfigViper.ReadInConfig(); err != nil {
 		panic(`读取配置失败 config/config.ini`)
 	}
-
 }
 
 func initLog() {

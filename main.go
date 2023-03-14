@@ -2,15 +2,18 @@ package main
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"redis_manager/api/gin"
-	"redis_manager/api/websocket"
 	"redis_manager/base"
 )
 
 func main() {
 	base.InitConfig()
 	base.InitRedis()
-	websocket.InitRedisWebSocket()
 	router := gin.InitRouter()
-	router.Run(fmt.Sprintf(`:%s`, base.ConfigViper.GetString(`run.port`)))
+	err := router.Run(fmt.Sprintf(`:%s`, base.ConfigViper.GetString(`run.port`)))
+	if err != nil {
+		log.Errorf(`%s`, err.Error())
+		return
+	}
 }
