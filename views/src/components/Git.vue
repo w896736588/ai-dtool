@@ -27,9 +27,9 @@
     <el-button type="primary" :loading="btnLoading.status" @click="ExecType = 'git_status';exec()">查看分支变更</el-button>
     <el-input v-if="showChangeBranch" style="width:300px;margin-right:20px;" v-model="BranchName" placeholder="请输入分支名"></el-input>
     <el-button type="primary" :loading="btnLoading.change" @click="showChangeBranch = true;ExecType = 'change_branch';exec()" >切换分支</el-button>
-    日志操作：
-    <el-button type="primary" :loading="btnLoading.status" v-if="chooseParentType === 'xkf'" @click="showLog('application.log')"> application.log</el-button>
-    <el-button type="primary" :loading="btnLoading.status" v-if="chooseParentType === 'xkf'" @click="showLog('default.log')"> default.log</el-button>
+<!--    日志操作：-->
+<!--    <el-button type="primary" :loading="btnLoading.status" v-if="chooseParentType === 'xkf'" @click="showLog('application.log')"> application.log</el-button>-->
+<!--    <el-button type="primary" :loading="btnLoading.status" v-if="chooseParentType === 'xkf'" @click="showLog('default.log')"> default.log</el-button>-->
 
     <el-input style="margin-top: 20px;" id="resultTextarea" type="textarea" v-model="execResult" rows="25"></el-input>
   </el-card>

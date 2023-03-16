@@ -1,3 +1,5 @@
 /vendor/
 ./config/config.ini
 /dev-tool.rar
+/config/config.ini
+/config/redis.json

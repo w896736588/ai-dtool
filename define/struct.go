@@ -150,6 +150,8 @@ type SshExec struct {
 	VipLevel              interface{}    `json:"VipLevel"`              //vip版本
 	SystemType            interface{}    `json:"SystemType"`            //系统类型
 	ExpiredDay            interface{}    `json:"expiredDay"`            //VIP过期时间
+	LoginUrl              string         `json:"loginUrl"`              //登录后跳转的路由
+	LoginHost             string         `json:"loginHost"`             //登录路由
 }
 
 type DockerConfig struct {
@@ -174,4 +176,10 @@ type TblWechatapp struct {
 type TblUser struct {
 	Id       string `json:"_id"`
 	Username string `json:"user_name"`
+}
+
+type TblVip struct {
+	UserId      string `json:"user_id"`
+	VipType     string `json:"vip_type"`
+	ExpiredTime string `json:"expired_time"`
 }

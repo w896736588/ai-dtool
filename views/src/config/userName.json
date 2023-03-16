@@ -2,46 +2,55 @@
   {
     "Name": "common1",
     "UserName": "18186158229",
-    "Host" : "http://common1.applnk.cn/"
+    "Host" : "http://common1.applnk.cn/",
+    "HostChild" : "http://common11.applnk.cn/"
   },
   {
     "Name": "mike",
     "UserName": "15871417894",
-    "Host" : "http://mike.applnk.cn/"
+    "Host" : "http://mike.applnk.cn/",
+    "HostChild" : "http://mike01.applnk.cn/"
   },
   {
     "Name": "common",
     "UserName": "17720588029",
-    "Host" : "http://common.applnk.cn/"
+    "Host" : "http://common.applnk.cn/",
+    "HostChild" : "http://common01.applnk.cn/"
   },
   {
     "Name": "common2",
     "UserName": "13545275053",
-    "Host" : "http://common2.applnk.cn/"
+    "Host" : "http://common2.applnk.cn/",
+    "HostChild" : "http://common21.xiaokefu.com.cn/"
   },
   {
     "Name": "common3",
     "UserName": "13555555557",
-    "Host" : "http://common3.xiaokefu.com.cn/"
+    "Host" : "http://common3.xiaokefu.com.cn/",
+    "HostChild" : "http://common31.xiaokefu.com.cn/"
   },
   {
     "Name": "common4",
     "UserName": "13555555558",
-    "Host" : "http://common4.xiaokefu.com.cn/"
+    "Host" : "http://common4.xiaokefu.com.cn/",
+    "HostChild" : "http://common41.xiaokefu.com.cn/"
   },
   {
     "Name": "common5",
     "UserName": "13555555559",
-    "Host" : "http://common5.xiaokefu.com.cn/"
+    "Host" : "http://common5.xiaokefu.com.cn/",
+    "HostChild" : "http://common51.xiaokefu.com.cn/"
   },
   {
     "Name": "common6",
     "UserName": "13555555510",
-    "Host" : "http://common6.xiaokefu.com.cn/"
+    "Host" : "http://common6.xiaokefu.com.cn/",
+    "HostChild" : "http://common61.xiaokefu.com.cn/"
   },
   {
     "Name": "common7",
     "UserName": "13555555511",
-    "Host" : "http://common7.xiaokefu.com.cn/"
+    "Host" : "http://common7.xiaokefu.com.cn/",
+    "HostChild" : "http://common71.xiaokefu.com.cn/"
   }
 ]

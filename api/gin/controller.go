@@ -518,6 +518,12 @@ func ShellExec(c *gin.Context) {
 	case `change_vip_type`:
 		response(c, define.ErrorCodeSuccess, `成功`, strings.Join(handle.ChangeVipType(reqBody), ``))
 		return
+	case `query_vip_info`: //查询VIP信息
+		response(c, define.ErrorCodeSuccess, `成功`, strings.Join(handle.QueryVipType(reqBody), ``))
+		return
+	case `login_xkf`: //登录地址获取
+		response(c, define.ErrorCodeSuccess, `成功`, strings.Join(handle.GetLoginUrl(reqBody), ``))
+		return
 	}
 	response(c, define.ErrorCodeSuccess, `成功`, nil)
 }

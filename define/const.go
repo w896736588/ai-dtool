@@ -14,3 +14,11 @@ const CacheZSet = `zset`
 
 const ENTER = `
 `
+
+var VipMap = map[string]string{
+	`0`: `免费版`,
+	`1`: `专业版`,
+	`2`: `企业版`,
+	`3`: `标准版`,
+	`4`: `平台版`,
+}

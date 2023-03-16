@@ -4,6 +4,7 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
+	"net/url"
 	"redis_manager/base"
 	"redis_manager/define"
 	"redis_manager/helper"
@@ -412,5 +413,46 @@ func (command *Command) ChangeVipType(reqBody *define.SshExec) []string {
 		}
 	}
 	retMsgList = append(retMsgList, ret)
+	return retMsgList
+}
+
+// GetLoginUrl 获取登录地址
+// @auth frog
+// @date 2023-03-15 10:10:26
+func (command *Command) GetLoginUrl(reqBody *define.SshExec) []string {
+	retMsgList := make([]string, 0)
+	//拿到appid
+	userInfo := base.GetAdminUserId(reqBody.Account, reqBody.XkfDevDbConfig)
+	if userInfo.Id == `` {
+		retMsgList = append(retMsgList, `找不到该账号`)
+		return retMsgList
+	}
+	token := helper.JsonEncode(map[string]string{
+		`login_type`: `1`,
+		`user_id`:    cast.ToString(userInfo.Id),
+		`param`: helper.JsonEncode(map[string]string{
+			`uri`: reqBody.LoginUrl,
+		}),
+		`time`: cast.ToString(time.Now().Unix()), //仅10秒内有效
+	})
+	token = url.QueryEscape(base.EncryptMain.EncryptData(token))
+	retMsgList = append(retMsgList, reqBody.LoginHost+`index/LoginRedirect?token=`+token)
+	return retMsgList
+}
+
+// QueryVipType 查询VIP版本
+// @auth frog
+// @date 2023-03-16 09:30:15
+func (command *Command) QueryVipType(reqBody *define.SshExec) []string {
+	//查询微信客服所在的环境
+	retMsgList := make([]string, 0)
+	//拿到appid
+	userInfo := base.GetAdminUserId(reqBody.Account, reqBody.XkfDevDbConfig)
+	if userInfo.Id == `` {
+		retMsgList = append(retMsgList, `找不到该账号`)
+		return retMsgList
+	}
+	vipInfo := base.QueryVip(userInfo.Id, cast.ToString(reqBody.SystemType), reqBody.XkfDevDbConfig)
+	retMsgList = append(retMsgList, `vip版本：`+define.VipMap[vipInfo.VipType]+`，过期时间：`+vipInfo.ExpiredTime)
 	return retMsgList
 }

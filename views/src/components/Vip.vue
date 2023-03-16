@@ -4,7 +4,7 @@
       <h3 style="display: inline-block;">
         客服系统版本变更
       </h3>
-      <el-select v-model="chooseSystemType" placeholder="请选择系统">
+      <el-select v-model="chooseSystemType" @change="queryVipInfo" placeholder="请选择系统">
         <el-option
           v-for="(value,key) in systemTypeList"
           :key="value.name"
@@ -12,7 +12,7 @@
           :value="value.level">
         </el-option>
       </el-select>
-      <el-select v-model="chooseVipLevel" placeholder="请选择版本">
+      <el-select v-model="chooseVipLevel" @change="queryVipInfo" placeholder="请选择版本">
         <el-option
           v-for="(value,key) in vipList"
           :key="value.name"
@@ -21,7 +21,7 @@
         </el-option>
       </el-select>
 
-      <el-select v-model="account" placeholder="请选择账号">
+      <el-select v-model="account"  @change="queryVipInfo" placeholder="请选择账号">
         <el-option
           v-for="(value,key) in userNameList"
           :key="value.Name"
@@ -66,7 +66,7 @@
     </el-select>
 
 
-    <el-button type="primary" @click="exec()">登录</el-button>
+    <el-button type="primary" @click="login()">登录</el-button>
 
     <el-input style="margin-top: 20px;" id="resultTextarea" type="textarea" v-model="execResult" rows="25"></el-input>
   </el-card>
@@ -172,6 +172,77 @@ export default {
       }
       if(this.account === '-1' || this.account === ''){
         this.error('请输入或选择账号');
+        return
+      }
+      Vue.axios.post(this.apiHost + '/api/shell/exec', params).then(function (response) {
+        _that.success('成功');
+        _that.execResult = response.Data
+      });
+    },
+    //登录
+    login : function (){
+      let _that = this
+      let loginUrl = ''
+      if(this.chooseLoginType === '1' || this.chooseLoginType === '2'){
+        loginUrl = '/index/index';
+      }else{
+        loginUrl = '/XkfOperate/CustomerList';
+      }
+      let loginHost = ``
+      if(this.chooseLoginType === '1' || this.chooseLoginType === '3'){
+        for(let i in this.userNameList){
+          if(this.userNameList[i].Name === this.chooseUserName){
+            loginHost = this.userNameList[i].Host
+          }
+        }
+      }else{
+        for(let i in this.userNameList){
+          if(this.userNameList[i].Name === this.chooseUserName){
+            loginHost = this.userNameList[i].HostChild
+          }
+        }
+      }
+      let account = ''
+      for(let i in this.userNameList){
+        if(this.userNameList[i].Name === this.chooseUserName){
+          account = this.userNameList[i].UserName
+        }
+      }
+      let params = {
+        Account : account,
+        loginUrl : loginUrl,
+        loginHost : loginHost,
+        SshConfig: _that.sshConfig,
+        ExecType: 'login_xkf',
+        xkfDevDbConfig : this.xkfDevDbConfig,
+        VipLevel : this.chooseVipLevel,
+        SystemType : this.chooseSystemType,
+        redisConfigList : _that.redisConfigList,
+      }
+      console.log(this.chooseLoginType)
+      if(this.chooseLoginType === '3' || this.chooseLoginType === '4'){
+        params.Account = '2@163.com'
+      }
+      Vue.axios.post(this.apiHost + '/api/shell/exec', params).then(function (response) {
+        _that.success('成功');
+        _that.execResult = response.Data
+        window.open(response.Data,'_blank');
+      });
+    },
+    queryVipInfo : function (){
+      let _that = this
+      //根据类型判断
+      let params = {
+        SshConfig: _that.sshConfig,
+        ExecType: 'query_vip_info',
+        xkfDevDbConfig : this.xkfDevDbConfig,
+        Account : this.account,
+        VipLevel : this.chooseVipLevel,
+        SystemType : this.chooseSystemType,
+        redisConfigList : _that.redisConfigList,
+        expiredDay : this.expiredDay,
+      }
+      if(this.account === '-1' || this.account === '' || this.chooseSystemType === '' || this.chooseSystemType === -1){
         return
       }
       Vue.axios.post(this.apiHost + '/api/shell/exec', params).then(function (response) {

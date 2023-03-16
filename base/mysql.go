@@ -109,3 +109,28 @@ func UpdateVip(adminUserId, expiredDay, systemType, vipLevel string, dbConfig de
 
 	return `成功`
 }
+
+// QueryVip 查询VIP信息
+// @auth frog
+// @date 2023-03-16 09:31:34
+func QueryVip(adminUserId, systemType string, dbConfig define.MysqlConfig) *define.TblVip {
+	var vipInfo = &define.TblVip{}
+	dbConfig.Dbname = `xkf_test`
+	db := GetDbConn(dbConfig)
+	if db == nil {
+		return vipInfo
+	}
+	vipTable := `tbl_kefu_vip`
+	if systemType == `1` { //客服系统
+		vipTable = `tbl_kefu_vip`
+	} else {
+		vipTable = `tbl_official_account_vip`
+	}
+
+	errQuery := db.QueryRow(`select vip_type,expired_time from `+vipTable+` where user_id = ?`, adminUserId).Scan(&vipInfo.VipType, &vipInfo.ExpiredTime)
+	if errQuery != nil {
+		log.Errorf(`执行sql出错 %s`, errQuery.Error())
+		return vipInfo
+	}
+	return vipInfo
+}
