@@ -1,13 +1,15 @@
 package main
 
 import (
-	log "github.com/sirupsen/logrus"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"xkf_tool/internal/app/xkf_tool"
 	"xkf_tool/internal/app/xkf_tool_gin"
 )
+
+var sw sync.RWMutex
 
 func main() {
 	xkf_tool.InitConfig()
@@ -16,9 +18,10 @@ func main() {
 	host := `localhost`
 	err := xkf_tool_gin.InitRouter(host, port)
 	if err != nil {
-		log.Errorf(`%s`, err.Error())
+		xkf_tool.Logger.Errorf(`%s`, err.Error())
 		return
 	}
+	xkf_tool.Logger.Errorf(`监听结束信号 `)
 	sc := make(chan os.Signal)
 	sl := []os.Signal{
 		syscall.SIGHUP,  //热升级
@@ -26,4 +29,6 @@ func main() {
 		syscall.SIGTERM, //结束程序
 	}
 	signal.Notify(sc, sl...)
+	sig := <-sc
+	xkf_tool.Logger.Infof(`Sign:` + sig.String())
 }

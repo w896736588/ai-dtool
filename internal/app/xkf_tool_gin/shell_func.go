@@ -15,25 +15,27 @@ import (
 // @auth frog
 // @date 2022-12-07 12:25:06
 type Command struct {
-	cdCommand                   string //cd 命令
-	showCurrentBranchCommand    string
-	ignoreAllCommand            string
-	cleanAllCommand             string
-	fetchCommand                string
-	checkoutCommand             string
-	pullCommand                 string
-	pullOriginCommand           string
-	queryDockerProcessByName    string
-	dockerExecCommand           string
-	dockerKillCommand           string
-	runPhpCommand               string
-	showLogCommand              string
-	SupervisorRestartAllCommand string
-	SupervisorRestartCommand    string
-	SupervisorStopCommand       string
-	SupervisorStatusCommand     string
-	SupervisorConfigShowCommand string
-	GitStatusCommand            string
+	cdCommand                    string //cd 命令
+	showCurrentBranchCommand     string
+	ignoreAllCommand             string
+	cleanAllCommand              string
+	fetchCommand                 string
+	checkoutCommand              string
+	pullCommand                  string
+	pullOriginCommand            string
+	queryDockerProcessByName     string
+	dockerExecCommand            string
+	dockerKillCommand            string
+	runPhpCommand                string
+	showLogCommand               string
+	SupervisorRestartAllCommand  string
+	SupervisorRestartCommand     string
+	SupervisorStopCommand        string
+	SupervisorStatusCommand      string
+	SupervisorConfigShowCommand  string
+	GitStatusCommand             string
+	WkSupervisorConfListCommand  string
+	XkfSupervisorConfListCommand string
 }
 
 // WechatKefuStatus
@@ -41,7 +43,7 @@ type Command struct {
 // @date 2022-12-07 11:20:36
 // @param reqBody
 // @param cliConf
-func (command *Command) WechatKefuStatus(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) WechatKefuStatus(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//查询微信客服所在的环境
 	retMsgList := make([]string, 0)
 	//拿到appid
@@ -54,7 +56,7 @@ func (command *Command) WechatKefuStatus(reqBody *xkf_tool.SshExec, cliConf gsto
 	var runCommand string
 	for _, value := range reqBody.DockerList {
 		runCommand = fmt.Sprintf(command.queryDockerProcessByName, value.Id, appInfo.Appid)
-		log.Debugf(`执行` + runCommand)
+		xkf_tool.Logger.Debugf(`执行` + runCommand)
 		runResultMsg := cliConf.RunShell(runCommand)
 		if strings.Contains(runResultMsg, `Process exited with status 1`) {
 			runResultMsg = `not find 
@@ -71,14 +73,14 @@ func (command *Command) WechatKefuStatus(reqBody *xkf_tool.SshExec, cliConf gsto
 // @param reqBody
 // @param cliConf
 // @return []string
-func (command *Command) PullBranchOrigin(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) PullBranchOrigin(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//更新当前分支
 	retMsgList := make([]string, 0)
 	command.cdCommand += reqBody.CodePath
 	command.checkoutCommand += reqBody.BranchName
 	currentBranch := cliConf.RunShell(command.cdCommand + `;` + command.showCurrentBranchCommand)
 	currentBranch = strings.Replace(currentBranch, "\n", "", -1)
-	log.Debugf(`当前分支 ` + currentBranch)
+	xkf_tool.Logger.Debugf(`当前分支 ` + currentBranch)
 	command.pullOriginCommand += currentBranch
 	runCommandList := make([]string, 0)
 	//切换分支
@@ -93,7 +95,10 @@ func (command *Command) PullBranchOrigin(reqBody *xkf_tool.SshExec, cliConf gsto
 	)
 	runCommandList = gstool.ArrayFilterEmptyString(&runCommandList)
 	log.Debug(`指定命令 ` + strings.Join(runCommandList, `;`))
-	ret := cliConf.RunShell(strings.Join(runCommandList, `;`))
+	ret, err := cliConf.RunShell3([]byte(strings.Join(runCommandList, `;`)))
+	if err != nil {
+		xkf_tool.Logger.Errorf(`执行命令失败%s %s`, strings.Join(runCommandList, `;`), err.Error())
+	}
 	retMsgList = append(retMsgList, ret)
 	return retMsgList
 }
@@ -104,7 +109,7 @@ func (command *Command) PullBranchOrigin(reqBody *xkf_tool.SshExec, cliConf gsto
 // @param reqBody
 // @param cliConf
 // @return []string
-func (command *Command) ChangeBranch(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) ChangeBranch(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//拿到当前分支
 	retMsgList := make([]string, 0)
 	command.cdCommand += reqBody.CodePath
@@ -113,7 +118,7 @@ func (command *Command) ChangeBranch(reqBody *xkf_tool.SshExec, cliConf gstool.C
 
 	currentBranch := cliConf.RunShell(command.cdCommand + `;` + command.showCurrentBranchCommand)
 	currentBranch = strings.Replace(currentBranch, "\n", "", -1)
-	log.Debugf(`当前分支 ` + currentBranch)
+	xkf_tool.Logger.Debugf(`当前分支 ` + currentBranch)
 	//如果已经包含了此分支 那么不再处理
 	if strings.Contains(currentBranch, reqBody.BranchName) {
 		command.checkoutCommand = ``
@@ -131,8 +136,10 @@ func (command *Command) ChangeBranch(reqBody *xkf_tool.SshExec, cliConf gstool.C
 		command.showCurrentBranchCommand,
 	)
 	runCommandList = gstool.ArrayFilterEmptyString(&runCommandList)
-	log.Debug(`指定命令 ` + strings.Join(runCommandList, `;`))
-	ret := cliConf.RunShell(strings.Join(runCommandList, `;`))
+	ret, err := cliConf.RunShell3([]byte(strings.Join(runCommandList, `;`)))
+	if err != nil {
+		xkf_tool.Logger.Errorf(`执行命令失败%s %s`, strings.Join(runCommandList, `;`), err.Error())
+	}
 	retMsgList = append(retMsgList, ret)
 	return retMsgList
 }
@@ -143,7 +150,7 @@ func (command *Command) ChangeBranch(reqBody *xkf_tool.SshExec, cliConf gstool.C
 // @param reqBody
 // @param cliConf
 // @return []string
-func (command *Command) QueryCurrentBranch(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) QueryCurrentBranch(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//查询当前分支
 	retMsgList := make([]string, 0)
 	runCommandList := make([]string, 0)
@@ -152,8 +159,11 @@ func (command *Command) QueryCurrentBranch(reqBody *xkf_tool.SshExec, cliConf gs
 		command.cdCommand,
 		command.showCurrentBranchCommand,
 	)
-	log.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
-	ret := cliConf.RunShell(strings.Join(runCommandList, `;`))
+	xkf_tool.Logger.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
+	ret, err := cliConf.RunShell3([]byte(strings.Join(runCommandList, `;`)))
+	if err != nil {
+		xkf_tool.Logger.Errorf(`执行命令失败%s %s`, strings.Join(runCommandList, `;`), err.Error())
+	}
 	retMsgList = append(retMsgList, ret)
 	return retMsgList
 }
@@ -164,7 +174,7 @@ func (command *Command) QueryCurrentBranch(reqBody *xkf_tool.SshExec, cliConf gs
 // @param reqBody
 // @param cliConf
 // @return []string
-func (command *Command) QueryStatus(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) QueryStatus(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//查询当前分支
 	retMsgList := make([]string, 0)
 	runCommandList := make([]string, 0)
@@ -173,7 +183,7 @@ func (command *Command) QueryStatus(reqBody *xkf_tool.SshExec, cliConf gstool.Cl
 		command.cdCommand,
 		command.GitStatusCommand,
 	)
-	log.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
+	xkf_tool.Logger.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
 	ret := cliConf.RunShell(strings.Join(runCommandList, `;`))
 	retMsgList = append(retMsgList, ret)
 	return retMsgList
@@ -203,6 +213,8 @@ func (command *Command) Filter() {
 	command.SupervisorStopCommand = `supervisorctl stop %s`
 	command.SupervisorConfigShowCommand = `cat %s`
 	command.GitStatusCommand = `git status`
+	command.XkfSupervisorConfListCommand = `cd /var/www/dockerfiles/dev_test/docker_volumes/supervisor/etc/supervisor/conf.d/; ls | grep '\.conf$' | awk '{printf ""$1"---"; system("head -n 1 "$1)}'`
+	command.WkSupervisorConfListCommand = `cd /etc/supervisor/conf.d/; ls | grep '\.conf$' | awk '{printf ""$1"---"; system("head -n 1 "$1)}'`
 }
 
 // WechatKefuChange 切换微信客服到当前环境
@@ -211,7 +223,7 @@ func (command *Command) Filter() {
 // @param reqBody
 // @param cliConf
 // @return []string
-func (command *Command) WechatKefuChange(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) WechatKefuChange(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//查询微信客服所在的环境
 	retMsgList := make([]string, 0)
 	//拿到appid
@@ -223,7 +235,7 @@ func (command *Command) WechatKefuChange(reqBody *xkf_tool.SshExec, cliConf gsto
 	var runCommand string
 	for _, value := range reqBody.DockerList {
 		runCommand = fmt.Sprintf(command.queryDockerProcessByName, value.Id, appInfo.Appid)
-		log.Debugf(`执行` + runCommand)
+		xkf_tool.Logger.Debugf(`执行` + runCommand)
 		runResultMsg := cliConf.RunShell(runCommand)
 		if strings.Contains(runResultMsg, `Process exited with status 1`) {
 			runResultMsg = `not find
@@ -259,12 +271,12 @@ func (command *Command) WechatKefuChange(reqBody *xkf_tool.SshExec, cliConf gsto
 }
 
 func getPsPid(runResultMsg string) string {
-	log.Debugf(`分割前字符串 ` + runResultMsg)
+	xkf_tool.Logger.Debugf(`分割前字符串 ` + runResultMsg)
 	for i := 0; i < 20; i++ {
 		runResultMsg = strings.Replace(runResultMsg, `  `, ` `, 100)
 	}
 	splitResultList := strings.Split(runResultMsg, ` `)
-	log.Debugf(`分割结果 %#v`, splitResultList)
+	xkf_tool.Logger.Debugf(`分割结果 %#v`, splitResultList)
 	if len(splitResultList) >= 1 {
 		return cast.ToString(splitResultList[1])
 	}
@@ -277,13 +289,15 @@ func getPsPid(runResultMsg string) string {
 // @param reqBody
 // @param cliConf
 // @return []string
-func (command *Command) SupervisorRestartAll(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) SupervisorRestartAll(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//消费者
 	retMsgList := make([]string, 0)
 	command.cdCommand += reqBody.CodePath
 	runCommand := fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId) + ` ` + command.SupervisorRestartAllCommand
-	log.Debugf(`执行的命令 ` + runCommand)
-	ret := cliConf.RunShell(runCommand)
+	ret, err := cliConf.RunShell3([]byte(runCommand))
+	if err != nil {
+		xkf_tool.Logger.Errorf(`执行命令失败%s %s`, runCommand, err.Error())
+	}
 	retMsgList = append(retMsgList, ret)
 	return retMsgList
 }
@@ -294,18 +308,25 @@ func (command *Command) SupervisorRestartAll(reqBody *xkf_tool.SshExec, cliConf 
 // @param reqBody
 // @param cliConf
 // @return []string
-func (command *Command) SupervisorRestart(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) SupervisorRestart(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//消费者
 	retMsgList := make([]string, 0)
 	command.cdCommand += reqBody.CodePath
 	runCommandList := make([]string, 0)
-	runCommandList = append(runCommandList,
-		fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId)+` `+fmt.Sprintf(command.SupervisorRestartCommand, reqBody.SupervisorRestartName),
-		fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId)+` `+command.SupervisorStatusCommand+` | grep `+reqBody.SupervisorRestartName,
-	)
-
-	log.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
-	ret := cliConf.RunShell(strings.Join(runCommandList, `;`))
+	if reqBody.ParentType == `wk` {
+		runCommandList = append(runCommandList, fmt.Sprintf(`sudo `+command.SupervisorRestartCommand, reqBody.SupervisorRestartName))
+		runCommandList = append(runCommandList, `sudo `+command.SupervisorStatusCommand+` | grep `+reqBody.SupervisorRestartName)
+	} else {
+		runCommandList = append(runCommandList,
+			fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId)+` `+fmt.Sprintf(command.SupervisorRestartCommand, reqBody.SupervisorRestartName),
+			fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId)+` `+command.SupervisorStatusCommand+` | grep `+reqBody.SupervisorRestartName,
+		)
+	}
+	xkf_tool.Logger.Debugf(`重启命令 %s`, strings.Join(runCommandList, `;`))
+	ret, err := cliConf.RunShell3([]byte(strings.Join(runCommandList, `;`)))
+	if err != nil {
+		xkf_tool.Logger.Errorf(`执行命令失败%s %s`, strings.Join(runCommandList, `;`), err.Error())
+	}
 	retMsgList = append(retMsgList, ret)
 	return retMsgList
 }
@@ -313,18 +334,24 @@ func (command *Command) SupervisorRestart(reqBody *xkf_tool.SshExec, cliConf gst
 // SupervisorStop 停止消费者
 // @auth frog
 // @date 2023-01-14 10:03:07
-func (command *Command) SupervisorStop(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) SupervisorStop(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//消费者
 	retMsgList := make([]string, 0)
 	command.cdCommand += reqBody.CodePath
 	runCommandList := make([]string, 0)
-	runCommandList = append(runCommandList,
-		fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId)+` `+fmt.Sprintf(command.SupervisorStopCommand, reqBody.SupervisorRestartName),
-		fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId)+` `+command.SupervisorStatusCommand+` | grep `+reqBody.SupervisorRestartName,
-	)
-
-	log.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
-	ret := cliConf.RunShell(strings.Join(runCommandList, `;`))
+	if reqBody.ParentType == `wk` {
+		runCommandList = append(runCommandList, fmt.Sprintf(`sudo `+command.SupervisorStopCommand, reqBody.SupervisorRestartName))
+		runCommandList = append(runCommandList, `sudo `+command.SupervisorStatusCommand+` | grep `+reqBody.SupervisorRestartName)
+	} else {
+		runCommandList = append(runCommandList,
+			fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId)+` `+fmt.Sprintf(command.SupervisorStopCommand, reqBody.SupervisorRestartName),
+			fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId)+` `+command.SupervisorStatusCommand+` | grep `+reqBody.SupervisorRestartName,
+		)
+	}
+	ret, err := cliConf.RunShell3([]byte(strings.Join(runCommandList, `;`)))
+	if err != nil {
+		xkf_tool.Logger.Errorf(`执行命令失败 %s %s`, strings.Join(runCommandList, `;`), err.Error())
+	}
 	retMsgList = append(retMsgList, ret)
 	return retMsgList
 }
@@ -335,14 +362,28 @@ func (command *Command) SupervisorStop(reqBody *xkf_tool.SshExec, cliConf gstool
 // @param reqBody
 // @param cliConf
 // @return []string
-func (command *Command) SupervisorStatusList(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) SupervisorStatusList(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//消费者
 	retMsgList := make([]string, 0)
-	command.cdCommand += reqBody.CodePath
-	runCommand := fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId) + ` ` + command.SupervisorStatusCommand
-	log.Debugf(`执行的命令 ` + runCommand)
-	ret := cliConf.RunShell(runCommand)
-	retMsgList = append(retMsgList, ret)
+	if reqBody.ParentType == `wk` {
+		runCommand := `sudo ` + command.SupervisorStatusCommand
+		xkf_tool.Logger.Debugf(`执行的命令1 ` + runCommand)
+		ret, err := cliConf.RunShell3([]byte(runCommand))
+		if err != nil {
+			xkf_tool.Logger.Errorf(`RunShell3失败 %s`, err.Error())
+		}
+		retMsgList = append(retMsgList, ret)
+	} else {
+		command.cdCommand += reqBody.CodePath
+		runCommand := fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId) + ` ` + command.SupervisorStatusCommand
+		xkf_tool.Logger.Debugf(`执行的命令1 ` + runCommand)
+		ret, err := cliConf.RunShell3([]byte(runCommand))
+		if err != nil {
+			xkf_tool.Logger.Errorf(`RunShell3失败 %s`, err.Error())
+		}
+		retMsgList = append(retMsgList, ret)
+	}
+
 	return retMsgList
 }
 
@@ -352,12 +393,14 @@ func (command *Command) SupervisorStatusList(reqBody *xkf_tool.SshExec, cliConf 
 // @param reqBody
 // @param cliConf
 // @return []string
-func (command *Command) SupervisorConfigShow(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) SupervisorConfigShow(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//消费者
 	retMsgList := make([]string, 0)
 	runCommand := fmt.Sprintf(command.SupervisorConfigShowCommand, reqBody.SupervisorConfigPath)
-	log.Debugf(`执行的命令 ` + runCommand)
-	ret := cliConf.RunShell(runCommand)
+	ret, err := cliConf.RunShell3([]byte(runCommand))
+	if err != nil {
+		xkf_tool.Logger.Errorf(`获取配置失败 %s`, err.Error())
+	}
 	retMsgList = append(retMsgList, ret)
 	return retMsgList
 }
@@ -368,12 +411,12 @@ func (command *Command) SupervisorConfigShow(reqBody *xkf_tool.SshExec, cliConf 
 // @param reqBody
 // @param cliConf
 // @return []string
-func (command *Command) ShowLog(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) ShowLog(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//消费者
 	retMsgList := make([]string, 0)
 	command.cdCommand += reqBody.CodePath
 	runCommand := `tail -f -n 1000 ` + fmt.Sprintf(command.showLogCommand, reqBody.CodePath) + `/` + reqBody.LogFile
-	log.Debugf(`执行的命令 ` + runCommand)
+	xkf_tool.Logger.Debugf(`执行的命令 ` + runCommand)
 	ret := cliConf.RunShell(runCommand)
 	retMsgList = append(retMsgList, ret)
 	return retMsgList
@@ -382,7 +425,7 @@ func (command *Command) ShowLog(reqBody *xkf_tool.SshExec, cliConf gstool.Client
 // DockerExec 执行docker内命令
 // @auth frog
 // @date 2023-01-14 10:03:26
-func (command *Command) DockerExec(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) DockerExec(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//消费者
 	retMsgList := make([]string, 0)
 	command.cdCommand += reqBody.CodePath
@@ -391,7 +434,7 @@ func (command *Command) DockerExec(reqBody *xkf_tool.SshExec, cliConf gstool.Cli
 		fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId)+` `+reqBody.DockerExecCommand,
 	)
 
-	log.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
+	xkf_tool.Logger.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
 	ret := cliConf.RunShell(strings.Join(runCommandList, `;`))
 	retMsgList = append(retMsgList, ret)
 	return retMsgList
@@ -413,8 +456,8 @@ func (command *Command) ChangeVipType(reqBody *xkf_tool.SshExec) []string {
 	//移除缓存
 	for _, value := range reqBody.RedisConfigList {
 		if xkf_tool.RedisRunList[value.Name] != nil {
-			xkf_tool.RedisRunList[value.Name].HDel(`wechatapp.vip.info.v20220308..`+cast.ToString(cast.ToInt(userInfo.Id)%10), userInfo.Id)
-			xkf_tool.RedisRunList[value.Name].HDel(`wechatapp.kefu.vip.info.v20220308..`+cast.ToString(cast.ToInt(userInfo.Id)%10), userInfo.Id)
+			xkf_tool.RedisRunList[value.Name].Client.HDel(`wechatapp.vip.info.v20220308..`+cast.ToString(cast.ToInt(userInfo.Id)%10), userInfo.Id)
+			xkf_tool.RedisRunList[value.Name].Client.HDel(`wechatapp.kefu.vip.info.v20220308..`+cast.ToString(cast.ToInt(userInfo.Id)%10), userInfo.Id)
 		}
 	}
 	retMsgList = append(retMsgList, ret)
@@ -470,14 +513,14 @@ func (command *Command) QueryVipType(reqBody *xkf_tool.SshExec) []string {
 // CheckAllDockerStatus 检查所有docker状态
 // @auth frog
 // @date 2023-03-27 14:30:00
-func (command *Command) CheckAllDockerStatus(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) CheckAllDockerStatus(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	//查询微信客服所在的环境
 	retMsgList := make([]string, 0)
 	//	var runCommand string
 	//	//检查所有docker状态
 	//	for _, value := range reqBody.DockerList {
 	//		runCommand = fmt.Sprintf(command.queryDockerProcessByName, value.Id, appInfo.Appid)
-	//		log.Debugf(`执行` + runCommand)
+	//		xkf_tool.Logger.Debugf(`执行` + runCommand)
 	//		runResultMsg := cliConf.RunShell(runCommand)
 	//		if strings.Contains(runResultMsg, `Process exited with status 1`) {
 	//			runResultMsg = `not find
@@ -491,22 +534,22 @@ func (command *Command) CheckAllDockerStatus(reqBody *xkf_tool.SshExec, cliConf 
 // RestartDocker 重启docker
 // @auth frog
 // @date 2023-03-27 14:34:01
-func (command *Command) RestartDocker(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) RestartDocker(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	retMsgList := make([]string, 0)
 	runCommandList := make([]string, 0)
 	runCommandList = append(runCommandList, fmt.Sprintf(`cd /var/www/dockerfiles/dev_test/app/%s/`, reqBody.DockerCodeName))
 	runCommandList = append(runCommandList, `sudo docker-compose restart`)
-	log.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
+	xkf_tool.Logger.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
 	ret := cliConf.RunShell(strings.Join(runCommandList, `;`))
 	retMsgList = append(retMsgList, ret)
 	return retMsgList
 }
 
-func (command *Command) ShowCompose(reqBody *xkf_tool.SshExec, cliConf gstool.ClientConfig) []string {
+func (command *Command) ShowCompose(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
 	retMsgList := make([]string, 0)
 	runCommandList := make([]string, 0)
 	runCommandList = append(runCommandList, fmt.Sprintf(`cat /var/www/dockerfiles/dev_test/app/%s/docker-compose.yml`, reqBody.DockerCodeName))
-	log.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
+	xkf_tool.Logger.Debugf(`执行的命令 ` + strings.Join(runCommandList, `;`))
 	ret := cliConf.RunShell(strings.Join(runCommandList, `;`))
 	retMsgList = append(retMsgList, ret)
 	return retMsgList
@@ -514,9 +557,28 @@ func (command *Command) ShowCompose(reqBody *xkf_tool.SshExec, cliConf gstool.Cl
 
 func (command *Command) QueryEnvWechatKefuList(reqBody *xkf_tool.SshExec) string {
 	userInfo := xkf_tool.GetAdminUserId(reqBody.Account)
-	log.Debugf(`userInfo %#v Account %s XkfDevDbConfig %#v`, userInfo, reqBody.Account, reqBody.XkfDevDbConfig)
+	xkf_tool.Logger.Debugf(`userInfo %#v Account %s XkfDevDbConfig %#v`, userInfo, reqBody.Account, reqBody.XkfDevDbConfig)
 	if userInfo.Id == `` {
 		return ``
 	}
 	return xkf_tool.QueryEnvWechatKefuList(userInfo.Id)
+}
+
+// SupervisorConfList 配置列表
+func (command *Command) SupervisorConfList(reqBody *xkf_tool.SshExec, cliConf *gstool.GsShell) []string {
+	retMsgList := make([]string, 0)
+	runCommandList := make([]string, 0)
+	if reqBody.ParentType == `wk` {
+		runCommandList = append(runCommandList, command.WkSupervisorConfListCommand)
+	} else {
+		runCommandList = append(runCommandList, command.XkfSupervisorConfListCommand)
+	}
+	xkf_tool.Logger.Debugf(`执行的命令 ` + reqBody.ParentType + ` ` + strings.Join(runCommandList, `;`))
+	ret, err := cliConf.RunShell3([]byte(strings.Join(runCommandList, `;`)))
+	if err != nil {
+		xkf_tool.Logger.Errorf(`获取配置失败 %s`, err.Error())
+	}
+	retMsgList = append(retMsgList, ret)
+	xkf_tool.Logger.Debugf(`结果 ` + ret)
+	return retMsgList
 }

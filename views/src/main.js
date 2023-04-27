@@ -20,6 +20,8 @@ import helperNotify from './utils/notify'
 Vue.prototype.$helperNotify = helperNotify
 import helperConfig from './utils/config'
 Vue.prototype.$helperConfig = helperConfig
+import helperApi from './utils/api'
+Vue.prototype.$helperApi = helperApi
 
 //引入axios
 import Axios from 'axios'

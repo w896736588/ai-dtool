@@ -3,6 +3,7 @@ import notify from "./notify";
 import wechatKefuList from "../config/wechatKefuList.json";
 import supervisorConfigList from "../config/supervisorConfig.json";
 import redisList from "../config/redisList.json";
+import {getDayCountOfMonth} from "element-ui";
 
 //拿到xkf dev ssh config
 function getXkfDevSshConfig(){
@@ -76,15 +77,37 @@ function getLinkList(){
 }
 
 //消费者列表
-function getSupervisorConfigList(){
-  let supervisorConfigList = require("../config/supervisorConfig.json")
-  //初始化命令
-  let sliceLength = 30
-  for(let i in supervisorConfigList){
-    let command = supervisorConfigList[i].command
-    supervisorConfigList[i].commandS = '...' + command.substr(command.length - sliceLength , sliceLength)
+function getSupervisorConfigList(supervisorOriginConfList , chooseParentType){
+  let addConfigList = [];
+  for(let i in supervisorOriginConfList){
+    let configParam = supervisorOriginConfList[i]
+    if(configParam.length !== 2){
+      continue;
+    }
+    let configFileName = ''
+    if(chooseParentType === 'xkf'){
+      configFileName = '/var/www/dockerfiles/dev_test/docker_volumes/supervisor/etc/supervisor/conf.d/' + configParam[0]
+    }else{
+      configFileName = '/etc/supervisor/conf.d/' + configParam[0]
+    }
+    configParam[1] = configParam[1].replaceAll('[' , '')
+    configParam[1] = configParam[1].replaceAll(']' , '')
+    configParam[1] = configParam[1].replaceAll('program:' , '')
+    configParam[1] = configParam[1].replaceAll('\r' , '')
+    //建立配置
+    let showName = store.getStore(configParam[0])
+    if(showName === null || showName === undefined){
+      showName = configParam[0].split('.')[0]
+    }
+    addConfigList.push({
+      "name" : configParam[0],
+      "supervisor_config" : configFileName,
+      "supervisor_name" : configParam[1],
+      "running_status" : "",
+      "showName" : showName,
+    })
   }
-  return supervisorConfigList
+  return addConfigList
 }
 
 //根据环境获取userName

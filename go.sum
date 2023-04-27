@@ -42,12 +42,8 @@ cloud.google.com/go/storage v1.6.0/go.mod h1:N7U0C8pVQ/+NIKOBQyamJIeKQKkZ+mxpohl
 cloud.google.com/go/storage v1.8.0/go.mod h1:Wv1Oy7z6Yz3DshWRJFhqM/UCfaWIRTdp0RXyy7KQOVs=
 cloud.google.com/go/storage v1.10.0/go.mod h1:FLPqc6j+Ki4BU591ie1oL6qBQGu2Bl/tZ9ullr3+Kg0=
 dmitri.shuralyov.com/gpu/mtl v0.0.0-20190408044501-666a987793e9/go.mod h1:H6x//7gZCb22OMCxBHrMx7a5I7Hp++hsVxbQ4BYO7hU=
-gitee.com/Sxiaobai/gs v0.0.0-20230417024446-eae57ac5e5cf h1:LuB1oItvat123s2kfqGYGHyK1gfq8RXhB+NERr4VBes=
-gitee.com/Sxiaobai/gs v0.0.0-20230417024446-eae57ac5e5cf/go.mod h1:xsYn+0mfdN2lSJJ0JEQ7SE7PZqO7MMbE59bieCCVYPs=
-gitee.com/Sxiaobai/gs v0.0.0-20230417033056-414f0053e0be h1:WuaGt9Qu7MXeAAl8E/adkly6Pto/GaDdZwkf7UZHl0s=
-gitee.com/Sxiaobai/gs v0.0.0-20230417033056-414f0053e0be/go.mod h1:xsYn+0mfdN2lSJJ0JEQ7SE7PZqO7MMbE59bieCCVYPs=
-gitee.com/Sxiaobai/gs v0.0.0-20230417060650-8f5d3b4a25b2 h1:XwxFv2SsIOiSbEd8Dh4SWxpODrx7yJyk/UC47QuwRsM=
-gitee.com/Sxiaobai/gs v0.0.0-20230417060650-8f5d3b4a25b2/go.mod h1:xsYn+0mfdN2lSJJ0JEQ7SE7PZqO7MMbE59bieCCVYPs=
+gitee.com/Sxiaobai/gs v0.0.0-20230426101511-ecaadbb67c9f h1:5VCwJEqeuXA5euh8mszE/zqckS2I53NUJjuCukMzJZo=
+gitee.com/Sxiaobai/gs v0.0.0-20230426101511-ecaadbb67c9f/go.mod h1:poauCCtsT8vZdro0hThctF840pEI68ZsdutLDITbq4Y=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
@@ -79,6 +75,8 @@ github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ3
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/easierway/concurrent_map v1.0.0 h1:0NllRBqMFmz5GIh6QS6zQ3hXoHx9Qg269kxulMQkL/w=
+github.com/easierway/concurrent_map v1.0.0/go.mod h1:03wbRB/3rTQV+WtQkl+4IJoKciueQRfKmBcO+agCg6o=
 github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.1-0.20191026205805-5f8ba28d4473/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1mIlRU8Am5FuJP05cCM98=
@@ -204,6 +202,7 @@ github.com/google/uuid v1.1.2/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+
 github.com/googleapis/gax-go/v2 v2.0.4/go.mod h1:0Wqv26UfaUD9n4G6kQubkQ+KchISgw+vpHVxEJEs9eg=
 github.com/googleapis/gax-go/v2 v2.0.5/go.mod h1:DWXyrwAJ9X0FpwwEdw+IPEYBICEFu5mhpdKc/us6bOk=
 github.com/googleapis/gax-go/v2 v2.1.0/go.mod h1:Q3nei7sK6ybPYH7twZdmQpAd1MKb7pfu6SK+H1/DsU0=
+github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/grpc-ecosystem/grpc-gateway v1.16.0/go.mod h1:BDjrQk3hbvj6Nolgz8mAMFbcEtjT1g+wF4CSlocrBnw=
 github.com/hashicorp/consul/api v1.10.1/go.mod h1:XjsvQN+RJGWI2TWy1/kqaE16HrR2J/FWgkYjdZQsX9M=
 github.com/hashicorp/consul/sdk v0.8.0/go.mod h1:GBvyrGALthsZObzUGsfgHZQDXjg4lOjagTIwIR1vPms=

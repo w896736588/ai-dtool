@@ -1,6 +1,0 @@
-time="2023-04-14 18:46:26" level=error msg=aaa
-time="2023-04-14 18:48:26" level=error msg=aaa
-time="2023-04-14 18:48:26" level=debug msg=aass
-time="2023-04-14 18:50:28" level=debug msg="初始化完成%!(EXTRA []interface {}=[])"
-time="2023-04-14 18:51:52" level=debug msg="初始化完成"
-time="2023-04-14 18:52:52" level=debug msg="初始化完成"

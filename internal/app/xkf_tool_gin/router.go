@@ -2,10 +2,18 @@ package xkf_tool_gin
 
 import (
 	"gitee.com/Sxiaobai/gs/gsgin"
+	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
+	"xkf_tool/internal/app/xkf_tool"
 )
 
 func InitRouter(host, port string) error {
+	defer func() {
+		if err := recover(); err != nil {
+			gstool.FmtPrintlnLog(`拦截失败 %#v`, err)
+			xkf_tool.Logger.Errorf(`拦截失败 %#v`, err)
+		}
+	}()
 	gsGin := gsgin.GSGin{
 		Host: host,
 		Port: port,

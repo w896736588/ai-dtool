@@ -3,5 +3,5 @@
 /dev-tool.rar
 /config/config.ini
 /config/redis.json
-/build/
+/build/*
 /logs/

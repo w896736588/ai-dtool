@@ -16,7 +16,7 @@ import (
 	"xkf_tool/internal/app/xkf_tool"
 )
 
-var RedisHandleList []gsdb.RedisConfig
+var RedisHandleList []gsdb.GsRedisConfig
 
 func RedisList(c *gin.Context) {
 	reqBody := &xkf_tool.SshExec{}
@@ -25,14 +25,24 @@ func RedisList(c *gin.Context) {
 	for _, value := range reqBody.RedisConfigList {
 		if xkf_tool.RedisRunList[value.Name] == nil {
 			//初始化链接
-			redisRun, err := gsdb.RedisCreateRedisClient(&value)
+			gsRedisConfig := &gsdb.GsRedisConfig{
+				Name:     value.Name,
+				Host:     value.Host,
+				Password: value.Password,
+				PoolSize: value.PoolSize,
+				Default:  0,
+			}
+			gsredis := gsdb.GsRedis{
+				RedisConfig: gsRedisConfig,
+			}
+			err := gsredis.CreateConn()
 			if err != nil {
 				continue
 			}
-			xkf_tool.RedisRunList[value.Name] = redisRun
+			xkf_tool.RedisRunList[value.Name] = &gsredis
 		}
 	}
-	RedisHandleList = make([]gsdb.RedisConfig, 0)
+	RedisHandleList = make([]gsdb.GsRedisConfig, 0)
 	for _, value := range reqBody.RedisConfigList {
 		if xkf_tool.RedisRunList[value.Name] != nil {
 			RedisHandleList = append(RedisHandleList, value)
@@ -48,7 +58,7 @@ func Keys(c *gin.Context) {
 	requestData(c, &reqBody)
 
 	var redisCli *redis.Client
-	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+	if redisCli = getRedisClient(c, reqBody.UniKey).Client; redisCli == nil {
 		return
 	}
 
@@ -74,7 +84,7 @@ func KeysType(c *gin.Context) {
 	requestData(c, &reqBody)
 
 	var redisCli *redis.Client
-	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+	if redisCli = getRedisClient(c, reqBody.UniKey).Client; redisCli == nil {
 		return
 	}
 
@@ -98,7 +108,7 @@ func Search(c *gin.Context) {
 	requestData(c, &reqBody)
 
 	var redisCli *redis.Client
-	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+	if redisCli = getRedisClient(c, reqBody.UniKey).Client; redisCli == nil {
 		return
 	}
 
@@ -176,7 +186,7 @@ func GetKeyType(c *gin.Context) {
 	requestData(c, &reqBody)
 
 	var redisCli *redis.Client
-	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+	if redisCli = getRedisClient(c, reqBody.UniKey).Client; redisCli == nil {
 		return
 	}
 
@@ -216,7 +226,7 @@ func SaveString(c *gin.Context) {
 	requestData(c, &reqBody)
 
 	var redisCli *redis.Client
-	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+	if redisCli = getRedisClient(c, reqBody.UniKey).Client; redisCli == nil {
 		return
 	}
 
@@ -253,7 +263,7 @@ func DelKey(c *gin.Context) {
 	requestData(c, &reqBody)
 
 	var redisCli *redis.Client
-	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+	if redisCli = getRedisClient(c, reqBody.UniKey).Client; redisCli == nil {
 		return
 	}
 
@@ -276,7 +286,7 @@ func DelSub(c *gin.Context) {
 	requestData(c, &reqBody)
 
 	var redisCli *redis.Client
-	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+	if redisCli = getRedisClient(c, reqBody.UniKey).Client; redisCli == nil {
 		return
 	}
 
@@ -308,7 +318,7 @@ func EditTtl(c *gin.Context) {
 	requestData(c, &reqBody)
 
 	var redisCli *redis.Client
-	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+	if redisCli = getRedisClient(c, reqBody.UniKey).Client; redisCli == nil {
 		return
 	}
 
@@ -331,7 +341,7 @@ func DelAllKey(c *gin.Context) {
 	requestData(c, &reqBody)
 
 	var redisCli *redis.Client
-	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+	if redisCli = getRedisClient(c, reqBody.UniKey).Client; redisCli == nil {
 		return
 	}
 
@@ -349,7 +359,7 @@ func CreateCache(c *gin.Context) {
 	requestData(c, &reqBody)
 
 	var redisCli *redis.Client
-	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+	if redisCli = getRedisClient(c, reqBody.UniKey).Client; redisCli == nil {
 		return
 	}
 
@@ -407,7 +417,7 @@ func EditSub(c *gin.Context) {
 	log.Errorf(`editSub %#v`, reqBody)
 
 	var redisCli *redis.Client
-	if redisCli = getRedisClient(c, reqBody.UniKey); redisCli == nil {
+	if redisCli = getRedisClient(c, reqBody.UniKey).Client; redisCli == nil {
 		return
 	}
 
@@ -450,54 +460,35 @@ func EditSub(c *gin.Context) {
 // @date 2022-12-02 15:00:23
 // @param c
 func ShellExec(c *gin.Context) {
-	err := recover()
-	if err != nil {
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, fmt.Sprintf(`%#v`, err))
-	}
+	defer func() {
+		err := recover()
+		if err != nil {
+			response(c, xkf_tool.ErrorCodeSuccess, `成功`, fmt.Sprintf(`%#v`, err))
+		}
+	}()
+
 	reqBody := &xkf_tool.SshExec{}
 	requestData(c, &reqBody)
-	log.Debugf(reqBody.ExecType)
-	//初始化配置
-	cliConf := gstool.ClientConfig{}
-	if reqBody.SshConfig.Host != `` {
-		createClientErr := cliConf.CreateClient(reqBody.SshConfig.Host, cast.ToInt64(reqBody.SshConfig.Port), reqBody.SshConfig.Username, reqBody.SshConfig.Password)
-		if createClientErr != nil {
-			response(c, xkf_tool.ErrorCodeSuccess, `失败`, fmt.Sprintf(`执行失败：%s`, createClientErr.Error()))
-			return
-		}
-	}
+	xkf_tool.Logger.Infof(reqBody.ExecType)
 
+	//初始化shell
+	xkf_tool.Logger.Infof(`获取shell`)
+	cliConf, cliTerConf := xkf_tool.GetRunShellCli(reqBody)
+	xkf_tool.Logger.Infof(`获取shell成功`)
 	handle := &Command{}
 	handle.Filter()
 	//初始化mysql
-	if reqBody.XkfDevDbConfig.Host != `` && xkf_tool.XkfDevMysql == nil {
-		xkf_tool.XkfDevMysql, err = gsdb.MysqlCreateConn(reqBody.XkfDevDbConfig)
-		if err != nil {
-			xkf_tool.Logger.Errorf(`初始化mysql错误 %#v`, err)
-		}
-	}
-
-	//初始化mysql
-	if reqBody.XkfDevDbConfig.Host != `` && xkf_tool.AppurlDevMysql == nil {
-		appUrlDbConfig := reqBody.XkfDevDbConfig
-		appUrlDbConfig.Dbname = `appurl_test`
-		fmt.Println(fmt.Sprintf(`数据库配置%#v`, appUrlDbConfig))
-		xkf_tool.AppurlDevMysql, err = gsdb.MysqlCreateConn(appUrlDbConfig)
-		if err != nil {
-			xkf_tool.Logger.Errorf(`初始化mysql错误 %#v`, err)
-		}
-	}
-	//初始化appurl
+	xkf_tool.GetDevMysql(reqBody)
 
 	switch reqBody.ExecType {
 	case `query_current_branch`: //查询当前代码环境分支
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.QueryCurrentBranch(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.QueryCurrentBranch(reqBody, cliTerConf), ``))
 		return
 	case `change_branch`: //切换分支
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.ChangeBranch(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.ChangeBranch(reqBody, cliTerConf), ``))
 		return
 	case `pull_branch_origin`: //拉取当前环境最新代码
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.PullBranchOrigin(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.PullBranchOrigin(reqBody, cliTerConf), ``))
 		return
 	case `wechat_kefu_status`: //查询微信客服所在的环境
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.WechatKefuStatus(reqBody, cliConf), ``))
@@ -509,16 +500,16 @@ func ShellExec(c *gin.Context) {
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, handle.QueryEnvWechatKefuList(reqBody))
 		return
 	case `supervisor_restart_all`: //消费者管理
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorRestartAll(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorRestartAll(reqBody, cliTerConf), ``))
 		return
 	case `supervisor_status_list`: //消费者列表
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorStatusList(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorStatusList(reqBody, cliTerConf), ``))
 		return
 	case `supervisor_config_show`: //查看supervisor配置
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorConfigShow(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorConfigShow(reqBody, cliTerConf), ``))
 		return
 	case `supervisor_restart`: //重启消费者
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorRestart(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorRestart(reqBody, cliTerConf), ``))
 		return
 	case `supervisor_stop`: //停止消费者
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorStop(reqBody, cliConf), ``))
@@ -550,6 +541,9 @@ func ShellExec(c *gin.Context) {
 	case `show_compose`: //查看docker compose内容
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.ShowCompose(reqBody, cliConf), ``))
 		return
+	case `SupervisorConfList`:
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorConfList(reqBody, cliTerConf), ``))
+		return
 	}
 	response(c, xkf_tool.ErrorCodeSuccess, `成功`, nil)
 }
@@ -572,7 +566,7 @@ func response(c *gin.Context, errcode int, errmsg string, body interface{}) {
 	c.String(http.StatusOK, returnJson)
 }
 
-func getRedisClient(c *gin.Context, UniKey string) *redis.Client {
+func getRedisClient(c *gin.Context, UniKey string) *gsdb.GsRedis {
 	if ok := xkf_tool.RedisRunList[UniKey]; ok == nil {
 		response(c, xkf_tool.ErrorCodeErrorUniKey, `不存在的UniKey`, ``)
 		return nil

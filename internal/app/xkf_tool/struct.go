@@ -126,28 +126,28 @@ type WebSocketEventStruct struct {
 // @auth frog
 // @date 2022-12-02 15:02:13
 type SshExec struct {
-	ParentType            string             `json:"ParentType"`      //系统类别
-	CodePath              string             `json:"CodePath"`        // 代码目录 docker_apps/yii_customer_service   weike_customer_service4
-	BranchName            string             `json:"BranchName"`      //分支名
-	ExecType              string             `json:"ExecType"`        //执行类型
-	SshConfig             SshConfig          `json:"SshConfig"`       //ssh连接配置
-	WechatKefuAppid       string             `json:"WechatKefuAppid"` //微信客服appid或者应用Id
-	DockerList            []DockerConfig     `json:"DockerList"`
-	DockerId              string             `json:"DockerId"`              //操作哪个docker
-	DockerCodeName        string             `json:"DockerCodeName"`        //docker name  common3  common4等
-	DockerCodePath        string             `json:"DockerCodePath"`        //docker内代码路径
-	SupervisorRestartName string             `json:"SupervisorRestartName"` //消费者重启名
-	SupervisorConfigPath  string             `json:"SupervisorConfigPath"`  // 消费者配置内容
-	RedisConfigList       []gsdb.RedisConfig `json:"redisConfigList"`       //redis配置列表
-	LogFile               string             `json:"LogFile"`               //日志文件名
-	DockerExecCommand     string             `json:"DockerExecCommand"`     //docker内执行的命令
-	XkfDevDbConfig        gsdb.MysqlConfig   `json:"xkfDevDbConfig"`        //数据库链接
-	Account               string             `json:"Account"`               //管理员ID或者账号
-	VipLevel              interface{}        `json:"VipLevel"`              //vip版本
-	SystemType            interface{}        `json:"SystemType"`            //系统类型
-	ExpiredDay            interface{}        `json:"expiredDay"`            //VIP过期时间
-	LoginUrl              string             `json:"loginUrl"`              //登录后跳转的路由
-	LoginHost             string             `json:"loginHost"`             //登录路由
+	ParentType            string               `json:"ParentType"`      //系统类别
+	CodePath              string               `json:"CodePath"`        // 代码目录 docker_apps/yii_customer_service   weike_customer_service4
+	BranchName            string               `json:"BranchName"`      //分支名
+	ExecType              string               `json:"ExecType"`        //执行类型
+	SshConfig             SshConfig            `json:"SshConfig"`       //ssh连接配置
+	WechatKefuAppid       string               `json:"WechatKefuAppid"` //微信客服appid或者应用Id
+	DockerList            []DockerConfig       `json:"DockerList"`
+	DockerId              string               `json:"DockerId"`              //操作哪个docker
+	DockerCodeName        string               `json:"DockerCodeName"`        //docker name  common3  common4等
+	DockerCodePath        string               `json:"DockerCodePath"`        //docker内代码路径
+	SupervisorRestartName string               `json:"SupervisorRestartName"` //消费者重启名
+	SupervisorConfigPath  string               `json:"SupervisorConfigPath"`  // 消费者配置内容
+	RedisConfigList       []gsdb.GsRedisConfig `json:"redisConfigList"`       //redis配置列表
+	LogFile               string               `json:"LogFile"`               //日志文件名
+	DockerExecCommand     string               `json:"DockerExecCommand"`     //docker内执行的命令
+	XkfDevDbConfig        gsdb.MysqlConfig     `json:"xkfDevDbConfig"`        //数据库链接
+	Account               string               `json:"Account"`               //管理员ID或者账号
+	VipLevel              interface{}          `json:"VipLevel"`              //vip版本
+	SystemType            interface{}          `json:"SystemType"`            //系统类型
+	ExpiredDay            interface{}          `json:"expiredDay"`            //VIP过期时间
+	LoginUrl              string               `json:"loginUrl"`              //登录后跳转的路由
+	LoginHost             string               `json:"loginHost"`             //登录路由
 }
 
 type DockerConfig struct {
