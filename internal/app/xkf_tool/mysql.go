@@ -107,3 +107,18 @@ func QueryEnvWechatKefuList(adminUserId string) string {
 	}
 	return gstool.JsonEncode(appList)
 }
+
+//QueryOneWechatAppIdChannelId 拿一个应用ID和渠道
+func QueryOneWechatAppIdChannelId(userId int) (string, string) {
+	appInfo, err := XkfDevMysql.GetOne(`select wechatapp_id from tbl_staff_wechatapp_relation where user_id = ?`, userId)
+	fmt.Println(fmt.Sprintf(`%#v`, appInfo))
+	if err != nil {
+		Logger.Errorf(`执行错误 %s`, err.Error())
+	}
+	channelInfo, err := XkfDevMysql.GetOne(`select channel_id from tbl_channel_user_rel where user_id = ? and wechatapp_id = ? and status = 1`, userId, appInfo[`wechatapp_id`])
+	fmt.Println(fmt.Sprintf(`%#v`, channelInfo))
+	if err != nil {
+		Logger.Errorf(`执行错误 %s`, err.Error())
+	}
+	return cast.ToString(appInfo[`wechatapp_id`]), cast.ToString(channelInfo[`channel_id`])
+}

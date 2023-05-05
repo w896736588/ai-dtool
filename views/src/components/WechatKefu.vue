@@ -100,6 +100,7 @@ export default {
         DockerId: this.$helperConfig.getDockerIdByCodeEnvConfig(this.dockerList , env_config),
         DockerCodePath: env_config.DockerCodePath,
         xkfDevDbConfig : this.xkfDevDbConfig,
+        WkSshConfig : this.wkSshConfig,
       }
       if (params.ExecType === 'wechat_kefu_status' && params.WechatKefuAppid === '') {
         _that.$helperNotify.error('请输入应用id或appid')

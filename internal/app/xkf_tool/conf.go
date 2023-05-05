@@ -52,9 +52,6 @@ func InitConfig() {
 			gstool.FmtPrintlnLog(`getWd失败 %s`, err.Error())
 		}
 	}
-
-	gstool.FmtPrintlnLog(`日志路径 %s`, RootPath)
-
 	Logger = gstool.CreateLogger(RootPath+`/logs`, `xkf_tool`)
 	gstool.FmtPrintlnLog(`日志路径 %s`, RootPath+`/logs/xkf_tool`)
 	ConfigViper = viper.New()
@@ -72,7 +69,6 @@ func InitConfig() {
 		Key: ConfigViper.GetString(`encrypt.key`),
 		Iv:  ConfigViper.GetString(`encrypt.iv`),
 	}
-	Logger.Debugf(`初始化完成`)
 }
 
 //GetProducer 拿到生产者
@@ -94,42 +90,21 @@ func GetProducer(host, port, topic string) *gsnsq.NsqStruct {
 	return producer
 }
 
-//GetRunShellCli 拿到shell
-func GetRunShellCli(reqBody *SshExec) (*gstool.GsShell, *gstool.GsShell) {
-	if reqBody.SshConfig.Host == `` || reqBody.SshConfig.Password == `` {
-		return &gstool.GsShell{}, &gstool.GsShell{}
-	}
-	Logger.Debugf(`准备获取配置 %#v`, reqBody.SshConfig)
+//GetRunShellCliTer
+func GetRunShellCliTer(sshConfig *SshConfig) *gstool.GsShell {
 	RunShellMapLock.Lock()
 	defer RunShellMapLock.Unlock()
-	Logger.Debugf(`准备 1`)
-	uniKey := fmt.Sprintf(`%s%s%s%s`, reqBody.SshConfig.Host, reqBody.SshConfig.Port, reqBody.SshConfig.Username, reqBody.SshConfig.Port)
-	if RunShellMap[uniKey] == nil {
-		Logger.Debugf(`开始创建第一个`)
-		//初始化常规配置
-		gsShellConfig := gstool.GsShellConfig{
-			Host:          reqBody.SshConfig.Host,
-			Port:          cast.ToInt64(reqBody.SshConfig.Port),
-			Username:      reqBody.SshConfig.Username,
-			Password:      reqBody.SshConfig.Password,
-			TimeoutSecond: 100,
-		}
-		cliConf := gstool.GsShell{Config: &gsShellConfig}
-		createClientErr := cliConf.CreateClient()
-		if createClientErr != nil {
-			gstool.FmtPrintlnLog(`增加链接失败 ` + createClientErr.Error())
-			panic(`增加链接失败 ` + createClientErr.Error())
-		} else {
-			RunShellMap[uniKey] = &cliConf
-		}
+	if sshConfig.Host == `` {
+		return nil
+	}
 
-		Logger.Debugf(`开始创建第二个`)
-		//初始化交互式常规配置
+	uniKey := fmt.Sprintf(`%s%s%s%s`, sshConfig.Host, sshConfig.Port, sshConfig.Username, sshConfig.Port)
+	if RunShellMap[uniKey] == nil {
 		gsShellTerConfig := gstool.GsShellConfig{
-			Host:          reqBody.SshConfig.Host,
-			Port:          cast.ToInt64(reqBody.SshConfig.Port),
-			Username:      reqBody.SshConfig.Username,
-			Password:      reqBody.SshConfig.Password,
+			Host:          sshConfig.Host,
+			Port:          cast.ToInt64(sshConfig.Port),
+			Username:      sshConfig.Username,
+			Password:      sshConfig.Password,
 			TimeoutSecond: 100,
 		}
 		cliTerConf := gstool.GsShell{
@@ -141,35 +116,18 @@ func GetRunShellCli(reqBody *SshExec) (*gstool.GsShell, *gstool.GsShell) {
 		}
 		cliTerConfErr := cliTerConf.CreateClient()
 		if cliTerConfErr != nil {
-			Logger.Debugf(`创建交互式链接失败 ` + cliTerConfErr.Error())
 			panic(`创建交互式链接失败 ` + cliTerConfErr.Error())
 		} else {
-			Logger.Debugf(`开始创建启动交互式`)
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						Logger.Debugf(`崩溃了 start %#v`, r)
-					}
-				}()
-				err := cliTerConf.StartTerminal()
-				if err != nil {
-					Logger.Debugf(`增加交互式链接失败 ` + err.Error())
-					panic(`增加交互式链接失败 ` + err.Error())
-				}
-				Logger.Debugf(`交互式创建完成`)
-			}()
 			RunShellTerminalMap[uniKey] = &cliTerConf
 		}
 	}
-	Logger.Debugf(`RuNShellMap %#v`, RunShellMap)
-	Logger.Debugf(`RunShellTerminalMap %#v`, RunShellTerminalMap)
-	time.Sleep(time.Second * 2)
-	return RunShellMap[uniKey], RunShellTerminalMap[uniKey]
+	return RunShellTerminalMap[uniKey]
 }
 
 //GetDevMysql x
 func GetDevMysql(reqBody *SshExec) {
-	if reqBody.XkfDevDbConfig.Host != `` && XkfDevMysql == nil {
+
+	if reqBody.XkfDevDbConfig.Host != `` && reqBody.XkfDevDbConfig.Host != nil && XkfDevMysql == nil {
 		gsMysqlConfig := gsdb.MysqlConfig{
 			Host:              reqBody.XkfDevDbConfig.Host,
 			Port:              reqBody.XkfDevDbConfig.Port,

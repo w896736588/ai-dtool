@@ -469,12 +469,11 @@ func ShellExec(c *gin.Context) {
 
 	reqBody := &xkf_tool.SshExec{}
 	requestData(c, &reqBody)
-	xkf_tool.Logger.Infof(reqBody.ExecType)
 
 	//初始化shell
-	xkf_tool.Logger.Infof(`获取shell`)
-	cliConf, cliTerConf := xkf_tool.GetRunShellCli(reqBody)
-	xkf_tool.Logger.Infof(`获取shell成功`)
+	cliTerConf := xkf_tool.GetRunShellCliTer(&reqBody.SshConfig)
+
+	wkCliTerConf := xkf_tool.GetRunShellCliTer(&reqBody.WkSshConfig)
 	handle := &Command{}
 	handle.Filter()
 	//初始化mysql
@@ -491,10 +490,10 @@ func ShellExec(c *gin.Context) {
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.PullBranchOrigin(reqBody, cliTerConf), ``))
 		return
 	case `wechat_kefu_status`: //查询微信客服所在的环境
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.WechatKefuStatus(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.WechatKefuStatus(reqBody, cliTerConf, wkCliTerConf), ``))
 		return
 	case `wechat_kefu_change`: //切换微信客服到当前代码环境
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.WechatKefuChange(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.WechatKefuChange(reqBody, cliTerConf, wkCliTerConf), ``))
 		return
 	case `query_env_wechatkefu_list`: //微信客服
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, handle.QueryEnvWechatKefuList(reqBody))
@@ -512,16 +511,16 @@ func ShellExec(c *gin.Context) {
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorRestart(reqBody, cliTerConf), ``))
 		return
 	case `supervisor_stop`: //停止消费者
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorStop(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorStop(reqBody, cliTerConf), ``))
 		return
 	case `git_status`: //git status
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.QueryStatus(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.QueryStatus(reqBody, cliTerConf), ``))
 		return
 	case `show_log`:
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.ShowLog(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.ShowLog(reqBody, cliTerConf), ``))
 		return
 	case `docker_exec`:
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.DockerExec(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.DockerExec(reqBody, cliTerConf), ``))
 		return
 	case `change_vip_type`:
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.ChangeVipType(reqBody), ``))
@@ -533,13 +532,13 @@ func ShellExec(c *gin.Context) {
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.GetLoginUrl(reqBody), ``))
 		return
 	case `check_all_docker_status`: //检查所有docker状态
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.CheckAllDockerStatus(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.CheckAllDockerStatus(reqBody, cliTerConf), ``))
 		return
 	case `restart_docker`: //重启docker
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.RestartDocker(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.RestartDocker(reqBody, cliTerConf), ``))
 		return
 	case `show_compose`: //查看docker compose内容
-		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.ShowCompose(reqBody, cliConf), ``))
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.ShowCompose(reqBody, cliTerConf), ``))
 		return
 	case `SupervisorConfList`:
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorConfList(reqBody, cliTerConf), ``))

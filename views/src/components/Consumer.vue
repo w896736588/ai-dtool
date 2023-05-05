@@ -45,7 +45,7 @@
           <el-card class="box-card">
             <div slot="header" class="clearfix">
               <span>{{ value.showName }}</span>
-              <el-button type="text" class="button" style="float: right;" @click="editName(value);">修改名称
+              <el-button type="text" class="button" style="float: right;margin-top: -8px;" @click="editName(value);">修改名称
               </el-button>
             </div>
             <!--            <div class="supervisorCommand" style="overflow:hidden;">-->
@@ -61,17 +61,21 @@
             </div>
 
             <div class="bottom clearfix">
-              <el-button type="text" class="button"
+              <el-button type="text" class="button" size="small"
                          @click="ExecType = 'supervisor_restart';exec(value);showResultDialog=true;">重新启动
               </el-button>
-              <el-button type="text" class="button"
+              <el-button type="text" class="button" size="small"
                          @click="ExecType = 'supervisor_stop';exec(value);showResultDialog=true;">停止
               </el-button>
-              <el-button type="text" class="button"
+              <el-button type="text" class="button" size="small"
                          @click="ExecType = 'supervisor_config_show';exec(value);showResultDialog=true;">查看配置
               </el-button>
+              <el-button type="text" class="button" size="small"
+                         @click="ExecType = 'supervisor_config_show';exec(value);showResultDialog=true;">后台运行
+              </el-button>
 
-              <!--              <el-button type="text" class="button" @click="execDockerFunc('searchProcess' , value)">搜索溢出进程</el-button>-->
+              <el-button type="text" class="button" size="small"
+                         @click="execDockerFunc('searchProcess' , value)">孤儿进程</el-button>
             </div>
           </el-card>
         </div>
@@ -414,6 +418,8 @@ export default {
           _that.settingResult = response.Data
         } else if (params.ExecType === 'supervisor_config_show') { //查看supervisor配置
           _that.settingResult = response.Data
+        }else if (params.ExecType === 'supervisor_restart_all'){
+          _that.supervisorStatusExplain();
         }
       _that.searchList()
       });
