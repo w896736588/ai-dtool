@@ -46,6 +46,10 @@ gitee.com/Sxiaobai/gs v0.0.0-20230512064728-b2084398ad52 h1:8WFuxagwAlImrCANpnuM
 gitee.com/Sxiaobai/gs v0.0.0-20230512064728-b2084398ad52/go.mod h1:poauCCtsT8vZdro0hThctF840pEI68ZsdutLDITbq4Y=
 gitee.com/Sxiaobai/gs v0.0.0-20230526061628-e8117c82d47e h1:aulLnZ5bZkmjTsUbY6oIhgb/zPZ754xWI/0c3hDS0wI=
 gitee.com/Sxiaobai/gs v0.0.0-20230526061628-e8117c82d47e/go.mod h1:poauCCtsT8vZdro0hThctF840pEI68ZsdutLDITbq4Y=
+gitee.com/Sxiaobai/gs v0.0.0-20230625092914-e6773bdd94a3 h1:z+5rbP7aVeStzXzJJy4pn2LD8su9Z3Mmj7SQu3UAaxQ=
+gitee.com/Sxiaobai/gs v0.0.0-20230625092914-e6773bdd94a3/go.mod h1:poauCCtsT8vZdro0hThctF840pEI68ZsdutLDITbq4Y=
+gitee.com/Sxiaobai/gs v0.0.0-20230630022447-c1cb42811670 h1:J2rGvGTJeP7cHwyCTOaInj7r2+YtM4NtPtLHCtMdR8o=
+gitee.com/Sxiaobai/gs v0.0.0-20230630022447-c1cb42811670/go.mod h1:poauCCtsT8vZdro0hThctF840pEI68ZsdutLDITbq4Y=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=

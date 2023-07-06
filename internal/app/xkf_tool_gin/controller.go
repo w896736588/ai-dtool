@@ -514,6 +514,9 @@ func ShellExec(c *gin.Context) {
 	case `supervisor_stop`: //停止消费者
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorStop(reqBody, cliTerConf), ``))
 		return
+	case `supervisor_stop_all`: //停止所有消费者
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.SupervisorStopAll(reqBody, cliTerConf), ``))
+		return
 	case `git_status`: //git status
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.QueryStatus(reqBody, cliTerConf), ``))
 		return
@@ -522,6 +525,9 @@ func ShellExec(c *gin.Context) {
 		return
 	case `docker_exec`:
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.DockerExec(reqBody, cliTerConf), ``))
+		return
+	case `docker_ps`:
+		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.DockerPs(reqBody, cliTerConf, wkCliTerConf), ``))
 		return
 	case `change_vip_type`:
 		response(c, xkf_tool.ErrorCodeSuccess, `成功`, strings.Join(handle.ChangeVipType(reqBody), ``))

@@ -21,6 +21,7 @@ function getExecTypeStatus(){
     change_vip_type : false,
     redis_delete_batch : false,
     reduce_memory : false,
+    stopListConsumer : false,
   }
 }
 

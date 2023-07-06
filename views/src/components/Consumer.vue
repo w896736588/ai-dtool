@@ -23,16 +23,19 @@
           :value="value.Name">
         </el-option>
       </el-select>
-      <el-button type="primary" :loading="loadingStatus['supervisor_restart_all']" @click="restartSupervisorAll">重启{{ chooseEvnName }}所有消费者</el-button>
-      <el-button type="primary" :loading="loadingStatus['supervisor_status_list']" @click="supervisorStatusList">查看所有消费者</el-button>
+      <el-button type="primary" :loading="loadingStatus['supervisor_restart_all']" @click="restartSupervisorAll">重启所有</el-button>
+      <el-button type="primary" :loading="loadingStatus['supervisor_status_list']" @click="supervisorStatusList">查看所有</el-button>
 <!--      <el-tooltip class="item" effect="dark" content="关闭不常用消费者,可降低20%内存占用" placement="top">-->
 <!--        <el-button type="primary" :loading="loadingStatus['reduce_memory']" @click="reduce_memory">降低内存</el-button>-->
 <!--      </el-tooltip>-->
+      <el-tooltip class="item" effect="dark" content="停止,可降低docker内存占用" placement="top">
+        <el-button type="primary" :loading="loadingStatus['stopListConsumer']" @click="stopListConsumer">停止以下{{searchNum}}个</el-button>-->
+      </el-tooltip>
 
       <!--        <el-button type="primary" @click="supervisorStatusList" >更新所有消费者-->
       <!--        </el-button>-->
       <el-input style="width: 400px" autocomplete="off" placeholder="搜索名称/进程名/程序名等" v-model="searchKey"
-                @input="searchList"></el-input> <span style="font-size: 11px;">({{searchNum}})</span>
+                @input="searchList"></el-input>
       <!--      <el-row style="margin-top: 10px;">-->
       <!--        <el-tag>ffff</el-tag>-->
       <!--      </el-row>-->
@@ -247,6 +250,22 @@ export default {
           this.exec(this.configMap[this.chooseParentType][key]);
         }
       }
+    },
+    //停止列表下面的消费者
+    stopListConsumer : function (){
+      if(this.searchKey === ''){
+        this.ExecType = 'supervisor_stop_all'
+        this.exec()
+        return
+      }else{
+        this.ExecType = 'supervisor_stop'
+      }
+      for(let i in this.configMap[this.chooseParentType]){
+        if(this.configMap[this.chooseParentType][i].show === true){
+          this.exec(this.configMap[this.chooseParentType][i])
+        }
+      }
+
     },
     showInteractionFunc : function (value){
       this.showInteractionTitle = value.name;

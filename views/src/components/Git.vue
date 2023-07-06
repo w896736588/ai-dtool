@@ -128,9 +128,9 @@ export default {
       let env_config = this.$helperConfig.getCodeEnvConfigByCodeEnvName(this.codeEnvList , this.chooseEvnName)
       //根据类型判断
       let chooseSshConfig = _that.sshConfig
-      if (this.chooseSshName === 'wk') {
+      if (env_config.SshName === 'wk') {
         chooseSshConfig = _that.wkSshConfig
-      } else if (this.chooseSshName === "xkf") {
+      } else if (env_config.SshName === "xkf") {
         chooseSshConfig = _that.sshConfig
       }
       let params = {

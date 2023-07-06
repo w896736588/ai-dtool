@@ -144,10 +144,10 @@ export default {
         _that.$helperNotify.error("不存在的配置");
         return
       }
-      env_config.SshConfig = _that.sshConfig
+
       //根据类型判断
       let params = {
-        SshConfig: env_config.SshConfig,
+        SshConfig: _that.sshConfig,
         CodePath: env_config.CodePath,
         ExecType: this.ExecType,
         WechatKefuAppid: this.chooseWechatKefuAppid,
@@ -156,6 +156,7 @@ export default {
         DockerCodePath: env_config.DockerCodePath,
         xkfDevDbConfig : this.xkfDevDbConfig,
         WkSshConfig : this.wkSshConfig,
+        SshName : env_config.SshName,
       }
       if (params.ExecType === 'wechat_kefu_status' && params.WechatKefuAppid === '') {
         _that.$helperNotify.error('请输入应用id或appid')

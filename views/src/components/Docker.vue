@@ -54,29 +54,33 @@ export default {
       execResult: "",//操作结果
       redisConfigList: [],
       loadingStatus: {},
-      chooseDocker: {"Name": "common3", "Id": "xkf_common3" , "SshName" : "xkf"},
+      chooseDocker: {"Name": "common3", "Id": "xkf_common3" , "SshName" : "wk"},
       chooseDocketId : 'common3',
     }
   },
   mounted: function () {
+    let that = this
     this.apiHost = this.$helperConfig.getApiHost()
     this.sshConfig = this.$helperConfig.getXkfDevSshConfig()
     this.xkfDevDbConfig = this.$helperConfig.getXkfDevSshConfig()
     this.wkSshConfig = this.$helperConfig.getWkDevSshConfig()
     this.loadingStatus = this.$helperLoad.getExecTypeStatus()
+    setInterval(function (){
+      that.queryDockerPs()
+    } , 60000);
+
   },
   methods: {
     chooseDocketFunc : function (value){
       this.chooseDocker = value
     },
-    //执行
-    exec: function () {
+    queryDockerPs : function (){
       let _that = this
       //根据类型判断
       let params = {
-        SshConfig: _that.sshConfig,
-        DockerList: _that.dockerList,
-        ExecType: 'check_all_docker_status',
+        SshConfig: this.sshConfig,
+        WkSshConfig : this.wkSshConfig,
+        ExecType: 'docker_ps',
       }
       _that.setLoading(params)
       Vue.axios.post(this.apiHost + '/api/shell/exec', params).then(function (response) {

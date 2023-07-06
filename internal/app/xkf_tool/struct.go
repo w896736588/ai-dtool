@@ -132,6 +132,7 @@ type SshExec struct {
 	ExecType              string               `json:"ExecType"`        //执行类型
 	SshConfig             SshConfig            `json:"SshConfig"`       //ssh连接配置
 	WkSshConfig           SshConfig            `json:"WkSshConfig"`     //ssh连接配置
+	SshName               string               `json:"SshName"`         //ssh name
 	WechatKefuAppid       string               `json:"WechatKefuAppid"` //微信客服appid或者应用Id
 	DockerList            []DockerConfig       `json:"DockerList"`
 	DockerId              string               `json:"DockerId"`              //操作哪个docker

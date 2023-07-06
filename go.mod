@@ -3,7 +3,7 @@ module xkf_tool
 go 1.18
 
 require (
-	gitee.com/Sxiaobai/gs v0.0.0-20230526061628-e8117c82d47e
+	gitee.com/Sxiaobai/gs v0.0.0-20230630022447-c1cb42811670
 	github.com/gin-gonic/gin v1.9.0
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/go-sql-driver/mysql v1.7.0

@@ -32,8 +32,8 @@ func GetRunShell3CliTer(sshConfig *SshConfig) *gstool.GsShell {
 			Config:              &gsShellTerConfig,
 			IsOpenLog:           true,
 			Logger:              Logger,
-			TerminalRefreshTime: 100 * time.Millisecond,
-			TerminalMaxTime:     10 * time.Second,
+			TerminalRefreshTime: time.Second,
+			TerminalMaxTime:     15 * time.Second,
 		}
 		cliTerConfErr := cliTerConf.CreateClient()
 		if cliTerConfErr != nil {

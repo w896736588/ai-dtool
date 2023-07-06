@@ -31,7 +31,7 @@ Vue.component('el-button-custom', ElButtonCustom)
 import Axios from 'axios'
 import VueAxios from 'vue-axios'
 import { Message } from 'element-ui';
-Axios.defaults.timeout = 35000
+Axios.defaults.timeout = 100000
 Axios.defaults.baseURL = '/'
 Axios.defaults.headers.post['Content-Type'] = 'text/xml';
 // 添加请求拦截器
