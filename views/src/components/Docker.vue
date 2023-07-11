@@ -65,6 +65,7 @@ export default {
     this.xkfDevDbConfig = this.$helperConfig.getXkfDevSshConfig()
     this.wkSshConfig = this.$helperConfig.getWkDevSshConfig()
     this.loadingStatus = this.$helperLoad.getExecTypeStatus()
+    this.queryDockerPs()
     setInterval(function (){
       that.queryDockerPs()
     } , 60000);
@@ -75,6 +76,7 @@ export default {
       this.chooseDocker = value
     },
     queryDockerPs : function (){
+      let currentDateTime = this.$helperCommon.getCurrentDateTime()
       let _that = this
       //根据类型判断
       let params = {
@@ -87,6 +89,36 @@ export default {
         _that.$helperNotify.success('成功');
         _that.cancelLoading(params)
         _that.execResult = response.Data
+        //分析结果
+        let notifyList = []
+        let dockerList = response.Data.split('\n')
+        let rightDockerList = []
+        for(let i in dockerList){
+          let temp = dockerList[i]
+          for(let j = 0;j < 20;j++){
+            temp = temp.replace('  ',' ')
+          }
+          rightDockerList.push(temp)
+        }
+        //开始分割
+        for(let i in rightDockerList){
+          let temp = rightDockerList[i].split(' ')
+          if(temp.length <= 0){
+            continue;
+          }
+          if(temp[0] === "CONTAINER"){
+            continue
+          }
+          let cpu = parseFloat(temp[2])
+          let memory = parseFloat(temp[6])
+          console.log(cpu , memory , temp)
+          if(cpu > 95 || memory > 95){
+            notifyList.push( { name: currentDateTime + ' ' + temp[1] + ' ：cpu：' + temp[2] + '，内存：' + temp[6], type: 'danger' })
+          }else if(cpu > 90 || memory > 90){
+            notifyList.push( { name: currentDateTime + ' ' + temp[1] + ' ：cpu：' + temp[2] + '，内存：' + temp[6], type: 'warning' })
+          }
+        }
+        _that.$parent.showNotify(notifyList)
       });
     },
     getSshConfig: function (value) {

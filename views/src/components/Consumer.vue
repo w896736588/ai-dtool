@@ -150,6 +150,7 @@ export default {
   components : {
     Interaction,
   },
+  inject: ["showNotify"],
   data() {
     return {
       name: "Consumer",

@@ -76,7 +76,13 @@
 
     </el-menu>
 <!--    内容-->
-
+    <el-tag style="margin:10px;"
+      v-for="tag in tags"
+      :key="tag.name"
+      closable
+      :type="tag.type">
+      {{tag.name}}
+    </el-tag>
     <Consumer v-show="menuName === 'Consumer'"></Consumer>
     <CacheIndex v-show="menuName === 'CacheIndex'"></CacheIndex>
     <WechatKefu v-show="menuName === 'WechatKefu'"></WechatKefu>
@@ -85,7 +91,7 @@
     <Vip v-show="menuName === 'Vip'"></Vip>
     <Model v-show="menuName === 'Model'"></Model>
     <Link v-show="menuName === 'Link'"></Link>
-    <Docker v-show="menuName === 'Docker'"></Docker>
+    <Docker :showNotify="showNotify" v-show="menuName === 'Docker'"></Docker>
 <!--    <Tools v-show="menuName === 'Tools'"></Tools>-->
   </div>
 
@@ -107,6 +113,8 @@ export default {
     return {
       name: "CacheIndex",
       menuName : "CacheIndex",
+      tags : [
+      ],
     }
   },
   mounted : function (){
@@ -116,6 +124,9 @@ export default {
     }
   },
   methods: {
+    showNotify : function (notifyList){
+      this.tags = notifyList
+    },
     handleSelect(key, keyPath) {
       this.menuName = keyPath[0];
       this.$helperStore.setStore('lastMenuName' , this.menuName)
