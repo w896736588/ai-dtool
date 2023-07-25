@@ -114,7 +114,7 @@ export default {
           if(cpu > 95 || memory > 95){
             notifyList.push( { name: currentDateTime + ' ' + temp[1] + ' ：cpu：' + temp[2] + '，内存：' + temp[6], type: 'danger' })
           }else if(cpu > 90 || memory > 90){
-            notifyList.push( { name: currentDateTime + ' ' + temp[1] + ' ：cpu：' + temp[2] + '，内存：' + temp[6], type: 'warning' })
+            //notifyList.push( { name: currentDateTime + ' ' + temp[1] + ' ：cpu：' + temp[2] + '，内存：' + temp[6], type: 'warning' })
           }
         }
         _that.$parent.showNotify(notifyList)

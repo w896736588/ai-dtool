@@ -76,13 +76,16 @@
 
     </el-menu>
 <!--    内容-->
-    <el-tag style="margin:10px;"
-      v-for="tag in tags"
-      :key="tag.name"
-      closable
-      :type="tag.type">
-      {{tag.name}}
-    </el-tag>
+    <div style="height:60px;">
+      <el-tag style="margin:10px;"
+              v-for="tag in tags"
+              :key="tag.name"
+              closable
+              :type="tag.type">
+        {{tag.name}}
+      </el-tag>
+    </div>
+
     <Consumer v-show="menuName === 'Consumer'"></Consumer>
     <CacheIndex v-show="menuName === 'CacheIndex'"></CacheIndex>
     <WechatKefu v-show="menuName === 'WechatKefu'"></WechatKefu>
