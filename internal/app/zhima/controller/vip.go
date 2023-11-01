@@ -7,7 +7,6 @@ import (
 	"errors"
 	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gsgin"
-	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 )
@@ -28,25 +27,25 @@ func VipChange(c *gin.Context) {
 		return
 	}
 	account := reqMap[`Account`]
-	if account.IsEmpty() {
+	if account == nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, `账号不能为空`, nil)
 		return
 	}
-	userInfo := service.GetAdminUserId(mysqlCli, account.ToStr())
-	if userInfo.G(`_id`).IsEmpty() {
+	userInfo := service.GetAdminUserId(mysqlCli, cast.ToString(account))
+	if userInfo[`_id`] == nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, `找不到该账号`, nil)
 		return
 	}
-	_, upErr := service.UpdateVip(mysqlCli, userInfo.G(`_id`).ToStr(), reqMap[`ExpireDay`].ToStr(), reqMap[`SystemType`].ToStr(), reqMap[`VipLevel`].ToStr())
+	_, upErr := service.UpdateVip(mysqlCli, cast.ToString(userInfo[`_id`]), cast.ToString(reqMap[`ExpireDay`]), cast.ToString(reqMap[`SystemType`]), cast.ToString(reqMap[`VipLevel`]))
 	if upErr != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, upErr.Error(), nil)
 		return
 	}
 	//移除缓存
-	adminUserId := userInfo.G(`_id`)
-	number := cast.ToString(adminUserId.ToInt() % 10)
-	redisCli.Client.HDel(context.Background(), `wechatapp.vip.info.v20220308..`+number, adminUserId.ToStr())
-	redisCli.Client.HDel(context.Background(), `wechatapp.kefu.vip.info.v20220308..`+number, adminUserId.ToStr())
+	adminUserId := cast.ToInt(userInfo[`_id`])
+	number := cast.ToString(adminUserId % 10)
+	redisCli.Client.HDel(context.Background(), `wechatapp.vip.info.v20220308..`+number, cast.ToString(adminUserId))
+	redisCli.Client.HDel(context.Background(), `wechatapp.kefu.vip.info.v20220308..`+number, cast.ToString(adminUserId))
 	result, resultErr := queryVipType(c)
 	if resultErr != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, resultErr.Error(), nil)
@@ -76,35 +75,36 @@ func queryVipType(c *gin.Context) (string, error) {
 		return ``, err
 	}
 	account := reqMap[`Account`]
-	if account.IsEmpty() {
+	if account == nil {
 		return ``, errors.New(`账号不能为空`)
 	}
-	userInfo := service.GetAdminUserId(mysqlCli, account.ToStr())
-	if userInfo.G(`_id`).IsEmpty() {
+	userInfo := service.GetAdminUserId(mysqlCli, cast.ToString(account))
+	if userInfo[`_id`] == nil {
 		return ``, errors.New(`找不到该账号`)
 	}
-	vipInfo, queryErr := service.QueryVip(mysqlCli, userInfo.G(`_id`).ToStr(), reqMap[`SystemType`].ToStr())
+	adminUserIdStr := cast.ToString(userInfo[`_id`])
+	vipInfo, queryErr := service.QueryVip(mysqlCli, cast.ToString(userInfo[`_id`]), cast.ToString(reqMap[`SystemType`]))
 	if queryErr != nil {
 		return ``, queryErr
 	}
-	if vipInfo.IsZeroLen() {
-		return `管理员ID：` + userInfo.G(`_id`).ToStr() + `未查到vip信息`, nil
+	if len(vipInfo) == 0 {
+		return `管理员ID：` + adminUserIdStr + `未查到vip信息`, nil
 	}
-	return `管理员ID：` + userInfo.G(`_id`).ToStr() + `，vip版本：` + VipMap[vipInfo.G(`vip_type`).ToStr()] + `，过期时间：` + vipInfo.G(`expired_time`).ToStr(), nil
+	return `管理员ID：` + adminUserIdStr + `，vip版本：` + VipMap[cast.ToString(vipInfo[`vip_type`])] + `，过期时间：` + cast.ToString(vipInfo[`expired_time`]), nil
 }
 
-func getVipReqData(c *gin.Context) (*base_module.Global, map[string]*gstool.GsCons, *gsdb.GsRedis, *gsdb.GsMysql, error) {
-	global, reqMap, err := GetGlobalReqParams(c)
+func getVipReqData(c *gin.Context) (*base_module.Global, map[string]interface{}, *gsdb.GsRedis, *gsdb.GsMysql, error) {
+	global, reqMap, err := GetGlobalReqParamsM(c)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	redisName := reqMap[`redisName`]
-	redisCli, err := global.RedisGetClient(redisName.ToStr())
+	redisName := cast.ToString(reqMap[`redisName`])
+	redisCli, err := global.RedisGetClient(redisName)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	mysqlName := reqMap[`mysqlName`]
-	mysqlCli, err := global.MysqlGetClient(mysqlName.ToStr())
+	mysqlName := cast.ToString(reqMap[`mysqlName`])
+	mysqlCli, err := global.MysqlGetClient(mysqlName)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

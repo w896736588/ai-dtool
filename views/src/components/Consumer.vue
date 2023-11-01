@@ -1,23 +1,11 @@
 <template>
-  <el-card>
+  <div>
     <!--  子操作选项列表-->
     <el-card>
-      <h3>
-        消费者操作
-      </h3>
-      <el-select v-model="chooseParentType" @change="changeParentType" placeholder="请选择系统">
-        <el-option
-          v-for="(value,key) in parentTypeList"
-          :key="value.Name"
-          :label="value.Title"
-          :value="value.Name">
-        </el-option>
-      </el-select>
-
       <!--    环境-->
-      <el-select v-model="chooseEvnName" @change="changeCode" placeholder="请选择代码环境" v-if="chooseParentType === 'xkf'">
+      <el-select v-model="chooseConsumerName" @change="changeCode" placeholder="请选择环境" >
         <el-option
-          v-for="(value,key) in codeEnvList" v-if="value.ParentType === chooseParentType"
+          v-for="(value,key) in consumerConfigList"
           :key="value.Name"
           :label="value.NameTitle"
           :value="value.Name">
@@ -46,7 +34,7 @@
     </el-card>
 
     <el-row :gutter="24" style="margin-top: 10px">
-      <el-col :span="6" v-for="(value,key) in configMap[chooseParentType]" style="margin-top:5px;" v-if="value.show">
+      <el-col :span="6" v-for="(value,key) in configMap" style="margin-top:5px;" v-if="value.show">
         <div class="grid-content bg-purple">
           <el-card class="box-card">
             <div slot="header" class="clearfix">
@@ -59,7 +47,7 @@
             <!--            </div>-->
             <div class="supervisorCommand" style="overflow:hidden;" v-if="value.running_status">
               <span>{{ value.name }}</span><br/>
-              {{ value.running_status }}<br/>
+              <span>{{ value.running_status.replace(/^\s*|\s*$/g,"").substr( 0 ,40) }}</span><br/>
               process num {{value.processNum}}
             </div>
 
@@ -69,13 +57,13 @@
 
             <div class="bottom clearfix">
               <el-button type="text" class="button" size="small"
-                         @click="ExecType = 'supervisor_restart';exec(value);showResultDialog=true;">重新启动
+                         @click="restart(value);">重新启动
               </el-button>
               <el-button type="text" class="button" size="small"
-                         @click="ExecType = 'supervisor_stop';exec(value);showResultDialog=true;">停止
+                         @click="stop(value)">停止
               </el-button>
               <el-button type="text" class="button" size="small"
-                         @click="ExecType = 'supervisor_config_show';exec(value);showResultDialog=true;">查看配置
+                         @click="configShow(value);">查看配置
               </el-button>
               <el-button type="text" class="button" size="small" disabled
                          @click="showInteractionFunc(value)">后台运行
@@ -103,19 +91,6 @@
         <el-button @click="supervisorConfigShow.dialog = false">取 消</el-button>
       </div>
     </el-dialog>
-    <!--配置或执行结果弹窗-->
-    <el-dialog title="内容" :visible.sync="showResultDialog" width="70%;">
-      <el-alert
-        :title="editNameValue.supervisor_config"
-        type="info">
-      </el-alert>
-
-      <el-input style="margin-top: 20px;width:100%;" type="textarea" v-model="settingResult" rows="15"></el-input>
-      <div slot="footer" class="dialog-footer">
-        <el-button @click="showResultDialog = false">取 消</el-button>
-        <!--      <el-button type="primary" @click="createCache">确 定</el-button>-->
-      </div>
-    </el-dialog>
 
     <el-dialog
       title="输入名称"
@@ -129,8 +104,7 @@
     </el-dialog>
 
     <Interaction ref="Interaction" :visible="showInteraction" :title="showInteractionTitle" :sshConfig="showInteractionSshConfig" @before-close="showInteractionBeforeClose"></Interaction>
-  </el-card>
-
+</div>
 
 </template>
 
@@ -145,6 +119,9 @@
 import Vue from "vue";
 import store from "../utils/store";
 import Interaction from "./Interaction"
+import consumer from "../utils/api/consumer.js"
+import base from "../utils/api/base.js"
+import mod from "../utils/api/module.js"
 
 export default {
   components : {
@@ -158,7 +135,7 @@ export default {
       //ssh config
       sshConfig: {},
       //选中的环境
-      chooseEvnName: "common3-xkf",
+      chooseConsumerName: "xkf_common3",
       //是否显示所有的消费者
       showAllSupervisor: false,
       showResultDialog: false,
@@ -166,25 +143,18 @@ export default {
       inputNameValue: '',
       editNameValue: {},
       searchNum : 0,
-      //代码环境
-      codeEnvList: [],
+      //消费者环境
+      consumerConfigList: [],
       //docker
       dockerList: [],
       //存储所有的消费者配置文件
       configMap: {},
-      //操作父类型
-      chooseParentType: "xkf",
-      parentTypeList: [
-        {Title: "小客服", Name: "xkf"},
-        {Title: "企微", Name: "wk"},
-      ],
       //总的操作类型
       ExecType: "query_current_branch",
       //操作类型
       dialogSshConfig: false,
       BranchName: "",  //分支名
       execResult: "",//操作结果
-      settingResult: "",
       //docker内执行的命令
       dockerExecCommand: "",
       //历史记录
@@ -207,21 +177,18 @@ export default {
     }
   },
   mounted: function () {
-    this.sshConfig = this.$helperConfig.getXkfDevSshConfig()
-    this.wkSshConfig = this.$helperConfig.getWkDevSshConfig()
-    this.apiHost = this.$helperConfig.getApiHost()
-    this.codeEnvList = this.$helperConfig.getCodeEnvList()
-    let tmpCodeEnvList = []
-    for(let i in this.codeEnvList){
-      if(this.codeEnvList[i].CodePath.indexOf('sub01') === -1){
-        tmpCodeEnvList.push(this.codeEnvList[i])
-      }
-    }
-    this.codeEnvList = tmpCodeEnvList
-    this.getOriginSupervisorConfig()
-    this.dockerList = this.$helperConfig.getDockerList()
-    this.loadingStatus = this.$helperLoad.getExecTypeStatus()
-    this.refreshUseSortConsumer()
+    let _that = this
+    setTimeout(function () {
+      _that.sshConfig = _that.$helperConfig.getXkfDevSshConfig()
+      _that.wkSshConfig = _that.$helperConfig.getWkDevSshConfig()
+      _that.apiHost = _that.$helperConfig.getApiHost()
+      _that.consumerConfigList = mod.GetConsumerConfigList()
+      _that.getOriginSupervisorConfig()
+      _that.dockerList = _that.$helperConfig.getDockerList()
+      _that.loadingStatus = _that.$helperLoad.getExecTypeStatus()
+      _that.refreshUseSortConsumer()
+    } , 2000)
+
   },
   onload: function () {
 
@@ -229,6 +196,9 @@ export default {
   filters: {
     limitTo(value, length) {
       return value.slice(0, length);
+    },
+    substr(value, length){
+      return value.substr( 0, length);
     }
   },
   methods: {
@@ -238,68 +208,99 @@ export default {
       this.searchList()
       this.ExecType = 'supervisor_stop'
       let consumerNameList = this.$helperConfig.getReduceMemoryConsumerName()
-      for(let key in this.configMap[this.chooseParentType]){
+      for(let key in this.configMap){
         let boolFind = false
         for(let j in consumerNameList){
-          if(this.configMap[this.chooseParentType][key].name === consumerNameList[j]){
+          if(this.configMap[key].name === consumerNameList[j]){
             boolFind = true
             break
           }
         }
         if(boolFind){
-          this.exec(this.configMap[this.chooseParentType][key]);
+          this.exec(this.configMap[key]);
         }
       }
+    },
+    restartAll : function (){
+      let _that = this
+      let consumerConfig = consumer.GetConsumerConfigByName(this.chooseConsumerName)
+      consumer.ConsumerRestartAll(consumerConfig.DockerName , consumerConfig.SshName , function (response) {
+        let tempList = response.Data.split(`\n`)
+        let supervisorOriginConfList = []
+        for (let i in tempList) {
+          supervisorOriginConfList.push(tempList[i].split('---'))
+        }
+        _that.configMap = _that.$helperConfig.getSupervisorConfigList(supervisorOriginConfList, consumerConfig.SshName)
+        console.log('configMap' , _that.configMap)
+        _that.supervisorStatusList()
+      })
+    },
+    restart : function (value){
+      let _that = this
+      let consumerConfig = consumer.GetConsumerConfigByName(this.chooseConsumerName)
+      _that.addUse(value)
+      consumer.ConsumerRestart(consumerConfig.DockerName , consumerConfig.SshName , value.supervisor_name , function (response) {
+        _that.$helperNotify.success('成功');
+        _that.execResult = response.Data
+        _that.supervisorStopRestartExplain(value);
+        _that.searchList()
+      })
+    },
+    stop : function (value){
+      let _that = this
+      let consumerConfig = consumer.GetConsumerConfigByName(this.chooseConsumerName)
+      _that.addUse(value)
+      consumer.ConsumerStop(consumerConfig.DockerName , consumerConfig.SshName , value.supervisor_name , function (response) {
+        _that.$helperNotify.success('成功');
+        _that.execResult = response.Data
+        _that.supervisorStopRestartExplain(value);
+        _that.searchList()
+      })
+    },
+    configShow : function (value){
+      let _that = this
+      let consumerConfig = consumer.GetConsumerConfigByName(this.chooseConsumerName)
+      _that.addUse(value)
+      console.log(value)
+      consumer.ConsumerConfigShow(consumerConfig.DockerName , consumerConfig.SshName , value.supervisor_config , function (response) {
+        _that.$helperNotify.success('成功');
+        _that.execResult = response.Data
+        _that.supervisorStopRestartExplain(value);
+        _that.searchList()
+      })
+    },
+    stopAll : function (){
+
     },
     //停止列表下面的消费者
     stopListConsumer : function (){
       if(this.searchKey === ''){
-        this.ExecType = 'supervisor_stop_all'
-        this.exec()
+        this.stopAll()
         return
-      }else{
-        this.ExecType = 'supervisor_stop'
       }
-      for(let i in this.configMap[this.chooseParentType]){
-        if(this.configMap[this.chooseParentType][i].show === true){
-          this.exec(this.configMap[this.chooseParentType][i])
+      for(let i in this.configMap){
+        if(this.configMap[i].show === true){
+          this.stop(this.configMap[i])
         }
       }
-
     },
     showInteractionFunc : function (value){
-      this.showInteractionTitle = value.name;
-      if (this.chooseParentType === 'xkf') {
-        this.showInteractionSshConfig = this.sshConfig
-      } else {
-        this.showInteractionSshConfig = this.wkSshConfig
-      }
-      this.showInteraction = true
-      this.$refs.Interaction.createShell4()
+      // this.showInteractionTitle = value.name;
+      // this.showInteractionSshConfig = this.sshConfig
+      // this.showInteraction = true
+      // this.$refs.Interaction.createShell4()
     },
     //拿到config 列表
     getOriginSupervisorConfig: function () {
       let _that = this
-      let supervisorOriginConfList = []
-      let env_config = this.$helperConfig.getCodeEnvConfigByCodeEnvName(this.codeEnvList, this.chooseEvnName)
-      if (this.chooseParentType === 'xkf') {
-        env_config.SshConfig = _that.sshConfig
-      } else {
-        env_config.SshConfig = _that.wkSshConfig
-      }
-
-      let params = {
-        SshConfig: env_config.SshConfig,
-        ExecType: 'SupervisorConfList',
-        ParentType: _that.chooseParentType,
-      }
-      //按钮加载状态
-      this.$helperApi.ajaxDefault(params, function (response) {
+      let consumerConfig = consumer.GetConsumerConfigByName(this.chooseConsumerName)
+      consumer.ConsumerConfigList(consumerConfig.DockerName , consumerConfig.SshName , function (response) {
         let tempList = response.Data.split(`\n`)
+        let supervisorOriginConfList = []
         for (let i in tempList) {
           supervisorOriginConfList.push(tempList[i].split('---'))
         }
-        _that.configMap[_that.chooseParentType] = _that.$helperConfig.getSupervisorConfigList(supervisorOriginConfList, _that.chooseParentType)
+        _that.configMap = _that.$helperConfig.getSupervisorConfigList(supervisorOriginConfList, consumerConfig.SshName)
         _that.supervisorStatusList()
       })
     },
@@ -325,127 +326,70 @@ export default {
     //搜索消费者列表
     searchList: function () {
       let searchNum = 0
-      for (let i in this.configMap[this.chooseParentType]) {
-        if (this.configMap[this.chooseParentType][i].name && this.configMap[this.chooseParentType][i].name.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1) {
-          this.configMap[this.chooseParentType][i].show = true
+      for (let i in this.configMap) {
+        if (this.configMap[i].name && this.configMap[i].name.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1) {
+          this.configMap[i].show = true
           searchNum++;
           continue;
         }
 
-        if (this.configMap[this.chooseParentType][i].running_status && this.configMap[this.chooseParentType][i].running_status.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1) {
-          this.configMap[this.chooseParentType][i].show = true
+        if (this.configMap[i].running_status && this.configMap[i].running_status.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1) {
+          this.configMap[i].show = true
           searchNum++;
           continue;
         }
-        if (this.configMap[this.chooseParentType][i].supervisor_config && this.configMap[this.chooseParentType][i].supervisor_config.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1) {
-          this.configMap[this.chooseParentType][i].show = true
+        if (this.configMap[i].supervisor_config && this.configMap[i].supervisor_config.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1) {
+          this.configMap[i].show = true
           searchNum++;
           continue;
         }
-        if (this.configMap[this.chooseParentType][i].supervisor_name && this.configMap[this.chooseParentType][i].supervisor_name.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1) {
-          this.configMap[this.chooseParentType][i].show = true
+        if (this.configMap[i].supervisor_name && this.configMap[i].supervisor_name.toLowerCase().indexOf(this.searchKey.toLowerCase()) !== -1) {
+          this.configMap[i].show = true
           searchNum++;
           continue;
         }
-        if (this.configMap[this.chooseParentType][i].showName && this.configMap[this.chooseParentType][i].showName.indexOf(this.searchKey.toLowerCase()) !== -1) {
-          this.configMap[this.chooseParentType][i].show = true
+        if (this.configMap[i].showName && this.configMap[i].showName.indexOf(this.searchKey.toLowerCase()) !== -1) {
+          this.configMap[i].show = true
           searchNum++;
           continue;
         }
-        this.configMap[this.chooseParentType][i].show = false
+        this.configMap[i].show = false
       }
       this.searchNum = searchNum
     },
     //重启所有的消费者
     restartSupervisorAll: function () {
-      this.ExecType = 'supervisor_restart_all';
-      this.showAllSupervisor = false
-      this.exec()
+      let _that = this
+      let consumerConfig = consumer.GetConsumerConfigByName(this.chooseConsumerName)
+      consumer.ConsumerRestartAll(consumerConfig.DockerName , consumerConfig.SshName , function (response) {
+        _that.$helperNotify.success('成功');
+        _that.execResult = response.Data
+        _that.supervisorStatusList();
+        _that.searchList()
+      })
     },
     //查看所有的消费者列表
     supervisorStatusList: function () {
-      this.ExecType = 'supervisor_status_list';
       let _that = this
-      let env_config = {}
-      if (this.chooseParentType === 'xkf') {
-        //找到代码配置
-        env_config = this.$helperConfig.getCodeEnvConfigByCodeEnvName(this.codeEnvList, this.chooseEvnName)
-      } else {
-        env_config = {}
-      }
-      let dockerId = this.$helperConfig.getDockerIdByCodeEnvConfig(this.dockerList, env_config)
-      //根据dockerId获取wk
-      for(let dockerKey in this.dockerList){
-        if(this.dockerList[dockerKey].Id === dockerId){
-          if(this.dockerList[dockerKey].SshName === 'wk'){
-            env_config.SshConfig = _that.wkSshConfig
-          }else{
-            env_config.SshConfig = _that.sshConfig
-          }
-        }
-      }
-
-      //根据类型判断
-      let params = {
-        SshConfig: env_config.SshConfig,
-        CodePath: env_config.CodePath,
-        ParentType: this.chooseParentType,
-        ExecType: this.ExecType,
-        DockerList: this.dockerList,
-        DockerId: dockerId,
-        DockerCodePath: env_config.DockerCodePath,
-        DockerExecCommand: this.dockerExecCommand,
-      }
-      if (this.chooseParentType === 'xkf') {
-        if (params.ExecType === 'supervisor_status_list' && params.CodePath === '') {
-          _that.$helperNotify.error('请选择代码环境')
-        }
-        if (params.ExecType === 'supervisor_status_list' && params.DockerId === ``) {
-          _that.$helperNotify.error('代码环境找不到对应的docker')
-          _that.cancelLoading(params)
-          return
-        }
-      }
-      //按钮加载状态
-      _that.setLoading(params)
-      Vue.axios.post(this.apiHost + '/api/shell/exec', params).then(function (response) {
+      let consumerConfig = consumer.GetConsumerConfigByName(this.chooseConsumerName)
+      consumer.ConsumerStatusList(consumerConfig.DockerName , consumerConfig.SshName , function (response) {
         _that.$helperNotify.success('成功');
         _that.execResult = response.Data
-        _that.cancelLoading(params)
         _that.supervisorStatusExplain();
         _that.searchList()
-      });
-    },
-    //改变父类类型
-    changeParentType: function () {
-      if (this.chooseParentType === 'xkf') {
-        this.chooseEvnName = 'common3-xkf'
-      } else {
-        this.chooseEvnName = '企微'
-      }
-
-      this.ExecType = ''
-      if (this.configMap[this.chooseParentType]) {
-        this.supervisorStatusList()
-      } else {
-        this.getOriginSupervisorConfig()
-      }
-      this.refreshUseSortConsumer()
+        _that.$parent.$parent.showTerminal(base.GetUnikey() , consumerConfig.SshName)
+      })
     },
     //执行
     exec: function (param) {
       let _that = this
       let env_config = {}
-      if (this.chooseParentType === 'xkf') {
-        //找到代码配置
-        env_config = this.$helperConfig.getCodeEnvConfigByCodeEnvName(this.codeEnvList, this.chooseEvnName)
-        if (env_config === {}) {
-          _that.$helperNotify.error("不存在的配置");
-          _that.cancelLoading(params)
-          return
-        }
-      } else {
-        env_config = {}
+      //找到代码配置
+      env_config = this.$helperConfig.getCodeEnvConfigByCodeEnvName(this.consumerConfigList, this.chooseConsumerName)
+      if (env_config === {}) {
+        _that.$helperNotify.error("不存在的配置");
+        _that.cancelLoading(params)
+        return
       }
       let dockerId = this.$helperConfig.getDockerIdByCodeEnvConfig(this.dockerList, env_config)
       //根据dockerId获取wk
@@ -465,19 +409,16 @@ export default {
         CodePath: env_config.CodePath,
         ExecType: this.ExecType,
         DockerList: this.dockerList,
-        ParentType: this.chooseParentType,
         DockerId: dockerId,
         DockerCodePath: env_config.DockerCodePath,
         DockerExecCommand: this.dockerExecCommand,
       }
-      if (this.chooseParentType === 'xkf') {
-        if (params.ExecType === 'supervisor_restart_all' && params.CodePath === '') {
-          _that.$helperNotify.error('请选择代码环境')
-          _that.cancelLoading(params)
-          return
-        }
-
+      if (params.ExecType === 'supervisor_restart_all' && params.CodePath === '') {
+        _that.$helperNotify.error('请选择代码环境')
+        _that.cancelLoading(params)
+        return
       }
+
       //查看消费者的配置内容
       if (params.ExecType === 'supervisor_config_show') {
         params.SupervisorConfigPath = param.supervisor_config
@@ -493,11 +434,9 @@ export default {
       }
 
       if (params.ExecType === 'supervisor_config_show') {
-        _that.settingResult = '查询中...';
         _that.editNameValue = param
         _that.addUse(param)
       } else if (params.ExecType === 'supervisor_restart' || params.ExecType === 'supervisor_stop') {
-        _that.settingResult = '获取结果中...';
         _that.editNameValue = param
         _that.addUse(param)
       }
@@ -510,9 +449,7 @@ export default {
         _that.cancelLoading(params)
         if (params.ExecType === 'supervisor_restart' || params.ExecType === 'supervisor_stop') {     //查看消费者列表
           _that.supervisorStopRestartExplain(param);
-          _that.settingResult = response.Data
         } else if (params.ExecType === 'supervisor_config_show') { //查看supervisor配置
-          _that.settingResult = response.Data
         }else if (params.ExecType === 'supervisor_restart_all'){
           _that.supervisorStatusExplain();
         }
@@ -532,12 +469,12 @@ export default {
       this.refreshUseSortConsumer()
     },
     flushConfigList: function () {
-      for (let i in this.configMap[this.chooseParentType]) {
-        let showName = store.getStore(this.configMap[this.chooseParentType][i].name)
+      for (let i in this.configMap) {
+        let showName = store.getStore(this.configMap[i].name)
         if (showName === null || showName === undefined) {
-          showName = this.configMap[this.chooseParentType][i].name.split('.')[0]
+          showName = this.configMap[i].name.split('.')[0]
         }
-        this.configMap[this.chooseParentType][i].showName = showName
+        this.configMap[i].showName = showName
       }
     },
     //查看消费者配置
@@ -549,7 +486,7 @@ export default {
     },
     //增加了累计使用
     addUse : function (value){
-      let cackeKey = this.chooseParentType + 'useSortConsumer'
+      let cackeKey = 'useSortConsumer'
       let useSortConsumer = this.$helperStore.getStore(cackeKey)
       if(useSortConsumer === null || useSortConsumer === undefined){
         this.$helperStore.setStore(cackeKey , JSON.stringify([{
@@ -578,7 +515,7 @@ export default {
     },
     //刷新排序
     refreshUseSortConsumer : function (){
-      let cackeKey = this.chooseParentType + 'useSortConsumer'
+      let cackeKey = 'useSortConsumer'
       let useSortConsumer = this.$helperStore.getStore(cackeKey)
       if(useSortConsumer === null || useSortConsumer === undefined){
         this.useSortConsumerList = []
@@ -588,7 +525,7 @@ export default {
       this.useSortConsumerList.sort(function(a, b) {
         return b.key - a.key;
       });
-      this.useSortConsumerList = this.useSortConsumerList.slice(0 , 20)
+      this.useSortConsumerList = this.useSortConsumerList.slice(0 , 10)
       for (let j in this.useSortConsumerList){
         let showName = this.$helperStore.getStore(this.useSortConsumerList[j].name)
         if(showName === null || showName === undefined){
@@ -598,7 +535,7 @@ export default {
       }
     },
     delSortConsumer : function (value){
-      let cackeKey = this.chooseParentType + 'useSortConsumer'
+      let cackeKey = 'useSortConsumer'
       let useSortConsumer = this.$helperStore.getStore(cackeKey)
       if(useSortConsumer === null || useSortConsumer === undefined){
         this.useSortConsumerList = []
@@ -618,6 +555,9 @@ export default {
     supervisorStopRestartExplain : function (param){
       let consumerStatusList = this.execResult.split('\n')
       for (let i in consumerStatusList) {
+        if(consumerStatusList[i] === ''){
+          continue
+        }
         if(consumerStatusList[i].indexOf('RUNNING') !== -1){
           let runningStatus = consumerStatusList[i].substr(consumerStatusList[i].indexOf('RUNNING'))
           this.getRunningStatus(runningStatus , param.name)
@@ -635,9 +575,9 @@ export default {
       }
     },
     getRunningStatus : function (runningStatus , name){
-      for (let n in this.configMap[this.chooseParentType]) {
-        if(this.configMap[this.chooseParentType][n].name === name){
-          this.configMap[this.chooseParentType][n].running_status = runningStatus
+      for (let n in this.configMap) {
+        if(this.configMap[n].name === name){
+          this.configMap[n].running_status = runningStatus
           return
         }
       }
@@ -645,18 +585,24 @@ export default {
     //分析消费者结果
     supervisorStatusExplain: function () {
       //重置某些参数
-      for (let n in this.configMap[this.chooseParentType]) {
-        this.configMap[this.chooseParentType][n].processNum = 0
+      for (let n in this.configMap) {
+        this.configMap[n].processNum = 0
       }
       //分析结果
       let consumerStatusList = this.execResult.split('\n')
+      console.log(consumerStatusList)
       for (let i in consumerStatusList) {
+        if(consumerStatusList[i] === ''){
+          continue
+        }
         //根据；分割
         let name_params = []
         name_params.push(consumerStatusList[i].match(/^[^\s]+/g)[0])
+        console.log(consumerStatusList[i] , consumerStatusList[i].match(/^[^\s]+/g)[0])
         name_params.push(consumerStatusList[i].replace(name_params[0] , ''))
         //循环判断
         let name_params_two = this.filterArray(name_params);
+        console.log('name_params_two ' , name_params_two)
         //获取supervisor进程名
         if (name_params_two.length === 0) {
           continue;
@@ -666,28 +612,29 @@ export default {
         if (name_params_four.length === 0) {
           continue;
         }
+        console.log('name_params_four ' , name_params_four)
         //给与状态
-        for (let n in this.configMap[this.chooseParentType]) {
-          if (this.configMap[this.chooseParentType][n].supervisor_name === name_params_four[0]) {
+        for (let n in this.configMap) {
+          if (this.configMap[n].supervisor_name === name_params_four[0]) {
 
-            this.configMap[this.chooseParentType][n].running_status = name_params_two[1]
+            this.configMap[n].running_status = name_params_two[1]
             //重启名
             if (name_params_four.length === 2) {
-              this.configMap[this.chooseParentType][n].supervisor_restart_name = name_params_four[0] + ':'
+              this.configMap[n].supervisor_restart_name = name_params_four[0] + ':'
             } else {
-              this.configMap[this.chooseParentType][n].supervisor_restart_name = name_params_four[0]
+              this.configMap[n].supervisor_restart_name = name_params_four[0]
             }
-            this.configMap[this.chooseParentType][n].show = true
-            this.configMap[this.chooseParentType][n].processNum++;
+            this.configMap[n].show = true
+            this.configMap[n].processNum++;
             break;
           } else {
-            this.configMap[this.chooseParentType][n].show = true;
+            this.configMap[n].show = true;
           }
         }
       }
-      for (let k in this.configMap[this.chooseParentType]) {
-        if (this.configMap[this.chooseParentType][k].running_status === ``) {
-          this.configMap[this.chooseParentType][k].running_status = '未启动';
+      for (let k in this.configMap) {
+        if (this.configMap[k].running_status === ``) {
+          this.configMap[k].running_status = '未启动';
         }
       }
     },

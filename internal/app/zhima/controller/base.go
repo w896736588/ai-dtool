@@ -75,12 +75,27 @@ func BaseRegisterService(c *gin.Context) {
 
 //GetGlobalReqParams 拿到全局参数
 func GetGlobalReqParams(c *gin.Context) (*base_module.Global, map[string]*gstool.GsCons, error) {
-	reqMap := make(map[string]*gstool.GsCons)
+	reqMap := make(map[string]interface{})
 	err := gsgin.GinPostBody(c, &reqMap)
 	if err != nil {
 		return nil, nil, err
 	}
-	global, err := GetGlobal(reqMap)
+	reqConsMap := gstool.ConsNewMap(reqMap)
+	global, err := GetGlobal(reqConsMap)
+	if err != nil {
+		return nil, nil, err
+	}
+	return global, reqConsMap, nil
+}
+
+//GetGlobalReqParamsM 拿到全局参数 返回map
+func GetGlobalReqParamsM(c *gin.Context) (*base_module.Global, map[string]interface{}, error) {
+	reqMap := make(map[string]interface{})
+	err := gsgin.GinPostBody(c, &reqMap)
+	if err != nil {
+		return nil, nil, err
+	}
+	global, err := GetGlobalM(reqMap)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -93,12 +108,33 @@ func BaseRedisGetReqDataRedis(c *gin.Context) (*base_module.Global, map[string]*
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	redisName := reqMap[`RedisName`]
-	if redisName == nil {
+	redisName := reqMap[`RedisName`].ToStr()
+	gstool.FmtPrintlnLog(`初始化 %#v`, reqMap)
+	if redisName == `` {
 		gsgin.GinResponse(c, gsgin.ResponseError, `缺少RedisName参数`, nil)
 		return nil, nil, nil, errors.New(`缺少RedisName参数`)
 	}
-	client, err := global.RedisGetClient(cast.ToString(redisName))
+	client, err := global.RedisGetClient(redisName)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return global, reqMap, client, nil
+}
+
+//BaseRedisGetReqDataRedisM 基础方法
+func BaseRedisGetReqDataRedisM(c *gin.Context) (*base_module.Global, map[string]interface{}, *gsdb.GsRedis, error) {
+	global, reqMap, err := GetGlobalReqParamsM(c)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	redisName := cast.ToString(reqMap[`RedisName`])
+	gstool.FmtPrintlnLog(`初始化 %#v`, reqMap)
+	if redisName == `` {
+		gsgin.GinResponse(c, gsgin.ResponseError, `缺少RedisName参数`, nil)
+		return nil, nil, nil, errors.New(`缺少RedisName参数`)
+	}
+	client, err := global.RedisGetClient(redisName)
 	if err != nil {
 		return nil, nil, nil, err
 	}

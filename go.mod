@@ -3,7 +3,7 @@ module dev_tool
 go 1.18
 
 require (
-	gitee.com/Sxiaobai/gs v0.0.0-20231015092407-3213769befc4
+	gitee.com/Sxiaobai/gs v0.0.0-20231026034719-2b6115d7e7b1
 	github.com/gin-gonic/gin v1.9.0
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/redis/go-redis/v9 v9.2.0

@@ -10,26 +10,24 @@ import (
 )
 
 var (
-	cdCommand = `cd /var/www/`
+	cdCommand = `/var/www/`
 )
 
 // GitCurrentBranch 查询目录的git分支
 func GitCurrentBranch(c *gin.Context) {
+	gstool.FmtPrintlnLog(`请求获取分支`)
 	_, reqMap, shell, command, err := getGitReqData(c)
 	if err != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
 		return
 	}
+	gstool.FmtPrintlnLog(`执行`)
 	codePath := reqMap[`CodePath`].ToStr()
 	command.Sudo()
 	command.Cd(cdCommand + codePath)
 	command.GitShowBranch()
-	result, err := shell.RunShell3(command.GetCommand().ToByte())
-	if err != nil {
-		BaseResponseByError(c, err)
-	} else {
-		gsgin.GinResponse(c, gsgin.ResponseSuccess, result, ``)
-	}
+	result := shell.RunShell(command.GetCommand().ToByte())
+	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, result)
 }
 
 // GitChangeBranch 切换分支
@@ -44,11 +42,7 @@ func GitChangeBranch(c *gin.Context) {
 	command1.Sudo()
 	command1.Cd(cdCommand + reqMap[`CodePath`].ToStr())
 	command1.GitShowBranch()
-	currentBranch, err := shell.RunShell3(command1.GetCommand().ToByte())
-	if err != nil {
-		BaseResponseByError(c, err)
-		return
-	}
+	currentBranch := shell.RunShell(command1.GetCommand().ToByte())
 
 	command.Sudo()
 	command.Cd(cdCommand + reqMap[`CodePath`].ToStr())
@@ -62,12 +56,8 @@ func GitChangeBranch(c *gin.Context) {
 	}
 	command.GitPullOrigin(reqMap[`BranchName`].ToStr())
 	command.GitShowBranch()
-	result, err := shell.RunShell3(command.GetCommand().ToByte())
-	if err != nil {
-		BaseResponseByError(c, err)
-		return
-	}
-	gsgin.GinResponse(c, gsgin.ResponseSuccess, result, ``)
+	result := shell.RunShell(command.GetCommand().ToByte())
+	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, result)
 }
 
 // GitPullBranchOrigin 拉取当前分支最新代码
@@ -82,11 +72,7 @@ func GitPullBranchOrigin(c *gin.Context) {
 	command1.Sudo()
 	command1.Cd(cdCommand + reqMap[`CodePath`].ToStr())
 	command1.GitShowBranch()
-	currentBranch, err := shell.RunShell3(command1.GetCommand().ToByte())
-	if err != nil {
-		BaseResponseByError(c, err)
-		return
-	}
+	currentBranch := shell.RunShell(command1.GetCommand().ToByte())
 
 	currentBranch = strings.Replace(currentBranch, "\n", "", -1)
 	command.Sudo()
@@ -98,12 +84,8 @@ func GitPullBranchOrigin(c *gin.Context) {
 	command.GitPullOrigin(strings.Replace(currentBranch, "\n", "", -1))
 	command.GitShowBranch()
 
-	result, err := shell.RunShell3(command.GetCommand().ToByte())
-	if err != nil {
-		BaseResponseByError(c, err)
-		return
-	}
-	gsgin.GinResponse(c, gsgin.ResponseSuccess, result, ``)
+	result := shell.RunShell(command.GetCommand().ToByte())
+	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, result)
 }
 
 // QueryStatus 查询分支状态
@@ -117,16 +99,12 @@ func QueryStatus(c *gin.Context) {
 	command.Cd(cdCommand + reqMap[`CodePath`].ToStr())
 	command.GitStatus()
 
-	result, err := shell.RunShell3(command.GetCommand().ToByte())
-	if err != nil {
-		BaseResponseByError(c, err)
-		return
-	}
-	gsgin.GinResponse(c, gsgin.ResponseSuccess, result, ``)
+	result := shell.RunShell(command.GetCommand().ToByte())
+	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, result)
 }
 
 //getGitReqData 基础方法
-func getGitReqData(c *gin.Context) (*base_module.Global, map[string]*gstool.GsCons, *gstool.GsShell, *base_module.Command, error) {
+func getGitReqData(c *gin.Context) (*base_module.Global, map[string]*gstool.GsCons, *gstool.GsShellPush, *base_module.Command, error) {
 	global, reqMap, err := GetGlobalReqParams(c)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -135,7 +113,7 @@ func getGitReqData(c *gin.Context) (*base_module.Global, map[string]*gstool.GsCo
 	if shellName == nil {
 		return nil, nil, nil, nil, errors.New(`缺少ShellName参数`)
 	}
-	client, err := global.ShellGetClient(shellName.ToStr())
+	client, err := global.ShellPushGetClient(shellName.ToStr())
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

@@ -6,9 +6,9 @@
       <el-select v-model="redisCheck" @change="redisDbChange">
         <el-option
           v-for="(value,key) in redisList"
-          :key="value.Name"
-          :label="value.Name"
-          :value="value.Name">
+          :key="value.name"
+          :label="value.name"
+          :value="value.name">
         </el-option>
       </el-select>
       <el-button type="primary" :loading="loadingStatus['redis_search']" @click="keysSearch">查询</el-button>
@@ -41,13 +41,17 @@
       <el-col :span="8">
         <el-card class="box-card" style="">
           <div class="grid-content bg-purple" style="height:480px;overflow:auto;">
-            <el-button :loading="loadingStatus['redis_delete_batch']" type="danger" style="margin-bottom: 7px;" @click="delAll" v-if="keysResult.length > 0 "
+            <el-button :loading="loadingStatus['redis_delete_batch']" type="danger" style="margin-bottom: 7px;"
+                       @click="delAll" v-if="keysResult.length > 0 "
                        size="mini">删除以下缓存
             </el-button>
-            <el-checkbox v-if="keysResult.length > 0" style="margin-top:3px;margin-left:3px;" @change="changeSimpleShow" v-model="boolSimpleShow">优化显示/排序</el-checkbox>
+            <el-checkbox v-if="keysResult.length > 0" style="margin-top:3px;margin-left:3px;" @change="changeSimpleShow"
+                         v-model="boolSimpleShow">优化显示/排序
+            </el-checkbox>
             <br/>
-            <el-input type="text" v-if="keysResult.length > 0" v-model="filterValue" size="small" style="width:91%;" placeholder="输入搜索过滤" @input="filterList"></el-input>
-            <span style="font-size: 11px;" v-if="keysResult.length > 0"  >({{searchNum}})</span>
+            <el-input type="text" v-if="keysResult.length > 0" v-model="filterValue" size="small" style="width:91%;"
+                      placeholder="输入搜索过滤" @input="filterList"></el-input>
+            <span style="font-size: 11px;" v-if="keysResult.length > 0">({{ searchNum }})</span>
             <div v-for="(value,key) in keysResult">
               <div>
                 <el-tag size="medium" effect="light" style="margin-top:3px;" v-if="value.boolShow">
@@ -323,7 +327,10 @@ import JsonViewer from 'vue-json-viewer'
 import Clipboard from 'clipboard'
 import Textarea from "./textarea";
 import {Message} from "element-ui";
-
+import mod from "../utils/api/module.js"
+import redis from "../utils/api/redis.js"
+import php from "../utils/api/php.js"
+import base from "../utils/api/base.js"
 
 export default {
   name: "cacheIndex",
@@ -341,11 +348,8 @@ export default {
         SET: 'set',
         ZSET: 'zset',
       },
-      redisConfigList: [],
       //是否显示历史搜索记录
       historySearchVisible: false,
-      //接口地址
-      apiHost: '',
       loading: false,
       //数据库
       redisCheck: 'common3',
@@ -360,7 +364,6 @@ export default {
         ttl: 0,                  //过期时间 0 永久
         startEditTTL: false,     //是否开始编辑ttl
       },
-      sshConfig: {},
       historyCheck: '',
       //keys
       keys: '',
@@ -368,7 +371,7 @@ export default {
       //string result
       searchResult: "",
       searchSourceResult: "",
-      searchNum : 0,
+      searchNum: 0,
       //hash result
       hashResult: [],
       //history
@@ -406,9 +409,9 @@ export default {
         score: 0,
       },
       //简版显示
-      boolSimpleShow : false,
-      loadingStatus : {},
-      filterValue : '',
+      boolSimpleShow: false,
+      loadingStatus: {},
+      filterValue: '',
     }
   },
   filters: {
@@ -422,37 +425,33 @@ export default {
     }
   },
   mounted: function () {
-    this.sshConfig = this.$helperConfig.getXkfDevSshConfig()
-    this.apiHost = this.$helperConfig.getApiHost()
-    this.redisConfigList = this.$helperConfig.getRedisList()
     this.getRedisList();
     this.addSubCache.cacheType = this.cacheType.STRING;
     this.loadingStatus = this.$helperLoad.getExecTypeStatus()
     this.boolSimpleShow = this.getStore('boolSimpleShow') === 'true'
   },
   methods: {
-    filterList : function (event){
+    filterList: function (event) {
       this.searchNum = 0
       //优化显示
-      for(let i in this.keysResult){
-        if(this.filterValue !== ''){
+      for (let i in this.keysResult) {
+        if (this.filterValue !== '') {
           let indexKey = this.keysResult[i].showName.indexOf(this.filterValue)
           this.keysResult[i].boolShow = indexKey >= 0;
-        }else{
+        } else {
           this.keysResult[i].boolShow = true
         }
-        if(this.keysResult[i].boolShow){
+        if (this.keysResult[i].boolShow) {
           this.searchNum++
         }
       }
     },
     getRedisList: function () {
       let _that = this
-      Vue.axios.post(this.apiHost + '/api/redis/list', {
-        sshConfig: _that.sshConfig,
-        redisConfigList: _that.redisConfigList
-      }).then(function (response) {
-        _that.redisList = response.Data;
+      redis.RedisAvailableList(function (response) {
+        let redisNameList = response.Data;
+        _that.redisList = redis.GetRedisConfigListByNameList(redisNameList);
+        console.log(_that.redisList)
         _that.redisCheck = _that.redisList[0].Name;
         _that.getRedisDbSelect();
         _that.getCacheHistory();
@@ -469,32 +468,32 @@ export default {
       this.keysResult = [];
       this.setStore('redisCheck', this.redisCheck)
     },
-    initRedisList : function (){
-      for(let i in this.keysResult){
+    initRedisList: function () {
+      for (let i in this.keysResult) {
         this.keysResult[i].showName = this.keysResult[i].CacheKey
       }
       this.filterList()
     },
     //变更简版显示
-    changeSimpleShow : function (boolSimpleShow){
+    changeSimpleShow: function (boolSimpleShow) {
       this.boolSimpleShow = boolSimpleShow
-      this.setStore('boolSimpleShow' , this.boolSimpleShow)
+      this.setStore('boolSimpleShow', this.boolSimpleShow)
       this.sortRedisList();
     },
-    sortRedisList : function (){
+    sortRedisList: function () {
       //优化显示
-      for(let i in this.keysResult){
-        if(this.boolSimpleShow){
-          if(this.keys !== ''){
+      for (let i in this.keysResult) {
+        if (this.boolSimpleShow) {
+          if (this.keys !== '') {
             let indexKey = this.keysResult[i].showName.indexOf(this.keys)
-            if(indexKey !== false){ //只支持从头开始的匹配
+            if (indexKey !== false) { //只支持从头开始的匹配
               let length = this.keysResult[i].showName.length
               let sub_length = indexKey + this.keys.length
-              this.keysResult[i].showName = "[...]" + this.keysResult[i].showName.substr(sub_length , length - sub_length)
+              this.keysResult[i].showName = "[...]" + this.keysResult[i].showName.substr(sub_length, length - sub_length)
             }
           }
-        }else{
-          if(this.keysResult[i].showName.substr(0 , 5) === '[...]'){
+        } else {
+          if (this.keysResult[i].showName.substr(0, 5) === '[...]') {
             this.keysResult[i].showName = this.keysResult[i].CacheKey
           }
         }
@@ -510,14 +509,13 @@ export default {
       this.cache.UniKey = this.redisCheck
       this.cache.cacheKey = key
       this.cache.ExecType = 'redis_search'
-      this.setLoading(this.cache)
       //拿到key类型
-      Vue.axios.post(this.apiHost + '/api/key/type', this.cache).then(function (response) {
+      redis.RedisKeyType(this.redisCheck, key, function (response) {
         if (response.Data !== '') {
           _that.cache.cacheType = response.Data.Type;
           _that.cache.ttl = response.Data.TTL;
           //拿到结果
-          Vue.axios.post(_that.apiHost + '/api/search', _that.cache).then(function (responseSearch) {
+          redis.RedisSearch(_that.redisCheck, key, function (responseSearch) {
             let data = responseSearch.Data;
             if (_that.cache.cacheType === _that.cacheType.SET) {
               _that.hashResult = [];
@@ -549,14 +547,14 @@ export default {
               _that.cache.strShowType = 1;
             }
             _that.addCacheInit();
-            _that.cancelLoading(_that.cache)
-          });
+          })
         } else {
           //清空右侧数据
           _that.cacheInit();
           _that.error('获取缓存类型失败，缓存可能已不存在');
         }
-      });
+      })
+
     },
     getCacheHistory: function () {
       let historyListTemp = localStorage.getItem(this.redisCheck + 'historyList');
@@ -596,25 +594,16 @@ export default {
     //搜索缓存 这里是模糊查询 会返回多个
     keysSearch: function () {
       let _that = this;
-      let params = {};
-      //解决历史记录
-      let tempParams = {};
       if (this.keys === '') {
-        params = {UniKey: this.redisCheck, Search: '*'};
         return false;
       } else {
-        params = {UniKey: this.redisCheck, Search: this.keys};
-        tempParams = {UniKey: this.redisCheck, Search: '*' + this.keys + '*'};
         this.historyCheck = this.keys;
       }
       this.loading = true;
-      tempParams.ExecType = 'redis_search';
-      this.setLoading(tempParams)
-      Vue.axios.post(this.apiHost + '/api/keys', tempParams).then(function (response) {
+      redis.RedisKeys(this.redisCheck, '*' + this.keys + '*', function (response) {
         _that.keysResult = response.Data;
         _that.initRedisList()
         _that.sortRedisList()
-        _that.cancelLoading(tempParams)
         if (_that.keysResult.length === 1) {
           _that.search(_that.keysResult[0].CacheKey);
         }
@@ -624,39 +613,11 @@ export default {
         }
         //记录查询key
         if (_that.keys !== '') {
-          _that.setCacheHistory(params);
+          _that.setCacheHistory({Search: _that.keys});
         }
         //查找类型
-        //_that.getKeysType();
-      }).finally(function () {
         _that.loading = false;
-      });
-    },
-    getKeysType: function () {
-      let _that = this;
-      let keys_list = [];
-      for (var key in _that.keysResult) {
-        keys_list.push(_that.keysResult[key].CacheKey);
-      }
-
-      let chunks = _that.chunk(keys_list, 50);
-      for (let j in chunks) {
-        Vue.axios.post(this.apiHost + '/api/keys/type', {
-          UniKey: this.redisCheck,
-          KeysList: chunks[j]
-        }).then(function (response) {
-          let keysTypeResult = response.Data;
-          for (let key in _that.keysResult) {
-            for (let key2 in keysTypeResult) {
-              if (_that.keysResult[key].CacheKey === keysTypeResult[key2].CacheKey) {
-                _that.keysResult[key].Type = keysTypeResult[key2].Type;
-                _that.keysResult[key].Loading = false;
-              }
-            }
-          }
-        }).finally(function () {
-        });
-      }
+      })
     },
     searchHistory: function (params) {
       this.keys = params.Search;
@@ -671,8 +632,7 @@ export default {
     unserialize: function () {
       let _that = this;
       if (this.cache.strHasSerialize === true) {
-        let params = {SerializeStr: this.searchSourceResult};
-        Vue.axios.post(this.apiHost + '/api/unserialize', params).then(function (response) {
+        php.PhpUnserialize(this.searchSourceResult, function (response) {
           if (response.ErrCode !== 0) {
             _that.cache.strHasSerialize = false;
             _that.cache.strShowType = 1;
@@ -680,8 +640,7 @@ export default {
             _that.searchResult = _that.transResponseData(response.Data);
             _that.cache.strShowType = 2;
           }
-
-        });
+        })
       } else {
         this.searchResult = this.searchSourceResult;
         _that.cache.strShowType = 1;
@@ -693,8 +652,7 @@ export default {
     editSubUnserialize: function () {
       let _that = this;
       if (this.editSubCache.strHasSerialize === true) {
-        let params = {SerializeStr: this.editSubCache.value};
-        Vue.axios.post(this.apiHost + '/api/unserialize', params).then(function (response) {
+        php.PhpUnserialize(this.editSubCache.value, function (response) {
           if (response.ErrCode !== 0) {
             _that.editSubCache.strHasSerialize = false;
             _that.editSubCache.strShowType = 1;
@@ -738,15 +696,13 @@ export default {
     },
     saveString: function () {
       let _that = this;
-      let params = {UniKey: this.redisCheck, Value: this.searchResult, "Key": this.cache.cacheKey};
-      Vue.axios.post(this.apiHost + '/api/save/string', params).then(function (response) {
+      redis.RedisSaveString(this.redisCheck, this.cache.cacheKey, this.searchResult, function (response) {
         _that.success('保存成功');
-      });
+      })
     },
     delCache: function () {
       let _that = this;
-      let params = {UniKey: this.redisCheck, Value: this.searchResult, "Key": this.cache.cacheKey};
-      Vue.axios.post(this.apiHost + '/api/del/key', params).then(function (response) {
+      redis.RedisDelKey(this.redisCheck, this.cache.cacheKey, function (response) {
         _that.success('删除成功');
         let newKeysList = [];
         for (let k in _that.keysResult) {
@@ -756,30 +712,21 @@ export default {
         }
         _that.keysResult = newKeysList;
         _that.cacheInit();
-      });
+      })
     },
     funcEditSubCache: function () {
       if (this.editSubCache.strShowType !== 1) {
         this.error('请取消格式化或序列化');
         return false;
       }
-      let params = {
-        UniKey: this.redisCheck,
-        cacheType: this.editSubCache.cacheType,
-        cacheKey: this.editSubCache.cacheKey,
-        cacheValue: this.editSubCache.value,
-        index: parseInt(this.editSubCache.index),
-        cacheMember: this.editSubCache.member,
-        cacheScore: parseFloat(this.editSubCache.score),
-        cacheField: this.editSubCache.field,
-      };
-
       let _that = this;
-      Vue.axios.post(this.apiHost + '/api/edit/sub', params).then(function (response) {
-        _that.success('修改成功');
-        _that.search(_that.cache.cacheKey);
-        _that.editCacheClass = false;
-      });
+      redis.RedisEditSub(this.redisCheck, this.editSubCache.cacheKey, this.editSubCache.cacheType,
+        this.editSubCache.field, this.editSubCache.value, this.editSubCache.key, this.editSubCache.score,
+        this.editSubCache.member, function (response) {
+          _that.success('修改成功');
+          _that.search(_that.cache.cacheKey);
+          _that.editCacheClass = false;
+        })
     },
     transResponseData: function (data) {
       let returnDataType = Object.prototype.toString.call(data);
@@ -825,19 +772,13 @@ export default {
     },
     saveTTL: function () {
       let _that = this;
-      let params = {
-        UniKey: this.redisCheck,
-        Value: this.searchResult,
-        Key: this.cache.cacheKey,
-        TTL: parseInt(this.cache.ttl)
-      };
       if (this.checkNumber(this.cache.ttl) === false) {
         return
       }
-      Vue.axios.post(this.apiHost + '/api/edit/ttl', params).then(function (response) {
+      redis.RedisEditTtl(this.redisCheck, this.cache.cacheKey, parseInt(this.cache.ttl), function (response) {
         _that.success('修改成功');
         _that.cache.startEditTTL = false;
-      });
+      })
     },
     checkNumber: function (num) {
       let result = /^[-]?[1-9][0-9]*$/.test(num);
@@ -859,7 +800,7 @@ export default {
     delAll: function () {
       let deleteKeysList = [];
       for (var i in this.keysResult) {
-        if(this.keysResult[i].boolShow){
+        if (this.keysResult[i].boolShow) {
           deleteKeysList.push(this.keysResult[i].CacheKey);
         }
       }
@@ -872,12 +813,12 @@ export default {
         type: 'warning'
       }).then(() => {
         _that.setLoading(params)
-        Vue.axios.post(this.apiHost + '/api/delete/all', params).then(function (response) {
+        redis.RedisDelAllKey(this.redisCheck, deleteKeysList, function (response) {
           _that.success('删除成功');
           _that.cacheInit();
           _that.keysSearch();
           _that.cancelLoading(params)
-        });
+        })
       }).catch(() => {
 
       });
@@ -890,15 +831,17 @@ export default {
       let params = this.addSubCache;
       params.UniKey = this.redisCheck;
       params.cacheScore = parseFloat(params.cacheScore);
-      Vue.axios.post(this.apiHost + '/api/create', params).then(function (response) {
-        _that.success('创建成功');
-        _that.addCacheClass = false;
-        if (_that.addSubCache.boolCreate === 1) {
-          _that.keysSearch();
-        } else {
-          _that.search(_that.cache.cacheKey);
-        }
-      });
+      redis.RedisCreateCache(
+        this.redisCheck, params.cacheKey, params.boolCreate, params.cacheType, params.cacheField, params.cacheValue,
+        params.lPushValue, params.rPushValue, params.cacheMember, params.cacheScore, function (response) {
+          _that.success('创建成功');
+          _that.addCacheClass = false;
+          if (_that.addSubCache.boolCreate === 1) {
+            _that.keysSearch();
+          } else {
+            _that.search(_that.cache.cacheKey);
+          }
+        })
     },
     delSub: function (sub) {
       let params = {
@@ -914,18 +857,18 @@ export default {
           cancelButtonText: '取消',
           type: 'warning'
         }).then(() => {
-          Vue.axios.post(this.apiHost + '/api/del/sub', params).then(function (response) {
+          redis.RedisDelSub(this.redisCheck, params.cacheKey, params.cacheType, params.sub, function (response) {
             _that.success('删除成功');
             _that.search(_that.cache.cacheKey);
-          });
+          })
         }).catch(() => {
           return false;
         });
       } else {
-        Vue.axios.post(this.apiHost + '/api/del/sub', params).then(function (response) {
+        redis.RedisDelSub(this.redisCheck, params.cacheKey, params.cacheType, params.sub, function (response) {
           _that.success('删除成功');
           _that.search(_that.cache.cacheKey);
-        });
+        })
       }
     },
     editSub: function (row) {
@@ -1003,18 +946,18 @@ export default {
     getStore: function (key) {
       return localStorage.getItem(key);
     },
-    setLoading : function (params){
+    setLoading: function (params) {
       this.loadingStatus[params.ExecType] = true
       let that = this
-      setTimeout(function (){
+      setTimeout(function () {
         that.loadingStatus[params.ExecType] = false
-      } , 25000)
+      }, 25000)
     },
-    cancelLoading : function (params){
+    cancelLoading: function (params) {
       let that = this
-      setTimeout(function (){
+      setTimeout(function () {
         that.loadingStatus[params.ExecType] = false
-      } , 1000)
+      }, 1000)
     },
   }
 }

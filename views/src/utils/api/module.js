@@ -1,4 +1,4 @@
-//开启的module名
+
 function GetSystemName(){
   return 'zhima';
 }
@@ -23,6 +23,20 @@ function GetRedisConfigList(){
   }
 }
 
+
+//拿到code
+function GetCodeConfigList(){
+  let codeList = [];
+  switch (GetSystemName()){
+    case 'zhima':
+      codeList = require("../../config/zhima/codeList.json")
+      break;
+    default:
+      codeList = [];
+  }
+  return codeList;
+}
+
 //拿到mysql配置
 function GetMysqlConfigList(){
   switch (GetSystemName()){
@@ -38,6 +52,16 @@ function GetShellConfigList(){
   switch (GetSystemName()){
     case 'zhima':
       return require("../../config/zhima/shellConfigList.json")
+    default:
+      return [];
+  }
+}
+
+//拿到shell配置
+function GetConsumerConfigList(){
+  switch (GetSystemName()){
+    case 'zhima':
+      return require("../../config/zhima/consumer.json")
     default:
       return [];
   }
@@ -60,4 +84,6 @@ export default {
   GetMysqlConfigList,
   GetShellConfigList,
   GetEncryptConfig,
+  GetCodeConfigList,
+  GetConsumerConfigList,
 }

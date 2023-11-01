@@ -56,7 +56,8 @@ Axios.interceptors.response.use(
       NProgress.done();
     },700);
     if(response.data.ErrCode === 1){
-      window.location.reload();
+      // window.location.reload();
+      Message.error(response.data.ErrMsg);
     }else if(response.data.ErrCode !== 0 ){
       Message.error(response.data.ErrMsg);
     }

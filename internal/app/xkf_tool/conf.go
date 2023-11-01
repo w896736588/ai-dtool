@@ -59,23 +59,23 @@ func InitConfig() {
 }
 
 //GetProducer 拿到生产者
-func GetProducer(host, port, topic string) *gsnsq.NsqStruct {
-	checkKey := host + port + topic
-	if producer, ok := ProducerMap[checkKey]; ok {
-		return producer
-	}
-	producer := gsnsq.NsqInit(topic)
-	err := producer.CreateProducer(gsnsq.NsqConfig{
-		Host: host,
-		Port: port,
-	})
-	if err != nil {
-		Logger.Errorf(`GetProducer ` + err.Error())
-		return nil
-	}
-	ProducerMap[checkKey] = producer
-	return producer
-}
+//func GetProducer(host, port, topic string) *gsnsq.NsqStruct {
+//	checkKey := host + port + topic
+//	if producer, ok := ProducerMap[checkKey]; ok {
+//		return producer
+//	}
+//	producer := gsnsq.NsqInit(topic)
+//	err := producer.CreateProducer(gsnsq.NsqConfig{
+//		Host: host,
+//		Port: port,
+//	})
+//	if err != nil {
+//		Logger.Errorf(`GetProducer ` + err.Error())
+//		return nil
+//	}
+//	ProducerMap[checkKey] = producer
+//	return producer
+//}
 
 //GetDevMysql x
 func GetDevMysql(reqBody *SshExec) {

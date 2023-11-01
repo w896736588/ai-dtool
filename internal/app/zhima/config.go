@@ -3,9 +3,14 @@ package zhima
 import (
 	"dev_tool/base_module"
 	"dev_tool/internal/app/zhima/controller"
+	"fmt"
+	"gitee.com/Sxiaobai/gs/gssocket"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/spf13/viper"
+	"net/http"
+	"strings"
 )
 
 var AppName = `zhima`
@@ -15,6 +20,7 @@ var ConfigViper *viper.Viper
 var Encrypt *gstool.Encrypt //全局加密
 var Global *base_module.Global
 var GlobalGin *base_module.Global //专为gin处理的
+var SocketServer gssocket.Server
 
 func InitBase() {
 	var err error
@@ -37,6 +43,7 @@ func Stop() {
 }
 func getLogger() {
 	Logger = gstool.CreateLogger(RootPath+`/logs/`+AppName, ``)
+	base_module.Logger = Logger
 }
 func getGlobal() {
 	Global = &base_module.Global{}
@@ -78,7 +85,36 @@ func getGin() {
 	vipRouter()
 	dockerRouter()
 	loginRouter()
+	initSocket()
 	GlobalGin.GinRun()
+}
+
+func GetClientId(unikey, shellName string) string {
+	return unikey + `#` + shellName
+}
+
+func initSocket() {
+	SocketServer = gssocket.Server{
+		Host:        fmt.Sprintf(`0.0.0.0:%s`, ConfigViper.GetString(`run.wsPort`)),
+		Uri:         `/socket`,
+		AllowOrigin: true,
+	}
+	SocketServer.GetClientFunc = func(r *http.Request) string {
+		return GetClientId(r.FormValue(`Unikey`), r.FormValue(`ShellName`))
+	}
+	SocketServer.ReceMsgFunc = func(s string) string {
+		return ``
+	}
+	SocketServer.ConnectFunc = func(clientId string, conn *websocket.Conn) {
+		connParams := strings.Split(clientId, `#`)
+		shell, err := base_module.GetGlobal(connParams[0]).ShellPushGetClient(connParams[1])
+		if err != nil {
+			gstool.FmtPrintlnLog(`获取client失败 %s`, err.Error())
+		} else {
+			shell.WsConn = conn
+		}
+	}
+	go SocketServer.Start()
 }
 
 //基础接口

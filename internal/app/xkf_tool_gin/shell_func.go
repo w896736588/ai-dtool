@@ -293,17 +293,17 @@ func (command *Command) WechatKefuChange(reqBody *xkf_tool.SshExec, cliConf *gst
 	}
 	//丢一个topic
 	time.Sleep(time.Second)
-	host := reqBody.SshConfig.Host
-	if reqBody.SshName == `wk` {
-		host = reqBody.WkSshConfig.Host
-	}
-	producer := xkf_tool.GetProducer(host, `4150`, `wechat_kefu_open_`+appInfo.Appid)
-	if producer != nil {
-		err := producer.PublishMsg(`0`)
-		if err != nil {
-			xkf_tool.Logger.Errorf(`推送消息失败 %s`, err.Error())
-		}
-	}
+	//host := reqBody.SshConfig.Host
+	//if reqBody.SshName == `wk` {
+	//	host = reqBody.WkSshConfig.Host
+	//}
+	//producer := xkf_tool.GetProducer(host, `4150`, `wechat_kefu_open_`+appInfo.Appid)
+	//if producer != nil {
+	//	err := producer.PublishMsg(`0`)
+	//	if err != nil {
+	//		xkf_tool.Logger.Errorf(`推送消息失败 %s`, err.Error())
+	//	}
+	//}
 	phpRunCommand := fmt.Sprintf(command.dockerExecCommand, reqBody.DockerId) + fmt.Sprintf(command.runPhpCommand, reqBody.DockerCodePath, appInfo.Appid)
 	gstool.FmtPrintlnLog(`执行命令 %s`, phpRunCommand)
 	_, err := cli.RunShell3([]byte(phpRunCommand))
@@ -719,26 +719,26 @@ func (command *Command) QueryWechatQrCdeList(reqBody *xkf_tool.SshExec) string {
 		xkf_tool.Logger.Errorf(`获取渠道列表失败`)
 		return `获取渠道列表失败`
 	} else {
-		for _, channelInfo := range *channelList {
+		for _, channelInfo := range channelList {
 			tempMap := make(map[string]interface{})
-			channelRelList, err := xkf_tool.XkfDevMysql.GetAll(`select user_id,short_code from tbl_channel_user_rel where wechatapp_id = ? and channel_id = ? and status = 1`, appInfo.Id, channelInfo.G(`_id`).ToInt())
+			channelRelList, err := xkf_tool.XkfDevMysql.GetAll(`select user_id,short_code from tbl_channel_user_rel where wechatapp_id = ? and channel_id = ? and status = 1`, appInfo.Id, cast.ToInt(channelInfo[`_id`]))
 			if err != nil {
 				continue
 			}
-			tempMap[`_id`] = channelInfo.G(`_id`).ToStr()
-			tempMap[`channel_name`] = channelInfo.G(`channel_name`).ToStr()
+			tempMap[`_id`] = cast.ToString(channelInfo[`_id`])
+			tempMap[`channel_name`] = cast.ToString(channelInfo[`channel_name`])
 			linkList := make([]map[string]string, 0)
-			for _, channelRel := range *channelRelList {
+			for _, channelRel := range channelRelList {
 				staffName := ``
-				for _, staffInfo := range *staffList {
-					if staffInfo.G(`user_id`).ToStr() == channelRel.G(`user_id`).ToStr() {
-						staffName = staffInfo.G(`name`).ToStr()
+				for _, staffInfo := range staffList {
+					if cast.ToString(staffInfo[`user_id`]) == cast.ToString(channelRel[`user_id`]) {
+						staffName = cast.ToString(staffInfo[`name`])
 						break
 					}
 				}
 				linkList = append(linkList, map[string]string{
 					`staff_name`: staffName,
-					`short_code`: channelRel.G(`short_code`).ToStr(),
+					`short_code`: cast.ToString(channelRel[`short_code`]),
 				})
 			}
 			tempMap[`link_list`] = linkList

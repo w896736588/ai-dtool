@@ -8,6 +8,7 @@ import (
 )
 
 func (h *Global) RedisGetClient(name string) (*gsdb.GsRedis, error) {
+	gstool.FmtPrintlnLog(`获取redis name为%s`, name)
 	clientValue := h.redisClientMap.G(name)
 	if clientValue != nil {
 		return clientValue.Value().(*gsdb.GsRedis), nil
@@ -16,6 +17,7 @@ func (h *Global) RedisGetClient(name string) (*gsdb.GsRedis, error) {
 	if err != nil {
 		return nil, err
 	}
+	gstool.FmtPrintlnLog(`获取redis配置为%#v`, config)
 	gsDb := &gsdb.GsRedis{
 		RedisConfig: config,
 	}
@@ -30,6 +32,7 @@ func (h *Global) RedisGetClient(name string) (*gsdb.GsRedis, error) {
 func (h *Global) RedisGetConfig(name string) (*gsdb.RedisConfig, error) {
 	returnConfig := &gsdb.RedisConfig{}
 	valueConfig := h.redisConfigMap.G(name)
+	gstool.FmtPrintlnLog(`获取redis配置 %s %#v`, name, valueConfig)
 	if valueConfig == nil {
 		return nil, errors.New(`未注册的服务`)
 	}
@@ -49,6 +52,5 @@ func (h *Global) RedisSetConfig(config *gsdb.RedisConfig) {
 	if config.Name == `` {
 		h.Warn(`未设置name，可能存在问题，每个配置需要设置不同的name %v`, config)
 	}
-	gstool.FmtPrintlnLog(`设置内容 %s %s`, config.Name, gstool.JsonEncode(config))
 	h.redisConfigMap.S(config.Name, gstool.JsonEncode(config))
 }

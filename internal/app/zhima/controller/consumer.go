@@ -7,6 +7,7 @@ import (
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/cast"
 	"strings"
 )
 
@@ -17,24 +18,20 @@ func ConsumerRestartAll(c *gin.Context) {
 		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
 		return
 	}
-	dockerName := reqMap[`DockerName`].ToStr()
-	restartCommand := base_module.NewCommand().Sudo().Cd(reqMap[`CodePath`].ToStr())
+	dockerName := cast.ToString(reqMap[`DockerName`])
+	restartCommand := base_module.NewCommand().Sudo()
 	if dockerName == `` { //非docker环境
 		restartCommand.ConsumerRestartAll()
 	} else {
 		restartCommand.DockerExecConsumerRestartAll(dockerName)
 	}
-	_, err = shell.RunShell3(restartCommand.GetCommand().ToByte())
-	if err != nil {
-		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
-		return
-	}
+	_ = shell.RunShell(restartCommand.GetCommand().ToByte())
 	statusRet, err := getConsumerStatus(dockerName, reqMap, shell)
 	if err != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
 		return
 	}
-	gsgin.GinResponse(c, gsgin.ResponseError, strings.Join(statusRet, gsdefine.Enter), nil)
+	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, strings.Join(statusRet, gsdefine.Enter))
 }
 
 //ConsumerStopAll 停止所有
@@ -44,24 +41,20 @@ func ConsumerStopAll(c *gin.Context) {
 		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
 		return
 	}
-	dockerName := reqMap[`DockerName`].ToStr()
-	restartCommand := base_module.NewCommand().Sudo().Cd(reqMap[`CodePath`].ToStr())
+	dockerName := cast.ToString(reqMap[`DockerName`])
+	restartCommand := base_module.NewCommand().Sudo().Cd(cast.ToString(reqMap[`CodePath`]))
 	if dockerName == `` { //非docker环境
 		restartCommand.ConsumerStopAll()
 	} else {
 		restartCommand.DockerExecConsumerStopAll(dockerName)
 	}
-	_, err = shell.RunShell3(restartCommand.GetCommand().ToByte())
-	if err != nil {
-		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
-		return
-	}
+	_ = shell.RunShell(restartCommand.GetCommand().ToByte())
 	statusRet, err := getConsumerStatus(dockerName, reqMap, shell)
 	if err != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
 		return
 	}
-	gsgin.GinResponse(c, gsgin.ResponseError, strings.Join(statusRet, gsdefine.Enter), nil)
+	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, strings.Join(statusRet, gsdefine.Enter))
 }
 
 // ConsumerStatusList 消费者列表 通过supervisorctl status获取
@@ -71,33 +64,27 @@ func ConsumerStatusList(c *gin.Context) {
 		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
 		return
 	}
-	dockerName := reqMap[`DockerName`].ToStr()
+	dockerName := cast.ToString(reqMap[`DockerName`])
 	statusRet, err := getConsumerStatus(dockerName, reqMap, shell)
 	if err != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
 		return
 	}
-	gsgin.GinResponse(c, gsgin.ResponseError, strings.Join(statusRet, gsdefine.Enter), nil)
+	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, strings.Join(statusRet, gsdefine.Enter))
 }
 
 //拿到消费者状态 支持docker与非docker
-func getConsumerStatus(dockerName string, reqMap map[string]*gstool.GsCons, shell *gstool.GsShell) ([]string, error) {
+func getConsumerStatus(dockerName string, reqMap map[string]interface{}, shell *gstool.GsShellPush) ([]string, error) {
 	//消费者
 	retMsgList := make([]string, 0)
 	if dockerName == `` { //非docker环境
 		statusCommand := base_module.NewCommand().Sudo().ConsumerStatus()
-		statusRet, err := shell.RunShell3(statusCommand.GetCommand().ToByte())
-		if err != nil {
-			return nil, err
-		}
+		statusRet := shell.RunShell(statusCommand.GetCommand().ToByte())
 		retMsgList = append(retMsgList, statusRet)
 	} else {
-		xkfStatusCommand := base_module.NewCommand().Sudo().Cd(reqMap[`CodePath`].ToStr())
+		xkfStatusCommand := base_module.NewCommand().Sudo()
 		xkfStatusCommand.DockerExecConsumerStatus(dockerName)
-		xkfStatusRet, err := shell.RunShell3(xkfStatusCommand.GetCommand().ToByte())
-		if err != nil {
-			return nil, err
-		}
+		xkfStatusRet := shell.RunShell(xkfStatusCommand.GetCommand().ToByte())
 		retMsgList = append(retMsgList, xkfStatusRet)
 	}
 	return retMsgList, nil
@@ -111,14 +98,10 @@ func ConsumerConfigShow(c *gin.Context) {
 		return
 	}
 	retMsgList := make([]string, 0)
-	catCommand := base_module.NewCommand().Sudo().ConsumerConfigCat(reqMap[`SupervisorConfigPath`].ToStr())
-	ret, err := shell.RunShell3(catCommand.GetCommand().ToByte())
-	if err != nil {
-		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
-		return
-	}
+	catCommand := base_module.NewCommand().Sudo().ConsumerConfigCat(cast.ToString(reqMap[`SupervisorConfigPath`]))
+	ret := shell.RunShell(catCommand.GetCommand().ToByte())
 	retMsgList = append(retMsgList, ret)
-	gsgin.GinResponse(c, gsgin.ResponseError, strings.Join(retMsgList, gsdefine.Enter), nil)
+	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, strings.Join(retMsgList, gsdefine.Enter))
 	return
 }
 
@@ -130,17 +113,14 @@ func ConsumerRestart(c *gin.Context) {
 		return
 	}
 	retMsgList := make([]string, 0)
-	dockerName := reqMap[`DockerName`].ToStr()
-	consumerName := reqMap[`ConsumerName`].ToStr()
+	dockerName := cast.ToString(reqMap[`DockerName`])
+	consumerName := cast.ToString(reqMap[`ConsumerName`])
 	restartCommand := base_module.NewCommand().Sudo()
 	restartCommand.ConsumerRestart(dockerName, consumerName)
-	ret, err := shell.RunShell3(restartCommand.GetCommand().ToByte())
-	if err != nil {
-		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
-		return
-	}
+	restartCommand.ConsumerStatusGrep(dockerName, consumerName)
+	ret := shell.RunShell(restartCommand.GetCommand().ToByte())
 	retMsgList = append(retMsgList, ret)
-	gsgin.GinResponse(c, gsgin.ResponseError, strings.Join(retMsgList, gsdefine.Enter), nil)
+	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, strings.Join(retMsgList, gsdefine.Enter))
 	return
 }
 
@@ -152,17 +132,14 @@ func ConsumerStop(c *gin.Context) {
 		return
 	}
 	retMsgList := make([]string, 0)
-	dockerName := reqMap[`DockerName`].ToStr()
-	consumerName := reqMap[`ConsumerName`].ToStr()
+	dockerName := cast.ToString(reqMap[`DockerName`])
+	consumerName := cast.ToString(reqMap[`ConsumerName`])
 	restartCommand := base_module.NewCommand().Sudo()
 	restartCommand.ConsumerStop(dockerName, consumerName)
-	ret, err := shell.RunShell3(restartCommand.GetCommand().ToByte())
-	if err != nil {
-		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
-		return
-	}
+	restartCommand.ConsumerStatusGrep(dockerName, consumerName)
+	ret := shell.RunShell(restartCommand.GetCommand().ToByte())
 	retMsgList = append(retMsgList, ret)
-	gsgin.GinResponse(c, gsgin.ResponseError, strings.Join(retMsgList, gsdefine.Enter), nil)
+	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, strings.Join(retMsgList, gsdefine.Enter))
 	return
 }
 
@@ -174,29 +151,26 @@ func ConsumerConfigList(c *gin.Context) {
 		return
 	}
 	retMsgList := make([]string, 0)
-	dockerName := reqMap[`DockerName`].ToStr()
-	configListCommand := base_module.NewCommand().Sudo()
+	dockerName := cast.ToString(reqMap[`DockerName`])
+	configListCommand := base_module.NewCommand()
 	configListCommand.ConsumerConfigList(dockerName)
-	ret, err := shell.RunShell3(configListCommand.GetCommand().ToByte())
-	if err != nil {
-		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
-		return
-	}
+	ret := shell.RunShell(configListCommand.GetCommand().ToByte())
+	gstool.FmtPrintlnLog(`结果 %s`, ret)
 	retMsgList = append(retMsgList, ret)
-	gsgin.GinResponse(c, gsgin.ResponseError, strings.Join(retMsgList, gsdefine.Enter), nil)
+	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, strings.Join(retMsgList, gsdefine.Enter))
 	return
 }
 
-func getConsumerReqData(c *gin.Context) (*base_module.Global, map[string]*gstool.GsCons, *gstool.GsShell, error) {
-	global, reqMap, err := GetGlobalReqParams(c)
+func getConsumerReqData(c *gin.Context) (*base_module.Global, map[string]interface{}, *gstool.GsShellPush, error) {
+	global, reqMap, err := GetGlobalReqParamsM(c)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	shellName := reqMap[`ShellName`]
-	if shellName == nil {
+	shellName := cast.ToString(reqMap[`ShellName`])
+	if shellName == `` {
 		return nil, nil, nil, errors.New(`缺少ShellName参数`)
 	}
-	client, err := global.ShellGetClient(shellName.ToStr())
+	client, err := global.ShellPushGetClient(shellName)
 	if err != nil {
 		return nil, nil, nil, err
 	}

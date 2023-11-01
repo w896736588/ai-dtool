@@ -3,35 +3,34 @@ package service
 import (
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gsdb"
-	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
 	"time"
 )
 
 //QueryWechatAppid 查询应用信息
-func QueryWechatAppid(mysqlCli *gsdb.GsMysql, wechatAppId string) *gstool.GsConsMap {
+func QueryWechatAppid(mysqlCli *gsdb.GsMysql, wechatAppId string) map[string]interface{} {
 	data, err := mysqlCli.GetOne(`select _id,app_id,app_type,user_id,app_name from tbl_wechatapp where (app_id = ? or _id = ?) and user_id > 0`, wechatAppId, cast.ToInt(wechatAppId))
 	if err != nil {
-		return gstool.GsConsMapNew(1)
+		return make(map[string]interface{})
 	}
 	return data
 }
 
 // GetAdminUserId 拿到用户信息
-func GetAdminUserId(mysqlCli *gsdb.GsMysql, account string) *gstool.GsConsMap {
+func GetAdminUserId(mysqlCli *gsdb.GsMysql, account string) map[string]interface{} {
 	data, err := mysqlCli.GetOne(`select _id,user_name from tbl_user where (user_name = ? or _id = ?)`, account, cast.ToInt(account))
 	if err != nil {
-		return gstool.GsConsMapNew(1)
+		return make(map[string]interface{})
 	}
 	return data
 }
 
 // QueryEnvWechatKefuList 查询微信客服
-func QueryEnvWechatKefuList(mysqlCli *gsdb.GsMysql, adminUserId string) *[]*gstool.GsConsMap {
+func QueryEnvWechatKefuList(mysqlCli *gsdb.GsMysql, adminUserId string) []map[string]interface{} {
 	dataList, err := mysqlCli.GetAll(`select app_name,app_id,app_type from tbl_wechatapp where user_id = ? and app_type = ?`, adminUserId, `wechat_kefu`)
 	if err != nil {
-		dataList := make([]*gstool.GsConsMap, 0)
-		return &dataList
+		dataList := make([]map[string]interface{}, 0)
+		return dataList
 	}
 	return dataList
 }
@@ -53,7 +52,7 @@ func UpdateVip(mysqlCli *gsdb.GsMysql, adminUserId, expiredDay, systemType, vipL
 }
 
 // QueryVip 查询VIP信息
-func QueryVip(mysqlCli *gsdb.GsMysql, adminUserId, systemType string) (*gstool.GsConsMap, error) {
+func QueryVip(mysqlCli *gsdb.GsMysql, adminUserId, systemType string) (map[string]interface{}, error) {
 	vipTable := `tbl_kefu_vip`
 	if systemType == `1` { //客服系统
 		vipTable = `tbl_kefu_vip`
@@ -70,9 +69,9 @@ func QueryOneWechatAppIdChannelId(mysqlCli *gsdb.GsMysql, userId int) (string, s
 	if err != nil {
 		return ``, ``, err
 	}
-	channelInfo, err := mysqlCli.GetOne(`select channel_id from tbl_channel_user_rel where user_id = ? and wechatapp_id = ? and status = 1`, userId, appInfo.G(`wechatapp_id`).ToInt())
+	channelInfo, err := mysqlCli.GetOne(`select channel_id from tbl_channel_user_rel where user_id = ? and wechatapp_id = ? and status = 1`, userId, cast.ToInt(appInfo[`wechatapp_id`]))
 	if err != nil {
 		return ``, ``, err
 	}
-	return appInfo.G(`wechatapp_id`).ToStr(), channelInfo.G(`channel_id`).ToStr(), nil
+	return cast.ToString(appInfo[`wechatapp_id`]), cast.ToString(channelInfo[`channel_id`]), nil
 }

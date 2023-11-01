@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 	"strings"
-	"time"
 )
 
 // WechatKefuStatus 查询微信客服应用的状态
@@ -24,18 +23,21 @@ func WechatKefuStatus(c *gin.Context) {
 	}
 
 	appInfo := service.QueryWechatAppid(mysqlCli, reqMap[`WechatKefuAppid`].ToStr())
-	if appInfo.G(`app_id`).ToStr() == `` || appInfo.G(`app_type`).ToStr() != `wechat_kefu` {
+	appIdStr := cast.ToString(appInfo[`app_id`])
+	userIdStr := cast.ToString(appInfo[`user_id`])
+	appTypeStr := cast.ToString(appInfo[`app_type`])
+	if appIdStr == `` || appTypeStr != `wechat_kefu` {
 		BaseResponseByError(c, errors.New(`找不到微信客服应用`))
 		return
 	}
-	command := base_module.NewCommand().Sudo().WechatKefuStatus(appInfo.G(`app_id`).ToStr())
+	command := base_module.NewCommand().Sudo().WechatKefuStatus(appIdStr)
 
 	RunResultMsg, err := shell.RunShell3(command.GetCommand().ToByte())
 	if err != nil {
 		BaseResponseByError(c, err)
 		return
 	}
-	appMsg := fmt.Sprintf(`所属管理员ID %s %s %s`, appInfo.G(`user_id`), appInfo.G(`app_id`), xkf_tool.ENTER)
+	appMsg := fmt.Sprintf(`所属管理员ID %s %s %s`, userIdStr, appIdStr, xkf_tool.ENTER)
 	gsgin.GinResponse(c, gsgin.ResponseSuccess, appMsg+RunResultMsg, ``)
 }
 
@@ -48,7 +50,9 @@ func WechatKefuChange(c *gin.Context) {
 	}
 
 	appInfo := service.QueryWechatAppid(mysqlCli, reqMap[`WechatKefuAppid`].ToStr())
-	if appInfo.G(`app_id`).ToStr() == `` || appInfo.G(`app_type`).ToStr() != `wechat_kefu` {
+	appIdStr := cast.ToString(appInfo[`app_id`])
+	appTypeStr := cast.ToString(appInfo[`app_type`])
+	if appIdStr == `` || appTypeStr != `wechat_kefu` {
 		BaseResponseByError(c, errors.New(`找不到微信客服应用`))
 		return
 	}
@@ -62,7 +66,7 @@ func WechatKefuChange(c *gin.Context) {
 	dockerList := strings.Split(dockerLists, `\n`)
 	retMsgList := make([]string, 0)
 	for _, dockerName := range dockerList {
-		cProcess := base_module.NewCommand().WechatKefuProcess(dockerName, appInfo.G(`app_id`).ToStr())
+		cProcess := base_module.NewCommand().WechatKefuProcess(dockerName, appIdStr)
 		runResultMsg, err := shell.RunShell3(cProcess.GetCommand().ToByte())
 		if err != nil {
 			gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
@@ -87,29 +91,29 @@ func WechatKefuChange(c *gin.Context) {
 		}
 	}
 	//丢一个topic
-	time.Sleep(time.Second)
-	producer := xkf_tool.GetProducer(`172.16.0.185`, `4150`, `wechat_kefu_open_`+appInfo.G(`app_id`).ToStr())
-	if producer != nil {
-		err := producer.PublishMsg(`0`)
-		if err != nil {
-			gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
-			return
-		}
-	}
+	//time.Sleep(time.Second)
+	//producer := xkf_tool.GetProducer(`172.16.0.185`, `4150`, `wechat_kefu_open_`+appIdStr)
+	//if producer != nil {
+	//	err := producer.PublishMsg(`0`)
+	//	if err != nil {
+	//		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
+	//		return
+	//	}
+	//}
 	dockerName := reqMap[`DockerName`].ToStr()
 	if dockerName == `` {
 		gsgin.GinResponse(c, gsgin.ResponseError, `DockerName不能为空`, nil)
 		return
 	}
 	//执行脚本
-	cPhpCommand := base_module.NewCommand().Init().Sudo().DockerExecPhpWechatKefu(dockerName, reqMap[`DockerCodePath`].ToStr(), appInfo.G(`app_id`).ToStr())
+	cPhpCommand := base_module.NewCommand().Init().Sudo().DockerExecPhpWechatKefu(dockerName, reqMap[`DockerCodePath`].ToStr(), appIdStr)
 	_, err = shell.RunShell3(cPhpCommand.GetCommand().ToByte())
 	if err != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
 		return
 	}
 	//查询是否成功
-	cProcess := base_module.NewCommand().WechatKefuProcess(dockerName, appInfo.G(`app_id`).ToStr())
+	cProcess := base_module.NewCommand().WechatKefuProcess(dockerName, appIdStr)
 	result, err := shell.RunShell3(cProcess.GetCommand().ToByte())
 	if err != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
@@ -127,11 +131,11 @@ func WechatKefuQueryAppList(c *gin.Context) {
 	}
 
 	userInfo := service.GetAdminUserId(mysqlCli, reqMap[`Account`].ToStr())
-	if userInfo.G(`_id`).ToStr() == `` {
+	if userInfo[`_id`] == `` {
 		gsgin.GinResponse(c, gsgin.ResponseError, ``, nil)
 		return
 	}
-	dataList := service.QueryEnvWechatKefuList(mysqlCli, userInfo.G(`id`).ToStr())
+	dataList := service.QueryEnvWechatKefuList(mysqlCli, cast.ToString(userInfo[`id`]))
 	gsgin.GinResponse(c, gsgin.ResponseError, gstool.JsonEncode(dataList), nil)
 }
 
@@ -143,38 +147,38 @@ func WechatKefuQueryQrCdeList(c *gin.Context) {
 		return
 	}
 	appInfo := service.QueryWechatAppid(mysqlCli, reqMap[`WechatKefuAppid`].ToStr())
-	channelList, err := mysqlCli.GetAll(`select _id,channel_name from tbl_channel where wechatapp_id = ? `, appInfo.G(`_id`).ToStr())
+	channelList, err := mysqlCli.GetAll(`select _id,channel_name from tbl_channel where wechatapp_id = ? `, cast.ToString(appInfo[`_id`]))
 	if err != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
 		return
 	}
-	staffList, err := mysqlCli.GetAll(`select name,user_id from tbl_staff where parent_user_id = ? `, appInfo.G(`user_id`).ToStr())
+	staffList, err := mysqlCli.GetAll(`select name,user_id from tbl_staff where parent_user_id = ? `, cast.ToString(appInfo[`user_id`]))
 	if err != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
 		return
 	}
 	returnMap := make([]map[string]interface{}, 0)
 
-	for _, channelInfo := range *channelList {
+	for _, channelInfo := range channelList {
 		tempMap := make(map[string]interface{})
-		channelRelList, err := mysqlCli.GetAll(`select user_id,short_code from tbl_channel_user_rel where wechatapp_id = ? and channel_id = ? and status = 1`, appInfo.G(`_id`).ToStr(), channelInfo.G(`_id`).ToInt())
+		channelRelList, err := mysqlCli.GetAll(`select user_id,short_code from tbl_channel_user_rel where wechatapp_id = ? and channel_id = ? and status = 1`, cast.ToString(appInfo[`_id`]), cast.ToInt(channelInfo[`_id`]))
 		if err != nil {
 			continue
 		}
-		tempMap[`_id`] = channelInfo.G(`_id`).ToStr()
-		tempMap[`channel_name`] = channelInfo.G(`channel_name`).ToStr()
+		tempMap[`_id`] = cast.ToString(channelInfo[`_id`])
+		tempMap[`channel_name`] = cast.ToString(channelInfo[`channel_name`])
 		linkList := make([]map[string]string, 0)
-		for _, channelRel := range *channelRelList {
+		for _, channelRel := range channelRelList {
 			staffName := ``
-			for _, staffInfo := range *staffList {
-				if staffInfo.G(`user_id`).ToStr() == channelRel.G(`user_id`).ToStr() {
-					staffName = staffInfo.G(`name`).ToStr()
+			for _, staffInfo := range staffList {
+				if cast.ToString(staffInfo[`user_id`]) == cast.ToString(channelRel[`user_id`]) {
+					staffName = cast.ToString(staffInfo[`name`])
 					break
 				}
 			}
 			linkList = append(linkList, map[string]string{
 				`staff_name`: staffName,
-				`short_code`: channelRel.G(`short_code`).ToStr(),
+				`short_code`: cast.ToString(channelRel[`short_code`]),
 			})
 		}
 		tempMap[`link_list`] = linkList

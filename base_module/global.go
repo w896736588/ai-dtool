@@ -6,6 +6,7 @@ import (
 )
 
 var globalMap *gstool.GsConsMap
+var Logger *gstool.GsLogger
 
 func init() {
 	globalMap = gstool.GsConsMapNew(10)
@@ -61,6 +62,7 @@ func (h *Global) Init() {
 	h.mysqlClientMap = gstool.GsConsMapNew(10) //全局的mysql客户端连接
 	h.shellClientMap = gstool.GsConsMapNew(10) //全局的shell客户端连接
 	h.shellConfigMap = gstool.GsConsMapNew(10) //全局的shell配置
+	h.SetLogger(Logger)
 }
 
 func (h *Global) Debug(msg string, args ...interface{}) {

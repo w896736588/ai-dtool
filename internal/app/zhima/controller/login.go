@@ -21,29 +21,29 @@ func LoginLink(c *gin.Context) {
 		return
 	}
 	account := reqMap[`Account`]
-	if account.IsEmpty() {
+	if account == nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, `账号不能为空`, nil)
 		return
 	}
-	userInfo := service.GetAdminUserId(mysqlCli, account.ToStr())
-	if userInfo.G(`_id`).IsEmpty() {
+	userInfo := service.GetAdminUserId(mysqlCli, cast.ToString(account))
+	if userInfo[`_id`] == nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, `找不到该账号`, nil)
 		return
 	}
-	loginHost := reqMap[`LoginHost`].ToStr()
+	loginHost := cast.ToString(reqMap[`LoginHost`])
 
 	//拿到一个应用ID和一个渠道ID
-	wechatAppId, channelId, errQuery := service.QueryOneWechatAppIdChannelId(mysqlCli, cast.ToInt(userInfo.G(`_id`).ToInt()))
+	wechatAppId, channelId, errQuery := service.QueryOneWechatAppIdChannelId(mysqlCli, cast.ToInt(userInfo[`_id`]))
 	if errQuery != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, errQuery.Error(), nil)
 		return
 	}
-	redirectUrl := reqMap[`LoginUrl`].ToStr()
+	redirectUrl := cast.ToString(reqMap[`LoginUrl`])
 	redirectUrl = strings.Replace(redirectUrl, `{wechatapp_id}`, wechatAppId, -1)
 	redirectUrl = strings.Replace(redirectUrl, `{channel_id}`, channelId, -1)
 	token := gstool.JsonEncode(map[string]string{
 		`login_type`: `1`,
-		`user_id`:    cast.ToString(userInfo.G(`_id`)),
+		`user_id`:    cast.ToString(userInfo[`_id`]),
 		`param`: gstool.JsonEncode(map[string]string{
 			`uri`: redirectUrl,
 		}),
@@ -59,8 +59,8 @@ func LoginLink(c *gin.Context) {
 	return
 }
 
-func getLoginReqData(c *gin.Context) (*base_module.Global, map[string]*gstool.GsCons, *gstool.Encrypt, *gsdb.GsMysql, error) {
-	global, reqMap, err := GetGlobalReqParams(c)
+func getLoginReqData(c *gin.Context) (*base_module.Global, map[string]interface{}, *gstool.Encrypt, *gsdb.GsMysql, error) {
+	global, reqMap, err := GetGlobalReqParamsM(c)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -68,8 +68,8 @@ func getLoginReqData(c *gin.Context) (*base_module.Global, map[string]*gstool.Gs
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	mysqlName := reqMap[`mysqlName`]
-	mysqlCli, err := global.MysqlGetClient(mysqlName.ToStr())
+	mysqlName := cast.ToString(reqMap[`mysqlName`])
+	mysqlCli, err := global.MysqlGetClient(mysqlName)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

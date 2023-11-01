@@ -20,11 +20,11 @@ func QueryWechatAppid(wechatAppId string) TblWechatapp {
 		Logger.Errorf(`执行sql出错 %s`, err.Error())
 		return appInfo
 	}
-	appInfo.AppType = data.G(`app_type`).ToStr()
-	appInfo.Appid = data.G(`app_id`).ToStr()
-	appInfo.AppName = data.G(`app_name`).ToStr()
-	appInfo.UserId = data.G(`user_id`).ToStr()
-	appInfo.Id = data.G(`_id`).ToStr()
+	appInfo.AppType = cast.ToString(data[`app_type`])
+	appInfo.Appid = cast.ToString(data[`app_id`])
+	appInfo.AppName = cast.ToString(data[`app_name`])
+	appInfo.UserId = cast.ToString(data[`user_id`])
+	appInfo.Id = cast.ToString(data[`_id`])
 	return appInfo
 }
 
@@ -39,8 +39,8 @@ func GetAdminUserId(account string) TblUser {
 		log.Errorf(`执行sql出错 %s`, err.Error())
 		return userInfo
 	}
-	userInfo.Id = data.G(`_id`).ToStr()
-	userInfo.Username = data.G(`user_name`).ToStr()
+	userInfo.Id = cast.ToString(data[`_id`])
+	userInfo.Username = cast.ToString(data[`user_name`])
 	return userInfo
 }
 
@@ -84,8 +84,8 @@ func QueryVip(adminUserId, systemType string) *TblVip {
 		log.Errorf(`执行sql出错 %s`, err.Error())
 		return vipInfo
 	}
-	vipInfo.VipType = data.G(`vip_type`).ToStr()
-	vipInfo.ExpiredTime = data.G(`expired_time`).ToStr()
+	vipInfo.VipType = cast.ToString(data[`vip_type`])
+	vipInfo.ExpiredTime = cast.ToString(data[`expired_time`])
 	return vipInfo
 }
 
@@ -99,11 +99,11 @@ func QueryEnvWechatKefuList(adminUserId string) string {
 	if err != nil {
 		return fmt.Sprintf(`执行sql出错 %s`, err.Error())
 	}
-	for _, data := range *dataList {
+	for _, data := range dataList {
 		appInfo := TblWechatapp{}
-		appInfo.AppType = data.G(`app_type`).ToStr()
-		appInfo.Appid = data.G(`app_id`).ToStr()
-		appInfo.AppName = data.G(`app_name`).ToStr()
+		appInfo.AppType = cast.ToString(data[`app_type`])
+		appInfo.Appid = cast.ToString(data[`app_id`])
+		appInfo.AppName = cast.ToString(data[`app_name`])
 		appList = append(appList, appInfo)
 	}
 	return gstool.JsonEncode(appList)
@@ -116,10 +116,10 @@ func QueryOneWechatAppIdChannelId(userId int) (string, string) {
 	if err != nil {
 		Logger.Errorf(`执行错误 %s`, err.Error())
 	}
-	channelInfo, err := XkfDevMysql.GetOne(`select channel_id from tbl_channel_user_rel where user_id = ? and wechatapp_id = ? and status = 1`, userId, appInfo.G(`wechatapp_id`).ToInt())
+	channelInfo, err := XkfDevMysql.GetOne(`select channel_id from tbl_channel_user_rel where user_id = ? and wechatapp_id = ? and status = 1`, userId, cast.ToInt(appInfo[`wechatapp_id`]))
 	fmt.Println(fmt.Sprintf(`%#v`, channelInfo))
 	if err != nil {
 		Logger.Errorf(`执行错误 %s`, err.Error())
 	}
-	return appInfo.G(`wechatapp_id`).ToStr(), channelInfo.G(`channel_id`).ToStr()
+	return cast.ToString(appInfo[`wechatapp_id`]), cast.ToString(channelInfo[`channel_id`])
 }

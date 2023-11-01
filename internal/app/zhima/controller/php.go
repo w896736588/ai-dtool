@@ -10,8 +10,9 @@ import (
 //PhpPhpUnSerialize 反序列化（php）
 func PhpPhpUnSerialize(c *gin.Context) {
 	var err error
-	_, reqMap, err := GetGlobalReqParams(c)
+	_, reqMap, err := GetGlobalReqParamsM(c)
 	var out string
+	gstool.FmtPrintlnLog(`反序列化%s`, reqMap[`SerializeStr`])
 	out, err = gstool.PhpUnSerialize(cast.ToString(reqMap[`SerializeStr`]))
 	if err != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), reqMap[`SerializeStr`])
