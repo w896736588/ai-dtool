@@ -44,7 +44,7 @@ func DockerShowCompose(c *gin.Context) {
 		return
 	}
 	dockerComposeFilePath := fmt.Sprintf(`/var/www/dockerfiles/dev_test/app/%s/docker-compose.yml`, dockerName)
-	showCommand := base_module.NewCommand().Sudo().ConsumerConfigCat(dockerComposeFilePath)
+	showCommand := base_module.NewCommand().Sudo().ConsumerConfigCat(dockerComposeFilePath, dockerName)
 	ret, err := shell.RunShell3(showCommand.GetCommand().ToByte())
 	if err != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)

@@ -178,8 +178,13 @@ func (h *Command) DockerExecConsumerStatus(dockerName string) *Command {
 	return h
 }
 
-func (h *Command) ConsumerConfigCat(fileName string) *Command {
-	h.SetCommand(fmt.Sprintf(`%scat %s`, h.sudo, fileName))
+func (h *Command) ConsumerConfigCat(fileName, dockerName string) *Command {
+	if dockerName == `` {
+		h.SetCommand(fmt.Sprintf(`%scat %s`, h.sudo, fileName))
+	} else {
+		h.SetCommand(fmt.Sprintf(`%scat /var/www/dockerfiles/dev_test/docker_volumes/supervisor%s`, h.sudo, fileName))
+	}
+
 	return h
 }
 

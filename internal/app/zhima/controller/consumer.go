@@ -98,7 +98,7 @@ func ConsumerConfigShow(c *gin.Context) {
 		return
 	}
 	retMsgList := make([]string, 0)
-	catCommand := base_module.NewCommand().Sudo().ConsumerConfigCat(cast.ToString(reqMap[`SupervisorConfigPath`]))
+	catCommand := base_module.NewCommand().Sudo().ConsumerConfigCat(cast.ToString(reqMap[`SupervisorConfigPath`]), cast.ToString(reqMap[`DockerName`]))
 	ret := shell.RunShell(catCommand.GetCommand().ToByte())
 	retMsgList = append(retMsgList, ret)
 	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, strings.Join(retMsgList, gsdefine.Enter))
