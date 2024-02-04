@@ -46,43 +46,47 @@ func VipChange(c *gin.Context) {
 	number := cast.ToString(adminUserId % 10)
 	redisCli.Client.HDel(context.Background(), `wechatapp.vip.info.v20220308..`+number, cast.ToString(adminUserId))
 	redisCli.Client.HDel(context.Background(), `wechatapp.kefu.vip.info.v20220308..`+number, cast.ToString(adminUserId))
-	result, resultErr := queryVipType(c)
+	result, resultErr := queryVipType(reqMap, mysqlCli)
 	if resultErr != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, resultErr.Error(), nil)
 		return
 	} else {
-		gsgin.GinResponse(c, gsgin.ResponseSuccess, result, nil)
+		gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, result)
 		return
 	}
 }
 
 //VipQuery vip版本查询
 func VipQuery(c *gin.Context) {
-	result, resultErr := queryVipType(c)
+	_, reqMap, _, mysqlCli, err := getVipReqData(c)
+	if err != nil {
+		gsgin.GinResponse(c, gsgin.ResponseError, err.Error(), nil)
+		return
+	}
+	result, resultErr := queryVipType(reqMap, mysqlCli)
 	if resultErr != nil {
 		gsgin.GinResponse(c, gsgin.ResponseError, resultErr.Error(), nil)
 		return
 	} else {
-		gsgin.GinResponse(c, gsgin.ResponseSuccess, result, nil)
+		gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, result)
 		return
 	}
 }
 
 // QueryVipType 查询VIP版本
-func queryVipType(c *gin.Context) (string, error) {
-	_, reqMap, _, mysqlCli, err := getVipReqData(c)
-	if err != nil {
-		return ``, err
-	}
+func queryVipType(reqMap map[string]interface{}, mysqlCli *gsdb.GsMysql) (string, error) {
+
 	account := reqMap[`Account`]
 	if account == nil {
 		return ``, errors.New(`账号不能为空`)
 	}
 	userInfo := service.GetAdminUserId(mysqlCli, cast.ToString(account))
+
 	if userInfo[`_id`] == nil {
 		return ``, errors.New(`找不到该账号`)
 	}
 	adminUserIdStr := cast.ToString(userInfo[`_id`])
+	mysqlCli.Debug = true
 	vipInfo, queryErr := service.QueryVip(mysqlCli, cast.ToString(userInfo[`_id`]), cast.ToString(reqMap[`SystemType`]))
 	if queryErr != nil {
 		return ``, queryErr
@@ -93,6 +97,7 @@ func queryVipType(c *gin.Context) (string, error) {
 	return `管理员ID：` + adminUserIdStr + `，vip版本：` + VipMap[cast.ToString(vipInfo[`vip_type`])] + `，过期时间：` + cast.ToString(vipInfo[`expired_time`]), nil
 }
 
+//拿到各类句柄
 func getVipReqData(c *gin.Context) (*base_module.Global, map[string]interface{}, *gsdb.GsRedis, *gsdb.GsMysql, error) {
 	global, reqMap, err := GetGlobalReqParamsM(c)
 	if err != nil {

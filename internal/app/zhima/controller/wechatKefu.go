@@ -25,6 +25,7 @@ func WechatKefuStatus(c *gin.Context) {
 	}
 
 	appInfo := service.QueryWechatAppid(xkfMysqlCli, reqMap[`WechatKefuAppid`].ToStr())
+	wechatappId := cast.ToString(appInfo[`_id`])
 	appIdStr := cast.ToString(appInfo[`app_id`])
 	userIdStr := cast.ToString(appInfo[`user_id`])
 	appTypeStr := cast.ToString(appInfo[`app_type`])
@@ -33,9 +34,9 @@ func WechatKefuStatus(c *gin.Context) {
 		return
 	}
 	//按app_id查找
-	command := base_module.NewCommand().Sudo().WechatKefuStatus(reqMap[`WechatKefuAppid`].ToStr())
+	command := base_module.NewCommand().Sudo().WechatKefuStatus(wechatappId)
 	RunResultMsg := shell.RunShell(command.GetCommand().ToByte())
-	appMsg := fmt.Sprintf(`所属管理员ID %s %s %s`, userIdStr, appIdStr, gsdefine.Enter)
+	appMsg := fmt.Sprintf(`所属管理员ID %s %s %s %s`, userIdStr, wechatappId, appIdStr, gsdefine.Enter)
 
 	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, appMsg+RunResultMsg)
 }
@@ -49,6 +50,7 @@ func WechatKefuChange(c *gin.Context) {
 	}
 
 	appInfo := service.QueryWechatAppid(xkfMysqlCli, reqMap[`WechatKefuAppid`].ToStr())
+	wechatappId := cast.ToString(appInfo[`_id`])
 	appIdStr := cast.ToString(appInfo[`app_id`])
 	appTypeStr := cast.ToString(appInfo[`app_type`])
 	if appIdStr == `` || appTypeStr != `wechat_kefu` {
@@ -69,7 +71,7 @@ func WechatKefuChange(c *gin.Context) {
 		dockerKillProcess := base_module.NewCommand().Sudo().DockerKill9(dockerName, appIdStr)
 		shell.RunShell(dockerKillProcess.GetCommand().ToByte())
 		//按wechatapp_id
-		dockerIdKillProcess := base_module.NewCommand().Sudo().DockerKill9(dockerName, reqMap[`WechatKefuAppid`].ToStr())
+		dockerIdKillProcess := base_module.NewCommand().Sudo().DockerKill9(dockerName, wechatappId)
 		shell.RunShell(dockerIdKillProcess.GetCommand().ToByte())
 	}
 	//丢一个topic
@@ -102,10 +104,10 @@ func WechatKefuChange(c *gin.Context) {
 		return
 	}
 	//执行脚本
-	cPhpCommand := base_module.NewCommand().Init().Sudo().DockerExecPhpWechatKefu(dockerName, reqMap[`DockerCodePath`].ToStr(), appIdStr)
+	cPhpCommand := base_module.NewCommand().Init().Sudo().DockerExecPhpWechatKefu(dockerName, reqMap[`DockerCodePath`].ToStr(), wechatappId)
 	_ = shell.RunShell(cPhpCommand.GetCommand().ToByte())
 	//查询是否成功
-	cProcess := base_module.NewCommand().WechatKefuProcess(dockerName, appIdStr)
+	cProcess := base_module.NewCommand().WechatKefuProcess(dockerName, wechatappId)
 	result := shell.RunShell(cProcess.GetCommand().ToByte())
 	gsgin.GinResponse(c, gsgin.ResponseSuccess, ``, result)
 }
