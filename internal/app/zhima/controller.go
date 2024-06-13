@@ -32,7 +32,7 @@ func RedisList(c *gin.Context) {
 				Password:    value.Password,
 				PoolSize:    value.PoolSize,
 				Default:     0,
-				DialTimeout: 2,
+				DialTimeout: 1,
 				MaxLifetime: 3600,
 				IdleTimeout: 300,
 			}
