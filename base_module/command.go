@@ -34,9 +34,8 @@ func (h *Command) Sudo() *Command {
 }
 
 func (h *Command) GetCommand() *gstool.GsCons {
-	gstool.ArrayFilterEmptyString(&h.commandList)
+	gstool.ArrayFilterEmpty(&h.commandList)
 	command := gstool.ConsNew(strings.Join(h.commandList, `;`))
-	gstool.FmtPrintlnLog(`执行命令 %s`, command.ToStr())
 	return command
 }
 
@@ -105,6 +104,11 @@ func (h *Command) Kill9(processName string) *Command {
 	return h
 }
 
+func (h *Command) DockerSearchPidList(dockerName, processName string) *Command {
+	h.SetCommand(fmt.Sprintf(`%s docker exec %s sh -c "ps aux | grep %s | grep -v grep  | awk '{print "\n" \$2}'"`, h.sudo, dockerName, processName))
+	return h
+}
+
 func (h *Command) DockerKill9(dockerName, processName string) *Command {
 	h.SetCommand(fmt.Sprintf(`%s docker exec %s sh -c "ps aux | grep %s | grep -v grep  | awk '{print \$2}' | xargs kill"`, h.sudo, dockerName, processName))
 	return h
@@ -121,7 +125,7 @@ func (h *Command) DockerExecKill(dockerName, pid string) *Command {
 }
 
 func (h *Command) DockerExecPhpWechatKefu(dockerName, codePath, commandName string) *Command {
-	h.SetCommand(fmt.Sprintf(`%s docker exec %s php /var/www/%s/scan/protected/yiic OpenPushWechatKefuOpen %s &`, h.sudo, dockerName, codePath, commandName))
+	h.SetCommand(fmt.Sprintf(`%s docker exec %s php /var/www/%s/scan/protected/yiic OpenPushWechatKefuOpen %s & `, h.sudo, dockerName, codePath, commandName))
 	return h
 }
 
@@ -209,5 +213,16 @@ func (h *Command) DockerExec(dockerName, dockerCommand string) *Command {
 
 func (h *Command) DockerPs() *Command {
 	h.SetCommand(fmt.Sprintf(`%sdocker stats --no-stream`, h.sudo))
+	return h
+}
+
+func (h *Command) FindGitDir(dirPath string, depth int) *Command {
+	h.SetCommand(fmt.Sprintf(`%s find %s -maxdepth %d -type d -exec sh -c '  
+    for dir; do  
+        if [ -d "$dir/.git" ]; then  
+            echo "$dir"  
+        fi  
+    done  
+' sh {} +`, h.sudo, dirPath, depth))
 	return h
 }

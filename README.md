@@ -16,15 +16,17 @@ fmt.Println(cliConf.RunShell("ls -l"))
 
 
 ```shell
-export CGO_ENABLED=0  
+#需要sqlite 开启
+export CGO_ENABLED=1  
+#zhima
 #linux
 #export GOARCH=amd64 
 #export GOOS=linux 
 #windows
 export GOARCH=amd64 CC=x86_64-w64-mingw32-gcc   
 export GOOS=windows
-go build -o ./build/zhima.exe ./cmd/zhima/main.go
-git add ./build/zhima.exe
+go build -ldflags "-X main.IsBuild=1" -o ./build/tool.exe ./cmd/tool/main.go
+git add ./build/tool.exe
 #git update-index --chmod=+x ./build/zhima.exe
-git ls-files --stage ./build/zhima.exe
+git ls-files --stage ./build/tool.exe
 ```

@@ -17,10 +17,8 @@ func (h *Global) MysqlGetClient(name string) (*gsdb.GsMysql, error) {
 	if err != nil {
 		return nil, err
 	}
-	gsDb := &gsdb.GsMysql{
-		MysqlConfig: config,
-		GsLog:       h.logger,
-	}
+	gsDb := gsdb.NewMysql(config, true)
+	gsDb.OpenDebug()
 	err = gsDb.CreateConn()
 	if err != nil {
 		return nil, err

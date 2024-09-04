@@ -5,8 +5,10 @@ import (
 	"gitee.com/Sxiaobai/gs/gstool"
 )
 
+var IsBuild string
+
 func main() {
-	zhima.InitBase()
+	zhima.InitBase(IsBuild)
 	gstool.CpuSetUsePercent(0.6)
 	gstool.SignalDefault()
 }
