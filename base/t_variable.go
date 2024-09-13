@@ -7,27 +7,25 @@ import (
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gsssh"
 	"gitee.com/Sxiaobai/gs/gstool"
+	"github.com/gorilla/websocket"
 	"github.com/spf13/cast"
 )
 
 type VariableRun struct {
-	VariableId      string
-	ReplaceList     []map[string]string
-	sshClientList   map[string]*gsssh.SshConfig
-	sftpSessionList map[string]*gsssh.SshConfig
+	VariableId  string
+	ReplaceList []map[string]string
 }
 
 func NewVariable() VariableRun {
-	return VariableRun{
-		sshClientList:   make(map[string]*gsssh.SshConfig),
-		sftpSessionList: make(map[string]*gsssh.SshConfig),
-	}
+	return VariableRun{}
 }
 
 // RunPre 执行前收集一些选择或者输入项
 func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[string]string, int, error) {
+	h.sendSocketMsg(variableId, `预执行`)
 	cmdList, cmdListErr := h.getVariableCmdList(variableId)
 	if cmdListErr != nil {
+		h.sendSocketMsg(variableId, cmdListErr.Error())
 		return nil, nil, 0, cmdListErr
 	}
 	//输出的表单
@@ -36,6 +34,12 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 	variableFormList := make([]_struct.VariableForm, 0)
 	for _, cmd := range cmdList {
 		if cast.ToInt(cmd[`is_pre`]) == 0 {
+			if cast.ToInt(cmd[`type`]) == define.VariableTypeBash { //预先连接ssh
+				preConnErr := h.preConnSsh(cmd)
+				if preConnErr != nil {
+					return nil, nil, 0, preConnErr
+				}
+			}
 			continue
 		}
 		//初始化
@@ -92,7 +96,41 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 	if waitPreNum > 0 {
 		isCanRun = 0
 	}
+	h.sendSocketMsg(variableId, `预执行结束`)
 	return variableFormList, replaceList, isCanRun, nil
+}
+
+// preConnSsh 初始化ssh连接
+func (h *VariableRun) preConnSsh(cmd map[string]any) error {
+	sshId := cast.ToString(cmd[`ssh_id`])
+	if sshId == `` {
+		return errors.New(`ssh_id不能为空`)
+	}
+	sshUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `run`)
+	sftpUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
+	if Component.TShell.Exist(sshUniqueKey) && Component.TShell.Exist(sftpUniqueKey) {
+		return nil
+	}
+	h.sendSocketMsg(h.VariableId, `初始化ssh连接(`+cast.ToString(cmd[`ssh_id`])+`)开始`)
+	//初始化连接
+	sshConfig, sshConfigErr := Component.TSqlite.GetSshConfig(sshId)
+	if sshConfigErr != nil {
+		return sshConfigErr
+	}
+	//ssh
+	sshClient, sshClientErr := Component.TShell.GetClient(sshConfig, sshUniqueKey)
+	if sshClientErr != nil {
+		return sshClientErr
+	}
+	sshClient.SetSocket(h.getSocket(h.VariableId))
+	//sftp
+	sftpClient, sftpClientErr := Component.TShell.GetClient(sshConfig, sftpUniqueKey)
+	if sftpClientErr != nil {
+		return sftpClientErr
+	}
+	sftpClient.SetSocket(h.getSocket(h.VariableId))
+	h.sendSocketMsg(h.VariableId, `初始化ssh连接(`+cast.ToString(cmd[`ssh_id`])+`)成功`)
+	return nil
 }
 
 // RunProcess 执行前收集一些选择或者输入项 可以多次调用 有些待输入的还有替换符 可以多次执行
@@ -132,11 +170,12 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 				return nil, nil, 0, radioErr
 			}
 			variableForm.IsPreOk = 1
-			gstool.FmtPrintlnLogTime(`%#v`, variableForm.Select.OptionList)
 			break
 		case define.VariableTypeMysql: //执行sql
+			if variableForm.IsPreOk == 1 {
+				break
+			}
 			variableForm.Sql.Sql = h.replace(variableForm.Sql.Sql, replaceList)
-			gstool.FmtPrintlnLogTime(`sql %s`, variableForm.Sql.Sql)
 			if !h.isPreShowForm(variableForm.Sql.Sql) {
 				waitPreNum++
 				break
@@ -273,11 +312,32 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string) e
 			//TODO 需要增加替换json或者数组
 			//h.addReplace(&h.ReplaceList, resultKey, result)
 		}
-		gstool.FmtPrintlnLogTime(`%s`, result)
+		//暂时没啥用
+		Component.GsLog.Debugf(`执行结果 %s`, result)
 	}
 
 	h.end()
 	return nil
+}
+
+func (h *VariableRun) getSocket(variableId string) *websocket.Conn {
+	uniqueKey := Component.TBase.GetCombineKey(variableId, `variable`)
+	return Component.TSocket.GetSocket(uniqueKey)
+}
+
+func (h *VariableRun) sendSocketMsg(variableId any, msg string) {
+	msg = `■■ ` + msg
+	defer func() {
+		if r := recover(); r != nil {
+		}
+	}()
+	socket := h.getSocket(cast.ToString(variableId))
+	if socket != nil {
+		err := socket.WriteMessage(websocket.TextMessage, []byte(msg+"\n"))
+		if err != nil {
+			return
+		}
+	}
 }
 
 func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
@@ -295,7 +355,9 @@ func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
 		return ``, mysqlClientErr
 	}
 	sql = h.replace(sql, h.ReplaceList)
+	h.sendSocketMsg(h.VariableId, `sql：`+sql)
 	all, allErr := mysqlClient.QueryBySql(sql).All()
+	h.sendSocketMsg(h.VariableId, `sql result：`+gstool.JsonEncode(all))
 	if allErr != nil {
 		return ``, allErr
 	}
@@ -313,6 +375,11 @@ func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
 	if sshId == 0 {
 		return ``, errors.New(`ssh不能为空`)
 	}
+	sshUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `run`)
+	sftpUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
+	if !Component.TShell.Exist(sshUniqueKey) || !Component.TShell.Exist(sftpUniqueKey) {
+		return ``, errors.New(`ssh连接未初始化`)
+	}
 	sshConfig, sshConfigErr := Component.TSqlite.GetSshConfig(sshId)
 	if sshConfigErr != nil {
 		return ``, sshConfigErr
@@ -320,23 +387,17 @@ func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
 	var sshClientErr error
 	var sshClient *gsssh.SshConfig
 	//ssh
-	sshUniqueKey := Component.TBase.GetCombineKey(cmd[`variable_id`], `variable`, sshConfig[`id`], `run`)
 	sshClient, sshClientErr = Component.TShell.GetClient(sshConfig, sshUniqueKey)
 	if sshClientErr != nil {
 		return ``, sshClientErr
 	}
-	if _, ok := h.sshClientList[sshUniqueKey]; !ok {
-		h.sshClientList[sshUniqueKey] = sshClient
-	}
+	sshClient.SetSocket(h.getSocket(h.VariableId))
 	//sftp
-	sftpUniqueKey := Component.TBase.GetCombineKey(cmd[`variable_id`], `variable`, sshConfig[`id`], `sftp`)
 	sftpClient, sftpClientErr := Component.TShell.GetClient(sshConfig, sftpUniqueKey)
 	if sftpClientErr != nil {
 		return ``, sftpClientErr
 	}
-	if _, ok := h.sftpSessionList[sftpUniqueKey]; !ok {
-		h.sftpSessionList[sftpUniqueKey] = sftpClient
-	}
+	sftpClient.SetSocket(h.getSocket(h.VariableId))
 	var err error
 	//创建目录
 	_, err = sshClient.RunCommandWait(`sudo mkdir -p /var/www/variable`)
@@ -366,16 +427,7 @@ func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
 }
 
 func (h *VariableRun) end() {
-	for uniqueKey, sshClient := range h.sshClientList {
-		sshClient.Close()
-		Component.TShell.RmClient(uniqueKey)
-	}
-	for uniqueKey, sftpClient := range h.sftpSessionList {
-		sftpClient.Close()
-		Component.TShell.RmClient(uniqueKey)
-	}
-	h.sshClientList = make(map[string]*gsssh.SshConfig)
-	h.sftpSessionList = make(map[string]*gsssh.SshConfig)
+	h.sendSocketMsg(h.VariableId, `执行结束`)
 }
 
 func (h *VariableRun) getVariableCmdList(variableId any) ([]map[string]any, error) {

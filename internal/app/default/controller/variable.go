@@ -158,6 +158,7 @@ func VariableCmdRunPre(c *gin.Context) {
 		return
 	}
 	variable := base.NewVariable()
+	variable.VariableId = cast.ToString(variableId)
 	formList, replaceList, isCanRun, err := variable.RunPre(variableId)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -189,6 +190,7 @@ func VariableCmdRunProcess(c *gin.Context) {
 		return
 	}
 	variable := base.NewVariable()
+	variable.VariableId = cast.ToString(dataMap[`variable_id`])
 	formList, replaceList, isCanRun, err := variable.RunProcess(variableFormList, replaceList)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -218,6 +220,7 @@ func VariableCmdRunDone(c *gin.Context) {
 		return
 	}
 	variable := base.NewVariable()
+	variable.VariableId = cast.ToString(dataMap[`variable_id`])
 	err = variable.RunDone(variableId, replaceList)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)

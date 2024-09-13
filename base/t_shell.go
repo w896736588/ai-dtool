@@ -47,8 +47,19 @@ func (h *TShell) GetClient(sshConfig map[string]any, uniqueKey string) (*gsssh.S
 	return gsShell, nil
 }
 
+func (h *TShell) Exist(uniqueKey string) bool {
+	defer h.lock.Unlock()
+	h.lock.Lock()
+	if _, ok := h.ShellClientMap[uniqueKey]; ok {
+		return true
+	}
+	return false
+}
+
 // RmClient 移除连接
 func (h *TShell) RmClient(uniqueKey string) {
+	defer h.lock.Unlock()
+	h.lock.Lock()
 	delete(h.ShellClientMap, uniqueKey)
 }
 

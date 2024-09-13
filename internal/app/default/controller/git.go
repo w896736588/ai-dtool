@@ -179,5 +179,6 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshConfig, 
 	if sshClientErr != nil {
 		return nil, nil, err
 	}
+	sshClient.SetSocket(base.Component.TSocket.GetSocket(uniqueKey))
 	return reqMap, sshClient, nil
 }

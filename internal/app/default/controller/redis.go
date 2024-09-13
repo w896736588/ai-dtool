@@ -80,7 +80,9 @@ func RedisSearch(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	cursor := cast.ToUint64(reqMap[`cursor`])
 	cacheKey := cast.ToString(reqMap[`CacheKey`])
+	search := cast.ToString(reqMap[`Search`])
 	if cacheKey == `` {
 		gsgin.GinResponseError(c, `缺少搜索的key`, nil)
 		return
@@ -96,6 +98,10 @@ func RedisSearch(c *gin.Context) {
 		gsgin.GinResponseError(c, `缓存已不存在`, ``)
 		return
 	}
+	var resultCursor uint64
+	var length int64
+	var isMore = 0 //1还有更多 0没有更多了
+	var maxQuery = 200
 	//通用的返回结果
 	var gsCons *gstool.GsCons
 	if keyType == gsdb.RedisKeyString {
@@ -103,8 +109,19 @@ func RedisSearch(c *gin.Context) {
 		result, err = redisCli.Client.Get(context.Background(), cacheKey).Result()
 		gsCons = gstool.ConsNew(result)
 	} else if keyType == gsdb.RedisKeyHash {
-		var resultMap map[string]string
-		resultMap, err = redisCli.Client.HGetAll(context.Background(), cacheKey).Result()
+		var resultList []string
+		resultMap := make(map[string]any)
+		gstool.FmtPrintlnLogTime(`%#v`, cursor)
+		resultList, resultCursor, err = redisCli.Client.HScan(context.Background(), cacheKey, cursor, `*`+search+`*`, int64(maxQuery)).Result()
+		for key := 0; key < len(resultList); key++ {
+			resultMap[resultList[key]] = resultList[key+1]
+			key++
+		}
+		//没有更多
+		if len(resultMap) >= maxQuery {
+			isMore = 1
+		}
+		length = redisCli.Client.HLen(context.Background(), cacheKey).Val()
 		gsCons = gstool.ConsNew(resultMap)
 	} else if keyType == gsdb.RedisKeyList {
 		var resultArray []string
@@ -136,6 +153,9 @@ func RedisSearch(c *gin.Context) {
 			`keyType`: keyType,
 			`KeyTtl`:  keyTtl.Seconds(),
 			`Result`:  gsCons.Value(),
+			`Cursor`:  resultCursor,
+			`Length`:  length,
+			`IsMore`:  isMore,
 		})
 	}
 

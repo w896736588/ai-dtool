@@ -25,6 +25,26 @@ func InitBase(IsBuild string, appName string) {
 	initComponent(IsBuild)
 	initSqlite()
 	initGin()
+	stdLog(IsBuild)
+}
+
+// 如果是编译后运行 那么将所有标准输出和报错重定向到 日志文件
+func stdLog(IsBuild string) {
+	if IsBuild != `1` {
+		return
+	}
+	outFile, outFileErr := os.OpenFile(base.Component.Env.RootPath+`/out.log`, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if outFileErr != nil {
+		gstool.FmtPrintlnLogTime("error opening file: %v", outFileErr)
+	}
+	gstool.FmtPrintlnLogTime(`标准输出文件 %s`, base.Component.Env.RootPath+`/out.log`)
+	gstool.FmtPrintlnLogTime(`错误输出文件 %s`, base.Component.Env.RootPath+`/err.log`)
+	errFile, errErr := os.OpenFile(base.Component.Env.RootPath+`/err.log`, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if errErr != nil {
+		gstool.FmtPrintlnLogTime("error opening file: %v", errErr)
+	}
+	os.Stdout = outFile
+	os.Stderr = errFile
 }
 
 func initComponent(IsBuild string) {
@@ -38,7 +58,9 @@ func initComponent(IsBuild string) {
 	base.Component.TMysql = &base.TMysql{MysqlClientMap: make(map[string]*gsdb.GsMysql)}
 	base.Component.TCode = &base.TCode{}
 	base.Component.TBase = &base.TBase{}
-	base.Component.TSocket = &base.TSocket{}
+	base.Component.TSocket = &base.TSocket{
+		SocketList: make(map[string]*websocket.Conn),
+	}
 	base.Component.Env.IsBuild = IsBuild == `1`
 	base.Component.Env.AppName = AppName
 	gcm := gsencrypt.NewAesGcm(AppName)
@@ -72,9 +94,11 @@ func initComponent(IsBuild string) {
 }
 
 func initSqlite() {
-	gstool.FmtPrintlnLogTime(`打开db %s`, base.Component.Env.RootPath+`/config/.db/`+AppName+`.db`)
-	_ = gstool.DirCreatePath(base.Component.Env.RootPath + `/config/.db/`)
-	sqlite, err := gsdb.NewSqlite(base.Component.Env.RootPath+`/config/.db/`+AppName+`.db`, true)
+	dbDir := base.Component.ConfigViper.GetString(`set_db.db_path`)
+	dbPath := fmt.Sprintf(dbDir+`%s`, AppName+`.db`)
+	gstool.FmtPrintlnLogTime(`打开db %s`, dbPath)
+	_ = gstool.DirCreatePath(dbDir)
+	sqlite, err := gsdb.NewSqlite(dbPath, true)
 	if err != nil {
 		panic(fmt.Sprintf(`连接sqlite失败 %s`, err.Error()))
 	}
@@ -116,10 +140,6 @@ func initGin() {
 	base.Component.TGin.GinGet(`/`, func(context *gin.Context) {
 		context.HTML(200, `index.html`, nil)
 	})
-}
-
-func GetClientId(unikey, shellName string) string {
-	return unikey + `#` + shellName
 }
 
 func initSocket() {
