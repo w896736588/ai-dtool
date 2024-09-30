@@ -6,3 +6,6 @@
 /logs/
 /zhima/
 /config/.db/
+/tool/
+/err.log
+/out.log

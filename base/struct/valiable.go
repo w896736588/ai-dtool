@@ -15,11 +15,13 @@ type VariableCurl struct {
 
 type VariableForm struct {
 	VariableType string
+	VariableId   string
 	Input        VariableFormInput  `json:"Input,omitempty"`
 	Select       VariableFormSelect `json:"Select,omitempty"`
 	Sql          VariableFormSql    `json:"Sql,omitempty"`
 	ResultKey    string
-	IsPreOk      int //1准备好 0未准备好
+	IsShowOk     int //1准备好 0未准备好  准备好了以后就会在页面上显示选项等
+	IsRunOk      int //1准备好执行（需要选择） 全部准备好以后就是可以执行了
 }
 
 type VariableFormInput struct {

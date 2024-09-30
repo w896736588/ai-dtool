@@ -80,7 +80,7 @@ func RedisSearch(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	cursor := cast.ToUint64(reqMap[`cursor`])
+	cursor := cast.ToUint64(reqMap[`Cursor`])
 	cacheKey := cast.ToString(reqMap[`CacheKey`])
 	search := cast.ToString(reqMap[`Search`])
 	if cacheKey == `` {
@@ -111,7 +111,6 @@ func RedisSearch(c *gin.Context) {
 	} else if keyType == gsdb.RedisKeyHash {
 		var resultList []string
 		resultMap := make(map[string]any)
-		gstool.FmtPrintlnLogTime(`%#v`, cursor)
 		resultList, resultCursor, err = redisCli.Client.HScan(context.Background(), cacheKey, cursor, `*`+search+`*`, int64(maxQuery)).Result()
 		for key := 0; key < len(resultList); key++ {
 			resultMap[resultList[key]] = resultList[key+1]
@@ -125,15 +124,31 @@ func RedisSearch(c *gin.Context) {
 		gsCons = gstool.ConsNew(resultMap)
 	} else if keyType == gsdb.RedisKeyList {
 		var resultArray []string
-		resultArray, err = redisCli.Client.LRange(context.Background(), cacheKey, 0, 100000).Result()
+		resultArray, err = redisCli.Client.LRange(context.Background(), cacheKey, cast.ToInt64(cursor), int64(cast.ToInt(cursor)+maxQuery-1)).Result()
+		if len(resultArray) >= maxQuery {
+			isMore = 1
+		}
+		resultCursor = cursor + cast.ToUint64(maxQuery)
+		length = redisCli.Client.LLen(context.Background(), cacheKey).Val()
 		gsCons = gstool.ConsNew(resultArray)
 	} else if keyType == gsdb.RedisKeySet {
 		var resultArray []string
-		resultArray, err = redisCli.Client.SMembers(context.Background(), cacheKey).Result()
+		resultArray, resultCursor, err = redisCli.Client.SScan(context.Background(), cacheKey, cursor, `*`+search+`*`, int64(maxQuery)).Result()
+		//没有更多
+		if len(resultArray) >= maxQuery {
+			isMore = 1
+		}
+		length = redisCli.Client.SCard(context.Background(), cacheKey).Val()
 		gsCons = gstool.ConsNew(resultArray)
 	} else if keyType == gsdb.RedisKeyZSet {
 		var resultArray []redis.Z
-		resultArray, err = redisCli.Client.ZRangeWithScores(context.Background(), cacheKey, 0, 100000).Result()
+		gstool.FmtPrintlnLogTime(`cyrsir %d`, cursor)
+		resultArray, err = redisCli.Client.ZRangeWithScores(context.Background(), cacheKey, cast.ToInt64(cursor), int64(cast.ToInt(cursor)+maxQuery-1)).Result()
+		if len(resultArray) >= maxQuery {
+			isMore = 1
+		}
+		resultCursor = cursor + cast.ToUint64(maxQuery)
+		length = redisCli.Client.ZCard(context.Background(), cacheKey).Val()
 		gsCons = gstool.ConsNew(resultArray)
 	} else {
 		gsgin.GinResponseError(c, `暂不支持的缓存类型 `+keyType, ``)

@@ -1,9 +1,8 @@
 package controller
 
 import (
+	"dev_tool/base"
 	"dev_tool/internal/app/zhima/service"
-	"errors"
-	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gsencrypt"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
@@ -16,9 +15,20 @@ import (
 
 // LoginLink 登录地址
 func LoginLink(c *gin.Context) {
-	reqMap, encrypt, mysqlCliXkf, err := getLoginReqData(c)
+	reqMap := make(map[string]interface{})
+	err := gsgin.GinPostBody(c, &reqMap)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	mysqlConfig, mysqlConfigErr := base.Component.TSqlite.GetMysqlConfig(8)
+	if mysqlConfigErr != nil {
+		gsgin.GinResponseError(c, mysqlConfigErr.Error(), nil)
+		return
+	}
+	mysqlCliXkf, mysqlCliXkfErr := base.Component.TMysql.GetClient(mysqlConfig)
+	if mysqlCliXkfErr != nil {
+		gsgin.GinResponseError(c, mysqlCliXkfErr.Error(), nil)
 		return
 	}
 	account := reqMap[`Account`]
@@ -32,7 +42,10 @@ func LoginLink(c *gin.Context) {
 		return
 	}
 	loginHost := cast.ToString(reqMap[`LoginHost`])
-
+	encrypt := &gsencrypt.DesCbc{
+		Key: `zima`,
+		Iv:  `14554552`,
+	}
 	//拿到一个应用ID和一个渠道ID
 	wechatAppId, channelId, errQuery := service.QueryOneWechatAppIdChannelId(mysqlCliXkf, cast.ToInt(userInfo[`_id`]))
 	if errQuery != nil {
@@ -58,15 +71,4 @@ func LoginLink(c *gin.Context) {
 	token = url.QueryEscape(data)
 	gsgin.GinResponseSuccess(c, ``, loginHost+`index/LoginRedirect?token=`+token)
 	return
-}
-
-func getLoginReqData(c *gin.Context) (map[string]interface{}, *gsencrypt.DesCbc, *gsdb.GsMysql, error) {
-	component, componentErr := GetGlobalComponent(c)
-	if componentErr != nil {
-		return nil, nil, nil, componentErr
-	}
-	if component.XkfMysqlClient == nil {
-		return nil, nil, nil, errors.New(`mysql client is null`)
-	}
-	return component.ReqMap, component.Encrypt, component.XkfMysqlClient, nil
 }

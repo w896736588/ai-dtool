@@ -9,16 +9,19 @@ import (
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"strings"
 	"time"
 )
 
 func VariableList(c *gin.Context) {
-	gitGroupList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
+	variableGroupList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
 		`type`: define.GroupTypeVariable,
 	}).All()
-	gitList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_variable`, `*`, nil).All()
+	gitList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_variable`, `*`, map[string]interface{}{
+		`status`: define.VariableStatusNormal,
+	}).All()
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`variable_group_list`: gitGroupList,
+		`variable_group_list`: variableGroupList,
 		`variable_list`:       gitList,
 	})
 }
@@ -32,10 +35,12 @@ func VariableInfo(c *gin.Context) {
 		return
 	}
 	variableInfo, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_variable`, `*`, map[string]any{
-		`id`: variableId,
+		`id`:     variableId,
+		`status`: define.VariableStatusNormal,
 	}).One()
 	variableCmdList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_variable_cmd`, `*`, map[string]any{
 		`variable_id`: variableId,
+		`status`:      define.VariableStatusNormal,
 	}).Order(`weight asc`).All()
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`variable_info`:     variableInfo,
@@ -70,7 +75,8 @@ func VariableAdd(c *gin.Context) {
 		id = dataMap[`id`]
 	}
 	variable, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_variable`, `*`, map[string]any{
-		`id`: id,
+		`id`:     id,
+		`status`: define.VariableStatusNormal,
 	}).One()
 	gsgin.GinResponseSuccess(c, ``, variable)
 }
@@ -83,8 +89,10 @@ func VariableDelete(c *gin.Context) {
 		gsgin.GinResponseError(c, `id不能为空`, nil)
 		return
 	} else {
-		_, _ = base.Component.TSqlite.Client.QuickDelete(`tbl_variable`, map[string]any{
+		_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_variable`, map[string]any{
 			`id`: dataGMap.G(`id`).ToStr(),
+		}, map[string]interface{}{
+			`status`: define.VariableStatusDelete,
 		}).Exec()
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
@@ -112,7 +120,11 @@ func VariableCmdAdd(c *gin.Context) {
 	default:
 
 	}
-
+	resultKey := cast.ToString(dataMap[`result_key`])
+	if resultKey != `` && (!strings.HasPrefix(resultKey, `{`) || !strings.HasSuffix(resultKey, `}`)) {
+		gsgin.GinResponseError(c, `输出的key必须以'{'开头，以'}'结尾`, nil)
+		return
+	}
 	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `type`, `variable_id`, `is_pre`, `result_key`, `options`, `remark`, `sql`, `sql_id`, `cmd`, `mysql_id`, `ssh_id`, `bash`, `weight`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`key`] = gstool.TimeNowMilliInt64()
@@ -141,8 +153,10 @@ func VariableCmdDelete(c *gin.Context) {
 		gsgin.GinResponseError(c, `id不能为空`, nil)
 		return
 	} else {
-		_, _ = base.Component.TSqlite.Client.QuickDelete(`tbl_variable_cmd`, map[string]any{
+		_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_variable_cmd`, map[string]any{
 			`id`: dataGMap.G(`id`).ToStr(),
+		}, map[string]interface{}{
+			`status`: define.VariableStatusDelete,
 		}).Exec()
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
@@ -209,6 +223,13 @@ func VariableCmdRunDone(c *gin.Context) {
 	_ = gsgin.GinPostBody(c, &dataMap)
 	variableId := cast.ToInt(dataMap[`variable_id`])
 	replaceLists := cast.ToString(dataMap[`replace_list`])
+	variableFormListStr := cast.ToString(dataMap[`variable_form_list`])
+	variableFormList := make([]_struct.VariableForm, 0)
+	decodeErr := gstool.JsonDecode(variableFormListStr, &variableFormList)
+	if decodeErr != nil {
+		gsgin.GinResponseError(c, decodeErr.Error(), nil)
+		return
+	}
 	replaceList := make([]map[string]string, 0)
 	err := gstool.JsonDecode(replaceLists, &replaceList)
 	if err != nil {
@@ -221,7 +242,7 @@ func VariableCmdRunDone(c *gin.Context) {
 	}
 	variable := base.NewVariable()
 	variable.VariableId = cast.ToString(dataMap[`variable_id`])
-	err = variable.RunDone(variableId, replaceList)
+	err = variable.RunDone(variableId, replaceList, variableFormList)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return

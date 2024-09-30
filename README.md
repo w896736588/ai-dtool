@@ -23,7 +23,7 @@ export CGO_ENABLED=1
 #export GOARCH=amd64 
 #export GOOS=linux 
 #windows
-export GOARCH=amd64 CC=x86_64-w64-mingw32-gcc   
+export GOARCH=amd64   
 export GOOS=windows
 go build -ldflags "-X main.IsBuild=1" -o ./build/zhima.exe ./cmd/zhima/main.go
 git add ./build/zhima.exe

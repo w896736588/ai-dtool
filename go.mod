@@ -1,9 +1,9 @@
 module dev_tool
 
-go 1.22
+go 1.20
 
 require (
-	gitee.com/Sxiaobai/gs v1.1.3
+	gitee.com/Sxiaobai/gs v1.2.2
 	github.com/gin-gonic/gin v1.9.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/redis/go-redis/v9 v9.2.0

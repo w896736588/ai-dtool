@@ -95,7 +95,12 @@ func initComponent(IsBuild string) {
 
 func initSqlite() {
 	dbDir := base.Component.ConfigViper.GetString(`set_db.db_path`)
-	dbPath := fmt.Sprintf(dbDir+`%s`, AppName+`.db`)
+	var dbPath string
+	if dbDir != `` {
+		dbPath = fmt.Sprintf(dbDir+`%s`, AppName+`.db`)
+	} else {
+		dbPath = base.Component.Env.RootPath + `/config/.db/` + AppName + `.db`
+	}
 	gstool.FmtPrintlnLogTime(`打开db %s`, dbPath)
 	_ = gstool.DirCreatePath(dbDir)
 	sqlite, err := gsdb.NewSqlite(dbPath, true)

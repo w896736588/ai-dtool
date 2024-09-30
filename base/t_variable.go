@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
 	"errors"
@@ -20,194 +21,29 @@ func NewVariable() VariableRun {
 	return VariableRun{}
 }
 
-// RunPre 执行前收集一些选择或者输入项
-func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[string]string, int, error) {
-	h.sendSocketMsg(variableId, `预执行`)
-	cmdList, cmdListErr := h.getVariableCmdList(variableId)
-	if cmdListErr != nil {
-		h.sendSocketMsg(variableId, cmdListErr.Error())
-		return nil, nil, 0, cmdListErr
-	}
-	//输出的表单
-	waitPreNum := 0
-	replaceList := make([]map[string]string, 0)
-	variableFormList := make([]_struct.VariableForm, 0)
-	for _, cmd := range cmdList {
-		if cast.ToInt(cmd[`is_pre`]) == 0 {
-			if cast.ToInt(cmd[`type`]) == define.VariableTypeBash { //预先连接ssh
-				preConnErr := h.preConnSsh(cmd)
-				if preConnErr != nil {
-					return nil, nil, 0, preConnErr
-				}
-			}
-			continue
-		}
-		//初始化
-		resultKey := cast.ToString(cmd[`result_key`])
-		variableForm := _struct.VariableForm{
-			VariableType: cast.ToString(cmd[`type`]), //类型
-			ResultKey:    resultKey,                  //输出的替换key
-			IsPreOk:      0,                          //未准备好
-		}
-		switch cast.ToInt(cmd[`type`]) {
-		case define.VariableTypeInput: //输入框肯定需要进行输入
-			variableForm.Input = _struct.VariableFormInput{
-				Label: cast.ToString(cmd[`name`]),
-			}
-			waitPreNum++
-			break
-		case define.VariableTypeRadio: //单项选择 初始的时候不存在替换值 只有选了以后才有
-			variableForm.Select = _struct.VariableFormSelect{
-				Label:      cast.ToString(cmd[`name`]),
-				Value:      ``,
-				OptionList: make([]_struct.VariableFormOption, 0),
-				Options:    cast.ToString(cmd[`options`]), //原本的字符串选项集
-			}
-			if !h.isPreShowForm(variableForm.Select.Options) {
-				waitPreNum++
-				break
-			}
-			radioErr := h.radioPreProcess(&variableForm, &replaceList, variableForm.Select.Value)
-			if radioErr != nil {
-				return nil, nil, 0, radioErr
-			}
-			break
-		case define.VariableTypeMysql: //执行sql
-			variableForm.Sql = _struct.VariableFormSql{
-				Sql:     cast.ToString(cmd[`sql`]),
-				MysqlId: cast.ToString(cmd[`mysql_id`]),
-			}
-			if h.isPreShowForm(variableForm.Sql.Sql) {
-				sqlRet := h.sqlPreProcess(&variableForm, &replaceList)
-				if sqlRet != nil {
-					return nil, nil, 0, sqlRet
-				}
-				variableForm.IsPreOk = 1
-			} else {
-				waitPreNum++
-			}
-			break
-		default:
-			break
-		}
-		variableFormList = append(variableFormList, variableForm)
-	}
-	isCanRun := 1
-	if waitPreNum > 0 {
-		isCanRun = 0
-	}
-	h.sendSocketMsg(variableId, `预执行结束`)
-	return variableFormList, replaceList, isCanRun, nil
-}
-
-// preConnSsh 初始化ssh连接
-func (h *VariableRun) preConnSsh(cmd map[string]any) error {
-	sshId := cast.ToString(cmd[`ssh_id`])
-	if sshId == `` {
-		return errors.New(`ssh_id不能为空`)
-	}
-	sshUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `run`)
-	sftpUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
-	if Component.TShell.Exist(sshUniqueKey) && Component.TShell.Exist(sftpUniqueKey) {
-		return nil
-	}
-	h.sendSocketMsg(h.VariableId, `初始化ssh连接(`+cast.ToString(cmd[`ssh_id`])+`)开始`)
-	//初始化连接
-	sshConfig, sshConfigErr := Component.TSqlite.GetSshConfig(sshId)
-	if sshConfigErr != nil {
-		return sshConfigErr
-	}
-	//ssh
-	sshClient, sshClientErr := Component.TShell.GetClient(sshConfig, sshUniqueKey)
-	if sshClientErr != nil {
-		return sshClientErr
-	}
-	sshClient.SetSocket(h.getSocket(h.VariableId))
-	//sftp
-	sftpClient, sftpClientErr := Component.TShell.GetClient(sshConfig, sftpUniqueKey)
-	if sftpClientErr != nil {
-		return sftpClientErr
-	}
-	sftpClient.SetSocket(h.getSocket(h.VariableId))
-	h.sendSocketMsg(h.VariableId, `初始化ssh连接(`+cast.ToString(cmd[`ssh_id`])+`)成功`)
-	return nil
-}
-
-// RunProcess 执行前收集一些选择或者输入项 可以多次调用 有些待输入的还有替换符 可以多次执行
-func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replaceList []map[string]string) ([]_struct.VariableForm, []map[string]string, int, error) {
-	waitPreNum := 0
-	needInputNum := 0
-	inputNum := 0
-	for key, variableForm := range variableFormList {
-		switch cast.ToInt(variableForm.VariableType) {
-		case define.VariableTypeInput: //输入框 不存在替换
-			if variableForm.Input.Value != `` {
-				variableForm.IsPreOk = 1
-				if variableForm.ResultKey != `` {
-					h.addReplace(&replaceList, variableForm.ResultKey, variableForm.Input.Value)
-				}
-			} else {
-				waitPreNum++
-			}
-			needInputNum++
-			if variableForm.Input.Value != `` {
-				inputNum++
-			}
-			break
-		case define.VariableTypeRadio: //单项选择
-			variableForm.Select.Options = h.replace(variableForm.Select.Options, replaceList)
-			needInputNum++
-			if variableForm.Select.Value != `` {
-				inputNum++
-			}
-			//没有选择 或者没有被替换 那么还是等参数
-			if !h.isPreShowForm(variableForm.Select.Options) {
-				waitPreNum++
-				break
-			}
-			radioErr := h.radioPreProcess(&variableForm, &replaceList, variableForm.Select.Value)
-			if radioErr != nil {
-				return nil, nil, 0, radioErr
-			}
-			variableForm.IsPreOk = 1
-			break
-		case define.VariableTypeMysql: //执行sql
-			if variableForm.IsPreOk == 1 {
-				break
-			}
-			variableForm.Sql.Sql = h.replace(variableForm.Sql.Sql, replaceList)
-			if !h.isPreShowForm(variableForm.Sql.Sql) {
-				waitPreNum++
-				break
-			}
-			sqlRet := h.sqlPreProcess(&variableForm, &replaceList)
-			if sqlRet != nil {
-				return nil, nil, 0, sqlRet
-			}
-			variableForm.IsPreOk = 1
-			break
-		default:
-			break
-		}
-		variableFormList[key] = variableForm
-	}
-	//是否能够运行
-	isCanRun := 1
-	if waitPreNum > 0 || inputNum < needInputNum {
-		isCanRun = 0
-	}
-	return variableFormList, replaceList, isCanRun, nil
-}
-
 func (h *VariableRun) replace(data string, replaceList []map[string]string) string {
 	for _, replace := range replaceList {
+		//处理特殊情况
+		for replaceKey, replaceVal := range replace {
+			//取模
+			matchSubList := gstool.RegexMatchSubString(data, replaceKey+`%(\d+)`)
+			if len(matchSubList) >= 2 {
+				data = gstool.StringReplaces(data, map[string]string{
+					matchSubList[0]: cast.ToString(cast.ToInt64(replaceVal) % cast.ToInt64(matchSubList[1])),
+				})
+			}
+		}
 		data = gstool.StringReplaces(data, replace)
+
 	}
 	return data
 }
 
 // 是否已经可以显示在页面上
 func (h *VariableRun) addReplace(replaceList *[]map[string]string, key, value string) {
+	if key == `` {
+		return
+	}
 	boolFind := false
 	for _, replace := range *replaceList {
 		for mapKey, _ := range replace {
@@ -228,37 +64,26 @@ func (h *VariableRun) isPreShowForm(data string) bool {
 	return !gstool.RegexMatchString(data, `{[a-zA-Z0-9_]+}`)
 }
 
-// 组装单选属性
-func (h *VariableRun) radioPreProcess(variableForm *_struct.VariableForm, replaceList *[]map[string]string, chooseValue string) error {
-	//组装选项
-	optionSourceList := make([]map[string]any, 0)
-	//原本的选项值
-	decodeErr := gstool.JsonDecode(variableForm.Select.Options, &optionSourceList)
-	if decodeErr != nil {
-		return decodeErr
-	}
-	optionList := make([]_struct.VariableFormOption, 0)
-	for _, optionMap := range optionSourceList {
-		option := _struct.VariableFormOption{
-			Label:  cast.ToString(optionMap[`label`]),
-			Value:  cast.ToString(optionMap[`value`]),
-			Source: gstool.JsonEncode(optionMap),
-		}
-		optionList = append(optionList, option)
+// 单选替换
+func (h *VariableRun) radioChooseReplace(variableForm *_struct.VariableForm, replaceList *[]map[string]string, chooseValue string) error {
+	for _, option := range variableForm.Select.OptionList {
 		//组装替换符
 		if variableForm.ResultKey != `` && chooseValue != `` && chooseValue == option.Value {
-			for optionKey, optionValue := range optionMap {
+			//额外属性
+			sourceOptionList := make(map[string]any, 0)
+			_ = gstool.JsonDecode(option.Source, &sourceOptionList)
+			for optionKey, optionValue := range sourceOptionList {
 				h.addReplace(replaceList, variableForm.ResultKey+`.`+optionKey, cast.ToString(optionValue))
 			}
-			h.addReplace(replaceList, variableForm.ResultKey, gstool.JsonEncode(optionMap))
+			//替换整体
+			h.addReplace(replaceList, variableForm.ResultKey, gstool.JsonEncode(option))
 		}
 	}
-	variableForm.Select.OptionList = optionList
 	return nil
 }
 
-// 组装sql查询属性
-func (h *VariableRun) sqlPreProcess(form *_struct.VariableForm, replaceList *[]map[string]string) error {
+// 执行sql
+func (h *VariableRun) sqlProcessRun(form *_struct.VariableForm, replaceList *[]map[string]string) error {
 	//如果带有替换符 那么忽略
 	sql := cast.ToString(form.Sql.Sql)
 	mysqlId := cast.ToInt(form.Sql.MysqlId)
@@ -280,12 +105,19 @@ func (h *VariableRun) sqlPreProcess(form *_struct.VariableForm, replaceList *[]m
 }
 
 // RunDone 最终执行
-func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string) error {
+func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, variableFormList []_struct.VariableForm) error {
 	h.VariableId = cast.ToString(variableId)
 	h.ReplaceList = replaceList
 	cmdList, cmdListErr := h.getVariableCmdList(variableId)
 	if cmdListErr != nil {
 		return cmdListErr
+	}
+	//拿到值
+	redisId := ``
+	for _, variableForm := range variableFormList {
+		if cast.ToInt(variableForm.VariableType) == define.VariableTypeRedisChoose {
+			redisId = variableForm.Select.Value
+		}
 	}
 	for _, cmd := range cmdList {
 		resultKey := cast.ToString(cmd[`result_key`])
@@ -301,6 +133,9 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string) e
 			break
 		case define.VariableTypeBash:
 			result, resultErr = h.runBash(cmd)
+			break
+		case define.VariableTypeRedisDelete:
+			result, resultErr = h.runRedisDelete(cmd, cast.ToInt(redisId), cast.ToString(variableId))
 			break
 		default:
 			continue
@@ -326,7 +161,7 @@ func (h *VariableRun) getSocket(variableId string) *websocket.Conn {
 }
 
 func (h *VariableRun) sendSocketMsg(variableId any, msg string) {
-	msg = `■■ ` + msg
+	msg = ` ` + msg
 	defer func() {
 		if r := recover(); r != nil {
 		}
@@ -355,13 +190,23 @@ func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
 		return ``, mysqlClientErr
 	}
 	sql = h.replace(sql, h.ReplaceList)
-	h.sendSocketMsg(h.VariableId, `sql：`+sql)
-	all, allErr := mysqlClient.QueryBySql(sql).All()
-	h.sendSocketMsg(h.VariableId, `sql result：`+gstool.JsonEncode(all))
-	if allErr != nil {
-		return ``, allErr
+	if len(gstool.RegexSearchString(sql, "(?i)select")) > 0 {
+		h.sendSocketMsg(h.VariableId, `执行查询：`+sql)
+		all, allErr := mysqlClient.QueryBySql(sql).All()
+		h.sendSocketMsg(h.VariableId, `结果：`+gstool.JsonEncode(all))
+		if allErr != nil {
+			return ``, allErr
+		}
+		return gstool.JsonEncode(all), nil
+	} else if len(gstool.RegexSearchString(sql, "(?i)update")) > 0 {
+		h.sendSocketMsg(h.VariableId, `执行：`+sql)
+		affectRows, execErr := mysqlClient.ExecBySql(sql).Exec()
+		h.sendSocketMsg(h.VariableId, `更新数：`+cast.ToString(affectRows))
+		if execErr != nil {
+			return ``, execErr
+		}
 	}
-	return gstool.JsonEncode(all), nil
+	return ``, nil
 }
 
 func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
@@ -371,7 +216,9 @@ func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
 	if bash == `` {
 		return ``, errors.New(`脚本不能为空`)
 	}
+	gstool.FmtPrintlnLogTime(`替换前的脚本 %s %#v`, bash, h.ReplaceList)
 	bash = h.replace(bash, h.ReplaceList)
+	gstool.FmtPrintlnLogTime(`替换后的脚本 %s`, bash)
 	if sshId == 0 {
 		return ``, errors.New(`ssh不能为空`)
 	}
@@ -424,6 +271,28 @@ func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
 		return ``, err
 	}
 	return result, nil
+}
+
+func (h *VariableRun) runRedisDelete(cmd map[string]any, redisId int, variableId string) (string, error) {
+	config := cast.ToString(cmd[`bash`])
+	if config == `` {
+		return ``, errors.New(`redis需要删除的key不能为空`)
+	}
+	config = h.replace(config, h.ReplaceList)
+	if redisId == 0 {
+		return ``, errors.New(`redis不能为空`)
+	}
+	redisConfig, redisConfigErr := Component.TSqlite.GetRedisConfig(redisId)
+	if redisConfigErr != nil {
+		return ``, redisConfigErr
+	}
+	client, clientErr := Component.TRedis.GetClient(redisConfig)
+	if clientErr != nil {
+		return "", clientErr
+	}
+	h.sendSocketMsg(variableId, `清除redis，key：`+config)
+	client.Client.Del(context.Background(), config)
+	return `删除缓存成功`, nil
 }
 
 func (h *VariableRun) end() {
