@@ -76,7 +76,7 @@ func (h *VariableRun) radioChooseReplace(variableForm *_struct.VariableForm, rep
 				h.addReplace(replaceList, variableForm.ResultKey+`.`+optionKey, cast.ToString(optionValue))
 			}
 			//替换整体
-			h.addReplace(replaceList, variableForm.ResultKey, gstool.JsonEncode(option))
+			h.addReplace(replaceList, variableForm.ResultKey, option.Source)
 		}
 	}
 	return nil
