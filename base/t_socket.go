@@ -52,3 +52,16 @@ func (h *TSocket) GetSocket(clientId string) *websocket.Conn {
 	h.lock.Lock()
 	return h.SocketList[clientId]
 }
+
+func (h *TSocket) SendMsg(clientId, msg string) {
+	defer func() {
+		if err := recover(); err != nil {
+
+		}
+	}()
+	socket := h.GetSocket(clientId)
+	if socket == nil {
+		return
+	}
+	_ = socket.WriteMessage(websocket.TextMessage, []byte(msg+"\n"))
+}

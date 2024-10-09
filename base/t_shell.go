@@ -5,6 +5,7 @@ import (
 	"gitee.com/Sxiaobai/gs/gsssh"
 	"github.com/spf13/cast"
 	"sync"
+	"time"
 )
 
 type TShell struct {
@@ -29,22 +30,51 @@ func (h *TShell) GetClient(sshConfig map[string]any, uniqueKey string) (*gsssh.S
 		Password: cast.ToString(sshConfig["password"]),
 		GsSlog:   Component.GsLog,
 	}
+	gsShell.SetMaxRunSecond(20)
 	createErr := gsShell.ConnectAuthPassword()
 	if createErr != nil {
 		return nil, createErr
 	}
+	//先执行一次确保连接正常
 	_, err := gsShell.RunCommandWait(`pwd`)
 	if err != nil {
 		return nil, err
 	}
-	//设置回调
+	//设置执行命令前处理
 	gsShell.SetFuncBefore(func(command string) string {
 		return `■■ ` + command
 	})
+	//设置对收到的结果是否进行合并后处理 建议1-2
 	gsShell.SetCombineNum(1)
+	//是否显示执行命令后linux返回的执行的命令 如果设置了SetFuncBefore处理，那么就关闭
 	gsShell.CloseFirstReceiveMsg()
+	//设置关闭事件 用来进行重连
+	gsShell.SetFuncBroken(func() {
+		Component.TSocket.SendMsg(uniqueKey, uniqueKey+` 注意：连接已中断，等待重连`)
+		h.RmClient(uniqueKey)
+		h.ReConn(uniqueKey, sshConfig)
+	})
 	h.ShellClientMap[uniqueKey] = gsShell
 	return gsShell, nil
+}
+
+// ReConn 重连
+func (h *TShell) ReConn(uniqueKey string, sshConfig map[string]any) {
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			Component.TSocket.SendMsg(uniqueKey, uniqueKey+` 准备进行重连`)
+			shell, err := h.GetClient(sshConfig, uniqueKey)
+			if err == nil { //连接成功 那么中断重连
+				Component.TSocket.SendMsg(uniqueKey, uniqueKey+` 重连成功`)
+				shell.SetSocket(Component.TSocket.GetSocket(uniqueKey))
+				break
+			} else {
+				Component.TSocket.SendMsg(uniqueKey, uniqueKey+` 重连失败 `+err.Error())
+			}
+		}
+	}()
 }
 
 func (h *TShell) Exist(uniqueKey string) bool {
