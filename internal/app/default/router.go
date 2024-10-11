@@ -11,7 +11,6 @@ func InitRouter() {
 	phpRouter()
 	supervisorRouter()
 	gitRouter()
-	dockerRouter()
 	loginRouter()
 	codeRouter()
 	initSocket()
@@ -74,14 +73,6 @@ func gitRouter() {
 // login相关
 func loginRouter() {
 	base.Component.TGin.GinPost(`/api/LoginLink`, controller.LoginLink) //拿到登录链接
-}
-
-// Docker相关
-func dockerRouter() {
-	base.Component.TGin.GinPost(`/api/DockerRestart`, controller.DockerRestart)         //重启Docker DockerShowCompose
-	base.Component.TGin.GinPost(`/api/DockerShowCompose`, controller.DockerShowCompose) //查看配置文件
-	base.Component.TGin.GinPost(`/api/DockerExec`, controller.DockerExec)               //执行命令
-	base.Component.TGin.GinPost(`/api/DockerPs`, controller.DockerPs)                   //ps
 }
 
 // 代码生成相关

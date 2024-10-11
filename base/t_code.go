@@ -1,7 +1,6 @@
 package base
 
 import (
-	"dev_tool/base_module"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"strings"
 )
@@ -11,7 +10,7 @@ type TCode struct {
 
 func (h *TCode) FindCode(sshConfig map[string]any, dirPath string) []string {
 	codeDirList := make([]string, 0)
-	command := base_module.Command{}
+	command := Command{}
 	command.Sudo()
 	command.FindGitDir(dirPath, 2)
 	uniqueKey := Component.TBase.GetCombineKey(sshConfig[`id`], `code`)

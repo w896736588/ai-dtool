@@ -2,7 +2,6 @@ package _default
 
 import (
 	"dev_tool/base"
-	"dev_tool/base_module"
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gsencrypt"
@@ -87,10 +86,7 @@ func initComponent(IsBuild string) {
 	if readErr := base.Component.ConfigViper.ReadInConfig(); readErr != nil {
 		panic(readErr.Error())
 	}
-	base_module.RootPath = base.Component.Env.RootPath
 	base.Component.GsLog = gstool.SlogCreateDefault(base.Component.Env.RootPath+`/logs`, AppName)
-	base.Component.Global = &base_module.Global{}
-	base.Component.Global.SetLogger(base.Component.GsLog)
 }
 
 func initSqlite() {

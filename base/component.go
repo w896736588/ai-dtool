@@ -1,7 +1,6 @@
 package base
 
 import (
-	"dev_tool/base_module"
 	"gitee.com/Sxiaobai/gs/gsencrypt"
 	"gitee.com/Sxiaobai/gs/gssocket"
 	"gitee.com/Sxiaobai/gs/gstool"
@@ -22,7 +21,6 @@ type TComponent struct {
 	TBase         *TBase
 	AesGcm        *gsencrypt.AesGcm
 	ConfigViper   *viper.Viper
-	Global        *base_module.Global
 	TRedis        *TRedis
 	TMysql        *TMysql
 	TSocket       *TSocket
