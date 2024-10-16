@@ -2,35 +2,70 @@ package redis_manager
 
 import (
 	"gitee.com/Sxiaobai/gs/gstool"
+	"github.com/playwright-community/playwright-go"
+	"log"
 	"testing"
 )
 
 func TestTest(t *testing.T) {
-	bash := `#!/bin/bash  
-app_info='{app_info}'  
-wechatAppId=$(echo "$app_info" | jq -r '._id')  
-appId=$(echo "$app_info" | jq -r '.app_id')  
-dockerList=$(sudo docker ps --format "{{.Names}}" | grep xkf)  
-if [ -z "$dockerList" ]; then  
-    echo "未查找到任何带有 'xkf' 的运行的docker容器."  
-    exit 0  
-fi  
-for dockerName in $dockerList; do  
-    pidList=$(sudo docker exec "$dockerName" sh -c "ps aux | grep -i -E \"$wechatAppId|$appId\" | grep -v grep | awk '{print \$2}'")  
-    if [ -z "$pidList" ]; then  
-        echo "$dockerName 未查找到任何运行的微信客服进程."  
-        continue  
-    fi  
-    for pid in $pidList; do  
-        sudo docker exec "$dockerName" kill -9 "$pid"  
-         echo "$dockerName kill -9 $pid."  
-    done  
-done`
-	replaceLists := ` [{"{choose_env_info}.admin_user_id":"799533513"},{"{choose_env_info}.label":"xkf_common3"},{"{choose_env_info}.value":"xkf_common3"},{"{choose_env_info}.code_dir":"yii_customer_service"},{"{choose_env_info}":"{\"admin_user_id\":\"799533513\",\"code_dir\":\"yii_customer_service\",\"label\":\"xkf_common3\",\"value\":\"xkf_common3\"}"},{"{select_wechat_list}":"[{\"_id\":\"210866\",\"app_id\":\"wpX2IKEAAAwS7tM_udiV9JL4FVibhXpw\",\"label\":\"上海芝麻小事网络科技有限公司\",\"value\":\"210866\"},{\"_id\":\"210867\",\"app_id\":\"ww6b983da349fd945e\",\"label\":\"上海芝麻小事密码接入\",\"value\":\"210867\"},{\"_id\":\"210886\",\"app_id\":\"ww002ef006aa9eb31e\",\"label\":\"全新创建企业\",\"value\":\"210886\"},{\"_id\":\"211284\",\"app_id\":\"wpX2IKEAAA9PH4WJVe2nQgEfOh7MXD-A\",\"label\":\"芝麻微客V2\",\"value\":\"211284\"}]"},{"{app_info}._id":"211284"},{"{app_info}.app_id":"wpX2IKEAAA9PH4WJVe2nQgEfOh7MXD-A"},{"{app_info}.label":"芝麻微客V2"},{"{app_info}.value":"211284"},{"{app_info}":"{\"_id\":\"211284\",\"app_id\":\"wpX2IKEAAA9PH4WJVe2nQgEfOh7MXD-A\",\"label\":\"芝麻微客V2\",\"value\":\"211284\"}"}]`
-	replaceList := make([]map[string]string, 0)
-	gstool.JsonDecode(replaceLists, &replaceList)
-	for _, replace := range replaceList {
-		bash = gstool.StringReplaces(bash, replace)
+	if !gstool.FileIsExisted("./playwright.lock") {
+		installErr := playwright.Install()
+		if installErr != nil {
+			gstool.FmtPrintlnLogTime(`安装浏览器核心失败 %s`, installErr.Error())
+			return
+		}
+		createLockErr := gstool.FileCreate(`./`, `playwright.lock`, ``)
+		if createLockErr != nil {
+			gstool.FmtPrintlnLogTime(`创建lock失败 %s`, createLockErr.Error())
+			return
+		}
 	}
-	gstool.FmtPrintlnLogTime(`%s`, bash)
+	pw, err := playwright.Run()
+	if err != nil {
+		log.Fatalf("could not start playwright: %v", err.Error())
+	}
+	//静默打开
+	//browser, err := pw.Chromium.Launch()
+	//if err != nil {
+	//	log.Fatalf("could not launch browser: %v", err)
+	//}
+	//如果非静默打开
+	// 启动 Chromium 浏览器，并设置 Headless 为 false 以显示浏览器窗口
+	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(false), // 设置为非 Headless 模式
+	})
+	if err != nil {
+		log.Fatalf("could not launch browser: %v", err)
+	}
+
+	page, err := browser.NewPage()
+	if err != nil {
+		log.Fatalf("could not create page: %v", err)
+	}
+	if _, err = page.Goto("http://common3.xiaokefu.com.cn/api/mobileweb/home?wechatapp_id=211418&channel_id=15399&channel_key=153993h83&kefu_uid=799533513&key=43435hjs2"); err != nil {
+		log.Fatalf("could not goto: %v", err)
+	}
+	//找到键盘
+	if err = page.Click(`.switch-input`); err != nil {
+		log.Fatalf("could not fill password input: %v", err)
+	}
+	//找到输入框
+	if err = page.Click(`.input.message-input`); err != nil {
+		log.Fatalf("could not fill password input: %v", err)
+	}
+	if err = page.Fill(`.input.message-input`, "哈哈哈自动发"); err != nil {
+		log.Fatalf("could not fill password input: %v", err)
+	}
+	//找到发送按钮
+	buttonSelector := ".fasong_btn" // 替换为实际的按钮选择器
+	if err = page.Click(buttonSelector); err != nil {
+		log.Fatalf("could not click button: %v", err)
+	}
+	//if err = browser.Close(); err != nil {
+	//	log.Fatalf("could not close browser: %v", err)
+	//}
+	//if err = pw.Stop(); err != nil {
+	//	log.Fatalf("could not stop Playwright: %v", err)
+	//}
+	gstool.SignalDefault()
 }

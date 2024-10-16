@@ -15,6 +15,17 @@ cliConf.CreateClient("121.40.109.241", 22, "frog", "frog987^%$321_220")
 fmt.Println(cliConf.RunShell("ls -l"))
 
 
+静默浏览器打开 环境安装
+https://github.com/playwright-community/playwright-go
+```go
+##安装扩展
+go get -u github.com/playwright-community/playwright-go   
+##安装浏览器核心 通过代码执行（可以设置一个lock文件来判断是否安装）
+err := playwright.Install()
+```
+
+
+
 ```shell
 #需要sqlite 开启
 export CGO_ENABLED=1  

@@ -30,7 +30,10 @@ func GitCurrentBranch(c *gin.Context) {
 	command := base.NewCommand()
 	command.Sudo()
 	command.Cd(codePath)
+	command.Echo(`当前分支：`)
 	command.GitShowBranch()
+	command.Echo(`远程分支：`)
+	command.GitShowOriginBranch()
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr())
 	gsgin.GinResponseSuccess(c, ``, result)
 }
@@ -71,7 +74,10 @@ func GitChangeBranch(c *gin.Context) {
 		command.GitCheckout(branchName)
 	}
 	command.GitPullOrigin(branchName)
+	command.Echo(`当前分支：`)
 	command.GitShowBranch()
+	command.Echo(`远程分支：`)
+	command.GitShowOriginBranch()
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr())
 	gsgin.GinResponseSuccess(c, ``, result)
 }
@@ -104,7 +110,10 @@ func GitPullBranchOrigin(c *gin.Context) {
 	command.GitFetch()
 	command.GitPull()
 	command.GitPullOrigin(strings.Replace(currentBranch, "\n", "", -1))
+	command.Echo(`当前分支：`)
 	command.GitShowBranch()
+	command.Echo(`远程分支：`)
+	command.GitShowOriginBranch()
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr())
 	gsgin.GinResponseSuccess(c, ``, result)
 }

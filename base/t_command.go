@@ -44,6 +44,16 @@ func (h *Command) GitShowBranch() *Command {
 	return h
 }
 
+func (h *Command) Echo(msg string) *Command {
+	h.SetCommand(`echo ` + msg)
+	return h
+}
+
+func (h *Command) GitShowOriginBranch() *Command {
+	h.SetCommand(h.sudo + `git ls-remote --heads origin "$(git symbolic-ref --short -q HEAD)"`)
+	return h
+}
+
 func (h *Command) GitIgnoreAll() *Command {
 	h.SetCommand(h.sudo + `git checkout .`)
 	return h
