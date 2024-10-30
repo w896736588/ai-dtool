@@ -17,12 +17,28 @@ func VariableList(c *gin.Context) {
 	variableGroupList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
 		`type`: define.GroupTypeVariable,
 	}).All()
-	gitList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_variable`, `*`, map[string]interface{}{
+	for _, variableGroup := range variableGroupList {
+		variableGroup[`variable_list`] = make([]map[string]any, 0)
+	}
+	variableList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_variable`, `*`, map[string]interface{}{
 		`status`: define.VariableStatusNormal,
 	}).All()
+	for _, variable := range variableList {
+		variableCmdList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_variable_cmd`, `*`, map[string]any{
+			`variable_id`: cast.ToString(variable[`id`]),
+			`status`:      define.VariableStatusNormal,
+		}).Order(`weight asc`).All()
+		variable[`variable_cmd_list`] = variableCmdList
+		//归到分组中
+		for _, variableGroup := range variableGroupList {
+			if cast.ToString(variableGroup[`id`]) == cast.ToString(variable[`variable_group_id`]) {
+				variableGroup[`variable_list`] = append(variableGroup[`variable_list`].([]map[string]any), variable)
+			}
+		}
+	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`variable_group_list`: variableGroupList,
-		`variable_list`:       gitList,
+		`variable_list`:       variableList,
 	})
 }
 

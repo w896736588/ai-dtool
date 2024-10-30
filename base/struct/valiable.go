@@ -25,8 +25,9 @@ type VariableForm struct {
 }
 
 type VariableFormInput struct {
-	Label string
-	Value string
+	Label       string
+	Value       string
+	HideSureBtn int
 }
 
 type VariableFormSql struct {

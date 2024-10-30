@@ -7,3 +7,5 @@ use ssh id=1
 {xkf_docker}=sudo docker ps --format "{{.Names}}" | grep xkf
 sudo docker exec [xkf_docker.each] sh -c "ps aux | grep [variable:1724052744563.each.any] | grep -v grep  | awk '{print "\n" \$2}'"
 ```
+
+

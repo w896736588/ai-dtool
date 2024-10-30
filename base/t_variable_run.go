@@ -16,6 +16,7 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 		case define.VariableTypeInput: //输入框 不存在替换
 			if variableForm.Input.Value != `` {
 				h.addReplace(&replaceList, variableForm.ResultKey, variableForm.Input.Value)
+				h.sendSocketMsg(variableForm.VariableId, variableForm.Input.Label+`：`+variableForm.Input.Value)
 			} else {
 				variableForm.IsRunOk = 0
 			}

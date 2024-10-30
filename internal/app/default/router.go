@@ -17,6 +17,7 @@ func InitRouter() {
 	setRouter()
 	setStar()
 	variable()
+	smartLink()
 }
 
 // 基础接口
@@ -107,6 +108,9 @@ func setRouter() {
 	base.Component.TGin.GinPost(`/api/Set/CmdGroupList`, controller.SetCmdGroupList)
 	base.Component.TGin.GinPost(`/api/Set/CmdGroupAdd`, controller.SetCmdGroupAdd)
 	base.Component.TGin.GinPost(`/api/Set/CmdGroupDelete`, controller.SetCmdGroupDelete)
+	base.Component.TGin.GinPost(`/api/Set/SmartLinkGroupList`, controller.SetSmartLinkGroupList)
+	base.Component.TGin.GinPost(`/api/Set/SmartLinkGroupAdd`, controller.SetSmartLinkGroupAdd)
+	base.Component.TGin.GinPost(`/api/Set/SmartLinkGroupDelete`, controller.SetSmartLinkGroupDelete)
 }
 
 func setStar() {
@@ -125,4 +129,14 @@ func variable() {
 	base.Component.TGin.GinPost(`/api/VariableRunPre`, controller.VariableCmdRunPre)         //执行第一步
 	base.Component.TGin.GinPost(`/api/VariableRunProcess`, controller.VariableCmdRunProcess) //执行中收集信息
 	base.Component.TGin.GinPost(`/api/VariableRunDone`, controller.VariableCmdRunDone)       //执行
+}
+
+func smartLink() {
+	base.Component.TGin.GinPost(`/api/SmartLinkList`, controller.SmartLinkList)
+	base.Component.TGin.GinPost(`/api/SmartLinkAdd`, controller.SmartLinkAdd)
+	base.Component.TGin.GinPost(`/api/SmartLinkDel`, controller.SmartLinkDelete)
+	base.Component.TGin.GinPost(`/api/SmartLinkInfo`, controller.SmartLinkInfo)
+	base.Component.TGin.GinPost(`/api/SmartLinkProcessAdd`, controller.SmartLinkProcessAdd)
+	base.Component.TGin.GinPost(`/api/SmartLinkProcessDel`, controller.SmartLinkProcessDel)
+	base.Component.TGin.GinPost(`/api/SmartLinkRun`, controller.SmartLinkRun)
 }
