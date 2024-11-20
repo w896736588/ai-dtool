@@ -179,15 +179,19 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 
 // 打开浏览器
 func openBrowserPlaywright(openType int, link string, processList []map[string]any, dataMap map[string]any) error {
-	page, pageErr := base.Component.TSmartLink.GetPage(openType)
+	browserAuthUsername := cast.ToString(dataMap[`browser_auth_username`])
+	browserAuthPassword := cast.ToString(dataMap[`browser_auth_password`])
+	page, pageErr := base.Component.TSmartLink.GetPage(openType, browserAuthUsername, browserAuthPassword)
 	if pageErr != nil {
 		return pageErr
 	}
 	//跳转链接
-	gstool.FmtPrintlnLogTime(`打开网页 %s`, link)
-	if _, goErr := (*page.Page).Goto(link); goErr != nil {
+	u, _ := url.Parse(link)
+	gstool.FmtPrintlnLogTime(`打开网页 %s %#v`, u.String(), dataMap)
+	if _, goErr := (*page.Page).Goto(u.String()); goErr != nil {
 		return goErr
 	}
+
 	// 使用 JavaScript 将浏览器窗口最大化
 	jsErr, _ := (*page.Page).Evaluate(`() => {
 		console.log('初始化js');

@@ -19,7 +19,7 @@ type TSmartLink struct {
 	lock     sync.Mutex
 }
 
-func (h *TSmartLink) GetPage(openType int) (*TPlayWright, error) {
+func (h *TSmartLink) GetPage(openType int, browserAuthUsername, browserAuthPassword string) (*TPlayWright, error) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 	noViewPort := true
@@ -40,10 +40,32 @@ func (h *TSmartLink) GetPage(openType int) (*TPlayWright, error) {
 	if browserErr != nil {
 		return nil, browserErr
 	}
-	page, pageErr := browser.NewPage(playwright.BrowserNewPageOptions{NoViewport: &noViewPort, JavaScriptEnabled: &javascript})
-	if pageErr != nil {
-		return nil, pageErr
+	// 创建带有认证信息的浏览器上下文
+	var page playwright.Page
+	var pageErr error
+	if browserAuthUsername != `` && browserAuthPassword != `` {
+		context, contextErr := browser.NewContext(playwright.BrowserNewContextOptions{
+			HttpCredentials: &playwright.HttpCredentials{
+				Username: "admin",
+				Password: "123456",
+			},
+			NoViewport:        &noViewPort,
+			JavaScriptEnabled: &javascript,
+		})
+		if contextErr != nil {
+			gstool.FmtPrintlnLogTime("Failed to create context: %v", contextErr)
+		}
+		page, pageErr = context.NewPage()
+		if pageErr != nil {
+			return nil, pageErr
+		}
+	} else {
+		page, pageErr = browser.NewPage(playwright.BrowserNewPageOptions{NoViewport: &noViewPort, JavaScriptEnabled: &javascript})
+		if pageErr != nil {
+			return nil, pageErr
+		}
 	}
+
 	createTimeDesc := cast.ToString(gstool.TimeNowMilliInt64())
 	h.PageList[createTimeDesc] = &TPlayWright{
 		Page:     &page,
