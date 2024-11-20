@@ -57,7 +57,9 @@ func initComponent(IsBuild string) {
 	base.Component.TMysql = &base.TMysql{MysqlClientMap: make(map[string]*gsdb.GsMysql)}
 	base.Component.TCode = &base.TCode{}
 	base.Component.TBase = &base.TBase{}
-	base.Component.TSmartLink = &base.TSmartLink{}
+	base.Component.TSmartLink = &base.TSmartLink{
+		PageList: make(map[string]*base.TPlayWright),
+	}
 	base.Component.TSocket = &base.TSocket{
 		SocketList: make(map[string]*websocket.Conn),
 	}
