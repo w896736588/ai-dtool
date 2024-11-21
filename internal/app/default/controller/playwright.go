@@ -30,9 +30,7 @@ func SmartLinkList(c *gin.Context) {
 	variableGroupList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
 		`type`: define.GroupTypeSmartLink,
 	}).All()
-	smartLinkList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_smart_link`, `*`, map[string]interface{}{
-		`status`: define.SmartLinkStatusNormal,
-	}).All()
+	smartLinkList, _ := base.Component.TSqlite.Client.QueryBySql(`select * from tbl_smart_link where status = ? order by weight asc`, define.SmartLinkStatusNormal).All()
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`group_list`:      variableGroupList,
 		`smart_link_list`: smartLinkList,
@@ -71,7 +69,7 @@ func SmartLinkAdd(c *gin.Context) {
 	//	return
 	//}
 	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `smart_link_group_id`, `links`, `open_num`, `open_type`, `process`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `smart_link_group_id`, `links`, `open_num`, `open_type`, `process`, `weight`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
@@ -163,6 +161,10 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	openNum := cast.ToInt(dataMap[`open_num`])
 	openType := cast.ToInt(dataMap[`open_type`])
 	process := cast.ToString(dataMap[`process`])
+	if link == `` {
+		gsgin.GinResponseError(c, `链接不存在，检查是否json格式错误`, nil)
+		return
+	}
 	processList := make([]map[string]any, 0)
 	_ = gstool.JsonDecode(process, &processList)
 	gstool.FmtPrintlnLogTime(`processList %#v`, processList)
