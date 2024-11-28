@@ -112,11 +112,14 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 	if cmdListErr != nil {
 		return cmdListErr
 	}
-	//拿到值
-	redisId := ``
+	//拿到选择值
+	redisId := 0
+	sshId := 0
 	for _, variableForm := range variableFormList {
 		if cast.ToInt(variableForm.VariableType) == define.VariableCmdRedisChoose {
-			redisId = variableForm.Select.Value
+			redisId = cast.ToInt(variableForm.Select.Value)
+		} else if cast.ToInt(variableForm.VariableType) == define.VariableCmdSshChoose {
+			sshId = cast.ToInt(variableForm.Select.Value)
 		}
 	}
 	for _, cmd := range cmdList {
@@ -132,10 +135,10 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 			result, resultErr = h.runMysqlSql(cmd)
 			break
 		case define.VariableCmdBash:
-			result, resultErr = h.runBash(cmd)
+			result, resultErr = h.runBash(cmd, sshId)
 			break
 		case define.VariableCmdRedisDelete:
-			result, resultErr = h.runRedisDelete(cmd, cast.ToInt(redisId), cast.ToString(variableId))
+			result, resultErr = h.runRedisDelete(cmd, redisId, cast.ToString(variableId))
 			break
 		default:
 			continue
@@ -209,8 +212,11 @@ func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
 	return ``, nil
 }
 
-func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
+func (h *VariableRun) runBash(cmd map[string]any, chooseSshId int) (string, error) {
 	sshId := cast.ToInt(cmd[`ssh_id`])
+	if sshId == 0 {
+		sshId = chooseSshId
+	}
 	bash := cast.ToString(cmd[`bash`])
 	cmdId := cast.ToString(cmd[`id`])
 	if bash == `` {

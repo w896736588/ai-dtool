@@ -3,13 +3,13 @@ package controller
 import (
 	"dev_tool/base"
 	"dev_tool/base/define"
+	_struct "dev_tool/base/struct"
 	"gitee.com/Sxiaobai/gs/gs"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
-	"log"
 	"net/url"
 	"time"
 )
@@ -193,14 +193,6 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 	if _, goErr := (*page.Page).Goto(u.String()); goErr != nil {
 		return goErr
 	}
-
-	// 使用 JavaScript 将浏览器窗口最大化
-	jsErr, _ := (*page.Page).Evaluate(`() => {
-		console.log('初始化js');
-    }`)
-	if jsErr != nil {
-		log.Fatalf("could not maximize browser window: %v", jsErr)
-	}
 	for _, processVal := range processList {
 		time.Sleep(time.Millisecond * 200)
 		//类型
@@ -217,25 +209,25 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 			waitSecond = cast.ToFloat64(2)
 		}
 		waitSecond = waitSecond * 1000
-		//跳转地址
-		waitNavigation := cast.ToInt(processVal[`waitNavigation`])
 		gstool.FmtPrintlnLogTime(`操作 %#v`, processVal)
 
 		// 等待导航完成
 		gstool.FmtPrintlnLogTime(`等待页面加载完成`)
 		waitErr := (*page.Page).WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-			State: playwright.LoadStateLoad, //三种LoadStateNetworkidle 网络加载最低程度 LoadStateDomcontentloaded DOM加载完成
+			State: playwright.LoadStateDomcontentloaded, //三种LoadStateNetworkidle 网络加载最低程度 LoadStateDomcontentloaded DOM加载完成
 		})
 		if waitErr != nil {
 			gstool.FmtPrintlnLogTime("等待页面 DOM 内容加载完成失败: %s", waitErr.Error())
 		}
-		gstool.FmtPrintlnLogTime(`%s 元素：%s 等待时间：%f 等待导航完成：%d`, tip, selector, waitSecond, waitNavigation)
+		addTipMsg(*page.Page, tip+`,`+cast.ToString(waitSecond))
 		switch processType {
 		case `wait_navigation`: //等待导航完成
 			waitUrlErr := (*page.Page).WaitForURL((*page.Page).URL())
 			if waitUrlErr != nil {
 				return waitUrlErr
 			}
+			//监听控制台
+			//go listenDevTool(*page.Context, *page.Page, *page.Browser)
 		case `click`: //点击
 			selectorLoader := (*page.Page).Locator(selector)
 			selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
@@ -289,4 +281,75 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 	//	log.Fatalf("could not stop Playwright: %v", err)
 	//}
 	return nil
+}
+
+func registerJs(page playwright.Page) {
+	keyEventPath := base.Component.Env.RootPath + `/internal/pkg/js_script/key_event.js`
+	gstool.FmtPrintlnLogTime(`加载初始化js %s`, keyEventPath)
+	if err := page.AddInitScript(playwright.Script{
+		Path: &keyEventPath,
+	}); err != nil {
+		gstool.FmtPrintlnLogTime(`err %s`, err.Error())
+	}
+}
+
+// 向页面上输出提示
+func addTipMsg(page playwright.Page, tip string) {
+	_, _ = page.Evaluate(`(function() {
+			setTimeout(function() {
+				var existTip = document.getElementById('playwrightTipId');
+				if (existTip) {
+					existTip.remove();
+				}
+				var messageBox = document.createElement('div');
+				messageBox.id = 'playwrightTipId';
+				messageBox.textContent = '` + tip + `';
+				messageBox.style.position = 'fixed';
+				messageBox.style.top = '50%';
+				messageBox.style.left = '50%';
+				messageBox.style.transform = 'translate(-50%, -50%)';
+				messageBox.style.color = 'white';
+				messageBox.style.backgroundColor = 'black';
+				messageBox.style.padding = '20px';
+				messageBox.style.borderRadius = '10px';
+				messageBox.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
+				messageBox.style.zIndex = 2000;
+				messageBox.style.display = 'block'; // 初始状态隐藏
+				document.body.appendChild(messageBox);
+				setTimeout(function() {
+					var existTip = document.getElementById('playwrightTipId');
+					if (existTip) {
+						existTip.remove();
+					}
+				}, 2000); 
+			}, 100); 
+		})();`)
+}
+
+func listenDevTool(context playwright.BrowserContext, page playwright.Page, browser playwright.Browser) {
+	// 使用 CDP 监听控制台消息
+	cdpSession, err := context.NewCDPSession(page)
+	if err != nil {
+		gstool.FmtPrintlnLogTime("could not create CDP session: %v", err)
+		return
+	}
+
+	// 启用控制台消息监听
+	if _, err := cdpSession.Send("Runtime.enable", nil); err != nil {
+		gstool.FmtPrintlnLogTime("could not enable Runtime: %v", err)
+		return
+	}
+
+	// 监听控制台消息
+	cdpSession.On("Runtime.consoleAPICalled", func(event interface{}) {
+		gstool.FmtPrintlnLogTime(`接受到控制台信息 %s`, gstool.JsonEncode(event))
+		params := _struct.DevToolEvent{}
+		_ = gstool.JsonDecode(gstool.JsonEncode(event), &params)
+		for _, arg := range params.Args {
+			if arg.Value == "F12 key pressed" {
+
+			}
+		}
+	})
+
 }

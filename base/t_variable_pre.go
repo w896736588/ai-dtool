@@ -19,7 +19,7 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 	variableFormList := make([]_struct.VariableForm, 0)
 	for _, cmd := range cmdList {
 		if cast.ToInt(cmd[`is_pre`]) == 0 && cast.ToInt(cmd[`type`]) != define.VariableCmdLink {
-			if cast.ToInt(cmd[`type`]) == define.VariableCmdBash { //预先连接ssh
+			if cast.ToInt(cmd[`type`]) == define.VariableCmdBash && cast.ToInt(cmd[`ssh_id`]) != 0 { //预先连接ssh
 				h.sendSocketMsg(variableId, `开始检查：`+cast.ToString(cmd[`name`])+`,预先连接ssh`)
 				preConnErr := h.preConnSsh(cmd)
 				if preConnErr != nil {
@@ -100,6 +100,26 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 				Desc: cast.ToString(cmd[`options`]),
 			}
 			break
+		case define.VariableCmdSshChoose: //选择ssh
+			variableForm.Select = _struct.VariableFormSelect{
+				Label:      cast.ToString(cmd[`name`]),
+				Value:      ``,
+				OptionList: make([]_struct.VariableFormOption, 0),
+				Options:    cast.ToString(cmd[`options`]), //原本的字符串选项集
+			}
+			configList, configListErr := Component.TSqlite.GetAllSshConfig()
+			if configListErr != nil {
+				return nil, nil, 0, configListErr
+			}
+			variableForm.Select.OptionList = make([]_struct.VariableFormOption, 0)
+			for _, redisConfig := range configList {
+				variableForm.Select.OptionList = append(variableForm.Select.OptionList, _struct.VariableFormOption{
+					Label:  cast.ToString(redisConfig[`name`]),
+					Value:  cast.ToString(redisConfig[`id`]),
+					Source: gstool.JsonEncode(redisConfig),
+				})
+			}
+			h.PreShowSet(cast.ToString(variableId), cast.ToString(cmd[`name`]), &variableForm)
 		default:
 			//这里不管预执行
 			break
@@ -152,7 +172,7 @@ func (h *VariableRun) preConnSsh(cmd map[string]any) error {
 	if Component.TShell.Exist(sshUniqueKey) && Component.TShell.Exist(sftpUniqueKey) {
 		return nil
 	}
-	h.sendSocketMsg(h.VariableId, `初始化ssh连接(`+cast.ToString(cmd[`ssh_id`])+`)开始`)
+	h.sendSocketMsg(h.VariableId, `开始ssh连接(`+cast.ToString(cmd[`name`])+`)`)
 	//初始化连接
 	sshConfig, sshConfigErr := Component.TSqlite.GetSshConfig(sshId)
 	if sshConfigErr != nil {
@@ -170,7 +190,7 @@ func (h *VariableRun) preConnSsh(cmd map[string]any) error {
 		return sftpClientErr
 	}
 	sftpClient.SetSocket(h.getSocket(h.VariableId))
-	h.sendSocketMsg(h.VariableId, `初始化ssh连接(`+cast.ToString(cmd[`ssh_id`])+`)成功`)
+	h.sendSocketMsg(h.VariableId, `连接成功ssh成功(`+cast.ToString(cmd[`name`])+`)`)
 	return nil
 }
 

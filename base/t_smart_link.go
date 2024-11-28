@@ -12,6 +12,7 @@ type TPlayWright struct {
 	Page     *playwright.Page
 	Browser  *playwright.Browser
 	OpenType int
+	Context  *playwright.BrowserContext
 }
 
 type TSmartLink struct {
@@ -43,8 +44,10 @@ func (h *TSmartLink) GetPage(openType int, browserAuthUsername, browserAuthPassw
 	// 创建带有认证信息的浏览器上下文
 	var page playwright.Page
 	var pageErr error
+	var context playwright.BrowserContext
+	var contextErr error
 	if browserAuthUsername != `` && browserAuthPassword != `` {
-		context, contextErr := browser.NewContext(playwright.BrowserNewContextOptions{
+		context, contextErr = browser.NewContext(playwright.BrowserNewContextOptions{
 			HttpCredentials: &playwright.HttpCredentials{
 				Username: "admin",
 				Password: "123456",
@@ -55,22 +58,25 @@ func (h *TSmartLink) GetPage(openType int, browserAuthUsername, browserAuthPassw
 		if contextErr != nil {
 			gstool.FmtPrintlnLogTime("Failed to create context: %v", contextErr)
 		}
-		page, pageErr = context.NewPage()
-		if pageErr != nil {
-			return nil, pageErr
-		}
 	} else {
-		page, pageErr = browser.NewPage(playwright.BrowserNewPageOptions{NoViewport: &noViewPort, JavaScriptEnabled: &javascript})
-		if pageErr != nil {
-			return nil, pageErr
+		context, contextErr = browser.NewContext(playwright.BrowserNewContextOptions{
+			NoViewport:        &noViewPort,
+			JavaScriptEnabled: &javascript,
+		})
+		if contextErr != nil {
+			gstool.FmtPrintlnLogTime("Failed to create context: %v", contextErr)
 		}
 	}
-
+	page, pageErr = context.NewPage()
+	if pageErr != nil {
+		return nil, pageErr
+	}
 	createTimeDesc := cast.ToString(gstool.TimeNowMilliInt64())
 	h.PageList[createTimeDesc] = &TPlayWright{
 		Page:     &page,
 		Browser:  &browser,
 		OpenType: openType,
+		Context:  &context,
 	}
 	return h.PageList[createTimeDesc], nil
 }

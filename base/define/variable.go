@@ -15,6 +15,7 @@ const (
 	VariableCmdRedisDelete             //删除redis缓存
 	VariableCmdRedisChoose             //选择redis
 	VariableCmdMysqlChoose             //选择mysql
+	VariableCmdSshChoose               //选择ssh
 )
 
 const (

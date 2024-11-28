@@ -41,9 +41,27 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 			}
 			break
 		case define.VariableCmdRedisChoose: //选择redis 这个不需要替换
+		case define.VariableCmdSshChoose: //选择ssh 这个不需要替换 准备链接
 			variableForm.Select.Options = h.replace(variableForm.Select.Options, replaceList)
 			if variableForm.Select.Value == `` {
 				variableForm.IsRunOk = 0
+			}
+			if len(variableForm.Select.OptionList) > 0 {
+				for _, option := range variableForm.Select.OptionList {
+					if option.Value == variableForm.Select.Value {
+						h.sendSocketMsg(variableForm.VariableId, variableForm.Select.Label+`：`+option.Label)
+						if cast.ToInt(variableForm.VariableType) == define.VariableCmdSshChoose {
+							h.sendSocketMsg(variableForm.VariableId, `尝试建立链接：`+option.Label)
+							preConnErr := h.preConnSsh(map[string]any{
+								`ssh_id`: option.Value,
+								`name`:   option.Label,
+							})
+							if preConnErr != nil {
+								return nil, nil, 0, preConnErr
+							}
+						}
+					}
+				}
 			}
 			break
 		case define.VariableCmdMysql: //执行sql
