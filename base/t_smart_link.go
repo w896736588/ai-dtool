@@ -3,16 +3,23 @@ package base
 import (
 	"dev_tool/base/define"
 	"gitee.com/Sxiaobai/gs/gstool"
+	"github.com/go-vgo/robotgo"
 	"github.com/playwright-community/playwright-go"
+	"github.com/shirou/gopsutil/v3/process"
 	"github.com/spf13/cast"
+	"net/url"
+	"strings"
 	"sync"
+	"time"
 )
 
 type TPlayWright struct {
-	Page     *playwright.Page
-	Browser  *playwright.Browser
-	OpenType int
-	Context  *playwright.BrowserContext
+	Page       *playwright.Page
+	Browser    *playwright.Browser
+	OpenType   int
+	Value      string
+	Context    *playwright.BrowserContext
+	BrowserPid int
 }
 
 type TSmartLink struct {
@@ -20,7 +27,8 @@ type TSmartLink struct {
 	lock     sync.Mutex
 }
 
-func (h *TSmartLink) GetPage(openType int, browserAuthUsername, browserAuthPassword string) (*TPlayWright, error) {
+// GetPage 拿到Page
+func (h *TSmartLink) GetPage(openType int, link, value, browserAuthUsername, browserAuthPassword string) (*TPlayWright, error) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 	noViewPort := true
@@ -29,6 +37,7 @@ func (h *TSmartLink) GetPage(openType int, browserAuthUsername, browserAuthPassw
 	if pwErr != nil {
 		return nil, pwErr
 	}
+	//startFindTime := time.Now().UnixMilli()
 	var browser playwright.Browser
 	var browserErr error
 	if openType == define.OpenTypeWebkitSilence {
@@ -49,8 +58,8 @@ func (h *TSmartLink) GetPage(openType int, browserAuthUsername, browserAuthPassw
 	if browserAuthUsername != `` && browserAuthPassword != `` {
 		context, contextErr = browser.NewContext(playwright.BrowserNewContextOptions{
 			HttpCredentials: &playwright.HttpCredentials{
-				Username: "admin",
-				Password: "123456",
+				Username: browserAuthUsername,
+				Password: browserAuthPassword,
 			},
 			NoViewport:        &noViewPort,
 			JavaScriptEnabled: &javascript,
@@ -71,12 +80,93 @@ func (h *TSmartLink) GetPage(openType int, browserAuthUsername, browserAuthPassw
 	if pageErr != nil {
 		return nil, pageErr
 	}
-	createTimeDesc := cast.ToString(gstool.TimeNowMilliInt64())
-	h.PageList[createTimeDesc] = &TPlayWright{
-		Page:     &page,
-		Browser:  &browser,
-		OpenType: openType,
-		Context:  &context,
+	//跳转链接
+	u, _ := url.Parse(link)
+	if _, goErr := page.Goto(u.String()); goErr != nil {
+		return nil, goErr
 	}
+
+	waitErr := page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State: playwright.LoadStateDomcontentloaded, //三种LoadStateNetworkidle 网络加载最低程度 LoadStateDomcontentloaded DOM加载完成
+	})
+	if waitErr != nil {
+		gstool.FmtPrintlnLogTime("等待页面 DOM 内容加载完成失败: %s", waitErr.Error())
+	}
+	//唯一值
+	createTimeDesc := cast.ToString(gstool.TimeNowMilliInt64())
+	sourceTitle, _ := page.Title()
+	h.SetTitle(page, createTimeDesc)
+	//停一下
+	time.Sleep(time.Millisecond * 200)
+	browserPid := h.FindRecentChildPid(createTimeDesc, `chrome`)
+	//还原title
+	h.SetTitle(page, sourceTitle)
+	h.PageList[createTimeDesc] = &TPlayWright{
+		Page:       &page,
+		Browser:    &browser,
+		OpenType:   openType,
+		Context:    &context,
+		Value:      value,
+		BrowserPid: browserPid,
+	}
+	go func(createTimeDesc string) {
+		page.OnClose(func(page playwright.Page) {
+			h.lock.Lock()
+			defer h.lock.Unlock()
+			delete(h.PageList, createTimeDesc)
+		})
+	}(createTimeDesc)
 	return h.PageList[createTimeDesc], nil
+}
+
+// SetTitle 设置title
+func (h *TSmartLink) SetTitle(page playwright.Page, title string) {
+	_, _ = page.Evaluate(`(function() {
+			document.title = "` + title + `";
+	})();`)
+}
+
+func (h *TSmartLink) FindChildPIDs(parentPID int32) ([]int32, error) {
+	processList, err := process.Processes()
+	if err != nil {
+		return nil, err
+	}
+
+	var childPIDs []int32
+	for _, proc := range processList {
+		name, _ := proc.Name()
+		gstool.FmtPrintlnLogTime(proc.String() + ` ` + name + ` ` + cast.ToString(proc.Pid))
+		ppid, ppidErr := proc.Ppid()
+		if ppidErr != nil {
+			continue
+		}
+		if ppid == parentPID {
+			childPIDs = append(childPIDs, proc.Pid)
+		}
+	}
+	return childPIDs, nil
+}
+
+// FindRecentChildPid 获取title和名字获取进程
+func (h *TSmartLink) FindRecentChildPid(title, name string) int {
+	processList, err := process.Processes()
+	if err != nil {
+		return 0
+	}
+	for _, proc := range processList {
+		pName, _ := proc.Name()
+		ppid, _ := proc.Ppid()
+		pTitle := robotgo.GetTitle(cast.ToInt(proc.Pid))
+		if pTitle == `` {
+			continue
+		}
+		if name != `` && !strings.Contains(pName, name) {
+			continue
+		}
+		gstool.FmtPrintlnLogTime(`name:%v ,  title:%v ,  pid:%v , ppid:%v`, pName, pTitle, proc.Pid, ppid)
+		if strings.Contains(pTitle, title) {
+			return cast.ToInt(proc.Pid)
+		}
+	}
+	return 0
 }

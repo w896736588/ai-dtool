@@ -151,7 +151,7 @@ type SshExec struct {
 }
 
 type DockerConfig struct {
-	Name    string `json:"Name"`
+	Name    string `json:"Value"`
 	Id      string `json:"Id"`
 	SshName string `json:"SshName"`
 }

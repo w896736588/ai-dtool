@@ -24,11 +24,11 @@ func RedisAvailableList(c *gin.Context) {
 		return
 	}
 	for _, redisConfig := range redisConfigList {
-		_, clientErr := base.Component.TRedis.GetClient(redisConfig)
-		if clientErr != nil {
-			base.Component.GsLog.Errof(`获取redis连接失败 %s`, clientErr.Error())
-			continue
-		}
+		//_, clientErr := base.Component.TRedis.GetClient(redisConfig)
+		//if clientErr != nil {
+		//	base.Component.GsLog.Errof(`获取redis连接失败 %s`, clientErr.Error())
+		//	continue
+		//}
 		runList = append(runList, map[string]any{
 			`name`: redisConfig[`name`],
 			`id`:   redisConfig[`id`],
@@ -46,7 +46,7 @@ func RedisKeys(c *gin.Context) {
 	}
 	search := reqMap[`Search`]
 	if search == nil {
-		gsgin.GinResponseError(c, `缺少搜索内容参数`, nil)
+		gsgin.GinResponseError(c, `缺少搜索内容参数`, reqMap)
 		return
 	}
 	cursor := cast.ToUint64(reqMap[`Cursor`])
@@ -449,15 +449,15 @@ func getRedisComponent(c *gin.Context) (map[string]interface{}, *gsdb.GsRedis, e
 	}
 	redisId := reqMap[`id`]
 	if cast.ToString(redisId) == `` {
-		return nil, nil, errors.New(`缺少id参数`)
+		return reqMap, nil, errors.New(`缺少id参数`)
 	}
 	redisConfig, redisConfigErr := base.Component.TSqlite.GetRedisConfig(redisId)
 	if redisConfigErr != nil {
-		return nil, nil, redisConfigErr
+		return reqMap, nil, redisConfigErr
 	}
 	redisClient, redisClientErr := base.Component.TRedis.GetClient(redisConfig)
 	if redisClientErr != nil {
-		return nil, nil, err
+		return reqMap, nil, redisClientErr
 	}
 	return reqMap, redisClient, nil
 }

@@ -3,6 +3,7 @@ package base
 import (
 	"errors"
 	"gitee.com/Sxiaobai/gs/gsssh"
+	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
 	"sync"
 	"time"
@@ -20,7 +21,8 @@ func (h *TShell) GetClient(sshConfig map[string]any, uniqueKey string) (*gsssh.S
 	if sshId == `` {
 		return nil, errors.New(`ssh配置错误`)
 	}
-	if shell, ok := h.ShellClientMap[uniqueKey]; ok {
+	gstool.FmtPrintlnLogTime(`获取client %v`, h.ShellClientMap)
+	if shell, ok := h.ShellClientMap[uniqueKey]; ok && shell != nil {
 		return shell, nil
 	}
 	gsShell := &gsssh.SshConfig{
@@ -49,10 +51,12 @@ func (h *TShell) GetClient(sshConfig map[string]any, uniqueKey string) (*gsssh.S
 	//是否显示执行命令后linux返回的执行的命令 如果设置了SetFuncBefore处理，那么就关闭
 	gsShell.CloseFirstReceiveMsg()
 	//设置关闭事件 用来进行重连
+	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
 	gsShell.SetFuncBroken(func() {
-		Component.TSocket.SendMsg(uniqueKey, uniqueKey+` 注意：连接已中断，等待重连`)
+		gstool.FmtPrintlnLogTime(uniqueKey + `连接中断，下次动作时进行链接`)
+		Component.TSocket.SendMsg(uniqueKey, uniqueKey+` 注意：连接已中断，下次动作时进行链接`)
 		h.RmClient(uniqueKey)
-		h.ReConn(uniqueKey, sshConfig)
+		//h.ReConn(uniqueKey, sshConfig)
 	})
 	h.ShellClientMap[uniqueKey] = gsShell
 	return gsShell, nil

@@ -166,8 +166,14 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 		return
 	}
 	processList := make([]map[string]any, 0)
-	_ = gstool.JsonDecode(process, &processList)
-	gstool.FmtPrintlnLogTime(`processList %#v`, processList)
+	if process != `` {
+		decodeErr := gstool.JsonDecode(process, &processList)
+		if decodeErr != nil {
+			gsgin.GinResponseError(c, `配置失败`+decodeErr.Error(), nil)
+			return
+		}
+	}
+
 	for i := 0; i < openNum; i++ {
 		go func() {
 			openErr := openBrowserPlaywright(openType, link, processList, dataMap)
@@ -179,19 +185,59 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
+// SmartLinkRunPlaywrightList 获取运行的列表
+func SmartLinkRunPlaywrightList(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+
+	runList := make([]map[string]any, 0)
+	for uniKey, runInfo := range base.Component.TSmartLink.PageList {
+		runList = append(runList, map[string]any{
+			`name`:   runInfo.Value,
+			`unikey`: uniKey,
+		})
+	}
+	gsgin.GinResponseSuccess(c, ``, runList)
+}
+
+// SmartLinkPlaywrightForward 唤醒
+func SmartLinkPlaywrightForward(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	if cast.ToString(dataMap[`unikey`]) == `` {
+		gsgin.GinResponseError(c, `unikey不能为空`, nil)
+		return
+	}
+	page := base.Component.TSmartLink.PageList[cast.ToString(dataMap[`unikey`])]
+	if page == nil {
+		gsgin.GinResponseError(c, `窗口已不存在`, nil)
+		return
+	}
+	gstool.FmtPrintlnLogTime(`活跃的Pid %v`, page.BrowserPid)
+	err := base.Component.TSmartLink.SetForegroundWindowPid(page.BrowserPid)
+	if err != nil {
+		gsgin.GinResponseSuccess(c, `唤醒失败`+err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, nil)
+	return
+}
+
+// SmartLinkPlaywrightVersion 获取浏览器核心版本
+func SmartLinkPlaywrightVersion(c *gin.Context) {
+	pw, _ := playwright.NewDriver()
+	gsgin.GinResponseSuccess(c, pw.Version, nil)
+	return
+}
+
 // 打开浏览器
 func openBrowserPlaywright(openType int, link string, processList []map[string]any, dataMap map[string]any) error {
 	browserAuthUsername := cast.ToString(dataMap[`browser_auth_username`])
 	browserAuthPassword := cast.ToString(dataMap[`browser_auth_password`])
-	page, pageErr := base.Component.TSmartLink.GetPage(openType, browserAuthUsername, browserAuthPassword)
+	value := cast.ToString(dataMap[`value`])
+	page, pageErr := base.Component.TSmartLink.GetPage(openType, link, value, browserAuthUsername, browserAuthPassword)
 	if pageErr != nil {
 		return pageErr
-	}
-	//跳转链接
-	u, _ := url.Parse(link)
-	gstool.FmtPrintlnLogTime(`打开网页 %s %#v`, u.String(), dataMap)
-	if _, goErr := (*page.Page).Goto(u.String()); goErr != nil {
-		return goErr
 	}
 	for _, processVal := range processList {
 		time.Sleep(time.Millisecond * 200)
@@ -206,21 +252,21 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 		//等待时间
 		waitSecond := cast.ToFloat64(processVal[`wait_second`])
 		if waitSecond == 0 {
-			waitSecond = cast.ToFloat64(2)
+			waitSecond = cast.ToFloat64(1)
 		}
 		waitSecond = waitSecond * 1000
-		gstool.FmtPrintlnLogTime(`操作 %#v`, processVal)
-
 		// 等待导航完成
-		gstool.FmtPrintlnLogTime(`等待页面加载完成`)
 		waitErr := (*page.Page).WaitForLoadState(playwright.PageWaitForLoadStateOptions{
 			State: playwright.LoadStateDomcontentloaded, //三种LoadStateNetworkidle 网络加载最低程度 LoadStateDomcontentloaded DOM加载完成
 		})
 		if waitErr != nil {
 			gstool.FmtPrintlnLogTime("等待页面 DOM 内容加载完成失败: %s", waitErr.Error())
 		}
-		addTipMsg(*page.Page, tip+`,`+cast.ToString(waitSecond))
+
+		addTipMsg(*page.Page, tip)
 		switch processType {
+		case `window_max`: //窗口最大化
+			base.Component.TSmartLink.SetWindowMax(page.BrowserPid)
 		case `wait_navigation`: //等待导航完成
 			waitUrlErr := (*page.Page).WaitForURL((*page.Page).URL())
 			if waitUrlErr != nil {
@@ -322,6 +368,15 @@ func addTipMsg(page playwright.Page, tip string) {
 						existTip.remove();
 					}
 				}, 2000); 
+			}, 100); 
+		})();`)
+}
+
+// SetTitle 设置title
+func SetTitle(page playwright.Page, title string) {
+	_, _ = page.Evaluate(`(function() {
+			setTimeout(function() {
+				document.title = "` + title + `";
 			}, 100); 
 		})();`)
 }
