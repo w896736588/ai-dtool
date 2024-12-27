@@ -1,60 +1,101 @@
-module xkf_tool
+module dev_tool
 
-go 1.18
+go 1.23
+
+toolchain go1.23.3
 
 require (
-	gitee.com/Sxiaobai/gs v0.0.0-20230724104456-021a5b7d60fd
+	gitee.com/Sxiaobai/gs v1.2.2
 	github.com/gin-gonic/gin v1.9.0
-	github.com/go-redis/redis v6.15.9+incompatible
-	github.com/go-sql-driver/mysql v1.7.0
-	github.com/sirupsen/logrus v1.9.0
+	github.com/go-vgo/robotgo v0.110.5
+	github.com/gorilla/websocket v1.5.1
+	github.com/playwright-community/playwright-go v0.4901.0
+	github.com/redis/go-redis/v9 v9.2.0
+	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/spf13/cast v1.5.0
 	github.com/spf13/viper v1.9.0
 )
 
 require (
 	github.com/bytedance/sonic v1.8.0 // indirect
+	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
+	github.com/dblohm7/wingoes v0.0.0-20240820181039-f2b84150679e // indirect
+	github.com/deckarep/golang-set/v2 v2.7.0 // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/easierway/concurrent_map v1.0.0 // indirect
-	github.com/forgoer/openssl v1.5.0 // indirect
+	github.com/ebitengine/purego v0.8.0 // indirect
+	github.com/forgoer/openssl v1.6.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
+	github.com/gen2brain/shm v0.1.1 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
+	github.com/go-jose/go-jose/v3 v3.0.3 // indirect
+	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.11.2 // indirect
+	github.com/go-sql-driver/mysql v1.7.1 // indirect
+	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/goccy/go-json v0.10.0 // indirect
-	github.com/golang/snappy v0.0.4 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/godbus/dbus/v5 v5.1.0 // indirect
+	github.com/h2non/filetype v1.1.3 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
+	github.com/jezek/xgb v1.1.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/kbinani/screenshot v0.0.0-20240820160931-a8a2c5d0e191 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
-	github.com/leeqvip/gophp v1.0.0 // indirect
+	github.com/kr/fs v0.1.0 // indirect
+	github.com/leeqvip/gophp v1.1.0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/lestrrat/go-file-rotatelogs v0.0.0-20180223000712-d3151e2a480f // indirect
 	github.com/lestrrat/go-strftime v0.0.0-20180220042222-ba3bf9c1d042 // indirect
+	github.com/lib/pq v1.10.9 // indirect
+	github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 // indirect
+	github.com/lxn/win v0.0.0-20210218163916-a377121e959e // indirect
 	github.com/magiconair/properties v1.8.5 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mitchellh/mapstructure v1.4.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
-	github.com/nsqio/go-nsq v1.1.0 // indirect
-	github.com/nxadm/tail v1.4.8 // indirect
+	github.com/otiai10/gosseract v2.2.1+incompatible // indirect
+	github.com/otiai10/mint v1.6.3 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pkg/sftp v1.13.6 // indirect
+	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
+	github.com/robotn/xgb v0.10.0 // indirect
+	github.com/robotn/xgbutil v0.10.0 // indirect
+	github.com/sbabiv/xml2map v1.2.1 // indirect
+	github.com/shirou/gopsutil/v4 v4.24.9 // indirect
+	github.com/shoenig/go-m1cpu v0.1.6 // indirect
+	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/spf13/afero v1.6.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
+	github.com/tailscale/win v0.0.0-20240926211701-28f7e73c7afb // indirect
+	github.com/tklauser/go-sysconf v0.3.14 // indirect
+	github.com/tklauser/numcpus v0.9.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.9 // indirect
+	github.com/vcaesar/gops v0.40.0 // indirect
+	github.com/vcaesar/imgo v0.40.2 // indirect
+	github.com/vcaesar/keycode v0.10.1 // indirect
+	github.com/vcaesar/tt v0.20.1 // indirect
+	github.com/yusufpapurcu/wmi v1.2.4 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
-	golang.org/x/crypto v0.8.0 // indirect
-	golang.org/x/net v0.9.0 // indirect
-	golang.org/x/sys v0.7.0 // indirect
-	golang.org/x/text v0.9.0 // indirect
+	golang.org/x/crypto v0.26.0 // indirect
+	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c // indirect
+	golang.org/x/image v0.21.0 // indirect
+	golang.org/x/net v0.21.0 // indirect
+	golang.org/x/sys v0.27.0 // indirect
+	golang.org/x/text v0.19.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/ini.v1 v1.63.2 // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
