@@ -4,12 +4,15 @@ import (
 	"dev_tool/base"
 	_default "dev_tool/internal/app/default"
 	"gitee.com/Sxiaobai/gs/gsencrypt"
+	"gitee.com/Sxiaobai/gs/gstool"
+	"os"
+	"time"
 )
 
 var AppName = `zhima`
 
-func InitBase(IsBuild string) {
-	_default.InitBase(IsBuild, AppName)
+func InitBase(IsBuild, DbPath string) {
+	_default.InitBase(IsBuild, AppName, DbPath)
 	initComponent()
 }
 
@@ -19,6 +22,12 @@ func initComponent() {
 		Key: base.Component.ConfigViper.GetString(`encrypt.key`),
 		Iv:  base.Component.ConfigViper.GetString(`encrypt.iv`),
 	}
-	initRouter()
-	base.Component.TGin.GinRun()
+	if base.Component.TGin.IsRun == true {
+		initRouter()
+		base.Component.TGin.GinRun()
+	} else {
+		gstool.FmtPrintlnLogTime(`5秒钟后退出`)
+		time.Sleep(5 * time.Second)
+		os.Exit(0)
+	}
 }

@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cast"
 	"net/url"
 	"sync"
-	"time"
 )
 
 type TPlayWright struct {
@@ -21,8 +20,9 @@ type TPlayWright struct {
 }
 
 type TSmartLink struct {
-	PageList map[string]*TPlayWright
-	lock     sync.Mutex
+	PageList  map[string]*TPlayWright
+	lock      sync.Mutex
+	IsInstall bool
 }
 
 // GetPage 拿到Page
@@ -85,18 +85,14 @@ func (h *TSmartLink) GetPage(openType int, link, value, browserAuthUsername, bro
 	}
 	//等待加载完成
 	waitErr := page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-		State: playwright.LoadStateDomcontentloaded, //三种LoadStateNetworkidle 网络加载最低程度 LoadStateDomcontentloaded DOM加载完成
+		State: playwright.LoadStateLoad, //三种LoadStateNetworkidle 网络加载最低程度 LoadStateDomcontentloaded DOM加载完成
 	})
 	if waitErr != nil {
 		gstool.FmtPrintlnLogTime("等待页面 DOM 内容加载完成失败: %s", waitErr.Error())
 	}
 	h.AddTipMsg(page, `寻找窗口中...`)
-	time.Sleep(time.Second)
 	createTimeDesc := cast.ToString(gstool.TimeNowMilliInt64())
-	//注意：当开启一个新页卡后 进程可能无法唤醒
-	nodePid := gstool.ProcessFindNewPidByName(`node.exe`)
-	gstool.FmtPrintlnLogTime(`node pid %d`, nodePid)
-	browserPid := gstool.ProcessFindNewPidByPPid(nodePid)
+	go h.FindPidMaxWindow(createTimeDesc)
 	h.PageList[createTimeDesc] = &TPlayWright{
 		Page:           &page,
 		Browser:        &browser,
@@ -104,7 +100,6 @@ func (h *TSmartLink) GetPage(openType int, link, value, browserAuthUsername, bro
 		Context:        &context,
 		Value:          value,
 		CreateTimeDesc: createTimeDesc,
-		BrowserPid:     cast.ToInt(browserPid),
 	}
 	go func(createTimeDesc string) {
 		page.OnClose(func(page playwright.Page) {
@@ -113,8 +108,20 @@ func (h *TSmartLink) GetPage(openType int, link, value, browserAuthUsername, bro
 			delete(h.PageList, createTimeDesc)
 		})
 	}(createTimeDesc)
-	gstool.FmtPrintlnLogTime(`创建page browserPid：%d`, browserPid)
 	return h.PageList[createTimeDesc], nil
+}
+
+// FindPidMaxWindow 找到弹出的浏览器
+func (h *TSmartLink) FindPidMaxWindow(createTimeDesc string) {
+	//注意：当开启一个新页卡后或最小化后 进程无法唤醒
+	nodePid := gstool.ProcessFindNewPidByName(`node.exe`)
+	gstool.FmtPrintlnLogTime(`node pid %d`, nodePid)
+	browserPid := gstool.ProcessFindNewPidByPPid(nodePid)
+	h.SetWindowMax(cast.ToInt(browserPid))
+	if pageInfo, ok := h.PageList[createTimeDesc]; ok {
+		pageInfo.BrowserPid = cast.ToInt(browserPid)
+	}
+	gstool.FmtPrintlnLogTime(`创建page browserPid：%d`, browserPid)
 }
 
 // SetTitle 设置title

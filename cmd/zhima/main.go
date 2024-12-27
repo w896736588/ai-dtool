@@ -6,9 +6,10 @@ import (
 )
 
 var IsBuild string
+var DbPath string
 
 func main() {
-	zhima.InitBase(IsBuild)
+	zhima.InitBase(IsBuild, DbPath)
 	gstool.CpuSetUsePercent(0.6)
 	gstool.SignalDefault()
 }

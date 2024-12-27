@@ -59,6 +59,18 @@ func (h *Command) GitIgnoreAll() *Command {
 	return h
 }
 
+// RemoteOriginBranch 注意这个命令会让get fetch失效，仅用于那些非常大的仓库
+func (h *Command) RemoteOriginBranch(branch string) *Command {
+	branch = gstool.StringReplaces(branch, map[string]string{
+		` `: ``,
+	})
+	if branch == `master` {
+		return h
+	}
+	h.SetCommand(h.sudo + ` git remote set-branches origin '` + branch + `'`)
+	return h
+}
+
 func (h *Command) GitCleanAll() *Command {
 	h.SetCommand(h.sudo + `git clean -df`)
 	return h

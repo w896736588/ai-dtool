@@ -20,10 +20,10 @@ import (
 
 var AppName = ``
 
-func InitBase(IsBuild string, appName string) {
+func InitBase(IsBuild, appName, DbPath string) {
 	AppName = appName
 	initComponent(IsBuild)
-	initSqlite()
+	initSqlite(DbPath)
 	initGin()
 	stdLog(IsBuild)
 }
@@ -93,8 +93,8 @@ func initComponent(IsBuild string) {
 	base.Component.GsLog = gstool.SlogCreateDefault(base.Component.Env.RootPath+`/logs`, AppName)
 }
 
-func initSqlite() {
-	dbDir := base.Component.ConfigViper.GetString(`set_db.db_path`)
+func initSqlite(DbPath string) {
+	dbDir := DbPath
 	var dbPath string
 	if dbDir != `` {
 		dbPath = fmt.Sprintf(dbDir+`%s`, AppName+`.db`)
@@ -127,6 +127,10 @@ func Stop() {
 func initGin() {
 	host := base.Component.ConfigViper.GetString(`run.host`)
 	port := base.Component.ConfigViper.GetString(`run.port`)
+	if !gstool.NetIsPortAvailable(host + `:` + port) {
+		gstool.FmtPrintlnLogTime(`端口已被占用 %s`, host+`:`+port)
+		return
+	}
 	base.Component.TGin.SetMode(gin.TestMode)
 	base.Component.TGin.GinInit(host, port)
 	base.Component.TGin.GinSetAllowCrossDomain()
@@ -146,6 +150,7 @@ func initGin() {
 	base.Component.TGin.GinGet(`/`, func(context *gin.Context) {
 		context.HTML(200, `index.html`, nil)
 	})
+	base.Component.TGin.IsRun = true
 }
 
 func initSocket() {

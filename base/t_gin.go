@@ -7,7 +7,8 @@ import (
 )
 
 type Gin struct {
-	gin *gsgin.GSGin //API接口
+	gin   *gsgin.GSGin //API接口
+	IsRun bool
 }
 
 func (h *Gin) GinInit(host, port string) *gsgin.GSGin {

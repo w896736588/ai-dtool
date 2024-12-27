@@ -11,6 +11,7 @@ import (
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
 	"net/url"
+	"sync"
 	"time"
 )
 
@@ -226,8 +227,42 @@ func SmartLinkPlaywrightForward(c *gin.Context) {
 // SmartLinkPlaywrightVersion 获取浏览器核心版本
 func SmartLinkPlaywrightVersion(c *gin.Context) {
 	pw, _ := playwright.NewDriver()
+	lockFileName := `playwright.lock`
+	lockFileFullPath := base.Component.Env.RootPath + `/` + lockFileName
+	if !gstool.FileIsExisted(lockFileFullPath) {
+		go install(pw.Version, lockFileFullPath)
+	} else {
+		content, contentErr := gstool.FileGetContent(lockFileFullPath)
+		if contentErr != nil {
+			gstool.FmtPrintlnLogTime(`获取文件内容失败 %s`, contentErr.Error())
+		} else if content != pw.Version {
+			go install(pw.Version, lockFileFullPath)
+		} else {
+			gstool.FmtPrintlnLogTime(`浏览器核心最新版本为：%s ，当前安装版本为：%s,不需要进行更新`, pw.Version, content)
+		}
+	}
 	gsgin.GinResponseSuccess(c, pw.Version, nil)
 	return
+}
+
+func install(version, lockFileFullPath string) {
+	if base.Component.TSmartLink.IsInstall {
+		gstool.FmtPrintlnLogTime(`正在安装中..`)
+		return
+	}
+	defer func() {
+		base.Component.TSmartLink.IsInstall = false
+	}()
+	base.Component.TSmartLink.IsInstall = true
+	_ = gstool.FilePutContentCover(lockFileFullPath, version)
+	gstool.FmtPrintlnLogTime(`开始安装浏览器核心(只安装chrome),大约几分钟时间`)
+	err := playwright.Install(&playwright.RunOptions{Browsers: []string{`chromium`}})
+	if err != nil {
+		gstool.FmtPrintlnLogTime(`安装浏览器核心失败 %s`, err.Error())
+		_ = gstool.FileDelete(lockFileFullPath)
+	} else {
+		gstool.FmtPrintlnLogTime(`安装完成`)
+	}
 }
 
 // 打开浏览器
@@ -243,6 +278,8 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 		time.Sleep(time.Millisecond * 200)
 		//类型
 		processType := cast.ToString(processVal[`type`])
+		//如果不存在
+		notExistLocator := cast.ToString(processVal[`not_exist_Locator`])
 		//元素选择
 		Locator := cast.ToString(processVal[`Locator`])
 		gstool.FmtPrintlnLogTime(`查找元素 %s`, Locator)
@@ -282,18 +319,7 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 			//监听控制台
 			//go listenDevTool(*page.Context, *page.Page, *page.Browser)
 		case `click`: //点击
-			selectorLoader := (*page.Page).Locator(Locator)
-			selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: &waitSecond,
-				State:   playwright.WaitForSelectorStateVisible,
-			})
-			if selectorLoaderWaitErr == nil {
-				gstool.FmtPrintlnLogTime(`找到元素%s，点击`, Locator)
-				clickErr := selectorLoader.Click()
-				if clickErr != nil {
-					gstool.FmtPrintlnLogTime(`等待元素后 点击失败 %s`, clickErr.Error())
-				}
-			}
+			click(Locator, notExistLocator, waitSecond, *page.Page)
 			break
 		case `input`: //输入
 			inputValue := cast.ToString(processVal[`value`])
@@ -335,6 +361,57 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 	//	log.Fatalf("could not stop Playwright: %v", err)
 	//}
 	return nil
+}
+
+// 点击
+func click(Locator, notExistLocator string, waitSecond float64, page playwright.Page) {
+	gstool.FmtPrintlnLogTime(`click %s`, notExistLocator)
+	if notExistLocator == `` { //等待点击
+		selectorLoader := page.Locator(Locator)
+		selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
+			Timeout: &waitSecond,
+			State:   playwright.WaitForSelectorStateVisible,
+		})
+		if selectorLoaderWaitErr == nil {
+			gstool.FmtPrintlnLogTime(`找到元素%s，点击`, Locator)
+			clickErr := selectorLoader.Click()
+			if clickErr != nil {
+				gstool.FmtPrintlnLogTime(`等待元素后 点击失败 %s`, clickErr.Error())
+			}
+		}
+	} else { //等待或者某个元素存在
+		wait := sync.WaitGroup{}
+		wait.Add(1)
+		//等待某个元素存在时直接走
+		go func() {
+			existLoader := page.Locator(notExistLocator)
+			existLoaderErr := existLoader.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: &waitSecond,
+				State:   playwright.WaitForSelectorStateVisible,
+			})
+			if existLoaderErr == nil { //存在 那么直接返回往下走
+				gstool.FmtPrintlnLogTime(`找到了not exit `)
+				wait.Done()
+			}
+		}()
+		//等待原本要找的元素出现并点击
+		go func() {
+			selectorLoader := page.Locator(Locator)
+			selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: &waitSecond,
+				State:   playwright.WaitForSelectorStateVisible,
+			})
+			if selectorLoaderWaitErr == nil {
+				gstool.FmtPrintlnLogTime(`找到元素%s，点击`, Locator)
+				clickErr := selectorLoader.Click()
+				if clickErr != nil {
+					gstool.FmtPrintlnLogTime(`等待元素后 点击失败 %s`, clickErr.Error())
+					wait.Done()
+				}
+			}
+		}()
+		wait.Wait()
+	}
 }
 
 func registerJs(page playwright.Page) {

@@ -71,6 +71,7 @@ func GitChangeBranch(c *gin.Context) {
 	command.GitPull()
 	currentBranch = strings.Replace(currentBranch, "\n", "", -1)
 	if !strings.Contains(currentBranch, branchName) {
+		//command.RemoteOriginBranch(branchName)
 		command.GitCheckout(branchName)
 	}
 	command.GitPullOrigin(branchName)
