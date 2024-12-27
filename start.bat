@@ -1,7 +1,7 @@
 @echo off
  
 
-start ./build/xkf_tool.exe  >> ./error.log 2>&1
+start ./goservice/build/zhima.exe --IsProd=true  >> ./error.log 2>&1
 
-
-start chrome http://localhost:7070/
+::start chrome http://localhost:7170/
+start http://localhost:7170/
