@@ -259,13 +259,16 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 			waitSecond = cast.ToFloat64(1)
 		}
 		waitSecond = waitSecond * 1000
-		// 等待导航完成
-		waitErr := (*page.Page).WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-			State: playwright.LoadStateDomcontentloaded, //三种LoadStateNetworkidle 网络加载最低程度 LoadStateDomcontentloaded DOM加载完成
+		// 等待页面加载完成
+		_ = (*page.Page).WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+			State: playwright.LoadStateDomcontentloaded,
 		})
-		if waitErr != nil {
-			gstool.FmtPrintlnLogTime("等待页面 DOM 内容加载完成失败: %s", waitErr.Error())
-		}
+		_ = (*page.Page).WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+			State: playwright.LoadStateNetworkidle,
+		})
+		_ = (*page.Page).WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+			State: playwright.LoadStateLoad,
+		})
 
 		base.Component.TSmartLink.AddTipMsg(*page.Page, tip)
 		switch processType {
