@@ -58,10 +58,6 @@ func initComponent(IsBuild string) {
 	base.Component.TMysql = &base.TMysql{MysqlClientMap: make(map[string]*gsdb.GsMysql)}
 	base.Component.TCode = &base.TCode{}
 	base.Component.TBase = &base.TBase{}
-	base.Component.TSmartLink = &base.TSmartLink{
-		PageList: make(map[string]*base.TPlayWright),
-	}
-	base.Component.TSmartLink.SmartCheckAndUpdate()
 	base.Component.TSocket = &base.TSocket{
 		SocketList: make(map[string]*websocket.Conn),
 	}
@@ -84,6 +80,16 @@ func initComponent(IsBuild string) {
 	}
 	gstool.FmtPrintlnLogTime(`根目录 %s`, base.Component.Env.RootPath)
 	gstool.FmtPrintlnLogTime(`加载配置文件 %s`, base.Component.Env.RootPath+`/config/`+AppName)
+	//初始化playwright
+	var downloadPath = base.Component.Env.RootPath + `\playwright`
+	gstool.FmtPrintlnLogTime(`下载目录%s`, downloadPath)
+	base.Component.TSmartLink = &base.TSmartLink{
+		PageList:     make(map[string]*base.TPlayWright),
+		DownloadPath: downloadPath,
+	}
+	base.Component.TSmartLink.WitchDownload()
+	base.Component.TSmartLink.SmartCheckAndUpdate()
+	//配置初始化
 	base.Component.ConfigViper = viper.New()
 	base.Component.ConfigViper.AddConfigPath(base.Component.Env.RootPath + `/config/` + AppName)
 	base.Component.ConfigViper.SetConfigName(`config`)

@@ -3,10 +3,14 @@ package base
 import (
 	"dev_tool/base/define"
 	"gitee.com/Sxiaobai/gs/gstool"
+	"github.com/fsnotify/fsnotify"
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
 	"net/url"
+	"os"
+	"os/exec"
 	"sync"
+	"time"
 )
 
 type TPlayWright struct {
@@ -20,8 +24,9 @@ type TPlayWright struct {
 }
 
 type TSmartLink struct {
-	PageList map[string]*TPlayWright
-	lock     sync.Mutex
+	PageList     map[string]*TPlayWright
+	lock         sync.Mutex
+	DownloadPath string
 }
 
 // GetPage 拿到Page
@@ -41,7 +46,8 @@ func (h *TSmartLink) GetPage(openType int, link, value, browserAuthUsername, bro
 		browser, browserErr = pw.Chromium.Launch()
 	} else {
 		browser, browserErr = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-			Headless: playwright.Bool(false), //有界面模式
+			DownloadsPath: &h.DownloadPath,
+			Headless:      playwright.Bool(false), //有界面模式
 		})
 	}
 	if browserErr != nil {
@@ -60,6 +66,7 @@ func (h *TSmartLink) GetPage(openType int, link, value, browserAuthUsername, bro
 			},
 			NoViewport:        &noViewPort,
 			JavaScriptEnabled: &javascript,
+			AcceptDownloads:   playwright.Bool(true),
 		})
 		if contextErr != nil {
 			gstool.FmtPrintlnLogTime("Failed to create context: %v", contextErr)
@@ -68,15 +75,19 @@ func (h *TSmartLink) GetPage(openType int, link, value, browserAuthUsername, bro
 		context, contextErr = browser.NewContext(playwright.BrowserNewContextOptions{
 			NoViewport:        &noViewPort,
 			JavaScriptEnabled: &javascript,
+			AcceptDownloads:   playwright.Bool(true),
 		})
 		if contextErr != nil {
 			gstool.FmtPrintlnLogTime("Failed to create context: %v", contextErr)
 		}
 	}
+	//创建页面
 	page, pageErr = context.NewPage()
 	if pageErr != nil {
 		return nil, pageErr
 	}
+	//监听下载事件进行重命名
+	go h.OnDownload(page)
 	//跳转链接
 	u, _ := url.Parse(link)
 	if _, goErr := page.Goto(u.String()); goErr != nil {
@@ -108,6 +119,53 @@ func (h *TSmartLink) GetPage(openType int, link, value, browserAuthUsername, bro
 		})
 	}(createTimeDesc)
 	return h.PageList[createTimeDesc], nil
+}
+
+func (h *TSmartLink) OnDownload(page playwright.Page) {
+	page.On(`download`, func(download playwright.Download) {
+		gstool.FmtPrintlnLogTime(`下载文件 %s %s`, download.URL(), download.String())
+		downloadErr := download.SaveAs(h.DownloadPath + `\` + download.String())
+		if downloadErr != nil {
+			gstool.FmtPrintlnLogTime(`下载`)
+			return
+		} else {
+			gstool.FmtPrintlnLogTime(`另存下载文件%s`, h.DownloadPath+`\`+download.String())
+		}
+	})
+	page.On("response", func(response playwright.Response) {
+		//gstool.FmtPrintlnLogTime(`下载%s`, response.Request().URL())
+	})
+}
+
+// WitchDownload 监听目录新文件下载 自动识别文件类型 并打开
+func (h *TSmartLink) WitchDownload() {
+	_ = os.RemoveAll(h.DownloadPath)
+	_ = gstool.DirCreatePath(h.DownloadPath)
+	gstool.FmtPrintlnLogTime(`开始监听%s`, h.DownloadPath)
+	watch := gstool.NewFileWatch(h.DownloadPath, func(event fsnotify.Event) {
+		if event.Op == fsnotify.Create {
+			go func() {
+				time.Sleep(time.Second * 2)
+				isXlsx := gstool.FileIsXlsx(event.Name)
+				if isXlsx {
+					renameErr := os.Rename(event.Name, event.Name+`.xlsx`)
+					if renameErr != nil {
+						gstool.FmtPrintlnLogTime(`重命名错误 %s`, renameErr.Error())
+					} else {
+						cmd := exec.Command("cmd", "/C", "start", event.Name+`.xlsx`)
+						_ = cmd.Start()
+					}
+				}
+			}()
+
+		}
+	})
+	go func() {
+		err := watch.Start()
+		if err != nil {
+			gstool.FmtPrintlnLogTime(`监听失败 ^%s`, err.Error())
+		}
+	}()
 }
 
 // FindPidMaxWindow 找到弹出的浏览器
