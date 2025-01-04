@@ -86,6 +86,7 @@ func initComponent(IsBuild string) {
 	base.Component.TSmartLink = &base.TSmartLink{
 		PageList:     make(map[string]*base.TPlayWright),
 		DownloadPath: downloadPath,
+		DownloadMap:  make(map[string]string),
 	}
 	base.Component.TSmartLink.WitchDownload()
 	base.Component.TSmartLink.SmartCheckAndUpdate()

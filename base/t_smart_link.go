@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
-	"time"
 )
 
 type TPlayWright struct {
@@ -24,9 +24,11 @@ type TPlayWright struct {
 }
 
 type TSmartLink struct {
-	PageList     map[string]*TPlayWright
-	lock         sync.Mutex
-	DownloadPath string
+	PageList        map[string]*TPlayWright
+	lock            sync.Mutex
+	DownloadPath    string
+	DownloadMap     map[string]string
+	DownloadMapLock sync.Mutex
 }
 
 // GetPage 拿到Page
@@ -123,14 +125,20 @@ func (h *TSmartLink) GetPage(openType int, link, value, browserAuthUsername, bro
 
 func (h *TSmartLink) OnDownload(page playwright.Page) {
 	page.On(`download`, func(download playwright.Download) {
-		gstool.FmtPrintlnLogTime(`下载文件 %s %s`, download.URL(), download.String())
-		downloadErr := download.SaveAs(h.DownloadPath + `\` + download.String())
-		if downloadErr != nil {
-			gstool.FmtPrintlnLogTime(`下载`)
-			return
-		} else {
-			gstool.FmtPrintlnLogTime(`另存下载文件%s`, h.DownloadPath+`\`+download.String())
-		}
+		h.DownloadMapLock.Lock()
+		defer h.DownloadMapLock.Unlock()
+		//content, _ := gstool.FileGetContent(download.URL())
+		//其实没用 应为内容都不一样。。
+		//h.DownloadMap[gstool.Md5(content)] = filepath.Base(download.String())
+		//gstool.FmtPrintlnLogTime(`下载 %s => %s`, gstool.Md5(content), filepath.Base(download.String()))
+		//gstool.FmtPrintlnLogTime(`下载文件 %s %s`, download.URL(), download.String())
+		//downloadErr := download.SaveAs(h.DownloadPath + `\` + download.String())
+		//if downloadErr != nil {
+		//	gstool.FmtPrintlnLogTime(`下载`)
+		//	return
+		//} else {
+		//	gstool.FmtPrintlnLogTime(`另存下载文件%s`, h.DownloadPath+`\`+download.String())
+		//}
 	})
 	page.On("response", func(response playwright.Response) {
 		//gstool.FmtPrintlnLogTime(`下载%s`, response.Request().URL())
@@ -144,19 +152,20 @@ func (h *TSmartLink) WitchDownload() {
 	gstool.FmtPrintlnLogTime(`开始监听%s`, h.DownloadPath)
 	watch := gstool.NewFileWatch(h.DownloadPath, func(event fsnotify.Event) {
 		if event.Op == fsnotify.Create {
-			go func() {
-				time.Sleep(time.Second * 2)
-				isXlsx := gstool.FileIsXlsx(event.Name)
-				if isXlsx {
-					renameErr := os.Rename(event.Name, event.Name+`.xlsx`)
-					if renameErr != nil {
-						gstool.FmtPrintlnLogTime(`重命名错误 %s`, renameErr.Error())
-					} else {
-						cmd := exec.Command("cmd", "/C", "start", event.Name+`.xlsx`)
-						_ = cmd.Start()
-					}
+			if strings.HasSuffix(event.Name, `.crdownload`) || strings.Contains(event.Name, `~$`) {
+				return
+			}
+			targetName := event.Name
+			gstool.FmtPrintlnLogTime(`targetName %s => %s`, event.Name, targetName)
+			isXlsx := gstool.FileIsXlsx(event.Name)
+			if isXlsx {
+				h.OpenFile(event.Name, targetName, `xlsx`)
+			} else {
+				ext, extErr := gstool.FileExtType(event.Name)
+				if extErr == nil {
+					h.OpenFile(event.Name, targetName, ext.Extension)
 				}
-			}()
+			}
 
 		}
 	})
@@ -166,6 +175,34 @@ func (h *TSmartLink) WitchDownload() {
 			gstool.FmtPrintlnLogTime(`监听失败 ^%s`, err.Error())
 		}
 	}()
+}
+
+func (h *TSmartLink) OpenFile(filePath, targetFilePath, ext string) {
+	allowTypeList := []string{
+		`xlsx`, `xls`, `csv`, `doc`, `docx`, `ppt`, `pptx`, `pdf`,
+		`txt`, `md`, `html`, `htm`, `jpg`, `jpeg`, `png`, `gif`,
+		`bmp`, `ico`, `svg`, `mp4`, `mp3`, `wav`,
+	}
+	compareName := strings.ToLower(filePath)
+	boolStart := false
+	for _, allowType := range allowTypeList {
+		if strings.Contains(compareName, allowType) {
+			boolStart = true
+			break
+		}
+	}
+	if boolStart {
+		gstool.FmtPrintlnLogTime(`直接打开 %s`, filePath)
+		cmd := exec.Command("cmd", "/C", "start", filePath)
+		_ = cmd.Start()
+	} else {
+		renameErr := os.Rename(filePath, targetFilePath+`.`+ext)
+		gstool.FmtPrintlnLogTime(`移动后打开 %s => %s`, filePath, targetFilePath+`.`+ext)
+		if renameErr != nil {
+			gstool.FmtPrintlnLogTime(`重命名错误 %s`, renameErr.Error())
+		}
+	}
+
 }
 
 // FindPidMaxWindow 找到弹出的浏览器
