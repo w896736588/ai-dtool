@@ -83,15 +83,23 @@ func (h *TSmartLink) GetPageSingle(openType int, link, runUniqueKey, browserAuth
 		Value:          runUniqueKey,
 		CreateTimeDesc: createTimeDesc,
 	}
-
 	go func(createTimeDesc string) {
 		page.OnClose(func(page playwright.Page) {
 			h.RunLock.Lock()
 			defer h.RunLock.Unlock()
 			delete(h.PageList, createTimeDesc)
+			h.CheckContextActive()
 		})
 	}(createTimeDesc)
 	return h.PageList[createTimeDesc], nil
+}
+
+func (h *TSmartLink) CheckContextActive() {
+	for k, v := range h.DomainContextMap {
+		if !v.Browser().IsConnected() {
+			delete(h.DomainContextMap, k)
+		}
+	}
 }
 
 func (h *TSmartLink) GetContext(url, browserAuthUsername, browserAuthPassword string, browser playwright.Browser, isCombine int) (playwright.BrowserContext, error) {
