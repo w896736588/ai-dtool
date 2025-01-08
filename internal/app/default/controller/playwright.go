@@ -194,7 +194,7 @@ func SmartLinkRunPlaywrightList(c *gin.Context) {
 	runList := make([]map[string]any, 0)
 	for uniKey, runInfo := range base.Component.TSmartLink.PageList {
 		runList = append(runList, map[string]any{
-			`name`:   runInfo.Value,
+			`name`:   runInfo.RunUniqueKey,
 			`unikey`: uniKey,
 		})
 	}
@@ -202,27 +202,30 @@ func SmartLinkRunPlaywrightList(c *gin.Context) {
 }
 
 // SmartLinkPlaywrightForward 唤醒 注意，如果点击了最小化，那么弹不出来
-func SmartLinkPlaywrightForward(c *gin.Context) {
-	dataMap := make(map[string]any)
-	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToString(dataMap[`unikey`]) == `` {
-		gsgin.GinResponseError(c, `unikey不能为空`, nil)
-		return
-	}
-	page := base.Component.TSmartLink.PageList[cast.ToString(dataMap[`unikey`])]
-	if page == nil {
-		gsgin.GinResponseError(c, `窗口已不存在`, nil)
-		return
-	}
-	gstool.FmtPrintlnLogTime(`活跃的Pid %v`, page.BrowserPid)
-	err := base.Component.TSmartLink.SetForegroundWindowPid(page.BrowserPid)
-	if err != nil {
-		gsgin.GinResponseSuccess(c, `唤醒失败`+err.Error(), nil)
-		return
-	}
-	gsgin.GinResponseSuccess(c, ``, nil)
-	return
-}
+//func SmartLinkPlaywrightForward(c *gin.Context) {
+//	dataMap := make(map[string]any)
+//	_ = gsgin.GinPostBody(c, &dataMap)
+//	if cast.ToString(dataMap[`unikey`]) == `` {
+//		gsgin.GinResponseError(c, `unikey不能为空`, nil)
+//		return
+//	}
+//	page := base.Component.TSmartLink.PageList[cast.ToString(dataMap[`unikey`])]
+//	if page == nil {
+//		gsgin.GinResponseError(c, `窗口已不存在`, nil)
+//		return
+//	}
+//	gstool.FmtPrintlnLogTime(`活跃的Pid %v`, page.ContextS.Pid)
+//	if page.ContextS.Pid == 0 {
+//		return
+//	}
+//	err := base.Component.TSmartLink.SetForegroundWindowPid(page.ContextS.Pid)
+//	if err != nil {
+//		gsgin.GinResponseSuccess(c, `唤醒失败`+err.Error(), nil)
+//		return
+//	}
+//	gsgin.GinResponseSuccess(c, ``, nil)
+//	return
+//}
 
 // SmartLinkPlaywrightVersion 获取浏览器核心版本
 func SmartLinkPlaywrightVersion(c *gin.Context) {
@@ -237,13 +240,12 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 	browserAuthUsername := cast.ToString(dataMap[`browser_auth_username`])
 	browserAuthPassword := cast.ToString(dataMap[`browser_auth_password`])
 	value := cast.ToString(dataMap[`value`])
-	isCombine := cast.ToInt(dataMap[`isCombine`])
+	isCombine := 1 //默认开启
 	page, pageErr := base.Component.TSmartLink.GetPageSingle(openType, link, value, browserAuthUsername, browserAuthPassword, isCombine)
 	if pageErr != nil {
 		return pageErr
 	}
 	for _, processVal := range processList {
-		time.Sleep(time.Millisecond * 200)
 		//类型
 		processType := cast.ToString(processVal[`type`])
 		//如果不存在
@@ -259,35 +261,16 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 		if waitSecond == 0 {
 			waitSecond = cast.ToFloat64(1)
 		}
-		waitSecond = waitSecond * 1000
+		waitSecond = waitSecond * 3000
 		// 等待页面加载完成
-		_ = (*page.Page).WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-			State: playwright.LoadStateDomcontentloaded,
-		})
-		_ = (*page.Page).WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-			State: playwright.LoadStateNetworkidle,
-		})
-		_ = (*page.Page).WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-			State: playwright.LoadStateLoad,
-		})
+		base.Component.TSmartLink.WaitForLoadState(*page.Page)
+		waitUrlErr := (*page.Page).WaitForURL((*page.Page).URL())
+		if waitUrlErr != nil {
+			return waitUrlErr
+		}
 
 		base.Component.TSmartLink.AddTipMsg(*page.Page, tip)
 		switch processType {
-		case `window_max`: //窗口最大化
-			base.Component.TSmartLink.SetWindowMax(page.BrowserPid)
-		case `wait_navigation`: //等待导航完成
-			waitUrlErr := (*page.Page).WaitForURL((*page.Page).URL())
-			if waitUrlErr != nil {
-				return waitUrlErr
-			}
-			//nodePid := base.Component.TSmartLink.FindNewPidByName(`node.exe`)
-			//browserPid := base.Component.TSmartLink.FindPidChildLastPid(nodePid)
-			//打开新页卡时，进程ID不变，但是活跃的标签变了，也不会变为活跃，这可能跟浏览器内部处理有关
-			//但是手动打开一个新页卡，好像又可以变为活跃 先不研究了
-			//gstool.FmtPrintlnLogTime(`node pid %d 新打开的页卡进程 %d`, nodePid, browserPid)
-			//base.Component.TSmartLink.PageList[page.CreateTimeDesc].BrowserPid = cast.ToInt(browserPid)
-			//监听控制台
-			//go listenDevTool(*page.Context, *page.Page, *page.Browser)
 		case `click`: //点击
 			click(Locator, notExistLocator, waitSecond, *page.Page)
 			break
@@ -344,8 +327,10 @@ func click(Locator, notExistLocator string, waitSecond float64, page playwright.
 		if selectorLoaderWaitErr == nil {
 			clickErr := selectorLoader.Click()
 			if clickErr != nil {
-				gstool.FmtPrintlnLogTime(`等待元素后 点击失败 %s`, clickErr.Error())
+				gstool.FmtPrintlnLogTime(`等待元素%s后 点击失败 %s`, Locator, clickErr.Error())
 			}
+		} else {
+			gstool.FmtPrintlnLogTime(`等待元素 %s 失败 %s`, Locator, selectorLoader.Err())
 		}
 	} else { //等待或者某个元素存在
 		wait := sync.WaitGroup{}

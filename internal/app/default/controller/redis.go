@@ -254,7 +254,7 @@ func RedisSaveString(c *gin.Context) {
 
 	ttlTime, err := redisCli.Client.TTL(context.Background(), cacheKey).Result()
 	//永久
-	err = redisCli.Client.Set(context.Background(), cacheKey, reqMap[`Value`], ttlTime).Err()
+	err = redisCli.Client.Set(context.Background(), cacheKey, reqMap[`RunUniqueKey`], ttlTime).Err()
 	BaseResponseByError(c, err)
 }
 

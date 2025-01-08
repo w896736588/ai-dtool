@@ -2,6 +2,7 @@ package base
 
 import (
 	"dev_tool/base/define"
+	"gitee.com/Sxiaobai/gs/gsdefine"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/fsnotify/fsnotify"
 	"github.com/playwright-community/playwright-go"
@@ -11,16 +12,21 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 type TPlayWright struct {
 	Page           *playwright.Page
 	Browser        *playwright.Browser
 	OpenType       int
-	Value          string
-	Context        *playwright.BrowserContext
-	BrowserPid     int
+	RunUniqueKey   string
+	ContextS       *ContextS
 	CreateTimeDesc string
+}
+
+type ContextS struct {
+	Context playwright.BrowserContext
+	Pid     int
 }
 
 type TSmartLink struct {
@@ -33,7 +39,7 @@ type TSmartLink struct {
 	BrowserWebkitChrome  playwright.Browser
 	BrowserWebkitSilence playwright.Browser
 	//domain context
-	DomainContextMap map[string]playwright.BrowserContext
+	DomainContextMap map[string]ContextS
 }
 
 // GetPageSingle 拿到Page runUniqueKey 格式为0_common3 这种 单浏览器模式，每次打开都会打开一个新的浏览器
@@ -46,15 +52,17 @@ func (h *TSmartLink) GetPageSingle(openType int, link, runUniqueKey, browserAuth
 	if browserErr != nil {
 		return nil, browserErr
 	}
+	host := gstool.UrlGetHost(link)
+	domainKey := host + `:` + browserAuthUsername + `:` + browserAuthPassword
 	//context
-	context, contextErr := h.GetContext(link, browserAuthUsername, browserAuthPassword, browser, isCombine)
+	context, contextErr := h.GetContext(domainKey, browserAuthUsername, browserAuthPassword, browser, isCombine)
 	if contextErr != nil {
 		return nil, contextErr
 	}
 	//page
 	var page playwright.Page
 	var pageErr error
-	page, pageErr = context.NewPage()
+	page, pageErr = context.Context.NewPage()
 	if pageErr != nil {
 		return nil, pageErr
 	}
@@ -66,47 +74,59 @@ func (h *TSmartLink) GetPageSingle(openType int, link, runUniqueKey, browserAuth
 		return nil, goErr
 	}
 	//等待加载完成
-	waitErr := page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-		State: playwright.LoadStateLoad, //三种LoadStateNetworkidle 网络加载最低程度 LoadStateDomcontentloaded DOM加载完成
-	})
-	if waitErr != nil {
-		gstool.FmtPrintlnLogTime("等待页面 DOM 内容加载完成失败: %s", waitErr.Error())
-	}
-	h.AddTipMsg(page, `寻找窗口中...`)
+	Component.TSmartLink.WaitForLoadState(page)
+	//记录进程列表
 	createTimeDesc := cast.ToString(gstool.TimeNowMilliInt64())
-	go h.FindPidMaxWindow(createTimeDesc)
 	h.PageList[createTimeDesc] = &TPlayWright{
 		Page:           &page,
 		Browser:        &browser,
 		OpenType:       openType,
-		Context:        &context,
-		Value:          runUniqueKey,
+		ContextS:       &context,
+		RunUniqueKey:   runUniqueKey,
 		CreateTimeDesc: createTimeDesc,
 	}
 	go func(createTimeDesc string) {
 		page.OnClose(func(page playwright.Page) {
+			gstool.FmtPrintlnLogTime(`监听到页面关闭 %s`, createTimeDesc)
 			h.RunLock.Lock()
 			defer h.RunLock.Unlock()
 			delete(h.PageList, createTimeDesc)
 			h.CheckContextActive()
 		})
 	}(createTimeDesc)
+
 	return h.PageList[createTimeDesc], nil
 }
 
 func (h *TSmartLink) CheckContextActive() {
 	for k, v := range h.DomainContextMap {
-		if !v.Browser().IsConnected() {
+		if !v.Context.Browser().IsConnected() {
 			delete(h.DomainContextMap, k)
 		}
 	}
 }
 
-func (h *TSmartLink) GetContext(url, browserAuthUsername, browserAuthPassword string, browser playwright.Browser, isCombine int) (playwright.BrowserContext, error) {
-	host := gstool.UrlGetHost(url)
-	domainKey := host + `:` + browserAuthUsername + `:` + browserAuthPassword
+func (h *TSmartLink) WaitForLoadState(page playwright.Page) {
+	_ = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State: playwright.LoadStateDomcontentloaded,
+	})
+	_ = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State: playwright.LoadStateNetworkidle,
+	})
+	_ = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State: playwright.LoadStateLoad,
+	})
+}
+
+func (h *TSmartLink) GetContext(domainKey, browserAuthUsername, browserAuthPassword string, browser playwright.Browser, isCombine int) (ContextS, error) {
+	h.CheckContextActive()
 	for k, v := range h.DomainContextMap {
-		if v.Browser().IsConnected() && k != domainKey && isCombine == 1 {
+		if v.Context.Browser().IsConnected() && k != domainKey && isCombine == 1 {
+			if v.Pid != 0 {
+				go func() {
+					_ = h.SetForegroundWindowPid(v.Pid)
+				}()
+			}
 			return v, nil
 		}
 	}
@@ -123,7 +143,7 @@ func (h *TSmartLink) GetContext(url, browserAuthUsername, browserAuthPassword st
 			AcceptDownloads:   playwright.Bool(true),
 		})
 		if contextErr != nil {
-			return nil, contextErr
+			return ContextS{}, contextErr
 		}
 	} else {
 		context, contextErr = browser.NewContext(playwright.BrowserNewContextOptions{
@@ -132,11 +152,16 @@ func (h *TSmartLink) GetContext(url, browserAuthUsername, browserAuthPassword st
 			AcceptDownloads:   playwright.Bool(true),
 		})
 		if contextErr != nil {
-			return nil, contextErr
+			return ContextS{}, contextErr
 		}
 	}
-	h.DomainContextMap[domainKey] = context
-	return context, nil
+
+	h.DomainContextMap[domainKey] = ContextS{
+		Context: context,
+		Pid:     0,
+	}
+	go h.FindPidMaxWindow(domainKey)
+	return h.DomainContextMap[domainKey], nil
 }
 
 func (h *TSmartLink) GetBrowser(openType int) (playwright.Browser, error) {
@@ -255,17 +280,52 @@ func (h *TSmartLink) OpenFile(filePath, targetFilePath, ext string) {
 
 }
 
-// FindPidMaxWindow 找到弹出的浏览器
-func (h *TSmartLink) FindPidMaxWindow(createTimeDesc string) {
-	//注意：当开启一个新页卡后或最小化后 进程无法唤醒
-	nodePid := gstool.ProcessFindNewPidByName(`node.exe`)
-	gstool.FmtPrintlnLogTime(`node pid %d`, nodePid)
-	browserPid := gstool.ProcessFindNewPidByPPid(nodePid)
-	h.SetWindowMax(cast.ToInt(browserPid))
-	if pageInfo, ok := h.PageList[createTimeDesc]; ok {
-		pageInfo.BrowserPid = cast.ToInt(browserPid)
+// FindPidMaxWindow 找到弹出的浏览器 还是时常不准，还会影响加载速度，先不管了
+func (h *TSmartLink) FindPidMaxWindow(domainKey string) {
+	for i := 0; i < 5; i++ {
+		time.Sleep(time.Second * 1)
+		findPidList := make([]map[string]int, 0)
+		list := gstool.ProcessList()
+		for _, process := range list {
+			cmd := cast.ToString(process[`cmd`])
+			exe := cast.ToString(process[`exe`])
+			createTime := cast.ToInt(process[`create_time`])
+			if strings.Contains(exe, `chromium`) && strings.Contains(exe, `playwright`) && strings.Contains(cmd, `no-startup-window`) {
+				findPidList = append(findPidList, map[string]int{
+					`create_time`: createTime,
+					`pid`:         cast.ToInt(process[`pid`]),
+				})
+			}
+		}
+		gstool.ArrayMapSort(&findPidList, `create_time`, gsdefine.SortDesc)
+		choosePid := 0
+		if len(findPidList) > 0 {
+			choosePid = cast.ToInt(findPidList[0][`pid`])
+			//判断是否已经存在了
+			for _, context := range h.DomainContextMap {
+				if context.Pid == choosePid {
+					choosePid = 0
+					break
+				}
+			}
+			if choosePid > 0 {
+				h.SetPid(domainKey, choosePid)
+				break
+			}
+		} else {
+			continue
+		}
 	}
-	gstool.FmtPrintlnLogTime(`创建page browserPid：%d`, browserPid)
+}
+
+func (h *TSmartLink) SetPid(domainKey string, pid int) {
+	h.RunLock.Lock()
+	defer h.RunLock.Unlock()
+	if domainVal, ok := h.DomainContextMap[domainKey]; ok {
+		domainVal.Pid = pid
+		h.DomainContextMap[domainKey] = domainVal
+		h.SetWindowMax(domainVal.Pid)
+	}
 }
 
 // SetTitle 设置title

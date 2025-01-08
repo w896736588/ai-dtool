@@ -10,7 +10,6 @@ import (
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/viper"
 	"io"
 	"net/http"
@@ -86,7 +85,7 @@ func initComponent(IsBuild string) {
 	gstool.FmtPrintlnLogTime(`下载目录%s`, downloadPath)
 	base.Component.TSmartLink = &base.TSmartLink{
 		PageList:         make(map[string]*base.TPlayWright),
-		DomainContextMap: make(map[string]playwright.BrowserContext),
+		DomainContextMap: make(map[string]base.ContextS),
 		DownloadPath:     downloadPath,
 	}
 	base.Component.TSmartLink.WitchDownload()
