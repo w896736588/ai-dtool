@@ -194,7 +194,7 @@ func SmartLinkRunPlaywrightList(c *gin.Context) {
 	runList := make([]map[string]any, 0)
 	for uniKey, runInfo := range base.Component.TSmartLink.PageList {
 		runList = append(runList, map[string]any{
-			`name`:   runInfo.RunUniqueKey,
+			`name`:   runInfo.SmartLinkUniqueKey,
 			`unikey`: uniKey,
 		})
 	}
@@ -239,9 +239,10 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 	//浏览器自带验证
 	browserAuthUsername := cast.ToString(dataMap[`browser_auth_username`])
 	browserAuthPassword := cast.ToString(dataMap[`browser_auth_password`])
-	value := cast.ToString(dataMap[`value`])
-	isCombine := 1 //默认开启
-	page, pageErr := base.Component.TSmartLink.GetPageSingle(openType, link, value, browserAuthUsername, browserAuthPassword, isCombine)
+	smartLinkUniqueKey := cast.ToString(dataMap[`value`]) //格式 smart_list的ID_value  例如：0_common3 1_common1
+	isCombine := 1                                        //默认开启
+	pageUniqueKey := base.Component.TBase.GetUnique(`playwright_context_`)
+	page, pageErr := base.Component.TSmartLink.GetPage(openType, link, pageUniqueKey, smartLinkUniqueKey, browserAuthUsername, browserAuthPassword, isCombine)
 	if pageErr != nil {
 		return pageErr
 	}
@@ -279,6 +280,7 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 			inputValue = gstool.StringReplaces(inputValue, map[string]string{
 				`{user_name}`: cast.ToString(dataMap[`user_name`]),
 				`{password}`:  cast.ToString(dataMap[`password`]),
+				`{rand}`:      base.Component.TBase.GetUnique(`input_rand_`),
 			})
 			inputSelecter := (*page.Page).Locator(Locator)
 			selectorLoaderWaitErr := inputSelecter.WaitFor(playwright.LocatorWaitForOptions{
