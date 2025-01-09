@@ -26,7 +26,7 @@ type SerializeBody struct {
 type SaveString struct {
 	UniKey   string `json:"UniKey"`
 	CacheKey string `json:"Key"`
-	Value    string `json:"RunUniqueKey"`
+	Value    string `json:"SmartLinkUniqueKey"`
 }
 
 type TypeResponse struct {
@@ -151,7 +151,7 @@ type SshExec struct {
 }
 
 type DockerConfig struct {
-	Name    string `json:"RunUniqueKey"`
+	Name    string `json:"SmartLinkUniqueKey"`
 	Id      string `json:"Id"`
 	SshName string `json:"SshName"`
 }
