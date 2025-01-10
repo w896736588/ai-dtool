@@ -86,9 +86,10 @@ func initComponent(IsBuild string) {
 	var downloadPath = base.Component.Env.RootPath + `\playwright`
 	gstool.FmtPrintlnLogTime(`下载目录%s`, downloadPath)
 	base.Component.TSmartLink = &base.TSmartLink{
-		PageList:          make(map[string]*base.TPlayWright),
-		DomainContextList: make([]*base.ContextS, 0),
-		DownloadPath:      downloadPath,
+		PageList:           make(map[string]*base.TPlayWright),
+		DomainContextList:  make([]*base.ContextS, 0),
+		DomainContextListU: make([]*base.ContextS, 0),
+		DownloadPath:       downloadPath,
 	}
 	base.Component.TSmartLink.WitchDownload()
 	base.Component.TSmartLink.SmartCheckAndUpdate()

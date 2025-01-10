@@ -2,6 +2,7 @@ package base
 
 import (
 	"dev_tool/base/define"
+	"fmt"
 	"gitee.com/Sxiaobai/gs/gsdefine"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/fsnotify/fsnotify"
@@ -25,9 +26,11 @@ type TPlayWright struct {
 }
 
 type ContextS struct {
-	Context    playwright.BrowserContext
-	Pid        int
-	DomainList []Domain
+	Context       playwright.BrowserContext
+	Pid           int
+	DomainList    []Domain
+	UserDataIndex int
+	Unique        string
 }
 
 type Domain struct {
@@ -46,24 +49,33 @@ type TSmartLink struct {
 	BrowserWebkitSilence playwright.Browser
 	//domain context
 	DomainContextList []*ContextS
+	//save data
+	DomainContextListU []*ContextS
+	//pw
+	Pw *playwright.Playwright
 }
 
 // GetPage 拿到Page runUniqueKey 格式为0_common3 这种 单浏览器模式，每次打开都会打开一个新的浏览器
 // isCombine 是否自动合并不同域名到同一个浏览器
-func (h *TSmartLink) GetPage(openType int, link, pageUniqueKey, smartLinkUniqueKey, browserAuthUsername, browserAuthPassword string, isCombine int) (*TPlayWright, error) {
+func (h *TSmartLink) GetPage(openType, isSaveUserData int, link, pageUniqueKey, smartLinkUniqueKey, browserAuthUsername, browserAuthPassword string, isCombine int) (*TPlayWright, error) {
 	h.RunLock.Lock()
 	defer h.RunLock.Unlock()
-	//link
 	link = h.LinkInit(link)
-	//browser
-	browser, browserErr := h.GetBrowser(openType)
-	if browserErr != nil {
-		return nil, browserErr
-	}
+	var context *ContextS
+	var contextErr error
 	host := gstool.UrlGetHost(link)
 	domain := host
-	//context
-	context, contextErr := h.GetContext(domain, pageUniqueKey, browserAuthUsername, browserAuthPassword, browser, isCombine)
+	gstool.FmtPrintlnLogTime(`isSaveUserData %d`, isSaveUserData)
+	boolCleanFirstBlank := false
+	if isSaveUserData != 1 { //不保存用户数据
+		browser, browserErr := h.GetBrowser(openType)
+		if browserErr != nil {
+			return nil, browserErr
+		}
+		context, contextErr = h.GetContextNotSaveUserData(domain, pageUniqueKey, browserAuthUsername, browserAuthPassword, browser, isCombine)
+	} else {
+		context, boolCleanFirstBlank, contextErr = h.GetContextSaveUserData(domain, pageUniqueKey, browserAuthUsername, browserAuthPassword)
+	}
 	if contextErr != nil {
 		return nil, contextErr
 	}
@@ -74,6 +86,15 @@ func (h *TSmartLink) GetPage(openType int, link, pageUniqueKey, smartLinkUniqueK
 	if pageErr != nil {
 		return nil, pageErr
 	}
+	// 关闭一个blank
+	if boolCleanFirstBlank {
+		pageList := context.Context.Pages()
+		if len(pageList) > 0 {
+			gstool.FmtPrintlnLogTime(`关闭页面 %#v`, pageList[0].URL())
+			_ = pageList[0].Close()
+		}
+	}
+
 	//监听下载事件进行重命名
 	go h.OnDownload(page)
 	//跳转链接
@@ -86,19 +107,18 @@ func (h *TSmartLink) GetPage(openType int, link, pageUniqueKey, smartLinkUniqueK
 	//记录进程列表
 	h.PageList[pageUniqueKey] = &TPlayWright{
 		Page:               &page,
-		Browser:            &browser,
 		OpenType:           openType,
 		ContextS:           context,
 		SmartLinkUniqueKey: smartLinkUniqueKey,
 		CreateTimeDesc:     cast.ToString(gstool.TimeNowMilliInt64()),
 	}
+
 	go func(pageUniqueKey string) {
 		page.OnClose(func(page playwright.Page) {
-			gstool.FmtPrintlnLogTime(`监听到页面关闭 %s`, pageUniqueKey)
+			gstool.FmtPrintlnLogTime(`监听到页面关闭 移除运行列表 %s %s`, page.URL(), pageUniqueKey)
 			h.RunLock.Lock()
 			defer h.RunLock.Unlock()
 			delete(h.PageList, pageUniqueKey)
-			h.CheckContextActive(domain)
 		})
 	}(pageUniqueKey)
 
@@ -138,6 +158,30 @@ func (h *TSmartLink) CheckContextActive(domainKey string) {
 	h.DomainContextList = newList
 }
 
+// CheckContextActiveU 检查是否有活跃的并移除domainKey
+func (h *TSmartLink) CheckContextActiveU(domainKey string) {
+	newList := make([]*ContextS, 0)
+	for _, v := range h.DomainContextListU {
+		if v.Context != nil && v.Context.Browser() != nil && v.Context.Browser().IsConnected() {
+			//检查是否存在被关闭的域名
+			if domainKey != `` {
+				newDomainList := make([]Domain, 0)
+				for _, v1 := range v.DomainList {
+					if v1.Domain != domainKey {
+						newDomainList = append(newDomainList, v1)
+					} else {
+						gstool.FmtPrintlnLogTime(`移除context中域名 %s`, domainKey)
+					}
+				}
+				v.DomainList = newDomainList
+			}
+
+			newList = append(newList, v)
+		}
+	}
+	h.DomainContextListU = newList
+}
+
 func (h *TSmartLink) WaitForLoadState(page playwright.Page) {
 	_ = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
 		State: playwright.LoadStateDomcontentloaded,
@@ -150,7 +194,7 @@ func (h *TSmartLink) WaitForLoadState(page playwright.Page) {
 	})
 }
 
-func (h *TSmartLink) GetContext(domain, pageUniqueKey, browserAuthUsername, browserAuthPassword string, browser playwright.Browser, isCombine int) (*ContextS, error) {
+func (h *TSmartLink) GetContextNotSaveUserData(domain, pageUniqueKey, browserAuthUsername, browserAuthPassword string, browser playwright.Browser, isCombine int) (*ContextS, error) {
 	h.CheckContextActive(``)
 	for _, v := range h.DomainContextList {
 		//找到一个context没有当前域名的
@@ -188,9 +232,6 @@ func (h *TSmartLink) GetContext(domain, pageUniqueKey, browserAuthUsername, brow
 			AcceptDownloads:   playwright.Bool(true),
 			Locale:            playwright.String(`zh-CN`),
 		})
-		if contextErr != nil {
-			return &ContextS{}, contextErr
-		}
 	} else {
 		context, contextErr = browser.NewContext(playwright.BrowserNewContextOptions{
 			NoViewport:        playwright.Bool(true),
@@ -198,18 +239,32 @@ func (h *TSmartLink) GetContext(domain, pageUniqueKey, browserAuthUsername, brow
 			AcceptDownloads:   playwright.Bool(true),
 			Locale:            playwright.String(`zh-CN`),
 		})
-		if contextErr != nil {
-			return &ContextS{}, contextErr
-		}
+	}
+	if contextErr != nil {
+		return &ContextS{}, contextErr
 	}
 	contentS := &ContextS{
 		Context:    context,
 		Pid:        0,
 		DomainList: []Domain{{Domain: domain, PageUniqueKey: pageUniqueKey}},
+		Unique:     Component.TBase.GetUnique(`context_`),
 	}
 	h.DomainContextList = append(h.DomainContextList, contentS)
-	//不太准 有时候拿不到 先不处理了
-	//go h.FindPidMaxWindow(contentS)
+	//监听关闭
+	go func() {
+		context.OnClose(func(context playwright.BrowserContext) {
+			h.RunLock.Lock()
+			defer h.RunLock.Unlock()
+			newList := make([]*ContextS, 0)
+			//移除已经移出去的context
+			for _, v := range h.DomainContextList {
+				if v.Unique != contentS.Unique {
+					newList = append(newList, v)
+				}
+			}
+			h.DomainContextList = newList
+		})
+	}()
 	return contentS, nil
 }
 
@@ -219,13 +274,9 @@ func (h *TSmartLink) GetBrowser(openType int) (playwright.Browser, error) {
 	} else if openType == define.OpenTypeWebkitChrome && h.BrowserWebkitChrome != nil {
 		return h.BrowserWebkitChrome, nil
 	}
-	pw, pwErr := playwright.Run()
-	if pwErr != nil {
-		return nil, pwErr
-	}
 	var browserErr error
 	if openType == define.OpenTypeWebkitSilence {
-		h.BrowserWebkitSilence, browserErr = pw.Chromium.Launch()
+		h.BrowserWebkitSilence, browserErr = h.Pw.Chromium.Launch()
 		if browserErr != nil {
 			h.BrowserWebkitSilence = nil
 			return nil, browserErr
@@ -233,7 +284,7 @@ func (h *TSmartLink) GetBrowser(openType int) (playwright.Browser, error) {
 			return h.BrowserWebkitSilence, nil
 		}
 	} else {
-		h.BrowserWebkitChrome, browserErr = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		h.BrowserWebkitChrome, browserErr = h.Pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 			DownloadsPath: &h.DownloadPath,
 			Headless:      playwright.Bool(false), //有界面模式
 		})
@@ -245,6 +296,105 @@ func (h *TSmartLink) GetBrowser(openType int) (playwright.Browser, error) {
 		}
 	}
 
+}
+
+func (h *TSmartLink) GetContextSaveUserData(domain, pageUniqueKey, browserAuthUsername, browserAuthPassword string) (*ContextS, bool, error) {
+	dataPath, contextS, userDataIndex := h.GetUserDataDirectory(domain, pageUniqueKey)
+	if contextS != nil {
+		gstool.FmtPrintlnLogTime(`使用已存在的context %s`, dataPath)
+		return contextS, false, nil
+	}
+	gstool.FmtPrintlnLogTime(`%s 使用 目录 %s`, domain, dataPath)
+	_ = gstool.DirCreatePath(dataPath)
+	var context playwright.BrowserContext
+	var contextErr error
+	if browserAuthUsername != `` && browserAuthPassword != `` {
+		context, contextErr = h.Pw.Chromium.LaunchPersistentContext(dataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
+			DownloadsPath:     &h.DownloadPath,
+			Headless:          playwright.Bool(false), //有界面模式
+			NoViewport:        playwright.Bool(true),
+			JavaScriptEnabled: playwright.Bool(true),
+			AcceptDownloads:   playwright.Bool(true),
+			Locale:            playwright.String(`zh-CN`),
+			HttpCredentials: &playwright.HttpCredentials{
+				Username: browserAuthUsername,
+				Password: browserAuthPassword,
+			},
+			IgnoreDefaultArgs: []string{
+				`--enable-automation`,
+			},
+		})
+	} else {
+		context, contextErr = h.Pw.Chromium.LaunchPersistentContext(dataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
+			DownloadsPath:     &h.DownloadPath,
+			Headless:          playwright.Bool(false), //有界面模式
+			NoViewport:        playwright.Bool(true),
+			JavaScriptEnabled: playwright.Bool(true),
+			AcceptDownloads:   playwright.Bool(true),
+			Locale:            playwright.String(`zh-CN`),
+			IgnoreDefaultArgs: []string{
+				`--enable-automation`,
+			},
+		})
+	}
+	if contextErr != nil {
+		return &ContextS{}, false, contextErr
+	}
+
+	contentS := &ContextS{
+		Context:       context,
+		Pid:           0,
+		DomainList:    []Domain{{Domain: domain, PageUniqueKey: pageUniqueKey}},
+		UserDataIndex: userDataIndex,
+		Unique:        Component.TBase.GetUnique(`context_`),
+	}
+	h.DomainContextListU = append(h.DomainContextListU, contentS)
+	//监听关闭
+	go func() {
+		context.OnClose(func(context playwright.BrowserContext) {
+			h.RunLock.Lock()
+			defer h.RunLock.Unlock()
+			newList := make([]*ContextS, 0)
+			//移除已经移出去的context
+			for _, v := range h.DomainContextListU {
+				if v.Unique != contentS.Unique {
+					newList = append(newList, v)
+				}
+			}
+			h.DomainContextListU = newList
+		})
+	}()
+	return contentS, true, nil
+}
+
+func (h *TSmartLink) GetUserDataDirectory(domain, pageUniqueKey string) (string, *ContextS, int) {
+	userIndex := -1
+	userIndexMax := -1
+	for k, v := range h.DomainContextListU {
+		if userIndexMax < v.UserDataIndex {
+			userIndexMax = v.UserDataIndex
+		}
+		boolFind := false
+		for _, v1 := range v.DomainList {
+			if v1.Domain == domain {
+				boolFind = true
+				break
+			}
+		}
+		if boolFind {
+			continue
+		}
+		userIndex = v.UserDataIndex
+		v.DomainList = append(v.DomainList, Domain{
+			Domain:        domain,
+			PageUniqueKey: pageUniqueKey,
+		})
+		h.DomainContextListU[k] = v
+		return fmt.Sprintf(Component.Env.RootPath+`\playwright_userdata\%d`, userIndex), v, userIndex
+	}
+	userIndex = userIndexMax + 1
+	dataPath := fmt.Sprintf(Component.Env.RootPath+`\playwright_userdata\%d`, userIndex)
+	return dataPath, nil, userIndex
 }
 
 func (h *TSmartLink) OnDownload(page playwright.Page) {
@@ -425,11 +575,23 @@ func (h *TSmartLink) SmartCheckAndUpdate() {
 			go h.install(pw.Version, lockFileFullPath)
 		} else {
 			gstool.FmtPrintlnLogTime(`浏览器核心最新版本为：%s ，当前安装版本为：%s,不需要进行更新`, pw.Version, content)
-			gstool.FmtPrintlnLogTime(`启动浏览器核心..`)
-			_, _ = h.GetBrowser(define.OpenTypeWebkitChrome)
-			_, _ = h.GetBrowser(define.OpenTypeWebkitSilence)
+			h.InitPlaywright()
 		}
 	}
+}
+
+func (h *TSmartLink) InitPlaywright() {
+	gstool.FmtPrintlnLogTime(`启动浏览器核心..`)
+	var pwErr error
+	h.Pw, pwErr = playwright.Run()
+	if pwErr != nil {
+		return
+	}
+	h.BrowserWebkitSilence, _ = h.Pw.Chromium.Launch()
+	h.BrowserWebkitChrome, _ = h.Pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		DownloadsPath: &h.DownloadPath,
+		Headless:      playwright.Bool(false), //有界面模式
+	})
 }
 
 func (h *TSmartLink) install(version, lockFileFullPath string) {
@@ -441,8 +603,6 @@ func (h *TSmartLink) install(version, lockFileFullPath string) {
 		_ = gstool.FileDelete(lockFileFullPath)
 	} else {
 		gstool.FmtPrintlnLogTime(`安装完成`)
-		gstool.FmtPrintlnLogTime(`启动浏览器核心..`)
-		_, _ = h.GetBrowser(define.OpenTypeWebkitChrome)
-		_, _ = h.GetBrowser(define.OpenTypeWebkitSilence)
+		h.InitPlaywright()
 	}
 }
