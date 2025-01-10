@@ -4,6 +4,7 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
+	"errors"
 	"gitee.com/Sxiaobai/gs/gs"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
@@ -70,7 +71,7 @@ func SmartLinkAdd(c *gin.Context) {
 	//	return
 	//}
 	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `smart_link_group_id`, `links`, `open_num`, `open_type`, `process`, `weight`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `smart_link_group_id`, `links`, `open_num`, `open_type`, `process`, `weight`, `is_save_user_data`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
@@ -239,10 +240,14 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 	//浏览器自带验证
 	browserAuthUsername := cast.ToString(dataMap[`browser_auth_username`])
 	browserAuthPassword := cast.ToString(dataMap[`browser_auth_password`])
-	smartLinkUniqueKey := cast.ToString(dataMap[`value`]) //格式 smart_list的ID_value  例如：0_common3 1_common1
-	isCombine := 1                                        //默认开启
+	smartLinkUniqueKey := cast.ToString(dataMap[`value`])      //格式 smart_list的ID_value  例如：0_common3 1_common1
+	isSaveUserData := cast.ToInt(dataMap[`is_save_user_data`]) //1保留用户数据
+	isCombine := 1                                             //默认开启 浏览器利用（自动选择合适的没有同域名的浏览器）
+	if base.Component.TSmartLink.Pw == nil {
+		return errors.New(`未启动浏览器核心`)
+	}
 	pageUniqueKey := base.Component.TBase.GetUnique(`playwright_context_`)
-	page, pageErr := base.Component.TSmartLink.GetPage(openType, link, pageUniqueKey, smartLinkUniqueKey, browserAuthUsername, browserAuthPassword, isCombine)
+	page, pageErr := base.Component.TSmartLink.GetPage(openType, isSaveUserData, link, pageUniqueKey, smartLinkUniqueKey, browserAuthUsername, browserAuthPassword, isCombine)
 	if pageErr != nil {
 		return pageErr
 	}
