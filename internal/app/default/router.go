@@ -136,8 +136,6 @@ func smartLink() {
 	base.Component.TGin.GinPost(`/api/SmartLinkAdd`, controller.SmartLinkAdd)
 	base.Component.TGin.GinPost(`/api/SmartLinkDel`, controller.SmartLinkDelete)
 	base.Component.TGin.GinPost(`/api/SmartLinkInfo`, controller.SmartLinkInfo)
-	base.Component.TGin.GinPost(`/api/SmartLinkProcessAdd`, controller.SmartLinkProcessAdd)
-	base.Component.TGin.GinPost(`/api/SmartLinkProcessDel`, controller.SmartLinkProcessDel)
 	base.Component.TGin.GinPost(`/api/SmartLinkRun`, controller.SmartLinkRunPlaywright)
 	base.Component.TGin.GinPost(`/api/SmartLinkRunList`, controller.SmartLinkRunPlaywrightList)
 	//base.Component.TGin.GinPost(`/api/SmartLinkForward`, controller.SmartLinkPlaywrightForward)

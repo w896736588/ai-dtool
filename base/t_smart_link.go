@@ -434,8 +434,13 @@ func (h *TSmartLink) WitchDownload() {
 			isXlsx := gstool.FileIsXlsx(event.Name)
 			if isXlsx {
 				h.OpenFile(event.Name, targetName, `xlsx`)
+			} else if gstool.FileIsTxt(event.Name) {
+				content, _ := gstool.FileGetContent(event.Name)
+				gstool.FmtPrintlnLogTime(`文件内容 %s`, content)
+				h.OpenFile(event.Name, targetName, `txt`)
 			} else {
 				ext, extErr := gstool.FileExtType(event.Name)
+				gstool.FmtPrintlnLogTime(`文件后缀 %s %v`, ext, extErr)
 				if extErr == nil {
 					h.OpenFile(event.Name, targetName, ext.Extension)
 				}

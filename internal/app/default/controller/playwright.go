@@ -7,12 +7,12 @@ import (
 	"errors"
 	"gitee.com/Sxiaobai/gs/gs"
 	"gitee.com/Sxiaobai/gs/gsgin"
+	"gitee.com/Sxiaobai/gs/gstask"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
 	"net/url"
-	"sync"
 	"time"
 )
 
@@ -66,10 +66,11 @@ func SmartLinkInfo(c *gin.Context) {
 func SmartLinkAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	//if cast.ToInt(dataMap[`smart_link_group_id`]) == 0 {
-	//	gsgin.GinResponseError(c, `组id不能为空 `, nil)
-	//	return
-	//}
+	validateErr := validateProcess(cast.ToString(dataMap[`process`]))
+	if validateErr != nil {
+		gsgin.GinResponseError(c, validateErr.Error(), nil)
+		return
+	}
 	var id any
 	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `smart_link_group_id`, `links`, `open_num`, `open_type`, `process`, `weight`, `is_save_user_data`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
@@ -94,6 +95,41 @@ func SmartLinkAdd(c *gin.Context) {
 		`status`: define.SmartLinkStatusNormal,
 	}).One()
 	gsgin.GinResponseSuccess(c, ``, variable)
+}
+
+func validateProcess(process string) error {
+	if process == `` {
+		return nil
+	}
+	processList := make([]map[string]any, 0)
+	decodeErr := gstool.JsonDecode(process, &processList)
+	if decodeErr != nil {
+		return errors.New(`解析process失败`)
+	}
+	for _, processVal := range processList {
+		//类型
+		processType := cast.ToString(processVal[`type`])
+		if processType == `` {
+			return errors.New(`type不能为空`)
+		}
+		//元素选择
+		Locator := cast.ToString(processVal[`Locator`])
+		switch processType {
+		case `click`: //点击
+			if Locator == `` {
+				return errors.New(`type为click时Locator不能为空`)
+			}
+		case `input`: //输入
+			if cast.ToString(processVal[`value`]) == `` {
+				return errors.New(`type为input时value不能为空`)
+			}
+		case `redirect_uri`: //跳转 保持当前域名
+			if cast.ToString(processVal[`uri`]) == `` {
+				return errors.New(`type为redirect_uri时，uri不能为空`)
+			}
+		}
+	}
+	return nil
 }
 
 // SmartLinkDelete 删除
@@ -161,6 +197,9 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	_ = gsgin.GinPostBody(c, &dataMap)
 	link := cast.ToString(dataMap[`link`])
 	openNum := cast.ToInt(dataMap[`open_num`])
+	if openNum == 0 {
+		openNum = 1
+	}
 	openType := cast.ToInt(dataMap[`open_type`])
 	process := cast.ToString(dataMap[`process`])
 	if link == `` {
@@ -263,11 +302,11 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 		//操作描述
 		tip := cast.ToString(processVal[`tip`])
 		//等待时间
-		waitSecond := cast.ToFloat64(processVal[`wait_second`])
-		if waitSecond == 0 {
-			waitSecond = cast.ToFloat64(1)
-		}
-		waitSecond = waitSecond * 3000
+		//waitSecond := cast.ToFloat64(processVal[`wait_second`])
+		//if waitSecond == 0 {
+		//	waitSecond = cast.ToFloat64(1)
+		//}
+		var waitSecond float64 = 3000
 		// 等待页面加载完成
 		base.Component.TSmartLink.WaitForLoadState(*page.Page)
 		waitUrlErr := (*page.Page).WaitForURL((*page.Page).URL())
@@ -278,7 +317,10 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 		base.Component.TSmartLink.AddTipMsg(*page.Page, tip)
 		switch processType {
 		case `click`: //点击
-			click(Locator, notExistLocator, waitSecond, *page.Page)
+			clickErr := click(Locator, notExistLocator, waitSecond, *page.Page)
+			if clickErr != nil {
+				return clickErr
+			}
 			break
 		case `input`: //输入
 			inputValue := cast.ToString(processVal[`value`])
@@ -296,6 +338,10 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 				if inputErr != nil {
 					gstool.FmtPrintlnLogTime("无法将元素转换为输入框: %v", inputErr.Error())
 				}
+			} else {
+				gstool.FmtPrintlnLogTime("无法找到元素:%s %v", Locator, selectorLoaderWaitErr.Error())
+				base.Component.TSmartLink.AddTipMsg(*page.Page, `无法找到元素`+Locator+`,结束`)
+				return errors.New(`无法找到元素` + Locator)
 			}
 			break
 		case `redirect_uri`: //跳转 保持当前域名
@@ -305,8 +351,11 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 				gstool.FmtPrintlnLogTime("could not parse URL: %v", err)
 			}
 			domain := parsedURL.Scheme + `://` + parsedURL.Host
-			gstool.FmtPrintlnLogTime(`跳转地址 %s`, domain+redirectUri)
-			if _, goErr := (*page.Page).Goto(domain + redirectUri); goErr != nil {
+			targetUrl := domain + redirectUri
+			base.Component.TSmartLink.AddTipMsg(*page.Page, `准备跳转`)
+			time.Sleep(time.Second)
+			if _, goErr := (*page.Page).Goto(targetUrl); goErr != nil {
+				gstool.FmtPrintlnLogTime(`跳转地址出错 %s %s`, targetUrl, goErr.Error())
 				return goErr
 			}
 		}
@@ -324,53 +373,68 @@ func openBrowserPlaywright(openType int, link string, processList []map[string]a
 }
 
 // 点击
-func click(Locator, notExistLocator string, waitSecond float64, page playwright.Page) {
-	if notExistLocator == `` { //等待点击
-		selectorLoader := page.Locator(Locator)
-		selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
-			Timeout: &waitSecond,
-			State:   playwright.WaitForSelectorStateVisible,
-		})
-		if selectorLoaderWaitErr == nil {
-			clickErr := selectorLoader.Click()
-			if clickErr != nil {
-				gstool.FmtPrintlnLogTime(`等待元素%s后 点击失败 %s`, Locator, clickErr.Error())
-			}
-		} else {
-			gstool.FmtPrintlnLogTime(`等待元素 %s 失败 %s`, Locator, selectorLoader.Err())
-		}
-	} else { //等待或者某个元素存在
-		wait := sync.WaitGroup{}
-		wait.Add(1)
-		//等待某个元素存在时直接走
-		go func() {
-			existLoader := page.Locator(notExistLocator)
-			existLoaderErr := existLoader.WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: &waitSecond,
-				State:   playwright.WaitForSelectorStateVisible,
-			})
-			if existLoaderErr == nil { //存在 那么直接返回往下走
-				gstool.FmtPrintlnLogTime(`找到了not exit `)
-				wait.Done()
-			}
-		}()
-		//等待原本要找的元素出现并点击
-		go func() {
+func click(Locator, notExistLocator string, waitSecond float64, page playwright.Page) error {
+	task := gstask.NewTask()
+	waitSecond = 3 * 1000
+	task.Add(gstask.CallbackFunc{
+		Func: func() gstask.Result {
 			selectorLoader := page.Locator(Locator)
 			selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
 				Timeout: &waitSecond,
 				State:   playwright.WaitForSelectorStateVisible,
 			})
-			if selectorLoaderWaitErr == nil {
-				clickErr := selectorLoader.Click()
-				if clickErr != nil {
-					gstool.FmtPrintlnLogTime(`等待元素后 点击失败 %s`, clickErr.Error())
-					wait.Done()
+			if selectorLoaderWaitErr != nil {
+				return gstask.Result{
+					Result: nil,
+					State:  1,
+					Err:    selectorLoaderWaitErr,
+				}
+			} else {
+				return gstask.Result{
+					Result: selectorLoader,
+					State:  1,
+					Err:    nil,
 				}
 			}
-		}()
-		wait.Wait()
+		},
+		Timeout: 5 * time.Second,
+	})
+	if notExistLocator != `` {
+		task.Add(gstask.CallbackFunc{
+			Func: func() gstask.Result {
+				existLoader := page.Locator(notExistLocator)
+				existLoaderErr := existLoader.WaitFor(playwright.LocatorWaitForOptions{
+					Timeout: &waitSecond,
+					State:   playwright.WaitForSelectorStateVisible,
+				})
+				gstool.FmtPrintlnLogTime(`not exist 返回了 %#v`, existLoader)
+				if existLoaderErr != nil {
+					return gstask.Result{
+						Result: nil,
+						State:  2,
+						Err:    existLoaderErr,
+					}
+				} else {
+					return gstask.Result{
+						Result: existLoader,
+						State:  2,
+						Err:    nil,
+					}
+				}
+			},
+			Timeout: 5 * time.Second,
+		})
 	}
+	result := task.RunOne()
+	gstool.FmtPrintlnLogTime(`result %s %s %#v`, Locator, notExistLocator, result)
+	if result.Err != nil {
+		return result.Err
+	}
+	if result.State == 1 {
+		element := result.Result.(playwright.Locator)
+		_ = element.Click()
+	}
+	return nil
 }
 
 func registerJs(page playwright.Page) {

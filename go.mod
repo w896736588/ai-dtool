@@ -5,14 +5,14 @@ go 1.23
 toolchain go1.23.3
 
 require (
-	gitee.com/Sxiaobai/gs v1.2.2
-	github.com/fsnotify/fsnotify v1.5.1
+	gitee.com/Sxiaobai/gs v1.2.7
+	github.com/fsnotify/fsnotify v1.8.0
 	github.com/gin-gonic/gin v1.9.0
 	github.com/go-vgo/robotgo v0.110.5
 	github.com/gorilla/websocket v1.5.1
 	github.com/playwright-community/playwright-go v0.4901.0
 	github.com/redis/go-redis/v9 v9.2.0
-	github.com/spf13/cast v1.5.0
+	github.com/spf13/cast v1.7.1
 	github.com/spf13/viper v1.9.0
 )
 
@@ -98,6 +98,7 @@ require (
 	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/time v0.5.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/ini.v1 v1.63.2 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
