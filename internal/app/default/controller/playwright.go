@@ -72,7 +72,7 @@ func SmartLinkAdd(c *gin.Context) {
 		return
 	}
 	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `smart_link_group_id`, `links`, `open_num`, `open_type`, `process`, `weight`, `is_save_user_data`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `smart_link_group_id`, `links`, `open_num`, `open_type`, `process`, `weight`, `is_save_user_data`, `is_combine`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
@@ -197,6 +197,7 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	_ = gsgin.GinPostBody(c, &dataMap)
 	link := cast.ToString(dataMap[`link`])
 	openNum := cast.ToInt(dataMap[`open_num`])
+	isCombine := cast.ToInt(dataMap[`is_combine`])
 	if openNum == 0 {
 		openNum = 1
 	}
@@ -217,7 +218,7 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 
 	for i := 0; i < openNum; i++ {
 		go func() {
-			openErr := openBrowserPlaywright(openType, link, processList, dataMap)
+			openErr := openBrowserPlaywright(openType, isCombine, link, processList, dataMap)
 			if openErr != nil {
 				gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
 			}
@@ -275,13 +276,12 @@ func SmartLinkPlaywrightVersion(c *gin.Context) {
 }
 
 // 打开浏览器
-func openBrowserPlaywright(openType int, link string, processList []map[string]any, dataMap map[string]any) error {
+func openBrowserPlaywright(openType, isCombine int, link string, processList []map[string]any, dataMap map[string]any) error {
 	//浏览器自带验证
 	browserAuthUsername := cast.ToString(dataMap[`browser_auth_username`])
 	browserAuthPassword := cast.ToString(dataMap[`browser_auth_password`])
 	smartLinkUniqueKey := cast.ToString(dataMap[`value`])      //格式 smart_list的ID_value  例如：0_common3 1_common1
 	isSaveUserData := cast.ToInt(dataMap[`is_save_user_data`]) //1保留用户数据
-	isCombine := 1                                             //默认开启 浏览器利用（自动选择合适的没有同域名的浏览器）
 	if base.Component.TSmartLink.Pw == nil {
 		return errors.New(`未启动浏览器核心`)
 	}
@@ -407,8 +407,8 @@ func click(Locator, notExistLocator string, waitSecond float64, page playwright.
 					Timeout: &waitSecond,
 					State:   playwright.WaitForSelectorStateVisible,
 				})
-				gstool.FmtPrintlnLogTime(`not exist 返回了 %#v`, existLoader)
 				if existLoaderErr != nil {
+					gstool.FmtPrintlnLogTime(`not exist 返回了 %#v %s`, existLoader, existLoaderErr.Error())
 					return gstask.Result{
 						Result: nil,
 						State:  2,
@@ -434,6 +434,7 @@ func click(Locator, notExistLocator string, waitSecond float64, page playwright.
 		element := result.Result.(playwright.Locator)
 		_ = element.Click()
 	}
+	gstool.FmtPrintlnLogTime(`处理完 返回`)
 	return nil
 }
 
