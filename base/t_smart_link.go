@@ -390,10 +390,10 @@ func (h *TSmartLink) GetUserDataDirectory(domain, pageUniqueKey string) (string,
 			PageUniqueKey: pageUniqueKey,
 		})
 		h.DomainContextListU[k] = v
-		return fmt.Sprintf(Component.Env.RootPath+`\playwright_userdata\%d`, userIndex), v, userIndex
+		return fmt.Sprintf(Component.Env.PlaywrightUserData+`\%d`, userIndex), v, userIndex
 	}
 	userIndex = userIndexMax + 1
-	dataPath := fmt.Sprintf(Component.Env.RootPath+`\playwright_userdata\%d`, userIndex)
+	dataPath := fmt.Sprintf(Component.Env.PlaywrightUserData+`\%d`, userIndex)
 	return dataPath, nil, userIndex
 }
 

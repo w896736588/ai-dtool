@@ -80,28 +80,30 @@ func initComponent(IsBuild string) {
 	if err != nil {
 		panic(err.Error())
 	}
+	base.Component.Env.ConfigPath = base.Component.Env.RootPath + `/config/` + base.Component.Env.AppName
+	base.Component.Env.LogPath = base.Component.Env.RootPath + `/logs`
+	base.Component.Env.PlaywrightDownload = base.Component.Env.RootPath + `/internal/app/` + base.Component.Env.AppName + `/playwright_download`
+	base.Component.Env.PlaywrightUserData = base.Component.Env.RootPath + `/internal/app/` + base.Component.Env.AppName + `/playwright_userdata`
 	gstool.FmtPrintlnLogTime(`根目录 %s`, base.Component.Env.RootPath)
-	gstool.FmtPrintlnLogTime(`加载配置文件 %s`, base.Component.Env.RootPath+`/config/`+AppName)
+	gstool.FmtPrintlnLogTime(`加载配置文件 %s`, base.Component.Env.ConfigPath)
 	//初始化playwright
-	var downloadPath = base.Component.Env.RootPath + `\playwright`
-	gstool.FmtPrintlnLogTime(`下载目录%s`, downloadPath)
 	base.Component.TSmartLink = &base.TSmartLink{
 		PageList:           make(map[string]*base.TPlayWright),
 		DomainContextList:  make([]*base.ContextS, 0),
 		DomainContextListU: make([]*base.ContextS, 0),
-		DownloadPath:       downloadPath,
+		DownloadPath:       base.Component.Env.PlaywrightDownload,
 	}
 	base.Component.TSmartLink.WitchDownload()
 	base.Component.TSmartLink.SmartCheckAndUpdate()
 	//配置初始化
 	base.Component.ConfigViper = viper.New()
-	base.Component.ConfigViper.AddConfigPath(base.Component.Env.RootPath + `/config/` + AppName)
+	base.Component.ConfigViper.AddConfigPath(base.Component.Env.ConfigPath)
 	base.Component.ConfigViper.SetConfigName(`config`)
 	base.Component.ConfigViper.SetConfigType(`ini`)
 	if readErr := base.Component.ConfigViper.ReadInConfig(); readErr != nil {
 		panic(readErr.Error())
 	}
-	base.Component.GsLog = gstool.SlogCreateDefault(base.Component.Env.RootPath+`/logs`, AppName)
+	base.Component.GsLog = gstool.SlogCreateDefault(base.Component.Env.LogPath, AppName)
 }
 
 func initSqlite(DbPath string) {
