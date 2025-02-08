@@ -153,10 +153,10 @@ func initGin() {
 		base.Component.TGin.GinStatic(`/css`, viewPath+`/devtool/dist/css`)
 		base.Component.TGin.GinLoadHTMLFiles(viewPath + `/devtool/dist/index.html`)
 	} else {
-		base.Component.TGin.GinStatic(`/js`, base.Component.Env.RootPath+`/`+AppName+`/devtool/dist/js`)
-		base.Component.TGin.GinStaticFile(`/favicon.ico`, base.Component.Env.RootPath+`/`+AppName+`/devtool/dist/favicon.ico`)
-		base.Component.TGin.GinStatic(`/css`, base.Component.Env.RootPath+`/`+AppName+`/devtool/dist/css`)
-		base.Component.TGin.GinLoadHTMLFiles(base.Component.Env.RootPath + `/` + AppName + `/devtool/dist/index.html`)
+		base.Component.TGin.GinStatic(`/js`, base.Component.Env.RootPath+`/release/`+AppName+`/devtool/dist/js`)
+		base.Component.TGin.GinStaticFile(`/favicon.ico`, base.Component.Env.RootPath+`/release/`+AppName+`/devtool/dist/favicon.ico`)
+		base.Component.TGin.GinStatic(`/css`, base.Component.Env.RootPath+`/release/`+AppName+`/devtool/dist/css`)
+		base.Component.TGin.GinLoadHTMLFiles(base.Component.Env.RootPath + `/release/` + AppName + `/devtool/dist/index.html`)
 	}
 	base.Component.TGin.GinGet(`/`, func(context *gin.Context) {
 		context.HTML(200, `index.html`, nil)

@@ -580,7 +580,7 @@ func (h *TSmartLink) SmartCheckAndUpdate() {
 			go h.install(pw.Version, lockFileFullPath)
 		} else {
 			gstool.FmtPrintlnLogTime(`浏览器核心最新版本为：%s ，当前安装版本为：%s,不需要进行更新`, pw.Version, content)
-			h.InitPlaywright()
+			go h.InitPlaywright()
 		}
 	}
 }

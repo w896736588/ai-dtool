@@ -8,7 +8,7 @@
 /config/.db/
 /tool/
 /err.log
-/out.log
+/out.log 
 /build/*
 /playwright.lock
 /zhimaPub.zip
@@ -17,3 +17,7 @@
 /zhimaPub/*
 /playwright_userdata/*
 /playwright.RunLock
+/release/zhimaPub/
+/release/zhima/
+/release/zhimaPub.zip
+/playwright_userdata/
