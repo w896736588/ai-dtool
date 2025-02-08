@@ -8,7 +8,16 @@
       <excludeFolder url="file://$MODULE_DIR$/build" />
       <excludeFolder url="file://$MODULE_DIR$/config/.db" />
       <excludeFolder url="file://$MODULE_DIR$/logs" />
+      <excludeFolder url="file://$MODULE_DIR$/internal/app/zhima/playwright_download" />
+      <excludeFolder url="file://$MODULE_DIR$/internal/app/zhima/playwright_userdata" />
+      <excludeFolder url="file://$MODULE_DIR$/internal/app/zhima/playwright_userdata/0" />
+      <excludeFolder url="file://$MODULE_DIR$/internal/app/zhima/playwright_userdata/1" />
+      <excludeFolder url="file://$MODULE_DIR$/internal/app/zhima/playwright_userdata/2" />
+      <excludeFolder url="file://$MODULE_DIR$/internal/app/zhima/playwright_userdata/3" />
       <excludeFolder url="file://$MODULE_DIR$/release/zhima" />
+      <excludeFolder url="file://$MODULE_DIR$/release/zhimaPub" />
+      <excludeFolder url="file://$MODULE_DIR$/release/zhimaPub/devtool" />
+      <excludeFolder url="file://$MODULE_DIR$/release/zhimaPub/goservice" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
