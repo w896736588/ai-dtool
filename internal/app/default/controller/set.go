@@ -562,11 +562,20 @@ func SetDockerComposeDelete(c *gin.Context) {
 		gsgin.GinResponseError(c, `id不能为空`, nil)
 		return
 	} else {
-		_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_docker_compose`, map[string]any{
-			`status`: 0,
-		}, map[string]any{
+		ret, err := base.Component.TSqlite.Client.QuickUpdate(`tbl_docker_compose`, map[string]any{
 			`id`: dataMap[`id`],
+		}, map[string]any{
+			`status`: 0,
 		}).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		} else {
+			if ret == 0 {
+				gsgin.GinResponseError(c, `删除失败`, nil)
+				return
+			}
+		}
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
