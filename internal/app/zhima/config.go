@@ -11,8 +11,8 @@ import (
 
 var AppName = `zhima`
 
-func InitBase(IsBuild, DbPath string) {
-	_default.InitBase(IsBuild, AppName, DbPath)
+func InitBase(IsBuild, DbPath, ViewPath, WebData string) {
+	_default.InitBase(IsBuild, AppName, DbPath, ViewPath, WebData)
 	initComponent()
 }
 

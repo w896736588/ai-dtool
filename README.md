@@ -30,10 +30,14 @@ err := playwright.Install()
 export CGO_ENABLED=1  
 export GOARCH=amd64   
 export GOOS=windows
-go build -ldflags "-X main.IsBuild=1 -X main.DbPath=D:/go/redis_manager/config/.db/" -o ./build/zhima.exe ./cmd/zhima/main.go
+go build -ldflags "-X main.IsBuild=1 -X main.DbPath=D:/go/cache_manager_api/config/zhima/ -X main.ViewPath=D:/go/devtool/dist -X main.WebData=D:/go/webData" -o ./build/zhima.exe ./cmd/zhima/main.go
 #git add ./build/zhima.exe
 #git update-index --chmod=+x ./build/zhima.exe
 git ls-files --stage ./build/zhima.exe
-go build -ldflags "-X main.IsBuild=1 -X main.DbPath=" -o ./build/zhimaPub.exe ./cmd/zhima/main.go
+go build -ldflags "-X main.IsBuild=1 -X main.DbPath= -X main.WebData=" -o ./build/zhimaPub.exe ./cmd/zhima/main.go
 git ls-files --stage ./build/zhimaPub.exe
+```
+
+```shell
+go run -ldflags "-X main.DbPath=D:/go/cache_manager_api/config/zhima/ -X main.ViewPath=D:/go/devtool/dist -X main.WebData=D:/go/webData" cmd/zhima/main.go
 ```

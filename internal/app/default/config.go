@@ -14,17 +14,16 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"runtime"
 )
 
 var AppName = ``
 
-func InitBase(IsBuild, appName, DbPath string) {
+func InitBase(IsBuild, appName, DbPath, ViewPath, WebData string) {
 	AppName = appName
 	initComponent(IsBuild)
 	initSqlite(DbPath)
-	initGin()
+	initGin(ViewPath)
 	stdLog(IsBuild)
 }
 
@@ -112,7 +111,7 @@ func initSqlite(DbPath string) {
 	if dbDir != `` {
 		dbPath = fmt.Sprintf(dbDir+`%s`, AppName+`.db`)
 	} else {
-		dbPath = base.Component.Env.RootPath + `/config/.db/` + AppName + `.db`
+		dbPath = base.Component.Env.RootPath + `/config/` + AppName + `/` + AppName + `.db`
 	}
 	gstool.FmtPrintlnLogTime(`打开db %s`, dbPath)
 	_ = gstool.DirCreatePath(dbDir)
@@ -137,7 +136,7 @@ func Stop() {
 	}
 }
 
-func initGin() {
+func initGin(ViewPath string) {
 	host := base.Component.ConfigViper.GetString(`run.host`)
 	port := base.Component.ConfigViper.GetString(`run.port`)
 	if !gstool.NetIsPortAvailable(host + `:` + port) {
@@ -148,12 +147,12 @@ func initGin() {
 	base.Component.TGin.GinInit(host, port)
 	base.Component.TGin.GinSetAllowCrossDomain()
 	gin.DefaultWriter = io.Discard
-	viewPath := filepath.Dir(base.Component.Env.RootPath)
-	if base.Component.Env.IsBuild {
-		base.Component.TGin.GinStatic(`/js`, viewPath+`/devtool/dist/js`)
-		base.Component.TGin.GinStaticFile(`/favicon.ico`, viewPath+`/devtool/dist/favicon.ico`)
-		base.Component.TGin.GinStatic(`/css`, viewPath+`/devtool/dist/css`)
-		base.Component.TGin.GinLoadHTMLFiles(viewPath + `/devtool/dist/index.html`)
+	gstool.FmtPrintlnLogTime(`前端目录 %s`, ViewPath)
+	if ViewPath != `` {
+		base.Component.TGin.GinStatic(`/js`, ViewPath+`/js`)
+		base.Component.TGin.GinStaticFile(`/favicon.ico`, ViewPath+`/favicon.ico`)
+		base.Component.TGin.GinStatic(`/css`, ViewPath+`/css`)
+		base.Component.TGin.GinLoadHTMLFiles(ViewPath + `/index.html`)
 	} else {
 		base.Component.TGin.GinStatic(`/js`, base.Component.Env.RootPath+`/release/`+AppName+`/devtool/dist/js`)
 		base.Component.TGin.GinStaticFile(`/favicon.ico`, base.Component.Env.RootPath+`/release/`+AppName+`/devtool/dist/favicon.ico`)

@@ -421,7 +421,6 @@ func (h *TSmartLink) OnDownload(page playwright.Page) {
 
 // WitchDownload 监听目录新文件下载 自动识别文件类型 并打开
 func (h *TSmartLink) WitchDownload() {
-	_ = os.RemoveAll(h.DownloadPath)
 	_ = gstool.DirCreatePath(h.DownloadPath)
 	gstool.FmtPrintlnLogTime(`开始监听%s`, h.DownloadPath)
 	watch := gstool.NewFileWatch(h.DownloadPath, func(event fsnotify.Event) {
