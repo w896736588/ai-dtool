@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 )
 
@@ -153,18 +154,14 @@ func initGin(ViewPath string) {
 	base.Component.TGin.GinInit(host, port)
 	base.Component.TGin.GinSetAllowCrossDomain()
 	gin.DefaultWriter = io.Discard
-	gstool.FmtPrintlnLogTime(`前端目录 %s`, ViewPath)
-	if ViewPath != `` {
-		base.Component.TGin.GinStatic(`/js`, ViewPath+`/js`)
-		base.Component.TGin.GinStaticFile(`/favicon.ico`, ViewPath+`/favicon.ico`)
-		base.Component.TGin.GinStatic(`/css`, ViewPath+`/css`)
-		base.Component.TGin.GinLoadHTMLFiles(ViewPath + `/index.html`)
-	} else {
-		base.Component.TGin.GinStatic(`/js`, base.Component.Env.RootPath+`/devtool/dist/js`)
-		base.Component.TGin.GinStaticFile(`/favicon.ico`, base.Component.Env.RootPath+`/devtool/dist/favicon.ico`)
-		base.Component.TGin.GinStatic(`/css`, base.Component.Env.RootPath+`/devtool/dist/css`)
-		base.Component.TGin.GinLoadHTMLFiles(base.Component.Env.RootPath + `/devtool/dist/index.html`)
+	if ViewPath == `` {
+		ViewPath = filepath.Dir(base.Component.Env.RootPath) + `/devtool/dist`
 	}
+	gstool.FmtPrintlnLogTime(`前端目录 %s`, ViewPath)
+	base.Component.TGin.GinStatic(`/js`, ViewPath+`/js`)
+	base.Component.TGin.GinStaticFile(`/favicon.ico`, ViewPath+`/favicon.ico`)
+	base.Component.TGin.GinStatic(`/css`, ViewPath+`/css`)
+	base.Component.TGin.GinLoadHTMLFiles(ViewPath + `/index.html`)
 	base.Component.TGin.GinGet(`/`, func(context *gin.Context) {
 		context.HTML(200, `index.html`, nil)
 	})

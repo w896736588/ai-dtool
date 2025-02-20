@@ -22,6 +22,8 @@ https://github.com/playwright-community/playwright-go
 go get -u github.com/playwright-community/playwright-go   
 ##安装浏览器核心 通过代码执行（可以设置一个lock文件来判断是否安装）
 err := playwright.Install()
+
+如果发布时报错，那么打开一个cmd窗口，然后直接输入.exe完整目录执行
 ```
 
 

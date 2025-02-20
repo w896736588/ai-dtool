@@ -64,11 +64,12 @@ func (h *TSmartLink) GetPage(openType, isSaveUserData int, link, pageUniqueKey, 
 	h.RunLock.Lock()
 	defer h.RunLock.Unlock()
 	link = h.LinkInit(link)
+	var timeout float64 = 3000
 	var context *ContextS
 	var contextErr error
 	host := gstool.UrlGetHost(link)
 	domain := host
-	gstool.FmtPrintlnLogTime(`isSaveUserData %d`, isSaveUserData)
+	gstool.FmtPrintlnLogTime(`是否保存用户数据 %d 打开模式 %d`, isSaveUserData, openType)
 	boolCleanFirstBlank := false
 	if isSaveUserData != 1 { //不保存用户数据
 		browser, browserErr := h.GetBrowser(openType)
@@ -77,7 +78,7 @@ func (h *TSmartLink) GetPage(openType, isSaveUserData int, link, pageUniqueKey, 
 		}
 		context, contextErr = h.GetContextNotSaveUserData(domain, pageUniqueKey, browserAuthUsername, browserAuthPassword, browser, isCombine)
 	} else {
-		context, boolCleanFirstBlank, contextErr = h.GetContextSaveUserData(domain, pageUniqueKey, browserAuthUsername, browserAuthPassword)
+		context, boolCleanFirstBlank, contextErr = h.GetContextSaveUserData(domain, pageUniqueKey, browserAuthUsername, browserAuthPassword, timeout, openType)
 	}
 	if contextErr != nil {
 		return nil, contextErr
@@ -106,7 +107,7 @@ func (h *TSmartLink) GetPage(openType, isSaveUserData int, link, pageUniqueKey, 
 		return nil, goErr
 	}
 	//等待加载完成
-	Component.TSmartLink.WaitForLoadState(page)
+	Component.TSmartLink.WaitForLoadState(page, timeout)
 	//记录进程列表
 	h.PageList[pageUniqueKey] = &TPlayWright{
 		Page:               &page,
@@ -185,19 +186,23 @@ func (h *TSmartLink) CheckContextActiveU(domainKey string) {
 	h.DomainContextListU = newList
 }
 
-func (h *TSmartLink) WaitForLoadState(page playwright.Page) {
+func (h *TSmartLink) WaitForLoadState(page playwright.Page, timeout float64) {
 	_ = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-		State: playwright.LoadStateDomcontentloaded,
+		State:   playwright.LoadStateDomcontentloaded,
+		Timeout: &timeout,
 	})
 	_ = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-		State: playwright.LoadStateNetworkidle,
+		State:   playwright.LoadStateNetworkidle,
+		Timeout: &timeout,
 	})
 	_ = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-		State: playwright.LoadStateLoad,
+		State:   playwright.LoadStateLoad,
+		Timeout: &timeout,
 	})
 }
 
-func (h *TSmartLink) GetContextNotSaveUserData(domain, pageUniqueKey, browserAuthUsername, browserAuthPassword string, browser playwright.Browser, isCombine int) (*ContextS, error) {
+func (h *TSmartLink) GetContextNotSaveUserData(domain, pageUniqueKey, browserAuthUsername, browserAuthPassword string, browser playwright.Browser,
+	isCombine int) (*ContextS, error) {
 	h.CheckContextActive(``)
 	for _, v := range h.DomainContextList {
 		//找到一个context没有当前域名的
@@ -301,24 +306,30 @@ func (h *TSmartLink) GetBrowser(openType int) (playwright.Browser, error) {
 
 }
 
-func (h *TSmartLink) GetContextSaveUserData(domain, pageUniqueKey, browserAuthUsername, browserAuthPassword string) (*ContextS, bool, error) {
+func (h *TSmartLink) GetContextSaveUserData(domain, pageUniqueKey, browserAuthUsername, browserAuthPassword string,
+	timeout float64, openType int) (*ContextS, bool, error) {
 	dataPath, contextS, userDataIndex := h.GetUserDataDirectory(domain, pageUniqueKey)
 	if contextS != nil {
-		gstool.FmtPrintlnLogTime(`使用已存在的context %s`, dataPath)
 		return contextS, false, nil
 	}
-	gstool.FmtPrintlnLogTime(`%s 使用 目录 %s`, domain, dataPath)
 	_ = gstool.DirCreatePath(dataPath)
+	//打开模式
+	Headless := false
+	if openType == define.OpenTypeWebkitSilence {
+		Headless = true
+	}
+	gstool.FmtPrintlnLogTime(`是否有界面 %t`, Headless)
 	var context playwright.BrowserContext
 	var contextErr error
 	if browserAuthUsername != `` && browserAuthPassword != `` {
 		context, contextErr = h.Pw.Chromium.LaunchPersistentContext(dataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
 			DownloadsPath:     &h.DownloadPath,
-			Headless:          playwright.Bool(false), //有界面模式
+			Headless:          &Headless,
 			NoViewport:        playwright.Bool(true),
 			JavaScriptEnabled: playwright.Bool(true),
 			AcceptDownloads:   playwright.Bool(true),
 			Locale:            playwright.String(`zh-CN`),
+			Timeout:           &timeout,
 			HttpCredentials: &playwright.HttpCredentials{
 				Username: browserAuthUsername,
 				Password: browserAuthPassword,
@@ -328,18 +339,20 @@ func (h *TSmartLink) GetContextSaveUserData(domain, pageUniqueKey, browserAuthUs
 			},
 		})
 	} else {
-		gstool.FmtPrintlnLogTime(`设置下载目录为%s`, h.DownloadPath)
+		gstool.FmtPrintlnLogTime(`启动 LaunchPersistentContext`)
 		context, contextErr = h.Pw.Chromium.LaunchPersistentContext(dataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
 			//DownloadsPath:     &h.DownloadPath,
-			Headless:          playwright.Bool(false), //有界面模式
+			Headless:          &Headless,
 			NoViewport:        playwright.Bool(true),
 			JavaScriptEnabled: playwright.Bool(true),
 			AcceptDownloads:   playwright.Bool(true),
 			Locale:            playwright.String(`zh-CN`),
+			Timeout:           &timeout,
 			IgnoreDefaultArgs: []string{
 				`--enable-automation`,
 			},
 		})
+		gstool.FmtPrintlnLogTime(`启动 over`)
 	}
 	if contextErr != nil {
 		return &ContextS{}, false, contextErr
