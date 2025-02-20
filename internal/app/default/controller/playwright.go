@@ -217,12 +217,11 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	}
 
 	for i := 0; i < openNum; i++ {
-		go func() {
-			openErr := openBrowserPlaywright(openType, isCombine, link, processList, dataMap)
-			if openErr != nil {
-				gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
-			}
-		}()
+		gstool.FmtPrintlnLogTime(`第 %d 次`, i)
+		openErr := openBrowserPlaywright(openType, isCombine, link, processList, dataMap)
+		if openErr != nil {
+			gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
+		}
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
@@ -285,12 +284,15 @@ func openBrowserPlaywright(openType, isCombine int, link string, processList []m
 	if base.Component.TSmartLink.Pw == nil {
 		return errors.New(`未启动浏览器核心`)
 	}
+	gstool.FmtPrintlnLogTime(`get page`)
 	pageUniqueKey := base.Component.TBase.GetUnique(`playwright_context_`)
 	page, pageErr := base.Component.TSmartLink.GetPage(openType, isSaveUserData, link, pageUniqueKey, smartLinkUniqueKey, browserAuthUsername, browserAuthPassword, isCombine)
+	gstool.FmtPrintlnLogTime(`获取page完成`)
 	if pageErr != nil {
 		return pageErr
 	}
 	for _, processVal := range processList {
+		gstool.FmtPrintlnLogTime(`start process %s`, processVal[`tip`])
 		//类型
 		processType := cast.ToString(processVal[`type`])
 		//如果不存在
@@ -308,7 +310,8 @@ func openBrowserPlaywright(openType, isCombine int, link string, processList []m
 		//}
 		var waitSecond float64 = 3000
 		// 等待页面加载完成
-		base.Component.TSmartLink.WaitForLoadState(*page.Page)
+		gstool.FmtPrintlnLogTime(`wait page loading`)
+		base.Component.TSmartLink.WaitForLoadState(*page.Page, waitSecond)
 		waitUrlErr := (*page.Page).WaitForURL((*page.Page).URL())
 		if waitUrlErr != nil {
 			return waitUrlErr
@@ -357,6 +360,16 @@ func openBrowserPlaywright(openType, isCombine int, link string, processList []m
 				return goErr
 			}
 		}
+	}
+	//无界面的5秒钟后自动关闭
+	if openType == define.OpenTypeWebkitSilence {
+		go func() {
+			time.Sleep(time.Second * 5)
+			closeErr := (*page.Page).Close()
+			if closeErr != nil {
+				gstool.FmtPrintlnLogTime(`page close error：%s`, closeErr.Error())
+			}
+		}()
 	}
 	//if err = page.Click(`.switch-input`); err != nil {
 	//	log.Fatalf("could not fill password input: %v", err)

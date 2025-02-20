@@ -21,7 +21,6 @@ func (h *TShell) GetClient(sshConfig map[string]any, uniqueKey string) (*gsssh.S
 	if sshId == `` {
 		return nil, errors.New(`ssh配置错误`)
 	}
-	gstool.FmtPrintlnLogTime(`获取client %v`, h.ShellClientMap)
 	if shell, ok := h.ShellClientMap[uniqueKey]; ok && shell != nil {
 		return shell, nil
 	}
