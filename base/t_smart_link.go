@@ -339,7 +339,7 @@ func (h *TSmartLink) GetContextSaveUserData(domain, pageUniqueKey, browserAuthUs
 			},
 		})
 	} else {
-		gstool.FmtPrintlnLogTime(`启动 LaunchPersistentContext`)
+		gstool.FmtPrintlnLogTime(`启动 LaunchPersistentContext %f`, timeout)
 		context, contextErr = h.Pw.Chromium.LaunchPersistentContext(dataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
 			//DownloadsPath:     &h.DownloadPath,
 			Headless:          &Headless,
@@ -425,9 +425,9 @@ func (h *TSmartLink) OnDownload(page playwright.Page) {
 		gstool.FmtPrintlnLogTime(`下载结果 %#v`, ret)
 	})
 	page.On("response", func(response playwright.Response) {
-		//gstool.FmtPrintlnLogTime(`下载%s`, response.Request().URL())
+		//gstool.FmtPrintlnLogTime(`下载%s`, response.Api().URL())
 		//判断是否为文件或者图片 并下载到下载目录
-		//h.downloadFileWithSuffixCheck(response.Request().URL())
+		//h.downloadFileWithSuffixCheck(response.Api().URL())
 	})
 }
 

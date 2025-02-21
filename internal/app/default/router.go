@@ -19,6 +19,7 @@ func InitRouter() {
 	variable()
 	smartLink()
 	docker()
+	ai()
 }
 
 // 基础接口
@@ -153,4 +154,8 @@ func docker() {
 	base.Component.TGin.GinPost(`/api/DockerComposeStop`, controller.DockerComposeStop)
 	base.Component.TGin.GinPost(`/api/DockerComposeConfigShow`, controller.DockerComposeConfigShow)
 	base.Component.TGin.GinPost(`/api/DockerComposeStart`, controller.DockerComposeStart)
+}
+
+func ai() {
+	base.Component.TGin.GinPost(`/api/AiRun`, controller.AiRun)
 }
