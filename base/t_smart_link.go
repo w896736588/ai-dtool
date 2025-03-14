@@ -664,21 +664,21 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams _struct.SmartLinkRunParams)
 		redirectUri := cast.ToString(processVal[`uri`])
 		//操作描述
 		tip := cast.ToString(processVal[`tip`])
-		var waitSecond float64 = 3000
 		// 等待页面加载完成
-		Component.TSmartLink.WaitForLoadState(page, waitSecond)
+		Component.TSmartLink.WaitForLoadState(page, runParams.Timeout)
 		waitUrlErr := page.WaitForURL(page.URL())
 		if waitUrlErr != nil {
 			return waitUrlErr
 		}
 		Component.TSmartLink.AddTipMsg(page, tip)
 		switch processType {
+		case `wait`:
+			time.Sleep(time.Duration(cast.ToInt(processVal[`value`])) * time.Second)
 		case `click`: //点击
-			clickErr := h.click(Locator, notExistLocator, waitSecond, page)
+			clickErr := h.click(Locator, notExistLocator, runParams.Timeout, page)
 			if clickErr != nil {
 				return clickErr
 			}
-			break
 		case `input`: //输入
 			inputValue := cast.ToString(processVal[`value`])
 			inputValue = gstool.StringReplaces(inputValue, map[string]string{
@@ -692,7 +692,7 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams _struct.SmartLinkRunParams)
 			}
 			inputSelecter := page.Locator(Locator)
 			selectorLoaderWaitErr := inputSelecter.WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: &waitSecond,
+				Timeout: &runParams.Timeout,
 			})
 			if selectorLoaderWaitErr == nil {
 				inputErr := inputSelecter.Fill(inputValue)
@@ -703,7 +703,6 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams _struct.SmartLinkRunParams)
 				Component.TSmartLink.AddTipMsg(page, `无法找到元素`+Locator+`,结束`)
 				return errors.New(`无法找到元素` + Locator)
 			}
-			break
 		case `redirect_uri`: //跳转 保持当前域名
 			currentURL := page.URL()
 			parsedURL, err := url.Parse(currentURL)
