@@ -603,10 +603,10 @@ func (h *TSmartLink) GetRunParams(id int, label, browserAuthUsername, browserAut
 	if decodeErr != nil {
 		return runParams, errors.New(decodeErr.Error())
 	}
-	for index, link := range linkList {
+	for _, link := range linkList {
 		if cast.ToString(link[`label`]) == label {
 			runParams.Link = cast.ToString(link[`link`])
-			runParams.SmartLinkUniqueKey = cast.ToString(index) + `_` + label
+			runParams.SmartLinkUniqueKey = cast.ToString(runParams.Id) + `_` + label
 			runParams.OpenNum = 0
 			runParams.Cookie = cast.ToString(link[`cookie`])
 			break
@@ -616,6 +616,9 @@ func (h *TSmartLink) GetRunParams(id int, label, browserAuthUsername, browserAut
 		return runParams, errors.New(`链接不存在，检查是否json格式错误`)
 	}
 	//赋值
+	runParams.Link = gstool.StringReplaces(runParams.Link, map[string]string{
+		`{rand}`: Component.TBase.GetCombineKey(),
+	})
 	runParams.IsSaveUserData = cast.ToInt(smartLink[`is_save_user_data`]) == 1
 	runParams.IsCombine = cast.ToInt(smartLink[`is_combine`]) == 1
 	runParams.OpenNum = cast.ToInt(math.Max(1, cast.ToFloat64(openNum)))

@@ -7,7 +7,7 @@ import (
 type SmartLinkRunParams struct {
 	Id                  int                 //链接ID
 	Link                string              //打开的链接
-	SmartLinkUniqueKey  string              //在链接下面的唯一值   索引值_label 例如第一个链接 0_label
+	SmartLinkUniqueKey  string              //在链接下面的唯一值   索引值_label 例如第一个链接 id_label
 	OpenNum             int                 //打开次数 0会被默认为1次
 	Cookie              string              //打开链接时需要设置的cookie
 	OpenType            define.OpenType     //打开类型 1通过js打开
