@@ -2,6 +2,7 @@ package base
 
 import (
 	"dev_tool/base/define"
+	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gstask"
@@ -10,6 +11,7 @@ import (
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -36,7 +38,6 @@ type TSmartLink struct {
 
 type ContextPage struct {
 	Context            playwright.BrowserContext
-	PageUniqueKey      string //当前页面唯一值
 	SmartLinkUniqueKey string //选项唯一值
 	UserDataIndex      int    //数据目录索引
 	UserDataPath       string //数据目录
@@ -44,29 +45,29 @@ type ContextPage struct {
 }
 
 // GetPage 拿到Page runUniqueKey 格式为0_common3 这种 单浏览器模式，每次打开都会打开一个新的浏览器
-// isCombine 是否自动合并不同域名到同一个浏览器
-func (h *TSmartLink) GetPage(openType, isSaveUserData int, link, pageUniqueKey, smartLinkUniqueKey, browserUsername,
-	browserPassword string, isCombine int) (playwright.Page, error) {
+// openType 2 playwright静默打开 3 playwright有界面打开
+// isSaveUserData 是否保存用户数据 1保存 0不保存
+// link 打开的链接
+// pageUniqueKey 本次开启新page的唯一值
+// smartLinkUniqueKey 所属于链接唯一值
+// browserUsername 浏览器自带验证用户名
+// browserPassword 浏览器自带验证密码
+// isCombine 是否自动合并不同域名到同一个浏览器 1合并 0不合并
+// cookie 页面打开时设置的cookie
+func (h *TSmartLink) GetPage(runParams _struct.SmartLinkRunParams) (playwright.Page, error) {
 	h.RunLock.Lock()
 	defer h.RunLock.Unlock()
-	link = h.LinkInit(link)
-	var timeout float64 = 3000
 	var contextErr error
-	host := gstool.UrlGetHost(link)
-	domain := host
-	gstool.FmtPrintlnLogTime(`是否保存用户数据 %d 打开模式 %d`, isSaveUserData, openType)
 	var contextPage ContextPage
 	boolCleanFirstBlank := false
-	if isSaveUserData != 1 { //不保存用户数据
-		browser, browserErr := h.GetBrowser(openType)
+	if !runParams.IsSaveUserData { //不保存用户数据
+		browser, browserErr := h.GetBrowser(runParams.OpenType)
 		if browserErr != nil {
 			return nil, browserErr
 		}
-		contextPage, contextErr = h.GetContextNotSaveUserData(domain, pageUniqueKey, smartLinkUniqueKey, browserUsername,
-			browserPassword, browser, isCombine)
+		contextPage, contextErr = h.GetContextNotSaveUserData(runParams, browser)
 	} else { //保留用户数据
-		contextPage, boolCleanFirstBlank, contextErr = h.GetContextSaveUserData(domain, pageUniqueKey, smartLinkUniqueKey,
-			browserUsername, browserPassword, timeout, openType, isCombine)
+		contextPage, boolCleanFirstBlank, contextErr = h.GetContextSaveUserData(runParams)
 	}
 	if contextErr != nil {
 		return nil, contextErr
@@ -88,13 +89,25 @@ func (h *TSmartLink) GetPage(openType, isSaveUserData int, link, pageUniqueKey, 
 
 	//监听下载事件进行重命名
 	go h.OnDownload(page)
+	//设置cookie
+	if runParams.Cookie != `` {
+		cookieErr := page.AddInitScript(playwright.Script{
+			Content: playwright.String(runParams.Cookie),
+		})
+		if cookieErr != nil {
+			gstool.FmtPrintlnLogTime(`设置cookie失败 %s`, cookieErr.Error())
+		} else {
+			gstool.FmtPrintlnLogTime(`设置cookie成功 %s`, runParams.Cookie)
+		}
+	}
+
 	//跳转链接
-	u, _ := url.Parse(link)
+	u, _ := url.Parse(runParams.Link)
 	if _, goErr := page.Goto(u.String()); goErr != nil {
 		return nil, goErr
 	}
 	//等待加载完成
-	Component.TSmartLink.WaitForLoadState(page, timeout)
+	Component.TSmartLink.WaitForLoadState(page, runParams.Timeout)
 	return page, nil
 }
 
@@ -148,34 +161,32 @@ func (h *TSmartLink) IsSameLink(smartLinkUniqueKeyS, smartLinkUniqueKeyT string)
 	return strings.Split(smartLinkUniqueKeyS, `_`)[0] == strings.Split(smartLinkUniqueKeyT, `_`)[0]
 }
 
-func (h *TSmartLink) GetContextNotSaveUserData(domain, pageUniqueKey, smartLinkUniqueKey, browserUsername,
-	browserPassword string, browser playwright.Browser, isCombine int) (ContextPage, error) {
+func (h *TSmartLink) GetContextNotSaveUserData(runParams _struct.SmartLinkRunParams, browser playwright.Browser) (ContextPage, error) {
 	for _, v := range h.ContextList {
 		//非同种类型的context跳过
-		if !h.IsSameLink(v.SmartLinkUniqueKey, smartLinkUniqueKey) {
+		if !h.IsSameLink(v.SmartLinkUniqueKey, runParams.SmartLinkUniqueKey) {
 			continue
 		}
 		//找到一个context没有当前域名的
 		boolFind := false
 		pageList := v.Context.Pages()
 		for _, v1 := range pageList {
-			if gstool.UrlGetHost(v1.URL()) == domain {
+			if gstool.UrlGetHost(v1.URL()) == runParams.Domain {
 				boolFind = true
 				break
 			}
 		}
-		if !boolFind && isCombine == 1 {
+		if !boolFind && runParams.IsCombine {
 			return v, nil
 		}
 	}
-	gstool.FmtPrintlnLogTime(`重新创建 %s`, domain)
 	var context playwright.BrowserContext
 	var contextErr error
-	if browserUsername != `` && browserPassword != `` {
+	if runParams.BrowserAuthUsername != `` && runParams.BrowserAuthPassword != `` {
 		context, contextErr = browser.NewContext(playwright.BrowserNewContextOptions{
 			HttpCredentials: &playwright.HttpCredentials{
-				Username: browserUsername,
-				Password: browserPassword,
+				Username: runParams.BrowserAuthUsername,
+				Password: runParams.BrowserAuthPassword,
 			},
 			NoViewport:        playwright.Bool(true),
 			JavaScriptEnabled: playwright.Bool(true),
@@ -195,8 +206,7 @@ func (h *TSmartLink) GetContextNotSaveUserData(domain, pageUniqueKey, smartLinkU
 	}
 	contentPage := ContextPage{
 		Context:            context,
-		PageUniqueKey:      pageUniqueKey,
-		SmartLinkUniqueKey: smartLinkUniqueKey,
+		SmartLinkUniqueKey: runParams.SmartLinkUniqueKey,
 		ContextUnique:      Component.TBase.GetUnique(`context_unique_`),
 	}
 	h.ContextList = append(h.ContextList, contentPage)
@@ -209,7 +219,7 @@ func (h *TSmartLink) GetContextNotSaveUserData(domain, pageUniqueKey, smartLinkU
 	return contentPage, nil
 }
 
-func (h *TSmartLink) GetBrowser(openType int) (playwright.Browser, error) {
+func (h *TSmartLink) GetBrowser(openType define.OpenType) (playwright.Browser, error) {
 	if openType == define.OpenTypeWebkitSilence && h.BrowserWebkitSilence != nil {
 		return h.BrowserWebkitSilence, nil
 	} else if openType == define.OpenTypeWebkitChrome && h.BrowserWebkitChrome != nil {
@@ -240,22 +250,20 @@ func (h *TSmartLink) GetBrowser(openType int) (playwright.Browser, error) {
 }
 
 // GetContextSaveUserData 获取context 需要保存用户数据
-func (h *TSmartLink) GetContextSaveUserData(domain, pageUniqueKey, smartLinkUniqueKey, browserAuthUsername,
-	browserAuthPassword string, timeout float64, openType, isCombine int) (ContextPage, bool, error) {
-	contextPage := h.GetUserDataContext(domain, pageUniqueKey, smartLinkUniqueKey, isCombine)
+func (h *TSmartLink) GetContextSaveUserData(runParams _struct.SmartLinkRunParams) (ContextPage, bool, error) {
+	contextPage := h.GetUserDataContext(runParams)
 	_ = gstool.DirCreatePath(contextPage.UserDataPath)
 	if contextPage.Context != nil {
 		return contextPage, false, nil
 	}
 	//打开模式
 	Headless := false
-	if openType == define.OpenTypeWebkitSilence {
+	if runParams.OpenType == define.OpenTypeWebkitSilence {
 		Headless = true
 	}
-	gstool.FmtPrintlnLogTime(`是否有界面 %t 是否保留用户数据 true 是否合并 %d`, Headless, isCombine)
 	var context playwright.BrowserContext
 	var contextErr error
-	if browserAuthUsername != `` && browserAuthPassword != `` {
+	if runParams.BrowserAuthUsername != `` && runParams.BrowserAuthPassword != `` {
 		context, contextErr = h.Pw.Chromium.LaunchPersistentContext(contextPage.UserDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
 			DownloadsPath:     &h.DownloadPath,
 			Headless:          &Headless,
@@ -263,11 +271,11 @@ func (h *TSmartLink) GetContextSaveUserData(domain, pageUniqueKey, smartLinkUniq
 			JavaScriptEnabled: playwright.Bool(true),
 			AcceptDownloads:   playwright.Bool(true),
 			Locale:            playwright.String(`zh-CN`),
-			Timeout:           &timeout,
+			Timeout:           &runParams.Timeout,
 			IgnoreHttpsErrors: playwright.Bool(true),
 			HttpCredentials: &playwright.HttpCredentials{
-				Username: browserAuthUsername,
-				Password: browserAuthPassword,
+				Username: runParams.BrowserAuthUsername,
+				Password: runParams.BrowserAuthPassword,
 			},
 			IgnoreDefaultArgs: []string{
 				`--enable-automation`,
@@ -278,7 +286,6 @@ func (h *TSmartLink) GetContextSaveUserData(domain, pageUniqueKey, smartLinkUniq
 			},
 		})
 	} else {
-		gstool.FmtPrintlnLogTime(`启动 LaunchPersistentContext %f`, timeout)
 		context, contextErr = h.Pw.Chromium.LaunchPersistentContext(contextPage.UserDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
 			//DownloadsPath:     &h.DownloadPath,
 			Headless:          &Headless,
@@ -287,7 +294,7 @@ func (h *TSmartLink) GetContextSaveUserData(domain, pageUniqueKey, smartLinkUniq
 			AcceptDownloads:   playwright.Bool(true),
 			IgnoreHttpsErrors: playwright.Bool(true),
 			Locale:            playwright.String(`zh-CN`),
-			Timeout:           &timeout,
+			Timeout:           &runParams.Timeout,
 			IgnoreDefaultArgs: []string{
 				`--enable-automation`,
 				`--disable-infobars`,                //禁用“正在使用自动化软件”提示信息栏。
@@ -314,29 +321,27 @@ func (h *TSmartLink) GetContextSaveUserData(domain, pageUniqueKey, smartLinkUniq
 }
 
 // GetUserDataContext 拿到数据保存目录
-func (h *TSmartLink) GetUserDataContext(domain, pageUniqueKey, smartLinkUniqueKey string, isCombine int) ContextPage {
+func (h *TSmartLink) GetUserDataContext(runParams _struct.SmartLinkRunParams) ContextPage {
 	userIndex := -1
 	userIndexMax := -1
-	gstool.FmtPrintlnLogTime(`打开的context list %#v`, h.ContextList)
 	for _, v := range h.ContextList {
 		if userIndexMax < v.UserDataIndex {
 			userIndexMax = v.UserDataIndex
 		}
 		//非同一类型的链接 不管
-		if !h.IsSameLink(v.SmartLinkUniqueKey, smartLinkUniqueKey) {
+		if !h.IsSameLink(v.SmartLinkUniqueKey, runParams.SmartLinkUniqueKey) {
 			continue
 		}
 		boolFind := false
 		pageList := v.Context.Pages()
 		gstool.FmtPrintlnLogTime(`打开的page 数量 %d`, len(pageList))
 		for _, page := range pageList {
-			gstool.FmtPrintlnLogTime(`已有host %s 准备打开host %s`, gstool.UrlGetHost(page.URL()), domain)
-			if gstool.UrlGetHost(page.URL()) == domain {
+			if gstool.UrlGetHost(page.URL()) == runParams.Domain {
 				boolFind = true
 				break
 			}
 		}
-		if !boolFind && isCombine == 1 { //需要合并时才处理
+		if !boolFind && runParams.IsCombine { //需要合并时才处理
 			gstool.FmtPrintlnLogTime(`找到了可以复用的 %#v`, v)
 			return v
 		}
@@ -345,11 +350,10 @@ func (h *TSmartLink) GetUserDataContext(domain, pageUniqueKey, smartLinkUniqueKe
 	dataPath := fmt.Sprintf(Component.Env.PlaywrightUserData+`\%d`, userIndex)
 	gstool.FmtPrintlnLogTime(`准备重新创建context %s`, dataPath)
 	return ContextPage{
-		Context:            nil,                //初始化空
-		PageUniqueKey:      pageUniqueKey,      //当前页面唯一值
-		SmartLinkUniqueKey: smartLinkUniqueKey, //选项唯一值
-		UserDataIndex:      userIndex,          //数据目录索引
-		UserDataPath:       dataPath,           //数据目录
+		Context:            nil,                          //初始化空
+		SmartLinkUniqueKey: runParams.SmartLinkUniqueKey, //选项唯一值
+		UserDataIndex:      userIndex,                    //数据目录索引
+		UserDataPath:       dataPath,                     //数据目录
 	}
 }
 
@@ -578,26 +582,75 @@ func (h *TSmartLink) install(version, lockFileFullPath string) {
 	}
 }
 
+func (h *TSmartLink) GetRunParams(id int, label, browserAuthUsername, browserAuthPassword, userName, password string, openNum int, replaceList []map[string]string) (_struct.SmartLinkRunParams, error) {
+	runParams := _struct.SmartLinkRunParams{}
+	if id == 0 {
+		return runParams, errors.New(`链接ID不能为空`)
+	}
+	if label == `` {
+		return runParams, errors.New(`链接label不能为空`)
+	}
+	runParams.Id = id
+	smartLink, smartLinkErr := Component.TSqlite.Client.QueryBySql(`select * from tbl_smart_link where id = ? `, id).One()
+	if smartLinkErr != nil {
+		return runParams, errors.New(smartLinkErr.Error())
+	}
+	if len(smartLink) == 0 {
+		return runParams, errors.New(`不存在的链接`)
+	}
+	linkList := make([]map[string]any, 0)
+	decodeErr := gstool.JsonDecode(cast.ToString(smartLink[`links`]), &linkList)
+	if decodeErr != nil {
+		return runParams, errors.New(decodeErr.Error())
+	}
+	for index, link := range linkList {
+		if cast.ToString(link[`label`]) == label {
+			runParams.Link = cast.ToString(link[`link`])
+			runParams.SmartLinkUniqueKey = cast.ToString(index) + `_` + label
+			runParams.OpenNum = 0
+			runParams.Cookie = cast.ToString(link[`cookie`])
+			break
+		}
+	}
+	if runParams.Link == `` {
+		return runParams, errors.New(`链接不存在，检查是否json格式错误`)
+	}
+	//赋值
+	runParams.IsSaveUserData = cast.ToInt(smartLink[`is_save_user_data`]) == 1
+	runParams.IsCombine = cast.ToInt(smartLink[`is_combine`]) == 1
+	runParams.OpenNum = cast.ToInt(math.Max(1, cast.ToFloat64(openNum)))
+	runParams.OpenType = define.OpenType(cast.ToInt(smartLink[`open_type`]))
+	process := cast.ToString(smartLink[`process`])
+	processList := make([]map[string]any, 0)
+	if process != `` {
+		decodeErr = gstool.JsonDecode(process, &processList)
+		if decodeErr != nil {
+			return runParams, errors.New(`配置失败` + decodeErr.Error())
+		}
+	}
+	runParams.Domain = gstool.UrlGetHost(runParams.Link)
+	runParams.BrowserAuthUsername = browserAuthUsername
+	runParams.BrowserAuthPassword = browserAuthPassword
+	runParams.UserName = userName
+	runParams.Password = password
+	runParams.ProcessList = processList
+	runParams.ReplaceList = replaceList
+	runParams.Timeout = 3000
+	return runParams, nil
+}
+
 // OpenBrowserPlaywright 打开浏览器
-func (h *TSmartLink) OpenBrowserPlaywright(openType, isCombine int, link string,
-	processList []map[string]any, dataMap map[string]any, replaceList []map[string]string) error {
-	//浏览器自带验证
-	browserAuthUsername := cast.ToString(dataMap[`browser_auth_username`])
-	browserAuthPassword := cast.ToString(dataMap[`browser_auth_password`])
-	smartLinkUniqueKey := cast.ToString(dataMap[`value`])      //格式 smart_list的ID_value  例如：0_common3 1_common1
-	isSaveUserData := cast.ToInt(dataMap[`is_save_user_data`]) //1保留用户数据
+func (h *TSmartLink) OpenBrowserPlaywright(runParams _struct.SmartLinkRunParams) error {
 	if Component.TSmartLink.Pw == nil {
 		return errors.New(`未启动浏览器核心`)
 	}
-	pageUniqueKey := Component.TBase.GetUnique(`playwright_context_`)
-	page, pageErr := Component.TSmartLink.GetPage(openType, isSaveUserData, link, pageUniqueKey,
-		smartLinkUniqueKey, browserAuthUsername, browserAuthPassword, isCombine)
+	page, pageErr := Component.TSmartLink.GetPage(runParams)
 
 	if pageErr != nil {
 		gstool.FmtPrintlnLogTime(`获取page报错 %s`, pageErr.Error())
 		return pageErr
 	}
-	for _, processVal := range processList {
+	for _, processVal := range runParams.ProcessList {
 		//类型
 		processType := cast.ToString(processVal[`type`])
 		//如果不存在
@@ -626,12 +679,12 @@ func (h *TSmartLink) OpenBrowserPlaywright(openType, isCombine int, link string,
 		case `input`: //输入
 			inputValue := cast.ToString(processVal[`value`])
 			inputValue = gstool.StringReplaces(inputValue, map[string]string{
-				`{user_name}`: cast.ToString(dataMap[`user_name`]),
-				`{password}`:  cast.ToString(dataMap[`password`]),
+				`{user_name}`: runParams.UserName,
+				`{password}`:  runParams.Password,
 				`{rand}`:      Component.TBase.GetUnique(`input_rand_`),
 			})
 			//针对输入进行替换
-			for _, replaceVal := range replaceList {
+			for _, replaceVal := range runParams.ReplaceList {
 				inputValue = gstool.StringReplaces(inputValue, replaceVal)
 			}
 			inputSelecter := page.Locator(Locator)
@@ -665,7 +718,7 @@ func (h *TSmartLink) OpenBrowserPlaywright(openType, isCombine int, link string,
 		}
 	}
 	//无界面的5秒钟后自动关闭
-	if openType == define.OpenTypeWebkitSilence {
+	if runParams.OpenType == define.OpenTypeWebkitSilence {
 		go func() {
 			time.Sleep(time.Second * 5)
 			closeErr := page.Close()
