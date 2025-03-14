@@ -193,42 +193,24 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	id := cast.ToInt(dataMap[`id`])
-	if id == 0 {
-		gsgin.GinResponseError(c, `id不能为空`, nil)
+	label := cast.ToString(dataMap[`label`])
+	if id == 0 || label == `` {
+		gsgin.GinResponseError(c, `id和label不能为空`, nil)
 		return
 	}
-	smartLink, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(`select * from tbl_smart_link where id = ? `, id).One()
-	if smartLinkErr != nil {
-		gsgin.GinResponseError(c, `id不存在`, nil)
-		return
-	}
-	//赋值
-	dataMap[`is_save_user_data`] = smartLink[`is_save_user_data`]
-	link := cast.ToString(dataMap[`link`])
+	browserAuthUsername := cast.ToString(dataMap[`browser_auth_username`])
+	browserAuthPassword := cast.ToString(dataMap[`browser_auth_password`])
+	userName := cast.ToString(dataMap[`user_name`])
+	password := cast.ToString(dataMap[`password`])
 	openNum := cast.ToInt(dataMap[`open_num`])
-	isCombine := cast.ToInt(smartLink[`is_combine`])
-	if openNum == 0 {
-		openNum = 1
-	}
-	openType := cast.ToInt(smartLink[`open_type`])
-	process := cast.ToString(smartLink[`process`])
-	if link == `` {
-		gsgin.GinResponseError(c, `链接不存在，检查是否json格式错误`, nil)
+	runParams, runParamsErr := base.Component.TSmartLink.GetRunParams(id, label, browserAuthUsername, browserAuthPassword, userName, password, openNum, make([]map[string]string, 0))
+	if runParamsErr != nil {
+		gsgin.GinResponseError(c, runParamsErr.Error(), nil)
 		return
 	}
-	processList := make([]map[string]any, 0)
-	if process != `` {
-		decodeErr := gstool.JsonDecode(process, &processList)
-		if decodeErr != nil {
-			gsgin.GinResponseError(c, `配置失败`+decodeErr.Error(), nil)
-			return
-		}
-	}
-
-	for i := 0; i < openNum; i++ {
-		gstool.FmtPrintlnLogTime(`第 %d 次`, i)
-		replaceList := make([]map[string]string, 0)
-		openErr := base.Component.TSmartLink.OpenBrowserPlaywright(openType, isCombine, link, processList, dataMap, replaceList)
+	gstool.FmtPrintlnLogTime(gstool.JsonEncode(runParams))
+	for i := 0; i < runParams.OpenNum; i++ {
+		openErr := base.Component.TSmartLink.OpenBrowserPlaywright(runParams)
 		if openErr != nil {
 			gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
 		}

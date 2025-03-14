@@ -296,51 +296,12 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 	if label == `` {
 		return ``, errors.New(`链接label不能为空`)
 	}
-	dataMap := make(map[string]any)
-	dataMap[`id`] = id
-	smartLink, smartLinkErr := Component.TSqlite.Client.QueryBySql(`select * from tbl_smart_link where id = ? `, id).One()
-	if smartLinkErr != nil {
-		return ``, errors.New(smartLinkErr.Error())
+	runParams, runParamsErr := Component.TSmartLink.GetRunParams(id, label, ``, ``, ``, ``, 0, h.ReplaceList)
+	if runParamsErr != nil {
+		return ``, errors.New(runParamsErr.Error())
 	}
-	if len(smartLink) == 0 {
-		return ``, errors.New(`不存在的链接`)
-	}
-	linkList := make([]map[string]any, 0)
-	decodeErr := gstool.JsonDecode(cast.ToString(smartLink[`links`]), &linkList)
-	if decodeErr != nil {
-		return ``, errors.New(decodeErr.Error())
-	}
-	for index, link := range linkList {
-		if cast.ToString(link[`label`]) == label {
-			dataMap[`link`] = cast.ToString(link[`link`])
-			dataMap[`value`] = cast.ToString(index) + `_` + label
-			dataMap[`open_num`] = 0
-			break
-		}
-	}
-	//赋值
-	dataMap[`is_save_user_data`] = smartLink[`is_save_user_data`]
-	link := cast.ToString(dataMap[`link`])
-	openNum := cast.ToInt(dataMap[`open_num`])
-	isCombine := cast.ToInt(smartLink[`is_combine`])
-	if openNum == 0 {
-		openNum = 1
-	}
-	openType := cast.ToInt(smartLink[`open_type`])
-	process := cast.ToString(smartLink[`process`])
-	if link == `` {
-		return ``, errors.New(`链接不存在，检查是否json格式错误`)
-	}
-	processList := make([]map[string]any, 0)
-	if process != `` {
-		decodeErr = gstool.JsonDecode(process, &processList)
-		if decodeErr != nil {
-			return ``, errors.New(`配置失败` + decodeErr.Error())
-		}
-	}
-	for i := 0; i < openNum; i++ {
-		gstool.FmtPrintlnLogTime(`第 %d 次`, i)
-		openErr := Component.TSmartLink.OpenBrowserPlaywright(openType, isCombine, link, processList, dataMap, h.ReplaceList)
+	for i := 0; i < runParams.OpenNum; i++ {
+		openErr := Component.TSmartLink.OpenBrowserPlaywright(runParams)
 		if openErr != nil {
 			gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
 		}
