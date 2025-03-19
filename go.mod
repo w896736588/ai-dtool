@@ -5,7 +5,7 @@ go 1.23
 toolchain go1.23.3
 
 require (
-	gitee.com/Sxiaobai/gs v1.2.9
+	gitee.com/Sxiaobai/gs v1.3.1
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/gin-gonic/gin v1.9.0
 	github.com/go-vgo/robotgo v0.110.5

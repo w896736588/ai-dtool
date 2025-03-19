@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gsencrypt"
+	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gssocket"
 	"gitee.com/Sxiaobai/gs/gsssh"
 	"gitee.com/Sxiaobai/gs/gstool"
@@ -13,6 +14,7 @@ import (
 	"github.com/spf13/viper"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -161,6 +163,15 @@ func initGin(ViewPath string) {
 	base.Component.TGin.GinLoadHTMLFiles(ViewPath + `/index.html`)
 	base.Component.TGin.GinGet(`/`, func(context *gin.Context) {
 		context.HTML(200, `index.html`, nil)
+	})
+	base.Component.TSse = &gsgin.TSse{
+		SseList: make(map[string]*gsgin.Sse),
+	}
+	base.Component.TGin.SseRoute(`/sse`, func(urlValues url.Values, stopC chan int, c *gin.Context) *gsgin.Sse {
+		clientId := urlValues.Get(`client_id`)
+		return base.Component.TSse.Register(clientId, stopC, c)
+	}, func(sse *gsgin.Sse) {
+		base.Component.TSse.Pause(sse)
 	})
 	base.Component.TGin.IsRun = true
 }

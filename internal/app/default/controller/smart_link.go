@@ -69,7 +69,8 @@ func SmartLinkAdd(c *gin.Context) {
 		return
 	}
 	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `smart_link_group_id`, `links`, `open_num`, `open_type`, `process`, `weight`, `is_save_user_data`, `is_combine`})
+	dataMap[`fix_data_id`] = cast.ToInt(dataMap[`fix_data_id`])
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `smart_link_group_id`, `links`, `open_num`, `open_type`, `process`, `weight`, `is_save_user_data`, `is_combine`, `fix_data_id`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()

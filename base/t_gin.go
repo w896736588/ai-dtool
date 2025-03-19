@@ -4,6 +4,7 @@ import (
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"net/url"
 )
 
 type Gin struct {
@@ -63,4 +64,9 @@ func (h *Gin) GinRun() {
 
 func (h *Gin) GinStop(waitSecond int64) error {
 	return h.gin.Stop(waitSecond)
+}
+
+func (h *Gin) SseRoute(route string,
+	openFunc func(urlValues url.Values, stopC chan int, c *gin.Context) *gsgin.Sse, closeFunc func(sse *gsgin.Sse)) {
+	h.gin.SseRoute(route, true, openFunc, closeFunc)
 }
