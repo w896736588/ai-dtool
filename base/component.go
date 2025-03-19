@@ -2,6 +2,7 @@ package base
 
 import (
 	"gitee.com/Sxiaobai/gs/gsencrypt"
+	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gssocket"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/viper"
@@ -25,4 +26,5 @@ type TComponent struct {
 	TMysql        *TMysql
 	TSocket       *TSocket
 	TSmartLink    *TSmartLink
+	TSse          *gsgin.TSse
 }

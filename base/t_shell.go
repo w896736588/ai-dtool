@@ -57,6 +57,10 @@ func (h *TShell) GetClient(sshConfig map[string]any, uniqueKey string) (*gsssh.S
 		h.RmClient(uniqueKey)
 		//h.ReConn(uniqueKey, sshConfig)
 	})
+	gsShell.SetFuncReceiveMsg(func(msg string) string {
+		Component.TSse.Send(uniqueKey, msg)
+		return msg
+	})
 	h.ShellClientMap[uniqueKey] = gsShell
 	return gsShell, nil
 }

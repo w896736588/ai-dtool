@@ -322,31 +322,37 @@ func (h *TSmartLink) GetContextSaveUserData(runParams _struct.SmartLinkRunParams
 
 // GetUserDataContext 拿到数据保存目录
 func (h *TSmartLink) GetUserDataContext(runParams _struct.SmartLinkRunParams) ContextPage {
-	userIndex := -1
-	userIndexMax := -1
-	for _, v := range h.ContextList {
-		if userIndexMax < v.UserDataIndex {
-			userIndexMax = v.UserDataIndex
-		}
-		//非同一类型的链接 不管
-		if !h.IsSameLink(v.SmartLinkUniqueKey, runParams.SmartLinkUniqueKey) {
-			continue
-		}
-		boolFind := false
-		pageList := v.Context.Pages()
-		gstool.FmtPrintlnLogTime(`打开的page 数量 %d`, len(pageList))
-		for _, page := range pageList {
-			if gstool.UrlGetHost(page.URL()) == runParams.Domain {
-				boolFind = true
-				break
+	var userIndex int
+	if runParams.FixDataId == 0 {
+		userIndex = -1
+		userIndexMax := -1
+		for _, v := range h.ContextList {
+			if userIndexMax < v.UserDataIndex {
+				userIndexMax = v.UserDataIndex
+			}
+			//非同一类型的链接 不管
+			if !h.IsSameLink(v.SmartLinkUniqueKey, runParams.SmartLinkUniqueKey) {
+				continue
+			}
+			boolFind := false
+			pageList := v.Context.Pages()
+			gstool.FmtPrintlnLogTime(`打开的page 数量 %d`, len(pageList))
+			for _, page := range pageList {
+				if gstool.UrlGetHost(page.URL()) == runParams.Domain {
+					boolFind = true
+					break
+				}
+			}
+			if !boolFind && runParams.IsCombine { //需要合并时才处理
+				gstool.FmtPrintlnLogTime(`找到了可以复用的 %#v`, v)
+				return v
 			}
 		}
-		if !boolFind && runParams.IsCombine { //需要合并时才处理
-			gstool.FmtPrintlnLogTime(`找到了可以复用的 %#v`, v)
-			return v
-		}
+		userIndex = userIndexMax + 1
+	} else {
+		userIndex = runParams.Id
 	}
-	userIndex = userIndexMax + 1
+
 	dataPath := fmt.Sprintf(Component.Env.PlaywrightUserData+`\%d`, userIndex)
 	gstool.FmtPrintlnLogTime(`准备重新创建context %s`, dataPath)
 	return ContextPage{
@@ -599,6 +605,7 @@ func (h *TSmartLink) GetRunParams(id int, label, userName, password string, open
 		return runParams, errors.New(`不存在的链接`)
 	}
 	linkList := make([]map[string]any, 0)
+	runParams.FixDataId = cast.ToInt(smartLink[`fix_data_id`])
 	decodeErr := gstool.JsonDecode(cast.ToString(smartLink[`links`]), &linkList)
 	if decodeErr != nil {
 		return runParams, errors.New(decodeErr.Error())

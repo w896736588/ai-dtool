@@ -21,4 +21,5 @@ type SmartLinkRunParams struct {
 	Timeout             float64             //超时时间秒
 	UserName            string              //选择的登录账号
 	Password            string              //登录密码
+	FixDataId           int                 //是否固定保存数据目录
 }

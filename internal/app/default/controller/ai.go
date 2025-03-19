@@ -18,7 +18,10 @@ func AiRun(c *gin.Context) {
 	go func() {
 		aiRet, aiProcess, aiErr := ai2.Ai(data)
 		if aiErr != nil {
-			base.Component.TSocket.SendMsgReal(`0#code`, `执行失败 `+aiErr.Error())
+			sendErr := base.Component.TSse.Send(`0#code`, `执行失败 `+aiErr.Error())
+			if sendErr != nil {
+				gstool.FmtPrintlnLogTime(`发送0#code失败 %s`, sendErr.Error())
+			}
 		} else {
 			base.Component.GsLog.Debugf(`%s`, gstool.JsonEncode(map[string]any{
 				`ret`:     aiRet,

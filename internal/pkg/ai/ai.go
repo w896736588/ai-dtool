@@ -58,15 +58,14 @@ func getAiModel(model string) ai_model.AiModel {
 	case `qwen2.5-coder-32b-instruct`:
 		ai := ai_model.NewBailian(model, `sk-938dc32c6e394fe089e64aac7ee6443f`, true, func(s string, err error) {
 			if err != nil {
-				base.Component.TSocket.SendMsg(`code`, `执行失败:`+err.Error())
+				sendErr := base.Component.TSse.Send(`0#code`, `执行失败:`+err.Error())
+				if sendErr != nil {
+					gstool.FmtPrintlnLogTime(`发送0#code失败 %s`, sendErr.Error())
+				}
 			} else {
-				s = gstool.StringReplaces(s, map[string]string{
-					`data: `: ``,
-				})
-				streamData := ai_define.StreamData{}
-				_ = gstool.JsonDecode(s, &streamData)
-				for _, val := range streamData.Choices {
-					base.Component.TSocket.SendMsgReal(`0#code`, val.Delta.Content)
+				sendErr := base.Component.TSse.Send(`0#code`, s)
+				if sendErr != nil {
+					gstool.FmtPrintlnLogTime(`发送0#code失败 %s`, sendErr.Error())
 				}
 			}
 		})
