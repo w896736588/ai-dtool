@@ -185,10 +185,9 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshConfig, 
 	}
 	sshConfig, _ := base.Component.TSqlite.GetSshConfig(sshId)
 	uniqueKey := base.Component.TBase.GetCombineKey(sshId, `git`)
-	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey)
+	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, define.SseGit)
 	if sshClientErr != nil {
 		return nil, nil, err
 	}
-	sshClient.SetSocket(base.Component.TSocket.GetSocket(uniqueKey))
 	return reqMap, sshClient, nil
 }

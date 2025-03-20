@@ -13,7 +13,7 @@ import (
 func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[string]string, int, error) {
 	cmdList, cmdListErr := h.getVariableCmdList(variableId)
 	if cmdListErr != nil {
-		h.sendSocketMsg(variableId, cmdListErr.Error())
+		h.sendStreamMsg(variableId, cmdListErr.Error())
 		return nil, nil, 0, cmdListErr
 	}
 	replaceList := make([]map[string]string, 0)
@@ -27,12 +27,12 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 					return nil, nil, 0, errors.New(`bash脚本中id格式错误`)
 				}
 				cmd[`ssh_id`] = id
-				h.sendSocketMsg(variableId, `开始检查：`+cast.ToString(cmd[`name`])+`,预先连接ssh`)
+				h.sendStreamMsg(variableId, `开始检查：`+cast.ToString(cmd[`name`])+`,预先连接ssh`)
 				preConnErr := h.preConnSsh(cmd)
 				if preConnErr != nil {
 					return nil, nil, 0, preConnErr
 				} else {
-					h.sendSocketMsg(variableId, `ssh连接成功`)
+					h.sendStreamMsg(variableId, `ssh连接成功`)
 				}
 			}
 			continue
@@ -128,9 +128,9 @@ func (h *VariableRun) PreRadioOptionList(variableForm *_struct.VariableForm) err
 	if len(variableForm.Select.OptionList) > 0 {
 		return nil
 	}
-	h.sendSocketMsg(variableForm.VariableId, variableForm.Select.Label+`,准备处理单选`)
+	h.sendStreamMsg(variableForm.VariableId, variableForm.Select.Label+`,准备处理单选`)
 	if !h.isExistReplaceParam(variableForm.Select.Options) {
-		h.sendSocketMsg(variableForm.VariableId, variableForm.Select.Label+`,内容尚未替换，等待选择其他选项`)
+		h.sendStreamMsg(variableForm.VariableId, variableForm.Select.Label+`,内容尚未替换，等待选择其他选项`)
 		return nil
 	}
 
@@ -151,7 +151,7 @@ func (h *VariableRun) PreRadioOptionList(variableForm *_struct.VariableForm) err
 		optionList = append(optionList, option)
 	}
 	variableForm.Select.OptionList = optionList
-	h.sendSocketMsg(variableForm.VariableId, `处理单选项完成`)
+	h.sendStreamMsg(variableForm.VariableId, `处理单选项完成`)
 	return nil
 }
 
@@ -166,25 +166,23 @@ func (h *VariableRun) preConnSsh(cmd map[string]any) error {
 	if Component.TShell.Exist(sshUniqueKey) && Component.TShell.Exist(sftpUniqueKey) {
 		return nil
 	}
-	h.sendSocketMsg(h.VariableId, `开始ssh连接(`+cast.ToString(cmd[`name`])+`)`)
+	h.sendStreamMsg(h.VariableId, `开始ssh连接(`+cast.ToString(cmd[`name`])+`)`)
 	//初始化连接
 	sshConfig, sshConfigErr := Component.TSqlite.GetSshConfig(sshId)
 	if sshConfigErr != nil {
 		return sshConfigErr
 	}
 	//ssh
-	sshClient, sshClientErr := Component.TShell.GetClient(sshConfig, sshUniqueKey)
+	_, sshClientErr := Component.TShell.GetClient(sshConfig, sshUniqueKey, define.SseVariable)
 	if sshClientErr != nil {
 		return sshClientErr
 	}
-	sshClient.SetSocket(h.getSocket(h.VariableId))
 	//sftp
-	sftpClient, sftpClientErr := Component.TShell.GetClient(sshConfig, sftpUniqueKey)
+	_, sftpClientErr := Component.TShell.GetClient(sshConfig, sftpUniqueKey, define.SseVariable)
 	if sftpClientErr != nil {
 		return sftpClientErr
 	}
-	sftpClient.SetSocket(h.getSocket(h.VariableId))
-	h.sendSocketMsg(h.VariableId, `连接成功ssh成功(`+cast.ToString(cmd[`name`])+`)`)
+	h.sendStreamMsg(h.VariableId, `连接成功ssh成功(`+cast.ToString(cmd[`name`])+`)`)
 	return nil
 }
 
@@ -195,16 +193,16 @@ func (h *VariableRun) PreShowSet(variableId, variableCmdName string, variableFor
 	case define.VariableCmdRadio: //单选
 		if !h.isExistReplaceParam(variableForm.Select.Options) {
 			variableForm.IsShowOk = 0 //不显示
-			h.sendSocketMsg(variableId, `开始检查：`+variableCmdName+`,等待补充选项后展示`)
+			h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,等待补充选项后展示`)
 			return
 		}
-		h.sendSocketMsg(variableId, `开始检查：`+variableCmdName+`,可以展示`)
+		h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,可以展示`)
 	case define.VariableCmdMysql: //执行sql
-		h.sendSocketMsg(variableId, `开始检查：`+variableCmdName+`,初始化完成`)
+		h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,初始化完成`)
 		variableForm.IsShowOk = 0
 		return
 	default:
-		h.sendSocketMsg(variableId, `开始检查：`+variableCmdName+`,可以展示`)
+		h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,可以展示`)
 		break
 	}
 }

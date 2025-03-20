@@ -14,7 +14,8 @@ func (h *TCode) FindCode(sshConfig map[string]any, dirPath string) []string {
 	command.Sudo()
 	command.FindGitDir(dirPath, 2)
 	uniqueKey := Component.TBase.GetCombineKey(sshConfig[`id`], `code`)
-	client, err := Component.TShell.GetClient(sshConfig, uniqueKey)
+	//这里不需要输出sse 传空
+	client, err := Component.TShell.GetClient(sshConfig, uniqueKey, ``)
 	if err != nil {
 		gstool.FmtPrintlnLogTime(`连接ssh失败 %s`, err.Error())
 		return codeDirList

@@ -16,7 +16,7 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 		case define.VariableCmdInput: //输入框 不存在替换
 			if variableForm.Input.Value != `` {
 				h.addReplace(&replaceList, variableForm.ResultKey, variableForm.Input.Value)
-				h.sendSocketMsg(variableForm.VariableId, variableForm.Input.Label+`：`+variableForm.Input.Value)
+				h.sendStreamMsg(variableForm.VariableId, variableForm.Input.Label+`：`+variableForm.Input.Value)
 			} else {
 				variableForm.IsRunOk = 0
 			}
@@ -74,16 +74,16 @@ func (h *VariableRun) ProcessSet(variableId, variableCmdName string, variableFor
 	case define.VariableCmdRadio: //单选
 		if !h.isExistReplaceParam(variableForm.Select.Options) {
 			variableForm.IsShowOk = 0 //不显示
-			h.sendSocketMsg(variableId, `开始检查：`+variableCmdName+`,等待补充选项后展示`)
+			h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,等待补充选项后展示`)
 			return
 		}
-		h.sendSocketMsg(variableId, `开始检查：`+variableCmdName+`,可以展示`)
+		h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,可以展示`)
 	case define.VariableCmdMysql: //执行sql
-		h.sendSocketMsg(variableId, `开始检查：`+variableCmdName+`,初始化完成`)
+		h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,初始化完成`)
 		variableForm.IsShowOk = 0
 		return
 	default:
-		h.sendSocketMsg(variableId, `开始检查：`+variableCmdName+`,可以展示`)
+		h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,可以展示`)
 		break
 	}
 }

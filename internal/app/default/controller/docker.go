@@ -2,6 +2,7 @@ package controller
 
 import (
 	"dev_tool/base"
+	"dev_tool/base/define"
 	"errors"
 	"gitee.com/Sxiaobai/gs/gsdefine"
 	"gitee.com/Sxiaobai/gs/gsgin"
@@ -145,10 +146,9 @@ func getDockerComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshConfi
 	}
 	sshConfig, _ := base.Component.TSqlite.GetSshConfig(sshId)
 	uniqueKey := base.Component.TBase.GetCombineKey(sshId, `compose`)
-	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey)
+	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, define.SseDocker)
 	if sshClientErr != nil {
 		return nil, nil, err
 	}
-	sshClient.SetSocket(base.Component.TSocket.GetSocket(uniqueKey))
 	return reqMap, sshClient, nil
 }

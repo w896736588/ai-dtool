@@ -2,6 +2,7 @@ package controller
 
 import (
 	"dev_tool/base"
+	"dev_tool/base/define"
 	ai2 "dev_tool/internal/pkg/ai"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
@@ -18,7 +19,7 @@ func AiRun(c *gin.Context) {
 	go func() {
 		aiRet, aiProcess, aiErr := ai2.Ai(data)
 		if aiErr != nil {
-			sendErr := base.Component.TSse.Send(`0#code`, `执行失败 `+aiErr.Error())
+			sendErr := base.Component.TSse.Send(define.SseAiCode, `执行失败 `+aiErr.Error())
 			if sendErr != nil {
 				gstool.FmtPrintlnLogTime(`发送0#code失败 %s`, sendErr.Error())
 			}
