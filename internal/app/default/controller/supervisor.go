@@ -2,6 +2,7 @@ package controller
 
 import (
 	"dev_tool/base"
+	"dev_tool/base/define"
 	"errors"
 	"gitee.com/Sxiaobai/gs/gsdefine"
 	"gitee.com/Sxiaobai/gs/gsgin"
@@ -188,10 +189,9 @@ func getSupervisorComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshC
 	}
 	sshConfig, _ := base.Component.TSqlite.GetSshConfig(sshId)
 	uniqueKey := base.Component.TBase.GetCombineKey(sshId, `supervisor`)
-	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey)
+	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, define.SseSupervisor)
 	if sshClientErr != nil {
 		return nil, nil, err
 	}
-	sshClient.SetSocket(base.Component.TSocket.GetSocket(uniqueKey))
 	return reqMap, sshClient, nil
 }

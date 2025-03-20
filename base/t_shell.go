@@ -6,7 +6,6 @@ import (
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
 	"sync"
-	"time"
 )
 
 type TShell struct {
@@ -14,14 +13,14 @@ type TShell struct {
 	lock           sync.Mutex
 }
 
-func (h *TShell) GetClient(sshConfig map[string]any, uniqueKey string) (*gsssh.SshConfig, error) {
+func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId string) (*gsssh.SshConfig, error) {
 	defer h.lock.Unlock()
 	h.lock.Lock()
 	sshId := cast.ToString(sshConfig[`id`])
 	if sshId == `` {
 		return nil, errors.New(`ssh配置错误`)
 	}
-	if shell, ok := h.ShellClientMap[uniqueKey]; ok && shell != nil {
+	if shell, ok := h.ShellClientMap[shellClientId]; ok && shell != nil {
 		return shell, nil
 	}
 	gsShell := &gsssh.SshConfig{
@@ -31,6 +30,22 @@ func (h *TShell) GetClient(sshConfig map[string]any, uniqueKey string) (*gsssh.S
 		Password: cast.ToString(sshConfig["password"]),
 		GsSlog:   Component.GsLog,
 	}
+	//回调准备输出的内容
+	gsShell.SetFuncStreamReceive(func(msg string) {
+		_ = Component.TSse.Send(sseClientId, gstool.JsonEncode(map[string]any{
+			`data`: msg + "\n",
+		}))
+	})
+	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
+	//设置关闭事件
+	gsShell.SetFuncBroken(func() {
+		_ = Component.TSse.Send(sseClientId, gstool.JsonEncode(map[string]any{
+			`data`: sseClientId + ` 注意：连接已中断，下次动作时进行链接` + "\n",
+		}))
+		h.RmClient(shellClientId)
+		//已经加了自动重连
+		//h.ReConn(shellClientId , sshConfig)
+	})
 	gsShell.SetMaxRunSecond(20)
 	createErr := gsShell.ConnectAuthPassword()
 	if createErr != nil {
@@ -49,39 +64,9 @@ func (h *TShell) GetClient(sshConfig map[string]any, uniqueKey string) (*gsssh.S
 	gsShell.SetCombineNum(1)
 	//是否显示执行命令后linux返回的执行的命令 如果设置了SetFuncBefore处理，那么就关闭
 	gsShell.CloseFirstReceiveMsg()
-	//设置关闭事件 用来进行重连
-	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
-	gsShell.SetFuncBroken(func() {
-		gstool.FmtPrintlnLogTime(uniqueKey + `连接中断，下次动作时进行链接`)
-		Component.TSocket.SendMsg(uniqueKey, uniqueKey+` 注意：连接已中断，下次动作时进行链接`)
-		h.RmClient(uniqueKey)
-		//h.ReConn(uniqueKey, sshConfig)
-	})
-	gsShell.SetFuncReceiveMsg(func(msg string) string {
-		Component.TSse.Send(uniqueKey, msg)
-		return msg
-	})
-	h.ShellClientMap[uniqueKey] = gsShell
-	return gsShell, nil
-}
 
-// ReConn 重连
-func (h *TShell) ReConn(uniqueKey string, sshConfig map[string]any) {
-	go func() {
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			Component.TSocket.SendMsg(uniqueKey, uniqueKey+` 准备进行重连`)
-			shell, err := h.GetClient(sshConfig, uniqueKey)
-			if err == nil { //连接成功 那么中断重连
-				Component.TSocket.SendMsg(uniqueKey, uniqueKey+` 重连成功`)
-				shell.SetSocket(Component.TSocket.GetSocket(uniqueKey))
-				break
-			} else {
-				Component.TSocket.SendMsg(uniqueKey, uniqueKey+` 重连失败 `+err.Error())
-			}
-		}
-	}()
+	h.ShellClientMap[shellClientId] = gsShell
+	return gsShell, nil
 }
 
 func (h *TShell) Exist(uniqueKey string) bool {

@@ -9,7 +9,6 @@ import (
 	"gitee.com/Sxiaobai/gs/gsdefine"
 	"gitee.com/Sxiaobai/gs/gsssh"
 	"gitee.com/Sxiaobai/gs/gstool"
-	"github.com/gorilla/websocket"
 	"github.com/spf13/cast"
 	"strings"
 )
@@ -150,33 +149,23 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 			default:
 			}
 		}
-		gstool.FmtPrintlnLogTime(`replace list %s`, gstool.JsonEncode(h.ReplaceList))
-		//暂时没啥用
-		Component.GsLog.Debugf(`执行结果 %s`, result)
 	}
 
 	h.end()
 	return nil
 }
 
-func (h *VariableRun) getSocket(variableId string) *websocket.Conn {
-	uniqueKey := Component.TBase.GetCombineKey(variableId, `variable`)
-	return Component.TSocket.GetSocket(uniqueKey)
-}
-
-func (h *VariableRun) sendSocketMsg(variableId any, msg string) {
+func (h *VariableRun) sendStreamMsg(variableId any, msg string) {
 	msg = ` ` + msg
 	defer func() {
 		if r := recover(); r != nil {
 		}
 	}()
-	socket := h.getSocket(cast.ToString(variableId))
-	if socket != nil {
-		err := socket.WriteMessage(websocket.TextMessage, []byte(msg+"\n"))
-		if err != nil {
-			return
-		}
-	}
+	clientId := fmt.Sprintf(`%s#variable`, cast.ToString(variableId))
+	gstool.FmtPrintlnLogTime(`发送 %s`, clientId)
+	_ = Component.TSse.Send(define.SseVariable, gstool.JsonEncode(map[string]any{
+		`data`: msg + "\n",
+	}))
 }
 
 func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
@@ -201,17 +190,17 @@ func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
 		return ``, mysqlClientErr
 	}
 	if len(gstool.RegexSearchString(sql, "(?i)select")) > 0 {
-		h.sendSocketMsg(h.VariableId, `执行查询：`+sql)
+		h.sendStreamMsg(h.VariableId, `执行查询：`+sql)
 		all, allErr := mysqlClient.QueryBySql(sql).All()
-		h.sendSocketMsg(h.VariableId, `结果：`+gstool.JsonEncode(all))
+		h.sendStreamMsg(h.VariableId, `结果：`+gstool.JsonEncode(all))
 		if allErr != nil {
 			return ``, allErr
 		}
 		return gstool.JsonEncode(all), nil
 	} else if len(gstool.RegexSearchString(sql, "(?i)update")) > 0 {
-		h.sendSocketMsg(h.VariableId, `执行：`+sql)
+		h.sendStreamMsg(h.VariableId, `执行：`+sql)
 		affectRows, execErr := mysqlClient.ExecBySql(sql).Exec()
-		h.sendSocketMsg(h.VariableId, `更新数：`+cast.ToString(affectRows))
+		h.sendStreamMsg(h.VariableId, `更新数：`+cast.ToString(affectRows))
 		if execErr != nil {
 			return ``, execErr
 		}
@@ -248,17 +237,15 @@ func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
 	var sshClientErr error
 	var sshClient *gsssh.SshConfig
 	//ssh
-	sshClient, sshClientErr = Component.TShell.GetClient(sshConfig, sshUniqueKey)
+	sshClient, sshClientErr = Component.TShell.GetClient(sshConfig, sshUniqueKey, define.SseVariable)
 	if sshClientErr != nil {
 		return ``, sshClientErr
 	}
-	sshClient.SetSocket(h.getSocket(h.VariableId))
 	//sftp
-	sftpClient, sftpClientErr := Component.TShell.GetClient(sshConfig, sftpUniqueKey)
+	sftpClient, sftpClientErr := Component.TShell.GetClient(sshConfig, sftpUniqueKey, define.SseVariable)
 	if sftpClientErr != nil {
 		return ``, sftpClientErr
 	}
-	sftpClient.SetSocket(h.getSocket(h.VariableId))
 	var err error
 	//创建目录
 	_, err = sshClient.RunCommandWait(`sudo mkdir -p /var/www/variable`)
@@ -345,30 +332,30 @@ func (h *VariableRun) runRedis(cmd map[string]any) (string, error) {
 		case `string`:
 			switch redisBashParamList[1] {
 			case `delete`:
-				h.sendSocketMsg(h.VariableId, `清除redis，string key：`+redisBashParamList[2])
+				h.sendStreamMsg(h.VariableId, `清除redis，string key：`+redisBashParamList[2])
 				client.Client.Del(context.Background(), redisBashParamList[2])
 			default:
-				h.sendSocketMsg(h.VariableId, `暂不支持的操作`+redisBash)
+				h.sendStreamMsg(h.VariableId, `暂不支持的操作`+redisBash)
 			}
 		case `hash`:
 			switch redisBashParamList[1] {
 			case `delete`:
-				h.sendSocketMsg(h.VariableId, `清除redis，hash key：`+redisBashParamList[2]+` field：`+redisBashParamList[3])
+				h.sendStreamMsg(h.VariableId, `清除redis，hash key：`+redisBashParamList[2]+` field：`+redisBashParamList[3])
 				client.Client.HDel(context.Background(), redisBashParamList[2], redisBashParamList[3])
 			default:
-				h.sendSocketMsg(h.VariableId, `暂不支持的操作`+redisBash)
+				h.sendStreamMsg(h.VariableId, `暂不支持的操作`+redisBash)
 			}
 		default:
-			h.sendSocketMsg(h.VariableId, `暂不支持的操作`+redisBash)
+			h.sendStreamMsg(h.VariableId, `暂不支持的操作`+redisBash)
 		}
 	} else {
-		h.sendSocketMsg(h.VariableId, `格式错误`+redisBash)
+		h.sendStreamMsg(h.VariableId, `格式错误`+redisBash)
 	}
 	return `操作`, nil
 }
 
 func (h *VariableRun) end() {
-	h.sendSocketMsg(h.VariableId, `执行结束`)
+	h.sendStreamMsg(h.VariableId, `执行结束`)
 }
 
 func (h *VariableRun) getVariableCmdList(variableId any) ([]map[string]any, error) {
