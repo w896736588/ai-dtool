@@ -13,13 +13,14 @@ import (
 func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[string]string, int, error) {
 	cmdList, cmdListErr := h.getVariableCmdList(variableId)
 	if cmdListErr != nil {
-		h.sendStreamMsg(variableId, cmdListErr.Error())
+		h.sendStreamMsg(cmdListErr.Error())
 		return nil, nil, 0, cmdListErr
 	}
 	replaceList := make([]map[string]string, 0)
 	variableFormList := make([]_struct.VariableForm, 0) //需要展示在页面上的和form表单有关联的 只限于is_pre=1的
 	isCanRun := 1
 	for _, cmd := range cmdList {
+		name := cast.ToString(cmd[`name`])
 		if cast.ToInt(cmd[`is_pre`]) == 0 { //不需要提前执行
 			if cast.ToInt(cmd[`type`]) == define.VariableCmdBash { //预先连接ssh
 				id, _ := h.ParseIdContent(cast.ToString(cmd[`bash`]))
@@ -27,12 +28,12 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 					return nil, nil, 0, errors.New(`bash脚本中id格式错误`)
 				}
 				cmd[`ssh_id`] = id
-				h.sendStreamMsg(variableId, `开始检查：`+cast.ToString(cmd[`name`])+`,预先连接ssh`)
+				h.sendStreamMsg(name + `：开始检查：` + cast.ToString(cmd[`name`]) + `,预先连接ssh`)
 				preConnErr := h.preConnSsh(cmd)
 				if preConnErr != nil {
 					return nil, nil, 0, preConnErr
 				} else {
-					h.sendStreamMsg(variableId, `ssh连接成功`)
+					h.sendStreamMsg(name + `：ssh连接成功`)
 				}
 			}
 			continue
@@ -43,12 +44,13 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 		variableForm := _struct.VariableForm{
 			VariableId:   cast.ToString(variableId),
 			VariableType: cast.ToString(cmd[`type`]), //类型
+			Name:         cast.ToString(cmd[`name`]), //名称
 			ResultKey:    resultKey,                  //输出的替换key
 			IsShowOk:     0,                          //1准备好在页面上展示 0 未准备好　不决定是否能执行
 			IsRunOk:      0,                          //1已经准备好执行 全部为1的时候就可以执行了
 		}
 		switch cast.ToInt(cmd[`type`]) {
-		case define.VariableCmdInput: //输入框肯定需要进行输入
+		case define.VariableCmdInput, define.VariableCmdTextarea: //输入框肯定需要进行输入
 			variableForm.Input = _struct.VariableFormInput{
 				Label: cast.ToString(cmd[`name`]),
 				Value: cast.ToString(cmd[`default`]),
@@ -56,9 +58,10 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 			h.PreShowSet(cast.ToString(variableId), cast.ToString(cmd[`name`]), &variableForm)
 			if cast.ToString(cmd[`default`]) == `` {
 				isCanRun = 0
+				h.sendStreamMsg(name + `：待输入内容`)
 			} else {
-				isCanRun = 1
 				h.addReplace(&replaceList, variableForm.ResultKey, variableForm.Input.Value)
+				h.sendStreamMsg(name + `：` + variableForm.Input.Value)
 			}
 			break
 		case define.VariableCmdRadio: //单项选择 初始的时候不存在替换值 只有选了以后才有
@@ -68,7 +71,9 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 				OptionList: make([]_struct.VariableFormOption, 0),
 				Options:    cast.ToString(cmd[`options`]), //原本的字符串选项集
 			}
-			if !h.isExistReplaceParam(variableForm.Select.Options) {
+			if h.isExistReplaceParam(variableForm.Select.Options) {
+				h.sendStreamMsg(name + `：待其他选项执行完 ` + variableForm.Select.Options)
+				isCanRun = 0
 				break
 			}
 			radioErr := h.PreRadioOptionList(&variableForm)
@@ -76,7 +81,6 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 				return nil, nil, 0, radioErr
 			}
 			h.PreShowSet(cast.ToString(variableId), cast.ToString(cmd[`name`]), &variableForm)
-			isCanRun = 0
 			break
 		case define.VariableCmdMysql: //执行sql 初始化
 			id, sql := h.ParseIdContent(cast.ToString(cmd[`sql`]))
@@ -85,21 +89,17 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 				MysqlId: id,
 			}
 			if h.isExistReplaceParam(variableForm.Sql.Sql) {
-				sqlRet := h.sqlProcessRun(&variableForm, &replaceList)
-				if sqlRet != nil {
-					return nil, nil, 0, sqlRet
-				}
+				h.sendStreamMsg(name + `：待其他选项执行完`)
+				isCanRun = 0
+				break
+			}
+			h.sendStreamMsg(name + `：待其他选项执行完`)
+			isCanRun = 0
+			sqlRet := h.sqlProcessRun(&variableForm, &replaceList)
+			if sqlRet != nil {
+				return nil, nil, 0, sqlRet
 			}
 			h.PreShowSet(cast.ToString(variableId), cast.ToString(cmd[`name`]), &variableForm)
-			isCanRun = 0
-			break
-		case define.VariableCmdBash: //执行bash 初始化 bash类型暂时不支持提前执行
-			id, bash := h.ParseIdContent(cast.ToString(cmd[`bash`]))
-			variableForm.Bash = _struct.VariableFormBash{
-				Bash:  bash,
-				SshId: id,
-			}
-			isCanRun = 0
 			break
 		default:
 			//这里不管预执行
@@ -128,9 +128,9 @@ func (h *VariableRun) PreRadioOptionList(variableForm *_struct.VariableForm) err
 	if len(variableForm.Select.OptionList) > 0 {
 		return nil
 	}
-	h.sendStreamMsg(variableForm.VariableId, variableForm.Select.Label+`,准备处理单选`)
-	if !h.isExistReplaceParam(variableForm.Select.Options) {
-		h.sendStreamMsg(variableForm.VariableId, variableForm.Select.Label+`,内容尚未替换，等待选择其他选项`)
+	h.sendStreamMsg(variableForm.Select.Label + `：准备处理单选`)
+	if h.isExistReplaceParam(variableForm.Select.Options) {
+		h.sendStreamMsg(variableForm.Select.Label + `：内容尚未替换，等待选择其他选项`)
 		return nil
 	}
 
@@ -151,7 +151,7 @@ func (h *VariableRun) PreRadioOptionList(variableForm *_struct.VariableForm) err
 		optionList = append(optionList, option)
 	}
 	variableForm.Select.OptionList = optionList
-	h.sendStreamMsg(variableForm.VariableId, `处理单选项完成`)
+	h.sendStreamMsg(variableForm.Select.Label + `：处理单选项完成`)
 	return nil
 }
 
@@ -161,12 +161,13 @@ func (h *VariableRun) preConnSsh(cmd map[string]any) error {
 	if sshId == `` {
 		return errors.New(`ssh_id不能为空`)
 	}
+	name := cast.ToString(cmd[`name`])
 	sshUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `run`)
 	sftpUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
 	if Component.TShell.Exist(sshUniqueKey) && Component.TShell.Exist(sftpUniqueKey) {
 		return nil
 	}
-	h.sendStreamMsg(h.VariableId, `开始ssh连接(`+cast.ToString(cmd[`name`])+`)`)
+	h.sendStreamMsg(name + `：开始ssh连接`)
 	//初始化连接
 	sshConfig, sshConfigErr := Component.TSqlite.GetSshConfig(sshId)
 	if sshConfigErr != nil {
@@ -182,27 +183,27 @@ func (h *VariableRun) preConnSsh(cmd map[string]any) error {
 	if sftpClientErr != nil {
 		return sftpClientErr
 	}
-	h.sendStreamMsg(h.VariableId, `连接成功ssh成功(`+cast.ToString(cmd[`name`])+`)`)
+	h.sendStreamMsg(name + `：连接成功ssh成功`)
 	return nil
 }
 
 // PreShowSet 准备完成的处理
-func (h *VariableRun) PreShowSet(variableId, variableCmdName string, variableForm *_struct.VariableForm) {
+func (h *VariableRun) PreShowSet(variableId, cmdName string, variableForm *_struct.VariableForm) {
 	variableForm.IsShowOk = 1 //默认显示是
 	switch cast.ToInt(variableForm.VariableType) {
 	case define.VariableCmdRadio: //单选
-		if !h.isExistReplaceParam(variableForm.Select.Options) {
+		if h.isExistReplaceParam(variableForm.Select.Options) {
 			variableForm.IsShowOk = 0 //不显示
-			h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,等待补充选项后展示`)
+			h.sendStreamMsg(cmdName + `：等待补充选项后展示`)
 			return
 		}
-		h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,可以展示`)
+		h.sendStreamMsg(cmdName + `：可以展示`)
 	case define.VariableCmdMysql: //执行sql
-		h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,初始化完成`)
+		h.sendStreamMsg(cmdName + `：初始化完成`)
 		variableForm.IsShowOk = 0
 		return
 	default:
-		h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,可以展示`)
+		h.sendStreamMsg(cmdName + `：可以展示`)
 		break
 	}
 }

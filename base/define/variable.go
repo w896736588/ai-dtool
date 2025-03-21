@@ -18,6 +18,7 @@ const (
 	VariableCmdSshChoose               //选择ssh 【废弃】
 	VariableCmdPlaywright              //选择playwright
 	VariableCmdCombine                 //内容收集
+	VariableCmdTextarea                //输入框 textarea
 )
 
 const (

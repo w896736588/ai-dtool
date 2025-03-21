@@ -65,7 +65,7 @@ func (h *VariableRun) addReplace(replaceList *[]map[string]string, key, value st
 
 // 是否存在待替换的变量
 func (h *VariableRun) isExistReplaceParam(data string) bool {
-	return !gstool.RegexMatchString(data, `{[a-zA-Z0-9_]+}`)
+	return gstool.RegexMatchString(data, `{[a-zA-Z0-9_]+}`)
 }
 
 // 单选替换
@@ -94,6 +94,7 @@ func (h *VariableRun) sqlProcessRun(form *_struct.VariableForm, replaceList *[]m
 	mysqlRet, mysqlRetErr := h.runMysqlSql(map[string]any{
 		`sql`:      sql,
 		`mysql_id`: mysqlId,
+		`name`:     form.Name,
 	})
 	if mysqlRetErr != nil {
 		return mysqlRetErr
@@ -155,14 +156,12 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 	return nil
 }
 
-func (h *VariableRun) sendStreamMsg(variableId any, msg string) {
+func (h *VariableRun) sendStreamMsg(msg string) {
 	msg = ` ` + msg
 	defer func() {
 		if r := recover(); r != nil {
 		}
 	}()
-	clientId := fmt.Sprintf(`%s#variable`, cast.ToString(variableId))
-	gstool.FmtPrintlnLogTime(`发送 %s`, clientId)
 	_ = Component.TSse.Send(define.SseVariable, gstool.JsonEncode(map[string]any{
 		`data`: msg + "\n",
 	}))
@@ -171,6 +170,7 @@ func (h *VariableRun) sendStreamMsg(variableId any, msg string) {
 func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
 	mysqlId := ``
 	sql := ``
+	name := cast.ToString(cmd[`name`])
 	cmd[`sql`] = h.replace(cast.ToString(cmd[`sql`]), h.ReplaceList)
 	if cast.ToInt(cmd[`mysql_id`]) == 0 { //当没有传递mysql_id时，那么从sql里面找
 		mysqlId, sql = h.ParseIdContent(cast.ToString(cmd[`sql`]))
@@ -190,17 +190,17 @@ func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
 		return ``, mysqlClientErr
 	}
 	if len(gstool.RegexSearchString(sql, "(?i)select")) > 0 {
-		h.sendStreamMsg(h.VariableId, `执行查询：`+sql)
+		h.sendStreamMsg(name + `：执行查询：` + sql)
 		all, allErr := mysqlClient.QueryBySql(sql).All()
-		h.sendStreamMsg(h.VariableId, `结果：`+gstool.JsonEncode(all))
+		h.sendStreamMsg(name + `：` + gstool.JsonEncode(all))
 		if allErr != nil {
 			return ``, allErr
 		}
 		return gstool.JsonEncode(all), nil
 	} else if len(gstool.RegexSearchString(sql, "(?i)update")) > 0 {
-		h.sendStreamMsg(h.VariableId, `执行：`+sql)
+		h.sendStreamMsg(name + `：` + sql)
 		affectRows, execErr := mysqlClient.ExecBySql(sql).Exec()
-		h.sendStreamMsg(h.VariableId, `更新数：`+cast.ToString(affectRows))
+		h.sendStreamMsg(name + `：更新数` + cast.ToString(affectRows))
 		if execErr != nil {
 			return ``, execErr
 		}
@@ -303,6 +303,7 @@ func (h *VariableRun) runCombine(cmd map[string]any) (string, error) {
 func (h *VariableRun) runRedis(cmd map[string]any) (string, error) {
 	redisId := ``
 	redisBash := ``
+	name := cast.ToString(cmd[`name`])
 	cmd[`bash`] = h.replace(cast.ToString(cmd[`bash`]), h.ReplaceList)
 	if cast.ToInt(cmd[`redis_id`]) == 0 {
 		redisId, redisBash = h.ParseIdContent(cast.ToString(cmd[`bash`]))
@@ -332,30 +333,30 @@ func (h *VariableRun) runRedis(cmd map[string]any) (string, error) {
 		case `string`:
 			switch redisBashParamList[1] {
 			case `delete`:
-				h.sendStreamMsg(h.VariableId, `清除redis，string key：`+redisBashParamList[2])
+				h.sendStreamMsg(name + `：清除redis，string key：` + redisBashParamList[2])
 				client.Client.Del(context.Background(), redisBashParamList[2])
 			default:
-				h.sendStreamMsg(h.VariableId, `暂不支持的操作`+redisBash)
+				h.sendStreamMsg(name + `：暂不支持的操作` + redisBash)
 			}
 		case `hash`:
 			switch redisBashParamList[1] {
 			case `delete`:
-				h.sendStreamMsg(h.VariableId, `清除redis，hash key：`+redisBashParamList[2]+` field：`+redisBashParamList[3])
+				h.sendStreamMsg(name + `：清除redis，hash key：` + redisBashParamList[2] + ` field：` + redisBashParamList[3])
 				client.Client.HDel(context.Background(), redisBashParamList[2], redisBashParamList[3])
 			default:
-				h.sendStreamMsg(h.VariableId, `暂不支持的操作`+redisBash)
+				h.sendStreamMsg(name + `：暂不支持的操作` + redisBash)
 			}
 		default:
-			h.sendStreamMsg(h.VariableId, `暂不支持的操作`+redisBash)
+			h.sendStreamMsg(name + `：暂不支持的操作` + redisBash)
 		}
 	} else {
-		h.sendStreamMsg(h.VariableId, `格式错误`+redisBash)
+		h.sendStreamMsg(name + `：格式错误` + redisBash)
 	}
 	return `操作`, nil
 }
 
 func (h *VariableRun) end() {
-	h.sendStreamMsg(h.VariableId, `执行结束`)
+	h.sendStreamMsg(`执行结束`)
 }
 
 func (h *VariableRun) getVariableCmdList(variableId any) ([]map[string]any, error) {

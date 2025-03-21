@@ -14,6 +14,7 @@ type VariableCurl struct {
 }
 
 type VariableForm struct {
+	Name         string
 	VariableType string
 	VariableId   string
 	Input        VariableFormInput  `json:"Input,omitempty"`

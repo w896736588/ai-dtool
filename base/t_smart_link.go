@@ -11,6 +11,7 @@ import (
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -99,6 +100,47 @@ func (h *TSmartLink) GetPage(runParams _struct.SmartLinkRunParams) (playwright.P
 		} else {
 			gstool.FmtPrintlnLogTime(`设置cookie成功 %s`, runParams.Cookie)
 		}
+	}
+	//设置header
+	if len(runParams.Headers) > 0 {
+		// 拦截请求并动态设置头
+		err := page.Route("**/*", func(route playwright.Route) {
+			// 获取请求的 URL 或类型
+			request := route.Request()
+			requestUrl := request.URL()
+
+			// 判断是否为资源文件（如 CSS、JS、图片等）
+			isResourceFile := strings.HasSuffix(requestUrl, ".css") || strings.HasSuffix(requestUrl, ".js") ||
+				strings.HasSuffix(requestUrl, ".png") || strings.HasSuffix(requestUrl, ".jpg")
+
+			// 如果不是资源文件，设置请求头
+			if !isResourceFile {
+				headers := request.Headers()
+				for headerKey, headerVal := range runParams.Headers {
+					headers[headerKey] = headerVal
+				}
+				setErr := route.Continue(playwright.RouteContinueOptions{Headers: headers})
+				if setErr != nil {
+					gstool.FmtPrintlnLogTime(`setExtraHTTPHeaders %s`, setErr.Error())
+				} else {
+					gstool.FmtPrintlnLogTime(`给%s设置header%s`, requestUrl, gstool.JsonEncode(runParams.Headers))
+				}
+			} else {
+				continueErr := route.Continue()
+				if continueErr != nil {
+					gstool.FmtPrintlnLogTime(`continue %s`, continueErr.Error())
+				}
+			}
+		})
+		if err != nil {
+			log.Fatalf("could not set up route: %v", err)
+		}
+		//headerErr := page.SetExtraHTTPHeaders(runParams.Headers)
+		//if headerErr != nil {
+		//	gstool.FmtPrintlnLogTime(`设置header失败 %s`, headerErr.Error())
+		//} else {
+		//	gstool.FmtPrintlnLogTime(`设置header成功 %#v`, runParams.Headers)
+		//}
 	}
 
 	//跳转链接
@@ -279,10 +321,11 @@ func (h *TSmartLink) GetContextSaveUserData(runParams _struct.SmartLinkRunParams
 			},
 			IgnoreDefaultArgs: []string{
 				`--enable-automation`,
-				`--disable-infobars`,                //禁用“正在使用自动化软件”提示信息栏。
-				`--disable-features=IsolateOrigins`, //禁用隔离来源功能，允许跨域资源共享。
-				`--disable-popup-blocking`,          //禁用弹出窗口阻止功能。
-				`--allow-running-insecure-content`,  //允许加载不安全的内容（如 HTTP 资源）。
+				`--disable-infobars`,                            //禁用“正在使用自动化软件”提示信息栏。
+				`--disable-features=IsolateOrigins`,             //禁用隔离来源功能，允许跨域资源共享。
+				`--disable-popup-blocking`,                      //禁用弹出窗口阻止功能。
+				`--allow-running-insecure-content`,              //允许加载不安全的内容（如 HTTP 资源）。
+				`--disable-blink-features=AutomationControlled`, //禁止传递浏览器自动化标识
 			},
 		})
 	} else {
@@ -297,10 +340,11 @@ func (h *TSmartLink) GetContextSaveUserData(runParams _struct.SmartLinkRunParams
 			Timeout:           &runParams.Timeout,
 			IgnoreDefaultArgs: []string{
 				`--enable-automation`,
-				`--disable-infobars`,                //禁用“正在使用自动化软件”提示信息栏。
-				`--disable-features=IsolateOrigins`, //禁用隔离来源功能，允许跨域资源共享。
-				`--disable-popup-blocking`,          //禁用弹出窗口阻止功能。
-				`--allow-running-insecure-content`,  //允许加载不安全的内容（如 HTTP 资源）。
+				`--disable-infobars`,                            //禁用“正在使用自动化软件”提示信息栏。
+				`--disable-features=IsolateOrigins`,             //禁用隔离来源功能，允许跨域资源共享。
+				`--disable-popup-blocking`,                      //禁用弹出窗口阻止功能。
+				`--allow-running-insecure-content`,              //允许加载不安全的内容（如 HTTP 资源）。
+				`--disable-blink-features=AutomationControlled`, //禁止传递浏览器自动化标识
 			},
 		})
 		gstool.FmtPrintlnLogTime(`启动 over`)
@@ -616,6 +660,9 @@ func (h *TSmartLink) GetRunParams(id int, label, userName, password string, open
 			runParams.SmartLinkUniqueKey = cast.ToString(runParams.Id) + `_` + label
 			runParams.OpenNum = 0
 			runParams.Cookie = cast.ToString(link[`cookie`])
+			headerMap := make(map[string]string)
+			_ = gstool.JsonDecode(cast.ToString(link[`headers`]), &headerMap)
+			runParams.Headers = headerMap
 			runParams.BrowserAuthUsername = cast.ToString(link[`browser_auth_username`])
 			runParams.BrowserAuthPassword = cast.ToString(link[`browser_auth_password`])
 			break
@@ -661,6 +708,11 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams _struct.SmartLinkRunParams)
 		return pageErr
 	}
 	for _, processVal := range runParams.ProcessList {
+		//限制域名执行
+		domainLimit := cast.ToString(processVal[`domain_limit`])
+		if domainLimit != `` && !strings.Contains(runParams.Domain, domainLimit) {
+			continue
+		}
 		//类型
 		processType := cast.ToString(processVal[`type`])
 		//如果不存在

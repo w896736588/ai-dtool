@@ -13,10 +13,10 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 	for key, variableForm := range variableFormList {
 		variableForm.IsRunOk = 1 //预设该项已经执行过
 		switch cast.ToInt(variableForm.VariableType) {
-		case define.VariableCmdInput: //输入框 不存在替换
+		case define.VariableCmdInput, define.VariableCmdTextarea: //输入框 不存在替换
 			if variableForm.Input.Value != `` {
 				h.addReplace(&replaceList, variableForm.ResultKey, variableForm.Input.Value)
-				h.sendStreamMsg(variableForm.VariableId, variableForm.Input.Label+`：`+variableForm.Input.Value)
+				h.sendStreamMsg(variableForm.Input.Label + `：` + variableForm.Input.Value)
 			} else {
 				variableForm.IsRunOk = 0
 			}
@@ -27,7 +27,7 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 			if radioErr != nil {
 				return nil, nil, 0, radioErr
 			}
-			if !h.isExistReplaceParam(variableForm.Select.Options) {
+			if h.isExistReplaceParam(variableForm.Select.Options) {
 				variableForm.IsRunOk = 0
 				break
 			}
@@ -42,7 +42,7 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 			break
 		case define.VariableCmdMysql: //执行sql
 			variableForm.Sql.Sql = h.replace(variableForm.Sql.Sql, replaceList)
-			if !h.isExistReplaceParam(variableForm.Sql.Sql) {
+			if h.isExistReplaceParam(variableForm.Sql.Sql) {
 				variableForm.IsRunOk = 0
 				break
 			}
@@ -68,22 +68,22 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 }
 
 // ProcessSet 变更中进行检测
-func (h *VariableRun) ProcessSet(variableId, variableCmdName string, variableForm *_struct.VariableForm) {
+func (h *VariableRun) ProcessSet(variableId, cmdName string, variableForm *_struct.VariableForm) {
 	variableForm.IsShowOk = 1 //默认显示是
 	switch cast.ToInt(variableForm.VariableType) {
 	case define.VariableCmdRadio: //单选
-		if !h.isExistReplaceParam(variableForm.Select.Options) {
+		if h.isExistReplaceParam(variableForm.Select.Options) {
 			variableForm.IsShowOk = 0 //不显示
-			h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,等待补充选项后展示`)
+			h.sendStreamMsg(cmdName + `：等待补充选项后展示`)
 			return
 		}
-		h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,可以展示`)
+		h.sendStreamMsg(cmdName + `：可以展示`)
 	case define.VariableCmdMysql: //执行sql
-		h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,初始化完成`)
+		h.sendStreamMsg(cmdName + `：初始化完成`)
 		variableForm.IsShowOk = 0
 		return
 	default:
-		h.sendStreamMsg(variableId, `开始检查：`+variableCmdName+`,可以展示`)
+		h.sendStreamMsg(cmdName + `：可以展示`)
 		break
 	}
 }

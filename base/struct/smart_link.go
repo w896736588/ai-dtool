@@ -10,6 +10,7 @@ type SmartLinkRunParams struct {
 	SmartLinkUniqueKey  string              //在链接下面的唯一值   索引值_label 例如第一个链接 id_label
 	OpenNum             int                 //打开次数 0会被默认为1次
 	Cookie              string              //打开链接时需要设置的cookie
+	Headers             map[string]string   //设置的headers
 	OpenType            define.OpenType     //打开类型 1通过js打开
 	IsCombine           bool                //是否合并到同一浏览器 true合并，false不合并
 	ProcessList         []map[string]any    //执行流程
