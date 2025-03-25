@@ -702,7 +702,6 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams _struct.SmartLinkRunParams)
 		return errors.New(`未启动浏览器核心`)
 	}
 	page, pageErr := Component.TSmartLink.GetPage(runParams)
-
 	if pageErr != nil {
 		gstool.FmtPrintlnLogTime(`获取page报错 %s`, pageErr.Error())
 		return pageErr

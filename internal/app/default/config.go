@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/viper"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -167,12 +166,6 @@ func initGin(ViewPath string) {
 	base.Component.TSse = &gsgin.TSse{
 		SseList: make(map[string]*gsgin.Sse),
 	}
-	base.Component.TGin.SseRoute(`/sse`, func(urlValues url.Values, stopC chan int, c *gin.Context) *gsgin.Sse {
-		clientId := urlValues.Get(`client_id`)
-		return base.Component.TSse.Register(clientId, stopC, c)
-	}, func(sse *gsgin.Sse) {
-		base.Component.TSse.Pause(sse)
-	})
 	base.Component.TGin.IsRun = true
 }
 

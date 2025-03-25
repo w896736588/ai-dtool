@@ -6,7 +6,7 @@ import (
 	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gsdefine"
+	"gitee.com/Sxiaobai/gs/gshttp"
 	"gitee.com/Sxiaobai/gs/gsssh"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
@@ -117,7 +117,6 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 	if cmdListErr != nil {
 		return cmdListErr
 	}
-	Component.GsLog.Debugf(`cmdList %s %s %s`, gstool.JsonEncode(cmdList), gsdefine.Enter, gstool.JsonEncode(replaceList))
 	for _, cmd := range cmdList {
 		resultKey := cast.ToString(cmd[`result_key`])
 		isPre := cast.ToInt(cmd[`is_pre`])
@@ -137,6 +136,8 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 			result, resultErr = h.runPlaywright(cmd)
 		case define.VariableCmdCombine:
 			result, resultErr = h.runCombine(cmd)
+		case define.VariableCmdCurl:
+			result, resultErr = h.runCurl(cmd)
 		default:
 			continue
 		}
@@ -145,7 +146,7 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 		}
 		if resultKey != `` {
 			switch cast.ToInt(cmd[`type`]) {
-			case define.VariableCmdBash, define.VariableCmdCombine:
+			case define.VariableCmdBash, define.VariableCmdCombine, define.VariableCmdCurl:
 				h.addReplace(&h.ReplaceList, resultKey, result)
 			default:
 			}
@@ -272,6 +273,30 @@ func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
 		return ``, err
 	}
 	return result, nil
+}
+
+func (h *VariableRun) runCurl(cmd map[string]any) (string, error) {
+	url := h.replace(cast.ToString(cmd[`bash`]), h.ReplaceList)
+	if url == `` {
+		return ``, errors.New(`url不能为空`)
+	}
+	gstool.FmtPrintlnLogTime(`url %s`, url)
+	isStream := cast.ToInt(gstool.UrlGetParam(url, `is_stream`))
+	var result []byte
+	var err error
+	if isStream == 1 {
+		result, err = gshttp.Get(url).OpenStreamBytesEnd('\n', func(msg string, err error) {
+			if err != nil {
+				gstool.FmtPrintlnLogTime(`收到失败 %s`, err.Error())
+			}
+			_ = Component.TSse.Send(define.SseVariable, msg)
+		}, func(bytes []byte) []byte {
+			return bytes
+		}).Request(200).Result()
+	} else {
+		result, err = gshttp.Get(url).Request(200).Result()
+	}
+	return cast.ToString(result), err
 }
 
 func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
