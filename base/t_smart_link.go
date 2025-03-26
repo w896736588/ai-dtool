@@ -17,7 +17,6 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -814,22 +813,26 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page play
 		h.SetPageActive(page.URL())
 		time.Sleep(time.Second * 2)
 		gstool.FmtPrintlnLogTime(`下载 %#v`, download)
-		if strings.Contains(download.URL(), `blob:`) {
-			localPath := h.DownloadPath + `/` + Component.TBase.GetUnique(`download`) + `_` + download.SuggestedFilename()
-			gstool.FmtPrintlnLogTime(`localPath %s`, localPath)
-			gstool.FmtPrintlnLogTime(download.String())
-			go func() {
-				//这个会一直阻塞
-				_ = download.SaveAs(localPath)
-			}()
-			go func() {
-				time.Sleep(time.Second * 2)
-				_ = download.Cancel()
-				cmd := exec.Command("cmd", "/C", "start", localPath)
-				gstool.FmtPrintlnLogTime(`准备打开文件 %s`, localPath)
-				_ = cmd.Start()
-			}()
-		}
+		localPath := h.DownloadPath + `/` + Component.TBase.GetUnique(`download`) + `_` + download.SuggestedFilename()
+		gstool.FmtPrintlnLogTime(`localPath %s`, localPath)
+		gstool.FmtPrintlnLogTime(download.String())
+		go func() {
+			//这个会一直阻塞
+			_ = download.SaveAs(localPath)
+		}()
+		go func() {
+			for {
+				time.Sleep(time.Millisecond * 100)
+				if gstool.FileIsExisted(localPath) {
+					time.Sleep(time.Millisecond * 200)
+					_ = download.Cancel()
+					cmd := exec.Command("cmd", "/C", "start", localPath)
+					gstool.FmtPrintlnLogTime(`准备打开文件 %s`, localPath)
+					_ = cmd.Start()
+					return
+				}
+			}
+		}()
 		//time.Sleep(time.Second)
 		//localPath := h.DownloadPath + `/` + Component.TBase.GetUnique(`download`) + `_` + download.SuggestedFilename()
 		//ret := download.SaveAs(localPath)
@@ -839,55 +842,55 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page play
 		//gstool.FmtPrintlnLogTime(`下载结果 %#v`, ret)
 	})
 	//可以监听到http下载
-	_ = page.Route("**/*", func(route playwright.Route) {
-		request := route.Request()
-		requestUrl := request.URL()
-		shouldDownload := false
-		for _, downloadPath := range runParams.DownloadFinds {
-			if downloadPath == `` {
-				continue
-			}
-			if strings.Contains(requestUrl, downloadPath) {
-				shouldDownload = true
-				break
-			}
-		}
-		if !shouldDownload {
-			_ = route.Continue()
-			return
-		}
-		response, err := route.Fetch()
-		if err != nil {
-			_ = route.Continue()
-			return
-		}
-		if !response.Ok() {
-			_ = route.Continue()
-			return
-		}
-
-		body, bodyErr := response.Body()
-		if bodyErr != nil {
-			_ = route.Continue()
-			return
-		}
-
-		u, uErr := url.Parse(requestUrl)
-		if uErr != nil {
-			_ = route.Continue()
-			return
-		}
-		fileName := Component.TBase.GetUnique(`download`) + `_` + filepath.Base(u.Path)
-		createErr := gstool.FileCreate(h.DownloadPath, fileName, cast.ToString(body))
-		if createErr != nil {
-			_ = route.Continue()
-			return
-		} else {
-			cmd := exec.Command("cmd", "/C", "start", h.DownloadPath+`/`+fileName)
-			gstool.FmtPrintlnLogTime(`准备打开文件 %s`, h.DownloadPath+`/`+fileName)
-			_ = cmd.Start()
-		}
-	})
+	//_ = page.Route("**/*", func(route playwright.Route) {
+	//	request := route.Request()
+	//	requestUrl := request.URL()
+	//	shouldDownload := false
+	//	for _, downloadPath := range runParams.DownloadFinds {
+	//		if downloadPath == `` {
+	//			continue
+	//		}
+	//		if strings.Contains(requestUrl, downloadPath) {
+	//			shouldDownload = true
+	//			break
+	//		}
+	//	}
+	//	if !shouldDownload {
+	//		_ = route.Continue()
+	//		return
+	//	}
+	//	response, err := route.Fetch()
+	//	if err != nil {
+	//		_ = route.Continue()
+	//		return
+	//	}
+	//	if !response.Ok() {
+	//		_ = route.Continue()
+	//		return
+	//	}
+	//
+	//	body, bodyErr := response.Body()
+	//	if bodyErr != nil {
+	//		_ = route.Continue()
+	//		return
+	//	}
+	//
+	//	u, uErr := url.Parse(requestUrl)
+	//	if uErr != nil {
+	//		_ = route.Continue()
+	//		return
+	//	}
+	//	fileName := Component.TBase.GetUnique(`download`) + `_` + filepath.Base(u.Path)
+	//	createErr := gstool.FileCreate(h.DownloadPath, fileName, cast.ToString(body))
+	//	if createErr != nil {
+	//		_ = route.Continue()
+	//		return
+	//	} else {
+	//		cmd := exec.Command("cmd", "/C", "start", h.DownloadPath+`/`+fileName)
+	//		gstool.FmtPrintlnLogTime(`准备打开文件 %s`, h.DownloadPath+`/`+fileName)
+	//		_ = cmd.Start()
+	//	}
+	//})
 }
 
 func (h *TSmartLink) SetPageActive(url string) {
