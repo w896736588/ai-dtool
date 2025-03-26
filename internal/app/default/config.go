@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 )
 
 var AppName = ``
@@ -93,9 +94,11 @@ func initComponent(IsBuild, WebData string) {
 	}
 	gstool.FmtPrintlnLogTime(`根目录 %s`, base.Component.Env.RootPath)
 	gstool.FmtPrintlnLogTime(`加载配置文件 %s`, base.Component.Env.ConfigPath)
+	gstool.FmtPrintlnLogTime(`下载目录 %s`, base.Component.Env.PlaywrightDownload)
 	//初始化playwright
 	base.Component.TSmartLink = &base.TSmartLink{
-		DownloadPath: base.Component.Env.PlaywrightDownload,
+		DownloadPath:   base.Component.Env.PlaywrightDownload,
+		PageActiveTime: make(map[string]time.Time),
 	}
 	base.Component.TSmartLink.WitchDownload()
 	base.Component.TSmartLink.SmartCheckAndUpdate()
