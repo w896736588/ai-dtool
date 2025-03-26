@@ -54,6 +54,7 @@ func GitLogs(reqData url.Values, call func(string)) {
 	}
 	_, err := gitlab.GetTodayLogs()
 	if err != nil {
+		gstool.FmtPrintlnLogTime(`错误了 %s`, err.Error())
 		call(err.Error())
 	}
 }
