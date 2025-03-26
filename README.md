@@ -19,11 +19,11 @@
 export CGO_ENABLED=1  
 export GOARCH=amd64   
 export GOOS=windows
-go build -ldflags "-X main.IsBuild=1 -X main.DbPath=D:/go/cache_manager_api/config/zhima/ -X main.ViewPath=D:/go/devtool/dist -X main.WebData=D:/go/webData -s -w" -o ./build/zhima.exe ./cmd/zhima/main.go
+go build -tags timetzdata -ldflags "-X main.IsBuild=1 -X main.DbPath=D:/go/cache_manager_api/config/zhima/ -X main.ViewPath=D:/go/devtool/dist -X main.WebData=D:/go/webData -s -w" -o ./build/zhima.exe ./cmd/zhima/main.go
 #git add ./build/zhima.exe
 #git update-index --chmod=+x ./build/zhima.exe
 git ls-files --stage ./build/zhima.exe
-go build -ldflags "-X main.IsBuild=1 -X main.DbPath= -X main.ViewPath= -X main.WebData= -s -w" -o ./build/zhimaPub.exe ./cmd/zhima/main.go
+go build -tags timetzdata -ldflags "-X main.IsBuild=1 -X main.DbPath= -X main.ViewPath= -X main.WebData= -s -w" -o ./build/zhimaPub.exe ./cmd/zhima/main.go
 git ls-files --stage ./build/zhimaPub.exe
 ```
 
