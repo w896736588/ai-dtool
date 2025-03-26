@@ -11,6 +11,7 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 	needInputNum := len(variableFormList)
 	inputNum := 0
 	for key, variableForm := range variableFormList {
+		h.sendStreamMsg(variableForm.Name + `：中间执行`)
 		variableForm.IsRunOk = 1 //预设该项已经执行过
 		switch cast.ToInt(variableForm.VariableType) {
 		case define.VariableCmdInput, define.VariableCmdTextarea: //输入框 不存在替换

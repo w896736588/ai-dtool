@@ -118,6 +118,7 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 		return cmdListErr
 	}
 	for _, cmd := range cmdList {
+		h.sendStreamMsg(cast.ToString(cmd[`name`]) + `：执行`)
 		resultKey := cast.ToString(cmd[`result_key`])
 		isPre := cast.ToInt(cmd[`is_pre`])
 		if isPre == 1 { //提前运行的不管

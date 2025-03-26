@@ -21,6 +21,7 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 	isCanRun := 1
 	for _, cmd := range cmdList {
 		name := cast.ToString(cmd[`name`])
+		h.sendStreamMsg(name + `：前置检查`)
 		if cast.ToInt(cmd[`is_pre`]) == 0 { //不需要提前执行
 			if cast.ToInt(cmd[`type`]) == define.VariableCmdBash { //预先连接ssh
 				id, _ := h.ParseIdContent(cast.ToString(cmd[`bash`]))

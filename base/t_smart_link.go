@@ -135,12 +135,6 @@ func (h *TSmartLink) GetPage(runParams _struct.SmartLinkRunParams) (playwright.P
 		if err != nil {
 			log.Fatalf("could not set up route: %v", err)
 		}
-		//headerErr := page.SetExtraHTTPHeaders(runParams.Headers)
-		//if headerErr != nil {
-		//	gstool.FmtPrintlnLogTime(`设置header失败 %s`, headerErr.Error())
-		//} else {
-		//	gstool.FmtPrintlnLogTime(`设置header成功 %#v`, runParams.Headers)
-		//}
 	}
 
 	//跳转链接
@@ -162,6 +156,18 @@ func (h *TSmartLink) CleanContextPageList(contextUnique string) {
 		}
 	}
 	h.ContextList = newContextList
+}
+
+// CleanContextPageByDomain 根据域名清理context
+func (h *TSmartLink) CleanContextPageByDomain(domain string) {
+	for _, v := range h.ContextList {
+		contextPageList := v.Context.Pages()
+		for _, page := range contextPageList {
+			if gstool.UrlGetHost(page.URL()) == domain {
+				_ = page.Close()
+			}
+		}
+	}
 }
 
 func (h *TSmartLink) GetPlaywrightRunList() []map[string]any {
@@ -293,7 +299,13 @@ func (h *TSmartLink) GetBrowser(openType define.OpenType) (playwright.Browser, e
 
 // GetContextSaveUserData 获取context 需要保存用户数据
 func (h *TSmartLink) GetContextSaveUserData(runParams _struct.SmartLinkRunParams) (ContextPage, bool, error) {
+	//固定打开数据索引 关闭同域名的
+	if runParams.FixDataId == 1 {
+		h.CleanContextPageByDomain(runParams.Domain)
+	}
+	//获取context
 	contextPage := h.GetUserDataContext(runParams)
+	//创建数据索引目录
 	_ = gstool.DirCreatePath(contextPage.UserDataPath)
 	if contextPage.Context != nil {
 		return contextPage, false, nil
@@ -555,6 +567,9 @@ func (h *TSmartLink) SetTitle(page playwright.Page, title string) {
 
 // AddTipMsg 向页面上输出提示
 func (h *TSmartLink) AddTipMsg(page playwright.Page, tip string) {
+	if tip == `` {
+		return
+	}
 	_, _ = page.Evaluate(`(function() {
 			setTimeout(function() {
 				var existTip = document.getElementById('playwrightTipId');
@@ -565,7 +580,7 @@ func (h *TSmartLink) AddTipMsg(page playwright.Page, tip string) {
 				messageBox.id = 'playwrightTipId';
 				messageBox.textContent = '` + tip + `';
 				messageBox.style.position = 'fixed';
-				messageBox.style.top = '50%';
+				messageBox.style.top = '70%';
 				messageBox.style.left = '50%';
 				messageBox.style.transform = 'translate(-50%, -50%)';
 				messageBox.style.color = 'white';
@@ -730,6 +745,8 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams _struct.SmartLinkRunParams)
 		}
 		Component.TSmartLink.AddTipMsg(page, tip)
 		switch processType {
+		case `close`:
+			_ = page.Close()
 		case `wait`:
 			time.Sleep(time.Duration(cast.ToInt(processVal[`value`])) * time.Second)
 		case `click`: //点击
