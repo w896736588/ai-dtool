@@ -23,4 +23,5 @@ type SmartLinkRunParams struct {
 	UserName            string              //选择的登录账号
 	Password            string              //登录密码
 	FixDataId           int                 //是否固定保存数据目录
+	DownloadFinds       []string            //哪些url请求会被定义为下载
 }

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gstask"
 	"gitee.com/Sxiaobai/gs/gstool"
-	"github.com/fsnotify/fsnotify"
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
 	"io"
@@ -18,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -26,8 +26,8 @@ import (
 type TSmartLink struct {
 	RunLock sync.Mutex
 	//处理下载后自动打开
-	DownloadPath    string
-	DownloadMapLock sync.Mutex
+	DownloadPath string
+	EventLock    sync.Mutex
 	//全局
 	BrowserWebkitChrome  playwright.Browser
 	BrowserWebkitSilence playwright.Browser
@@ -35,6 +35,8 @@ type TSmartLink struct {
 	Pw *playwright.Playwright
 	//浏览器列表
 	ContextList []ContextPage
+	//page 活跃时间
+	PageActiveTime map[string]time.Time
 }
 
 type ContextPage struct {
@@ -55,7 +57,7 @@ type ContextPage struct {
 // browserPassword 浏览器自带验证密码
 // isCombine 是否自动合并不同域名到同一个浏览器 1合并 0不合并
 // cookie 页面打开时设置的cookie
-func (h *TSmartLink) GetPage(runParams _struct.SmartLinkRunParams) (playwright.Page, error) {
+func (h *TSmartLink) GetPage(runParams *_struct.SmartLinkRunParams) (playwright.Page, error) {
 	h.RunLock.Lock()
 	defer h.RunLock.Unlock()
 	var contextErr error
@@ -73,6 +75,7 @@ func (h *TSmartLink) GetPage(runParams _struct.SmartLinkRunParams) (playwright.P
 	if contextErr != nil {
 		return nil, contextErr
 	}
+
 	var page playwright.Page
 	var pageErr error
 	page, pageErr = contextPage.Context.NewPage()
@@ -87,9 +90,6 @@ func (h *TSmartLink) GetPage(runParams _struct.SmartLinkRunParams) (playwright.P
 			_ = contextPageList[0].Close()
 		}
 	}
-
-	//监听下载事件进行重命名
-	go h.OnDownload(page)
 	//设置cookie
 	if runParams.Cookie != `` {
 		cookieErr := page.AddInitScript(playwright.Script{
@@ -209,7 +209,7 @@ func (h *TSmartLink) IsSameLink(smartLinkUniqueKeyS, smartLinkUniqueKeyT string)
 	return strings.Split(smartLinkUniqueKeyS, `_`)[0] == strings.Split(smartLinkUniqueKeyT, `_`)[0]
 }
 
-func (h *TSmartLink) GetContextNotSaveUserData(runParams _struct.SmartLinkRunParams, browser playwright.Browser) (ContextPage, error) {
+func (h *TSmartLink) GetContextNotSaveUserData(runParams *_struct.SmartLinkRunParams, browser playwright.Browser) (ContextPage, error) {
 	for _, v := range h.ContextList {
 		//非同种类型的context跳过
 		if !h.IsSameLink(v.SmartLinkUniqueKey, runParams.SmartLinkUniqueKey) {
@@ -252,6 +252,9 @@ func (h *TSmartLink) GetContextNotSaveUserData(runParams _struct.SmartLinkRunPar
 	if contextErr != nil {
 		return ContextPage{}, contextErr
 	}
+	context.OnPage(func(page playwright.Page) {
+		go h.PageEvents(runParams, page)
+	})
 	contentPage := ContextPage{
 		Context:            context,
 		SmartLinkUniqueKey: runParams.SmartLinkUniqueKey,
@@ -284,8 +287,8 @@ func (h *TSmartLink) GetBrowser(openType define.OpenType) (playwright.Browser, e
 		}
 	} else {
 		h.BrowserWebkitChrome, browserErr = h.Pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-			DownloadsPath: &h.DownloadPath,
-			Headless:      playwright.Bool(false), //有界面模式
+			//DownloadsPath: &h.DownloadPath,
+			Headless: playwright.Bool(false), //有界面模式
 		})
 		if browserErr != nil {
 			h.BrowserWebkitChrome = nil
@@ -298,7 +301,7 @@ func (h *TSmartLink) GetBrowser(openType define.OpenType) (playwright.Browser, e
 }
 
 // GetContextSaveUserData 获取context 需要保存用户数据
-func (h *TSmartLink) GetContextSaveUserData(runParams _struct.SmartLinkRunParams) (ContextPage, bool, error) {
+func (h *TSmartLink) GetContextSaveUserData(runParams *_struct.SmartLinkRunParams) (ContextPage, bool, error) {
 	//固定打开数据索引 关闭同域名的
 	if runParams.FixDataId == 1 {
 		h.CleanContextPageByDomain(runParams.Domain)
@@ -319,7 +322,7 @@ func (h *TSmartLink) GetContextSaveUserData(runParams _struct.SmartLinkRunParams
 	var contextErr error
 	if runParams.BrowserAuthUsername != `` && runParams.BrowserAuthPassword != `` {
 		context, contextErr = h.Pw.Chromium.LaunchPersistentContext(contextPage.UserDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
-			DownloadsPath:     &h.DownloadPath,
+			//DownloadsPath:     &h.DownloadPath,
 			Headless:          &Headless,
 			NoViewport:        playwright.Bool(true),
 			JavaScriptEnabled: playwright.Bool(true),
@@ -364,6 +367,9 @@ func (h *TSmartLink) GetContextSaveUserData(runParams _struct.SmartLinkRunParams
 	if contextErr != nil {
 		return ContextPage{}, false, contextErr
 	}
+	context.OnPage(func(page playwright.Page) {
+		go h.PageEvents(runParams, page)
+	})
 	contextPage.Context = context
 	contextPage.ContextUnique = Component.TBase.GetUnique(`context_unique_`)
 	h.ContextList = append(h.ContextList, contextPage)
@@ -377,7 +383,7 @@ func (h *TSmartLink) GetContextSaveUserData(runParams _struct.SmartLinkRunParams
 }
 
 // GetUserDataContext 拿到数据保存目录
-func (h *TSmartLink) GetUserDataContext(runParams _struct.SmartLinkRunParams) ContextPage {
+func (h *TSmartLink) GetUserDataContext(runParams *_struct.SmartLinkRunParams) ContextPage {
 	var userIndex int
 	if runParams.FixDataId == 0 {
 		userIndex = -1
@@ -417,23 +423,6 @@ func (h *TSmartLink) GetUserDataContext(runParams _struct.SmartLinkRunParams) Co
 		UserDataIndex:      userIndex,                    //数据目录索引
 		UserDataPath:       dataPath,                     //数据目录
 	}
-}
-
-func (h *TSmartLink) OnDownload(page playwright.Page) {
-	page.On(`download`, func(download playwright.Download) {
-		h.DownloadMapLock.Lock()
-		defer h.DownloadMapLock.Unlock()
-		gstool.FmtPrintlnLogTime(`下载 %s %s`, download.SuggestedFilename(), download.URL())
-		time.Sleep(time.Second)
-		localPath := h.DownloadPath + `/` + Component.TBase.GetUnique(`download`) + `_` + download.SuggestedFilename()
-		ret := download.SaveAs(localPath)
-		gstool.FmtPrintlnLogTime(`下载结果 %#v`, ret)
-	})
-	page.On("response", func(response playwright.Response) {
-		//gstool.FmtPrintlnLogTime(`下载%s`, response.Api().URL())
-		//判断是否为文件或者图片 并下载到下载目录
-		//h.downloadFileWithSuffixCheck(response.Api().URL())
-	})
 }
 
 // 下载文件并检查后缀
@@ -509,25 +498,27 @@ func (h *TSmartLink) isValidFileSuffix(url string) bool {
 	return commonSuffixes[ext]
 }
 
-// WitchDownload 监听目录新文件下载 自动识别文件类型 并打开
 func (h *TSmartLink) WitchDownload() {
 	_ = gstool.DirCreatePath(h.DownloadPath)
+	if err := os.MkdirAll(h.DownloadPath, 0755); err != nil {
+		log.Fatalf("创建目录失败: %v", err)
+	}
 	gstool.FmtPrintlnLogTime(`开始监听%s`, h.DownloadPath)
-	watch := gstool.NewFileWatch(h.DownloadPath, func(event fsnotify.Event) {
-		if event.Op == fsnotify.Create {
-			gstool.FmtPrintlnLogTime(`监听到文件下载了 %#v`, event)
-			ext, extErr := gstool.FileExtType(event.Name)
-			gstool.FmtPrintlnLogTime(`文件后缀 %s %v`, ext, extErr)
-			cmd := exec.Command("cmd", "/C", "start", event.Name)
-			_ = cmd.Start()
-		}
-	})
-	go func() {
-		err := watch.Start()
-		if err != nil {
-			gstool.FmtPrintlnLogTime(`监听失败 ^%s`, err.Error())
-		}
-	}()
+	//watch := gstool.NewFileWatch(h.DownloadPath, func(event fsnotify.Event) {
+	//	if event.Op == fsnotify.Create {
+	//		gstool.FmtPrintlnLogTime(`监听到文件下载了 %#v`, event)
+	//		ext, extErr := gstool.FileExtType(event.Name)
+	//		gstool.FmtPrintlnLogTime(`文件后缀 %s %v`, ext, extErr)
+	//		cmd := exec.Command("cmd", "/C", "start", event.Name)
+	//		_ = cmd.Start()
+	//	}
+	//})
+	//go func() {
+	//	err := watch.Start()
+	//	if err != nil {
+	//		gstool.FmtPrintlnLogTime(`监听失败 ^%s`, err.Error())
+	//	}
+	//}()
 }
 
 func (h *TSmartLink) OpenFile(filePath, targetFilePath, ext string) {
@@ -629,8 +620,8 @@ func (h *TSmartLink) InitPlaywright() {
 	}
 	h.BrowserWebkitSilence, _ = h.Pw.Chromium.Launch()
 	h.BrowserWebkitChrome, _ = h.Pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-		DownloadsPath: &h.DownloadPath,
-		Headless:      playwright.Bool(false), //有界面模式
+		//DownloadsPath: &h.DownloadPath,
+		Headless: playwright.Bool(false), //有界面模式
 	})
 }
 
@@ -647,8 +638,8 @@ func (h *TSmartLink) install(version, lockFileFullPath string) {
 	}
 }
 
-func (h *TSmartLink) GetRunParams(id int, label, userName, password string, openNum int, replaceList []map[string]string) (_struct.SmartLinkRunParams, error) {
-	runParams := _struct.SmartLinkRunParams{}
+func (h *TSmartLink) GetRunParams(id int, label, userName, password string, openNum int, replaceList []map[string]string) (*_struct.SmartLinkRunParams, error) {
+	runParams := &_struct.SmartLinkRunParams{}
 	if id == 0 {
 		return runParams, errors.New(`链接ID不能为空`)
 	}
@@ -665,6 +656,7 @@ func (h *TSmartLink) GetRunParams(id int, label, userName, password string, open
 	}
 	linkList := make([]map[string]any, 0)
 	runParams.FixDataId = cast.ToInt(smartLink[`fix_data_id`])
+	runParams.DownloadFinds = strings.Split(cast.ToString(smartLink[`download_finds`]), `,`)
 	decodeErr := gstool.JsonDecode(cast.ToString(smartLink[`links`]), &linkList)
 	if decodeErr != nil {
 		return runParams, errors.New(decodeErr.Error())
@@ -712,7 +704,7 @@ func (h *TSmartLink) GetRunParams(id int, label, userName, password string, open
 }
 
 // OpenBrowserPlaywright 打开浏览器
-func (h *TSmartLink) OpenBrowserPlaywright(runParams _struct.SmartLinkRunParams) error {
+func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams) error {
 	if Component.TSmartLink.Pw == nil {
 		return errors.New(`未启动浏览器核心`)
 	}
@@ -805,6 +797,101 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams _struct.SmartLinkRunParams)
 		}()
 	}
 	return nil
+}
+
+// PageEvents 用来控制一段时间内不使用浏览器后自动关闭
+func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page playwright.Page) {
+	gstool.FmtPrintlnLogTime(`开始监听事件`)
+	page.On("request", func() {
+		h.EventLock.Lock()
+		defer h.EventLock.Unlock()
+		h.SetPageActive(page.URL())
+	})
+	//可以监听到 前端下载
+	page.On(`download`, func(download playwright.Download) {
+		h.EventLock.Lock()
+		defer h.EventLock.Unlock()
+		h.SetPageActive(page.URL())
+		time.Sleep(time.Second * 2)
+		gstool.FmtPrintlnLogTime(`下载 %#v`, download)
+		if strings.Contains(download.URL(), `blob:`) {
+			localPath := h.DownloadPath + `/` + Component.TBase.GetUnique(`download`) + `_` + download.SuggestedFilename()
+			gstool.FmtPrintlnLogTime(`localPath %s`, localPath)
+			gstool.FmtPrintlnLogTime(download.String())
+			go func() {
+				//这个会一直阻塞
+				_ = download.SaveAs(localPath)
+			}()
+			go func() {
+				time.Sleep(time.Second * 2)
+				_ = download.Cancel()
+				cmd := exec.Command("cmd", "/C", "start", localPath)
+				gstool.FmtPrintlnLogTime(`准备打开文件 %s`, localPath)
+				_ = cmd.Start()
+			}()
+		}
+		//time.Sleep(time.Second)
+		//localPath := h.DownloadPath + `/` + Component.TBase.GetUnique(`download`) + `_` + download.SuggestedFilename()
+		//ret := download.SaveAs(localPath)
+		//cmd := exec.Command("cmd", "/C", "start", localPath)
+		//gstool.FmtPrintlnLogTime(`准备打开文件 %s`, localPath)
+		//_ = cmd.Start()
+		//gstool.FmtPrintlnLogTime(`下载结果 %#v`, ret)
+	})
+	//可以监听到http下载
+	_ = page.Route("**/*", func(route playwright.Route) {
+		request := route.Request()
+		requestUrl := request.URL()
+		shouldDownload := false
+		for _, downloadPath := range runParams.DownloadFinds {
+			if downloadPath == `` {
+				continue
+			}
+			if strings.Contains(requestUrl, downloadPath) {
+				shouldDownload = true
+				break
+			}
+		}
+		if !shouldDownload {
+			_ = route.Continue()
+			return
+		}
+		response, err := route.Fetch()
+		if err != nil {
+			_ = route.Continue()
+			return
+		}
+		if !response.Ok() {
+			_ = route.Continue()
+			return
+		}
+
+		body, bodyErr := response.Body()
+		if bodyErr != nil {
+			_ = route.Continue()
+			return
+		}
+
+		u, uErr := url.Parse(requestUrl)
+		if uErr != nil {
+			_ = route.Continue()
+			return
+		}
+		fileName := Component.TBase.GetUnique(`download`) + `_` + filepath.Base(u.Path)
+		createErr := gstool.FileCreate(h.DownloadPath, fileName, cast.ToString(body))
+		if createErr != nil {
+			_ = route.Continue()
+			return
+		} else {
+			cmd := exec.Command("cmd", "/C", "start", h.DownloadPath+`/`+fileName)
+			gstool.FmtPrintlnLogTime(`准备打开文件 %s`, h.DownloadPath+`/`+fileName)
+			_ = cmd.Start()
+		}
+	})
+}
+
+func (h *TSmartLink) SetPageActive(url string) {
+	h.PageActiveTime[url] = time.Now()
 }
 
 // SmartLinkPlaywrightVersion 获取浏览器核心版本
