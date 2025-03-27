@@ -99,8 +99,9 @@ func initComponent(IsBuild, WebData string) {
 		DownloadPath:   base.Component.Env.PlaywrightDownload,
 		PageActiveTime: make(map[string]base.PageActiveTime),
 	}
-	base.Component.TSmartLink.WitchDownload()
-	base.Component.TSmartLink.SmartCheckAndUpdate()
+	go base.Component.TSmartLink.WitchDownload()
+	go base.Component.TSmartLink.SmartCheckAndUpdate()
+	go base.Component.TSmartLink.TimerCheckClosePage()
 	//配置初始化
 	base.Component.ConfigViper = viper.New()
 	base.Component.ConfigViper.AddConfigPath(base.Component.Env.ConfigPath)

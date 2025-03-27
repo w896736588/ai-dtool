@@ -41,7 +41,7 @@ type TSmartLink struct {
 type PageActiveTime struct {
 	ActiveTime time.Time
 	RunParams  *_struct.SmartLinkRunParams
-	Page       *playwright.Page
+	Page       playwright.Page
 }
 
 type ContextPage struct {
@@ -258,7 +258,7 @@ func (h *TSmartLink) GetContextNotSaveUserData(runParams *_struct.SmartLinkRunPa
 		return ContextPage{}, contextErr
 	}
 	context.OnPage(func(page playwright.Page) {
-		go h.PageEvents(runParams, &page)
+		go h.PageEvents(runParams, page)
 	})
 	contentPage := ContextPage{
 		Context:            context,
@@ -373,7 +373,7 @@ func (h *TSmartLink) GetContextSaveUserData(runParams *_struct.SmartLinkRunParam
 		return ContextPage{}, false, contextErr
 	}
 	context.OnPage(func(page playwright.Page) {
-		go h.PageEvents(runParams, &page)
+		go h.PageEvents(runParams, page)
 	})
 	contextPage.Context = context
 	contextPage.ContextUnique = Component.TBase.GetUnique(`context_unique_`)
@@ -806,18 +806,15 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 }
 
 // PageEvents 用来控制一段时间内不使用浏览器后自动关闭
-func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page *playwright.Page) {
+func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page playwright.Page) {
 	gstool.FmtPrintlnLogTime(`开始监听事件`)
-	(*page).On("request", func() {
-		h.EventLock.Lock()
-		defer h.EventLock.Unlock()
-		h.SetPageActive(page, runParams)
+	page.On("request", func() {
+		go h.SetPageActive(page, runParams)
+		return
 	})
 	//可以监听到 前端下载
-	(*page).On(`download`, func(download playwright.Download) {
-		h.EventLock.Lock()
-		defer h.EventLock.Unlock()
-		h.SetPageActive(page, runParams)
+	page.On(`download`, func(download playwright.Download) {
+		go h.SetPageActive(page, runParams)
 		gstool.FmtPrintlnLogTime(`下载 %#v`, download)
 		localPath := h.DownloadPath + `/` + Component.TBase.GetUnique(`download`) + `_` + download.SuggestedFilename()
 		gstool.FmtPrintlnLogTime(`localPath %s`, localPath)
@@ -839,6 +836,7 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page *pla
 				}
 			}
 		}()
+		return
 		//time.Sleep(time.Second)
 		//localPath := h.DownloadPath + `/` + Component.TBase.GetUnique(`download`) + `_` + download.SuggestedFilename()
 		//ret := download.SaveAs(localPath)
@@ -847,10 +845,10 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page *pla
 		//_ = cmd.Start()
 		//gstool.FmtPrintlnLogTime(`下载结果 %#v`, ret)
 	})
-	_ = (*page).Route("**/*", func(route playwright.Route) {
-		h.EventLock.Lock()
-		defer h.EventLock.Unlock()
-		h.SetPageActive(page, runParams)
+	_ = page.Route("**/*", func(route playwright.Route) {
+		go h.SetPageActive(page, runParams)
+		_ = route.Continue()
+		return
 	})
 	//可以监听到http下载
 	//_ = page.Route("**/*", func(route playwright.Route) {
@@ -904,23 +902,37 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page *pla
 	//})
 }
 
-func (h *TSmartLink) SetPageActive(page *playwright.Page, runParams *_struct.SmartLinkRunParams) {
+func (h *TSmartLink) SetPageActive(page playwright.Page, runParams *_struct.SmartLinkRunParams) {
+	h.EventLock.Lock()
+	defer h.EventLock.Unlock()
 	if runParams.AutoCloseSecond == 0 {
 		return
 	}
-	h.PageActiveTime[(*page).URL()] = PageActiveTime{
+	h.PageActiveTime[page.URL()] = PageActiveTime{
 		ActiveTime: time.Now(),
 		RunParams:  runParams,
 		Page:       page,
 	}
-	newMap := make(map[string]PageActiveTime)
-	for pageUrl, pageActiveTime := range h.PageActiveTime {
-		if pageActiveTime.ActiveTime.Add(time.Second * time.Duration(runParams.AutoCloseSecond)).Before(time.Now()) {
-			gstool.FmtPrintlnLogTime(`自动关闭页面 %s`, pageUrl)
-			_ = (*pageActiveTime.Page).Close()
-		} else {
-			newMap[pageUrl] = pageActiveTime
+
+}
+
+func (h *TSmartLink) TimerCheckClosePage() {
+	for {
+		time.Sleep(time.Second)
+		h.EventLock.Lock()
+		newMap := make(map[string]PageActiveTime)
+		for pageUrl, pageActiveTime := range h.PageActiveTime {
+			if pageActiveTime.ActiveTime.Add(time.Second * time.Duration(pageActiveTime.RunParams.AutoCloseSecond)).Before(time.Now()) {
+				gstool.FmtPrintlnLogTime(`自动关闭页面 %s`, pageUrl)
+				go func() {
+					_ = pageActiveTime.Page.Close()
+				}()
+			} else {
+				newMap[pageUrl] = pageActiveTime
+			}
 		}
+		h.PageActiveTime = newMap
+		h.EventLock.Unlock()
 	}
 }
 
