@@ -24,4 +24,5 @@ type SmartLinkRunParams struct {
 	Password            string              //登录密码
 	FixDataId           int                 //是否固定保存数据目录
 	DownloadFinds       []string            //哪些url请求会被定义为下载
+	AutoCloseSecond     int                 //多少秒内没有操作 就进行关闭page 0表示不处理
 }

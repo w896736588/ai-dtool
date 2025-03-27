@@ -17,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"time"
 )
 
 var AppName = ``
@@ -98,7 +97,7 @@ func initComponent(IsBuild, WebData string) {
 	//初始化playwright
 	base.Component.TSmartLink = &base.TSmartLink{
 		DownloadPath:   base.Component.Env.PlaywrightDownload,
-		PageActiveTime: make(map[string]time.Time),
+		PageActiveTime: make(map[string]base.PageActiveTime),
 	}
 	base.Component.TSmartLink.WitchDownload()
 	base.Component.TSmartLink.SmartCheckAndUpdate()
