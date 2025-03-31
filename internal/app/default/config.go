@@ -169,6 +169,7 @@ func initGin(ViewPath string) {
 	base.Component.TSse = &gsgin.TSse{
 		SseList: make(map[string]*gsgin.Sse),
 	}
+	base.Component.TOs = gstool.NewGsOs()
 	base.Component.TGin.IsRun = true
 }
 
