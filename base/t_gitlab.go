@@ -92,28 +92,11 @@ func (h *TGitlab) checkMerges(projectId, projectName, author string, perPage int
 		for _, merge := range mergeList {
 			sourceBranch := cast.ToString(merge[`source_branch`])
 			title := cast.ToString(merge[`title`])
-			authorJoin, otherJoin, selfTest, err := h.checkMergeUserOp(projectId, sourceBranch, author, startTimestamp, endTimestamp, masterCommits)
+			authorJoin, authorCommit, otherJoin, selfTest, err := h.checkMergeUserOp(projectId, sourceBranch, author, startTimestamp, endTimestamp, masterCommits)
 			if err != nil {
 				return err
 			}
-			status := ``
-			if authorJoin { //作者参与
-				if otherJoin { //其他人参与
-					if selfTest { //自测完
-						status = `对接自测完`
-					} else {
-						status = `对接`
-					}
-				} else { //其他人不参与
-					if selfTest { //自测完
-						status = `自测完`
-					} else {
-						status = `开发`
-					}
-				}
-			} else {
-
-			}
+			status := h.getStatus(authorJoin, authorCommit, otherJoin, selfTest)
 			if status != `` {
 				combine := Combine{
 					Message: title,
@@ -128,6 +111,41 @@ func (h *TGitlab) checkMerges(projectId, projectName, author string, perPage int
 		}
 	}
 	return nil
+}
+
+func (h *TGitlab) getStatus(authorJoin, authorCommit, otherJoin, selfTest bool) string {
+	if !authorJoin {
+		return ``
+	}
+	if otherJoin { //其他人参与
+		if selfTest { //自测完
+			if authorCommit { //作者参与改动
+				return `开发对接自测完`
+			} else {
+				return `对接自测完`
+			}
+		} else {
+			if authorCommit { //作者参与改动
+				return `开发对接`
+			} else {
+				return `对接`
+			}
+		}
+	} else { //其他人不参与
+		if selfTest { //自测完
+			if authorCommit { //作者参与改动
+				return `自测完`
+			} else {
+				return `自测完`
+			}
+		} else {
+			if authorCommit { //作者参与改动
+				return `开发`
+			} else {
+				return `` //其他人不参与 没有自测 没有开发
+			}
+		}
+	}
 }
 
 func (h *TGitlab) checkCommits(projectId, projectName, author string,
@@ -172,7 +190,7 @@ func (h *TGitlab) checkCommits(projectId, projectName, author string,
 					*combineList = append(*combineList, combine) //收集合并
 					h.LogFunc(gstool.JsonEncode(combine))
 				} else {
-					authorJoin, _, _, err := h.checkMergeUserOp(projectId, h.getBranchName(title), author, startTimestamp, endTimestamp, masterCommits)
+					authorJoin, _, _, _, err := h.checkMergeUserOp(projectId, h.getBranchName(title), author, startTimestamp, endTimestamp, masterCommits)
 					if err != nil {
 						return err
 					}
@@ -209,10 +227,11 @@ func (h *TGitlab) getBranchName(title string) string {
 
 // 检查某个分支 在某个范围内是否有某个用户的提交
 func (h *TGitlab) checkMergeUserOp(projectId, branchName, author string, startTimestamp,
-	endTimestamp int64, masterCommits *[]string) (bool, bool, bool, error) {
-	authorJoin := false //author 是否参与了
-	otherJoin := false  //其他人是否参与了
-	selfTest := false   //是否自测了
+	endTimestamp int64, masterCommits *[]string) (bool, bool, bool, bool, error) {
+	authorJoin := false   //author 是否参与了
+	authorCommit := false //author 是否提交commit了，不算merge
+	otherJoin := false    //其他人是否参与了
+	selfTest := false     //是否自测了
 	gitLabParam := gsapi.GsGitLabParam{
 		State:   "",
 		Sort:    "desc",
@@ -222,7 +241,7 @@ func (h *TGitlab) checkMergeUserOp(projectId, branchName, author string, startTi
 	}
 	commitList, resErr := h.GitLab.GetProjectCommits(projectId, gitLabParam)
 	if resErr != nil {
-		return false, false, false, resErr
+		return false, false, false, false, resErr
 	}
 	h.pushLog(fmt.Sprintf(`获取%scommit 共：%d条`, branchName, len(commitList)))
 	for _, commit := range commitList {
@@ -235,7 +254,7 @@ func (h *TGitlab) checkMergeUserOp(projectId, branchName, author string, startTi
 		message := cast.ToString(commit[`message`])
 		beijingTime, beijingTimeErr := h.gBeijingTime(createdAt)
 		if beijingTimeErr != nil {
-			return false, false, false, beijingTimeErr
+			return false, false, false, false, beijingTimeErr
 		}
 		if beijingTime.Unix() < startTimestamp { //小于最小时间 那就直接退出
 			break
@@ -243,16 +262,34 @@ func (h *TGitlab) checkMergeUserOp(projectId, branchName, author string, startTi
 		if beijingTime.Unix() > endTimestamp { //大于结束时间 继续循环
 			continue
 		}
-		if strings.Contains(message, `自测`) || strings.Contains(message, `测完`) {
+		if h.isTest(message) {
 			selfTest = true
 		}
 		if strings.Contains(authorName, author) {
 			authorJoin = true
+			if !h.isMergeBranch(message) {
+				authorCommit = true
+			}
 		} else {
 			otherJoin = true
 		}
 	}
-	return authorJoin, otherJoin, selfTest, nil
+	return authorJoin, authorCommit, otherJoin, selfTest, nil
+}
+
+func (h *TGitlab) isMergeBranch(message string) bool {
+	if strings.Contains(message, `Merge branch`) {
+		return true
+	}
+	return false
+}
+
+func (h *TGitlab) isTest(message string) bool {
+	if strings.Contains(message, `自测`) || strings.Contains(message, `测完`) ||
+		strings.Contains(message, `测试`) {
+		return true
+	}
+	return false
 }
 
 func (h *TGitlab) gBeijingTime(utcTimeStr string) (time.Time, error) {

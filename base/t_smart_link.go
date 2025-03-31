@@ -827,11 +827,14 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page play
 			for {
 				time.Sleep(time.Millisecond * 100)
 				if gstool.FileIsExisted(localPath) {
-					time.Sleep(time.Millisecond * 200)
+					time.Sleep(time.Millisecond * 100)
 					_ = download.Cancel()
-					cmd := exec.Command("cmd", "/C", "start", localPath)
-					gstool.FmtPrintlnLogTime(`准备打开文件 %s`, localPath)
-					_ = cmd.Start()
+					openErr := Component.TOs.OpenFileWindows(download.SuggestedFilename(), localPath)
+					if openErr != nil {
+						gstool.FmtPrintlnLogTime(`打开文件失败 %s %s`, localPath, openErr.Error())
+					} else {
+						gstool.FmtPrintlnLogTime(`打开文件成功 %s`, localPath)
+					}
 					return
 				}
 			}
@@ -845,11 +848,12 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page play
 		//_ = cmd.Start()
 		//gstool.FmtPrintlnLogTime(`下载结果 %#v`, ret)
 	})
-	_ = page.Route("**/*", func(route playwright.Route) {
-		go h.SetPageActive(page, runParams)
-		_ = route.Continue()
-		return
-	})
+	//监听所有请求 并可以篡改，但是会导致页面加载变慢
+	//_ = page.Route("**/*", func(route playwright.Route) {
+	//	go h.SetPageActive(page, runParams)
+	//	_ = route.Continue()
+	//	return
+	//})
 	//可以监听到http下载
 	//_ = page.Route("**/*", func(route playwright.Route) {
 	//	request := route.Request()

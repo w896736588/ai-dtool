@@ -27,4 +27,5 @@ type TComponent struct {
 	TSocket       *TSocket
 	TSmartLink    *TSmartLink
 	TSse          *gsgin.TSse
+	TOs           *gstool.GsOs
 }
