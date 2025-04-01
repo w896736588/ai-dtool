@@ -4,12 +4,14 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	"errors"
+	"fmt"
 	"gitee.com/Sxiaobai/gs/gs"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
+	"sync"
 	"time"
 )
 
@@ -21,6 +23,16 @@ func SmartLinkUpWebkit(c *gin.Context) {
 		return
 	}
 	gsgin.GinResponseSuccess(c, `更新浏览器核心成功`, ``)
+	return
+}
+
+func SmartLinkRecycle(c *gin.Context) {
+	err := base.Component.TSmartLink.SmartLinkRecycle()
+	if err != nil {
+		gsgin.GinResponseError(c, fmt.Sprintf(`释放失败 %s`, err.Error()), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, `释放成功`, ``)
 	return
 }
 
@@ -199,6 +211,10 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 		gsgin.GinResponseError(c, `id和label不能为空`, nil)
 		return
 	}
+	if base.Component.TSmartLink.IsRun {
+		gsgin.GinResponseError(c, `正在启动中`, nil)
+		return
+	}
 	userName := cast.ToString(dataMap[`user_name`])
 	password := cast.ToString(dataMap[`password`])
 	openNum := cast.ToInt(dataMap[`open_num`])
@@ -208,14 +224,20 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 		return
 	}
 	gstool.FmtPrintlnLogTime(gstool.JsonEncode(runParams))
+	base.Component.TSmartLink.IsRun = true
+	wg := sync.WaitGroup{}
 	for i := 0; i < runParams.OpenNum; i++ {
+		wg.Add(1)
 		go func() {
 			openErr := base.Component.TSmartLink.OpenBrowserPlaywright(runParams)
 			if openErr != nil {
 				gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
 			}
+			wg.Done()
 		}()
 	}
+	wg.Wait()
+	base.Component.TSmartLink.IsRun = false
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 

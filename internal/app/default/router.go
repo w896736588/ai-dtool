@@ -151,6 +151,7 @@ func smartLink() {
 	//base.Component.TGin.GinPost(`/api/SmartLinkForward`, controller.SmartLinkPlaywrightForward)
 	base.Component.TGin.GinPost(`/api/SmartLinkChromeVersion`, controller.SmartLinkPlaywrightVersion)
 	base.Component.TGin.GinPost(`/api/SmartLinkChromeDownload`, controller.SmartLinkUpWebkit)
+	base.Component.TGin.GinPost(`/api/SmartLinkRecycle`, controller.SmartLinkRecycle)
 }
 
 func docker() {
