@@ -11,6 +11,8 @@ import (
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
 	"strings"
+	"sync"
+	"time"
 )
 
 type VariableRun struct {
@@ -313,12 +315,29 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 	if runParamsErr != nil {
 		return ``, errors.New(runParamsErr.Error())
 	}
-	for i := 0; i < runParams.OpenNum; i++ {
-		openErr := Component.TSmartLink.OpenBrowserPlaywright(runParams)
-		if openErr != nil {
-			gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
+	for {
+		if Component.TSmartLink.IsRun {
+			h.sendStreamMsg(`等待其他自动化链接任务完成..`)
+			time.Sleep(time.Second * 1)
+			continue
+		} else {
+			break
 		}
 	}
+	Component.TSmartLink.IsRun = true
+	wg := sync.WaitGroup{}
+	for i := 0; i < runParams.OpenNum; i++ {
+		wg.Add(1)
+		go func() {
+			openErr := Component.TSmartLink.OpenBrowserPlaywright(runParams)
+			if openErr != nil {
+				gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	Component.TSmartLink.IsRun = false
 	return ``, nil
 }
 

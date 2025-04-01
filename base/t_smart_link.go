@@ -785,6 +785,14 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 				continue
 			}
 			time.Sleep(time.Duration(cast.ToInt(processVal[`value`])) * time.Second)
+		case `wait_close`:
+			go func() {
+				if !h.allowCheckKey(checkKey, boolResultMap) {
+					return
+				}
+				time.Sleep(time.Duration(cast.ToInt(processVal[`value`])) * time.Second)
+				_ = page.Close()
+			}()
 		case `click`: //点击
 			if !h.allowCheckKey(checkKey, boolResultMap) {
 				continue
