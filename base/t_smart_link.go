@@ -719,7 +719,12 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 		gstool.FmtPrintlnLogTime(`获取page报错 %s`, pageErr.Error())
 		return pageErr
 	}
+	//提取内容存储
+	takeContentMap := make(map[string]string)
+	//输出结果存储
+	boolResultMap := make(map[string]bool)
 	for _, processVal := range runParams.ProcessList {
+		gstool.FmtPrintlnLogTime(`----------------`)
 		//限制域名执行
 		domainLimit := cast.ToString(processVal[`domain_limit`])
 		if domainLimit != `` && !strings.Contains(runParams.Domain, domainLimit) {
@@ -733,8 +738,23 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 		Locator := cast.ToString(processVal[`Locator`])
 		//链接
 		redirectUri := cast.ToString(processVal[`uri`])
+		redirectUri = gstool.StringReplaces(redirectUri, map[string]string{
+			`{domain}`: runParams.Domain,
+		})
+
 		//操作描述
 		tip := cast.ToString(processVal[`tip`])
+		//检查 替换等
+		checkKey := cast.ToString(processVal[`check_key`])
+		checkKey = gstool.StringReplaces(checkKey, map[string]string{
+			`{user_name}`: runParams.UserName,
+			`{password}`:  runParams.Password,
+		})
+		checkKey = gstool.StringReplaces(checkKey, takeContentMap)
+		//输出
+		outKey := cast.ToString(processVal[`out_key`])
+		//检查是否允许执行 当需要输出的时候不进行判断
+		gstool.FmtPrintlnLogTime(`outKey：%s checkKey：%s tip：%s boolResultMap：%v takeContentMap：%v`, outKey, checkKey, tip, boolResultMap, takeContentMap)
 		// 等待页面加载完成
 		Component.TSmartLink.WaitForLoadState(page, runParams.Timeout)
 		waitUrlErr := page.WaitForURL(page.URL())
@@ -742,17 +762,39 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 			return waitUrlErr
 		}
 		Component.TSmartLink.AddTipMsg(page, tip)
+
 		switch processType {
+		case `text_content`: //提取内容
+			username, err := page.TextContent(Locator, playwright.PageTextContentOptions{Timeout: playwright.Float(1000)})
+			if err != nil {
+				gstool.FmtPrintlnLogTime("获取元素内容失败: %s", err.Error())
+			} else {
+				takeContentMap[outKey] = strings.TrimSpace(cast.ToString(username))
+			}
+		case `bool_result`: //bool结果判断
+			h.outKeyBoolResult(outKey, checkKey, boolResultMap, takeContentMap, runParams)
 		case `close`:
+			if !h.allowCheckKey(checkKey, boolResultMap) {
+				continue
+			}
 			_ = page.Close()
 		case `wait`:
+			if !h.allowCheckKey(checkKey, boolResultMap) {
+				continue
+			}
 			time.Sleep(time.Duration(cast.ToInt(processVal[`value`])) * time.Second)
 		case `click`: //点击
+			if !h.allowCheckKey(checkKey, boolResultMap) {
+				continue
+			}
 			clickErr := h.click(Locator, notExistLocator, runParams.Timeout, page)
 			if clickErr != nil {
 				return clickErr
 			}
 		case `input`: //输入
+			if !h.allowCheckKey(checkKey, boolResultMap) {
+				continue
+			}
 			inputValue := cast.ToString(processVal[`value`])
 			inputValue = gstool.StringReplaces(inputValue, map[string]string{
 				`{user_name}`: runParams.UserName,
@@ -777,6 +819,9 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 				return errors.New(`无法找到元素` + Locator)
 			}
 		case `redirect_uri`: //跳转 保持当前域名
+			if !h.allowCheckKey(checkKey, boolResultMap) {
+				continue
+			}
 			currentURL := page.URL()
 			parsedURL, err := url.Parse(currentURL)
 			if err != nil {
@@ -803,6 +848,50 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 		}()
 	}
 	return nil
+}
+
+// 是否允许执行 用于判断  {login_user}!={user_name}  或者 某个
+func (h *TSmartLink) allowCheckKey(checkKey string, boolResult map[string]bool) bool {
+	if checkKey == `` {
+		return true
+	}
+	if strings.HasPrefix(checkKey, `!`) && boolResult[checkKey[1:]] == true { //不等于时 等于了 那么跳过
+		return false
+	} else if !boolResult[checkKey] { //等于时  不等于了 那么跳过
+		return false
+	}
+	return true
+}
+
+// 提取outKey 返回bool
+func (h *TSmartLink) outKeyBoolResult(outKey, checkKey string, boolResultMap map[string]bool, takeContent map[string]string, runParams *_struct.SmartLinkRunParams) {
+	if outKey == `` {
+		return
+	}
+	gstool.FmtPrintlnLogTime(`开始提取outKey %s %s`, outKey, checkKey)
+	if strings.Contains(checkKey, `!=`) { //不等于
+		checkList := strings.Split(checkKey, `!=`)
+		if len(checkList) != 2 {
+			return
+		}
+		leftCheck := strings.TrimSpace(checkList[0])
+		rightCheck := strings.TrimSpace(checkList[1])
+		if leftCheck != rightCheck {
+			boolResultMap[outKey] = true
+		} else {
+			boolResultMap[outKey] = false
+		}
+		gstool.FmtPrintlnLogTime(`结果判断 %t`, boolResultMap[outKey])
+	} else if strings.Contains(checkKey, `==`) { //等于
+		checkList := strings.Split(checkKey, `==`)
+		leftCheck := strings.TrimSpace(checkList[0])
+		rightCheck := strings.TrimSpace(checkList[1])
+		if leftCheck != rightCheck {
+			boolResultMap[outKey] = false
+		} else {
+			boolResultMap[outKey] = true
+		}
+	}
 }
 
 // PageEvents 用来控制一段时间内不使用浏览器后自动关闭
