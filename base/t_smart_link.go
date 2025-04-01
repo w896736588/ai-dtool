@@ -36,6 +36,8 @@ type TSmartLink struct {
 	ContextList []ContextPage
 	//page 活跃时间
 	PageActiveTime map[string]PageActiveTime
+	//是否运行中
+	IsRun bool
 }
 
 type PageActiveTime struct {
@@ -1094,5 +1096,17 @@ func (h *TSmartLink) click(Locator, notExistLocator string, waitSecond float64, 
 		element := result.Result.(playwright.Locator)
 		_ = element.Click()
 	}
+	return nil
+}
+
+func (h *TSmartLink) SmartLinkRecycle() error {
+	gstool.FmtPrintlnLogTime(`准备重置..`)
+	if h.IsRun {
+		return gstool.Error(`正在打开中`)
+	}
+	_ = h.Pw.Stop()
+	h.ContextList = make([]ContextPage, 0)
+	h.PageActiveTime = make(map[string]PageActiveTime)
+	h.InitPlaywright()
 	return nil
 }
