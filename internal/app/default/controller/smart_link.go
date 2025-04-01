@@ -209,10 +209,12 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	}
 	gstool.FmtPrintlnLogTime(gstool.JsonEncode(runParams))
 	for i := 0; i < runParams.OpenNum; i++ {
-		openErr := base.Component.TSmartLink.OpenBrowserPlaywright(runParams)
-		if openErr != nil {
-			gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
-		}
+		go func() {
+			openErr := base.Component.TSmartLink.OpenBrowserPlaywright(runParams)
+			if openErr != nil {
+				gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
+			}
+		}()
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
