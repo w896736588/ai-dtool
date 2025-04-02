@@ -72,7 +72,7 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 				Options:    cast.ToString(cmd[`options`]), //原本的字符串选项集
 			}
 			if h.isExistReplaceParam(variableForm.Select.Options) {
-				h.sendStreamMsg(name + `->待其他选项执行完 ` + variableForm.Select.Options)
+				h.sendStreamMsg(name + `->待其他选项执行完 `)
 				isCanRun = 0
 				break
 			}
