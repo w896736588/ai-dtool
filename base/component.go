@@ -28,4 +28,5 @@ type TComponent struct {
 	TSmartLink    *TSmartLink
 	TSse          *gsgin.TSse
 	TOs           *gstool.GsOs
+	TMarkDown     *TMarkDown
 }
