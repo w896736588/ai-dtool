@@ -174,7 +174,7 @@ func api() {
 		go func() {
 			controller.GitLogs(gsgin.GinGetParams(c), func(s string) {
 				err := base.Component.TSse.Send(clientId, gstool.JsonEncode(map[string]any{
-					`data`: s + "\n",
+					`data`: s + "  \n",
 				}))
 				if err != nil {
 					gstool.FmtPrintlnLogTime(`错误 %s`, err.Error())

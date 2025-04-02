@@ -11,13 +11,12 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 	needInputNum := len(variableFormList)
 	inputNum := 0
 	for key, variableForm := range variableFormList {
-		h.sendStreamMsg(variableForm.Name + `：中间执行`)
 		variableForm.IsRunOk = 1 //预设该项已经执行过
 		switch cast.ToInt(variableForm.VariableType) {
 		case define.VariableCmdInput, define.VariableCmdTextarea: //输入框 不存在替换
 			if variableForm.Input.Value != `` {
 				h.addReplace(&replaceList, variableForm.ResultKey, variableForm.Input.Value)
-				h.sendStreamMsg(variableForm.Input.Label + `：` + variableForm.Input.Value)
+				h.sendStreamMsg(variableForm.Input.Label + `[` + variableForm.Input.Value + `]`)
 			} else {
 				variableForm.IsRunOk = 0
 			}
@@ -45,6 +44,9 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 			variableForm.Sql.Sql = h.replace(variableForm.Sql.Sql, replaceList)
 			if h.isExistReplaceParam(variableForm.Sql.Sql) {
 				variableForm.IsRunOk = 0
+				break
+			}
+			if h.isExistReplaceList(variableForm.ResultKey, replaceList) {
 				break
 			}
 			//执行sql

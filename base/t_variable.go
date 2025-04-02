@@ -70,11 +70,21 @@ func (h *VariableRun) isExistReplaceParam(data string) bool {
 	return gstool.RegexMatchString(data, `{[a-zA-Z0-9_]+}`)
 }
 
+func (h *VariableRun) isExistReplaceList(resultKey string, replaceList []map[string]string) bool {
+	for _, replaceMap := range replaceList {
+		if _, ok := replaceMap[resultKey]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // 单选替换
 func (h *VariableRun) radioChooseReplace(variableForm *_struct.VariableForm, replaceList *[]map[string]string, chooseValue string) error {
 	for _, option := range variableForm.Select.OptionList {
 		//组装替换符
 		if variableForm.ResultKey != `` && chooseValue != `` && chooseValue == option.Value {
+			h.sendStreamMsg(variableForm.Name + `[` + option.Label + `]`)
 			//额外属性
 			sourceOptionList := make(map[string]any, 0)
 			_ = gstool.JsonDecode(option.Source, &sourceOptionList)
@@ -167,7 +177,7 @@ func (h *VariableRun) sendStreamMsg(msg string) {
 		}
 	}()
 	_ = Component.TSse.Send(define.SseVariable, gstool.JsonEncode(map[string]any{
-		`data`: msg + "\n",
+		`data`: msg + "  \n", //两个空格是markdown的换行 \n是sse的
 	}))
 }
 
@@ -194,12 +204,13 @@ func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
 		return ``, mysqlClientErr
 	}
 	if len(gstool.RegexSearchString(sql, "(?i)select")) > 0 {
-		h.sendStreamMsg(name + `：执行查询：` + sql)
+		h.sendStreamMsg(Component.TMarkDown.BlockQuote(name))
+		h.sendStreamMsg(Component.TMarkDown.Code(sql, `sql`))
 		all, allErr := mysqlClient.QueryBySql(sql).All()
-		h.sendStreamMsg(name + `：` + gstool.JsonEncode(all))
 		if allErr != nil {
 			return ``, allErr
 		}
+		h.sendStreamMsg(Component.TMarkDown.Json(all))
 		return gstool.JsonEncode(all), nil
 	} else if len(gstool.RegexSearchString(sql, "(?i)update")) > 0 {
 		h.sendStreamMsg(name + `：` + sql)
@@ -241,12 +252,12 @@ func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
 	var sshClientErr error
 	var sshClient *gsssh.SshConfig
 	//ssh
-	sshClient, sshClientErr = Component.TShell.GetClient(sshConfig, sshUniqueKey, define.SseVariable)
+	sshClient, sshClientErr = Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, define.SseVariable)
 	if sshClientErr != nil {
 		return ``, sshClientErr
 	}
 	//sftp
-	sftpClient, sftpClientErr := Component.TShell.GetClient(sshConfig, sftpUniqueKey, define.SseVariable)
+	sftpClient, sftpClientErr := Component.TShell.GetClientMarkdown(sshConfig, sftpUniqueKey, define.SseVariable)
 	if sftpClientErr != nil {
 		return ``, sftpClientErr
 	}
@@ -283,7 +294,7 @@ func (h *VariableRun) runCurl(cmd map[string]any) (string, error) {
 	if url == `` {
 		return ``, errors.New(`url不能为空`)
 	}
-	gstool.FmtPrintlnLogTime(`url %s`, url)
+	h.sendStreamMsg(Component.TMarkDown.Code(url, `shell`))
 	isStream := cast.ToInt(gstool.UrlGetParam(url, `is_stream`))
 	var result []byte
 	var err error
@@ -292,6 +303,7 @@ func (h *VariableRun) runCurl(cmd map[string]any) (string, error) {
 			if err != nil {
 				gstool.FmtPrintlnLogTime(`收到失败 %s`, err.Error())
 			}
+
 			_ = Component.TSse.Send(define.SseVariable, msg)
 		}, func(bytes []byte) []byte {
 			return bytes
