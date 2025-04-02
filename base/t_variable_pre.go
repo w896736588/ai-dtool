@@ -61,7 +61,7 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 				h.sendStreamMsg(name + `->待输入内容`)
 			} else {
 				h.addReplace(&replaceList, variableForm.ResultKey, variableForm.Input.Value)
-				h.sendStreamMsg(name + `：` + variableForm.Input.Value)
+				h.sendStreamMsg(name + `->` + variableForm.Input.Value)
 			}
 			break
 		case define.VariableCmdRadio: //单项选择 初始的时候不存在替换值 只有选了以后才有

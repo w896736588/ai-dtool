@@ -130,7 +130,7 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 		return cmdListErr
 	}
 	for _, cmd := range cmdList {
-		h.sendStreamMsg(cast.ToString(cmd[`name`]) + `：执行`)
+		h.sendStreamMsg(cast.ToString(cmd[`name`]) + `->执行`)
 		resultKey := cast.ToString(cmd[`result_key`])
 		isPre := cast.ToInt(cmd[`is_pre`])
 		if isPre == 1 { //提前运行的不管
@@ -213,9 +213,9 @@ func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
 		h.sendStreamMsg(Component.TMarkDown.Json(all))
 		return gstool.JsonEncode(all), nil
 	} else if len(gstool.RegexSearchString(sql, "(?i)update")) > 0 {
-		h.sendStreamMsg(name + `：` + sql)
+		h.sendStreamMsg(name + `->` + sql)
 		affectRows, execErr := mysqlClient.ExecBySql(sql).Exec()
-		h.sendStreamMsg(name + `：更新数` + cast.ToString(affectRows))
+		h.sendStreamMsg(name + `->更新数` + cast.ToString(affectRows))
 		if execErr != nil {
 			return ``, execErr
 		}
@@ -390,24 +390,24 @@ func (h *VariableRun) runRedis(cmd map[string]any) (string, error) {
 		case `string`:
 			switch redisBashParamList[1] {
 			case `delete`:
-				h.sendStreamMsg(name + `：清除redis，string key：` + redisBashParamList[2])
+				h.sendStreamMsg(name + `->清除redis，string key：` + redisBashParamList[2])
 				client.Client.Del(context.Background(), redisBashParamList[2])
 			default:
-				h.sendStreamMsg(name + `：暂不支持的操作` + redisBash)
+				h.sendStreamMsg(name + `->暂不支持的操作` + redisBash)
 			}
 		case `hash`:
 			switch redisBashParamList[1] {
 			case `delete`:
-				h.sendStreamMsg(name + `：清除redis，hash key：` + redisBashParamList[2] + ` field：` + redisBashParamList[3])
+				h.sendStreamMsg(name + `->清除redis，hash key：` + redisBashParamList[2] + ` field：` + redisBashParamList[3])
 				client.Client.HDel(context.Background(), redisBashParamList[2], redisBashParamList[3])
 			default:
-				h.sendStreamMsg(name + `：暂不支持的操作` + redisBash)
+				h.sendStreamMsg(name + `->暂不支持的操作` + redisBash)
 			}
 		default:
-			h.sendStreamMsg(name + `：暂不支持的操作` + redisBash)
+			h.sendStreamMsg(name + `->暂不支持的操作` + redisBash)
 		}
 	} else {
-		h.sendStreamMsg(name + `：格式错误` + redisBash)
+		h.sendStreamMsg(name + `->格式错误` + redisBash)
 	}
 	return `操作`, nil
 }

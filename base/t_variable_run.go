@@ -77,16 +77,16 @@ func (h *VariableRun) ProcessSet(variableId, cmdName string, variableForm *_stru
 	case define.VariableCmdRadio: //单选
 		if h.isExistReplaceParam(variableForm.Select.Options) {
 			variableForm.IsShowOk = 0 //不显示
-			h.sendStreamMsg(cmdName + `：等待补充选项后展示`)
+			h.sendStreamMsg(cmdName + `->等待补充选项后展示`)
 			return
 		}
-		h.sendStreamMsg(cmdName + `：可以展示`)
+		h.sendStreamMsg(cmdName + `->可以展示`)
 	case define.VariableCmdMysql: //执行sql
-		h.sendStreamMsg(cmdName + `：初始化完成`)
+		h.sendStreamMsg(cmdName + `->初始化完成`)
 		variableForm.IsShowOk = 0
 		return
 	default:
-		h.sendStreamMsg(cmdName + `：可以展示`)
+		h.sendStreamMsg(cmdName + `->可以展示`)
 		break
 	}
 }

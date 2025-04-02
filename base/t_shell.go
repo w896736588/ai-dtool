@@ -97,7 +97,7 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 	})
 	gsShell.SetFuncStartCommand(func() {
 		_ = Component.TSse.Send(sseClientId, gstool.JsonEncode(map[string]any{
-			`data`: fmt.Sprintf("```%s", `bash`) + "\n",
+			`data`: fmt.Sprintf("```%s\n#%s", `bash`, `bash`) + "\n",
 		}))
 	})
 	gsShell.SetFuncEndCommand(func() {
