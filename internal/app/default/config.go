@@ -171,6 +171,7 @@ func initGin(ViewPath string) {
 	}
 	base.Component.TOs = gstool.NewGsOs()
 	base.Component.TMarkDown = &base.TMarkDown{}
+	base.Component.TAi = &base.TAi{}
 	base.Component.TGin.IsRun = true
 }
 

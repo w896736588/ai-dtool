@@ -29,4 +29,5 @@ type TComponent struct {
 	TSse          *gsgin.TSse
 	TOs           *gstool.GsOs
 	TMarkDown     *TMarkDown
+	TAi           *TAi
 }

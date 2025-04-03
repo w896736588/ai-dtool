@@ -5,6 +5,7 @@ import (
 	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
+	"gitee.com/Sxiaobai/gs/gshttp"
 	"gitee.com/Sxiaobai/gs/gstask"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/playwright-community/playwright-go"
@@ -664,6 +665,7 @@ func (h *TSmartLink) GetRunParams(id int, label, userName, password string, open
 	linkList := make([]map[string]any, 0)
 	runParams.FixDataId = cast.ToInt(smartLink[`fix_data_id`])
 	runParams.DownloadFinds = strings.Split(cast.ToString(smartLink[`download_finds`]), `,`)
+	runParams.ListenUrl = make(map[string]*_struct.ListenUrl)
 	runParams.AutoCloseSecond = cast.ToInt(smartLink[`auto_close_second`])
 	decodeErr := gstool.JsonDecode(cast.ToString(smartLink[`links`]), &linkList)
 	if decodeErr != nil {
@@ -907,10 +909,17 @@ func (h *TSmartLink) outKeyBoolResult(outKey, checkKey string, boolResultMap map
 // PageEvents 用来控制一段时间内不使用浏览器后自动关闭
 func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page playwright.Page) {
 	gstool.FmtPrintlnLogTime(`开始监听事件`)
-	page.On("request", func() {
+	page.On("request", func(request playwright.Request) {
 		go h.SetPageActive(page, runParams)
 		return
 	})
+	for listenUri, listen := range runParams.ListenUrl {
+		_ = page.Route("**"+listenUri, func(route playwright.Route) {
+			go h.ListenUrl(route, listen)
+			_ = route.Abort()
+		})
+	}
+
 	//可以监听到 前端下载
 	page.On(`download`, func(download playwright.Download) {
 		go h.SetPageActive(page, runParams)
@@ -947,62 +956,37 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page play
 		//_ = cmd.Start()
 		//gstool.FmtPrintlnLogTime(`下载结果 %#v`, ret)
 	})
-	//监听所有请求 并可以篡改，但是会导致页面加载变慢
-	//_ = page.Route("**/*", func(route playwright.Route) {
-	//	go h.SetPageActive(page, runParams)
-	//	_ = route.Continue()
-	//	return
-	//})
-	//可以监听到http下载
-	//_ = page.Route("**/*", func(route playwright.Route) {
-	//	request := route.Request()
-	//	requestUrl := request.URL()
-	//	shouldDownload := false
-	//	for _, downloadPath := range runParams.DownloadFinds {
-	//		if downloadPath == `` {
-	//			continue
-	//		}
-	//		if strings.Contains(requestUrl, downloadPath) {
-	//			shouldDownload = true
-	//			break
-	//		}
-	//	}
-	//	if !shouldDownload {
-	//		_ = route.Continue()
-	//		return
-	//	}
-	//	response, err := route.Fetch()
-	//	if err != nil {
-	//		_ = route.Continue()
-	//		return
-	//	}
-	//	if !response.Ok() {
-	//		_ = route.Continue()
-	//		return
-	//	}
-	//
-	//	body, bodyErr := response.Body()
-	//	if bodyErr != nil {
-	//		_ = route.Continue()
-	//		return
-	//	}
-	//
-	//	u, uErr := url.Parse(requestUrl)
-	//	if uErr != nil {
-	//		_ = route.Continue()
-	//		return
-	//	}
-	//	fileName := Component.TBase.GetUnique(`download`) + `_` + filepath.Base(u.Path)
-	//	createErr := gstool.FileCreate(h.DownloadPath, fileName, cast.ToString(body))
-	//	if createErr != nil {
-	//		_ = route.Continue()
-	//		return
-	//	} else {
-	//		cmd := exec.Command("cmd", "/C", "start", h.DownloadPath+`/`+fileName)
-	//		gstool.FmtPrintlnLogTime(`准备打开文件 %s`, h.DownloadPath+`/`+fileName)
-	//		_ = cmd.Start()
-	//	}
-	//})
+}
+
+func (h *TSmartLink) ListenUrl(route playwright.Route, listen *_struct.ListenUrl) {
+	// 获取原始请求信息
+	originalRequest := route.Request()
+	requestUrl := originalRequest.URL()
+	postData, _ := originalRequest.PostData()
+	headers := originalRequest.Headers()
+	cli := gshttp.PostJson(requestUrl).
+		BodyStr(postData).
+		Headers(headers)
+	var res []byte
+	var resErr error
+	listen.StartCallBack()
+	if listen.IsSse {
+		res, resErr = cli.OpenStreamBytesEnd('\n', func(s string, err error) {
+			listen.Callback(s, err)
+		}, func(bytes []byte) []byte {
+			return bytes
+		}).Request(200).Result()
+	} else {
+		res, resErr = cli.Request(200).Result()
+		if resErr == nil {
+			listen.Callback(cast.ToString(res), nil)
+		}
+	}
+	if resErr != nil {
+		listen.EndCallBack(resErr.Error())
+	} else {
+		listen.EndCallBack(`请求完成`)
+	}
 }
 
 func (h *TSmartLink) SetPageActive(page playwright.Page, runParams *_struct.SmartLinkRunParams) {

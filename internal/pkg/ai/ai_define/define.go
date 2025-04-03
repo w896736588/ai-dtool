@@ -47,14 +47,5 @@ type StreamData struct {
 			Content string `json:"content"`
 			Role    string `json:"role"`
 		} `json:"delta"`
-		Index        int         `json:"index"`
-		Logprobs     interface{} `json:"logprobs"`
-		FinishReason interface{} `json:"finish_reason"`
 	} `json:"choices"`
-	Object            string      `json:"object"`
-	Usage             interface{} `json:"usage"`
-	Created           int         `json:"created"`
-	SystemFingerprint interface{} `json:"system_fingerprint"`
-	Model             string      `json:"model"`
-	Id                string      `json:"id"`
 }

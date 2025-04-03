@@ -11,7 +11,6 @@ import (
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -181,6 +180,19 @@ func (h *VariableRun) sendStreamMsg(msg string) {
 	}))
 }
 
+func (h *VariableRun) sendStreamMsgNoEnter(msg string) {
+	defer func() {
+		if r := recover(); r != nil {
+		}
+	}()
+	if msg == `` {
+		return
+	}
+	_ = Component.TSse.Send(define.SseVariable, gstool.JsonEncode(map[string]any{
+		`data`: msg, //\n是sse的
+	}))
+}
+
 func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
 	mysqlId := ``
 	sql := ``
@@ -336,19 +348,42 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 			break
 		}
 	}
-	Component.TSmartLink.IsRun = true
-	wg := sync.WaitGroup{}
-	for i := 0; i < runParams.OpenNum; i++ {
-		wg.Add(1)
-		go func() {
-			openErr := Component.TSmartLink.OpenBrowserPlaywright(runParams)
-			if openErr != nil {
-				gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
+	//注册需要监听的接口
+	//需要注册的uri
+	listenUriList := cast.ToString(cmd[`options`])
+	if listenUriList != `` {
+		listenM := make([]map[string]string, 0)
+		_ = gstool.JsonDecode(listenUriList, &listenM)
+		for _, v := range listenM {
+			uri := cast.ToString(v[`uri`])
+			if uri == `` {
+				continue
 			}
-			wg.Done()
-		}()
+			h.sendStreamMsg(`注册监听` + uri)
+			runParams.ListenUrl[uri] = &_struct.ListenUrl{
+				IsSse: true,
+				Callback: func(msg string, err error) {
+					Component.GsLog.Errof(`%s`, msg)
+					sendMsg := Component.TAi.ParseStream(msg)
+					h.sendStreamMsgNoEnter(cast.ToString(sendMsg))
+				},
+				StartCallBack: func() {
+					h.sendStreamMsg(Component.TMarkDown.BlockQuote(`开始请求大模型`))
+				},
+				EndCallBack: func(msg string) {
+					h.sendStreamMsg(Component.TMarkDown.BlockQuote(msg))
+				},
+			}
+		}
 	}
-	wg.Wait()
+
+	Component.TSmartLink.IsRun = true
+	for i := 0; i < runParams.OpenNum; i++ {
+		openErr := Component.TSmartLink.OpenBrowserPlaywright(runParams)
+		if openErr != nil {
+			gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
+		}
+	}
 	Component.TSmartLink.IsRun = false
 	return ``, nil
 }

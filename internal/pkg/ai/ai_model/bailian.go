@@ -46,7 +46,7 @@ func (h *Bailian) Api(messageList []ai_define.Message, tools []ai_define.Tool) (
 	}
 	cli := gshttp.PostJson(`https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`).
 		BodyStr(jsonData).
-		Headers(map[string]any{
+		Headers(map[string]string{
 			"Authorization": "Bearer " + h.apiKey,
 			"Content-Type":  "application/json",
 		})
