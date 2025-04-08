@@ -1,12 +1,13 @@
 package ai_model_tpl
 
 import (
-	"dev_tool/internal/pkg/ai/ai_define"
+	"dev_tool/base/define"
+	_struct "dev_tool/base/struct"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"strings"
 )
 
-func ModelMod(sql string, mod string) ([]ai_define.Message, []ai_define.Tool, error) {
+func ModelMod(sql string, mod string) ([]_struct.Message, []_struct.Tool, error) {
 	modelUse := `按模分表`
 	table := "CREATE TABLE `tbl_chat_label_customer_6` (\n  `id` int(11) unsigned NOT NULL AUTO_INCREMENT COMMENT 'ID',\n  `admin_user_id` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '管理员用户ID',\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `uni_wechatapp_openid_label` (`wechatapp_id`,`openid`,`label_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='客户打上的聊天标签6';"
 	class := `<?php 
@@ -46,14 +47,14 @@ class ChatLabelCustomerModel extends BaseModel {
 		`@Date后面的时间帮我换为 ` + gstool.DateCurrent(),
 		`不需要告诉我过程,请用Markdown格式输出代码，确保格式要保留缩进和换行。`,
 	}
-	return []ai_define.Message{
+	return []_struct.Message{
 		{
-			Role:    ai_define.RoleSystem,
+			Role:    define.RoleSystem,
 			Content: strings.Join(descList, `。`),
 		},
 		{
-			Role:    ai_define.RoleUser,
+			Role:    define.RoleUser,
 			Content: strings.Join(needList, `。`),
 		},
-	}, []ai_define.Tool{}, nil
+	}, []_struct.Tool{}, nil
 }

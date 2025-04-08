@@ -1,12 +1,13 @@
 package ai_model_tpl
 
 import (
-	"dev_tool/internal/pkg/ai/ai_define"
+	"dev_tool/base/define"
+	_struct "dev_tool/base/struct"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"strings"
 )
 
-func ModelYear(sql string) ([]ai_define.Message, []ai_define.Tool, error) {
+func ModelYear(sql string) ([]_struct.Message, []_struct.Tool, error) {
 	modelUse := `按年分表`
 	table := "CREATE TABLE `tbl_kf_response_stat_detail_2022` (\n  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,\n  `wechatapp_id` int(10) unsigned NOT NULL DEFAULT '0' COMMENT '应用ID',\n  `response_type` int(10) unsigned NOT NULL DEFAULT '1' COMMENT '1 未回复（老数据都是未回复）  2 未应答',\n  PRIMARY KEY (`id`),\n  KEY `create_date_time` (`create_date_time`),\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='客服应答统计 未回复明细以及未应答明细';"
 	class := `<?php 
@@ -47,14 +48,14 @@ class KfResponseStatDetailModel extends BaseModel {
 		`@Date后面的时间帮我换为 ` + gstool.DateCurrent(),
 		`不需要告诉我过程,请用Markdown格式输出代码，确保格式要保留缩进和换行。`,
 	}
-	return []ai_define.Message{
+	return []_struct.Message{
 		{
-			Role:    ai_define.RoleSystem,
+			Role:    define.RoleSystem,
 			Content: strings.Join(descList, `。`),
 		},
 		{
-			Role:    ai_define.RoleUser,
+			Role:    define.RoleUser,
 			Content: strings.Join(needList, `。`),
 		},
-	}, []ai_define.Tool{}, nil
+	}, []_struct.Tool{}, nil
 }

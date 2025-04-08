@@ -3,7 +3,7 @@ package ai
 import (
 	"dev_tool/base"
 	"dev_tool/base/define"
-	"dev_tool/internal/pkg/ai/ai_define"
+	_struct "dev_tool/base/struct"
 	"dev_tool/internal/pkg/ai/ai_model"
 	"dev_tool/internal/pkg/ai/ai_parse"
 	"errors"
@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-func Ai(data map[string]any) (string, []ai_define.Message, error) {
+func Ai(data map[string]any) (string, []_struct.Message, error) {
 	ai := getAiModel(data[`model`].(string))
 	if ai == nil {
 		return ``, nil, errors.New(`不支持的model`)
@@ -59,12 +59,12 @@ func getAiModel(model string) ai_model.AiModel {
 	case `qwen2.5-coder-32b-instruct`:
 		ai := ai_model.NewBailian(model, `sk-938dc32c6e394fe089e64aac7ee6443f`, true, func(s string, err error) {
 			if err != nil {
-				sendErr := base.Component.TSse.Send(define.SseAiCode, `执行失败:`+err.Error())
+				sendErr := base.Component.TSse.SendMsg(define.SseAiCode, `执行失败:`+err.Error())
 				if sendErr != nil {
 					gstool.FmtPrintlnLogTime(`发送0#code失败 %s`, sendErr.Error())
 				}
 			} else {
-				sendErr := base.Component.TSse.Send(define.SseAiCode, s)
+				sendErr := base.Component.TSse.SendMsg(define.SseAiCode, s)
 				if sendErr != nil {
 					gstool.FmtPrintlnLogTime(`发送0#code失败 %s`, sendErr.Error())
 				}

@@ -223,7 +223,6 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 		gsgin.GinResponseError(c, runParamsErr.Error(), nil)
 		return
 	}
-	gstool.FmtPrintlnLogTime(gstool.JsonEncode(runParams))
 	base.Component.TSmartLink.IsRun = true
 	wg := sync.WaitGroup{}
 	for i := 0; i < runParams.OpenNum; i++ {

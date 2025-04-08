@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gsssh"
-	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
 	"sync"
 )
@@ -34,16 +33,12 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 	}
 	//回调准备输出的内容
 	gsShell.SetFuncStreamReceive(func(msg string) {
-		_ = Component.TSse.Send(sseClientId, gstool.JsonEncode(map[string]any{
-			`data`: msg + "\n",
-		}))
+		_ = Component.TSse.SendMsg(sseClientId, msg+"\n")
 	})
 	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
 	//设置关闭事件
 	gsShell.SetFuncBroken(func() {
-		_ = Component.TSse.Send(sseClientId, gstool.JsonEncode(map[string]any{
-			`data`: sseClientId + ` 注意：连接已中断，下次动作时进行链接` + "\n",
-		}))
+		_ = Component.TSse.SendMsg(sseClientId, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n")
 		h.RmClient(shellClientId)
 		//已经加了自动重连
 		//h.ReConn(shellClientId , sshConfig)
@@ -91,26 +86,18 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 	}
 	//回调准备输出的内容
 	gsShell.SetFuncStreamReceive(func(msg string) {
-		_ = Component.TSse.Send(sseClientId, gstool.JsonEncode(map[string]any{
-			`data`: msg + "  \n",
-		}))
+		_ = Component.TSse.SendMsg(sseClientId, msg+"  \n")
 	})
 	gsShell.SetFuncStartCommand(func() {
-		_ = Component.TSse.Send(sseClientId, gstool.JsonEncode(map[string]any{
-			`data`: fmt.Sprintf("```%s\n#%s", `bash`, `bash`) + "\n",
-		}))
+		_ = Component.TSse.SendMsg(sseClientId, fmt.Sprintf("```%s\n#%s", `bash`, `bash`)+"\n")
 	})
 	gsShell.SetFuncEndCommand(func() {
-		_ = Component.TSse.Send(sseClientId, gstool.JsonEncode(map[string]any{
-			`data`: "```" + "\n",
-		}))
+		_ = Component.TSse.SendMsg(sseClientId, "```\n")
 	})
 	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
 	//设置关闭事件
 	gsShell.SetFuncBroken(func() {
-		_ = Component.TSse.Send(sseClientId, gstool.JsonEncode(map[string]any{
-			`data`: sseClientId + ` 注意：连接已中断，下次动作时进行链接` + "\n",
-		}))
+		_ = Component.TSse.SendMsg(sseClientId, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n")
 		h.RmClient(shellClientId)
 		//已经加了自动重连
 		//h.ReConn(shellClientId , sshConfig)

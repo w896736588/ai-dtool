@@ -307,6 +307,6 @@ func (h *TGitlab) gBeijingTime(utcTimeStr string) (time.Time, error) {
 
 func (h *TGitlab) pushLog(msg string) {
 	if h.LogFunc != nil {
-		h.LogFunc(msg)
+		h.LogFunc(msg + "  ")
 	}
 }

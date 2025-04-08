@@ -1,11 +1,12 @@
 package ai_other_set
 
 import (
-	"dev_tool/internal/pkg/ai/ai_define"
+	"dev_tool/base/define"
+	_struct "dev_tool/base/struct"
 	"strings"
 )
 
-func OtherSet(otherSetList []any, actionPrefix string) ([]ai_define.Message, []ai_define.Tool, error) {
+func OtherSet(otherSetList []any, actionPrefix string) ([]_struct.Message, []_struct.Tool, error) {
 	descList := make([]string, 0)
 	for _, otherSet := range otherSetList {
 		switch otherSet {
@@ -19,10 +20,10 @@ func OtherSet(otherSetList []any, actionPrefix string) ([]ai_define.Message, []a
 			break
 		}
 	}
-	return []ai_define.Message{
+	return []_struct.Message{
 		{
-			Role:    ai_define.RoleUser,
+			Role:    define.RoleUser,
 			Content: strings.Join(descList, `。`),
 		},
-	}, []ai_define.Tool{}, nil
+	}, []_struct.Tool{}, nil
 }

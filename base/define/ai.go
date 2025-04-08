@@ -1,4 +1,8 @@
-package ai_define
+package define
+
+const RoleSystem = `system`
+const RoleUser = `user`
+const RoleAssistant = `assistant`
 
 const NoCache = "no"
 const StringSingleCache = "string_single"

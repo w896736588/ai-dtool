@@ -1,32 +1,33 @@
 package ai_service_tpl
 
 import (
-	"dev_tool/internal/pkg/ai/ai_define"
+	"dev_tool/base/define"
+	_struct "dev_tool/base/struct"
 	"strings"
 )
 
-func Service(cacheType, mainTemplateField, childTemplateField string) ([]ai_define.Message, []ai_define.Tool, error) {
+func Service(cacheType, mainTemplateField, childTemplateField string) ([]_struct.Message, []_struct.Tool, error) {
 	classList := make([]string, 0)
 	classList = append(classList, ServiceClass())
 	classList = append(classList, `}`)
 	descList := []string{
 		`你是一个php开发者，根据模板生成service，下面是示例，注意示例中的[]包起来的是提示,类名取值和注释应该基于历史会话生成的model类名`,
 		`示例php controller:` + strings.Join(classList, "\n"),
-		`当前缓存模式为：` + ai_define.CacheTypeMap[cacheType],
+		`当前缓存模式为：` + define.CacheTypeMap[cacheType],
 		`注意最终输出结果要移除给你的这种[xxx]提示`,
 	}
-	if cacheType != ai_define.NoCache {
+	if cacheType != define.NoCache {
 		descList = append(descList, `注意：$main_template_field换为$`+mainTemplateField+`，代码中涉及到的要根据[]的提示进行处理`)
 	}
-	if cacheType == ai_define.HashAdminCustomCache {
+	if cacheType == define.HashAdminCustomCache {
 		descList = append(descList, `注意：$child_template_field为$`+childTemplateField+`，代码中涉及到的要根据[]的提示进行处理`)
 	}
-	return []ai_define.Message{
+	return []_struct.Message{
 		{
-			Role:    ai_define.RoleUser,
+			Role:    define.RoleUser,
 			Content: strings.Join(descList, `。`),
 		},
-	}, []ai_define.Tool{}, nil
+	}, []_struct.Tool{}, nil
 }
 
 func ServiceClass() string {

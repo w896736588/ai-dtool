@@ -170,12 +170,10 @@ func api() {
 	//api git logs
 	base.Component.TGin.SseRoute(`/api/GitLab`, func(urlValues url.Values, stopC chan int, c *gin.Context) *gsgin.Sse {
 		clientId := base.Component.TBase.GetUnique(`api_gitlab_`)
-		sse := base.Component.TSse.Register(clientId, stopC, c)
+		sse := base.Component.TSse.Sse.Register(clientId, stopC, c)
 		go func() {
 			controller.GitLogs(gsgin.GinGetParams(c), func(s string) {
-				err := base.Component.TSse.Send(clientId, gstool.JsonEncode(map[string]any{
-					`data`: s + "  \n",
-				}))
+				err := base.Component.TSse.SendMsg(clientId, s+"\n")
 				if err != nil {
 					gstool.FmtPrintlnLogTime(`错误 %s`, err.Error())
 					return
@@ -185,13 +183,18 @@ func api() {
 		}()
 		return sse
 	}, func(sse *gsgin.Sse) {
-		base.Component.TSse.UnRegister(sse.ClientId)
+		err := base.Component.TSse.SendMsg(sse.ClientId, "[DONE]")
+		if err != nil {
+			gstool.FmtPrintlnLogTime(`错误 %s`, err.Error())
+			return
+		}
+		base.Component.TSse.Sse.UnRegister(sse.ClientId)
 	})
 	//sse 替换 websocket
 	base.Component.TGin.SseRoute(`/sse`, func(urlValues url.Values, stopC chan int, c *gin.Context) *gsgin.Sse {
 		clientId := urlValues.Get(`client_id`)
-		return base.Component.TSse.Register(clientId, stopC, c)
+		return base.Component.TSse.Sse.Register(clientId, stopC, c)
 	}, func(sse *gsgin.Sse) {
-		base.Component.TSse.Pause(sse)
+		base.Component.TSse.Sse.Pause(sse)
 	})
 }

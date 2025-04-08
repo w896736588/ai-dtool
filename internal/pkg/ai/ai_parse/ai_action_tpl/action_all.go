@@ -1,12 +1,13 @@
 package ai_action_tpl
 
 import (
-	"dev_tool/internal/pkg/ai/ai_define"
+	"dev_tool/base/define"
+	_struct "dev_tool/base/struct"
 	"errors"
 	"strings"
 )
 
-func Action(actionTypeList []any) ([]ai_define.Message, []ai_define.Tool, error) {
+func Action(actionTypeList []any) ([]_struct.Message, []_struct.Tool, error) {
 	classList := make([]string, 0)
 	classList = append(classList, ActionClass())
 	for _, actionType := range actionTypeList {
@@ -24,7 +25,7 @@ func Action(actionTypeList []any) ([]ai_define.Message, []ai_define.Tool, error)
 			classList = append(classList, ActionDelete())
 			break
 		default:
-			return []ai_define.Message{}, []ai_define.Tool{}, errors.New(`不支持的操作`)
+			return []_struct.Message{}, []_struct.Tool{}, errors.New(`不支持的操作`)
 		}
 	}
 	classList = append(classList, `}`)
@@ -32,12 +33,12 @@ func Action(actionTypeList []any) ([]ai_define.Message, []ai_define.Tool, error)
 		`你是一个php开发者，根据模板生成action，下面是示例，注意示例中的[]包起来的是提示,类名取值和注释应该基于生成的model类名`,
 		`示例php controller:` + strings.Join(classList, "\n"),
 	}
-	return []ai_define.Message{
+	return []_struct.Message{
 		{
-			Role:    ai_define.RoleUser,
+			Role:    define.RoleUser,
 			Content: strings.Join(descList, `。`),
 		},
-	}, []ai_define.Tool{}, nil
+	}, []_struct.Tool{}, nil
 }
 
 func ActionClass() string {
