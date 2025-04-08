@@ -1,8 +1,4 @@
-package ai_define
-
-const RoleSystem = `system`
-const RoleUser = `user`
-const RoleAssistant = `assistant`
+package _struct
 
 type Message struct {
 	Role    string `json:"role"`

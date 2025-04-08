@@ -39,6 +39,8 @@ type TSmartLink struct {
 	PageActiveTime map[string]PageActiveTime
 	//是否运行中
 	IsRun bool
+	//监听链接
+	ListenUrlList map[string]*_struct.ListenUrl
 }
 
 type PageActiveTime struct {
@@ -296,7 +298,8 @@ func (h *TSmartLink) GetBrowser(openType define.OpenType) (playwright.Browser, e
 	} else {
 		h.BrowserWebkitChrome, browserErr = h.Pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 			//DownloadsPath: &h.DownloadPath,
-			Headless: playwright.Bool(false), //有界面模式
+			Headless: playwright.Bool(false),      //有界面模式
+			Channel:  playwright.String("chrome"), // 使用完整版 Chrome 而非 Chromium
 		})
 		if browserErr != nil {
 			h.BrowserWebkitChrome = nil
@@ -332,6 +335,7 @@ func (h *TSmartLink) GetContextSaveUserData(runParams *_struct.SmartLinkRunParam
 		context, contextErr = h.Pw.Chromium.LaunchPersistentContext(contextPage.UserDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
 			//DownloadsPath:     &h.DownloadPath,
 			Headless:          &Headless,
+			Channel:           playwright.String("chrome"), // 使用完整版 Chrome 而非 Chromium
 			NoViewport:        playwright.Bool(true),
 			JavaScriptEnabled: playwright.Bool(true),
 			AcceptDownloads:   playwright.Bool(true),
@@ -355,6 +359,7 @@ func (h *TSmartLink) GetContextSaveUserData(runParams *_struct.SmartLinkRunParam
 		context, contextErr = h.Pw.Chromium.LaunchPersistentContext(contextPage.UserDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
 			//DownloadsPath:     &h.DownloadPath,
 			Headless:          &Headless,
+			Channel:           playwright.String("chrome"), // 使用完整版 Chrome 而非 Chromium 解决视频不能播放问题
 			NoViewport:        playwright.Bool(true),
 			JavaScriptEnabled: playwright.Bool(true),
 			AcceptDownloads:   playwright.Bool(true),
@@ -665,7 +670,6 @@ func (h *TSmartLink) GetRunParams(id int, label, userName, password string, open
 	linkList := make([]map[string]any, 0)
 	runParams.FixDataId = cast.ToInt(smartLink[`fix_data_id`])
 	runParams.DownloadFinds = strings.Split(cast.ToString(smartLink[`download_finds`]), `,`)
-	runParams.ListenUrl = make(map[string]*_struct.ListenUrl)
 	runParams.AutoCloseSecond = cast.ToInt(smartLink[`auto_close_second`])
 	decodeErr := gstool.JsonDecode(cast.ToString(smartLink[`links`]), &linkList)
 	if decodeErr != nil {
@@ -709,7 +713,7 @@ func (h *TSmartLink) GetRunParams(id int, label, userName, password string, open
 	runParams.Password = password
 	runParams.ProcessList = processList
 	runParams.ReplaceList = replaceList
-	runParams.Timeout = 3000
+	runParams.Timeout = 1000
 	return runParams, nil
 }
 
@@ -728,7 +732,7 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 	//输出结果存储
 	boolResultMap := make(map[string]bool)
 	for _, processVal := range runParams.ProcessList {
-		gstool.FmtPrintlnLogTime(`----------------`)
+		//gstool.FmtPrintlnLogTime(`----------------`)
 		//限制域名执行
 		domainLimit := cast.ToString(processVal[`domain_limit`])
 		if domainLimit != `` && !strings.Contains(runParams.Domain, domainLimit) {
@@ -758,7 +762,7 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 		//输出
 		outKey := cast.ToString(processVal[`out_key`])
 		//检查是否允许执行 当需要输出的时候不进行判断
-		gstool.FmtPrintlnLogTime(`outKey：%s checkKey：%s tip：%s boolResultMap：%v takeContentMap：%v`, outKey, checkKey, tip, boolResultMap, takeContentMap)
+		//gstool.FmtPrintlnLogTime(`outKey：%s checkKey：%s tip：%s boolResultMap：%v takeContentMap：%v`, outKey, checkKey, tip, boolResultMap, takeContentMap)
 		// 等待页面加载完成
 		Component.TSmartLink.WaitForLoadState(page, runParams.Timeout)
 		waitUrlErr := page.WaitForURL(page.URL())
@@ -769,11 +773,14 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 
 		switch processType {
 		case `text_content`: //提取内容
-			username, err := page.TextContent(Locator, playwright.PageTextContentOptions{Timeout: playwright.Float(1000)})
+			content, err := page.TextContent(Locator, playwright.PageTextContentOptions{
+				Timeout: playwright.Float(runParams.Timeout),
+			})
 			if err != nil {
 				gstool.FmtPrintlnLogTime("获取元素内容失败: %s", err.Error())
 			} else {
-				takeContentMap[outKey] = strings.TrimSpace(cast.ToString(username))
+				takeContentMap[outKey] = strings.TrimSpace(cast.ToString(content))
+				gstool.FmtPrintlnLogTime(`提取到 %s %s`, outKey, content)
 			}
 		case `bool_result`: //bool结果判断
 			h.outKeyBoolResult(outKey, checkKey, boolResultMap, takeContentMap, runParams)
@@ -908,13 +915,14 @@ func (h *TSmartLink) outKeyBoolResult(outKey, checkKey string, boolResultMap map
 
 // PageEvents 用来控制一段时间内不使用浏览器后自动关闭
 func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page playwright.Page) {
-	gstool.FmtPrintlnLogTime(`开始监听事件`)
 	page.On("request", func(request playwright.Request) {
 		go h.SetPageActive(page, runParams)
 		return
 	})
-	for listenUri, listen := range runParams.ListenUrl {
+	for listenUri, listen := range h.ListenUrlList {
+		listen.Callback(`注册 **`+listenUri, nil)
 		_ = page.Route("**"+listenUri, func(route playwright.Route) {
+			listen.Callback(`捕获到请求`+route.Request().URL(), nil)
 			go h.ListenUrl(route, listen)
 			_ = route.Abort()
 		})
@@ -971,7 +979,7 @@ func (h *TSmartLink) ListenUrl(route playwright.Route, listen *_struct.ListenUrl
 	var resErr error
 	listen.StartCallBack()
 	if listen.IsSse {
-		res, resErr = cli.OpenStreamBytesEnd('\n', func(s string, err error) {
+		res, resErr = cli.OpenStreamBytesEnd([]byte("\n\n"), func(s string, err error) {
 			listen.Callback(s, err)
 		}, func(bytes []byte) []byte {
 			return bytes

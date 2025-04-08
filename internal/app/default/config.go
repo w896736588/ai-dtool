@@ -2,6 +2,7 @@ package _default
 
 import (
 	"dev_tool/base"
+	_struct "dev_tool/base/struct"
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gsencrypt"
@@ -98,6 +99,7 @@ func initComponent(IsBuild, WebData string) {
 	base.Component.TSmartLink = &base.TSmartLink{
 		DownloadPath:   base.Component.Env.PlaywrightDownload,
 		PageActiveTime: make(map[string]base.PageActiveTime),
+		ListenUrlList:  make(map[string]*_struct.ListenUrl),
 	}
 	go base.Component.TSmartLink.WitchDownload()
 	go base.Component.TSmartLink.SmartCheckAndUpdate()
@@ -166,8 +168,8 @@ func initGin(ViewPath string) {
 	base.Component.TGin.GinGet(`/`, func(context *gin.Context) {
 		context.HTML(200, `index.html`, nil)
 	})
-	base.Component.TSse = &gsgin.TSse{
-		SseList: make(map[string]*gsgin.Sse),
+	base.Component.TSse = &base.TSse{
+		Sse: &gsgin.TSse{SseList: make(map[string]*gsgin.Sse)},
 	}
 	base.Component.TOs = gstool.NewGsOs()
 	base.Component.TMarkDown = &base.TMarkDown{}
