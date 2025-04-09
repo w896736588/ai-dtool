@@ -88,7 +88,7 @@ func (h *VariableRun) radioChooseReplace(variableForm *_struct.VariableForm, rep
 		if variableForm.ResultKey != `` && chooseValue != `` && chooseValue == option.Value {
 			gstool.FmtPrintlnLogTime(`选择 %s %s %s`, h.CmdId, variableForm.Id, gstool.JsonEncode(option))
 			if h.CmdId == variableForm.Id {
-				h.StreamMsg(Component.TMarkDown.BlockQuote(variableForm.Name + "，选择" + option.Label))
+				h.StreamMsg(Component.TMarkDown.BlockQuote(variableForm.Name+"，选择"+option.Label), true)
 			}
 			//额外属性
 			sourceOptionList := make(map[string]any, 0)
@@ -159,7 +159,7 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 			continue
 		}
 		if resultErr != nil {
-			h.StreamMsg(Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`]) + `,执行失败，` + resultErr.Error()))
+			h.StreamMsg(Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`])+`,执行失败，`+resultErr.Error()), true)
 			return resultErr
 		}
 		if resultKey != `` {
@@ -175,13 +175,11 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 	return nil
 }
 
-func (h *VariableRun) StreamMsg(msg string) {
-	_ = Component.TSse.SendMsg(define.SseVariable, msg+"\n")
-}
-
-// StreamMsgMarkdownEnter 输出换行文本
-func (h *VariableRun) StreamMsgMarkdownEnter(msg string) {
-	h.StreamMsg(Component.TMarkDown.Enter(msg))
+func (h *VariableRun) StreamMsg(msg string, enter bool) {
+	if enter {
+		msg += "\n"
+	}
+	_ = Component.TSse.SendMsg(define.SseVariable, msg)
 }
 
 func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
@@ -207,16 +205,16 @@ func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
 		return ``, mysqlClientErr
 	}
 	if len(gstool.RegexSearchString(sql, "(?i)select")) > 0 {
-		h.StreamMsg(Component.TMarkDown.Code(sql, `sql`))
+		h.StreamMsg(Component.TMarkDown.Code(sql, `sql`), true)
 		all, allErr := mysqlClient.QueryBySql(sql).All()
 		if allErr != nil {
 			return ``, allErr
 		}
 		return gstool.JsonEncode(all), nil
 	} else if len(gstool.RegexSearchString(sql, "(?i)update")) > 0 {
-		h.StreamMsg(Component.TMarkDown.Code(sql, `sql`))
+		h.StreamMsg(Component.TMarkDown.Code(sql, `sql`), true)
 		affectRows, execErr := mysqlClient.ExecBySql(sql).Exec()
-		h.StreamMsg(name + `更新数,` + cast.ToString(affectRows))
+		h.StreamMsg(name+`更新数,`+cast.ToString(affectRows), true)
 		if execErr != nil {
 			return ``, execErr
 		}
@@ -241,7 +239,7 @@ func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
 	if cast.ToInt(sshId) == 0 {
 		return ``, errors.New(`ssh不能为空`)
 	}
-	h.StreamMsg(Component.TMarkDown.Code(cast.ToString(cmd[`bash`]), `bash`))
+	h.StreamMsg(Component.TMarkDown.Code(cast.ToString(cmd[`bash`]), `bash`), true)
 	sshUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `run`)
 	sftpUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
 	if !Component.TShell.Exist(sshUniqueKey) || !Component.TShell.Exist(sftpUniqueKey) {
@@ -296,7 +294,7 @@ func (h *VariableRun) runCurl(cmd map[string]any) (string, error) {
 	if url == `` {
 		return ``, errors.New(`url不能为空`)
 	}
-	h.StreamMsg(Component.TMarkDown.BlockQuote(`请求url,` + url))
+	h.StreamMsg(Component.TMarkDown.BlockQuote(`请求url,`+url), true)
 	isStream := cast.ToInt(gstool.UrlGetParam(url, `is_stream`))
 	var result []byte
 	var err error
@@ -306,7 +304,7 @@ func (h *VariableRun) runCurl(cmd map[string]any) (string, error) {
 				return
 			}
 			sendMsg := Component.TAi.ParseStream(url, msg)
-			h.StreamMsg(Component.TMarkDown.BlockQuote(cast.ToString(sendMsg)))
+			h.StreamMsg(Component.TMarkDown.BlockQuote(cast.ToString(sendMsg)), false)
 		}, func(bytes []byte) []byte {
 			return bytes
 		}).Request(200).Result()
@@ -331,7 +329,7 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 	}
 	for {
 		if Component.TSmartLink.IsRun {
-			h.StreamMsg(Component.TMarkDown.BlockQuote(`等待其他自动化链接任务完成..`))
+			h.StreamMsg(Component.TMarkDown.BlockQuote(`等待其他自动化链接任务完成..`), true)
 			time.Sleep(time.Second * 1)
 			continue
 		} else {
@@ -342,7 +340,7 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 	runParams.RunCallFunc = func(cmdType define.CmdType, errmsg, tip, content string) {
 		switch cmdType {
 		case define.Input:
-			h.StreamMsg(Component.TMarkDown.BlockQuote(tip + `,` + content + ` ` + errmsg))
+			h.StreamMsg(Component.TMarkDown.BlockQuote(tip+`,`+content+` `+errmsg), true)
 		}
 	}
 	//注册需要监听的接口
@@ -360,7 +358,7 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 				IsSse: true,
 				Callback: func(msg string, err error) {
 					sendMsg := Component.TAi.ParseStream(uri, msg)
-					h.StreamMsg(cast.ToString(sendMsg))
+					h.StreamMsg(cast.ToString(sendMsg), false)
 				},
 				StartCallBack: func() {
 					h.PlaywrightLock.Lock()
@@ -374,10 +372,10 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 
 	Component.TSmartLink.IsRun = true
 	for i := 0; i < runParams.OpenNum; i++ {
-		h.StreamMsg(Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`]) + `,启动`))
+		h.StreamMsg(Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`])+`,启动`), true)
 		openErr := Component.TSmartLink.OpenBrowserPlaywright(runParams)
 		if openErr != nil {
-			h.StreamMsg(Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`]) + `,启动失败，` + openErr.Error()))
+			h.StreamMsg(Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`])+`,启动失败，`+openErr.Error()), true)
 		}
 	}
 	Component.TSmartLink.IsRun = false
@@ -413,7 +411,7 @@ func (h *VariableRun) runRedis(cmd map[string]any) (string, error) {
 	if clientErr != nil {
 		return "", clientErr
 	}
-	h.StreamMsg(name + `,` + redisBash)
+	h.StreamMsg(name+`,`+redisBash, true)
 	//解析命令格式：
 	//字符串删除string,delete,key
 	redisBashParamList := strings.Split(redisBash, `,`)
@@ -443,7 +441,7 @@ func (h *VariableRun) runRedis(cmd map[string]any) (string, error) {
 }
 
 func (h *VariableRun) end() {
-	h.StreamMsg(`执行结束`)
+	h.StreamMsg(`执行结束`, true)
 }
 
 func (h *VariableRun) getVariableCmdList(variableId any) ([]map[string]any, error) {
