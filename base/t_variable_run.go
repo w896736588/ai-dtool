@@ -17,7 +17,7 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 			if variableForm.Input.Value != `` {
 				h.addReplace(&replaceList, variableForm.ResultKey, variableForm.Input.Value)
 				if h.CmdId == variableForm.Id {
-					h.StreamMsg(Component.TMarkDown.BlockQuote(variableForm.Input.Label + "," + variableForm.Input.Value))
+					h.StreamMsg(Component.TMarkDown.BlockQuote(variableForm.Input.Label+","+variableForm.Input.Value), true)
 				}
 			} else {
 				variableForm.IsRunOk = 0
@@ -57,7 +57,7 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 				return nil, nil, 0, sqlRet
 			} else {
 				if h.CmdId == variableForm.Id {
-					h.StreamMsg(Component.TMarkDown.Code(variableForm.Sql.Sql, `sql`))
+					h.StreamMsg(Component.TMarkDown.Code(variableForm.Sql.Sql, `sql`), true)
 				}
 			}
 			break

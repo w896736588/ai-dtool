@@ -13,7 +13,7 @@ import (
 func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[string]string, int, error) {
 	cmdList, cmdListErr := h.getVariableCmdList(variableId)
 	if cmdListErr != nil {
-		h.StreamMsg(cmdListErr.Error())
+		h.StreamMsg(cmdListErr.Error(), true)
 		return nil, nil, 0, cmdListErr
 	}
 	replaceList := make([]map[string]string, 0)
@@ -32,7 +32,7 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 				if preConnErr != nil {
 					return nil, nil, 0, preConnErr
 				} else {
-					h.StreamMsg(Component.TMarkDown.BlockQuote(name + `ssh连接成功`))
+					h.StreamMsg(Component.TMarkDown.BlockQuote(name+`ssh连接成功`), true)
 				}
 			}
 			continue
@@ -102,7 +102,7 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 		}
 		variableFormList = append(variableFormList, variableForm)
 	}
-	h.StreamMsg(Component.TMarkDown.BlockQuote(`就绪`))
+	h.StreamMsg(Component.TMarkDown.BlockQuote(`就绪`), true)
 	return variableFormList, replaceList, isCanRun, nil
 }
 
@@ -174,7 +174,7 @@ func (h *VariableRun) preConnSsh(cmd map[string]any) error {
 	if sftpClientErr != nil {
 		return sftpClientErr
 	}
-	h.StreamMsg(name + `，连接成功ssh成功`)
+	h.StreamMsg(name+`，连接成功ssh成功`, true)
 	return nil
 }
 
