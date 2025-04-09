@@ -11,12 +11,15 @@ import (
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
 	"strings"
+	"sync"
 	"time"
 )
 
 type VariableRun struct {
-	VariableId  string
-	ReplaceList []map[string]string
+	VariableId     string
+	CmdId          string //当前执行的cmd_id
+	ReplaceList    []map[string]string
+	PlaywrightLock sync.RWMutex
 }
 
 func NewVariable() VariableRun {
@@ -83,7 +86,10 @@ func (h *VariableRun) radioChooseReplace(variableForm *_struct.VariableForm, rep
 	for _, option := range variableForm.Select.OptionList {
 		//组装替换符
 		if variableForm.ResultKey != `` && chooseValue != `` && chooseValue == option.Value {
-			h.sendStreamMsgMarkdownEnter(variableForm.Name + `[` + option.Label + `]`)
+			gstool.FmtPrintlnLogTime(`选择 %s %s %s`, h.CmdId, variableForm.Id, gstool.JsonEncode(option))
+			if h.CmdId == variableForm.Id {
+				h.StreamMsg(Component.TMarkDown.BlockQuote(variableForm.Name + "，选择" + option.Label))
+			}
 			//额外属性
 			sourceOptionList := make(map[string]any, 0)
 			_ = gstool.JsonDecode(option.Source, &sourceOptionList)
@@ -129,7 +135,6 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 		return cmdListErr
 	}
 	for _, cmd := range cmdList {
-		h.sendStreamMsgMarkdownEnter(cast.ToString(cmd[`name`]) + `->执行`)
 		resultKey := cast.ToString(cmd[`result_key`])
 		isPre := cast.ToInt(cmd[`is_pre`])
 		if isPre == 1 { //提前运行的不管
@@ -154,6 +159,7 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 			continue
 		}
 		if resultErr != nil {
+			h.StreamMsg(Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`]) + `,执行失败，` + resultErr.Error()))
 			return resultErr
 		}
 		if resultKey != `` {
@@ -169,13 +175,13 @@ func (h *VariableRun) RunDone(variableId any, replaceList []map[string]string, v
 	return nil
 }
 
-func (h *VariableRun) sendStreamMsg(msg string) error {
-	return Component.TSse.SendMsg(define.SseVariable, msg)
+func (h *VariableRun) StreamMsg(msg string) {
+	_ = Component.TSse.SendMsg(define.SseVariable, msg+"\n")
 }
 
-// 输出换行文本
-func (h *VariableRun) sendStreamMsgMarkdownEnter(msg string) {
-	_ = h.sendStreamMsg(Component.TMarkDown.Enter(msg))
+// StreamMsgMarkdownEnter 输出换行文本
+func (h *VariableRun) StreamMsgMarkdownEnter(msg string) {
+	h.StreamMsg(Component.TMarkDown.Enter(msg))
 }
 
 func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
@@ -201,18 +207,16 @@ func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
 		return ``, mysqlClientErr
 	}
 	if len(gstool.RegexSearchString(sql, "(?i)select")) > 0 {
-		h.sendStreamMsgMarkdownEnter(Component.TMarkDown.BlockQuote(name))
-		h.sendStreamMsgMarkdownEnter(Component.TMarkDown.Code(sql, `sql`))
+		h.StreamMsg(Component.TMarkDown.Code(sql, `sql`))
 		all, allErr := mysqlClient.QueryBySql(sql).All()
 		if allErr != nil {
 			return ``, allErr
 		}
-		h.sendStreamMsgMarkdownEnter(Component.TMarkDown.Json(all))
 		return gstool.JsonEncode(all), nil
 	} else if len(gstool.RegexSearchString(sql, "(?i)update")) > 0 {
-		h.sendStreamMsgMarkdownEnter(name + `->` + sql)
+		h.StreamMsg(Component.TMarkDown.Code(sql, `sql`))
 		affectRows, execErr := mysqlClient.ExecBySql(sql).Exec()
-		h.sendStreamMsgMarkdownEnter(name + `->更新数` + cast.ToString(affectRows))
+		h.StreamMsg(name + `更新数,` + cast.ToString(affectRows))
 		if execErr != nil {
 			return ``, execErr
 		}
@@ -237,6 +241,7 @@ func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
 	if cast.ToInt(sshId) == 0 {
 		return ``, errors.New(`ssh不能为空`)
 	}
+	h.StreamMsg(Component.TMarkDown.Code(cast.ToString(cmd[`bash`]), `bash`))
 	sshUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `run`)
 	sftpUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
 	if !Component.TShell.Exist(sshUniqueKey) || !Component.TShell.Exist(sftpUniqueKey) {
@@ -291,19 +296,17 @@ func (h *VariableRun) runCurl(cmd map[string]any) (string, error) {
 	if url == `` {
 		return ``, errors.New(`url不能为空`)
 	}
-	h.sendStreamMsgMarkdownEnter(Component.TMarkDown.Code(url, `shell`))
+	h.StreamMsg(Component.TMarkDown.BlockQuote(`请求url,` + url))
 	isStream := cast.ToInt(gstool.UrlGetParam(url, `is_stream`))
 	var result []byte
 	var err error
 	if isStream == 1 {
 		result, err = gshttp.Get(url).OpenStreamBytesEnd([]byte("\n\n"), func(msg string, err error) {
 			if err != nil {
-				gstool.FmtPrintlnLogTime(`收到失败 %s`, err.Error())
+				return
 			}
-			gstool.FmtPrintlnLogTime(`curl 请求收到 ---%s---`, msg)
-			sendMsg := Component.TAi.ParseStream(msg)
-			gstool.FmtPrintlnLogTime(`解析后---%s---`, sendMsg)
-			_ = h.sendStreamMsg(cast.ToString(sendMsg))
+			sendMsg := Component.TAi.ParseStream(url, msg)
+			h.StreamMsg(Component.TMarkDown.BlockQuote(cast.ToString(sendMsg)))
 		}, func(bytes []byte) []byte {
 			return bytes
 		}).Request(200).Result()
@@ -328,11 +331,18 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 	}
 	for {
 		if Component.TSmartLink.IsRun {
-			h.sendStreamMsgMarkdownEnter(`等待其他自动化链接任务完成..`)
+			h.StreamMsg(Component.TMarkDown.BlockQuote(`等待其他自动化链接任务完成..`))
 			time.Sleep(time.Second * 1)
 			continue
 		} else {
 			break
+		}
+	}
+	//注册链接执行时需要输出的文本类型
+	runParams.RunCallFunc = func(cmdType define.CmdType, errmsg, tip, content string) {
+		switch cmdType {
+		case define.Input:
+			h.StreamMsg(Component.TMarkDown.BlockQuote(tip + `,` + content + ` ` + errmsg))
 		}
 	}
 	//注册需要监听的接口
@@ -346,20 +356,17 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 			if uri == `` {
 				continue
 			}
-			h.sendStreamMsgMarkdownEnter(`注册监听` + uri)
 			Component.TSmartLink.ListenUrlList[uri] = &_struct.ListenUrl{
 				IsSse: true,
 				Callback: func(msg string, err error) {
-					gstool.FmtPrintlnLogTime(`收到---%s---`, msg)
-					sendMsg := Component.TAi.ParseStream(msg)
-					_ = h.sendStreamMsg(cast.ToString(sendMsg))
+					sendMsg := Component.TAi.ParseStream(uri, msg)
+					h.StreamMsg(cast.ToString(sendMsg))
 				},
 				StartCallBack: func() {
-					h.sendStreamMsgMarkdownEnter(Component.TMarkDown.BlockQuote(`开始请求大模型`))
-					h.sendStreamMsgMarkdownEnter(Component.TMarkDown.BlockQuote(`  `))
+					h.PlaywrightLock.Lock()
 				},
 				EndCallBack: func(msg string) {
-					h.sendStreamMsgMarkdownEnter(Component.TMarkDown.BlockQuote(msg))
+					h.PlaywrightLock.Unlock()
 				},
 			}
 		}
@@ -367,9 +374,10 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 
 	Component.TSmartLink.IsRun = true
 	for i := 0; i < runParams.OpenNum; i++ {
+		h.StreamMsg(Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`]) + `,启动`))
 		openErr := Component.TSmartLink.OpenBrowserPlaywright(runParams)
 		if openErr != nil {
-			gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
+			h.StreamMsg(Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`]) + `,启动失败，` + openErr.Error()))
 		}
 	}
 	Component.TSmartLink.IsRun = false
@@ -405,6 +413,7 @@ func (h *VariableRun) runRedis(cmd map[string]any) (string, error) {
 	if clientErr != nil {
 		return "", clientErr
 	}
+	h.StreamMsg(name + `,` + redisBash)
 	//解析命令格式：
 	//字符串删除string,delete,key
 	redisBashParamList := strings.Split(redisBash, `,`)
@@ -413,30 +422,28 @@ func (h *VariableRun) runRedis(cmd map[string]any) (string, error) {
 		case `string`:
 			switch redisBashParamList[1] {
 			case `delete`:
-				h.sendStreamMsgMarkdownEnter(name + `->清除redis，string key：` + redisBashParamList[2])
 				client.Client.Del(context.Background(), redisBashParamList[2])
 			default:
-				h.sendStreamMsgMarkdownEnter(name + `->暂不支持的操作` + redisBash)
+				return ``, errors.New(`暂不支持的操作，` + redisBash)
 			}
 		case `hash`:
 			switch redisBashParamList[1] {
 			case `delete`:
-				h.sendStreamMsgMarkdownEnter(name + `->清除redis，hash key：` + redisBashParamList[2] + ` field：` + redisBashParamList[3])
 				client.Client.HDel(context.Background(), redisBashParamList[2], redisBashParamList[3])
 			default:
-				h.sendStreamMsgMarkdownEnter(name + `->暂不支持的操作` + redisBash)
+				return ``, errors.New(`暂不支持的操作，` + redisBash)
 			}
 		default:
-			h.sendStreamMsgMarkdownEnter(name + `->暂不支持的操作` + redisBash)
+			return ``, errors.New(`暂不支持的操作，` + redisBash)
 		}
 	} else {
-		h.sendStreamMsgMarkdownEnter(name + `->格式错误` + redisBash)
+		return ``, errors.New(`格式错误，` + redisBash)
 	}
 	return `操作`, nil
 }
 
 func (h *VariableRun) end() {
-	h.sendStreamMsgMarkdownEnter(`执行结束`)
+	h.StreamMsg(`执行结束`)
 }
 
 func (h *VariableRun) getVariableCmdList(variableId any) ([]map[string]any, error) {

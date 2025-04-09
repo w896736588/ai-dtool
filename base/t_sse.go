@@ -12,23 +12,27 @@ type TSse struct {
 }
 
 func (h *TSse) SendMsg(sseClient, msg string) error {
-	data := _struct.StreamData{
-		Choices: []struct {
-			Delta struct {
-				Content string `json:"content"`
-				Role    string `json:"role"`
-			} `json:"delta"`
-		}{
-			{
-				Delta: struct {
+	chunkList := gstool.SChunks(msg, 2000)
+	for _, chunk := range chunkList {
+		data := _struct.StreamData{
+			Choices: []struct {
+				Delta struct {
 					Content string `json:"content"`
 					Role    string `json:"role"`
-				}{
-					Content: msg,
-					Role:    "",
+				} `json:"delta"`
+			}{
+				{
+					Delta: struct {
+						Content string `json:"content"`
+						Role    string `json:"role"`
+					}{
+						Content: chunk,
+						Role:    "",
+					},
 				},
 			},
-		},
+		}
+		_ = h.Sse.Send(sseClient, `data: `+gstool.JsonEncode(data), 0)
 	}
-	return h.Sse.Send(sseClient, `data: `+gstool.JsonEncode(data))
+	return nil
 }

@@ -67,10 +67,6 @@ func VariableInfo(c *gin.Context) {
 func VariableAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToInt(dataMap[`variable_group_id`]) == 0 {
-		gsgin.GinResponseError(c, `组id不能为空 `, nil)
-		return
-	}
 	var id any
 	dataMap[`type`] = 1 //固定为脚本
 	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `variable_group_id`, `remark`, `type`})
@@ -222,6 +218,7 @@ func VariableCmdRunProcess(c *gin.Context) {
 	}
 	variable := base.NewVariable()
 	variable.VariableId = cast.ToString(dataMap[`variable_id`])
+	variable.CmdId = cast.ToString(dataMap[`cmd_id`])
 	formList, replaceList, isCanRun, err := variable.RunProcess(variableFormList, replaceList)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)

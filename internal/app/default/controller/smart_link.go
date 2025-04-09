@@ -36,6 +36,16 @@ func SmartLinkRecycle(c *gin.Context) {
 	return
 }
 
+func SmartLinkDownloadPath(c *gin.Context) {
+	err := base.Component.TSmartLink.SmartLinkDownloadPath()
+	if err != nil {
+		gsgin.GinResponseError(c, fmt.Sprintf(`释放失败 %s`, err.Error()), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, `释放成功`, ``)
+	return
+}
+
 // SmartLinkList 获取列表
 func SmartLinkList(c *gin.Context) {
 	variableGroupList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
@@ -82,7 +92,7 @@ func SmartLinkAdd(c *gin.Context) {
 	}
 	var id any
 	dataMap[`fix_data_id`] = cast.ToInt(dataMap[`fix_data_id`])
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `smart_link_group_id`, `links`, `open_num`, `open_type`, `process`, `weight`, `is_save_user_data`, `is_combine`, `fix_data_id`, `download_finds`, `auto_close_second`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `smart_link_group_id`, `links`, `open_num`, `open_type`, `process`, `weight`, `is_save_user_data`, `is_combine`, `fix_data_id`, `download_finds`, `auto_close_second`, `channel`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()

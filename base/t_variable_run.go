@@ -16,7 +16,9 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 		case define.VariableCmdInput, define.VariableCmdTextarea: //输入框 不存在替换
 			if variableForm.Input.Value != `` {
 				h.addReplace(&replaceList, variableForm.ResultKey, variableForm.Input.Value)
-				h.sendStreamMsgMarkdownEnter(variableForm.Input.Label + `[` + variableForm.Input.Value + `]`)
+				if h.CmdId == variableForm.Id {
+					h.StreamMsg(Component.TMarkDown.BlockQuote(variableForm.Input.Label + "," + variableForm.Input.Value))
+				}
 			} else {
 				variableForm.IsRunOk = 0
 			}
@@ -53,6 +55,10 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 			sqlRet := h.sqlProcessRun(&variableForm, &replaceList)
 			if sqlRet != nil {
 				return nil, nil, 0, sqlRet
+			} else {
+				if h.CmdId == variableForm.Id {
+					h.StreamMsg(Component.TMarkDown.Code(variableForm.Sql.Sql, `sql`))
+				}
 			}
 			break
 		default:
@@ -77,16 +83,12 @@ func (h *VariableRun) ProcessSet(variableId, cmdName string, variableForm *_stru
 	case define.VariableCmdRadio: //单选
 		if h.isExistReplaceParam(variableForm.Select.Options) {
 			variableForm.IsShowOk = 0 //不显示
-			h.sendStreamMsgMarkdownEnter(cmdName + `->等待补充选项后展示`)
 			return
 		}
-		h.sendStreamMsgMarkdownEnter(cmdName + `->可以展示`)
 	case define.VariableCmdMysql: //执行sql
-		h.sendStreamMsgMarkdownEnter(cmdName + `->初始化完成`)
 		variableForm.IsShowOk = 0
 		return
 	default:
-		h.sendStreamMsgMarkdownEnter(cmdName + `->可以展示`)
 		break
 	}
 }

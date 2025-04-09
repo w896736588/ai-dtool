@@ -17,6 +17,7 @@ type VariableForm struct {
 	Name         string
 	VariableType string
 	VariableId   string
+	Id           string
 	Input        VariableFormInput  `json:"Input,omitempty"`
 	Select       VariableFormSelect `json:"Select,omitempty"`
 	Sql          VariableFormSql    `json:"Sql,omitempty"`
@@ -30,6 +31,7 @@ type VariableForm struct {
 type VariableFormInput struct {
 	Label       string
 	Value       string
+	Default     string
 	HideSureBtn int
 }
 

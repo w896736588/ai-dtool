@@ -113,6 +113,7 @@ func initComponent(IsBuild, WebData string) {
 		panic(readErr.Error())
 	}
 	base.Component.GsLog = gstool.SlogCreateDefault(base.Component.Env.LogPath, AppName)
+	base.Component.GsLog.DeleteLogs(``)
 }
 
 func initSqlite(DbPath string) {

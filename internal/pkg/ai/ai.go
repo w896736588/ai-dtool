@@ -8,6 +8,7 @@ import (
 	"dev_tool/internal/pkg/ai/ai_parse"
 	"errors"
 	"gitee.com/Sxiaobai/gs/gstool"
+	"github.com/spf13/cast"
 	"strings"
 )
 
@@ -64,7 +65,9 @@ func getAiModel(model string) ai_model.AiModel {
 					gstool.FmtPrintlnLogTime(`发送0#code失败 %s`, sendErr.Error())
 				}
 			} else {
-				sendErr := base.Component.TSse.SendMsg(define.SseAiCode, s)
+				sendMsg := base.Component.TAi.ParseStream(`basic`, s)
+				gstool.FmtPrintlnLogTime(`解析结果 %s %s`, sendMsg, s)
+				sendErr := base.Component.TSse.SendMsg(define.SseAiCode, cast.ToString(sendMsg))
 				if sendErr != nil {
 					gstool.FmtPrintlnLogTime(`发送0#code失败 %s`, sendErr.Error())
 				}
