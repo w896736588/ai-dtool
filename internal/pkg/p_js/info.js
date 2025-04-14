@@ -65,15 +65,30 @@
         floater.style.borderRadius = '4px';
         floater.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
         floater.style.zIndex = '9999';
+        floater.style.transition = 'all 0.3s ease'; // 添加过渡效果
 
         // 添加内容
-        let html = '<div style=" justify-content: space-between; align-items: center;">'
-        html += showContent;
-        html += '<button ';
-        html += ' id="close-floater" '
-        html += ' style="background: none;border: none;margin-left:47%;cursor: pointer;font-size: 14px;color: #666;">关闭</button> '
-        html += ' </div> '
-        floater.innerHTML = html
+        let html = '<div style="display: flex; justify-content: space-between; align-items: center;">'
+        html += '<div>' + showContent + '</div>';
+        html += '<div style="display: flex; flex-direction: column; gap: 5px;">';
+        html += '<button id="move-floater" style="background: none; border: none; cursor: pointer; font-size: 12px; color: #666; padding: 2px 5px;">滚开</button>';
+        html += '<button id="close-floater" style="background: none; border: none; cursor: pointer; font-size: 12px; color: #666; padding: 2px 5px;">关闭</button>';
+        html += '</div>';
+        html += '</div>';
+        floater.innerHTML = html;
+
+        // 添加移动按钮事件
+        let isRight = true;
+        floater.querySelector('#move-floater').addEventListener('click', () => {
+            if(isRight) {
+                floater.style.right = 'auto';
+                floater.style.left = '20px';
+            } else {
+                floater.style.left = 'auto';
+                floater.style.right = '20px';
+            }
+            isRight = !isRight;
+        });
 
         // 添加关闭按钮事件
         floater.querySelector('#close-floater').addEventListener('click', () => {

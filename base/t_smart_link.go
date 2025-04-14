@@ -469,12 +469,12 @@ func (h *TSmartLink) ShowCookieTip(page playwright.Page) {
 		{
 			FindType:   `cookie`,
 			FindKey:    "xkf_userid",
-			Label:      "客服ID",
+			Label:      "UserId",
 			DomainList: []string{"xiaokefu.com.cn", "applnk.cn"},
 		},
 		{
 			FindType:     `any`,
-			Label:        "客服账号",
+			Label:        "Account",
 			FormatList:   []string{`url_decode`},
 			RegexFindKey: `s:8:"username";s:\d+:"(.+)"`,
 			DomainList:   []string{"xiaokefu.com.cn", "applnk.cn", "ishipinhao.com"},
@@ -843,7 +843,6 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page play
 	}
 
 	page.On(`load`, func() {
-		gstool.FmtPrintlnLogTime(`页面加载完`)
 		go h.ShowCookieTip(page)
 	})
 
