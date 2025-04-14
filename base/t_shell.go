@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gsssh"
 	"github.com/spf13/cast"
+	"runtime/debug"
 	"sync"
 )
 
@@ -14,12 +15,12 @@ type TShell struct {
 }
 
 // GetClient 正常输出
-func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId string) (*gsssh.SshConfig, error) {
+func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId string, formatStream func(string) string) (*gsssh.SshConfig, error) {
 	defer h.lock.Unlock()
 	h.lock.Lock()
 	sshId := cast.ToString(sshConfig[`id`])
 	if sshId == `` {
-		return nil, errors.New(`ssh配置错误`)
+		return nil, errors.New(`ssh配置错误，GetClient ` + cast.ToString(debug.Stack()))
 	}
 	if shell, ok := h.ShellClientMap[shellClientId]; ok && shell != nil {
 		return shell, nil
@@ -31,14 +32,11 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 		Password: cast.ToString(sshConfig["password"]),
 		GsSlog:   Component.GsLog,
 	}
-	//回调准备输出的内容
-	gsShell.SetFuncStreamReceive(func(msg string) {
-		_ = Component.TSse.SendMsg(sseClientId, msg+"\n")
-	})
+
 	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
 	//设置关闭事件
 	gsShell.SetFuncBroken(func() {
-		_ = Component.TSse.SendMsg(sseClientId, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n")
+		_ = Component.TSse.SendMsg(sseClientId, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n", 0)
 		h.RmClient(shellClientId)
 		//已经加了自动重连
 		//h.ReConn(shellClientId , sshConfig)
@@ -53,6 +51,20 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 	if err != nil {
 		return nil, err
 	}
+	//回调准备输出的内容 放到这里 就不需要链接linux出现的一大段文字
+	gsShell.SetFuncStreamReceive(func(msg string) {
+		if formatStream != nil {
+			_ = Component.TSse.SendMsgChunk(sseClientId, formatStream(msg), Chunk{
+				Type: ChunkNum,
+				Num:  50,
+			}, 10)
+		} else {
+			_ = Component.TSse.SendMsgChunk(sseClientId, msg, Chunk{
+				Type: ChunkNum,
+				Num:  50,
+			}, 10)
+		}
+	})
 	//设置执行命令前处理
 	gsShell.SetFuncBefore(func(command string) string {
 		return command
@@ -72,7 +84,7 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 	h.lock.Lock()
 	sshId := cast.ToString(sshConfig[`id`])
 	if sshId == `` {
-		return nil, errors.New(`ssh配置错误`)
+		return nil, errors.New(`ssh配置错误，GetClientMarkdown ` + cast.ToString(debug.Stack()))
 	}
 	if shell, ok := h.ShellClientMap[shellClientId]; ok && shell != nil {
 		return shell, nil
@@ -84,20 +96,11 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 		Password: cast.ToString(sshConfig["password"]),
 		GsSlog:   Component.GsLog,
 	}
-	//回调准备输出的内容
-	gsShell.SetFuncStreamReceive(func(msg string) {
-		_ = Component.TSse.SendMsg(sseClientId, msg+"  \n")
-	})
-	gsShell.SetFuncStartCommand(func() {
-		_ = Component.TSse.SendMsg(sseClientId, fmt.Sprintf("```%s\n#%s", `bash`, `bash`)+"\n")
-	})
-	gsShell.SetFuncEndCommand(func() {
-		_ = Component.TSse.SendMsg(sseClientId, "```\n")
-	})
+
 	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
 	//设置关闭事件
 	gsShell.SetFuncBroken(func() {
-		_ = Component.TSse.SendMsg(sseClientId, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n")
+		_ = Component.TSse.SendMsg(sseClientId, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n", 0)
 		h.RmClient(shellClientId)
 		//已经加了自动重连
 		//h.ReConn(shellClientId , sshConfig)
@@ -112,6 +115,19 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 	if err != nil {
 		return nil, err
 	}
+	//猪油：下面3个注册回调，放到这里的话就不会输出pwd以及连接相关信息
+	//回调准备输出的内容
+	gsShell.SetFuncStreamReceive(func(msg string) {
+		_ = Component.TSse.SendMsgChunk(sseClientId, msg+"  \n", Chunk{
+			Type: ChunkEnter,
+		}, 50)
+	})
+	gsShell.SetFuncStartCommand(func() {
+		_ = Component.TSse.SendMsg(sseClientId, fmt.Sprintf("```%s\n#%s", `bash`, `bash`)+"\n", 0)
+	})
+	gsShell.SetFuncEndCommand(func() {
+		_ = Component.TSse.SendMsg(sseClientId, "```\n", 0)
+	})
 	//设置执行命令前处理
 	gsShell.SetFuncBefore(func(command string) string {
 		return command

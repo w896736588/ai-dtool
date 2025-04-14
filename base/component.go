@@ -29,4 +29,6 @@ type TComponent struct {
 	TOs           *gstool.GsOs
 	TMarkDown     *TMarkDown
 	TAi           *TAi
+	TVariable     *TVariable
+	TJas          *TJas
 }

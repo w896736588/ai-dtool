@@ -36,3 +36,12 @@ type ListenUrl struct {
 	StartCallBack func()
 	EndCallBack   func(msg string)
 }
+
+type ShowCookie struct {
+	FindType     string   `json:"find_type"`      //查找类型 cookie 直接根据cookie的key进行匹配  any 任意值中进行处理
+	FormatList   []string `json:"format_list"`    //对值进行格式化类型 url_decode
+	FindKey      string   `json:"find_key"`       //查找的key
+	RegexFindKey string   `json:"regex_find_key"` //正则匹配的key
+	Label        string   `json:"label"`
+	DomainList   []string `json:"Domain_list"`
+}

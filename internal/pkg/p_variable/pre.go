@@ -1,6 +1,7 @@
-package base
+package p_variable
 
 import (
+	"dev_tool/base"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
 	"errors"
@@ -11,7 +12,13 @@ import (
 
 // RunPre 执行前收集一些选择或者输入项
 func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[string]string, int, error) {
-	cmdList, cmdListErr := h.getVariableCmdList(variableId)
+	base.Component.TVariable.StopAll()          //停止其他任务
+	base.Component.TVariable.Add(h.RunUniqueId) //注册本次任务
+	variableInfo := h.Variable(variableId)
+	if len(variableInfo) == 0 {
+		return nil, nil, 0, errors.New(`脚本不存在`)
+	}
+	cmdList, cmdListErr := h.CmdList(variableId)
 	if cmdListErr != nil {
 		h.StreamMsg(cmdListErr.Error(), true)
 		return nil, nil, 0, cmdListErr
@@ -20,9 +27,12 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 	variableFormList := make([]_struct.VariableForm, 0) //需要展示在页面上的和form表单有关联的 只限于is_pre=1的
 	isCanRun := 1
 	for _, cmd := range cmdList {
+		if base.Component.TVariable.Get(h.RunUniqueId) == `stop` {
+			return nil, nil, 0, errors.New(`任务停止`)
+		}
 		name := cast.ToString(cmd[`name`])
 		if cast.ToInt(cmd[`is_pre`]) == 0 { //不需要提前执行
-			if cast.ToInt(cmd[`type`]) == define.VariableCmdBash { //预先连接ssh
+			if gstool.ArrayFindValueIndex(&([]int{define.VariableCmdBash, define.VariableCmdCommand}), cast.ToInt(cmd[`type`])) >= 0 { //预先连接ssh
 				id, _ := h.ParseIdContent(cast.ToString(cmd[`bash`]))
 				if id == `` {
 					return nil, nil, 0, errors.New(`bash脚本中id格式错误`)
@@ -32,7 +42,7 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 				if preConnErr != nil {
 					return nil, nil, 0, preConnErr
 				} else {
-					h.StreamMsg(Component.TMarkDown.BlockQuote(name+`ssh连接成功`), true)
+					h.StreamMsg(base.Component.TMarkDown.BlockQuote(name+`ssh连接成功`), true)
 				}
 			}
 			continue
@@ -44,7 +54,7 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 			VariableId:   cast.ToString(variableId),
 			VariableType: cast.ToString(cmd[`type`]), //类型
 			Name:         cast.ToString(cmd[`name`]), //名称
-			Id:           cast.ToString(cmd[`id`]),
+			Id:           cast.ToString(cmd[`RunUniqueId`]),
 			ResultKey:    resultKey, //输出的替换key
 			IsShowOk:     0,         //1准备好在页面上展示 0 未准备好　不决定是否能执行
 			IsRunOk:      0,         //1已经准备好执行 全部为1的时候就可以执行了
@@ -102,18 +112,18 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 		}
 		variableFormList = append(variableFormList, variableForm)
 	}
-	h.StreamMsg(Component.TMarkDown.BlockQuote(`就绪`), true)
+	h.StreamMsg(base.Component.TMarkDown.BlockQuote(cast.ToString(variableInfo[`name`])+`就绪`), true)
 	return variableFormList, replaceList, isCanRun, nil
 }
 
-// ParseIdContent 解析sql或者bash脚本第一行定义的id，格式：[id=1]
+// ParseIdContent 解析sql或者bash脚本第一行定义的id，格式：[RunUniqueId=1]
 func (h *VariableRun) ParseIdContent(str string) (string, string) {
 	sqlParamList := strings.Split(str, "\n")
-	id := gstool.StringReplaces(sqlParamList[0], map[string]string{
+	id := gstool.SReplaces(sqlParamList[0], map[string]string{
 		`[id=`: ``,
 		`]`:    ``,
 	})
-	return id, gstool.StringReplaces(str, map[string]string{
+	return id, gstool.SReplaces(str, map[string]string{
 		sqlParamList[0] + "\n": ``,
 	})
 }
@@ -153,28 +163,26 @@ func (h *VariableRun) preConnSsh(cmd map[string]any) error {
 	if sshId == `` {
 		return errors.New(`ssh_id不能为空`)
 	}
-	name := cast.ToString(cmd[`name`])
-	sshUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `run`)
-	sftpUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
-	if Component.TShell.Exist(sshUniqueKey) && Component.TShell.Exist(sftpUniqueKey) {
+	sshUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `run`)
+	sftpUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
+	if base.Component.TShell.Exist(sshUniqueKey) && base.Component.TShell.Exist(sftpUniqueKey) {
 		return nil
 	}
 	//初始化连接
-	sshConfig, sshConfigErr := Component.TSqlite.GetSshConfig(sshId)
+	sshConfig, sshConfigErr := base.Component.TSqlite.GetSshConfig(sshId)
 	if sshConfigErr != nil {
 		return sshConfigErr
 	}
 	//ssh
-	_, sshClientErr := Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, define.SseVariable)
+	_, sshClientErr := base.Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, define.SseVariable)
 	if sshClientErr != nil {
 		return sshClientErr
 	}
 	//sftp
-	_, sftpClientErr := Component.TShell.GetClientMarkdown(sshConfig, sftpUniqueKey, define.SseVariable)
+	_, sftpClientErr := base.Component.TShell.GetClientMarkdown(sshConfig, sftpUniqueKey, define.SseVariable)
 	if sftpClientErr != nil {
 		return sftpClientErr
 	}
-	h.StreamMsg(name+`，连接成功ssh成功`, true)
 	return nil
 }
 

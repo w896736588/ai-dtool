@@ -1,23 +1,30 @@
-package base
+package p_variable
 
 import (
+	"dev_tool/base"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
+	"errors"
 	"github.com/spf13/cast"
 )
 
 // RunProcess 执行前收集一些选择或者输入项 可以多次调用 有些待输入的还有替换符 可以多次执行 这里不管是否显示参数
 func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replaceList []map[string]string) ([]_struct.VariableForm, []map[string]string, int, error) {
+	base.Component.TVariable.StopAll()          //停止其他任务
+	base.Component.TVariable.Add(h.RunUniqueId) //注册本次任务
 	needInputNum := len(variableFormList)
 	inputNum := 0
 	for key, variableForm := range variableFormList {
+		if base.Component.TVariable.Get(h.RunUniqueId) == `stop` {
+			return nil, nil, 0, errors.New(`任务停止`)
+		}
 		variableForm.IsRunOk = 1 //预设该项已经执行过
 		switch cast.ToInt(variableForm.VariableType) {
 		case define.VariableCmdInput, define.VariableCmdTextarea: //输入框 不存在替换
 			if variableForm.Input.Value != `` {
 				h.addReplace(&replaceList, variableForm.ResultKey, variableForm.Input.Value)
 				if h.CmdId == variableForm.Id {
-					h.StreamMsg(Component.TMarkDown.BlockQuote(variableForm.Input.Label+","+variableForm.Input.Value), true)
+					h.StreamMsg(base.Component.TMarkDown.BlockQuote(variableForm.Input.Label+","+variableForm.Input.Value), true)
 				}
 			} else {
 				variableForm.IsRunOk = 0
@@ -57,7 +64,7 @@ func (h *VariableRun) RunProcess(variableFormList []_struct.VariableForm, replac
 				return nil, nil, 0, sqlRet
 			} else {
 				if h.CmdId == variableForm.Id {
-					h.StreamMsg(Component.TMarkDown.Code(variableForm.Sql.Sql, `sql`), true)
+					h.StreamMsg(base.Component.TMarkDown.Code(variableForm.Sql.Sql, `sql`), true)
 				}
 			}
 			break

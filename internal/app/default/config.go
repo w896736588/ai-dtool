@@ -83,6 +83,7 @@ func initComponent(IsBuild, WebData string) {
 		panic(err.Error())
 	}
 	base.Component.Env.ConfigPath = base.Component.Env.RootPath + `/config/` + base.Component.Env.AppName
+	base.Component.Env.PkgPath = base.Component.Env.RootPath + `/internal/pkg`
 	base.Component.Env.LogPath = base.Component.Env.RootPath + `/logs`
 	if WebData != `` {
 		base.Component.Env.PlaywrightUserData = WebData + `/playwright_userdata`
@@ -175,6 +176,14 @@ func initGin(ViewPath string) {
 	base.Component.TOs = gstool.NewGsOs()
 	base.Component.TMarkDown = &base.TMarkDown{}
 	base.Component.TAi = &base.TAi{}
+	base.Component.TJas = &base.TJas{
+		Regis: map[string]string{
+			`p_js`: base.Component.Env.PkgPath + "/p_js",
+		},
+		JsData: map[string]string{},
+	}
+	base.Component.TJas.Load()
+	base.Component.TVariable = &base.TVariable{TaskList: map[string]string{}}
 	base.Component.TGin.IsRun = true
 }
 

@@ -31,7 +31,7 @@ func (h *TAi) ParseStream(url, msg string) []byte {
 
 // ParseBot 纳米AI格式
 func (h *TAi) ParseBot(msg string, resBytes *[]byte) {
-	msg = gstool.StringReplaces(msg, map[string]string{
+	msg = gstool.SReplaces(msg, map[string]string{
 		`data: `: ``,
 	})
 	Component.GsLog.Errof(`解析：---%v---`, msg)
@@ -47,7 +47,7 @@ func (h *TAi) ParseBot(msg string, resBytes *[]byte) {
 }
 
 func (h *TAi) ParseDeepseek(msg string, resBytes *[]byte) {
-	msg = gstool.StringReplaces(msg, map[string]string{
+	msg = gstool.SReplaces(msg, map[string]string{
 		`data: `: ``,
 	})
 	if msg == "[DONE]" {

@@ -4,6 +4,7 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
+	"dev_tool/internal/pkg/p_variable"
 	"gitee.com/Sxiaobai/gs/gs"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
@@ -184,7 +185,7 @@ func VariableCmdRunPre(c *gin.Context) {
 		gsgin.GinResponseError(c, `变量id不能为空`, nil)
 		return
 	}
-	variable := base.NewVariable()
+	variable := p_variable.NewVariableRun()
 	variable.VariableId = cast.ToString(variableId)
 	formList, replaceList, isCanRun, err := variable.RunPre(variableId)
 	if err != nil {
@@ -192,9 +193,10 @@ func VariableCmdRunPre(c *gin.Context) {
 		return
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`form_list`:    formList,
-		`replace_list`: replaceList,
-		`is_can_run`:   isCanRun,
+		`form_list`:     formList,
+		`replace_list`:  replaceList,
+		`is_can_run`:    isCanRun,
+		`run_unique_id`: variable.RunUniqueId,
 	})
 }
 
@@ -216,7 +218,7 @@ func VariableCmdRunProcess(c *gin.Context) {
 		gsgin.GinResponseError(c, decodeErr.Error(), nil)
 		return
 	}
-	variable := base.NewVariable()
+	variable := p_variable.NewVariableRun()
 	variable.VariableId = cast.ToString(dataMap[`variable_id`])
 	variable.CmdId = cast.ToString(dataMap[`cmd_id`])
 	formList, replaceList, isCanRun, err := variable.RunProcess(variableFormList, replaceList)
@@ -225,9 +227,10 @@ func VariableCmdRunProcess(c *gin.Context) {
 		return
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`form_list`:    formList,
-		`replace_list`: replaceList,
-		`is_can_run`:   isCanRun,
+		`form_list`:     formList,
+		`replace_list`:  replaceList,
+		`is_can_run`:    isCanRun,
+		`run_unique_id`: variable.RunUniqueId,
 	})
 }
 
@@ -254,12 +257,14 @@ func VariableCmdRunDone(c *gin.Context) {
 		gsgin.GinResponseError(c, `变量id不能为空`, nil)
 		return
 	}
-	variable := base.NewVariable()
+	variable := p_variable.NewVariableRun()
 	variable.VariableId = cast.ToString(dataMap[`variable_id`])
 	err = variable.RunDone(variableId, replaceList, variableFormList)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	gsgin.GinResponseSuccess(c, ``, nil)
+	gsgin.GinResponseSuccess(c, ``, map[string]string{
+		`run_unique_id`: variable.RunUniqueId,
+	})
 }

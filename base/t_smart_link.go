@@ -10,14 +10,10 @@ import (
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
-	"io"
 	"log"
 	"math"
-	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
-	"path"
 	"strings"
 	"sync"
 	"time"
@@ -192,7 +188,7 @@ func (h *TSmartLink) GetPlaywrightRunList() []map[string]any {
 }
 
 func (h *TSmartLink) LinkInit(slink string) string {
-	link := gstool.StringReplaces(slink, map[string]string{
+	link := gstool.SReplaces(slink, map[string]string{
 		`{rand}`:                   Component.TBase.GetUnique(`link_rand`),
 		gstool.UrlEncode(`{rand}`): cast.ToString(Component.TBase.GetUnique(`link_rand`)),
 	})
@@ -440,128 +436,12 @@ func (h *TSmartLink) GetUserDataContext(runParams *_struct.SmartLinkRunParams) C
 	}
 }
 
-// 下载文件并检查后缀
-func (h *TSmartLink) downloadFileWithSuffixCheck(rawURL string) error {
-	// 解析 URL 并移除查询参数
-	parsedURL, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("failed to parse URL: %v", err)
-	}
-	parsedURL.RawQuery = "" // 移除查询参数
-
-	// 获取清理后的 URL
-	cleanURL := parsedURL.String()
-
-	// 检查文件后缀
-	if !h.isValidFileSuffix(cleanURL) {
-		return fmt.Errorf("invalid file suffix for URL: %s", cleanURL)
-	}
-
-	// 发送 HTTP 请求
-	resp, err := http.Get(cleanURL)
-	if err != nil {
-		return fmt.Errorf("failed to fetch URL: %v", err)
-	}
-	defer resp.Body.Close()
-
-	// 检查 HTTP 响应状态码
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	// 确定文件名和保存路径
-	filename := path.Base(parsedURL.Path)
-	savePath := path.Join(h.DownloadPath, Component.TBase.GetUnique(`download`)+filename)
-
-	// 保存文件
-	file, err := os.Create(savePath)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %v", err)
-	}
-	defer file.Close()
-
-	_, err = io.Copy(file, resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to write file: %v", err)
-	}
-
-	fmt.Printf("File downloaded successfully: %s\n", savePath)
-	return nil
-}
-
-// 检查是否为常见文件后缀
-func (h *TSmartLink) isValidFileSuffix(url string) bool {
-	commonSuffixes := map[string]bool{
-		".png":  true,
-		".jpg":  true,
-		".jpeg": true,
-		".gif":  true,
-		".bmp":  true,
-		".webp": true,
-		".pdf":  true,
-		".doc":  true,
-		".docx": true,
-		".xls":  true,
-		".xlsx": true,
-		".txt":  true,
-		".zip":  true,
-		".mp4":  true,
-		".avi":  true,
-	}
-
-	ext := strings.ToLower(path.Ext(url))
-	return commonSuffixes[ext]
-}
-
 func (h *TSmartLink) WitchDownload() {
 	_ = gstool.DirCreatePath(h.DownloadPath)
 	if err := os.MkdirAll(h.DownloadPath, 0755); err != nil {
 		log.Fatalf("创建目录失败: %v", err)
 	}
 	gstool.FmtPrintlnLogTime(`开始监听%s`, h.DownloadPath)
-	//watch := gstool.NewFileWatch(h.DownloadPath, func(event fsnotify.Event) {
-	//	if event.Op == fsnotify.Create {
-	//		gstool.FmtPrintlnLogTime(`监听到文件下载了 %#v`, event)
-	//		ext, extErr := gstool.FileExtType(event.Name)
-	//		gstool.FmtPrintlnLogTime(`文件后缀 %s %v`, ext, extErr)
-	//		cmd := exec.Command("cmd", "/C", "start", event.Name)
-	//		_ = cmd.Start()
-	//	}
-	//})
-	//go func() {
-	//	err := watch.Start()
-	//	if err != nil {
-	//		gstool.FmtPrintlnLogTime(`监听失败 ^%s`, err.Error())
-	//	}
-	//}()
-}
-
-func (h *TSmartLink) OpenFile(filePath, targetFilePath, ext string) {
-	allowTypeList := []string{
-		`xlsx`, `xls`, `csv`, `doc`, `docx`, `ppt`, `pptx`, `pdf`,
-		`txt`, `md`, `html`, `htm`, `jpg`, `jpeg`, `png`, `gif`,
-		`bmp`, `ico`, `svg`, `mp4`, `mp3`, `wav`,
-	}
-	compareName := strings.ToLower(filePath)
-	boolStart := false
-	for _, allowType := range allowTypeList {
-		if strings.Contains(compareName, allowType) {
-			boolStart = true
-			break
-		}
-	}
-	if boolStart {
-		gstool.FmtPrintlnLogTime(`直接打开 %s`, filePath)
-		cmd := exec.Command("cmd", "/C", "start", filePath)
-		_ = cmd.Start()
-	} else {
-		renameErr := os.Rename(filePath, targetFilePath+`.`+ext)
-		gstool.FmtPrintlnLogTime(`移动后打开 %s => %s`, filePath, targetFilePath+`.`+ext)
-		if renameErr != nil {
-			gstool.FmtPrintlnLogTime(`重命名错误 %s`, renameErr.Error())
-		}
-	}
-
 }
 
 // SetTitle 设置title
@@ -576,35 +456,46 @@ func (h *TSmartLink) AddTipMsg(page playwright.Page, tip string) {
 	if tip == `` {
 		return
 	}
-	_, _ = page.Evaluate(`(function() {
-			setTimeout(function() {
-				var existTip = document.getElementById('playwrightTipId');
-				if (existTip) {
-					existTip.remove();
-				}
-				var messageBox = document.createElement('div');
-				messageBox.id = 'playwrightTipId';
-				messageBox.textContent = '` + tip + `';
-				messageBox.style.position = 'fixed';
-				messageBox.style.top = '70%';
-				messageBox.style.left = '50%';
-				messageBox.style.transform = 'translate(-50%, -50%)';
-				messageBox.style.color = 'white';
-				messageBox.style.backgroundColor = 'black';
-				messageBox.style.padding = '15px';
-				messageBox.style.borderRadius = '10px';
-				messageBox.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
-				messageBox.style.zIndex = 2000;
-				messageBox.style.display = 'block'; // 初始状态隐藏
-				document.body.appendChild(messageBox);
-				setTimeout(function() {
-					var existTip = document.getElementById('playwrightTipId');
-					if (existTip) {
-						existTip.remove();
-					}
-				}, 2000); 
-			}, 100); 
-		})();`)
+	content := Component.TJas.Get(`p_js`, `tip.js`)
+	content = gstool.SReplaces(content, map[string]string{
+		`{tip}`: tip,
+	})
+	_, _ = page.Evaluate(content)
+}
+
+// ShowCookieTip 展示cookie中的某个值
+func (h *TSmartLink) ShowCookieTip(page playwright.Page) {
+	configList := []_struct.ShowCookie{
+		{
+			FindType:   `cookie`,
+			FindKey:    "xkf_userid",
+			Label:      "客服ID",
+			DomainList: []string{"xiaokefu.com.cn", "applnk.cn"},
+		},
+		{
+			FindType:     `any`,
+			Label:        "客服账号",
+			FormatList:   []string{`url_decode`},
+			RegexFindKey: `s:8:"username";s:\d+:"(.+)"`,
+			DomainList:   []string{"xiaokefu.com.cn", "applnk.cn", "ishipinhao.com"},
+		},
+	}
+	replaceList := make([]_struct.ShowCookie, 0)
+	for _, config := range configList {
+		if gstool.SContains(strings.ToLower(page.URL()), config.DomainList) {
+			replaceList = append(replaceList, config)
+		}
+	}
+	if len(replaceList) == 0 {
+		return
+	}
+	config := gstool.JsonEncode(replaceList)
+	Component.GsLog.Debugf(`配置的js %s`, config)
+	content := Component.TJas.Get(`p_js`, `info.js`)
+	content = gstool.SReplaces(content, map[string]string{
+		`{config}`: config,
+	})
+	_, _ = page.Evaluate(content)
 }
 
 func (h *TSmartLink) SmartCheckAndUpdate() {
@@ -700,7 +591,7 @@ func (h *TSmartLink) GetRunParams(id int, label, userName, password string, open
 		return runParams, errors.New(`链接不存在，检查是否json格式错误`)
 	}
 	//赋值
-	runParams.Link = gstool.StringReplaces(runParams.Link, map[string]string{
+	runParams.Link = gstool.SReplaces(runParams.Link, map[string]string{
 		`{rand}`: Component.TBase.GetCombineKey(),
 	})
 	runParams.IsSaveUserData = cast.ToInt(smartLink[`is_save_user_data`]) == 1
@@ -754,7 +645,7 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 		Locator := cast.ToString(processVal[`Locator`])
 		//链接
 		redirectUri := cast.ToString(processVal[`uri`])
-		redirectUri = gstool.StringReplaces(redirectUri, map[string]string{
+		redirectUri = gstool.SReplaces(redirectUri, map[string]string{
 			`{domain}`: runParams.Domain,
 		})
 
@@ -762,11 +653,11 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 		tip := cast.ToString(processVal[`tip`])
 		//检查 替换等
 		checkKey := cast.ToString(processVal[`check_key`])
-		checkKey = gstool.StringReplaces(checkKey, map[string]string{
+		checkKey = gstool.SReplaces(checkKey, map[string]string{
 			`{user_name}`: runParams.UserName,
 			`{password}`:  runParams.Password,
 		})
-		checkKey = gstool.StringReplaces(checkKey, takeContentMap)
+		checkKey = gstool.SReplaces(checkKey, takeContentMap)
 		//输出
 		outKey := cast.ToString(processVal[`out_key`])
 		//检查是否允许执行 当需要输出的时候不进行判断
@@ -827,14 +718,14 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 				continue
 			}
 			inputValue := cast.ToString(processVal[`value`])
-			inputValue = gstool.StringReplaces(inputValue, map[string]string{
+			inputValue = gstool.SReplaces(inputValue, map[string]string{
 				`{user_name}`: runParams.UserName,
 				`{password}`:  runParams.Password,
 				`{rand}`:      Component.TBase.GetUnique(`input_rand_`),
 			})
 			//针对输入进行替换
 			for _, replaceVal := range runParams.ReplaceList {
-				inputValue = gstool.StringReplaces(inputValue, replaceVal)
+				inputValue = gstool.SReplaces(inputValue, replaceVal)
 			}
 			inputSelecter := page.Locator(Locator)
 			selectorLoaderWaitErr := inputSelecter.WaitFor(playwright.LocatorWaitForOptions{
@@ -950,6 +841,11 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page play
 			_ = route.Abort()
 		})
 	}
+
+	page.On(`load`, func() {
+		gstool.FmtPrintlnLogTime(`页面加载完`)
+		go h.ShowCookieTip(page)
+	})
 
 	//可以监听到 前端下载
 	page.On(`download`, func(download playwright.Download) {

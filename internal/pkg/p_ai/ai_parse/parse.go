@@ -2,10 +2,10 @@ package ai_parse
 
 import (
 	_struct "dev_tool/base/struct"
-	"dev_tool/internal/pkg/ai/ai_parse/ai_action_tpl"
-	"dev_tool/internal/pkg/ai/ai_parse/ai_model_tpl"
-	"dev_tool/internal/pkg/ai/ai_parse/ai_other_set"
-	"dev_tool/internal/pkg/ai/ai_parse/ai_service_tpl"
+	"dev_tool/internal/pkg/p_ai/ai_parse/ai_action_tpl"
+	"dev_tool/internal/pkg/p_ai/ai_parse/ai_model_tpl"
+	"dev_tool/internal/pkg/p_ai/ai_parse/ai_other_set"
+	"dev_tool/internal/pkg/p_ai/ai_parse/ai_service_tpl"
 	"errors"
 	"github.com/spf13/cast"
 )

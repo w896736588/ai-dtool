@@ -1,11 +1,11 @@
-package ai
+package p_ai
 
 import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
-	"dev_tool/internal/pkg/ai/ai_model"
-	"dev_tool/internal/pkg/ai/ai_parse"
+	"dev_tool/internal/pkg/p_ai/ai_model"
+	"dev_tool/internal/pkg/p_ai/ai_parse"
 	"errors"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
@@ -60,14 +60,14 @@ func getAiModel(model string) ai_model.AiModel {
 	case `qwen2.5-coder-32b-instruct`:
 		ai := ai_model.NewBailian(model, `sk-938dc32c6e394fe089e64aac7ee6443f`, true, func(s string, err error) {
 			if err != nil {
-				sendErr := base.Component.TSse.SendMsg(define.SseAiCode, `执行失败:`+err.Error())
+				sendErr := base.Component.TSse.SendMsg(define.SseAiCode, `执行失败:`+err.Error(), 0)
 				if sendErr != nil {
 					gstool.FmtPrintlnLogTime(`发送0#code失败 %s`, sendErr.Error())
 				}
 			} else {
 				sendMsg := base.Component.TAi.ParseStream(`basic`, s)
 				gstool.FmtPrintlnLogTime(`解析结果 %s %s`, sendMsg, s)
-				sendErr := base.Component.TSse.SendMsg(define.SseAiCode, cast.ToString(sendMsg))
+				sendErr := base.Component.TSse.SendMsg(define.SseAiCode, cast.ToString(sendMsg), 0)
 				if sendErr != nil {
 					gstool.FmtPrintlnLogTime(`发送0#code失败 %s`, sendErr.Error())
 				}

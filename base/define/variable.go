@@ -19,6 +19,7 @@ const (
 	VariableCmdPlaywright              //选择playwright
 	VariableCmdCombine                 //内容收集
 	VariableCmdTextarea                //输入框 textarea
+	VariableCmdCommand                 //直接执行命令 不同于复杂的bash（复杂的bash可能在磁盘空间不足时无法执行）
 )
 
 const (

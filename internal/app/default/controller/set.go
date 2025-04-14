@@ -205,7 +205,7 @@ func SetGitQuickList(c *gin.Context) {
 			}).One()
 			gitDirList = append(gitDirList, map[string]any{
 				`code_path`: findDir,
-				`name`: gstool.StringReplaces(findDir, map[string]string{
+				`name`: gstool.SReplaces(findDir, map[string]string{
 					searchDir: ``,
 				}),
 				`ssh_id`:       cast.ToString(sshConfig[`id`]),

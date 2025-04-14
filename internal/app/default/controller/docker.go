@@ -146,7 +146,7 @@ func getDockerComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshConfi
 	}
 	sshConfig, _ := base.Component.TSqlite.GetSshConfig(sshId)
 	uniqueKey := base.Component.TBase.GetCombineKey(sshId, `compose`)
-	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, define.SseDocker)
+	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, define.SseDocker, nil)
 	if sshClientErr != nil {
 		return nil, nil, err
 	}

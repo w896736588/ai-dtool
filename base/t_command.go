@@ -61,7 +61,7 @@ func (h *Command) GitIgnoreAll() *Command {
 
 // RemoteOriginBranch 注意这个命令会让get fetch失效，仅用于那些非常大的仓库
 func (h *Command) RemoteOriginBranch(branch string) *Command {
-	branch = gstool.StringReplaces(branch, map[string]string{
+	branch = gstool.SReplaces(branch, map[string]string{
 		` `: ``,
 	})
 	if branch == `master` {
@@ -92,12 +92,12 @@ func (h *Command) GitCheckout(branch string) *Command {
 }
 
 func (h *Command) GitPullOrigin(branch string) *Command {
-	h.SetCommand(fmt.Sprintf(`%sgit pull origin %s`, h.sudo, branch))
+	h.SetCommand(fmt.Sprintf(`%sgit pull --quiet origin %s`, h.sudo, branch))
 	return h
 }
 
 func (h *Command) GitPull() *Command {
-	h.SetCommand(fmt.Sprintf(`%sgit pull `, h.sudo))
+	h.SetCommand(fmt.Sprintf(`%sgit pull  --quiet`, h.sudo))
 	return h
 }
 

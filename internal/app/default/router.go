@@ -174,7 +174,7 @@ func api() {
 		sse := base.Component.TSse.Sse.Register(clientId, stopC, c)
 		go func() {
 			controller.GitLogs(gsgin.GinGetParams(c), func(s string) {
-				err := base.Component.TSse.SendMsg(clientId, s+"\n")
+				err := base.Component.TSse.SendMsg(clientId, s+"\n", 0)
 				if err != nil {
 					gstool.FmtPrintlnLogTime(`错误 %s`, err.Error())
 					return
@@ -184,7 +184,7 @@ func api() {
 		}()
 		return sse
 	}, func(sse *gsgin.Sse) {
-		err := base.Component.TSse.SendMsg(sse.ClientId, "[DONE]")
+		err := base.Component.TSse.SendMsg(sse.ClientId, "[DONE]", 0)
 		if err != nil {
 			gstool.FmtPrintlnLogTime(`错误 %s`, err.Error())
 			return

@@ -189,7 +189,7 @@ func getSupervisorComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshC
 	}
 	sshConfig, _ := base.Component.TSqlite.GetSshConfig(sshId)
 	uniqueKey := base.Component.TBase.GetCombineKey(sshId, `supervisor`)
-	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, define.SseSupervisor)
+	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, define.SseSupervisor, nil)
 	if sshClientErr != nil {
 		return nil, nil, err
 	}
