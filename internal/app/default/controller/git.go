@@ -194,6 +194,7 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshConfig, 
 			`remote: Compressing objects:`,
 			`Checking out files:`,
 			`Unpacking objects:`}) {
+			s = strings.TrimRight(s, "\n")
 			msgList := strings.Split(s, "\r")
 			msgList = append(msgList, "\n")
 			return msgList
