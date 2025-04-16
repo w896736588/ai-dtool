@@ -6,6 +6,7 @@ import (
 	"errors"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gsssh"
+	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 	"strings"
@@ -185,8 +186,20 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshConfig, 
 	}
 	sshConfig, _ := base.Component.TSqlite.GetSshConfig(sshId)
 	uniqueKey := base.Component.TBase.GetCombineKey(sshId, `git`)
-	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, define.SseGit, func(s string) string {
-		return s
+	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, define.SseGit, func(s string) []string {
+		if gstool.SContains(s, []string{
+			`Receiving objects:`,
+			`remote: Counting objects:`,
+			`Resolving deltas:`,
+			`remote: Compressing objects:`,
+			`Checking out files:`,
+			`Unpacking objects:`}) {
+			msgList := strings.Split(s, "\r")
+			msgList = append(msgList, "\n")
+			return msgList
+		} else {
+			return []string{s}
+		}
 	})
 	if sshClientErr != nil {
 		return nil, nil, err

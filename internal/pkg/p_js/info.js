@@ -8,8 +8,8 @@
         let cookieList = document.cookie.split(';')
         let showContent = ''
         let config = {config}
-        // 遍历配置项获取Cookie值
-        config.forEach(item => {
+        //获取配置方法
+        const getShowValue = function (item , cookieList){
             let findValue = '' //查找的值
             let isFind = false //是否找到了
             cookieList.forEach(cookie => {
@@ -48,9 +48,11 @@
                     }
                 }
             });
-
-            // 创建每行显示
-            showContent += '<div>'+item.label+': <strong>'+findValue+'</strong></div>'
+            return findValue
+        }
+        // 遍历配置项获取Cookie值
+        config.forEach(item => {
+            showContent += '<div>'+item.label+': <strong>'+getShowValue(item , cookieList)+'</strong></div>'
 
         });
         // 创建浮动块
@@ -58,7 +60,6 @@
         floater.id = 'cookie-floater';
         floater.style.position = 'fixed';
         floater.style.bottom = '20px';
-        floater.style.right = '20px';
         floater.style.padding = '10px';
         floater.style.backgroundColor = '#f0f0f0';
         floater.style.border = '1px solid #ccc';
@@ -66,6 +67,16 @@
         floater.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
         floater.style.zIndex = '9999';
         floater.style.transition = 'all 0.3s ease'; // 添加过渡效果
+
+        // 从 localStorage 读取位置状态（默认右侧）
+        const savedPosition = localStorage.getItem('cookieFloaterPosition') || 'right';
+        if (savedPosition === 'left') {
+            floater.style.left = '20px';
+            floater.style.right = 'auto';
+        } else {
+            floater.style.right = '20px';
+            floater.style.left = 'auto';
+        }
 
         // 添加内容
         let html = '<div style="display: flex; justify-content: space-between; align-items: center;">'
@@ -80,14 +91,19 @@
         // 添加移动按钮事件
         let isRight = true;
         floater.querySelector('#move-floater').addEventListener('click', () => {
-            if(isRight) {
-                floater.style.right = 'auto';
+            const currentPosition = floater.style.left === '20px' ? 'left' : 'right';
+            const newPosition = currentPosition === 'right' ? 'left' : 'right';
+
+            if (newPosition === 'left') {
                 floater.style.left = '20px';
+                floater.style.right = 'auto';
             } else {
-                floater.style.left = 'auto';
                 floater.style.right = '20px';
+                floater.style.left = 'auto';
             }
-            isRight = !isRight;
+
+            // 存储新位置到 localStorage
+            localStorage.setItem('cookieFloaterPosition', newPosition);
         });
 
         // 添加关闭按钮事件

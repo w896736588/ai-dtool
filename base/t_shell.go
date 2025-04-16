@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gsssh"
+	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
 	"runtime/debug"
 	"sync"
@@ -15,7 +16,7 @@ type TShell struct {
 }
 
 // GetClient 正常输出
-func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId string, formatStream func(string) string) (*gsssh.SshConfig, error) {
+func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId string, formatStream func(string) []string) (*gsssh.SshConfig, error) {
 	defer h.lock.Unlock()
 	h.lock.Lock()
 	sshId := cast.ToString(sshConfig[`id`])
@@ -41,7 +42,7 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 		//已经加了自动重连
 		//h.ReConn(shellClientId , sshConfig)
 	})
-	gsShell.SetMaxRunSecond(20)
+	gsShell.SetMaxRunSecond(40)
 	createErr := gsShell.ConnectAuthPassword()
 	if createErr != nil {
 		return nil, createErr
@@ -53,11 +54,12 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 	}
 	//回调准备输出的内容 放到这里 就不需要链接linux出现的一大段文字
 	gsShell.SetFuncStreamReceive(func(msg string) {
+		Component.GsLog.Errof(`%s`, msg)
 		if formatStream != nil {
-			_ = Component.TSse.SendMsgChunk(sseClientId, formatStream(msg), Chunk{
-				Type: ChunkNum,
-				Num:  50,
-			}, 10)
+			Component.GsLog.Errof(`解析前的 %s`, msg)
+			msgList := formatStream(msg)
+			Component.GsLog.Errof(`解析后的 %s`, gstool.JsonEncode(msgList))
+			_ = Component.TSse.SendMsgChunkList(sseClientId, msgList, 10)
 		} else {
 			_ = Component.TSse.SendMsgChunk(sseClientId, msg, Chunk{
 				Type: ChunkNum,
@@ -105,7 +107,7 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 		//已经加了自动重连
 		//h.ReConn(shellClientId , sshConfig)
 	})
-	gsShell.SetMaxRunSecond(20)
+	gsShell.SetMaxRunSecond(40)
 	createErr := gsShell.ConnectAuthPassword()
 	if createErr != nil {
 		return nil, createErr

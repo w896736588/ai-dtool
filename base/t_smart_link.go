@@ -470,11 +470,11 @@ func (h *TSmartLink) ShowCookieTip(page playwright.Page) {
 			FindType:   `cookie`,
 			FindKey:    "xkf_userid",
 			Label:      "UserId",
-			DomainList: []string{"xiaokefu.com.cn", "applnk.cn"},
+			DomainList: []string{"xiaokefu.com.cn", "applnk.cn", "ishipinhao.com"},
 		},
 		{
 			FindType:     `any`,
-			Label:        "Account",
+			Label:        "Username",
 			FormatList:   []string{`url_decode`},
 			RegexFindKey: `s:8:"username";s:\d+:"(.+)"`,
 			DomainList:   []string{"xiaokefu.com.cn", "applnk.cn", "ishipinhao.com"},
@@ -850,6 +850,7 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page play
 	page.On(`download`, func(download playwright.Download) {
 		go h.SetPageActive(page, runParams)
 		gstool.FmtPrintlnLogTime(`下载 %#v`, download)
+		go h.AddTipMsg(page, `检测到下载`+download.SuggestedFilename()+`,别急，自动打开中..`)
 		localPath := h.DownloadPath + `/` + Component.TBase.GetUnique(`download`) + `_` + download.SuggestedFilename()
 		gstool.FmtPrintlnLogTime(`localPath %s`, localPath)
 		gstool.FmtPrintlnLogTime(download.String())
@@ -863,6 +864,7 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page play
 				if gstool.FileIsExisted(localPath) {
 					time.Sleep(time.Millisecond * 100)
 					_ = download.Cancel()
+					go h.AddTipMsg(page, `开始打开`+download.SuggestedFilename())
 					openErr := Component.TOs.OpenFileWindows(localPath, localPath)
 					if openErr != nil {
 						gstool.FmtPrintlnLogTime(`打开文件失败 %s %s`, localPath, openErr.Error())
