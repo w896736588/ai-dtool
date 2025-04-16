@@ -34,9 +34,8 @@ func (h *TAi) ParseBot(msg string, resBytes *[]byte) {
 	msg = gstool.SReplaces(msg, map[string]string{
 		`data: `: ``,
 	})
-	Component.GsLog.Errof(`解析：---%v---`, msg)
 	if strings.HasPrefix(msg, `MESSAGEID`) {
-		*resBytes = append(*resBytes, []byte(msg+"\n")...)
+		*resBytes = append(*resBytes, []byte(msg+"  \n")...)
 	} else {
 		if msg == `` { //纳米AI 空可能表示这个消息结束
 			*resBytes = append(*resBytes, []byte("\n")...)
