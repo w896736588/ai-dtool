@@ -30,21 +30,7 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 		if base.Component.TVariable.Get(h.RunUniqueId) == `stop` {
 			return nil, nil, 0, errors.New(`任务停止`)
 		}
-		name := cast.ToString(cmd[`name`])
-		if cast.ToInt(cmd[`is_pre`]) == 0 { //不需要提前执行
-			if gstool.ArrayFindValueIndex(&([]int{define.VariableCmdBash, define.VariableCmdCommand}), cast.ToInt(cmd[`type`])) >= 0 { //预先连接ssh
-				id, _ := h.ParseIdContent(cast.ToString(cmd[`bash`]))
-				if id == `` {
-					return nil, nil, 0, errors.New(`bash脚本中id格式错误`)
-				}
-				cmd[`ssh_id`] = id
-				preConnErr := h.preConnSsh(cmd)
-				if preConnErr != nil {
-					return nil, nil, 0, preConnErr
-				} else {
-					h.StreamMsg(base.Component.TMarkDown.BlockQuote(name+`ssh连接成功`), true)
-				}
-			}
+		if cast.ToInt(cmd[`is_pre`]) == 0 {
 			continue
 		}
 
@@ -54,7 +40,7 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 			VariableId:   cast.ToString(variableId),
 			VariableType: cast.ToString(cmd[`type`]), //类型
 			Name:         cast.ToString(cmd[`name`]), //名称
-			Id:           cast.ToString(cmd[`RunUniqueId`]),
+			Id:           cast.ToString(cmd[`id`]),
 			ResultKey:    resultKey, //输出的替换key
 			IsShowOk:     0,         //1准备好在页面上展示 0 未准备好　不决定是否能执行
 			IsRunOk:      0,         //1已经准备好执行 全部为1的时候就可以执行了
@@ -83,6 +69,9 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 				isCanRun = 0
 				break
 			}
+			if h.isExistConfigParam(variableForm.Select.Options) {
+				variableForm.Select.Options = h.ParseConfig(variableForm.Select.Options)
+			}
 			radioErr := h.PreRadioOptionList(&variableForm)
 			if radioErr != nil {
 				return nil, nil, 0, radioErr
@@ -93,7 +82,7 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 			id, sql := h.ParseIdContent(cast.ToString(cmd[`sql`]))
 			variableForm.Sql = _struct.VariableFormSql{
 				Sql:     sql,
-				MysqlId: id,
+				MysqlId: cast.ToString(id),
 			}
 			if h.isExistReplaceParam(variableForm.Sql.Sql) {
 				isCanRun = 0
@@ -116,16 +105,35 @@ func (h *VariableRun) RunPre(variableId any) ([]_struct.VariableForm, []map[stri
 	return variableFormList, replaceList, isCanRun, nil
 }
 
+// ParseConfig 自带的配置查询解析
+func (h *VariableRun) ParseConfig(config string) string {
+	if gstool.SContains(config, []string{`{config:ssh}`}) {
+		sshList, sshErr := base.Component.TSqlite.GetAllSshConfig()
+		if sshErr == nil {
+			for k, sshMap := range sshList {
+				sshMap[`value`] = sshMap[`id`]
+				sshMap[`label`] = sshMap[`name`]
+				sshList[k] = sshMap
+			}
+			return gstool.JsonEncode(sshList)
+		}
+	}
+	return `[]`
+}
+
 // ParseIdContent 解析sql或者bash脚本第一行定义的id，格式：[RunUniqueId=1]
-func (h *VariableRun) ParseIdContent(str string) (string, string) {
+func (h *VariableRun) ParseIdContent(str string) (int, string) {
 	sqlParamList := strings.Split(str, "\n")
-	id := gstool.SReplaces(sqlParamList[0], map[string]string{
+	bashContent := gstool.SReplaces(str, map[string]string{
+		sqlParamList[0] + "\n": ``,
+	})
+	baseId := sqlParamList[0]
+	id := gstool.SReplaces(baseId, map[string]string{
 		`[id=`: ``,
 		`]`:    ``,
 	})
-	return id, gstool.SReplaces(str, map[string]string{
-		sqlParamList[0] + "\n": ``,
-	})
+	sshId := cast.ToInt(id)
+	return sshId, bashContent
 }
 
 // PreRadioOptionList 组装单选
@@ -158,9 +166,8 @@ func (h *VariableRun) PreRadioOptionList(variableForm *_struct.VariableForm) err
 }
 
 // preConnSsh 初始化ssh连接
-func (h *VariableRun) preConnSsh(cmd map[string]any) error {
-	sshId := cast.ToString(cmd[`ssh_id`])
-	if sshId == `` {
+func (h *VariableRun) preConnSsh(sshId int) error {
+	if sshId == 0 {
 		return errors.New(`ssh_id不能为空`)
 	}
 	sshUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `run`)

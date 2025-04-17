@@ -77,6 +77,11 @@ func (h *VariableRun) isExistReplaceParam(data string) bool {
 	return gstool.RegexMatchString(data, `{[a-zA-Z0-9_]+}`)
 }
 
+// 是否存在待获取配置的变量
+func (h *VariableRun) isExistConfigParam(data string) bool {
+	return gstool.RegexMatchString(data, `{[a-zA-Z0-9_:]+}`)
+}
+
 func (h *VariableRun) isExistReplaceList(resultKey string, replaceList []map[string]string) bool {
 	for _, replaceMap := range replaceList {
 		if _, ok := replaceMap[resultKey]; ok {
@@ -200,17 +205,17 @@ func (h *VariableRun) StreamMsg(msg string, enter bool) {
 }
 
 func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
-	mysqlId := ``
+	mysqlId := 0
 	sql := ``
 	name := cast.ToString(cmd[`name`])
 	cmd[`sql`] = h.replace(cast.ToString(cmd[`sql`]), h.ReplaceList)
 	if cast.ToInt(cmd[`mysql_id`]) == 0 { //当没有传递mysql_id时，那么从sql里面找
 		mysqlId, sql = h.ParseIdContent(cast.ToString(cmd[`sql`]))
 	} else {
-		mysqlId = cast.ToString(cmd[`mysql_id`])
+		mysqlId = cast.ToInt(cmd[`mysql_id`])
 		sql = cast.ToString(cmd[`sql`])
 	}
-	if cast.ToInt(mysqlId) == 0 {
+	if mysqlId == 0 {
 		return ``, errors.New(`mysql_id不能为空`)
 	}
 	mysqlConfig, mysqlConfigErr := base.Component.TSqlite.GetMysqlConfig(mysqlId)
@@ -240,21 +245,20 @@ func (h *VariableRun) runMysqlSql(cmd map[string]any) (string, error) {
 }
 
 func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
-	sshId := ``
+	sshId := 0
 	bash := ``
 	cmd[`bash`] = h.replace(cast.ToString(cmd[`bash`]), h.ReplaceList)
-	if cast.ToInt(cmd[`ssh_id`]) == 0 {
-		sshId, bash = h.ParseIdContent(cast.ToString(cmd[`bash`]))
-	} else {
-		sshId = cast.ToString(cmd[`ssh_id`])
-		bash = cast.ToString(cmd[`bash`])
-	}
+	sshId, bash = h.ParseIdContent(cast.ToString(cmd[`bash`]))
 	cmdId := cast.ToString(cmd[`id`])
 	if bash == `` {
 		return ``, errors.New(`脚本不能为空`)
 	}
-	if cast.ToInt(sshId) == 0 {
+	if sshId == 0 {
 		return ``, errors.New(`ssh不能为空`)
+	}
+	preConnErr := h.preConnSsh(sshId)
+	if preConnErr != nil {
+		return ``, gstool.Error(`链接失败 %s`, preConnErr.Error())
 	}
 	h.StreamMsg(base.Component.TMarkDown.Code(cast.ToString(cmd[`bash`]), `bash`), true)
 	sshUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `run`)
@@ -307,20 +311,19 @@ func (h *VariableRun) runBash(cmd map[string]any) (string, error) {
 }
 
 func (h *VariableRun) runCommand(cmd map[string]any) (string, error) {
-	sshId := ``
+	sshId := 0
 	bash := ``
 	cmd[`bash`] = h.replace(cast.ToString(cmd[`bash`]), h.ReplaceList)
-	if cast.ToInt(cmd[`ssh_id`]) == 0 {
-		sshId, bash = h.ParseIdContent(cast.ToString(cmd[`bash`]))
-	} else {
-		sshId = cast.ToString(cmd[`ssh_id`])
-		bash = cast.ToString(cmd[`bash`])
-	}
+	sshId, bash = h.ParseIdContent(cast.ToString(cmd[`bash`]))
 	if bash == `` {
 		return ``, errors.New(`脚本不能为空`)
 	}
-	if cast.ToInt(sshId) == 0 {
+	if sshId == 0 {
 		return ``, errors.New(`ssh不能为空`)
+	}
+	preConnErr := h.preConnSsh(sshId)
+	if preConnErr != nil {
+		return ``, gstool.Error(`链接失败 %s`, preConnErr.Error())
 	}
 	//分离出来多行命令
 	commandList := strings.Split(bash, "\n")
@@ -461,17 +464,17 @@ func (h *VariableRun) runCombine(cmd map[string]any) (string, error) {
 }
 
 func (h *VariableRun) runRedis(cmd map[string]any) (string, error) {
-	redisId := ``
+	redisId := 0
 	redisBash := ``
 	name := cast.ToString(cmd[`name`])
 	cmd[`bash`] = h.replace(cast.ToString(cmd[`bash`]), h.ReplaceList)
 	if cast.ToInt(cmd[`redis_id`]) == 0 {
 		redisId, redisBash = h.ParseIdContent(cast.ToString(cmd[`bash`]))
 	} else {
-		redisId = cast.ToString(cmd[`redis_id`])
+		redisId = cast.ToInt(cmd[`redis_id`])
 		redisBash = cast.ToString(cmd[`bash`])
 	}
-	if cast.ToInt(redisId) == 0 {
+	if redisId == 0 {
 		return ``, errors.New(`redis不能为空`)
 	}
 	if redisBash == `` {
