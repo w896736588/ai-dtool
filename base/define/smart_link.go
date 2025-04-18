@@ -4,7 +4,7 @@ type OpenType int
 
 type CmdType string
 
-const TextContent CmdType = `text_content`
+const TextContent CmdType = `text_content` //提取内容
 const BoolResult CmdType = `bool_result`
 const Close CmdType = `close`
 const Wait CmdType = `wait`

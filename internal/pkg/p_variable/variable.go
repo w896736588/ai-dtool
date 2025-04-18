@@ -436,6 +436,7 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 					h.StreamMsg(cast.ToString(sendMsg), false)
 				},
 				StartCallBack: func() {
+					h.StreamMsg(base.Component.TMarkDown.BlockQuote(`开始回答...`), true)
 					h.PlaywrightLock.Lock()
 				},
 				EndCallBack: func(msg string) {

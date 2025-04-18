@@ -144,8 +144,8 @@ func validateProcess(process string) error {
 				return errors.New(`type为input时value不能为空`)
 			}
 		case `redirect_uri`: //跳转 保持当前域名
-			if cast.ToString(processVal[`uri`]) == `` {
-				return errors.New(`type为redirect_uri时，uri不能为空`)
+			if cast.ToString(processVal[`value`]) == `` {
+				return errors.New(`type为redirect_uri时，value不能为空`)
 			}
 		}
 	}

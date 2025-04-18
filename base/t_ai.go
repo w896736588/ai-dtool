@@ -15,7 +15,6 @@ type TAi struct {
 func (h *TAi) ParseStream(url, msg string) []byte {
 	msgList := strings.Split(msg, "\n")
 	resBytes := make([]byte, 0)
-	Component.GsLog.Errof(`收到消息---%v---`, msg)
 	for _, msgVal := range msgList {
 		if !strings.HasPrefix(msgVal, `data: `) {
 			continue
@@ -25,6 +24,7 @@ func (h *TAi) ParseStream(url, msg string) []byte {
 		} else if gstool.SContains(url, []string{`/api/v0/chat/completion`, `/api/GitLab`, `basic`}) { //git日志
 			h.ParseDeepseek(msgVal, &resBytes)
 		} else if gstool.SContains(url, []string{`/completion/stream`}) { //kimi
+			gstool.FmtPrintlnLogTime(`%s`, msgVal)
 			h.ParseKimi(msgVal, &resBytes)
 		}
 	}

@@ -639,16 +639,8 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 		}
 		//类型
 		processType := cast.ToString(processVal[`type`])
-		//如果不存在
-		notExistLocator := cast.ToString(processVal[`not_exist_Locator`])
 		//元素选择
 		locator := h.parseLocator(cast.ToString(processVal[`Locator`]))
-		//链接
-		redirectUri := cast.ToString(processVal[`uri`])
-		redirectUri = gstool.SReplaces(redirectUri, map[string]string{
-			`{domain}`: runParams.Domain,
-		})
-
 		//操作描述
 		tip := cast.ToString(processVal[`tip`])
 		//检查 替换等
@@ -683,7 +675,19 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 				h.callRun(runParams, cmdType, ``, tip, content)
 			}
 		case define.BoolResult: //bool结果判断
-			h.outKeyBoolResult(outKey, checkKey, boolResultMap, takeContentMap, runParams)
+			if locator.Locator != `` {
+				//根据locator来判断为true还是false
+				existNum, existErr := page.Locator(locator.Locator).Count()
+				if existErr != nil || existNum == 0 {
+					boolResultMap[outKey] = false //不存在
+				} else {
+					boolResultMap[outKey] = true //存在
+				}
+				gstool.FmtPrintlnLogTime(`判断 %s`, gstool.JsonEncode(boolResultMap))
+			} else {
+				//根据上面的执行来判断
+				h.outKeyBoolResult(outKey, checkKey, boolResultMap, takeContentMap, runParams)
+			}
 		case define.Close:
 			if !h.allowCheckKey(checkKey, boolResultMap) {
 				continue
@@ -704,10 +708,11 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 			}()
 		case define.Click: //点击
 			if !h.allowCheckKey(checkKey, boolResultMap) {
+				gstool.FmtPrintlnLogTime(`点击 %s 不允许`, tip)
 				continue
 			}
-			gstool.FmtPrintlnLogTime(`点击 %s`, tip)
-			clickErr := h.click(locator.Locator, notExistLocator, runParams.LocatorTimeout, page)
+			gstool.FmtPrintlnLogTime(`点击 %s 允许`, tip)
+			clickErr := h.click(locator.Locator, runParams.LocatorTimeout, page)
 			if clickErr != nil {
 				h.callRun(runParams, cmdType, clickErr.Error(), tip, locator.Locator)
 				return clickErr
@@ -747,6 +752,11 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 				return errors.New(`无法找到元素` + locator.Locator)
 			}
 		case define.RedirectUri: //跳转 保持当前域名
+			//链接
+			redirectUri := cast.ToString(processVal[`value`])
+			redirectUri = gstool.SReplaces(redirectUri, map[string]string{
+				`{domain}`: runParams.Domain,
+			})
 			if !h.allowCheckKey(checkKey, boolResultMap) {
 				continue
 			}
@@ -803,10 +813,20 @@ func (h *TSmartLink) allowCheckKey(checkKey string, boolResult map[string]bool) 
 	if checkKey == `` {
 		return true
 	}
-	if strings.HasPrefix(checkKey, `!`) && boolResult[checkKey[1:]] == true { //不等于时 等于了 那么跳过
-		return false
-	} else if !boolResult[checkKey] { //等于时  不等于了 那么跳过
-		return false
+	gstool.FmtPrintlnLogTime(`判断开始--- %s`, checkKey)
+	checkList := strings.Split(checkKey, `&&`)
+	gstool.FmtPrintlnLogTime(`判断列表 %s`, gstool.JsonEncode(checkList))
+	for _, checkKeyVal := range checkList {
+
+		if strings.HasPrefix(checkKeyVal, `!`) { //不等于时 等于了 那么跳过
+			if boolResult[checkKeyVal[1:]] == true {
+				gstool.FmtPrintlnLogTime(`判断1 %s 不允许 %s %t`, checkKeyVal, checkKeyVal[1:], boolResult[checkKeyVal[1:]])
+				return false
+			}
+		} else if !boolResult[checkKeyVal] { //等于时  不等于了 那么跳过
+			gstool.FmtPrintlnLogTime(`判断2 %s 不允许`, checkKeyVal)
+			return false
+		}
 	}
 	return true
 }
@@ -966,7 +986,7 @@ func (h *TSmartLink) SmartLinkPlaywrightVersion() (*playwright.PlaywrightDriver,
 }
 
 // 点击
-func (h *TSmartLink) click(Locator, notExistLocator string, waitSecond float64, page playwright.Page) error {
+func (h *TSmartLink) click(Locator string, waitSecond float64, page playwright.Page) error {
 	task := gstask.NewTask()
 	waitSecond = 3 * 1000
 	task.Add(gstask.CallbackFunc{
@@ -992,31 +1012,6 @@ func (h *TSmartLink) click(Locator, notExistLocator string, waitSecond float64, 
 		},
 		Timeout: 5 * time.Second,
 	})
-	if notExistLocator != `` {
-		task.Add(gstask.CallbackFunc{
-			Func: func() gstask.Result {
-				existLoader := page.Locator(notExistLocator)
-				existLoaderErr := existLoader.WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: &waitSecond,
-					State:   playwright.WaitForSelectorStateVisible,
-				})
-				if existLoaderErr != nil {
-					return gstask.Result{
-						Result: nil,
-						State:  2,
-						Err:    existLoaderErr,
-					}
-				} else {
-					return gstask.Result{
-						Result: existLoader,
-						State:  2,
-						Err:    nil,
-					}
-				}
-			},
-			Timeout: 5 * time.Second,
-		})
-	}
 	result := task.RunOne()
 	if result.Err != nil {
 		return result.Err
