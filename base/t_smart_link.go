@@ -522,6 +522,7 @@ func (h *TSmartLink) InitPlaywright() {
 	var pwErr error
 	h.Pw, pwErr = playwright.Run()
 	if pwErr != nil {
+		gstool.FmtPrintlnLogTime(`启动浏览器核心失败 %s`, pwErr.Error())
 		return
 	}
 	h.BrowserWebkitSilence, _ = h.Pw.Chromium.Launch()
