@@ -39,4 +39,11 @@ xcopy D:\go\cache_manager_api\script\start.bat D:\go\release\zhimaPub\ /y
 xcopy D:\go\cache_manager_api\go.mod D:\go\release\zhimaPub\goservice\ /y
 xcopy D:\go\devtool\public\favicon.ico D:\go\release\zhimaPub\devtool\ /y
 xcopy D:\go\devtool\dist D:\go\release\zhimaPub\devtool\dist\ /E /Y /I
-"C:\Program Files\WinRAR\winrar.exe" a -afzip -r D:\go\release\zhimaPub.zip D D:\go\release\zhimaPub
+if exist "D:\go\release\zhimaPub\goservice\playwright.RunLock" (
+    del /f /q "D:\go\release\zhimaPub\goservice\playwright.RunLock"
+)
+if exist "D:\go\release\zhimaPub.zip" (
+    del /f /q "D:\go\release\zhimaPub.zip"
+)
+
+"C:\Program Files\WinRAR\winrar.exe" a -afzip -r -ep1 D:\go\release\zhimaPub.zip D D:\go\release\zhimaPub
