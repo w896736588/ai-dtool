@@ -101,7 +101,7 @@ func (h *VariableRun) radioChooseReplace(variableForm *_struct.VariableForm, rep
 	for _, option := range variableForm.Select.OptionList {
 		//组装替换符
 		if variableForm.ResultKey != `` && chooseValue != `` && chooseValue == option.Value {
-			gstool.FmtPrintlnLogTime(`选择 %s %s %s`, h.CmdId, variableForm.Id, gstool.JsonEncode(option))
+			//gstool.FmtPrintlnLogTime(`选择 %s %s %s`, h.CmdId, variableForm.Id, gstool.JsonEncode(option))
 			if h.CmdId == variableForm.Id {
 				h.StreamMsg(base.Component.TMarkDown.BlockQuote(variableForm.Name+"，选择"+option.Label), true)
 			}
@@ -455,7 +455,7 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 
 	base.Component.TPlaywright.IsRun = true
 	for i := 0; i < runParams.OpenNum; i++ {
-		h.StreamMsg(base.Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`])+`,启动`), true)
+		h.StreamMsg("\n"+base.Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`])+`,启动`), true)
 		openErr := base.Component.TPlaywright.OpenBrowserPlaywright(runParams)
 		if openErr != nil {
 			h.StreamMsg(base.Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`])+`,启动失败，`+openErr.Error()), true)
