@@ -7,12 +7,19 @@ import (
 )
 
 type TAi struct {
+	log *gstool.GsSlog
+}
+
+func (h *TAi) Init() {
+	h.log = gstool.NewSlogDefault(Component.Env.LogPath, `ai`)
+	h.log.DeleteLogs(``)
 }
 
 // ParseStream 解析流式数据
 // 支持纳米AI
 // 支持deepseek
 func (h *TAi) ParseStream(url, msg string) []byte {
+	h.log.Debugf(`%s`, msg)
 	msgList := strings.Split(msg, "\n")
 	resBytes := make([]byte, 0)
 	for _, msgVal := range msgList {
@@ -24,7 +31,6 @@ func (h *TAi) ParseStream(url, msg string) []byte {
 		} else if gstool.SContains(url, []string{`/api/v0/chat/completion`, `/api/GitLab`, `basic`}) { //git日志
 			h.ParseDeepseek(msgVal, &resBytes)
 		} else if gstool.SContains(url, []string{`/completion/stream`}) { //kimi
-			gstool.FmtPrintlnLogTime(`%s`, msgVal)
 			h.ParseKimi(msgVal, &resBytes)
 		}
 	}

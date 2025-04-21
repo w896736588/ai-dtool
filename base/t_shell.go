@@ -13,6 +13,16 @@ import (
 type TShell struct {
 	ShellClientMap map[string]*gsssh.SshConfig
 	lock           sync.Mutex
+	log            *gstool.GsSlog
+}
+
+func NewTShell() *TShell {
+	log := gstool.NewSlogDefault(Component.Env.LogPath, `shell`)
+	log.DeleteLogs(``)
+	return &TShell{
+		ShellClientMap: make(map[string]*gsssh.SshConfig),
+		log:            log,
+	}
 }
 
 // GetClient 正常输出
@@ -54,11 +64,11 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 	}
 	//回调准备输出的内容 放到这里 就不需要链接linux出现的一大段文字
 	gsShell.SetFuncStreamReceive(func(msg string) {
-		Component.GsLog.Errof(`%s`, msg)
+		h.log.Debugf(`receive：%s`, msg)
 		if formatStream != nil {
-			Component.GsLog.Errof(`解析前的 %s`, msg)
+			h.log.Errof(`解析前的 %s`, msg)
 			msgList := formatStream(msg)
-			Component.GsLog.Errof(`解析后的 %s`, gstool.JsonEncode(msgList))
+			h.log.Errof(`解析后的 %s`, gstool.JsonEncode(msgList))
 			_ = Component.TSse.SendMsgChunkList(sseClientId, msgList, 10)
 		} else {
 			_ = Component.TSse.SendMsgChunk(sseClientId, msg, Chunk{

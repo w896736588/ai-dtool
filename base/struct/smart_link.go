@@ -4,7 +4,7 @@ import (
 	"dev_tool/base/define"
 )
 
-type SmartLinkRunParams struct {
+type PlaywrightRunParams struct {
 	Id                  int                                          //链接ID
 	Link                string                                       //打开的链接
 	SmartLinkUniqueKey  string                                       //在链接下面的唯一值   索引值_label 例如第一个链接 id_label

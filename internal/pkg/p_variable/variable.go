@@ -398,12 +398,12 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 	if label == `` {
 		return ``, errors.New(`链接label不能为空`)
 	}
-	runParams, runParamsErr := base.Component.TSmartLink.GetRunParams(id, label, ``, ``, 0, h.ReplaceList)
+	runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, ``, ``, 0, h.ReplaceList)
 	if runParamsErr != nil {
 		return ``, errors.New(runParamsErr.Error())
 	}
 	for {
-		if base.Component.TSmartLink.IsRun {
+		if base.Component.TPlaywright.IsRun {
 			h.StreamMsg(base.Component.TMarkDown.BlockQuote(`等待其他自动化链接任务完成..`), true)
 			time.Sleep(time.Second * 1)
 			continue
@@ -429,7 +429,7 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 			if uri == `` {
 				continue
 			}
-			base.Component.TSmartLink.ListenUrlList[uri] = &_struct.ListenUrl{
+			base.Component.TPlaywright.ListenUrlList[uri] = &_struct.ListenUrl{
 				IsSse: true,
 				Callback: func(msg string, err error) {
 					sendMsg := base.Component.TAi.ParseStream(uri, msg)
@@ -446,15 +446,15 @@ func (h *VariableRun) runPlaywright(cmd map[string]any) (string, error) {
 		}
 	}
 
-	base.Component.TSmartLink.IsRun = true
+	base.Component.TPlaywright.IsRun = true
 	for i := 0; i < runParams.OpenNum; i++ {
 		h.StreamMsg(base.Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`])+`,启动`), true)
-		openErr := base.Component.TSmartLink.OpenBrowserPlaywright(runParams)
+		openErr := base.Component.TPlaywright.OpenBrowserPlaywright(runParams)
 		if openErr != nil {
 			h.StreamMsg(base.Component.TMarkDown.BlockQuote(cast.ToString(cmd[`name`])+`,启动失败，`+openErr.Error()), true)
 		}
 	}
-	base.Component.TSmartLink.IsRun = false
+	base.Component.TPlaywright.IsRun = false
 	return ``, nil
 }
 

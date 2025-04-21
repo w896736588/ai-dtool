@@ -19,10 +19,10 @@ import (
 	"time"
 )
 
-type TSmartLink struct {
+type TPlaywright struct {
 	RunLock sync.Mutex
 	//处理下载后自动打开
-	DownloadPath string
+	downloadPath string
 	EventLock    sync.Mutex
 	//全局
 	BrowserWebkitChrome  playwright.Browser
@@ -32,16 +32,17 @@ type TSmartLink struct {
 	//浏览器列表
 	ContextList []ContextPage
 	//page 活跃时间
-	PageActiveTime map[string]PageActiveTime
+	pageActiveTime map[string]PageActiveTime
 	//是否运行中
 	IsRun bool
 	//监听链接
 	ListenUrlList map[string]*_struct.ListenUrl
+	log           *gstool.GsSlog
 }
 
 type PageActiveTime struct {
 	ActiveTime time.Time
-	RunParams  *_struct.SmartLinkRunParams
+	RunParams  *_struct.PlaywrightRunParams
 	Page       playwright.Page
 }
 
@@ -51,6 +52,17 @@ type ContextPage struct {
 	UserDataIndex      int    //数据目录索引
 	UserDataPath       string //数据目录
 	ContextUnique      string //唯一标记 context
+}
+
+func NewTSmartLink() *TPlaywright {
+	gsLog := gstool.NewSlogDefault(Component.Env.LogPath, `playwright`)
+	gsLog.DeleteLogs(``)
+	return &TPlaywright{
+		log:            gsLog,
+		downloadPath:   Component.Env.PlaywrightDownload,
+		pageActiveTime: make(map[string]PageActiveTime),
+		ListenUrlList:  make(map[string]*_struct.ListenUrl),
+	}
 }
 
 // GetPage 拿到Page runUniqueKey 格式为0_common3 这种 单浏览器模式，每次打开都会打开一个新的浏览器
@@ -63,7 +75,7 @@ type ContextPage struct {
 // browserPassword 浏览器自带验证密码
 // isCombine 是否自动合并不同域名到同一个浏览器 1合并 0不合并
 // cookie 页面打开时设置的cookie
-func (h *TSmartLink) GetPage(runParams *_struct.SmartLinkRunParams) (playwright.Page, error) {
+func (h *TPlaywright) GetPage(runParams *_struct.PlaywrightRunParams) (playwright.Page, error) {
 	h.RunLock.Lock()
 	defer h.RunLock.Unlock()
 	var contextErr error
@@ -92,7 +104,7 @@ func (h *TSmartLink) GetPage(runParams *_struct.SmartLinkRunParams) (playwright.
 	if boolCleanFirstBlank {
 		contextPageList := contextPage.Context.Pages()
 		if len(contextPageList) > 0 {
-			gstool.FmtPrintlnLogTime(`关闭页面 %#v`, contextPageList[0].URL())
+			h.log.Debugf(`关闭页面 %#v`, contextPageList[0].URL())
 			_ = contextPageList[0].Close()
 		}
 	}
@@ -102,9 +114,9 @@ func (h *TSmartLink) GetPage(runParams *_struct.SmartLinkRunParams) (playwright.
 			Content: playwright.String(runParams.Cookie),
 		})
 		if cookieErr != nil {
-			gstool.FmtPrintlnLogTime(`设置cookie失败 %s`, cookieErr.Error())
+			h.log.Errof(`设置cookie失败 %s`, cookieErr.Error())
 		} else {
-			gstool.FmtPrintlnLogTime(`设置cookie成功 %s`, runParams.Cookie)
+			h.log.Debugf(`设置cookie成功 %s`, runParams.Cookie)
 		}
 	}
 	//设置header
@@ -127,19 +139,19 @@ func (h *TSmartLink) GetPage(runParams *_struct.SmartLinkRunParams) (playwright.
 				}
 				setErr := route.Continue(playwright.RouteContinueOptions{Headers: headers})
 				if setErr != nil {
-					gstool.FmtPrintlnLogTime(`setExtraHTTPHeaders %s`, setErr.Error())
+					h.log.Errof(`setExtraHTTPHeaders %s`, setErr.Error())
 				} else {
-					gstool.FmtPrintlnLogTime(`给%s设置header%s`, requestUrl, gstool.JsonEncode(runParams.Headers))
+					h.log.Debugf(`给%s设置header%s`, requestUrl, gstool.JsonEncode(runParams.Headers))
 				}
 			} else {
 				continueErr := route.Continue()
 				if continueErr != nil {
-					gstool.FmtPrintlnLogTime(`continue %s`, continueErr.Error())
+					h.log.Errof(`continue %s`, continueErr.Error())
 				}
 			}
 		})
 		if err != nil {
-			log.Fatalf("could not set up route: %v", err)
+			h.log.Errof("could not set up route: %v", err)
 		}
 	}
 
@@ -149,12 +161,12 @@ func (h *TSmartLink) GetPage(runParams *_struct.SmartLinkRunParams) (playwright.
 		return nil, goErr
 	}
 	//等待加载完成
-	Component.TSmartLink.WaitForLoadState(page, runParams.LocatorTimeout)
+	Component.TPlaywright.WaitForLoadState(page, runParams.LocatorTimeout)
 	return page, nil
 }
 
 // CleanContextPageList 清理context
-func (h *TSmartLink) CleanContextPageList(contextUnique string) {
+func (h *TPlaywright) CleanContextPageList(contextUnique string) {
 	newContextList := make([]ContextPage, 0)
 	for _, v := range h.ContextList {
 		if v.ContextUnique != contextUnique {
@@ -165,7 +177,7 @@ func (h *TSmartLink) CleanContextPageList(contextUnique string) {
 }
 
 // CleanContextPageByDomain 根据域名清理context
-func (h *TSmartLink) CleanContextPageByDomain(domain string) {
+func (h *TPlaywright) CleanContextPageByDomain(domain string) {
 	for _, v := range h.ContextList {
 		contextPageList := v.Context.Pages()
 		for _, page := range contextPageList {
@@ -176,27 +188,30 @@ func (h *TSmartLink) CleanContextPageByDomain(domain string) {
 	}
 }
 
-func (h *TSmartLink) GetPlaywrightRunList() []map[string]any {
+func (h *TPlaywright) GetPlaywrightRunList() []map[string]any {
 	runList := make([]map[string]any, 0)
 	for uniKey, runInfo := range h.ContextList {
+		pageList := runInfo.Context.Pages()
+
 		runList = append(runList, map[string]any{
-			`name`:   runInfo.SmartLinkUniqueKey,
-			`unikey`: uniKey,
+			`name`:     runInfo.SmartLinkUniqueKey,
+			`unikey`:   uniKey,
+			`page_num`: len(pageList),
 		})
 	}
 	return runList
 }
 
-func (h *TSmartLink) LinkInit(slink string) string {
+func (h *TPlaywright) LinkInit(slink string) string {
 	link := gstool.SReplaces(slink, map[string]string{
 		`{rand}`:                   Component.TBase.GetUnique(`link_rand`),
 		gstool.UrlEncode(`{rand}`): cast.ToString(Component.TBase.GetUnique(`link_rand`)),
 	})
-	gstool.FmtPrintlnLogTime(`Link %s => %s`, slink, link)
+	h.log.Debugf(`Link %s => %s`, slink, link)
 	return link
 }
 
-func (h *TSmartLink) WaitForLoadState(page playwright.Page, timeout float64) {
+func (h *TPlaywright) WaitForLoadState(page playwright.Page, timeout float64) {
 	_ = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
 		State:   playwright.LoadStateDomcontentloaded,
 		Timeout: &timeout,
@@ -211,11 +226,11 @@ func (h *TSmartLink) WaitForLoadState(page playwright.Page, timeout float64) {
 	})
 }
 
-func (h *TSmartLink) IsSameLink(smartLinkUniqueKeyS, smartLinkUniqueKeyT string) bool {
+func (h *TPlaywright) IsSameLink(smartLinkUniqueKeyS, smartLinkUniqueKeyT string) bool {
 	return strings.Split(smartLinkUniqueKeyS, `_`)[0] == strings.Split(smartLinkUniqueKeyT, `_`)[0]
 }
 
-func (h *TSmartLink) GetContextNotSaveUserData(runParams *_struct.SmartLinkRunParams, browser playwright.Browser) (ContextPage, error) {
+func (h *TPlaywright) GetContextNotSaveUserData(runParams *_struct.PlaywrightRunParams, browser playwright.Browser) (ContextPage, error) {
 	for _, v := range h.ContextList {
 		//非同种类型的context跳过
 		if !h.IsSameLink(v.SmartLinkUniqueKey, runParams.SmartLinkUniqueKey) {
@@ -276,7 +291,7 @@ func (h *TSmartLink) GetContextNotSaveUserData(runParams *_struct.SmartLinkRunPa
 	return contentPage, nil
 }
 
-func (h *TSmartLink) GetBrowser(openType define.OpenType) (playwright.Browser, error) {
+func (h *TPlaywright) GetBrowser(openType define.OpenType) (playwright.Browser, error) {
 	if openType == define.OpenTypeWebkitSilence && h.BrowserWebkitSilence != nil {
 		return h.BrowserWebkitSilence, nil
 	} else if openType == define.OpenTypeWebkitChrome && h.BrowserWebkitChrome != nil {
@@ -293,7 +308,7 @@ func (h *TSmartLink) GetBrowser(openType define.OpenType) (playwright.Browser, e
 		}
 	} else {
 		h.BrowserWebkitChrome, browserErr = h.Pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-			//DownloadsPath: &h.DownloadPath,
+			//DownloadsPath: &h.downloadPath,
 			Headless: playwright.Bool(false), //有界面模式
 		})
 		if browserErr != nil {
@@ -307,10 +322,10 @@ func (h *TSmartLink) GetBrowser(openType define.OpenType) (playwright.Browser, e
 }
 
 // GetContextSaveUserData 获取context 需要保存用户数据
-func (h *TSmartLink) GetContextSaveUserData(runParams *_struct.SmartLinkRunParams) (ContextPage, bool, error) {
+func (h *TPlaywright) GetContextSaveUserData(runParams *_struct.PlaywrightRunParams) (ContextPage, bool, error) {
 	//固定打开数据索引 关闭同域名的
 	if runParams.FixDataId == 1 {
-		gstool.FmtPrintlnLogTime(`清理相同域名page`)
+		h.log.Debugf(`清理相同域名page`)
 		h.CleanContextPageByDomain(runParams.Domain)
 	}
 	//获取context
@@ -329,7 +344,7 @@ func (h *TSmartLink) GetContextSaveUserData(runParams *_struct.SmartLinkRunParam
 	var contextErr error
 	if runParams.BrowserAuthUsername != `` && runParams.BrowserAuthPassword != `` {
 		context, contextErr = h.Pw.Chromium.LaunchPersistentContext(contextPage.UserDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
-			//DownloadsPath:     &h.DownloadPath,
+			//DownloadsPath:     &h.downloadPath,
 			Headless:          &Headless,
 			Channel:           playwright.String(runParams.Channel), // 使用完整版 Chrome 而非 Chromium
 			NoViewport:        playwright.Bool(true),
@@ -352,9 +367,9 @@ func (h *TSmartLink) GetContextSaveUserData(runParams *_struct.SmartLinkRunParam
 			},
 		})
 	} else {
-		gstool.FmtPrintlnLogTime(`启动context 超时时间：%f`, runParams.GetPageTimeout)
+		h.log.Debugf(`启动context 超时时间：%f`, runParams.GetPageTimeout)
 		context, contextErr = h.Pw.Chromium.LaunchPersistentContext(contextPage.UserDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
-			//DownloadsPath:     &h.DownloadPath,
+			//DownloadsPath:     &h.downloadPath,
 			Headless: &Headless,
 			//Channel:           playwright.String(runParams.Channel),//增加这个会导致问题 关闭后不能正常启动下一个
 			NoViewport:        playwright.Bool(true),
@@ -372,10 +387,10 @@ func (h *TSmartLink) GetContextSaveUserData(runParams *_struct.SmartLinkRunParam
 				`--disable-blink-features=AutomationControlled`, //禁止传递浏览器自动化标识
 			},
 		})
-		gstool.FmtPrintlnLogTime(`启动 over`)
+		h.log.Debugf(`启动 over`)
 	}
 	if contextErr != nil {
-		gstool.FmtPrintlnLogTime(`启动context报错 %s`, contextErr.Error())
+		h.log.Errof(`启动context报错 %s`, contextErr.Error())
 		return ContextPage{}, false, contextErr
 	}
 	context.OnPage(func(page playwright.Page) {
@@ -394,7 +409,7 @@ func (h *TSmartLink) GetContextSaveUserData(runParams *_struct.SmartLinkRunParam
 }
 
 // GetUserDataContext 拿到数据保存目录
-func (h *TSmartLink) GetUserDataContext(runParams *_struct.SmartLinkRunParams) ContextPage {
+func (h *TPlaywright) GetUserDataContext(runParams *_struct.PlaywrightRunParams) ContextPage {
 	var userIndex int
 	if runParams.FixDataId == 0 {
 		userIndex = -1
@@ -409,7 +424,7 @@ func (h *TSmartLink) GetUserDataContext(runParams *_struct.SmartLinkRunParams) C
 			}
 			boolFind := false
 			pageList := v.Context.Pages()
-			gstool.FmtPrintlnLogTime(`打开的page 数量 %d`, len(pageList))
+			h.log.Debugf(`打开的page 数量 %d`, len(pageList))
 			for _, page := range pageList {
 				if gstool.UrlGetHost(page.URL()) == runParams.Domain {
 					boolFind = true
@@ -417,7 +432,7 @@ func (h *TSmartLink) GetUserDataContext(runParams *_struct.SmartLinkRunParams) C
 				}
 			}
 			if !boolFind && runParams.IsCombine { //需要合并时才处理
-				gstool.FmtPrintlnLogTime(`找到了可以复用的 %#v`, v)
+				h.log.Debugf(`找到了可以复用的 %#v`, v)
 				return v
 			}
 		}
@@ -427,7 +442,7 @@ func (h *TSmartLink) GetUserDataContext(runParams *_struct.SmartLinkRunParams) C
 	}
 
 	dataPath := fmt.Sprintf(Component.Env.PlaywrightUserData+`\%d`, userIndex)
-	gstool.FmtPrintlnLogTime(`准备重新创建context %s`, dataPath)
+	h.log.Debugf(`context使用的数据目录 %s`, dataPath)
 	return ContextPage{
 		Context:            nil,                          //初始化空
 		SmartLinkUniqueKey: runParams.SmartLinkUniqueKey, //选项唯一值
@@ -436,23 +451,23 @@ func (h *TSmartLink) GetUserDataContext(runParams *_struct.SmartLinkRunParams) C
 	}
 }
 
-func (h *TSmartLink) WitchDownload() {
-	_ = gstool.DirCreatePath(h.DownloadPath)
-	if err := os.MkdirAll(h.DownloadPath, 0755); err != nil {
+func (h *TPlaywright) WitchDownload() {
+	_ = gstool.DirCreatePath(h.downloadPath)
+	if err := os.MkdirAll(h.downloadPath, 0755); err != nil {
 		log.Fatalf("创建目录失败: %v", err)
 	}
-	gstool.FmtPrintlnLogTime(`开始监听%s`, h.DownloadPath)
+	h.log.Debugf(`开始监听%s`, h.downloadPath)
 }
 
 // SetTitle 设置title
-func (h *TSmartLink) SetTitle(page playwright.Page, title string) {
+func (h *TPlaywright) SetTitle(page playwright.Page, title string) {
 	_, _ = page.Evaluate(`(function() {
 			document.title = "` + title + `";
 	})();`)
 }
 
 // AddTipMsg 向页面上输出提示
-func (h *TSmartLink) AddTipMsg(page playwright.Page, tip string) {
+func (h *TPlaywright) AddTipMsg(page playwright.Page, tip string) {
 	if tip == `` {
 		return
 	}
@@ -464,7 +479,7 @@ func (h *TSmartLink) AddTipMsg(page playwright.Page, tip string) {
 }
 
 // ShowCookieTip 展示cookie中的某个值
-func (h *TSmartLink) ShowCookieTip(page playwright.Page) {
+func (h *TPlaywright) ShowCookieTip(page playwright.Page) {
 	configList := []_struct.ShowCookie{
 		{
 			FindType:   `cookie`,
@@ -498,7 +513,7 @@ func (h *TSmartLink) ShowCookieTip(page playwright.Page) {
 	_, _ = page.Evaluate(content)
 }
 
-func (h *TSmartLink) SmartCheckAndUpdate() {
+func (h *TPlaywright) SmartCheckAndUpdate() {
 	pw, _ := playwright.NewDriver()
 	lockFileName := `playwright.RunLock`
 	lockFileFullPath := Component.Env.RootPath + `/` + lockFileName
@@ -507,46 +522,46 @@ func (h *TSmartLink) SmartCheckAndUpdate() {
 	} else {
 		content, contentErr := gstool.FileGetContent(lockFileFullPath)
 		if contentErr != nil {
-			gstool.FmtPrintlnLogTime(`获取文件内容失败 %s`, contentErr.Error())
+			h.log.Errof(`获取文件内容失败 %s`, contentErr.Error())
 		} else if content != pw.Version {
 			go h.install(pw.Version, lockFileFullPath)
 		} else {
-			gstool.FmtPrintlnLogTime(`浏览器核心最新版本为：%s ，当前安装版本为：%s,不需要进行更新`, pw.Version, content)
+			h.log.Debugf(`浏览器核心最新版本为：%s ，当前安装版本为：%s,不需要进行更新`, pw.Version, content)
 			go h.InitPlaywright()
 		}
 	}
 }
 
-func (h *TSmartLink) InitPlaywright() {
-	gstool.FmtPrintlnLogTime(`启动浏览器核心..`)
+func (h *TPlaywright) InitPlaywright() {
+	h.log.Debugf(`启动浏览器核心..`)
 	var pwErr error
 	h.Pw, pwErr = playwright.Run()
 	if pwErr != nil {
-		gstool.FmtPrintlnLogTime(`启动浏览器核心失败 %s`, pwErr.Error())
+		h.log.Debugf(`启动浏览器核心失败 %s`, pwErr.Error())
 		return
 	}
 	h.BrowserWebkitSilence, _ = h.Pw.Chromium.Launch()
 	h.BrowserWebkitChrome, _ = h.Pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-		//DownloadsPath: &h.DownloadPath,
+		//DownloadsPath: &h.downloadPath,
 		Headless: playwright.Bool(false), //有界面模式
 	})
 }
 
-func (h *TSmartLink) install(version, lockFileFullPath string) {
+func (h *TPlaywright) install(version, lockFileFullPath string) {
 	_ = gstool.FilePutContentCover(lockFileFullPath, version)
-	gstool.FmtPrintlnLogTime(`开始安装浏览器核心(只安装chrome),大约几分钟时间`)
+	h.log.Debugf(`开始安装浏览器核心(只安装chrome),大约几分钟时间`)
 	err := playwright.Install(&playwright.RunOptions{Browsers: []string{`chromium`}})
 	if err != nil {
-		gstool.FmtPrintlnLogTime(`安装浏览器核心失败 %s`, err.Error())
+		h.log.Debugf(`安装浏览器核心失败 %s`, err.Error())
 		_ = gstool.FileDelete(lockFileFullPath)
 	} else {
-		gstool.FmtPrintlnLogTime(`安装完成`)
+		h.log.Debugf(`安装完成`)
 		h.InitPlaywright()
 	}
 }
 
-func (h *TSmartLink) GetRunParams(id int, label, userName, password string, openNum int, replaceList []map[string]string) (*_struct.SmartLinkRunParams, error) {
-	runParams := &_struct.SmartLinkRunParams{}
+func (h *TPlaywright) GetRunParams(id int, label, userName, password string, openNum int, replaceList []map[string]string) (*_struct.PlaywrightRunParams, error) {
+	runParams := &_struct.PlaywrightRunParams{}
 	if id == 0 {
 		return runParams, errors.New(`链接ID不能为空`)
 	}
@@ -569,7 +584,7 @@ func (h *TSmartLink) GetRunParams(id int, label, userName, password string, open
 	if runParams.Channel == `` {
 		runParams.Channel = `chromium`
 	}
-	gstool.FmtPrintlnLogTime(`使用浏览器核心 ` + runParams.Channel)
+	h.log.Debugf(`使用浏览器核心 ` + runParams.Channel)
 	decodeErr := gstool.JsonDecode(cast.ToString(smartLink[`links`]), &linkList)
 	if decodeErr != nil {
 		return runParams, errors.New(decodeErr.Error())
@@ -618,13 +633,13 @@ func (h *TSmartLink) GetRunParams(id int, label, userName, password string, open
 }
 
 // OpenBrowserPlaywright 打开浏览器
-func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams) error {
-	if Component.TSmartLink.Pw == nil {
+func (h *TPlaywright) OpenBrowserPlaywright(runParams *_struct.PlaywrightRunParams) error {
+	if Component.TPlaywright.Pw == nil {
 		return errors.New(`未启动浏览器核心`)
 	}
-	page, pageErr := Component.TSmartLink.GetPage(runParams)
+	page, pageErr := Component.TPlaywright.GetPage(runParams)
 	if pageErr != nil {
-		gstool.FmtPrintlnLogTime(`获取page报错 %s`, pageErr.Error())
+		h.log.Errof(`获取page报错 %s`, pageErr.Error())
 		return pageErr
 	}
 	//提取内容存储
@@ -632,7 +647,6 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 	//输出结果存储
 	boolResultMap := make(map[string]bool)
 	for _, processVal := range runParams.ProcessList {
-		//gstool.FmtPrintlnLogTime(`----------------`)
 		//限制域名执行
 		domainLimit := cast.ToString(processVal[`domain_limit`])
 		if domainLimit != `` && !strings.Contains(runParams.Domain, domainLimit) {
@@ -654,14 +668,14 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 		//输出
 		outKey := cast.ToString(processVal[`out_key`])
 		//检查是否允许执行 当需要输出的时候不进行判断
-		//gstool.FmtPrintlnLogTime(`outKey：%s checkKey：%s tip：%s boolResultMap：%v takeContentMap：%v`, outKey, checkKey, tip, boolResultMap, takeContentMap)
+		//h.log.Debugf(`outKey：%s checkKey：%s tip：%s boolResultMap：%v takeContentMap：%v`, outKey, checkKey, tip, boolResultMap, takeContentMap)
 		// 等待页面加载完成
-		Component.TSmartLink.WaitForLoadState(page, runParams.LocatorTimeout)
+		Component.TPlaywright.WaitForLoadState(page, runParams.LocatorTimeout)
 		waitUrlErr := page.WaitForURL(page.URL())
 		if waitUrlErr != nil {
 			return waitUrlErr
 		}
-		Component.TSmartLink.AddTipMsg(page, tip)
+		Component.TPlaywright.AddTipMsg(page, tip)
 
 		cmdType := define.CmdType(processType)
 		switch cmdType {
@@ -684,7 +698,7 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 				} else {
 					boolResultMap[outKey] = true //存在
 				}
-				gstool.FmtPrintlnLogTime(`判断 %s`, gstool.JsonEncode(boolResultMap))
+				h.log.Debugf(`判断 %s`, gstool.JsonEncode(boolResultMap))
 			} else {
 				//根据上面的执行来判断
 				h.outKeyBoolResult(outKey, checkKey, boolResultMap, takeContentMap, runParams)
@@ -709,10 +723,10 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 			}()
 		case define.Click: //点击
 			if !h.allowCheckKey(checkKey, boolResultMap) {
-				gstool.FmtPrintlnLogTime(`点击 %s 不允许`, tip)
+				h.log.Debugf(`点击 %s 不允许`, tip)
 				continue
 			}
-			gstool.FmtPrintlnLogTime(`点击 %s 允许`, tip)
+			h.log.Debugf(`点击 %s 允许`, tip)
 			clickErr := h.click(locator.Locator, runParams.LocatorTimeout, page)
 			if clickErr != nil {
 				h.callRun(runParams, cmdType, clickErr.Error(), tip, locator.Locator)
@@ -784,14 +798,14 @@ func (h *TSmartLink) OpenBrowserPlaywright(runParams *_struct.SmartLinkRunParams
 			time.Sleep(time.Second * 5)
 			closeErr := page.Close()
 			if closeErr != nil {
-				gstool.FmtPrintlnLogTime(`page close error：%s`, closeErr.Error())
+				h.log.Errof(`page close error：%s`, closeErr.Error())
 			}
 		}()
 	}
 	return nil
 }
 
-func (h *TSmartLink) parseLocator(Locator string) *_struct.Locator {
+func (h *TPlaywright) parseLocator(Locator string) *_struct.Locator {
 	sList := strings.Split(Locator, `|`)
 	locator := _struct.Locator{
 		Locator: sList[0],
@@ -803,29 +817,29 @@ func (h *TSmartLink) parseLocator(Locator string) *_struct.Locator {
 	return &locator
 }
 
-func (h *TSmartLink) callRun(runParams *_struct.SmartLinkRunParams, cmdType define.CmdType, errmsg, tip, content string) {
+func (h *TPlaywright) callRun(runParams *_struct.PlaywrightRunParams, cmdType define.CmdType, errmsg, tip, content string) {
 	if runParams.RunCallFunc != nil {
 		runParams.RunCallFunc(cmdType, errmsg, tip, content)
 	}
 }
 
 // 是否允许执行 用于判断  {login_user}!={user_name}  或者 某个
-func (h *TSmartLink) allowCheckKey(checkKey string, boolResult map[string]bool) bool {
+func (h *TPlaywright) allowCheckKey(checkKey string, boolResult map[string]bool) bool {
 	if checkKey == `` {
 		return true
 	}
-	gstool.FmtPrintlnLogTime(`判断开始--- %s`, checkKey)
+	h.log.Debugf(`判断开始--- %s`, checkKey)
 	checkList := strings.Split(checkKey, `&&`)
-	gstool.FmtPrintlnLogTime(`判断列表 %s`, gstool.JsonEncode(checkList))
+	h.log.Debugf(`判断列表 %s`, gstool.JsonEncode(checkList))
 	for _, checkKeyVal := range checkList {
 
 		if strings.HasPrefix(checkKeyVal, `!`) { //不等于时 等于了 那么跳过
 			if boolResult[checkKeyVal[1:]] == true {
-				gstool.FmtPrintlnLogTime(`判断1 %s 不允许 %s %t`, checkKeyVal, checkKeyVal[1:], boolResult[checkKeyVal[1:]])
+				h.log.Debugf(`判断1 %s 不允许 %s %t`, checkKeyVal, checkKeyVal[1:], boolResult[checkKeyVal[1:]])
 				return false
 			}
 		} else if !boolResult[checkKeyVal] { //等于时  不等于了 那么跳过
-			gstool.FmtPrintlnLogTime(`判断2 %s 不允许`, checkKeyVal)
+			h.log.Debugf(`判断2 %s 不允许`, checkKeyVal)
 			return false
 		}
 	}
@@ -833,11 +847,11 @@ func (h *TSmartLink) allowCheckKey(checkKey string, boolResult map[string]bool) 
 }
 
 // 提取outKey 返回bool
-func (h *TSmartLink) outKeyBoolResult(outKey, checkKey string, boolResultMap map[string]bool, takeContent map[string]string, runParams *_struct.SmartLinkRunParams) {
+func (h *TPlaywright) outKeyBoolResult(outKey, checkKey string, boolResultMap map[string]bool, takeContent map[string]string, runParams *_struct.PlaywrightRunParams) {
 	if outKey == `` {
 		return
 	}
-	gstool.FmtPrintlnLogTime(`开始提取outKey %s %s`, outKey, checkKey)
+	h.log.Debugf(`开始提取outKey %s %s`, outKey, checkKey)
 	if strings.Contains(checkKey, `!=`) { //不等于
 		checkList := strings.Split(checkKey, `!=`)
 		if len(checkList) != 2 {
@@ -850,7 +864,7 @@ func (h *TSmartLink) outKeyBoolResult(outKey, checkKey string, boolResultMap map
 		} else {
 			boolResultMap[outKey] = false
 		}
-		gstool.FmtPrintlnLogTime(`结果判断 %t`, boolResultMap[outKey])
+		h.log.Debugf(`结果判断 %t`, boolResultMap[outKey])
 	} else if strings.Contains(checkKey, `==`) { //等于
 		checkList := strings.Split(checkKey, `==`)
 		leftCheck := strings.TrimSpace(checkList[0])
@@ -864,14 +878,14 @@ func (h *TSmartLink) outKeyBoolResult(outKey, checkKey string, boolResultMap map
 }
 
 // PageEvents 用来控制一段时间内不使用浏览器后自动关闭
-func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page playwright.Page) {
+func (h *TPlaywright) PageEvents(runParams *_struct.PlaywrightRunParams, page playwright.Page) {
 	page.On("request", func(request playwright.Request) {
 		go h.SetPageActive(page, runParams)
 		return
 	})
 	for listenUri, listen := range h.ListenUrlList {
 		listen.Callback(`注册 **`+listenUri, nil)
-		gstool.FmtPrintlnLogTime(`新打开页面 注册请求 %s`, listenUri)
+		h.log.Debugf(`新打开页面 注册请求 %s`, listenUri)
 		_ = page.Route("**"+listenUri, func(route playwright.Route) {
 			listen.Callback(`捕获到请求`+route.Request().URL(), nil)
 			go h.ListenUrl(route, listen)
@@ -886,11 +900,11 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page play
 	//可以监听到 前端下载
 	page.On(`download`, func(download playwright.Download) {
 		go h.SetPageActive(page, runParams)
-		gstool.FmtPrintlnLogTime(`下载 %#v`, download)
+		h.log.Debugf(`下载 %#v`, download)
 		go h.AddTipMsg(page, `检测到下载`+download.SuggestedFilename()+`,别急，自动打开中..`)
-		localPath := h.DownloadPath + `/` + Component.TBase.GetUnique(`download`) + `_` + download.SuggestedFilename()
-		gstool.FmtPrintlnLogTime(`localPath %s`, localPath)
-		gstool.FmtPrintlnLogTime(download.String())
+		localPath := h.downloadPath + `/` + Component.TBase.GetUnique(`download`) + `_` + download.SuggestedFilename()
+		h.log.Debugf(`localPath %s`, localPath)
+		h.log.Debugf(download.String())
 		go func() {
 			//这个会一直阻塞
 			_ = download.SaveAs(localPath)
@@ -904,9 +918,9 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page play
 					go h.AddTipMsg(page, `开始打开`+download.SuggestedFilename())
 					openErr := Component.TOs.OpenFileWindows(localPath, localPath)
 					if openErr != nil {
-						gstool.FmtPrintlnLogTime(`打开文件失败 %s %s`, localPath, openErr.Error())
+						h.log.Debugf(`打开文件失败 %s %s`, localPath, openErr.Error())
 					} else {
-						gstool.FmtPrintlnLogTime(`打开文件成功 %s`, localPath)
+						h.log.Errof(`打开文件成功 %s`, localPath)
 					}
 					return
 				}
@@ -916,7 +930,7 @@ func (h *TSmartLink) PageEvents(runParams *_struct.SmartLinkRunParams, page play
 	})
 }
 
-func (h *TSmartLink) ListenUrl(route playwright.Route, listen *_struct.ListenUrl) {
+func (h *TPlaywright) ListenUrl(route playwright.Route, listen *_struct.ListenUrl) {
 	// 获取原始请求信息
 	originalRequest := route.Request()
 	requestUrl := originalRequest.URL()
@@ -947,28 +961,31 @@ func (h *TSmartLink) ListenUrl(route playwright.Route, listen *_struct.ListenUrl
 	}
 }
 
-func (h *TSmartLink) SetPageActive(page playwright.Page, runParams *_struct.SmartLinkRunParams) {
+func (h *TPlaywright) SetPageActive(page playwright.Page, runParams *_struct.PlaywrightRunParams) {
 	h.EventLock.Lock()
 	defer h.EventLock.Unlock()
 	if runParams.AutoCloseSecond == 0 {
 		return
 	}
-	h.PageActiveTime[page.URL()] = PageActiveTime{
+	h.pageActiveTime[page.URL()] = PageActiveTime{
 		ActiveTime: time.Now(),
 		RunParams:  runParams,
 		Page:       page,
 	}
-
+	h.log.Debugf(`page active %s %s`, page.URL(), gstool.TimeNowUnixToString(`Y-m-d H:i:s`))
 }
 
-func (h *TSmartLink) TimerCheckClosePage() {
+func (h *TPlaywright) TimerCheckClosePage() {
 	for {
 		time.Sleep(time.Second)
 		h.EventLock.Lock()
 		newMap := make(map[string]PageActiveTime)
-		for pageUrl, pageActiveTime := range h.PageActiveTime {
+		for pageUrl, pageActiveTime := range h.pageActiveTime {
 			if pageActiveTime.ActiveTime.Add(time.Second * time.Duration(pageActiveTime.RunParams.AutoCloseSecond)).Before(time.Now()) {
-				gstool.FmtPrintlnLogTime(`自动关闭页面 %s`, pageUrl)
+				h.log.Debugf(`自动关闭页面 %s 设置的活跃时间 %d 上次活跃时间 %s 当前时间 %s`,
+					pageUrl, pageActiveTime.RunParams.AutoCloseSecond,
+					gstool.TimeUnixToString(pageActiveTime.ActiveTime, `Y-md H:i:s`),
+					gstool.TimeNowUnixToString(`Y-m-d H:i:s`))
 				go func() {
 					_ = pageActiveTime.Page.Close()
 				}()
@@ -976,18 +993,18 @@ func (h *TSmartLink) TimerCheckClosePage() {
 				newMap[pageUrl] = pageActiveTime
 			}
 		}
-		h.PageActiveTime = newMap
+		h.pageActiveTime = newMap
 		h.EventLock.Unlock()
 	}
 }
 
 // SmartLinkPlaywrightVersion 获取浏览器核心版本
-func (h *TSmartLink) SmartLinkPlaywrightVersion() (*playwright.PlaywrightDriver, error) {
+func (h *TPlaywright) SmartLinkPlaywrightVersion() (*playwright.PlaywrightDriver, error) {
 	return playwright.NewDriver()
 }
 
 // 点击
-func (h *TSmartLink) click(Locator string, waitSecond float64, page playwright.Page) error {
+func (h *TPlaywright) click(Locator string, waitSecond float64, page playwright.Page) error {
 	task := gstask.NewTask()
 	waitSecond = 3 * 1000
 	task.Add(gstask.CallbackFunc{
@@ -1024,18 +1041,18 @@ func (h *TSmartLink) click(Locator string, waitSecond float64, page playwright.P
 	return nil
 }
 
-func (h *TSmartLink) SmartLinkRecycle() error {
-	gstool.FmtPrintlnLogTime(`准备重置..`)
+func (h *TPlaywright) SmartLinkRecycle() error {
+	h.log.Debugf(`准备重置..`)
 	if h.IsRun {
 		return gstool.Error(`正在打开中`)
 	}
 	_ = h.Pw.Stop()
 	h.ContextList = make([]ContextPage, 0)
-	h.PageActiveTime = make(map[string]PageActiveTime)
+	h.pageActiveTime = make(map[string]PageActiveTime)
 	h.InitPlaywright()
 	return nil
 }
 
-func (h *TSmartLink) SmartLinkDownloadPath() error {
-	return Component.TOs.OpenDirWindows(gstool.DirPathFormatToWindows(h.DownloadPath))
+func (h *TPlaywright) SmartLinkDownloadPath() error {
+	return Component.TOs.OpenDirWindows(gstool.DirPathFormatToWindows(h.downloadPath))
 }

@@ -27,7 +27,7 @@ func SmartLinkUpWebkit(c *gin.Context) {
 }
 
 func SmartLinkRecycle(c *gin.Context) {
-	err := base.Component.TSmartLink.SmartLinkRecycle()
+	err := base.Component.TPlaywright.SmartLinkRecycle()
 	if err != nil {
 		gsgin.GinResponseError(c, fmt.Sprintf(`释放失败 %s`, err.Error()), nil)
 		return
@@ -37,7 +37,7 @@ func SmartLinkRecycle(c *gin.Context) {
 }
 
 func SmartLinkDownloadPath(c *gin.Context) {
-	err := base.Component.TSmartLink.SmartLinkDownloadPath()
+	err := base.Component.TPlaywright.SmartLinkDownloadPath()
 	if err != nil {
 		gsgin.GinResponseError(c, fmt.Sprintf(`释放失败 %s`, err.Error()), nil)
 		return
@@ -221,24 +221,25 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 		gsgin.GinResponseError(c, `id和label不能为空`, nil)
 		return
 	}
-	if base.Component.TSmartLink.IsRun {
+	if base.Component.TPlaywright.IsRun {
 		gsgin.GinResponseError(c, `正在启动中`, nil)
 		return
 	}
 	userName := cast.ToString(dataMap[`user_name`])
 	password := cast.ToString(dataMap[`password`])
 	openNum := cast.ToInt(dataMap[`open_num`])
-	runParams, runParamsErr := base.Component.TSmartLink.GetRunParams(id, label, userName, password, openNum, make([]map[string]string, 0))
+	runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, userName, password, openNum, make([]map[string]string, 0))
 	if runParamsErr != nil {
 		gsgin.GinResponseError(c, runParamsErr.Error(), nil)
 		return
 	}
-	base.Component.TSmartLink.IsRun = true
+	gstool.FmtPrintlnLogTime(`开始运行`)
+	base.Component.TPlaywright.IsRun = true
 	wg := sync.WaitGroup{}
 	for i := 0; i < runParams.OpenNum; i++ {
 		wg.Add(1)
 		go func() {
-			openErr := base.Component.TSmartLink.OpenBrowserPlaywright(runParams)
+			openErr := base.Component.TPlaywright.OpenBrowserPlaywright(runParams)
 			if openErr != nil {
 				gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
 			}
@@ -246,7 +247,8 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 		}()
 	}
 	wg.Wait()
-	base.Component.TSmartLink.IsRun = false
+	base.Component.TPlaywright.IsRun = false
+	gstool.FmtPrintlnLogTime(`取消运行`)
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -254,12 +256,12 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 func SmartLinkRunPlaywrightList(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	runList := base.Component.TSmartLink.GetPlaywrightRunList()
+	runList := base.Component.TPlaywright.GetPlaywrightRunList()
 	gsgin.GinResponseSuccess(c, ``, runList)
 }
 
 func SmartLinkPlaywrightVersion(c *gin.Context) {
-	pw, pwErr := base.Component.TSmartLink.SmartLinkPlaywrightVersion()
+	pw, pwErr := base.Component.TPlaywright.SmartLinkPlaywrightVersion()
 	if pwErr != nil {
 		gsgin.GinResponseError(c, `查询失败`+pwErr.Error(), nil)
 		return

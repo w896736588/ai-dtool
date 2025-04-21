@@ -2,13 +2,11 @@ package _default
 
 import (
 	"dev_tool/base"
-	_struct "dev_tool/base/struct"
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gsencrypt"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gssocket"
-	"gitee.com/Sxiaobai/gs/gsssh"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -54,7 +52,6 @@ func initComponent(IsBuild, WebData string) {
 	base.Component = base.TComponent{}
 	base.Component.Env = &base.Env{}
 	base.Component.TGin = &base.Gin{}
-	base.Component.TShell = &base.TShell{ShellClientMap: make(map[string]*gsssh.SshConfig)}
 	base.Component.TRedis = &base.TRedis{RedisClientMap: make(map[string]*gsdb.GsRedis)}
 	base.Component.TRedis.PingAll()
 	base.Component.TMysql = &base.TMysql{MysqlClientMap: make(map[string]*gsdb.GsMysql)}
@@ -96,15 +93,13 @@ func initComponent(IsBuild, WebData string) {
 	gstool.FmtPrintlnLogTime(`根目录 %s`, base.Component.Env.RootPath)
 	gstool.FmtPrintlnLogTime(`加载配置文件 %s`, base.Component.Env.ConfigPath)
 	gstool.FmtPrintlnLogTime(`下载目录 %s`, base.Component.Env.PlaywrightDownload)
+	//初始化shell
+	base.Component.TShell = base.NewTShell()
 	//初始化playwright
-	base.Component.TSmartLink = &base.TSmartLink{
-		DownloadPath:   base.Component.Env.PlaywrightDownload,
-		PageActiveTime: make(map[string]base.PageActiveTime),
-		ListenUrlList:  make(map[string]*_struct.ListenUrl),
-	}
-	go base.Component.TSmartLink.WitchDownload()
-	go base.Component.TSmartLink.SmartCheckAndUpdate()
-	go base.Component.TSmartLink.TimerCheckClosePage()
+	base.Component.TPlaywright = base.NewTSmartLink()
+	go base.Component.TPlaywright.WitchDownload()
+	go base.Component.TPlaywright.SmartCheckAndUpdate()
+	go base.Component.TPlaywright.TimerCheckClosePage()
 	//配置初始化
 	base.Component.ConfigViper = viper.New()
 	base.Component.ConfigViper.AddConfigPath(base.Component.Env.ConfigPath)
@@ -176,6 +171,7 @@ func initGin(ViewPath string) {
 	base.Component.TOs = gstool.NewGsOs()
 	base.Component.TMarkDown = &base.TMarkDown{}
 	base.Component.TAi = &base.TAi{}
+	base.Component.TAi.Init()
 	base.Component.TJas = &base.TJas{
 		Regis: map[string]string{
 			`p_js`: base.Component.Env.PkgPath + "/p_js",

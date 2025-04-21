@@ -24,7 +24,7 @@ type TComponent struct {
 	TRedis        *TRedis
 	TMysql        *TMysql
 	TSocket       *TSocket
-	TSmartLink    *TSmartLink
+	TPlaywright   *TPlaywright
 	TSse          *TSse
 	TOs           *gstool.GsOs
 	TMarkDown     *TMarkDown
