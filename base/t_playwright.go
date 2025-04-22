@@ -48,10 +48,11 @@ type PageActiveTime struct {
 
 type ContextPage struct {
 	Context            playwright.BrowserContext
-	SmartLinkUniqueKey string //选项唯一值
-	UserDataIndex      int    //数据目录索引
-	UserDataPath       string //数据目录
-	ContextUnique      string //唯一标记 context
+	SmartLinkUniqueKey string          //选项唯一值
+	UserDataIndex      int             //数据目录索引
+	UserDataPath       string          //数据目录
+	ContextUnique      string          //唯一标记 context
+	OpenType           define.OpenType //打开类型
 }
 
 func NewTSmartLink() *TPlaywright {
@@ -401,12 +402,13 @@ func (h *TPlaywright) GetContextSaveUserData(runParams *_struct.PlaywrightRunPar
 		h.log.Debugf(`启动 over`)
 		contextPage.Context = context
 		if runParams.FixDataId != 0 { //如果是固定打开数据索引 那么给予一个固定的
-			contextPage.ContextUnique = fmt.Sprintf(`context_unique_%d`, runParams.Id)
+			contextPage.ContextUnique = fmt.Sprintf(`context_unique_%d_%d`, runParams.OpenType, runParams.Id)
 		} else {
 			contextPage.ContextUnique = Component.TBase.GetUnique(`context_unique_`)
 		}
 	}
-
+	contextPage.SmartLinkUniqueKey = runParams.SmartLinkUniqueKey
+	contextPage.OpenType = runParams.OpenType
 	context.OnPage(func(page playwright.Page) {
 		go h.PageEvents(runParams, page)
 	})
@@ -430,30 +432,41 @@ func (h *TPlaywright) GetUserDataContext(runParams *_struct.PlaywrightRunParams)
 			if userIndexMax < v.UserDataIndex {
 				userIndexMax = v.UserDataIndex
 			}
+			//是否允许合并
+			if !runParams.IsCombine {
+				continue
+			}
+			//非同一类型打开方式 不管
+			if v.OpenType != runParams.OpenType {
+				continue
+			}
 			//非同一类型的链接 不管
 			if !h.IsSameLink(v.SmartLinkUniqueKey, runParams.SmartLinkUniqueKey) {
 				continue
 			}
-			boolFind := false
+			//是否有相同域名的page存在
+			boolFindSameDomainPage := false
 			pageList := v.Context.Pages()
 			h.log.Debugf(`打开的page 数量 %d`, len(pageList))
 			for _, page := range pageList {
 				if gstool.UrlGetHost(page.URL()) == runParams.Domain {
-					boolFind = true
+					boolFindSameDomainPage = true
 					break
 				}
 			}
-			if !boolFind && runParams.IsCombine { //需要合并时才处理
+			//没有找到相同域名的page
+			if !boolFindSameDomainPage { //需要合并时才处理
 				h.log.Debugf(`找到了可以复用的 %#v`, v)
 				return v
 			}
 		}
+		//递增一次索引
 		userIndex = userIndexMax + 1
 	} else {
 		userIndex = runParams.Id
 		//fmt.Sprintf(`context_unique_%d`, runParams.FixDataId)
 		for _, v := range h.ContextList {
-			if v.ContextUnique == fmt.Sprintf(`context_unique_%d`, runParams.Id) {
+			if v.ContextUnique == fmt.Sprintf(`context_unique_%d_%d`, runParams.OpenType, runParams.Id) {
 				h.log.Debugf(`找到了已经存在的context`)
 				return v
 			}
@@ -568,13 +581,13 @@ func (h *TPlaywright) InitPlaywright() {
 
 func (h *TPlaywright) install(version, lockFileFullPath string) {
 	_ = gstool.FilePutContentCover(lockFileFullPath, version)
-	h.log.Debugf(`开始安装浏览器核心(只安装chrome),大约几分钟时间`)
+	gstool.FmtPrintlnLogTime(`开始安装浏览器核心(只安装chrome),大约几分钟时间`)
 	err := playwright.Install(&playwright.RunOptions{Browsers: []string{`chromium`}})
 	if err != nil {
-		h.log.Debugf(`安装浏览器核心失败 %s`, err.Error())
+		gstool.FmtPrintlnLogTime(`安装浏览器核心失败 %s`, err.Error())
 		_ = gstool.FileDelete(lockFileFullPath)
 	} else {
-		h.log.Debugf(`安装完成`)
+		gstool.FmtPrintlnLogTime(`安装完成`)
 		h.InitPlaywright()
 	}
 }
@@ -721,6 +734,10 @@ func (h *TPlaywright) OpenBrowserPlaywright(runParams *_struct.PlaywrightRunPara
 			} else {
 				//根据上面的执行来判断
 				h.outKeyBoolResult(outKey, checkKey, boolResultMap, takeContentMap, runParams)
+			}
+		case define.Exit:
+			if !h.allowCheckKey(checkKey, boolResultMap) {
+				return errors.New(tip)
 			}
 		case define.Close:
 			if !h.allowCheckKey(checkKey, boolResultMap) {

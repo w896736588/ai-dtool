@@ -11,7 +11,7 @@ type PlaywrightRunParams struct {
 	OpenNum             int                                          //打开次数 0会被默认为1次
 	Cookie              string                                       //打开链接时需要设置的cookie
 	Headers             map[string]string                            //设置的headers
-	OpenType            define.OpenType                              //打开类型 1通过js打开
+	OpenType            define.OpenType                              //打开类型 1通过js打开 2 静默打开(内置核心打开)  3 浏览器打开(内置核心打开)
 	IsCombine           bool                                         //是否合并到同一浏览器 true合并，false不合并
 	ProcessList         []map[string]any                             //执行流程
 	ReplaceList         []map[string]string                          //替换内容

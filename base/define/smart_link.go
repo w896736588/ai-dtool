@@ -12,6 +12,7 @@ const WaitClose CmdType = `wait_close`
 const Click CmdType = `click`
 const Input CmdType = `input`
 const RedirectUri CmdType = `redirect_uri`
+const Exit CmdType = `exit` //结束
 
 var (
 	OpenTypeDirect        OpenType = 1 //直接打开链接 通过js，现有浏览器打开
