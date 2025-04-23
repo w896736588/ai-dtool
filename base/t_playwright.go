@@ -707,11 +707,11 @@ func (h *TPlaywright) OpenBrowserPlaywright(runParams *_struct.PlaywrightRunPara
 		if waitUrlErr != nil {
 			return waitUrlErr
 		}
-		Component.TPlaywright.AddTipMsg(page, tip)
 
 		cmdType := define.CmdType(processType)
 		switch cmdType {
 		case define.TextContent: //提取内容
+			Component.TPlaywright.AddTipMsg(page, tip)
 			elementOp := &_struct.ElementOp{
 				Type: define.ElementTextContent,
 			}
@@ -723,6 +723,7 @@ func (h *TPlaywright) OpenBrowserPlaywright(runParams *_struct.PlaywrightRunPara
 				h.callRun(runParams, cmdType, ``, tip, elementOp.TextContent)
 			}
 		case define.BoolResult: //bool结果判断
+			Component.TPlaywright.AddTipMsg(page, tip)
 			if locator != `` {
 				elementOp := &_struct.ElementOp{
 					Type: define.ElementCount,
@@ -740,23 +741,27 @@ func (h *TPlaywright) OpenBrowserPlaywright(runParams *_struct.PlaywrightRunPara
 			}
 		case define.Exit:
 			if !h.allowCheckKey(checkKey, boolResultMap) {
+				Component.TPlaywright.AddTipMsg(page, tip)
 				return errors.New(tip)
 			}
 		case define.Close:
 			if !h.allowCheckKey(checkKey, boolResultMap) {
 				continue
 			}
+			Component.TPlaywright.AddTipMsg(page, tip)
 			_ = page.Close()
 		case define.Wait:
 			if !h.allowCheckKey(checkKey, boolResultMap) {
 				continue
 			}
+			Component.TPlaywright.AddTipMsg(page, tip)
 			time.Sleep(time.Duration(cast.ToInt(processVal[`value`])) * time.Second)
 		case define.WaitClose:
 			go func() {
 				if !h.allowCheckKey(checkKey, boolResultMap) {
 					return
 				}
+				Component.TPlaywright.AddTipMsg(page, tip)
 				time.Sleep(time.Duration(cast.ToInt(processVal[`value`])) * time.Second)
 				_ = page.Close()
 			}()
@@ -765,6 +770,7 @@ func (h *TPlaywright) OpenBrowserPlaywright(runParams *_struct.PlaywrightRunPara
 				h.log.Debugf(`点击 %s 不允许`, tip)
 				continue
 			}
+			Component.TPlaywright.AddTipMsg(page, tip)
 			h.log.Debugf(`点击 %s 允许`, tip)
 			elementOp := &_struct.ElementOp{
 				Type: define.ElementClick,
@@ -780,6 +786,7 @@ func (h *TPlaywright) OpenBrowserPlaywright(runParams *_struct.PlaywrightRunPara
 			if !h.allowCheckKey(checkKey, boolResultMap) {
 				continue
 			}
+			Component.TPlaywright.AddTipMsg(page, tip)
 			inputValue := cast.ToString(processVal[`value`])
 			inputValue = gstool.SReplaces(inputValue, map[string]string{
 				`{user_name}`: runParams.UserName,
@@ -809,6 +816,7 @@ func (h *TPlaywright) OpenBrowserPlaywright(runParams *_struct.PlaywrightRunPara
 			if !h.allowCheckKey(checkKey, boolResultMap) {
 				continue
 			}
+			Component.TPlaywright.AddTipMsg(page, tip)
 			currentURL := page.URL()
 			parsedURL, err := url.Parse(currentURL)
 			if err != nil {
