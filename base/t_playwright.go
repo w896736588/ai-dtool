@@ -687,7 +687,7 @@ func (h *TPlaywright) OpenBrowserPlaywright(runParams *_struct.PlaywrightRunPara
 		//类型
 		processType := cast.ToString(processVal[`type`])
 		//元素选择
-		locator := h.parseLocator(cast.ToString(processVal[`Locator`]))
+		locator := cast.ToString(processVal[`Locator`])
 		//操作描述
 		tip := cast.ToString(processVal[`tip`])
 		//检查 替换等
@@ -712,20 +712,23 @@ func (h *TPlaywright) OpenBrowserPlaywright(runParams *_struct.PlaywrightRunPara
 		cmdType := define.CmdType(processType)
 		switch cmdType {
 		case define.TextContent: //提取内容
-			content, err := page.Locator(locator.Locator).TextContent(playwright.LocatorTextContentOptions{
-				Timeout: playwright.Float(runParams.LocatorTimeout),
-			})
-			if err != nil {
-				h.callRun(runParams, cmdType, err.Error(), tip, locator.Locator)
+			elementOp := &_struct.ElementOp{
+				Type: define.ElementTextContent,
+			}
+			_, elementErr := h.DoLocator(&page, locator, elementOp)
+			if elementErr != nil {
+				h.callRun(runParams, cmdType, elementErr.Error(), tip, locator)
 			} else {
-				takeContentMap[outKey] = strings.TrimSpace(cast.ToString(content))
-				h.callRun(runParams, cmdType, ``, tip, content)
+				takeContentMap[outKey] = strings.TrimSpace(elementOp.TextContent)
+				h.callRun(runParams, cmdType, ``, tip, elementOp.TextContent)
 			}
 		case define.BoolResult: //bool结果判断
-			if locator.Locator != `` {
-				//根据locator来判断为true还是false
-				existNum, existErr := page.Locator(locator.Locator).Count()
-				if existErr != nil || existNum == 0 {
+			if locator != `` {
+				elementOp := &_struct.ElementOp{
+					Type: define.ElementCount,
+				}
+				_, elementErr := h.DoLocator(&page, locator, elementOp)
+				if elementErr != nil || elementOp.Count == 0 {
 					boolResultMap[outKey] = false //不存在
 				} else {
 					boolResultMap[outKey] = true //存在
@@ -763,12 +766,15 @@ func (h *TPlaywright) OpenBrowserPlaywright(runParams *_struct.PlaywrightRunPara
 				continue
 			}
 			h.log.Debugf(`点击 %s 允许`, tip)
-			clickErr := h.click(locator.Locator, runParams.LocatorTimeout, page)
-			if clickErr != nil {
-				h.callRun(runParams, cmdType, clickErr.Error(), tip, locator.Locator)
-				return clickErr
+			elementOp := &_struct.ElementOp{
+				Type: define.ElementClick,
+			}
+			_, elementErr := h.DoLocator(&page, locator, elementOp)
+			if elementErr != nil {
+				h.callRun(runParams, cmdType, elementErr.Error(), tip, locator)
+				return elementErr
 			} else {
-				h.callRun(runParams, cmdType, ``, tip, locator.Locator)
+				h.callRun(runParams, cmdType, ``, tip, locator)
 			}
 		case define.Input: //输入
 			if !h.allowCheckKey(checkKey, boolResultMap) {
@@ -784,24 +790,16 @@ func (h *TPlaywright) OpenBrowserPlaywright(runParams *_struct.PlaywrightRunPara
 			for _, replaceVal := range runParams.ReplaceList {
 				inputValue = gstool.SReplaces(inputValue, replaceVal)
 			}
-			inputSelecter := page.Locator(locator.Locator)
-			if locator.First {
-				inputSelecter.First()
+			elementOp := &_struct.ElementOp{
+				Type:      define.ElementInput,
+				FillValue: inputValue,
 			}
-			selectorLoaderWaitErr := inputSelecter.WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: &runParams.LocatorTimeout,
-			})
-			if selectorLoaderWaitErr == nil {
-				inputErr := inputSelecter.Fill(inputValue)
-				if inputErr != nil {
-					h.callRun(runParams, cmdType, inputErr.Error(), tip, locator.Locator)
-				} else {
-					h.callRun(runParams, cmdType, ``, tip, inputValue)
-				}
-			} else {
-				h.callRun(runParams, cmdType, selectorLoaderWaitErr.Error(), tip, locator.Locator)
-				return errors.New(`无法找到元素` + locator.Locator)
+			_, elementErr := h.DoLocator(&page, locator, elementOp)
+			if elementErr != nil {
+				h.callRun(runParams, cmdType, elementErr.Error(), tip, locator)
+				return errors.New(`无法找到元素` + locator)
 			}
+			h.callRun(runParams, cmdType, ``, tip, inputValue)
 		case define.RedirectUri: //跳转 保持当前域名
 			//链接
 			redirectUri := cast.ToString(processVal[`value`])
@@ -849,6 +847,10 @@ func (h *TPlaywright) parseLocator(Locator string) *_struct.Locator {
 	}
 	if gstool.ArrayExistValue(&sList, `first`) {
 		locator.First = true
+	}
+	if strings.HasPrefix(locator.Locator, `!`) {
+		locator.ExistSetNot = true
+		locator.Locator = strings.TrimLeft(locator.Locator, `!`)
 	}
 	return &locator
 }
@@ -1039,42 +1041,83 @@ func (h *TPlaywright) SmartLinkPlaywrightVersion() (*playwright.PlaywrightDriver
 	return playwright.NewDriver()
 }
 
-// 点击
-func (h *TPlaywright) click(Locator string, waitSecond float64, page playwright.Page) error {
+func (h *TPlaywright) DoLocator(page *playwright.Page, Locators string, elementOp *_struct.ElementOp) (playwright.Locator, error) {
+	list := strings.Split(Locators, `&&`) //多个用&&分割
 	task := gstask.NewTask()
-	waitSecond = 3 * 1000
-	task.Add(gstask.CallbackFunc{
-		Func: func() gstask.Result {
-			selectorLoader := page.Locator(Locator)
-			selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: &waitSecond,
-				State:   playwright.WaitForSelectorStateVisible,
-			})
-			if selectorLoaderWaitErr != nil {
-				return gstask.Result{
-					Result: nil,
-					State:  1,
-					Err:    selectorLoaderWaitErr,
+	waitSecond := playwright.Float(3000)
+	for _, Locator := range list {
+		h.log.Debugf(`解析 locator %s`, Locator)
+		locator := h.parseLocator(Locator)
+		//查找
+		task.Add(gstask.CallbackFunc{
+			Func: func() gstask.Result {
+				selectorLoader := (*page).Locator(locator.Locator)
+				if locator.First { //首个
+					selectorLoader = selectorLoader.First()
 				}
-			} else {
-				return gstask.Result{
-					Result: selectorLoader,
-					State:  1,
-					Err:    nil,
+				selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
+					Timeout: waitSecond,
+				})
+				//如果是反找Locator
+				if locator.ExistSetNot {
+					if selectorLoaderWaitErr != nil {
+						h.log.Debugf(`反查找 %s 失败`, locator.Locator)
+						return gstask.Result{
+							Result: selectorLoader,
+							Err:    errors.New(`找到了反找元素，返回失败`),
+						}
+					} else {
+						h.log.Debugf(`反查找 %s 成功`, locator.Locator)
+						return gstask.Result{
+							Result: selectorLoader,
+							Err:    errors.New(`等待反找元素超时，同样返回失败`),
+						}
+					}
+				} else {
+					if selectorLoaderWaitErr != nil {
+						h.log.Debugf(`查找 %s 失败`, locator.Locator)
+						return gstask.Result{
+							Result: nil,
+							Err:    errors.New(`没有找到元素 ` + locator.Locator),
+						}
+					} else {
+						h.log.Debugf(`查找 %s 成功`, locator.Locator)
+						return gstask.Result{
+							Result: selectorLoader,
+							Err:    nil,
+						}
+					}
 				}
-			}
-		},
-		Timeout: 5 * time.Second,
-	})
+
+			},
+			Timeout: 5 * time.Second,
+		})
+	}
 	result := task.RunOne()
 	if result.Err != nil {
-		return result.Err
+		return nil, result.Err
 	}
-	if result.State == 1 {
-		element := result.Result.(playwright.Locator)
-		_ = element.Click()
+	element := result.Result.(playwright.Locator)
+	switch elementOp.Type {
+	case define.ElementInput:
+		fillErr := element.Fill(elementOp.FillValue)
+		return element, fillErr
+	case define.ElementExist:
+		return element, nil
+	case define.ElementClick:
+		clickErr := element.Click()
+		return element, clickErr
+	case define.ElementTextContent:
+		content, textContentErr := element.TextContent()
+		elementOp.TextContent = content
+		return element, textContentErr
+	case define.ElementCount:
+		count, numErr := element.Count()
+		elementOp.Count = count
+		return element, numErr
+	default:
+		return nil, errors.New(`不支持的操作`)
 	}
-	return nil
 }
 
 func (h *TPlaywright) SmartLinkRecycle() error {

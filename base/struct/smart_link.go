@@ -47,6 +47,14 @@ type ShowCookie struct {
 }
 
 type Locator struct {
-	Locator string //寻找
-	First   bool   //是否只寻找第一个
+	Locator     string //寻找
+	First       bool   //是否只寻找第一个
+	ExistSetNot bool   //如果存在时那么就表示Locator不存在
+}
+
+type ElementOp struct {
+	Type        string
+	FillValue   string
+	TextContent string
+	Count       int //元素数量
 }
