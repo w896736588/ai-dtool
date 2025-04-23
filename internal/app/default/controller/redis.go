@@ -165,12 +165,12 @@ func RedisSearch(c *gin.Context) {
 		gsgin.GinResponseError(c, fmt.Sprintf(`不支持的类型 %s`, keyType), ``)
 	} else {
 		gsgin.GinResponseSuccess(c, `获取成功`, map[string]interface{}{
-			`keyType`:     keyType,
-			`KeyTtl`:      keyTtl.Seconds(),
-			`TextContent`: gsCons.Value(),
-			`Cursor`:      resultCursor,
-			`Length`:      length,
-			`IsMore`:      isMore,
+			`keyType`: keyType,
+			`KeyTtl`:  keyTtl.Seconds(),
+			`Result`:  gsCons.Value(),
+			`Cursor`:  resultCursor,
+			`Length`:  length,
+			`IsMore`:  isMore,
 		})
 	}
 
