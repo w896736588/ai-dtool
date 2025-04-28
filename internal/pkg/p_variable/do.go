@@ -44,6 +44,7 @@ func (h *Variable) Run() (_struct.VariableCmdResult, error) {
 	runWeight := cast.ToInt(cmdInfo[`weight`])
 	for _, cmd := range cmdList {
 		name := cast.ToString(cmd[`name`])
+		cmdId := cast.ToString(cmd[`id`])
 		weight := cast.ToInt(cmd[`weight`])
 		//最终执行时 需要从当前cmd开始执行
 		//非最终执行时，从下一个开始执行
@@ -56,10 +57,11 @@ func (h *Variable) Run() (_struct.VariableCmdResult, error) {
 				continue
 			}
 		}
-
+		//替换
+		h.Replace(cmd)
 		//是否需要执行
-		if !base.Component.TVariable.ChecksCanDo(cmd, &h.ReplaceList) {
-			h.StreamMsg(fmt.Sprintf(`不需要执行（%s）`, name), true)
+		if !base.Component.TVariable.ChecksCanDo(cmd) {
+			h.StreamMsg(fmt.Sprintf(`不需要执行（%s）,checks:%s`, name, cmd[`checks`]), true)
 			continue
 		}
 		cmdType := cast.ToInt(cmd[`type`])
@@ -67,6 +69,8 @@ func (h *Variable) Run() (_struct.VariableCmdResult, error) {
 		//非最终执行并且等待客户点击运行
 		if h.IsRun != 1 && runType == define.RunTypeRun {
 			h.StreamMsg(fmt.Sprintf(`可以执行（%s）`, name), true)
+			cmdResult.ReplaceList = h.ReplaceList
+			cmdResult.Form = _struct.VariableForm{Id: cmdId}
 			cmdResult.RunStatus = define.RunStatusCanRun
 			return cmdResult, nil
 		}
@@ -146,8 +150,6 @@ func (h *Variable) BuildCmd(cmd map[string]any) (_struct.VariableForm, error) {
 		ResultKey:  cast.ToString(cmd[`result_key`]), //输出的替换key
 		CmdType:    cast.ToString(cmd[`type`]),       //cmd 类型
 	}
-	//替换
-	h.Replace(cmd)
 	//执行
 	vCmd := NewPCmd(cmd, &h.ReplaceList, h.StreamMsg)
 	var err error
@@ -167,6 +169,7 @@ func (h *Variable) BuildCmd(cmd map[string]any) (_struct.VariableForm, error) {
 
 func (h *Variable) Replace(cmd map[string]any) {
 	cmd[`options`] = base.Component.TVariable.Replace(cast.ToString(cmd[`options`]), &h.ReplaceList)
+	cmd[`checks`] = base.Component.TVariable.Replace(cast.ToString(cmd[`checks`]), &h.ReplaceList)
 }
 
 func (h *Variable) input(cmd map[string]any, variableForm *_struct.VariableForm) {

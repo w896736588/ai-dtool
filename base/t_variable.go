@@ -179,7 +179,7 @@ func (h *TVariable) AddReplace(replaceList *[]map[string]string, key, value stri
 }
 
 // ChecksCanDo 检查是否需要执行 true 可以执行 false不可以执行
-func (h *TVariable) ChecksCanDo(cmd map[string]any, replaceList *[]map[string]string) bool {
+func (h *TVariable) ChecksCanDo(cmd map[string]any) bool {
 	checks := cast.ToString(cmd[`checks`])
 	if checks == `` {
 		return true
@@ -189,31 +189,30 @@ func (h *TVariable) ChecksCanDo(cmd map[string]any, replaceList *[]map[string]st
 		checkList := strings.Split(checks, `=`)
 		gstool.FmtPrintlnLogTime(`判断checks %s`, gstool.JsonEncode(checkList))
 		if len(checkList) != 2 { //不是两个条件 那么就返回不显示 格式不对
-			return true
+			return false
 		}
 		realCheck0 := checkList[0]
 		realCheck1 := checkList[1]
-		realCheck0Exist := false
-		realCheck1Exist := false
-		//待替换但是没有可以替换的
-		if h.WaitReplace(realCheck0) {
-			realCheck0, realCheck0Exist = h.GetReplaceVal(realCheck0, replaceList)
-			if !realCheck0Exist {
-				return true
-			}
-		}
-		if h.WaitReplace(realCheck1) {
-			realCheck1, realCheck1Exist = h.GetReplaceVal(realCheck1, replaceList)
-			if !realCheck1Exist {
-				return true
-			}
-		}
 		//匹配上了 那么返回不禁用
 		if realCheck0 == realCheck1 {
-			return false
+			return true
 		}
 		//禁显示
-		return true
+		return false
+	} else if strings.Contains(checks, `!=`) {
+		checkList := strings.Split(checks, `!=`)
+		gstool.FmtPrintlnLogTime(`判断checks %s`, gstool.JsonEncode(checkList))
+		if len(checkList) != 2 { //不是两个条件 那么就返回不显示 格式不对
+			return false
+		}
+		realCheck0 := checkList[0]
+		realCheck1 := checkList[1]
+		//匹配上了 那么返回不禁用
+		if realCheck0 != realCheck1 {
+			return true
+		}
+		//禁显示
+		return false
 	}
 	return false
 }
