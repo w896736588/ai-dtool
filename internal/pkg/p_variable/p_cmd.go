@@ -20,8 +20,8 @@ func NewPCmd(cmd map[string]any, replace *[]map[string]string, streamMsg func(st
 
 func (h *PCmd) ParseInput() (_struct.VariableFormInput, error) {
 	return _struct.VariableFormInput{
-		Label:   cast.ToString(h.cmd[`name`]),
-		Default: cast.ToString(h.cmd[`default`]),
+		Label: cast.ToString(h.cmd[`name`]),
+		Value: cast.ToString(h.cmd[`default`]),
 	}, nil
 }
 
