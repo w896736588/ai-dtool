@@ -115,8 +115,6 @@ func (h *Variable) Run() (_struct.VariableCmdResult, error) {
 }
 
 func (h *Variable) RunCmd(cmd map[string]any) error {
-	//替换
-	h.Replace(cmd)
 	//执行
 	rCmd := NewRCmd(cmd, &h.ReplaceList, h.StreamMsg)
 	var err error

@@ -186,6 +186,7 @@ func (h *RCmd) RunCommand() (string, error) {
 }
 
 func (h *RCmd) RunCurl() (string, error) {
+	resultKey := cast.ToString(h.cmd[`result_key`])
 	url := base.Component.TVariable.Replace(cast.ToString(h.cmd[`bash`]), h.replaceList)
 	if url == `` {
 		return ``, errors.New(`url不能为空`)
@@ -212,6 +213,10 @@ func (h *RCmd) RunCurl() (string, error) {
 	} else {
 		result, err = gshttp.Get(url).Request(200).Result()
 	}
+	//增加替换变量
+	if resultKey != `` {
+		base.Component.TVariable.AddReplace(h.replaceList, resultKey, cast.ToString(result))
+	}
 	return cast.ToString(result), err
 }
 
@@ -224,7 +229,6 @@ func (h *RCmd) RunPlaywright() (string, error) {
 	if label == `` {
 		return ``, errors.New(`链接label不能为空`)
 	}
-	gstool.FmtPrintlnLogTime(`执行playwright %s`, gstool.JsonEncode(h.replaceList))
 	runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, ``, ``, 0, h.replaceList)
 	if runParamsErr != nil {
 		return ``, errors.New(runParamsErr.Error())

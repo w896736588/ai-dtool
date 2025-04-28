@@ -32,7 +32,6 @@ type VariableForm struct {
 type VariableFormInput struct {
 	Label       string
 	Value       string
-	Default     string
 	HideSureBtn int
 }
 
