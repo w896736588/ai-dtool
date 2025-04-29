@@ -7,3 +7,7 @@ const (
 	SseSupervisor = `supervisor`
 	SseAiCode     = `ai_code`
 )
+
+const (
+	SseEventClean = `[CLEAN]` //清除前端的数据
+)

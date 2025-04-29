@@ -12,15 +12,17 @@ import (
 )
 
 type TVariable struct {
-	TaskList map[string]string
-	lock     sync.RWMutex
-	Log      *gstool.GsSlog
+	TaskList      map[string]string
+	SshClientList map[string][]string
+	lock          sync.RWMutex
+	Log           *gstool.GsSlog
 }
 
 func NewVariable() *TVariable {
 	return &TVariable{
-		TaskList: make(map[string]string),
-		Log:      gstool.NewSlogDefault(Component.Env.LogPath, `variable`),
+		TaskList:      make(map[string]string),
+		SshClientList: make(map[string][]string),
+		Log:           gstool.NewSlogDefault(Component.Env.LogPath, `variable`),
 	}
 }
 
@@ -28,9 +30,36 @@ func (h *TVariable) StopAll() {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 	for k, _ := range h.TaskList {
+		h.Log.Debugf(`停止执行变量唯一ID %s`, k)
 		h.TaskList[k] = "stop"
+		if clientList, ok := h.SshClientList[k]; ok {
+			for _, clientId := range clientList {
+				h.Log.Debugf(`移除 ssh client id %s`, clientId)
+				Component.TShell.RmClient(clientId)
+			}
+			delete(h.SshClientList, k)
+		}
 	}
-	time.Sleep(1) //等待1秒 把其他任务的输出断开玩
+}
+
+func (h *TVariable) StopOther(runUniqueId string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	for k, _ := range h.TaskList {
+		if k == runUniqueId {
+			continue
+		}
+		h.Log.Debugf(`停止执行变量唯一ID %s`, k)
+		h.TaskList[k] = "stop"
+		if clientList, ok := h.SshClientList[k]; ok {
+			for _, clientId := range clientList {
+				h.Log.Debugf(`移除 ssh client id %s`, clientId)
+				Component.TShell.RmClient(clientId)
+			}
+			delete(h.SshClientList, k)
+		}
+	}
+	time.Sleep(time.Second)
 }
 
 func (h *TVariable) Add(id string) {
@@ -49,6 +78,24 @@ func (h *TVariable) Get(id string) string {
 	h.lock.RLock()
 	defer h.lock.RUnlock()
 	return h.TaskList[id]
+}
+
+func (h *TVariable) AddSshClient(id, clientId string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	if clientList, ok := h.SshClientList[id]; ok {
+		clientList = append(clientList, clientId)
+		h.SshClientList[id] = clientList
+	} else {
+		clientList = []string{clientId}
+		h.SshClientList[id] = clientList
+	}
+}
+
+func (h *TVariable) DelSshClient(id string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	delete(h.SshClientList, id)
 }
 
 func (h *TVariable) CmdList(variableId any) ([]map[string]any, error) {
@@ -184,10 +231,13 @@ func (h *TVariable) ChecksCanDo(cmd map[string]any) bool {
 	if checks == `` {
 		return true
 	}
+	enquire := ` = `
+	notEnquire := ` != `
+	in := ` in `
+	notIn := ` not in `
 	//等于
-	if strings.Contains(checks, `=`) {
-		checkList := strings.Split(checks, `=`)
-		gstool.FmtPrintlnLogTime(`判断checks %s`, gstool.JsonEncode(checkList))
+	if strings.Contains(checks, enquire) {
+		checkList := strings.Split(checks, enquire)
 		if len(checkList) != 2 { //不是两个条件 那么就返回不显示 格式不对
 			return false
 		}
@@ -199,9 +249,8 @@ func (h *TVariable) ChecksCanDo(cmd map[string]any) bool {
 		}
 		//禁显示
 		return false
-	} else if strings.Contains(checks, `!=`) {
-		checkList := strings.Split(checks, `!=`)
-		gstool.FmtPrintlnLogTime(`判断checks %s`, gstool.JsonEncode(checkList))
+	} else if strings.Contains(checks, notEnquire) {
+		checkList := strings.Split(checks, notEnquire)
 		if len(checkList) != 2 { //不是两个条件 那么就返回不显示 格式不对
 			return false
 		}
@@ -213,17 +262,42 @@ func (h *TVariable) ChecksCanDo(cmd map[string]any) bool {
 		}
 		//禁显示
 		return false
+	} else if strings.Contains(checks, in) {
+		checkList := strings.Split(checks, in)
+		if len(checkList) != 2 { //不是两个条件 那么就返回不显示 格式不对
+			return false
+		}
+		realCheck0 := checkList[0]
+		realCheckList := strings.Split(checkList[1], `,`)
+		//匹配上了 那么返回不禁用
+		if gstool.ArrayExistValue(&realCheckList, realCheck0) {
+			return true
+		}
+		//禁显示
+		return false
+	} else if strings.Contains(checks, notIn) {
+		checkList := strings.Split(checks, notIn)
+		if len(checkList) != 2 { //不是两个条件 那么就返回不显示 格式不对
+			return false
+		}
+		realCheck0 := checkList[0]
+		realCheckList := strings.Split(checkList[1], `,`)
+		//匹配上了 那么返回不禁用
+		if !gstool.ArrayExistValue(&realCheckList, realCheck0) {
+			return true
+		}
+		//禁显示
+		return false
 	}
 	return false
 }
 
 // PreConnSsh 初始化ssh连接
-func (h *TVariable) PreConnSsh(sshId int) error {
+func (h *TVariable) PreConnSsh(sshId int, sshUniqueKey, sftpUniqueKey string) error {
 	if sshId == 0 {
 		return errors.New(`ssh_id不能为空`)
 	}
-	sshUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `run`)
-	sftpUniqueKey := Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
+
 	if Component.TShell.Exist(sshUniqueKey) && Component.TShell.Exist(sftpUniqueKey) {
 		return nil
 	}
@@ -258,5 +332,19 @@ func (h *TVariable) SelectChooseReplace(variableForm *_struct.VariableForm,
 			//替换整体
 			h.AddReplace(replaceList, variableForm.ResultKey, option.Source)
 		}
+	}
+}
+
+func (h *TVariable) StreamMsgFunc(runUniqueId string) func(msg string, enter bool) {
+	return func(msg string, enter bool) {
+		//如果本次任务已经停止 那么不再输出
+		if Component.TVariable.Get(runUniqueId) == `stop` {
+			Component.TSse.Sse.CleanMsg(define.SseVariable)
+			return
+		}
+		if enter {
+			msg += "\n"
+		}
+		_ = Component.TSse.SendMsg(define.SseVariable, msg, 0)
 	}
 }

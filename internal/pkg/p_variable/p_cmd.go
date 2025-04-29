@@ -12,10 +12,11 @@ type PCmd struct {
 	cmd         map[string]any
 	replaceList *[]map[string]string
 	StreamMsg   func(string, bool)
+	RunUniqueId string
 }
 
-func NewPCmd(cmd map[string]any, replace *[]map[string]string, streamMsg func(string, bool)) *PCmd {
-	return &PCmd{cmd: cmd, replaceList: replace, StreamMsg: streamMsg}
+func NewPCmd(cmd map[string]any, replace *[]map[string]string, runUniqueId string) *PCmd {
+	return &PCmd{cmd: cmd, replaceList: replace, RunUniqueId: runUniqueId, StreamMsg: base.Component.TVariable.StreamMsgFunc(runUniqueId)}
 }
 
 func (h *PCmd) ParseInput() (_struct.VariableFormInput, error) {

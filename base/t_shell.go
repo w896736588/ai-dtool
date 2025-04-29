@@ -167,6 +167,9 @@ func (h *TShell) Exist(uniqueKey string) bool {
 func (h *TShell) RmClient(uniqueKey string) {
 	defer h.lock.Unlock()
 	h.lock.Lock()
+	if ssh, ok := h.ShellClientMap[uniqueKey]; ok {
+		ssh.CloseTerminal()
+	}
 	delete(h.ShellClientMap, uniqueKey)
 }
 

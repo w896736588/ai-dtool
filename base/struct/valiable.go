@@ -57,6 +57,15 @@ type VariableFormSelect struct {
 	Options    string //原本的
 }
 
+func (h *VariableFormSelect) GetSelectOption(value string) VariableFormOption {
+	for _, option := range h.OptionList {
+		if option.Value == value {
+			return option
+		}
+	}
+	return VariableFormOption{}
+}
+
 type VariableFormOption struct {
 	Label  string
 	Value  string
@@ -67,4 +76,5 @@ type VariableCmdResult struct {
 	Form        VariableForm        //显示的表单
 	RunStatus   int                 //0不可以执行 1可以执行 2执行结束
 	ReplaceList []map[string]string //替换数据
+	RunUniqueId string              //执行唯一ID
 }

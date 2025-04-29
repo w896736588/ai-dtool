@@ -180,6 +180,7 @@ func initGin(ViewPath string) {
 	}
 	base.Component.TJas.Load()
 	base.Component.TVariable = base.NewVariable()
+	base.Component.TVariable.Log.DeleteLogs(``)
 	base.Component.TGin.IsRun = true
 }
 

@@ -21,13 +21,15 @@ type RCmd struct {
 	replaceList    *[]map[string]string
 	StreamMsg      func(string, bool)
 	PlaywrightLock sync.RWMutex
+	RunUniqueId    string
 }
 
-func NewRCmd(cmd map[string]any, replace *[]map[string]string, streamMsg func(string, bool)) *RCmd {
+func NewRCmd(cmd map[string]any, replace *[]map[string]string, RunUniqueId string, streamMsg func(string, bool)) *RCmd {
 	return &RCmd{
 		cmd:         cmd,
 		replaceList: replace,
 		StreamMsg:   streamMsg,
+		RunUniqueId: RunUniqueId,
 	}
 }
 
@@ -87,15 +89,21 @@ func (h *RCmd) RunBash() (string, error) {
 	if parseIdErr != nil {
 		return ``, parseIdErr
 	}
-	preConnErr := base.Component.TVariable.PreConnSsh(sshId)
+	//注册ssh
+	sshUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `run`)
+	sftpUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
+	//链接ssh
+	preConnErr := base.Component.TVariable.PreConnSsh(sshId, sshUniqueKey, sftpUniqueKey)
 	if preConnErr != nil {
 		return ``, gstool.Error(`链接失败 %s`, preConnErr.Error())
 	}
-	sshUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `run`)
-	sftpUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
 	if !base.Component.TShell.Exist(sshUniqueKey) || !base.Component.TShell.Exist(sftpUniqueKey) {
 		return ``, errors.New(`ssh连接未初始化`)
 	}
+	//全局注册 用于停止
+	base.Component.TVariable.AddSshClient(h.RunUniqueId, sshUniqueKey)
+	base.Component.TVariable.AddSshClient(h.RunUniqueId, sftpUniqueKey)
+	//初始化
 	sshConfig, sshConfigErr := base.Component.TSqlite.GetSshConfig(sshId)
 	if sshConfigErr != nil {
 		return ``, sshConfigErr
@@ -147,10 +155,16 @@ func (h *RCmd) RunCommand() (string, error) {
 	if parseIdErr != nil {
 		return ``, parseIdErr
 	}
-	preConnErr := base.Component.TVariable.PreConnSsh(sshId)
+	//注册client
+	sshUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `run`)
+	sftpUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
+	preConnErr := base.Component.TVariable.PreConnSsh(sshId, sshUniqueKey, sftpUniqueKey)
 	if preConnErr != nil {
 		return ``, gstool.Error(`链接失败 %s`, preConnErr.Error())
 	}
+	//全局注册 用于停止
+	base.Component.TVariable.AddSshClient(h.RunUniqueId, sshUniqueKey)
+	base.Component.TVariable.AddSshClient(h.RunUniqueId, sftpUniqueKey)
 	//分离出来多行命令
 	commandList := strings.Split(bash, "\n")
 	for _, command := range commandList {

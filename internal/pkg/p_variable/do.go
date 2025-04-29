@@ -18,23 +18,42 @@ type Variable struct {
 	StreamMsg   func(string, bool)  //输出方法
 }
 
-func NewVariable(variableId, runCmdId int, isRun int, replaceList []map[string]string, streamMsg func(string, bool)) *Variable {
-	return &Variable{
+func NewVariable(variableId, runCmdId int, isRun int, replaceList []map[string]string, runUniqueId string) *Variable {
+	variable := &Variable{
 		VariableId:  variableId,
 		RunCmdId:    runCmdId,
 		ReplaceList: replaceList,
 		IsRun:       isRun,
-		RunUniqueId: base.Component.TBase.GetUnique(`variable`),
-		StreamMsg:   streamMsg,
+		RunUniqueId: runUniqueId,
 	}
+	if variable.RunCmdId == 0 {
+		variable.InitRunUniqueId()
+	} else {
+		variable.StreamMsg = base.Component.TVariable.StreamMsgFunc(variable.RunUniqueId)
+	}
+
+	return variable
+}
+
+func (h *Variable) InitRunUniqueId() {
+	//生成本次执行ID
+	h.RunUniqueId = base.Component.TBase.GetUnique(`variable`)
+	//注册本次执行ID
+	base.Component.TVariable.Add(h.RunUniqueId)
+	//停止其他任务
+	base.Component.TVariable.StopOther(h.RunUniqueId)
+	//清除服务端所有的消息
+	base.Component.TSse.Sse.CleanMsg(define.SseVariable)
+	//消息输出函数注册
+	h.StreamMsg = base.Component.TVariable.StreamMsgFunc(h.RunUniqueId)
+	//清除前端所有的消息
+	h.StreamMsg(define.SseEventClean, false)
 }
 
 func (h *Variable) Run() (_struct.VariableCmdResult, error) {
-	//其他任务处理
-	base.Component.TVariable.StopAll()
-	base.Component.TVariable.Add(h.RunUniqueId)
-	//开始
+	//初始化结果
 	cmdResult := _struct.VariableCmdResult{}
+	cmdResult.RunUniqueId = h.RunUniqueId
 	cmdList, cmdErr := base.Component.TVariable.CmdList(h.VariableId)
 	if cmdErr != nil {
 		return cmdResult, cmdErr
@@ -116,7 +135,7 @@ func (h *Variable) Run() (_struct.VariableCmdResult, error) {
 
 func (h *Variable) RunCmd(cmd map[string]any) error {
 	//执行
-	rCmd := NewRCmd(cmd, &h.ReplaceList, h.StreamMsg)
+	rCmd := NewRCmd(cmd, &h.ReplaceList, h.RunUniqueId, h.StreamMsg)
 	var err error
 	switch cast.ToInt(cmd[`type`]) {
 	case define.VariableCmdMysql:
@@ -149,7 +168,7 @@ func (h *Variable) BuildCmd(cmd map[string]any) (_struct.VariableForm, error) {
 		CmdType:    cast.ToString(cmd[`type`]),       //cmd 类型
 	}
 	//执行
-	vCmd := NewPCmd(cmd, &h.ReplaceList, h.StreamMsg)
+	vCmd := NewPCmd(cmd, &h.ReplaceList, h.RunUniqueId)
 	var err error
 	switch cast.ToInt(cmd[`type`]) {
 	case define.VariableCmdInput, define.VariableCmdTextarea:
