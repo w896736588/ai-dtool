@@ -72,6 +72,7 @@ func (h *TPlaywright) SetWebkitPath() {
 	// 设置自定义浏览器安装路径
 	gstool.FmtPrintlnLogTime(`核心位置 %s`, Component.Env.PkgPath+"/p_webkit")
 	_ = os.Setenv("PLAYWRIGHT_BROWSERS_PATH", Component.Env.PkgPath+"/p_webkit")
+	_ = os.Setenv("PLAYWRIGHT_DRIVER_PATH", Component.Env.PkgPath+"/p_webkit")
 	_ = os.Setenv("GOPROXY", "https://goproxy.cn,direct")
 }
 
