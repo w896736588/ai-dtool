@@ -47,26 +47,28 @@ func (h *VariableSet) Set() (_struct.VariableCmdResult, error) {
 	switch cast.ToInt(form.CmdType) {
 	case define.VariableCmdRadio:
 		form.Select, _ = vCmd.ParseSelect()
-		vCmd.StreamMsg(fmt.Sprintf(`%s %s 选择 %s`,
+		vCmd.StreamMsg(fmt.Sprintf(`%s %s %s %s`,
 			base.Component.TMarkDown.Bold(`set`),
 			form.Name,
+			base.Component.TMarkDown.Bold(`choose：`),
 			form.Select.GetSelectOption(h.EditValue).Label), true)
 		base.Component.TVariable.SelectChooseReplace(&form, h.ReplaceList, h.EditValue)
 	case define.VariableCmdInput, define.VariableCmdTextarea:
 		if gstool.SContains(strings.ToLower(form.Name), []string{`php`}) {
-			vCmd.StreamMsg(fmt.Sprintf(`%s %s 输入：`,
-				base.Component.TMarkDown.Bold(`set`),
-				form.Name), true)
-			vCmd.StreamMsg(base.Component.TMarkDown.Code(h.EditValue, `php`), true)
-		} else if gstool.SContains(strings.ToLower(form.Name), []string{`sql`}) {
-			vCmd.StreamMsg(fmt.Sprintf(`%s %s 输入：`,
-				base.Component.TMarkDown.Bold(`set`),
-				form.Name), true)
-			vCmd.StreamMsg(base.Component.TMarkDown.Code(h.EditValue, `sql`), true)
-		} else {
-			vCmd.StreamMsg(fmt.Sprintf(`%s %s 输入 %s`,
+			vCmd.StreamMsg(fmt.Sprintf(`%s %s %s`,
 				base.Component.TMarkDown.Bold(`set`),
 				form.Name,
+				base.Component.TMarkDown.Bold(`input：`)), true)
+			vCmd.StreamMsg(base.Component.TMarkDown.Code(h.EditValue, `php`), true)
+		} else if gstool.SContains(strings.ToLower(form.Name), []string{`sql`}) {
+			vCmd.StreamMsg(fmt.Sprintf(`%s %s %s`,
+				base.Component.TMarkDown.Bold(`set`),
+				form.Name, base.Component.TMarkDown.Bold(`input：`)), true)
+			vCmd.StreamMsg(base.Component.TMarkDown.Code(h.EditValue, `sql`), true)
+		} else {
+			vCmd.StreamMsg(fmt.Sprintf(`%s %s %s %s`,
+				base.Component.TMarkDown.Bold(`set`),
+				form.Name, base.Component.TMarkDown.Bold(`input：`),
 				h.EditValue), true)
 		}
 		form.Input, _ = vCmd.ParseInput()

@@ -80,14 +80,14 @@ func (h *Variable) Run() (_struct.VariableCmdResult, error) {
 		h.Replace(cmd)
 		//是否需要执行
 		if !base.Component.TVariable.ChecksCanDo(cmd) {
-			h.StreamMsg(fmt.Sprintf(`不需要执行（%s）,checks:%s`, name, cmd[`checks`]), true)
+			h.StreamMsg(fmt.Sprintf(`%s %s %s %s`, base.Component.TMarkDown.Bold(`check`), name, base.Component.TMarkDown.Bold(`not run：`), cmd[`checks`]), true)
 			continue
 		}
 		cmdType := cast.ToInt(cmd[`type`])
 		runType := cast.ToString(cmd[`run_type`])
 		//非最终执行并且等待客户点击运行
 		if h.IsRun != 1 && runType == define.RunTypeRun {
-			h.StreamMsg(fmt.Sprintf(`%s %s`, base.Component.TMarkDown.BlockQuote(`wait run `), name), true)
+			h.StreamMsg(fmt.Sprintf(`%s %s`, base.Component.TMarkDown.Bold(`wait run`), name), true)
 			cmdResult.ReplaceList = h.ReplaceList
 			cmdResult.Form = _struct.VariableForm{Id: cmdId}
 			cmdResult.RunStatus = define.RunStatusCanRun

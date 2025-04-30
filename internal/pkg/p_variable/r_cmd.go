@@ -73,9 +73,8 @@ func (h *RCmd) RunMysql() error {
 		}
 		return nil
 	} else if len(gstool.RegexSearchString(sql, "(?i)update")) > 0 {
-		result = base.Component.TMarkDown.Code(sql, `sql`)
 		affectRows, execErr := mysqlClient.ExecBySql(sql).Exec()
-		result += "\n--更新数：" + cast.ToString(affectRows)
+		result = base.Component.TMarkDown.Code("-- 更新数"+cast.ToString(affectRows)+"\n"+sql, `sql`)
 		h.StreamMsg(result, true)
 		if execErr != nil {
 			return execErr
@@ -286,7 +285,7 @@ func (h *RCmd) RunPlaywright() (string, error) {
 				},
 				StartCallBack: func(url string) {
 					base.Component.TVariable.Log.Debugf(`监听到%s`, url)
-					h.StreamMsg(base.Component.TMarkDown.BlockQuote(`开始回答...`), true)
+					h.StreamMsg(base.Component.TMarkDown.BlockQuote("开始回答...")+"\n\n", true)
 					h.PlaywrightLock.Lock()
 				},
 				EndCallBack: func(msg string) {

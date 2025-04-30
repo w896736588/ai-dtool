@@ -82,13 +82,13 @@ func initComponent(IsBuild, WebData string) {
 	base.Component.Env.ConfigPath = base.Component.Env.RootPath + `/config/` + base.Component.Env.AppName
 	base.Component.Env.PkgPath = base.Component.Env.RootPath + `/internal/pkg`
 	base.Component.Env.LogPath = base.Component.Env.RootPath + `/logs`
+	base.Component.Env.WebkitPath = base.Component.Env.PkgPath + `/p_webkit`
 	if WebData != `` {
 		base.Component.Env.PlaywrightUserData = WebData + `/playwright_userdata`
 		base.Component.Env.PlaywrightDownload = WebData + `/playwright_download`
 	} else {
 		base.Component.Env.PlaywrightUserData = base.Component.Env.RootPath + `/playwright_userdata`
 		base.Component.Env.PlaywrightDownload = base.Component.Env.RootPath + `/playwright_download`
-
 	}
 	gstool.FmtPrintlnLogTime(`根目录 %s`, base.Component.Env.RootPath)
 	gstool.FmtPrintlnLogTime(`加载配置文件 %s`, base.Component.Env.ConfigPath)

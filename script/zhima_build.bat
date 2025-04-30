@@ -29,13 +29,16 @@ xcopy D:\go\cache_manager_api\config D:\go\release\zhima\goservice\config /E /Y 
 xcopy D:\go\cache_manager_api\script\start.bat D:\go\release\zhima\ /y
 xcopy D:\go\cache_manager_api\go.mod D:\go\release\zhima\goservice /y
 xcopy D:\go\cache_manager_api\internal\pkg\p_js D:\go\release\zhima\goservice\internal\pkg\p_js /E /Y /I
-xcopy D:\go\cache_manager_api\internal\pkg\p_webkit D:\go\release\zhima\goservice\internal\pkg\p_webkit /E /Y /I
+xcopy D:\go\cache_manager_api\internal\pkg\p_webkit\package D:\go\release\zhima\goservice\internal\pkg\p_webkit\package /E /Y /I
+xcopy D:\go\cache_manager_api\internal\pkg\p_webkit\node.exe D:\go\release\zhima\goservice\internal\pkg\p_webkit /y
 xcopy D:\go\devtool\public\favicon.ico D:\go\release\zhima\devtool /y
 xcopy D:\go\devtool\dist D:\go\release\zhima\devtool\dist /E /Y /I
 
 copy D:\go\cache_manager_api\build\zhimaPub.exe D:\go\release\zhimaPub\goservice\build\zhima.exe /Y
 xcopy D:\go\cache_manager_api\config D:\go\release\zhimaPub\goservice\config\ /E /Y /I
-xcopy D:\go\cache_manager_api\internal\pkg\p_webkit D:\go\release\zhimaPub\goservice\internal\pkg\p_webkit /E /Y /I
+xcopy D:\go\cache_manager_api\internal\pkg\p_js D:\go\release\zhimaPub\goservice\internal\pkg\p_js /E /Y /I
+xcopy D:\go\cache_manager_api\internal\pkg\p_webkit\package D:\go\release\zhimaPub\goservice\internal\pkg\p_webkit\package /E /Y /I
+xcopy D:\go\cache_manager_api\internal\pkg\p_webkit\node.exe D:\go\release\zhimaPub\goservice\internal\pkg\p_webkit /y
 xcopy D:\go\cache_manager_api\script\start.bat D:\go\release\zhimaPub\ /y
 xcopy D:\go\cache_manager_api\go.mod D:\go\release\zhimaPub\goservice\ /y
 xcopy D:\go\devtool\public\favicon.ico D:\go\release\zhimaPub\devtool\ /y
