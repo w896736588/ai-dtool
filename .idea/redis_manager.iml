@@ -18,6 +18,7 @@
       <excludeFolder url="file://$MODULE_DIR$/script/zhimaPub" />
       <excludeFolder url="file://$MODULE_DIR$/script/zhimaPub/devtool" />
       <excludeFolder url="file://$MODULE_DIR$/script/zhimaPub/goservice" />
+      <excludeFolder url="file://$MODULE_DIR$/internal/pkg/p_webkit" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
