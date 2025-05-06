@@ -176,26 +176,30 @@ func (h *TPlaywright) GetPage(runParams *_struct.PlaywrightRunParams) (playwrigh
 }
 
 // CleanContextPageList 清理context
-func (h *TPlaywright) CleanContextPageList(contextUnique string) {
+func (h *TPlaywright) CleanContextPageList() {
 	newContextList := make([]ContextPage, 0)
 	for _, v := range h.ContextList {
-		if v.ContextUnique != contextUnique {
+		if v.Context != nil && len(v.Context.Pages()) > 0 {
 			newContextList = append(newContextList, v)
+		} else {
+			_ = v.Context.Close()
 		}
 	}
 	h.ContextList = newContextList
 }
 
-// CleanContextPageByDomain 根据域名清理context
-func (h *TPlaywright) CleanContextPageByDomain(domain string) {
+// CleanContextFixDataId 根据域名清理context
+// 注意；这里直接关闭context 防止context假死 导致登录态不能登录
+func (h *TPlaywright) CleanContextFixDataId(runParams *_struct.PlaywrightRunParams) {
+	newContextList := make([]ContextPage, 0)
 	for _, v := range h.ContextList {
-		contextPageList := v.Context.Pages()
-		for _, page := range contextPageList {
-			if gstool.UrlGetHost(page.URL()) == domain {
-				_ = page.Close()
-			}
+		if v.ContextUnique == fmt.Sprintf(`context_unique_%d`, runParams.Id) {
+			_ = v.Context.Close()
+		} else {
+			newContextList = append(newContextList, v)
 		}
 	}
+	h.ContextList = newContextList
 }
 
 func (h *TPlaywright) GetPlaywrightRunList() []map[string]any {
@@ -295,7 +299,7 @@ func (h *TPlaywright) GetContextNotSaveUserData(runParams *_struct.PlaywrightRun
 	//监听关闭
 	go func() {
 		context.OnClose(func(context playwright.BrowserContext) {
-			h.CleanContextPageList(contentPage.ContextUnique)
+			h.CleanContextPageList()
 		})
 	}()
 	return contentPage, nil
@@ -336,7 +340,7 @@ func (h *TPlaywright) GetContextSaveUserData(runParams *_struct.PlaywrightRunPar
 	//固定打开数据索引 关闭同域名的
 	if runParams.FixDataId == 1 {
 		h.log.Debugf(`清理相同域名page`)
-		h.CleanContextPageByDomain(runParams.Domain)
+		h.CleanContextFixDataId(runParams)
 	}
 	//获取context
 	contextPage := h.GetUserDataContext(runParams)
@@ -411,7 +415,7 @@ func (h *TPlaywright) GetContextSaveUserData(runParams *_struct.PlaywrightRunPar
 		h.log.Debugf(`启动 over`)
 		contextPage.Context = context
 		if runParams.FixDataId != 0 { //如果是固定打开数据索引 那么给予一个固定的
-			contextPage.ContextUnique = fmt.Sprintf(`context_unique_%d_%d`, runParams.OpenType, runParams.Id)
+			contextPage.ContextUnique = fmt.Sprintf(`context_unique_%d`, runParams.Id)
 		} else {
 			contextPage.ContextUnique = Component.TBase.GetUnique(`context_unique_`)
 		}
@@ -425,7 +429,7 @@ func (h *TPlaywright) GetContextSaveUserData(runParams *_struct.PlaywrightRunPar
 	//监听关闭
 	go func() {
 		context.OnClose(func(context playwright.BrowserContext) {
-			h.CleanContextPageList(contextPage.ContextUnique)
+			h.CleanContextPageList()
 		})
 	}()
 	return contextPage, true, nil
@@ -456,7 +460,6 @@ func (h *TPlaywright) GetUserDataContext(runParams *_struct.PlaywrightRunParams)
 			//是否有相同域名的page存在
 			boolFindSameDomainPage := false
 			pageList := v.Context.Pages()
-			h.log.Debugf(`打开的page 数量 %d`, len(pageList))
 			for _, page := range pageList {
 				if gstool.UrlGetHost(page.URL()) == runParams.Domain {
 					boolFindSameDomainPage = true
@@ -465,7 +468,7 @@ func (h *TPlaywright) GetUserDataContext(runParams *_struct.PlaywrightRunParams)
 			}
 			//没有找到相同域名的page
 			if !boolFindSameDomainPage { //需要合并时才处理
-				h.log.Debugf(`找到了可以复用的 %#v`, v)
+				h.log.Debugf(`递增目录，找到了已经存在的context %s`, v.ContextUnique)
 				return v
 			}
 		}
@@ -475,15 +478,15 @@ func (h *TPlaywright) GetUserDataContext(runParams *_struct.PlaywrightRunParams)
 		userIndex = runParams.Id
 		//fmt.Sprintf(`context_unique_%d`, runParams.FixDataId)
 		for _, v := range h.ContextList {
-			if v.ContextUnique == fmt.Sprintf(`context_unique_%d_%d`, runParams.OpenType, runParams.Id) {
-				h.log.Debugf(`找到了已经存在的context`)
+			if v.ContextUnique == fmt.Sprintf(`context_unique_%d`, runParams.Id) {
+				h.log.Debugf(`固定目录，找到了已经存在的context %s`, v.ContextUnique)
 				return v
 			}
 		}
 	}
 
-	dataPath := fmt.Sprintf(Component.Env.WebkitDataPath+`\%d`, userIndex)
-	h.log.Debugf(`context使用的数据目录 %s`, dataPath)
+	dataPath := fmt.Sprintf(Component.Env.WebkitDataPath+`/%d`, userIndex)
+	h.log.Debugf(`未找到context，context使用的数据目录 %s`, dataPath)
 	return ContextPage{
 		Context:            nil,                          //初始化空
 		SmartLinkUniqueKey: runParams.SmartLinkUniqueKey, //选项唯一值
@@ -872,18 +875,14 @@ func (h *TPlaywright) allowCheckKey(checkKey string, boolResult map[string]bool)
 	if checkKey == `` {
 		return true
 	}
-	h.log.Debugf(`判断开始--- %s`, checkKey)
 	checkList := strings.Split(checkKey, `&&`)
-	h.log.Debugf(`判断列表 %s`, gstool.JsonEncode(checkList))
 	for _, checkKeyVal := range checkList {
 
 		if strings.HasPrefix(checkKeyVal, `!`) { //不等于时 等于了 那么跳过
 			if boolResult[checkKeyVal[1:]] == true {
-				h.log.Debugf(`判断1 %s 不允许 %s %t`, checkKeyVal, checkKeyVal[1:], boolResult[checkKeyVal[1:]])
 				return false
 			}
 		} else if !boolResult[checkKeyVal] { //等于时  不等于了 那么跳过
-			h.log.Debugf(`判断2 %s 不允许`, checkKeyVal)
 			return false
 		}
 	}
@@ -895,7 +894,6 @@ func (h *TPlaywright) outKeyBoolResult(outKey, checkKey string, boolResultMap ma
 	if outKey == `` {
 		return
 	}
-	h.log.Debugf(`开始提取outKey %s %s`, outKey, checkKey)
 	if strings.Contains(checkKey, `!=`) { //不等于
 		checkList := strings.Split(checkKey, `!=`)
 		if len(checkList) != 2 {
@@ -908,7 +906,6 @@ func (h *TPlaywright) outKeyBoolResult(outKey, checkKey string, boolResultMap ma
 		} else {
 			boolResultMap[outKey] = false
 		}
-		h.log.Debugf(`结果判断 %t`, boolResultMap[outKey])
 	} else if strings.Contains(checkKey, `==`) { //等于
 		checkList := strings.Split(checkKey, `==`)
 		leftCheck := strings.TrimSpace(checkList[0])
@@ -1016,7 +1013,7 @@ func (h *TPlaywright) SetPageActive(page playwright.Page, runParams *_struct.Pla
 		RunParams:  runParams,
 		Page:       page,
 	}
-	h.log.Debugf(`page active %s %s`, page.URL(), gstool.TimeNowUnixToString(`Y-m-d H:i:s`))
+	//h.log.Debugf(`page active %s %s`, page.URL(), gstool.TimeNowUnixToString(`Y-m-d H:i:s`))
 }
 
 func (h *TPlaywright) TimerCheckClosePage() {
@@ -1052,7 +1049,6 @@ func (h *TPlaywright) DoLocator(page *playwright.Page, Locators string, elementO
 	task := gstask.NewTask()
 	waitSecond := playwright.Float(3000)
 	for _, Locator := range list {
-		h.log.Debugf(`解析 locator %s`, Locator)
 		locator := h.parseLocator(Locator)
 		//查找
 		task.Add(gstask.CallbackFunc{
@@ -1073,7 +1069,6 @@ func (h *TPlaywright) DoLocator(page *playwright.Page, Locators string, elementO
 							Err:    errors.New(`找到了反找元素，返回失败`),
 						}
 					} else {
-						h.log.Debugf(`反查找 %s 成功`, locator.Locator)
 						return gstask.Result{
 							Result: selectorLoader,
 							Err:    errors.New(`等待反找元素超时，同样返回失败`),
@@ -1087,7 +1082,6 @@ func (h *TPlaywright) DoLocator(page *playwright.Page, Locators string, elementO
 							Err:    errors.New(`没有找到元素 ` + locator.Locator),
 						}
 					} else {
-						h.log.Debugf(`查找 %s 成功`, locator.Locator)
 						return gstask.Result{
 							Result: selectorLoader,
 							Err:    nil,
