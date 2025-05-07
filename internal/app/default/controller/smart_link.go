@@ -11,7 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
-	"sync"
 	"time"
 )
 
@@ -177,10 +176,6 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 		gsgin.GinResponseError(c, `id和label不能为空`, nil)
 		return
 	}
-	if base.Component.TPlaywright.IsRun {
-		gsgin.GinResponseError(c, `正在启动中`, nil)
-		return
-	}
 	userName := cast.ToString(dataMap[`user_name`])
 	password := cast.ToString(dataMap[`password`])
 	openNum := cast.ToInt(dataMap[`open_num`])
@@ -191,21 +186,14 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 		return
 	}
 	gstool.FmtPrintlnLogTime(`开始运行`)
-	base.Component.TPlaywright.IsRun = true
-	wg := sync.WaitGroup{}
 	for i := 0; i < runParams.OpenNum; i++ {
-		wg.Add(1)
 		go func() {
 			openErr := base.Component.TPlaywright.OpenBrowserPlaywright(runParams)
 			if openErr != nil {
 				gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
 			}
-			wg.Done()
 		}()
 	}
-	wg.Wait()
-	base.Component.TPlaywright.IsRun = false
-	gstool.FmtPrintlnLogTime(`取消运行`)
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 

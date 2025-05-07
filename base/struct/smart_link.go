@@ -23,6 +23,7 @@ type PlaywrightRunParams struct {
 	GetPageTimeout      float64                                      //开启page超时时间
 	UserName            string                                       //选择的登录账号
 	Password            string                                       //登录密码
+	ContextUnique       string                                       //context唯一ID
 	FixDataId           int                                          //是否固定保存数据目录
 	DownloadFinds       []string                                     //哪些url请求会被定义为下载
 	AutoCloseSecond     int                                          //多少秒内没有操作 就进行关闭page 0表示不处理

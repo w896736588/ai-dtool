@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cast"
 	"strings"
 	"sync"
-	"time"
 )
 
 type RCmd struct {
@@ -255,15 +254,6 @@ func (h *RCmd) RunPlaywright() (string, error) {
 	if runParamsErr != nil {
 		return ``, errors.New(runParamsErr.Error())
 	}
-	for {
-		if base.Component.TPlaywright.IsRun {
-			h.StreamMsg(base.Component.TMarkDown.BlockQuote(`等待其他自动化链接任务完成..`), true)
-			time.Sleep(time.Second * 1)
-			continue
-		} else {
-			break
-		}
-	}
 	//注册链接执行时需要输出的文本类型
 	runParams.RunCallFunc = func(cmdType define.CmdType, errmsg, tip, content string) {
 		switch cmdType {
@@ -301,7 +291,6 @@ func (h *RCmd) RunPlaywright() (string, error) {
 		}
 	}
 
-	base.Component.TPlaywright.IsRun = true
 	for i := 0; i < runParams.OpenNum; i++ {
 		h.StreamMsg("\n"+base.Component.TMarkDown.BlockQuote(cast.ToString(h.cmd[`name`])+`,启动`), true)
 		openErr := base.Component.TPlaywright.OpenBrowserPlaywright(runParams)
@@ -309,7 +298,6 @@ func (h *RCmd) RunPlaywright() (string, error) {
 			h.StreamMsg(base.Component.TMarkDown.BlockQuote(cast.ToString(h.cmd[`name`])+`,启动失败，`+openErr.Error()), true)
 		}
 	}
-	base.Component.TPlaywright.IsRun = false
 	return ``, nil
 }
 

@@ -30,11 +30,9 @@ type TPlaywright struct {
 	//pw
 	Pw *playwright.Playwright
 	//浏览器列表
-	ContextList []ContextPage
+	ContextList []*ContextPage
 	//page 活跃时间
 	pageActiveTime map[string]PageActiveTime
-	//是否运行中
-	IsRun bool
 	//监听链接
 	ListenUrlList map[string]*_struct.ListenUrl
 	log           *gstool.GsSlog
@@ -50,10 +48,10 @@ type PageActiveTime struct {
 
 type ContextPage struct {
 	Context            playwright.BrowserContext
-	SmartLinkUniqueKey string          //选项唯一值
+	SmartLinkUniqueKey string          //选项唯一值  链接配置ID_label  记录是哪个类型的context 用于计数
 	UserDataIndex      int             //数据目录索引
 	UserDataPath       string          //数据目录
-	ContextUnique      string          //唯一标记 context
+	ContextUnique      string          //唯一标记 context 记录是哪个目录的context
 	OpenType           define.OpenType //打开类型
 }
 
@@ -86,10 +84,8 @@ func (h *TPlaywright) SetWebkitPath() {
 // isCombine 是否自动合并不同域名到同一个浏览器 1合并 0不合并
 // cookie 页面打开时设置的cookie
 func (h *TPlaywright) GetPage(runParams *_struct.PlaywrightRunParams) (playwright.Page, error) {
-	h.RunLock.Lock()
-	defer h.RunLock.Unlock()
 	var contextErr error
-	var contextPage ContextPage
+	var contextPage *ContextPage
 	boolCleanFirstBlank := false
 	if !runParams.IsSaveUserData { //不保存用户数据
 		browser, browserErr := h.GetBrowser(runParams.OpenType)
@@ -177,7 +173,7 @@ func (h *TPlaywright) GetPage(runParams *_struct.PlaywrightRunParams) (playwrigh
 
 // CleanContextPageList 清理context
 func (h *TPlaywright) CleanContextPageList() {
-	newContextList := make([]ContextPage, 0)
+	newContextList := make([]*ContextPage, 0)
 	for _, v := range h.ContextList {
 		if v.Context != nil && len(v.Context.Pages()) > 0 {
 			newContextList = append(newContextList, v)
@@ -188,18 +184,28 @@ func (h *TPlaywright) CleanContextPageList() {
 	h.ContextList = newContextList
 }
 
-// CleanContextFixDataId 根据域名清理context
+// CleanContextPagesFixDataId 根据域名清理context
 // 注意；这里直接关闭context 防止context假死 导致登录态不能登录
-func (h *TPlaywright) CleanContextFixDataId(runParams *_struct.PlaywrightRunParams) {
-	newContextList := make([]ContextPage, 0)
+func (h *TPlaywright) CleanContextPagesFixDataId(runParams *_struct.PlaywrightRunParams) {
+	if runParams.FixDataId == 0 {
+		return
+	}
 	for _, v := range h.ContextList {
-		if v.ContextUnique == fmt.Sprintf(`context_unique_%d`, runParams.Id) {
-			_ = v.Context.Close()
-		} else {
-			newContextList = append(newContextList, v)
+		if v.ContextUnique == runParams.ContextUnique {
+			h.CloseContextPages(v.Context)
 		}
 	}
-	h.ContextList = newContextList
+}
+
+func (h *TPlaywright) GetContextUnique(runParams *_struct.PlaywrightRunParams) string {
+	return fmt.Sprintf(`context_unique_%d`, runParams.Id)
+}
+
+func (h *TPlaywright) CloseContextPages(context playwright.BrowserContext) {
+	pageList := context.Pages()
+	for _, page := range pageList {
+		_ = page.Close()
+	}
 }
 
 func (h *TPlaywright) GetPlaywrightRunList() []map[string]any {
@@ -244,7 +250,7 @@ func (h *TPlaywright) IsSameLink(smartLinkUniqueKeyS, smartLinkUniqueKeyT string
 	return strings.Split(smartLinkUniqueKeyS, `_`)[0] == strings.Split(smartLinkUniqueKeyT, `_`)[0]
 }
 
-func (h *TPlaywright) GetContextNotSaveUserData(runParams *_struct.PlaywrightRunParams, browser playwright.Browser) (ContextPage, error) {
+func (h *TPlaywright) GetContextNotSaveUserData(runParams *_struct.PlaywrightRunParams, browser playwright.Browser) (*ContextPage, error) {
 	for _, v := range h.ContextList {
 		//非同种类型的context跳过
 		if !h.IsSameLink(v.SmartLinkUniqueKey, runParams.SmartLinkUniqueKey) {
@@ -285,15 +291,15 @@ func (h *TPlaywright) GetContextNotSaveUserData(runParams *_struct.PlaywrightRun
 		})
 	}
 	if contextErr != nil {
-		return ContextPage{}, contextErr
+		return nil, contextErr
 	}
 	context.OnPage(func(page playwright.Page) {
 		go h.PageEvents(runParams, page)
 	})
-	contentPage := ContextPage{
+	contentPage := &ContextPage{
 		Context:            context,
 		SmartLinkUniqueKey: runParams.SmartLinkUniqueKey,
-		ContextUnique:      Component.TBase.GetUnique(`context_unique_`),
+		ContextUnique:      runParams.ContextUnique,
 	}
 	h.ContextList = append(h.ContextList, contentPage)
 	//监听关闭
@@ -336,12 +342,9 @@ func (h *TPlaywright) GetBrowser(openType define.OpenType) (playwright.Browser, 
 }
 
 // GetContextSaveUserData 获取context 需要保存用户数据
-func (h *TPlaywright) GetContextSaveUserData(runParams *_struct.PlaywrightRunParams) (ContextPage, bool, error) {
-	//固定打开数据索引 关闭同域名的
-	if runParams.FixDataId == 1 {
-		h.log.Debugf(`清理相同域名page`)
-		h.CleanContextFixDataId(runParams)
-	}
+func (h *TPlaywright) GetContextSaveUserData(runParams *_struct.PlaywrightRunParams) (*ContextPage, bool, error) {
+	//固定打开数据索引 关闭此context下面的所有页面
+	h.CleanContextPagesFixDataId(runParams)
 	//获取context
 	contextPage := h.GetUserDataContext(runParams)
 	//创建数据索引目录
@@ -383,10 +386,10 @@ func (h *TPlaywright) GetContextSaveUserData(runParams *_struct.PlaywrightRunPar
 		})
 		if contextErr != nil {
 			h.log.Errof(`启动context报错 %s`, contextErr.Error())
-			return ContextPage{}, false, contextErr
+			return nil, false, contextErr
 		}
 		contextPage.Context = context
-		contextPage.ContextUnique = Component.TBase.GetUnique(`context_unique_`) //这里是动态生成的唯一ID 其实没啥意义
+		contextPage.ContextUnique = runParams.ContextUnique
 	} else {
 		h.log.Debugf(`启动context 超时时间：%f`, runParams.GetPageTimeout)
 		context, contextErr = h.Pw.Chromium.LaunchPersistentContext(contextPage.UserDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
@@ -410,15 +413,11 @@ func (h *TPlaywright) GetContextSaveUserData(runParams *_struct.PlaywrightRunPar
 		})
 		if contextErr != nil {
 			h.log.Errof(`启动context报错 %s`, contextErr.Error())
-			return ContextPage{}, false, contextErr
+			return nil, false, contextErr
 		}
 		h.log.Debugf(`启动 over`)
 		contextPage.Context = context
-		if runParams.FixDataId != 0 { //如果是固定打开数据索引 那么给予一个固定的
-			contextPage.ContextUnique = fmt.Sprintf(`context_unique_%d`, runParams.Id)
-		} else {
-			contextPage.ContextUnique = Component.TBase.GetUnique(`context_unique_`)
-		}
+		contextPage.ContextUnique = runParams.ContextUnique
 	}
 	contextPage.SmartLinkUniqueKey = runParams.SmartLinkUniqueKey
 	contextPage.OpenType = runParams.OpenType
@@ -436,63 +435,90 @@ func (h *TPlaywright) GetContextSaveUserData(runParams *_struct.PlaywrightRunPar
 }
 
 // GetUserDataContext 拿到数据保存目录
-func (h *TPlaywright) GetUserDataContext(runParams *_struct.PlaywrightRunParams) ContextPage {
-	var userIndex int
-	if runParams.FixDataId == 0 {
-		userIndex = -1
-		userIndexMax := -1
-		for _, v := range h.ContextList {
-			if userIndexMax < v.UserDataIndex {
-				userIndexMax = v.UserDataIndex
-			}
-			//是否允许合并
-			if !runParams.IsCombine {
-				continue
-			}
-			//非同一类型打开方式 不管
-			if v.OpenType != runParams.OpenType {
-				continue
-			}
-			//非同一类型的链接 不管
-			if !h.IsSameLink(v.SmartLinkUniqueKey, runParams.SmartLinkUniqueKey) {
-				continue
-			}
-			//是否有相同域名的page存在
-			boolFindSameDomainPage := false
-			pageList := v.Context.Pages()
-			for _, page := range pageList {
-				if gstool.UrlGetHost(page.URL()) == runParams.Domain {
-					boolFindSameDomainPage = true
+// 如果是保存数据的 那么
+func (h *TPlaywright) GetUserDataContext(runParams *_struct.PlaywrightRunParams) *ContextPage {
+	dataIndex := h.GetUserDataIndex(runParams) //数据目录索引
+	contextPage := h.GetContextByIndex(dataIndex)
+	if contextPage != nil {
+		return contextPage
+	}
+	dataPath := fmt.Sprintf(Component.Env.WebkitDataPath+`/%d`, dataIndex)
+	h.log.Debugf(`未找到context，context使用的数据目录 %s`, dataPath)
+	return &ContextPage{
+		Context:            nil,                          //初始化空
+		SmartLinkUniqueKey: runParams.SmartLinkUniqueKey, //选项唯一值
+		UserDataIndex:      dataIndex,                    //数据目录索引
+		UserDataPath:       dataPath,                     //数据目录
+	}
+}
+
+func (h *TPlaywright) GetContextByIndex(dataIndex int) *ContextPage {
+	for _, v := range h.ContextList {
+		if v.UserDataIndex == dataIndex {
+			return v
+		}
+	}
+	return nil
+}
+
+func (h *TPlaywright) GetUserDataIndex(runParams *_struct.PlaywrightRunParams) int {
+	maxIndex := 500
+	//固定索引目录
+	if runParams.FixDataId == 1 {
+		return runParams.Id
+	}
+	//不需要合并 找到一个没有用到的就行
+	if !runParams.IsCombine {
+		for i := 0; i < maxIndex; i++ {
+			boolExist := false
+			for _, v := range h.ContextList {
+				if v.UserDataIndex == i {
+					boolExist = true
 					break
 				}
 			}
-			//没有找到相同域名的page
-			if !boolFindSameDomainPage { //需要合并时才处理
-				h.log.Debugf(`递增目录，找到了已经存在的context %s`, v.ContextUnique)
-				return v
-			}
-		}
-		//递增一次索引
-		userIndex = userIndexMax + 1
-	} else {
-		userIndex = runParams.Id
-		//fmt.Sprintf(`context_unique_%d`, runParams.FixDataId)
-		for _, v := range h.ContextList {
-			if v.ContextUnique == fmt.Sprintf(`context_unique_%d`, runParams.Id) {
-				h.log.Debugf(`固定目录，找到了已经存在的context %s`, v.ContextUnique)
-				return v
+			if !boolExist {
+				return i
 			}
 		}
 	}
-
-	dataPath := fmt.Sprintf(Component.Env.WebkitDataPath+`/%d`, userIndex)
-	h.log.Debugf(`未找到context，context使用的数据目录 %s`, dataPath)
-	return ContextPage{
-		Context:            nil,                          //初始化空
-		SmartLinkUniqueKey: runParams.SmartLinkUniqueKey, //选项唯一值
-		UserDataIndex:      userIndex,                    //数据目录索引
-		UserDataPath:       dataPath,                     //数据目录
+	//需要合并 找一下可以重复利用的index
+	ignoreIndexList := make([]int, 0)
+	for _, v := range h.ContextList {
+		//非同一类型打开方式 不管
+		if v.OpenType != runParams.OpenType {
+			ignoreIndexList = append(ignoreIndexList, v.UserDataIndex)
+			continue
+		}
+		//非同一类型的链接 不管
+		if !h.IsSameLink(v.SmartLinkUniqueKey, runParams.SmartLinkUniqueKey) {
+			ignoreIndexList = append(ignoreIndexList, v.UserDataIndex)
+			continue
+		}
+		//是否有相同域名的page存在
+		boolFindSameDomainPage := false
+		pageList := v.Context.Pages()
+		for _, page := range pageList {
+			if gstool.UrlGetHost(page.URL()) == runParams.Domain {
+				boolFindSameDomainPage = true
+				break
+			}
+		}
+		//没有找到相同域名的page
+		if !boolFindSameDomainPage { //需要合并时才处理
+			h.log.Debugf(`递增目录，找到了已经存在的context %s`, v.ContextUnique)
+			return v.UserDataIndex
+		} else {
+			ignoreIndexList = append(ignoreIndexList, v.UserDataIndex)
+		}
 	}
+	//没有能够复用的数据索引 那么
+	for i := 0; i < maxIndex; i++ {
+		if !gstool.ArrayExistValue(&ignoreIndexList, i) {
+			return i
+		}
+	}
+	return -1 //错误
 }
 
 func (h *TPlaywright) WitchDownload() {
@@ -624,6 +650,7 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 	runParams.DownloadFinds = strings.Split(cast.ToString(smartLink[`download_finds`]), `,`)
 	runParams.AutoCloseSecond = cast.ToInt(smartLink[`auto_close_second`])
 	runParams.Channel = cast.ToString(smartLink[`channel`])
+	runParams.ContextUnique = h.GetContextUnique(runParams)
 	if runParams.Channel == `` {
 		runParams.Channel = `chromium`
 	}
@@ -680,15 +707,16 @@ func (h *TPlaywright) OpenBrowserPlaywright(runParams *_struct.PlaywrightRunPara
 	if Component.TPlaywright.Pw == nil {
 		return errors.New(`未启动浏览器核心`)
 	}
+	h.log.Debugf(`开始获取page`)
 	page, pageErr := Component.TPlaywright.GetPage(runParams)
 	if pageErr != nil {
-		h.log.Errof(`获取page报错 %s`, pageErr.Error())
-		return pageErr
+		return gstool.Error(`获取page失败 %s`, pageErr.Error())
 	}
 	//提取内容存储
 	takeContentMap := make(map[string]string)
 	//输出结果存储
 	boolResultMap := make(map[string]bool)
+	h.log.Debugf(`开始处理process list`)
 	for _, processVal := range runParams.ProcessList {
 		//限制域名执行
 		domainLimit := cast.ToString(processVal[`domain_limit`])
@@ -1045,11 +1073,101 @@ func (h *TPlaywright) SmartLinkPlaywrightVersion() (*playwright.PlaywrightDriver
 }
 
 func (h *TPlaywright) DoLocator(page *playwright.Page, Locators string, elementOp *_struct.ElementOp) (playwright.Locator, error) {
-	list := strings.Split(Locators, `&&`) //多个用&&分割
+	list := strings.Split(Locators, `&&`)  //多个用&&分割
+	hList := strings.Split(Locators, `||`) //多个用||分割
 	task := gstask.NewTask()
 	waitSecond := playwright.Float(3000)
-	for _, Locator := range list {
-		locator := h.parseLocator(Locator)
+	//&&处理
+	if len(list) > 1 {
+		h.log.Debugf(`走&& %s`, Locators)
+		for _, Locator := range list {
+			locator := h.parseLocator(Locator)
+			//查找
+			task.Add(gstask.CallbackFunc{
+				Func: func() gstask.Result {
+					selectorLoader := (*page).Locator(locator.Locator)
+					if locator.First { //首个
+						selectorLoader = selectorLoader.First()
+					}
+					selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
+						Timeout: waitSecond,
+					})
+					//如果是反找Locator 不存在时返回正常
+					if locator.ExistSetNot {
+						if selectorLoaderWaitErr != nil {
+							h.log.Debugf(`反查找 %s 失败`, locator.Locator)
+							return gstask.Result{
+								Result: selectorLoader,
+								Err:    nil,
+							}
+						} else {
+							h.log.Debugf(`反查找 %s 成功`, locator.Locator)
+							return gstask.Result{
+								Result: selectorLoader,
+								Err:    errors.New(`找到了反找元素，返回失败`),
+							}
+						}
+					} else {
+						if selectorLoaderWaitErr != nil {
+							h.log.Debugf(`查找 %s 失败`, locator.Locator)
+							return gstask.Result{
+								Result: nil,
+								Err:    errors.New(`没有找到元素 ` + locator.Locator),
+							}
+						} else {
+							h.log.Debugf(`查找 %s 成功`, locator.Locator)
+							return gstask.Result{
+								Result: selectorLoader,
+								Err:    nil,
+							}
+						}
+					}
+
+				},
+				Timeout: 5 * time.Second,
+			})
+		}
+	}
+
+	//||处理
+	if len(hList) > 1 {
+		h.log.Debugf(`走|| %s`, Locators)
+		for _, Locator := range hList {
+			locator := h.parseLocator(Locator)
+			//查找
+			task.Add(gstask.CallbackFunc{
+				Func: func() gstask.Result {
+					selectorLoader := (*page).Locator(locator.Locator)
+					if locator.First { //首个
+						selectorLoader = selectorLoader.First()
+					}
+					selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
+						Timeout: waitSecond,
+					})
+					//如果是反找Locator 不存在时返回正常
+					if selectorLoaderWaitErr != nil {
+						h.log.Debugf(`查找 %s 失败`, locator.Locator)
+						return gstask.Result{
+							Result: nil,
+							Err:    errors.New(`没找到`),
+						}
+					} else {
+						h.log.Debugf(`反查找 %s 成功`, locator.Locator)
+						return gstask.Result{
+							Result: selectorLoader,
+							Err:    nil,
+						}
+					}
+				},
+				Timeout: 5 * time.Second,
+			})
+		}
+	}
+
+	//默认
+	if !gstool.SContains(Locators, []string{`&&`, `||`}) {
+		h.log.Debugf(`走默认 %s`, Locators)
+		locator := h.parseLocator(Locators)
 		//查找
 		task.Add(gstask.CallbackFunc{
 			Func: func() gstask.Result {
@@ -1060,41 +1178,28 @@ func (h *TPlaywright) DoLocator(page *playwright.Page, Locators string, elementO
 				selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
 					Timeout: waitSecond,
 				})
-				//如果是反找Locator
-				if locator.ExistSetNot {
-					if selectorLoaderWaitErr != nil {
-						h.log.Debugf(`反查找 %s 失败`, locator.Locator)
-						return gstask.Result{
-							Result: selectorLoader,
-							Err:    errors.New(`找到了反找元素，返回失败`),
-						}
-					} else {
-						return gstask.Result{
-							Result: selectorLoader,
-							Err:    errors.New(`等待反找元素超时，同样返回失败`),
-						}
+				//如果是反找Locator 不存在时返回正常
+				if selectorLoaderWaitErr != nil {
+					h.log.Debugf(`查找 %s 失败`, locator.Locator)
+					return gstask.Result{
+						Result: nil,
+						Err:    errors.New(`没找到`),
 					}
 				} else {
-					if selectorLoaderWaitErr != nil {
-						h.log.Debugf(`查找 %s 失败`, locator.Locator)
-						return gstask.Result{
-							Result: nil,
-							Err:    errors.New(`没有找到元素 ` + locator.Locator),
-						}
-					} else {
-						return gstask.Result{
-							Result: selectorLoader,
-							Err:    nil,
-						}
+					h.log.Debugf(`反查找 %s 成功`, locator.Locator)
+					return gstask.Result{
+						Result: selectorLoader,
+						Err:    nil,
 					}
 				}
-
 			},
 			Timeout: 5 * time.Second,
 		})
 	}
+
 	result := task.RunOne()
 	if result.Err != nil {
+		h.log.Debugf(`处理：%s失败：%s`, Locators, result.Err.Error())
 		return nil, result.Err
 	}
 	element := result.Result.(playwright.Locator)
@@ -1122,11 +1227,8 @@ func (h *TPlaywright) DoLocator(page *playwright.Page, Locators string, elementO
 
 func (h *TPlaywright) SmartLinkRecycle() error {
 	h.log.Debugf(`准备重置..`)
-	if h.IsRun {
-		return gstool.Error(`正在打开中`)
-	}
 	_ = h.Pw.Stop()
-	h.ContextList = make([]ContextPage, 0)
+	h.ContextList = make([]*ContextPage, 0)
 	h.pageActiveTime = make(map[string]PageActiveTime)
 	h.InitPlaywright()
 	return nil

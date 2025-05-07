@@ -128,7 +128,7 @@ func (h *Variable) Run() (_struct.VCmdResult, error) {
 		}
 	}
 	//执行结束
-	h.StreamMsg(`执行结束`, true)
+	h.StreamMsg(base.Component.TMarkDown.Bold(`end.`), true)
 	cmdResult.RunStatus = define.RunStatusFinish
 	return cmdResult, nil
 }
