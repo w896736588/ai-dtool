@@ -5,6 +5,7 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
+	"dev_tool/internal/pkg/p_playwright"
 	"errors"
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gshttp"
@@ -255,7 +256,7 @@ func (h *RCmd) RunPlaywright() (string, error) {
 		return ``, errors.New(runParamsErr.Error())
 	}
 	//注册链接执行时需要输出的文本类型
-	runParams.RunCallFunc = func(cmdType define.CmdType, errmsg, tip, content string) {
+	runParams.RunCallFunc = func(cmdType define.ProcessType, errmsg, tip, content string) {
 		switch cmdType {
 		case define.Input:
 			h.StreamMsg(base.Component.TMarkDown.BlockQuote(tip+`,`+content+` `+errmsg), true)
@@ -264,6 +265,7 @@ func (h *RCmd) RunPlaywright() (string, error) {
 	//注册需要监听的接口
 	//需要注册的uri
 	listenUriList := cast.ToString(h.cmd[`options`])
+	ListenUrlList := make(map[string]*_struct.ListenUrl)
 	if listenUriList != `` {
 		listenM := make([]map[string]string, 0)
 		_ = gstool.JsonDecode(listenUriList, &listenM)
@@ -272,7 +274,7 @@ func (h *RCmd) RunPlaywright() (string, error) {
 			if uri == `` {
 				continue
 			}
-			base.Component.TPlaywright.ListenUrlList[uri] = &_struct.ListenUrl{
+			ListenUrlList[uri] = &_struct.ListenUrl{
 				IsSse: true,
 				Callback: func(msg string, err error) {
 					base.Component.TVariable.Log.Debugf(`收到消息---%s---`, msg)
@@ -290,10 +292,11 @@ func (h *RCmd) RunPlaywright() (string, error) {
 			}
 		}
 	}
-
+	runParams.ListenUrlList = ListenUrlList
 	for i := 0; i < runParams.OpenNum; i++ {
 		h.StreamMsg("\n"+base.Component.TMarkDown.BlockQuote(cast.ToString(h.cmd[`name`])+`,启动`), true)
-		openErr := base.Component.TPlaywright.OpenBrowserPlaywright(runParams)
+		p := p_playwright.NewPlaywright(runParams, base.Component.TVariable.Log)
+		openErr := p.Open()
 		if openErr != nil {
 			h.StreamMsg(base.Component.TMarkDown.BlockQuote(cast.ToString(h.cmd[`name`])+`,启动失败，`+openErr.Error()), true)
 		}
