@@ -1,0 +1,213 @@
+package p_playwright
+
+import (
+	"dev_tool/base"
+	"dev_tool/base/define"
+	_struct "dev_tool/base/struct"
+	"fmt"
+	"gitee.com/Sxiaobai/gs/gstool"
+	"github.com/playwright-community/playwright-go"
+	"github.com/spf13/cast"
+	"net/url"
+	"strings"
+	"time"
+)
+
+type Process struct {
+	DomainLimit    string                                           //限制域名执行
+	ProcessType    define.ProcessType                               //类型
+	Locators       string                                           //元素选择
+	Tip            string                                           //输出提示
+	Checks         string                                           //检查判断 是否执行
+	OutKey         string                                           //输出的判断
+	Value          string                                           //值
+	Domain         string                                           //域名
+	Locator        *Locator                                         //元素解析
+	ElementOp      *_struct.ElementOp                               //操作结构
+	Page           *playwright.Page                                 //页面
+	TakeContentMap map[string]string                                //提取
+	BoolResultMap  map[string]bool                                  //结果判断
+	Check          *Check                                           //判断
+	RunCallFunc    func(define.ProcessType, string, string, string) //注册输出回调
+}
+
+func NewProcess(process map[string]any, page *playwright.Page, runParams *_struct.PlaywrightRunParams,
+	boolResultMap map[string]bool, takeContentMap map[string]string) *Process {
+	p := &Process{
+		DomainLimit:    cast.ToString(process[`domain_limit`]),
+		ProcessType:    define.ProcessType(cast.ToString(process[`type`])),
+		Locators:       cast.ToString(process[`Locator`]),
+		Tip:            cast.ToString(process[`tip`]),
+		Checks:         base.Component.TPlaywright.ValueFormat(cast.ToString(process[`check_key`]), runParams),
+		OutKey:         cast.ToString(process[`out_key`]),
+		Value:          base.Component.TPlaywright.ValueFormat(cast.ToString(process[`value`]), runParams),
+		RunCallFunc:    runParams.RunCallFunc,
+		Domain:         runParams.Domain,
+		ElementOp:      &_struct.ElementOp{},
+		BoolResultMap:  boolResultMap,
+		TakeContentMap: takeContentMap,
+		Page:           page,
+	}
+	p.Check = NewCheck(p.OutKey, p.Checks, p.BoolResultMap)
+	p.Locator = NewLocator(p.Locators, page, p.ElementOp) //元素解析
+	return p
+}
+
+func (h *Process) Do() (define.ProcessCode, string, error) {
+	code, reason, err := h.PDomain()
+	if err != nil || code == define.ProcessBreak || code == define.ProcessContinue {
+		return code, reason, err
+	}
+	code, reason, err = h.PChecks()
+	base.Component.TPlaywright.Log.Debugf(`判断 tip %s checks %s %s %s %v`, h.Tip, h.Checks, code, reason, err)
+	if err != nil || code == define.ProcessBreak || code == define.ProcessContinue {
+		return code, reason, err
+	}
+	switch h.ProcessType {
+	case define.TextContent: //提取内容
+		return h.PTextContent()
+	case define.BoolResult: //bool结果判断
+		return h.PBoolResult()
+	case define.Close:
+		return h.PClose()
+	case define.Wait:
+		return h.PWait()
+	case define.WaitClose:
+		return h.PWaitClose()
+	case define.Click: //点击
+		return h.PClick()
+	case define.Input: //输入
+		return h.PInput()
+	case define.RedirectUri: //跳转 保持当前域名
+		return h.PRedirect()
+	default:
+		return define.ProcessBreak, `不支持的类型`, gstool.Error(`不支持的类型%s`, h.ProcessType)
+	}
+}
+
+func (h *Process) PTextContent() (define.ProcessCode, string, error) {
+	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	h.ElementOp.Type = define.ElementTextContent
+	_, elementErr := h.Locator.Do()
+	if elementErr != nil {
+		h.callRun(elementErr.Error(), h.Locators)
+		h.TakeContentMap[h.OutKey] = ``
+	} else {
+		h.TakeContentMap[h.OutKey] = h.ElementOp.TextContent
+		h.callRun(``, h.ElementOp.TextContent)
+	}
+	return define.ProcessOk, ``, nil
+}
+
+func (h *Process) PBoolResult() (define.ProcessCode, string, error) {
+	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	if h.Locators != `` {
+		h.ElementOp.Type = define.ElementCount
+		_, elementErr := h.Locator.Do()
+		if elementErr != nil || h.ElementOp.Count == 0 {
+			h.BoolResultMap[h.OutKey] = false //不存在
+		} else {
+			h.BoolResultMap[h.OutKey] = true //存在
+		}
+		base.Component.TPlaywright.Log.Debugf(`判断 %s`, gstool.JsonEncode(h.BoolResultMap))
+	} else {
+		//根据上面的执行来判断
+		h.Check.OutKeyBoolResult()
+	}
+	return define.ProcessOk, ``, nil
+}
+
+func (h *Process) PClick() (define.ProcessCode, string, error) {
+	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	base.Component.TPlaywright.Log.Debugf(`点击 %s 允许`, h.Tip)
+	h.ElementOp.Type = define.ElementClick
+	_, elementErr := h.Locator.Do()
+	if elementErr != nil {
+		h.callRun(elementErr.Error(), h.Locators)
+		return define.ProcessBreak, `获取需要点击的元素失败`, gstool.Error(`获取元素%s失败`, h.Locators)
+	} else {
+		h.callRun(``, h.Locators)
+	}
+	return define.ProcessOk, ``, nil
+}
+
+func (h *Process) PInput() (define.ProcessCode, string, error) {
+	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	h.ElementOp.Type = define.ElementInput
+	h.ElementOp.FillValue = h.Value
+	_, elementErr := h.Locator.Do()
+	if elementErr != nil {
+		h.callRun(elementErr.Error(), h.Locators)
+		return define.ProcessBreak, `获取需要输入的元素失败`, gstool.Error(`获取元素%s失败`, h.Locators)
+	}
+	h.callRun(``, h.Value)
+	return define.ProcessOk, ``, nil
+}
+
+func (h *Process) PRedirect() (define.ProcessCode, string, error) {
+	//链接
+	redirectUri := h.Value
+	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	currentURL := (*h.Page).URL()
+	parsedURL, err := url.Parse(currentURL)
+	if err != nil {
+		h.callRun(fmt.Sprintf(`解析url%s失败%s`, currentURL, err.Error()), currentURL)
+		return define.ProcessBreak, `解析域名失败`, gstool.Error(`解析url%s失败%s`, currentURL, err.Error())
+	}
+	domain := parsedURL.Scheme + `://` + parsedURL.Host
+	targetUrl := domain + redirectUri
+	time.Sleep(time.Second)
+	if _, goErr := (*h.Page).Goto(targetUrl); goErr != nil {
+		h.callRun(goErr.Error(), targetUrl)
+		return define.ProcessBreak, `跳转失败`, goErr
+	} else {
+		h.callRun(``, targetUrl)
+	}
+	return define.ProcessOk, ``, nil
+}
+
+func (h *Process) PWaitClose() (define.ProcessCode, string, error) {
+	go func() {
+		base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+		time.Sleep(time.Duration(cast.ToInt(h.Value)) * time.Second)
+		_ = (*h.Page).Close()
+	}()
+	return define.ProcessOk, ``, nil
+}
+
+func (h *Process) PDomain() (define.ProcessCode, string, error) {
+	if h.DomainLimit != `` && !strings.Contains(h.Domain, h.DomainLimit) {
+		return define.ProcessContinue, `域名过滤`, nil
+	}
+	return define.ProcessOk, ``, nil
+}
+
+func (h *Process) PChecks() (define.ProcessCode, string, error) {
+	//不需要执行
+	ignoreTypeList := []define.ProcessType{
+		define.TextContent,
+		define.BoolResult,
+	}
+	if !gstool.ArrayExistValue(&ignoreTypeList, h.ProcessType) && !h.Check.AllowCheckKey() {
+		return define.ProcessContinue, `checks检查未通过`, nil
+	}
+	return define.ProcessOk, ``, nil
+}
+
+func (h *Process) PClose() (define.ProcessCode, string, error) {
+	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	_ = (*h.Page).Close()
+	return define.ProcessOk, ``, nil
+}
+
+func (h *Process) PWait() (define.ProcessCode, string, error) {
+	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	time.Sleep(time.Duration(cast.ToInt(h.Value)) * time.Second)
+	return define.ProcessOk, ``, nil
+}
+
+func (h *Process) callRun(errmsg, content string) {
+	if h.RunCallFunc != nil {
+		h.RunCallFunc(h.ProcessType, errmsg, h.Tip, content)
+	}
+}

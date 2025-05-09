@@ -3,6 +3,7 @@ package controller
 import (
 	"dev_tool/base"
 	"dev_tool/base/define"
+	"dev_tool/internal/pkg/p_playwright"
 	"errors"
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gs"
@@ -23,7 +24,8 @@ func SmartLinkUpWebkit(c *gin.Context) {
 }
 
 func SmartLinkRecycle(c *gin.Context) {
-	err := base.Component.TPlaywright.SmartLinkRecycle()
+	p := p_playwright.NewPlaywright(nil, base.Component.TPlaywright.Log)
+	err := p.Recycle()
 	if err != nil {
 		gsgin.GinResponseError(c, fmt.Sprintf(`释放失败 %s`, err.Error()), nil)
 		return
@@ -188,7 +190,8 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	gstool.FmtPrintlnLogTime(`开始运行`)
 	for i := 0; i < runParams.OpenNum; i++ {
 		go func() {
-			openErr := base.Component.TPlaywright.OpenBrowserPlaywright(runParams)
+			p := p_playwright.NewPlaywright(runParams, base.Component.TPlaywright.Log)
+			openErr := p.Open()
 			if openErr != nil {
 				gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
 			}
@@ -201,7 +204,8 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 func SmartLinkRunPlaywrightList(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	runList := base.Component.TPlaywright.GetPlaywrightRunList()
+	contextPageList := p_playwright.NewContextList(base.Component.TPlaywright.Log)
+	runList := contextPageList.GetPlaywrightRunList()
 	gsgin.GinResponseSuccess(c, ``, runList)
 }
 

@@ -1,18 +1,24 @@
 package define
 
+type ProcessCode string
+
+const ProcessContinue ProcessCode = "continue"
+const ProcessBreak ProcessCode = "break"
+const ProcessOk ProcessCode = "ok"
+
 type OpenType int
 
-type CmdType string
+type ProcessType string
 
-const TextContent CmdType = `text_content` //提取内容
-const BoolResult CmdType = `bool_result`
-const Close CmdType = `close`
-const Wait CmdType = `wait`
-const WaitClose CmdType = `wait_close`
-const Click CmdType = `click`
-const Input CmdType = `input`
-const RedirectUri CmdType = `redirect_uri`
-const Exit CmdType = `exit` //结束
+const TextContent ProcessType = `text_content` //提取内容
+const BoolResult ProcessType = `bool_result`
+const Close ProcessType = `close`
+const Wait ProcessType = `wait`
+const WaitClose ProcessType = `wait_close`
+const Click ProcessType = `click`
+const Input ProcessType = `input`
+const RedirectUri ProcessType = `redirect_uri`
+const Exit ProcessType = `exit` //结束
 
 const ElementClick = `click`              //点击
 const ElementTextContent = `text_content` //提取

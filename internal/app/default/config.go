@@ -2,6 +2,7 @@ package _default
 
 import (
 	"dev_tool/base"
+	"dev_tool/internal/pkg/p_playwright"
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gsencrypt"
@@ -85,9 +86,10 @@ func initComponent(IsBuild, appName, dbPath, ViewPath string) {
 	base.Component.TPlaywright = base.NewTSmartLink()
 	base.Component.TPlaywright.SetWebkitPath()
 	base.Component.TPlaywright.LockFileFullPath = base.Component.Env.RootPath + `/playwright.RunLock`
+	p_playwright.InitPageActiveTime()
+	p_playwright.InitContextPageList()
 	go base.Component.TPlaywright.WitchDownload()
 	go base.Component.TPlaywright.SmartCheckAndUpdate()
-	go base.Component.TPlaywright.TimerCheckClosePage()
 
 	base.Component.GsLog = gstool.SlogCreateDefault(base.Component.Env.LogPath, base.Component.Env.AppName)
 	base.Component.GsLog.DeleteLogs(``)
