@@ -29,10 +29,11 @@ type Process struct {
 	BoolResultMap  map[string]bool                                  //结果判断
 	Check          *Check                                           //判断
 	RunCallFunc    func(define.ProcessType, string, string, string) //注册输出回调
+	log            *gstool.GsSlog
 }
 
 func NewProcess(process map[string]any, page *playwright.Page, runParams *_struct.PlaywrightRunParams,
-	boolResultMap map[string]bool, takeContentMap map[string]string) *Process {
+	boolResultMap map[string]bool, takeContentMap map[string]string, log *gstool.GsSlog) *Process {
 	p := &Process{
 		DomainLimit:    cast.ToString(process[`domain_limit`]),
 		ProcessType:    define.ProcessType(cast.ToString(process[`type`])),
@@ -47,9 +48,10 @@ func NewProcess(process map[string]any, page *playwright.Page, runParams *_struc
 		BoolResultMap:  boolResultMap,
 		TakeContentMap: takeContentMap,
 		Page:           page,
+		log:            log,
 	}
-	p.Check = NewCheck(p.OutKey, p.Checks, p.BoolResultMap)
-	p.Locator = NewLocator(p.Locators, page, p.ElementOp) //元素解析
+	p.Check = NewCheck(p.OutKey, p.Checks, p.BoolResultMap, p.log)
+	p.Locator = NewLocator(p.Locators, page, p.ElementOp, p.log) //元素解析
 	return p
 }
 
@@ -59,7 +61,7 @@ func (h *Process) Do() (define.ProcessCode, string, error) {
 		return code, reason, err
 	}
 	code, reason, err = h.PChecks()
-	base.Component.TPlaywright.Log.Debugf(`判断 tip %s checks %s %s %s %v`, h.Tip, h.Checks, code, reason, err)
+	h.log.Debugf(`判断 tip %s checks %s %s %s %v`, h.Tip, h.Checks, code, reason, err)
 	if err != nil || code == define.ProcessBreak || code == define.ProcessContinue {
 		return code, reason, err
 	}
@@ -109,7 +111,7 @@ func (h *Process) PBoolResult() (define.ProcessCode, string, error) {
 		} else {
 			h.BoolResultMap[h.OutKey] = true //存在
 		}
-		base.Component.TPlaywright.Log.Debugf(`判断 %s`, gstool.JsonEncode(h.BoolResultMap))
+		h.log.Debugf(`判断 %s`, gstool.JsonEncode(h.BoolResultMap))
 	} else {
 		//根据上面的执行来判断
 		h.Check.OutKeyBoolResult()
@@ -119,7 +121,7 @@ func (h *Process) PBoolResult() (define.ProcessCode, string, error) {
 
 func (h *Process) PClick() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
-	base.Component.TPlaywright.Log.Debugf(`点击 %s 允许`, h.Tip)
+	h.log.Debugf(`点击 %s 允许`, h.Tip)
 	h.ElementOp.Type = define.ElementClick
 	_, elementErr := h.Locator.Do()
 	if elementErr != nil {

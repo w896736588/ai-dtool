@@ -1,18 +1,23 @@
 package p_playwright
 
-import "strings"
+import (
+	"gitee.com/Sxiaobai/gs/gstool"
+	"strings"
+)
 
 type Check struct {
 	OutKey        string
 	Checks        string
 	BoolResultMap map[string]bool //map是传递的指针值 当作引用传值使用
+	log           *gstool.GsSlog
 }
 
-func NewCheck(outKey, checks string, boolResultMap map[string]bool) *Check {
+func NewCheck(outKey, checks string, boolResultMap map[string]bool, log *gstool.GsSlog) *Check {
 	return &Check{
 		OutKey:        outKey,
 		Checks:        checks,
 		BoolResultMap: boolResultMap,
+		log:           log,
 	}
 }
 

@@ -1,7 +1,6 @@
 package p_playwright
 
 import (
-	"dev_tool/base"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
 	"errors"
@@ -16,13 +15,15 @@ type Locator struct {
 	Locators  string
 	Page      *playwright.Page
 	ElementOp *_struct.ElementOp
+	log       *gstool.GsSlog
 }
 
-func NewLocator(locators string, page *playwright.Page, elementOp *_struct.ElementOp) *Locator {
+func NewLocator(locators string, page *playwright.Page, elementOp *_struct.ElementOp, log *gstool.GsSlog) *Locator {
 	return &Locator{
 		Locators:  locators,
 		Page:      page,
 		ElementOp: elementOp,
+		log:       log,
 	}
 }
 
@@ -33,7 +34,7 @@ func (h *Locator) Do() (playwright.Locator, error) {
 	waitSecond := playwright.Float(3000)
 	//&&处理
 	if len(lists) > 1 {
-		base.Component.TPlaywright.Log.Debugf(`走&& %s`, h.Locators)
+		h.log.Debugf(`走&& %s`, h.Locators)
 		for _, locators := range lists {
 			locator := h.parseLocator(locators)
 			//查找
@@ -49,13 +50,13 @@ func (h *Locator) Do() (playwright.Locator, error) {
 					//如果是反找Locator 不存在时返回正常
 					if locator.ExistSetNot {
 						if selectorLoaderWaitErr != nil {
-							base.Component.TPlaywright.Log.Debugf(`反查找 %s 失败`, locator.Locator)
+							h.log.Debugf(`反查找 %s 失败`, locator.Locator)
 							return gstask.Result{
 								Result: selectorLoader,
 								Err:    nil,
 							}
 						} else {
-							base.Component.TPlaywright.Log.Debugf(`反查找 %s 成功`, locator.Locator)
+							h.log.Debugf(`反查找 %s 成功`, locator.Locator)
 							return gstask.Result{
 								Result: selectorLoader,
 								Err:    errors.New(`找到了反找元素，返回失败`),
@@ -63,13 +64,13 @@ func (h *Locator) Do() (playwright.Locator, error) {
 						}
 					} else {
 						if selectorLoaderWaitErr != nil {
-							base.Component.TPlaywright.Log.Debugf(`查找 %s 失败`, locator.Locator)
+							h.log.Debugf(`查找 %s 失败`, locator.Locator)
 							return gstask.Result{
 								Result: nil,
 								Err:    errors.New(`没有找到元素 ` + locator.Locator),
 							}
 						} else {
-							base.Component.TPlaywright.Log.Debugf(`查找 %s 成功`, locator.Locator)
+							h.log.Debugf(`查找 %s 成功`, locator.Locator)
 							return gstask.Result{
 								Result: selectorLoader,
 								Err:    nil,
@@ -85,7 +86,7 @@ func (h *Locator) Do() (playwright.Locator, error) {
 
 	//||处理
 	if len(hList) > 1 {
-		base.Component.TPlaywright.Log.Debugf(`走|| %s`, h.Locators)
+		h.log.Debugf(`走|| %s`, h.Locators)
 		for _, locators := range hList {
 			locator := h.parseLocator(locators)
 			//查找
@@ -100,13 +101,13 @@ func (h *Locator) Do() (playwright.Locator, error) {
 					})
 					//如果是反找Locator 不存在时返回正常
 					if selectorLoaderWaitErr != nil {
-						base.Component.TPlaywright.Log.Debugf(`查找 %s 失败`, locator.Locator)
+						h.log.Debugf(`查找 %s 失败`, locator.Locator)
 						return gstask.Result{
 							Result: nil,
 							Err:    errors.New(`没找到`),
 						}
 					} else {
-						base.Component.TPlaywright.Log.Debugf(`反查找 %s 成功`, locator.Locator)
+						h.log.Debugf(`反查找 %s 成功`, locator.Locator)
 						return gstask.Result{
 							Result: selectorLoader,
 							Err:    nil,
@@ -120,7 +121,7 @@ func (h *Locator) Do() (playwright.Locator, error) {
 
 	//默认
 	if !gstool.SContains(h.Locators, []string{`&&`, `||`}) {
-		base.Component.TPlaywright.Log.Debugf(`走默认 %s`, h.Locators)
+		h.log.Debugf(`走默认 %s`, h.Locators)
 		locator := h.parseLocator(h.Locators)
 		//查找
 		task.Add(gstask.CallbackFunc{
@@ -134,13 +135,13 @@ func (h *Locator) Do() (playwright.Locator, error) {
 				})
 				//如果是反找Locator 不存在时返回正常
 				if selectorLoaderWaitErr != nil {
-					base.Component.TPlaywright.Log.Debugf(`查找 %s 失败`, locator.Locator)
+					h.log.Debugf(`查找 %s 失败`, locator.Locator)
 					return gstask.Result{
 						Result: nil,
 						Err:    errors.New(`没找到`),
 					}
 				} else {
-					base.Component.TPlaywright.Log.Debugf(`反查找 %s 成功`, locator.Locator)
+					h.log.Debugf(`反查找 %s 成功`, locator.Locator)
 					return gstask.Result{
 						Result: selectorLoader,
 						Err:    nil,
@@ -153,7 +154,7 @@ func (h *Locator) Do() (playwright.Locator, error) {
 
 	result := task.RunOne()
 	if result.Err != nil {
-		base.Component.TPlaywright.Log.Debugf(`处理：%s失败：%s`, h.Locators, result.Err.Error())
+		h.log.Debugf(`处理：%s失败：%s`, h.Locators, result.Err.Error())
 		return nil, result.Err
 	}
 	element := result.Result.(playwright.Locator)

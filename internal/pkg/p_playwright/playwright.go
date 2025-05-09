@@ -19,6 +19,7 @@ type Playwright struct {
 	TakeContentMap  map[string]string            //提取内容
 	BoolResultMap   map[string]bool              //判断结果
 	ContextPageList *ContextPageList             //浏览器上下文列表
+	log             *gstool.GsSlog
 }
 
 func NewPlaywright(runParams *_struct.PlaywrightRunParams, log *gstool.GsSlog) *Playwright {
@@ -27,6 +28,7 @@ func NewPlaywright(runParams *_struct.PlaywrightRunParams, log *gstool.GsSlog) *
 		TakeContentMap:  make(map[string]string),
 		BoolResultMap:   make(map[string]bool),
 		ContextPageList: NewContextList(log),
+		log:             log,
 	}
 }
 
@@ -34,18 +36,18 @@ func (h *Playwright) Open() error {
 	if base.Component.TPlaywright.Pw == nil {
 		return errors.New(`未启动浏览器核心`)
 	}
-	base.Component.TPlaywright.Log.Debugf(`开始获取page`)
+	h.log.Debugf(`开始获取page`)
 	page, pageErr := h.GetPage()
 	if pageErr != nil {
 		return gstool.Error(`获取page失败 %s`, pageErr.Error())
 	}
 	//输出结果存储
-	base.Component.TPlaywright.Log.Debugf(`开始处理process list`)
+	h.log.Debugf(`开始处理process list`)
 	for _, processVal := range h.RunParams.ProcessList {
 		h.RunParams.ReplaceList = append(h.RunParams.ReplaceList, h.TakeContentMap)
-		process := NewProcess(processVal, page, h.RunParams, h.BoolResultMap, h.TakeContentMap)
+		process := NewProcess(processVal, page, h.RunParams, h.BoolResultMap, h.TakeContentMap, h.log)
 		code, reason, err := process.Do()
-		base.Component.TPlaywright.Log.Debugf(`执行结果 %s `, gstool.JsonFormat(map[string]any{
+		h.log.Debugf(`执行结果 %s `, gstool.JsonFormat(map[string]any{
 			`type`:           process.ProcessType,
 			`reason`:         reason,
 			`domain`:         h.RunParams.Domain,
@@ -77,7 +79,7 @@ func (h *Playwright) GetPage() (*playwright.Page, error) {
 	} else { //保留用户数据
 		contextPage, boolCleanFirstBlank, contextErr = h.GetContextSaveUserData()
 	}
-	base.Component.TPlaywright.Log.Debugf(`获取context结束 %v`, contextErr)
+	h.log.Debugf(`获取context结束 %v`, contextErr)
 	if contextErr != nil {
 		return nil, contextErr
 	}
@@ -85,7 +87,7 @@ func (h *Playwright) GetPage() (*playwright.Page, error) {
 	var page playwright.Page
 	var pageErr error
 	page, pageErr = (*contextPage.Context).NewPage()
-	base.Component.TPlaywright.Log.Debugf(`创建page结束 %v`, pageErr)
+	h.log.Debugf(`创建page结束 %v`, pageErr)
 	if pageErr != nil {
 		return nil, pageErr
 	}
@@ -154,7 +156,7 @@ func (h *Playwright) GetContextNotSaveUserData(browser playwright.Browser) (*Con
 	closeEvent := func() {
 		h.ContextPageList.CleanContextList(false)
 	}
-	contentPage := NewContextPage(&context, h.RunParams, ``, 0, base.Component.TPlaywright.Log, closeEvent)
+	contentPage := NewContextPage(&context, h.RunParams, ``, 0, h.log, closeEvent)
 	h.ContextPageList.AddContextList(contentPage)
 	return contentPage, nil
 }
@@ -200,7 +202,7 @@ func (h *Playwright) GetContextSaveUserData() (*ContextPage, bool, error) {
 		return existContextPage, false, nil
 	}
 	userDataPath := fmt.Sprintf(base.Component.Env.WebkitDataPath+`/%d`, userDataIndex)
-	base.Component.TPlaywright.Log.Debugf(`未找到context，context使用的数据目录 %s`, userDataPath)
+	h.log.Debugf(`未找到context，context使用的数据目录 %s`, userDataPath)
 	//创建数据索引目录
 	_ = gstool.DirCreatePath(userDataPath)
 	//打开模式
@@ -236,11 +238,11 @@ func (h *Playwright) GetContextSaveUserData() (*ContextPage, bool, error) {
 			},
 		})
 		if contextErr != nil {
-			base.Component.TPlaywright.Log.Errof(`启动context报错 %s`, contextErr.Error())
+			h.log.Errof(`启动context报错 %s`, contextErr.Error())
 			return nil, false, contextErr
 		}
 	} else {
-		base.Component.TPlaywright.Log.Debugf(`启动context 超时时间：%f`, h.RunParams.GetPageTimeout)
+		h.log.Debugf(`启动context 超时时间：%f`, h.RunParams.GetPageTimeout)
 		context, contextErr = base.Component.TPlaywright.Pw.Chromium.LaunchPersistentContext(userDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
 			//DownloadsPath:     &h.downloadPath,
 			Headless: &Headless,
@@ -261,16 +263,16 @@ func (h *Playwright) GetContextSaveUserData() (*ContextPage, bool, error) {
 			},
 		})
 		if contextErr != nil {
-			base.Component.TPlaywright.Log.Errof(`启动context报错 %s`, contextErr.Error())
+			h.log.Errof(`启动context报错 %s`, contextErr.Error())
 			return nil, false, contextErr
 		}
-		base.Component.TPlaywright.Log.Debugf(`启动 over`)
+		h.log.Debugf(`启动 over`)
 	}
 	closeEvent := func() {
-		base.Component.TPlaywright.Log.Debugf(`context关闭`)
+		h.log.Debugf(`context关闭`)
 		h.ContextPageList.CleanContextList(false)
 	}
-	contextPage := NewContextPage(&context, h.RunParams, userDataPath, userDataIndex, base.Component.TPlaywright.Log, closeEvent)
+	contextPage := NewContextPage(&context, h.RunParams, userDataPath, userDataIndex, h.log, closeEvent)
 	h.ContextPageList.AddContextList(contextPage)
 	return contextPage, true, nil
 }
@@ -330,7 +332,7 @@ func (h *Playwright) GetUserDataIndex() int {
 		}
 		//没有找到相同域名的page
 		if !boolFindSameDomainPage { //需要合并时才处理
-			base.Component.TPlaywright.Log.Debugf(`递增目录，找到了已经存在的context %s`, context.ContextUnique)
+			h.log.Debugf(`递增目录，找到了已经存在的context %s`, context.ContextUnique)
 			return context
 		} else {
 			ignoreIndexList = append(ignoreIndexList, context.UserDataIndex)
@@ -368,7 +370,7 @@ func (h *Playwright) CleanContextPagesFixDataId() {
 }
 
 func (h *Playwright) Recycle() error {
-	base.Component.TPlaywright.Log.Debugf(`开始回收..`)
+	h.log.Debugf(`开始回收..`)
 	_ = base.Component.TPlaywright.Pw.Stop()
 	h.ContextPageList.CleanContextList(true)
 	base.Component.TPlaywright.InitPlaywright()
