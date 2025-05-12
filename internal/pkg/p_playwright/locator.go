@@ -36,83 +36,21 @@ func (h *Locator) Do() (playwright.Locator, error) {
 	if len(lists) > 1 {
 		h.log.Debugf(`走&& %s`, h.Locators)
 		for _, locators := range lists {
-			locator := h.parseLocator(locators)
-			//查找
 			task.Add(gstask.CallbackFunc{
-				Func: func() gstask.Result {
-					selectorLoader := (*h.Page).Locator(locator.Locator)
-					if locator.First { //首个
-						selectorLoader = selectorLoader.First()
-					}
-					selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
-						Timeout: waitSecond,
-					})
-					//如果是反找Locator 不存在时返回正常
-					if locator.ExistSetNot {
-						if selectorLoaderWaitErr != nil {
-							h.log.Debugf(`反查找 %s 失败`, locator.Locator)
-							return gstask.Result{
-								Result: selectorLoader,
-								Err:    nil,
-							}
-						} else {
-							h.log.Debugf(`反查找 %s 成功`, locator.Locator)
-							return gstask.Result{
-								Result: selectorLoader,
-								Err:    errors.New(`找到了反找元素，返回失败`),
-							}
-						}
-					} else {
-						if selectorLoaderWaitErr != nil {
-							h.log.Debugf(`查找 %s 失败`, locator.Locator)
-							return gstask.Result{
-								Result: nil,
-								Err:    errors.New(`没有找到元素 ` + locator.Locator),
-							}
-						} else {
-							h.log.Debugf(`查找 %s 成功`, locator.Locator)
-							return gstask.Result{
-								Result: selectorLoader,
-								Err:    nil,
-							}
-						}
-					}
-
+				Func: func() *gstask.Result {
+					return h.FindLocator(locators, waitSecond)
 				},
 				Timeout: 5 * time.Second,
 			})
 		}
 	}
-
 	//||处理
 	if len(hList) > 1 {
 		h.log.Debugf(`走|| %s`, h.Locators)
 		for _, locators := range hList {
-			locator := h.parseLocator(locators)
-			//查找
 			task.Add(gstask.CallbackFunc{
-				Func: func() gstask.Result {
-					selectorLoader := (*h.Page).Locator(locator.Locator)
-					if locator.First { //首个
-						selectorLoader = selectorLoader.First()
-					}
-					selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
-						Timeout: waitSecond,
-					})
-					//如果是反找Locator 不存在时返回正常
-					if selectorLoaderWaitErr != nil {
-						h.log.Debugf(`查找 %s 失败`, locator.Locator)
-						return gstask.Result{
-							Result: nil,
-							Err:    errors.New(`没找到`),
-						}
-					} else {
-						h.log.Debugf(`反查找 %s 成功`, locator.Locator)
-						return gstask.Result{
-							Result: selectorLoader,
-							Err:    nil,
-						}
-					}
+				Func: func() *gstask.Result {
+					return h.FindLocator(locators, waitSecond)
 				},
 				Timeout: 5 * time.Second,
 			})
@@ -122,31 +60,9 @@ func (h *Locator) Do() (playwright.Locator, error) {
 	//默认
 	if !gstool.SContains(h.Locators, []string{`&&`, `||`}) {
 		h.log.Debugf(`走默认 %s`, h.Locators)
-		locator := h.parseLocator(h.Locators)
-		//查找
 		task.Add(gstask.CallbackFunc{
-			Func: func() gstask.Result {
-				selectorLoader := (*h.Page).Locator(locator.Locator)
-				if locator.First { //首个
-					selectorLoader = selectorLoader.First()
-				}
-				selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: waitSecond,
-				})
-				//如果是反找Locator 不存在时返回正常
-				if selectorLoaderWaitErr != nil {
-					h.log.Debugf(`查找 %s 失败`, locator.Locator)
-					return gstask.Result{
-						Result: nil,
-						Err:    errors.New(`没找到`),
-					}
-				} else {
-					h.log.Debugf(`反查找 %s 成功`, locator.Locator)
-					return gstask.Result{
-						Result: selectorLoader,
-						Err:    nil,
-					}
-				}
+			Func: func() *gstask.Result {
+				return h.FindLocator(h.Locators, waitSecond)
 			},
 			Timeout: 5 * time.Second,
 		})
@@ -194,4 +110,45 @@ func (h *Locator) parseLocator(Locator string) *_struct.Locator {
 		locator.Locator = strings.TrimLeft(locator.Locator, `!`)
 	}
 	return &locator
+}
+
+func (h *Locator) FindLocator(locators string, waitSecond *float64) *gstask.Result {
+	locator := h.parseLocator(locators)
+	selectorLoader := (*h.Page).Locator(locator.Locator)
+	if locator.First { //首个
+		selectorLoader = selectorLoader.First()
+	}
+	selectorLoaderWaitErr := selectorLoader.WaitFor(playwright.LocatorWaitForOptions{
+		Timeout: waitSecond,
+	})
+	//如果是反找Locator 不存在时返回正常
+	if locator.ExistSetNot {
+		if selectorLoaderWaitErr != nil {
+			h.log.Debugf(`反查找 %s 失败`, locator.Locator)
+			return &gstask.Result{
+				Result: selectorLoader,
+				Err:    nil,
+			}
+		} else {
+			h.log.Debugf(`反查找 %s 成功`, locator.Locator)
+			return &gstask.Result{
+				Result: selectorLoader,
+				Err:    errors.New(`找到了反找元素，返回失败`),
+			}
+		}
+	} else {
+		if selectorLoaderWaitErr != nil {
+			h.log.Debugf(`查找 %s 失败`, locator.Locator)
+			return &gstask.Result{
+				Result: nil,
+				Err:    errors.New(`没有找到元素 ` + locator.Locator),
+			}
+		} else {
+			h.log.Debugf(`查找 %s 成功`, locator.Locator)
+			return &gstask.Result{
+				Result: selectorLoader,
+				Err:    nil,
+			}
+		}
+	}
 }

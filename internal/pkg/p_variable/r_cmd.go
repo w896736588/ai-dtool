@@ -294,7 +294,7 @@ func (h *RCmd) RunPlaywright() (string, error) {
 	}
 	runParams.ListenUrlList = ListenUrlList
 	for i := 0; i < runParams.OpenNum; i++ {
-		h.StreamMsg("\n"+base.Component.TMarkDown.BlockQuote(cast.ToString(h.cmd[`name`])+`,启动`), true)
+		h.StreamMsg("\n"+base.Component.TMarkDown.BlockQuote(label+`,启动`), true)
 		p := p_playwright.NewPlaywright(runParams, base.Component.TVariable.Log)
 		openErr := p.Open()
 		if openErr != nil {
