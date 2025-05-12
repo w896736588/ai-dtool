@@ -18,6 +18,7 @@ type ContextPage struct {
 	UserDataPath       string                        //数据目录
 	ContextUnique      string                        //唯一标记 context 记录是哪个目录的context
 	OpenType           define.OpenType               //打开类型
+	IsSaveUserData     bool                          //是否保存用户数据
 	ListenUrlList      map[string]*_struct.ListenUrl //监听的路由
 	AutoCloseSecond    int                           //非活跃自动关闭 1开启 0关闭
 	CloseEvent         func()                        //关闭事件
@@ -37,6 +38,7 @@ func NewContextPage(context *playwright.BrowserContext, runParams *_struct.Playw
 		ListenUrlList:      runParams.ListenUrlList,
 		AutoCloseSecond:    runParams.AutoCloseSecond,
 		CloseEvent:         closeEvent,
+		IsSaveUserData:     runParams.IsSaveUserData,
 		log:                log,
 		ActiveTime:         NewPageActiveTime(),
 	}

@@ -12,7 +12,7 @@ type PlaywrightRunParams struct {
 	Cookie              string                                           //打开链接时需要设置的cookie
 	Headers             map[string]string                                //设置的headers
 	OpenType            define.OpenType                                  //打开类型 1通过js打开 2 静默打开(内置核心打开)  3 浏览器打开(内置核心打开)
-	IsCombine           bool                                             //是否合并到同一浏览器 true合并，false不合并
+	CombineType         int                                              //查找context方案
 	ProcessList         []map[string]any                                 //执行流程
 	ReplaceList         []map[string]string                              //替换内容
 	IsSaveUserData      bool                                             //是否保存用户数据 true保存，false不保存
@@ -24,7 +24,6 @@ type PlaywrightRunParams struct {
 	UserName            string                                           //选择的登录账号
 	Password            string                                           //登录密码
 	ContextUnique       string                                           //context唯一ID
-	FixDataId           int                                              //是否固定保存数据目录
 	DownloadFinds       []string                                         //哪些url请求会被定义为下载
 	AutoCloseSecond     int                                              //多少秒内没有操作 就进行关闭page 0表示不处理
 	Channel             string                                           //浏览器类型

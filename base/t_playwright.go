@@ -158,7 +158,6 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 		return runParams, errors.New(`不存在的链接`)
 	}
 	linkList := make([]map[string]any, 0)
-	runParams.FixDataId = cast.ToInt(smartLink[`fix_data_id`])
 	runParams.DownloadFinds = strings.Split(cast.ToString(smartLink[`download_finds`]), `,`)
 	runParams.AutoCloseSecond = cast.ToInt(smartLink[`auto_close_second`])
 	runParams.Channel = cast.ToString(smartLink[`channel`])
@@ -193,7 +192,7 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 		`{rand}`: Component.TBase.GetCombineKey(),
 	})
 	runParams.IsSaveUserData = cast.ToInt(smartLink[`is_save_user_data`]) == 1
-	runParams.IsCombine = cast.ToInt(smartLink[`is_combine`]) == 1
+	runParams.CombineType = cast.ToInt(smartLink[`is_combine`])
 	runParams.OpenNum = cast.ToInt(math.Max(1, cast.ToFloat64(openNum)))
 	runParams.OpenType = define.OpenType(cast.ToInt(smartLink[`open_type`]))
 	process := cast.ToString(smartLink[`process`])

@@ -53,7 +53,8 @@ func redisRouter() {
 
 // php相关
 func phpRouter() {
-	base.Component.TGin.GinPost(`/api/PhpUnserialize`, controller.PhpPhpUnSerialize) //PHP反序列化
+	base.Component.TGin.GinPost(`/api/PhpUnserialize`, controller.PhpPhpUnSerialize)   //PHP反序列化
+	base.Component.TGin.GinPost(`/api/PhpUnserialize2`, controller.PhpPhpUnSerialize2) //PHP反序列化
 }
 
 // 消费者相关

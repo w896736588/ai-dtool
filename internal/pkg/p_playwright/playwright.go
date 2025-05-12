@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/playwright-community/playwright-go"
+	"github.com/spf13/cast"
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Playwright struct {
@@ -91,6 +93,8 @@ func (h *Playwright) GetPage() (*playwright.Page, error) {
 	if pageErr != nil {
 		return nil, pageErr
 	}
+	//记录登录记录
+	h.LastUserDataIndex(h.RunParams, contextPage.UserDataIndex)
 	// 关闭一个blank
 	if boolCleanFirstBlank {
 		contextPage.CloseFirstPage()
@@ -105,23 +109,63 @@ func (h *Playwright) GetPage() (*playwright.Page, error) {
 	return &page, nil
 }
 
+func (h *Playwright) LastUserDataIndex(runParams *_struct.PlaywrightRunParams, userDataIndex int) {
+	gstool.FmtPrintlnLogTime(`userName %s %d %d`, runParams.UserName, runParams.Id, userDataIndex)
+	if runParams.UserName == `` || runParams.Id == 0 {
+		return
+	}
+	sql := `select * from tbl_smart_link_last where  smart_link_id = ? and user_name = ? `
+	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, runParams.Id, runParams.UserName).One()
+	if smartLinkErr != nil {
+		gstool.FmtPrintlnLogTime(`查询失败 %s`, smartLinkErr.Error())
+		return
+	} else if len(smartLinkLast) > 0 {
+		_, err := base.Component.TSqlite.Client.QuickUpdate(`tbl_smart_link_last`, map[string]any{
+			`smart_link_id`: runParams.Id,
+			`user_name`:     runParams.UserName,
+		}, map[string]any{
+			`user_data_index`: userDataIndex,
+			`update_time`:     time.Now().Unix(),
+		}).Exec()
+		if err != nil {
+			gstool.FmtPrintlnLogTime(`更新最后使用索引失败 %s`, err.Error())
+		}
+	} else {
+		_, err := base.Component.TSqlite.Client.QuickCreate(`tbl_smart_link_last`, map[string]any{
+			`smart_link_id`:   runParams.Id,
+			`user_name`:       runParams.UserName,
+			`user_data_index`: userDataIndex,
+			`create_time`:     time.Now().Unix(),
+			`update_time`:     time.Now().Unix(),
+		}).Exec()
+		if err != nil {
+			gstool.FmtPrintlnLogTime(`创建最后使用索引失败 %s`, err.Error())
+		}
+	}
+}
+
 func (h *Playwright) GetContextNotSaveUserData(browser playwright.Browser) (*ContextPage, error) {
 	//查找可用的context
 	rContext := h.ContextPageList.FindContextList(func(context *ContextPage) *ContextPage {
+		//不保存数据过滤
+		if context.IsSaveUserData {
+			return nil
+		}
 		//非同种类型的context跳过
 		if !base.Component.TPlaywright.IsSameLink(context.SmartLinkUniqueKey, h.RunParams.SmartLinkUniqueKey) {
 			return nil
 		}
 		//找到一个context没有当前域名的
-		boolFind := false
+		existSameDomain := false
 		pageList := (*context.Context).Pages()
 		for _, v1 := range pageList {
 			if gstool.UrlGetHost(v1.URL()) == h.RunParams.Domain {
-				boolFind = true
+				existSameDomain = true
 				break
 			}
 		}
-		if !boolFind && h.RunParams.IsCombine {
+		//h.RunParams.CombineType != define.CombineTypeNo
+		if !existSameDomain {
 			return context
 		}
 		return nil
@@ -287,28 +331,83 @@ func (h *Playwright) GetContextByIndex(dataIndex int) *ContextPage {
 }
 
 func (h *Playwright) GetUserDataIndex() int {
-	maxIndex := 500
 	//固定索引目录
-	if h.RunParams.FixDataId == 1 {
+	if h.RunParams.CombineType == define.CombineTypeFix {
 		return h.RunParams.Id
 	}
 	//不需要合并 找到一个没有用到的就行
-	if !h.RunParams.IsCombine {
-		for i := 0; i < maxIndex; i++ {
-			boolExist := false
-			h.ContextPageList.EachContextList(func(context *ContextPage) bool {
-				if context.UserDataIndex == i {
-					boolExist = true
-					return true
-				}
-				return false
-			})
-			if !boolExist {
-				return i
-			}
+	if h.RunParams.CombineType == define.CombineTypeNo {
+		noUserDataIndex := h.GetNoUserDataIndex()
+		if noUserDataIndex != 0 {
+			return noUserDataIndex
+		} else {
+			return 99 //找不到都给到99吧
+		}
+	}
+	//自动找到上一次登录的目录索引
+	if h.RunParams.CombineType == define.CombineTypeLast {
+		lastUserDataIndex := h.GetLastUserDataIndex()
+		if lastUserDataIndex != 0 {
+			return lastUserDataIndex
 		}
 	}
 	//需要合并 找一下可以重复利用的index
+	findUserDataIndex := h.GetFindUserDataIndex()
+	if findUserDataIndex != 0 {
+		return findUserDataIndex
+	}
+	return 99 //错误
+}
+
+func (h *Playwright) IsSameLink(smartLinkUniqueKeyS, smartLinkUniqueKeyT string) bool {
+	return strings.Split(smartLinkUniqueKeyS, `_`)[0] == strings.Split(smartLinkUniqueKeyT, `_`)[0]
+}
+
+// CleanContextPagesFixDataId 根据域名清理context
+// 注意；这里直接关闭context 防止context假死 导致登录态不能登录
+func (h *Playwright) CleanContextPagesFixDataId() {
+	if h.RunParams.CombineType != define.CombineTypeFix {
+		return
+	}
+	h.ContextPageList.EachContextList(func(context *ContextPage) bool {
+		if context.ContextUnique == h.RunParams.ContextUnique {
+			context.CloseContextPages()
+		}
+		return false
+	})
+}
+
+func (h *Playwright) GetNoUserDataIndex() int {
+	for i := 1; i < define.MaxUserDataIndex; i++ {
+		boolExist := false
+		h.ContextPageList.EachContextList(func(context *ContextPage) bool {
+			if context.UserDataIndex == i {
+				boolExist = true
+				return true
+			}
+			return false
+		})
+		if !boolExist {
+			return i
+		}
+	}
+	return 0
+}
+
+func (h *Playwright) GetLastUserDataIndex() int {
+	if h.RunParams.UserName == `` {
+		return 0
+	}
+	sql := `select * from tbl_smart_link_last where  smart_link_id = ? and user_name = ? `
+	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, h.RunParams.Id, h.RunParams.UserName).One()
+	if smartLinkErr != nil {
+		return 0
+	} else {
+		return cast.ToInt(smartLinkLast[`user_data_index`])
+	}
+}
+
+func (h *Playwright) GetFindUserDataIndex() int {
 	ignoreIndexList := make([]int, 0)
 	rContext := h.ContextPageList.FindContextList(func(context *ContextPage) *ContextPage {
 		//非同一类型打开方式 不管
@@ -343,30 +442,12 @@ func (h *Playwright) GetUserDataIndex() int {
 		return rContext.UserDataIndex
 	}
 	//没有能够复用的数据索引 那么
-	for i := 0; i < maxIndex; i++ {
+	for i := 1; i < define.MaxUserDataIndex; i++ {
 		if !gstool.ArrayExistValue(&ignoreIndexList, i) {
 			return i
 		}
 	}
-	return -1 //错误
-}
-
-func (h *Playwright) IsSameLink(smartLinkUniqueKeyS, smartLinkUniqueKeyT string) bool {
-	return strings.Split(smartLinkUniqueKeyS, `_`)[0] == strings.Split(smartLinkUniqueKeyT, `_`)[0]
-}
-
-// CleanContextPagesFixDataId 根据域名清理context
-// 注意；这里直接关闭context 防止context假死 导致登录态不能登录
-func (h *Playwright) CleanContextPagesFixDataId() {
-	if h.RunParams.FixDataId == 0 {
-		return
-	}
-	h.ContextPageList.EachContextList(func(context *ContextPage) bool {
-		if context.ContextUnique == h.RunParams.ContextUnique {
-			context.CloseContextPages()
-		}
-		return false
-	})
+	return 99
 }
 
 func (h *Playwright) Recycle() error {
