@@ -111,11 +111,11 @@ func (h *Playwright) GetPage() (*playwright.Page, error) {
 
 func (h *Playwright) LastUserDataIndex(runParams *_struct.PlaywrightRunParams, userDataIndex int) {
 	gstool.FmtPrintlnLogTime(`userName %s %d %d`, runParams.UserName, runParams.Id, userDataIndex)
-	if runParams.UserName == `` || runParams.Id == 0 {
+	if runParams.UserName == `` || runParams.Id == 0 || runParams.Domain == `` {
 		return
 	}
-	sql := `select * from tbl_smart_link_last where  smart_link_id = ? and user_name = ? `
-	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, runParams.Id, runParams.UserName).One()
+	sql := `select * from tbl_smart_link_last where  smart_link_id = ? and user_name = ? and domain = ?`
+	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, runParams.Id, runParams.UserName, runParams.Domain).One()
 	if smartLinkErr != nil {
 		gstool.FmtPrintlnLogTime(`查询失败 %s`, smartLinkErr.Error())
 		return
@@ -123,6 +123,7 @@ func (h *Playwright) LastUserDataIndex(runParams *_struct.PlaywrightRunParams, u
 		_, err := base.Component.TSqlite.Client.QuickUpdate(`tbl_smart_link_last`, map[string]any{
 			`smart_link_id`: runParams.Id,
 			`user_name`:     runParams.UserName,
+			`domain`:        runParams.Domain,
 		}, map[string]any{
 			`user_data_index`: userDataIndex,
 			`update_time`:     time.Now().Unix(),
@@ -135,6 +136,7 @@ func (h *Playwright) LastUserDataIndex(runParams *_struct.PlaywrightRunParams, u
 			`smart_link_id`:   runParams.Id,
 			`user_name`:       runParams.UserName,
 			`user_data_index`: userDataIndex,
+			`domain`:          runParams.Domain,
 			`create_time`:     time.Now().Unix(),
 			`update_time`:     time.Now().Unix(),
 		}).Exec()
@@ -398,8 +400,8 @@ func (h *Playwright) GetLastUserDataIndex() int {
 	if h.RunParams.UserName == `` {
 		return 0
 	}
-	sql := `select * from tbl_smart_link_last where  smart_link_id = ? and user_name = ? `
-	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, h.RunParams.Id, h.RunParams.UserName).One()
+	sql := `select * from tbl_smart_link_last where  smart_link_id = ? and user_name = ? and domain = ? `
+	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, h.RunParams.Id, h.RunParams.UserName, h.RunParams.Domain).One()
 	if smartLinkErr != nil {
 		return 0
 	} else {
