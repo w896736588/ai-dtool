@@ -15,7 +15,6 @@ type PlaywrightRunParams struct {
 	CombineType         int                                              //查找context方案
 	ProcessList         []map[string]any                                 //执行流程
 	ReplaceList         []map[string]string                              //替换内容
-	IsSaveUserData      bool                                             //是否保存用户数据 true保存，false不保存
 	BrowserAuthUsername string                                           //浏览器自带验证用户名
 	BrowserAuthPassword string                                           //浏览器自带验证密码
 	Domain              string                                           //域名

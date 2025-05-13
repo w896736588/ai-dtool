@@ -191,8 +191,7 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 	runParams.Link = gstool.SReplaces(runParams.Link, map[string]string{
 		`{rand}`: Component.TBase.GetCombineKey(),
 	})
-	runParams.IsSaveUserData = cast.ToInt(smartLink[`is_save_user_data`]) == 1
-	runParams.CombineType = cast.ToInt(smartLink[`is_combine`])
+	runParams.CombineType = cast.ToInt(smartLink[`combine_type`])
 	runParams.OpenNum = cast.ToInt(math.Max(1, cast.ToFloat64(openNum)))
 	runParams.OpenType = define.OpenType(cast.ToInt(smartLink[`open_type`]))
 	process := cast.ToString(smartLink[`process`])
