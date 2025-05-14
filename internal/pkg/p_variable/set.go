@@ -41,7 +41,9 @@ func (h *VariableSet) Set() (_struct.VCmdResult, error) {
 		CmdType:    cast.ToString(cmd[`type`]),       //cmd 类型
 
 	}
-	cmdResult := _struct.VCmdResult{}
+	cmdResult := _struct.VCmdResult{
+		VariableId: h.VariableId,
+	}
 	cmdResult.RunUniqueId = h.RunUniqueId
 	vCmd := NewPCmd(cmd, h.ReplaceList, h.RunUniqueId)
 	switch cast.ToInt(form.CmdType) {
