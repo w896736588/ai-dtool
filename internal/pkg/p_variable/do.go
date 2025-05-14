@@ -52,7 +52,9 @@ func (h *Variable) InitRunUniqueId() {
 
 func (h *Variable) Run() (_struct.VCmdResult, error) {
 	//初始化结果
-	cmdResult := _struct.VCmdResult{}
+	cmdResult := _struct.VCmdResult{
+		VariableId: h.VariableId,
+	}
 	cmdResult.RunUniqueId = h.RunUniqueId
 	cmdList, cmdErr := base.Component.TVariable.CmdList(h.VariableId)
 	if cmdErr != nil {

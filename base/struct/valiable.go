@@ -71,4 +71,5 @@ type VCmdResult struct {
 	RunStatus   int                 //0不可以执行 1可以执行 2执行结束
 	ReplaceList []map[string]string //替换数据
 	RunUniqueId string              //执行唯一ID
+	VariableId  int                 //ID
 }
