@@ -4,6 +4,7 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
+	"errors"
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/playwright-community/playwright-go"
@@ -182,11 +183,11 @@ func (h *Process) PBoolResult() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
 	if h.Locators != `` {
 		h.ElementOp.Type = define.ElementCount
-		_, elementErr := h.Locator.Do(0)
-		if elementErr != nil || h.ElementOp.Count == 0 {
-			h.BoolResultMap[h.OutKey] = false //不存在
+		boolRet, boolErr := h.Locator.DoBoolResult(0)
+		if boolErr != nil {
+			return define.ProcessBreak, `没有找到任意的元素` + h.Locators, errors.New(`没有找到任意的元素` + h.Locators)
 		} else {
-			h.BoolResultMap[h.OutKey] = true //存在
+			h.BoolResultMap[h.OutKey] = boolRet
 		}
 		h.log.Debugf(`判断 %s`, gstool.JsonEncode(h.BoolResultMap))
 	} else {

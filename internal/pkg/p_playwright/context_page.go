@@ -83,10 +83,10 @@ func (h *ContextPage) InitEvents(page *playwright.Page) {
 	})
 	if h.ListenUrlList != nil {
 		for listenUri, listen := range h.ListenUrlList {
-			listen.Callback(`注册 **`+listenUri, nil)
+			listen.Callback(listenUri, `注册 **`+listenUri, nil)
 			h.log.Debugf(`新打开页面 注册请求 %s`, listenUri)
 			_ = (*page).Route("**"+listenUri, func(route playwright.Route) {
-				listen.Callback(`捕获到请求`+route.Request().URL(), nil)
+				listen.Callback(listenUri, `捕获到请求`+route.Request().URL(), nil)
 				go h.ListenUrl(route, listen)
 				_ = route.Abort()
 			})
@@ -154,14 +154,14 @@ func (h *ContextPage) ListenUrl(route playwright.Route, listen *_struct.ListenUr
 	listen.StartCallBack(requestUrl)
 	if listen.IsSse {
 		res, resErr = cli.OpenStreamBytesEnd([]byte("\n\n"), func(s string, err error) {
-			listen.Callback(s, err)
+			listen.Callback(requestUrl, s, err)
 		}, func(bytes []byte) []byte {
 			return bytes
 		}).Request(200).Result()
 	} else {
 		res, resErr = cli.Request(200).Result()
 		if resErr == nil {
-			listen.Callback(cast.ToString(res), nil)
+			listen.Callback(requestUrl, cast.ToString(res), nil)
 		}
 	}
 	if resErr != nil {

@@ -281,18 +281,16 @@ func (h *RCmd) RunPlaywright() (string, error) {
 			}
 			ListenUrlList[uri] = &_struct.ListenUrl{
 				IsSse: true,
-				Callback: func(msg string, err error) {
+				Callback: func(url, msg string, err error) {
 					base.Component.TVariable.Log.Debugf(`收到消息---%s---`, msg)
-					sendMsg := base.Component.TAi.ParseStream(uri, msg)
+					sendMsg := base.Component.TAi.ParseStream(url, msg)
 					h.StreamMsg(cast.ToString(sendMsg), false)
 				},
 				StartCallBack: func(url string) {
 					base.Component.TVariable.Log.Debugf(`监听到%s`, url)
 					h.StreamMsg(base.Component.TMarkDown.BlockQuote("开始回答...")+"\n\n", true)
-					h.PlaywrightLock.Lock()
 				},
 				EndCallBack: func(msg string) {
-					h.PlaywrightLock.Unlock()
 				},
 			}
 		}

@@ -20,3 +20,8 @@ type PageActiveTime struct {
 	AutoCloseSecond int
 	Page            *playwright.Page
 }
+
+type ProcessResult struct {
+	Locator string `json:"locator"`
+	Return  bool   `json:"return"`
+}

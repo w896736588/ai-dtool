@@ -28,6 +28,48 @@ func NewLocator(locators string, page *playwright.Page, elementOp *_struct.Eleme
 	}
 }
 
+// DoBoolResult 根据json配置的元素来解析，根据设置的值进行返回
+// 示例：[{"locator":".qrcode[style*='opacity: 0']","return":true},{"locator":".qrcode[style*='opacity: 0']","return":false},{"locator":".to-backstage-btn","return":false},{"locator":".new-to-backstage-btn","return":false}]
+func (h *Locator) DoBoolResult(second int) (bool, error) {
+	boolList := make([]_struct.ProcessResult, 0)
+	decodeErr := gstool.JsonDecode(h.Locators, &boolList)
+	if decodeErr != nil {
+		return false, errors.New(`不支持的bool_result表达式`)
+	}
+	task := gstask.NewTask()
+	waitSecond := 3
+	if second > 0 {
+		waitSecond = second
+	}
+	for _, result := range boolList {
+		call := func() *gstask.Result {
+			findElemRet := h.FindLocator(result.Locator, waitSecond)
+			if findElemRet.Err != nil {
+				return &gstask.Result{
+					Result: nil, //没找到 那么返回反向值
+					Err:    errors.New(`没有找到元素`),
+				}
+			} else {
+				return &gstask.Result{
+					Result: result.Return, //找到了 那么返回值
+					Err:    nil,
+				}
+			}
+		}
+		task.Add(gstask.CallbackFunc{
+			Func:    call,
+			Timeout: 5 * time.Second, //超时时间 不是于查找元素的超时时间
+		})
+	}
+	result := task.RunOne()
+	h.log.Debugf(`DoBoolResult 查找结果 %#v`, result)
+	if result.Err != nil {
+		h.log.Debugf(`处理：%s失败：%s`, h.Locators, result.Err.Error())
+		return false, result.Err
+	}
+	return result.Result.(bool), result.Err
+}
+
 func (h *Locator) Do(second int) (playwright.Locator, error) {
 	lists := strings.Split(h.Locators, `&&`) //多个用&&分割
 	hList := strings.Split(h.Locators, `||`) //多个用||分割
