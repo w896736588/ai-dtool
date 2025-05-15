@@ -31,7 +31,7 @@ func NewLocator(locators string, page *playwright.Page, elementOp *_struct.Eleme
 // DoBoolResult 根据json配置的元素来解析，根据设置的值进行返回
 // 示例：[{"locator":".qrcode[style*='opacity: 0']","return":true},{"locator":".qrcode[style*='opacity: 0']","return":false},{"locator":".to-backstage-btn","return":false},{"locator":".new-to-backstage-btn","return":false}]
 func (h *Locator) DoBoolResult(second int) (bool, error) {
-	boolList := make([]_struct.ProcessResult, 0)
+	boolList := make([]_struct.ProcessBoolResult, 0)
 	decodeErr := gstool.JsonDecode(h.Locators, &boolList)
 	if decodeErr != nil {
 		return false, errors.New(`不支持的bool_result表达式`)
@@ -44,14 +44,14 @@ func (h *Locator) DoBoolResult(second int) (bool, error) {
 	for _, result := range boolList {
 		call := func() *gstask.Result {
 			findElemRet := h.FindLocator(result.Locator, waitSecond)
-			if findElemRet.Err != nil {
+			if findElemRet.Err != nil { //查找这个元素失败 那么直接返回失败
 				return &gstask.Result{
 					Result: nil, //没找到 那么返回反向值
 					Err:    errors.New(`没有找到元素`),
 				}
 			} else {
 				return &gstask.Result{
-					Result: result.Return, //找到了 那么返回值
+					Result: result.ExistReturn, //找到了 那么返回值
 					Err:    nil,
 				}
 			}

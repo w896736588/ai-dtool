@@ -88,7 +88,7 @@ func (h *Playwright) GetPage() (*playwright.Page, error) {
 		return nil, contextErr
 	}
 	//注册新的监听
-	h.log.Debugf(`注册新的监听 %#v`, h.RunParams.ListenUrlList)
+	h.log.Debugf(`NOTICE：注册新的监听，旧的监听失效 %#v`, h.RunParams.ListenUrlList)
 	(*contextPage).ListenUrlList = h.RunParams.ListenUrlList
 	var page playwright.Page
 	var pageErr error

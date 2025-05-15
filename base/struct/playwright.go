@@ -21,7 +21,8 @@ type PageActiveTime struct {
 	Page            *playwright.Page
 }
 
-type ProcessResult struct {
-	Locator string `json:"locator"`
-	Return  bool   `json:"return"`
+// ProcessBoolResult 用于bool_result类型判断
+type ProcessBoolResult struct {
+	Locator     string `json:"locator"` //查找的元素
+	ExistReturn bool   `json:"return"`  //如果有out_key 这个元素存在时返回什么
 }
