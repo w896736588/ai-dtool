@@ -31,6 +31,7 @@ type Process struct {
 	Check          *Check                                           //判断
 	RunCallFunc    func(define.ProcessType, string, string, string) //注册输出回调
 	log            *gstool.GsSlog
+	runParams      *_struct.PlaywrightRunParams
 }
 
 func NewProcess(process map[string]any, page *playwright.Page, runParams *_struct.PlaywrightRunParams,
@@ -48,6 +49,7 @@ func NewProcess(process map[string]any, page *playwright.Page, runParams *_struc
 		ElementOp:      &_struct.ElementOp{},
 		BoolResultMap:  boolResultMap,
 		TakeContentMap: takeContentMap,
+		runParams:      runParams,
 		Page:           page,
 		log:            log,
 	}
@@ -84,6 +86,8 @@ func (h *Process) Do() (define.ProcessCode, string, error) {
 		return h.PInput()
 	case define.RedirectUri: //跳转 保持当前域名
 		return h.PRedirect()
+	case define.WaitUrl:
+		return h.PWaitUrl()
 	case define.CanvasImage:
 		return h.CanvasImage()
 	case define.ExistWait:
@@ -224,26 +228,94 @@ func (h *Process) PInput() (define.ProcessCode, string, error) {
 	return define.ProcessOk, ``, nil
 }
 
-func (h *Process) PRedirect() (define.ProcessCode, string, error) {
-	//链接
-	redirectUri := h.Value
+func (h *Process) PWaitUrl() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
-	currentURL := (*h.Page).URL()
-	parsedURL, err := url.Parse(currentURL)
-	if err != nil {
-		h.callRun(fmt.Sprintf(`解析url%s失败%s`, currentURL, err.Error()), currentURL)
-		return define.ProcessBreak, `解析域名失败`, gstool.Error(`解析url%s失败%s`, currentURL, err.Error())
+	waitResponse := _struct.ProcessWaitUrl{}
+	_ = gstool.JsonDecode(h.Value, &waitResponse)
+	parseU, _ := url.Parse((*h.Page).URL())
+	responseUrl := gstool.SReplaces(waitResponse.ResponseUrl, map[string]string{
+		`{domain}`: parseU.Host,
+		`{scheme}`: parseU.Scheme,
+	})
+	h.log.Debugf(`准备的 %s`, responseUrl)
+	h.log.Debugf(`全部的 %s`, gstool.JsonEncode(h.runParams.ResponseUrls))
+	for i := 0; i < waitResponse.WaitSecond; i++ {
+		for _, v := range h.runParams.ResponseUrls {
+			if v.Url == responseUrl {
+				h.log.Debugf(`等待返回 %s 成功`, responseUrl)
+				return define.ProcessOk, responseUrl, nil
+			}
+		}
+		time.Sleep(time.Second)
 	}
-	domain := parsedURL.Scheme + `://` + parsedURL.Host
-	targetUrl := domain + redirectUri
-	time.Sleep(time.Second)
-	if _, goErr := (*h.Page).Goto(targetUrl); goErr != nil {
-		h.callRun(goErr.Error(), targetUrl)
-		return define.ProcessBreak, `跳转失败`, goErr
+	return define.ProcessBreak, fmt.Sprintf(`等待%s超时`, waitResponse.ResponseUrl), gstool.Error(`等待%s超时`, waitResponse.ResponseUrl)
+}
+
+func (h *Process) PRedirect() (define.ProcessCode, string, error) {
+	//尝试解析
+	processRedirect := _struct.ProcessRedirect{}
+	_ = gstool.JsonDecode(h.Value, &processRedirect)
+	//走多条件
+	if processRedirect.Url != `` {
+		for _, v := range processRedirect.RegisterResponseUrl {
+			go func() {
+				parseU, _ := url.Parse((*h.Page).URL())
+				responseUrl := gstool.SReplaces(v.Url, map[string]string{
+					`{domain}`: parseU.Host,
+					`{scheme}`: parseU.Scheme,
+				})
+				h.log.Debugf(`注册等待返回 %s 超时 %d`, responseUrl, v.WaitSecond)
+				_, _ = (*h.Page).ExpectResponse(responseUrl, func() error {
+					h.log.Debugf(`请求%s完成 `, responseUrl)
+					h.runParams.ResponseUrls = append(h.runParams.ResponseUrls, &_struct.ProcessResponseUrl{
+						Url: responseUrl,
+					})
+					return nil
+				}, playwright.PageExpectResponseOptions{Timeout: playwright.Float(cast.ToFloat64(v.WaitSecond) * 1000)})
+			}()
+
+		}
+		//链接
+		redirectUri := processRedirect.Url
+		base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+		currentURL := (*h.Page).URL()
+		parsedURL, err := url.Parse(currentURL)
+		if err != nil {
+			h.callRun(fmt.Sprintf(`解析url%s失败%s`, currentURL, err.Error()), currentURL)
+			return define.ProcessBreak, `解析域名失败`, gstool.Error(`解析url%s失败%s`, currentURL, err.Error())
+		}
+		domain := parsedURL.Scheme + `://` + parsedURL.Host
+		targetUrl := domain + redirectUri
+		time.Sleep(time.Second)
+		if _, goErr := (*h.Page).Goto(targetUrl); goErr != nil {
+			h.callRun(goErr.Error(), targetUrl)
+			return define.ProcessBreak, `跳转失败`, goErr
+		} else {
+			h.callRun(``, targetUrl)
+		}
+		return define.ProcessOk, ``, nil
 	} else {
-		h.callRun(``, targetUrl)
+		//链接
+		redirectUri := h.Value
+		base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+		currentURL := (*h.Page).URL()
+		parsedURL, err := url.Parse(currentURL)
+		if err != nil {
+			h.callRun(fmt.Sprintf(`解析url%s失败%s`, currentURL, err.Error()), currentURL)
+			return define.ProcessBreak, `解析域名失败`, gstool.Error(`解析url%s失败%s`, currentURL, err.Error())
+		}
+		domain := parsedURL.Scheme + `://` + parsedURL.Host
+		targetUrl := domain + redirectUri
+		time.Sleep(time.Second)
+		if _, goErr := (*h.Page).Goto(targetUrl); goErr != nil {
+			h.callRun(goErr.Error(), targetUrl)
+			return define.ProcessBreak, `跳转失败`, goErr
+		} else {
+			h.callRun(``, targetUrl)
+		}
+		return define.ProcessOk, ``, nil
 	}
-	return define.ProcessOk, ``, nil
+
 }
 
 func (h *Process) PWaitClose() (define.ProcessCode, string, error) {

@@ -26,3 +26,20 @@ type ProcessBoolResult struct {
 	Locator     string `json:"locator"` //查找的元素
 	ExistReturn bool   `json:"return"`  //如果有out_key 这个元素存在时返回什么
 }
+
+type ProcessRedirect struct {
+	Url                 string `json:"url"`
+	RegisterResponseUrl []struct {
+		Url        string `json:"url"`
+		WaitSecond int    `json:"wait_second"`
+	} `json:"register_response_url"`
+}
+
+type ProcessResponseUrl struct {
+	Url string `json:"url"`
+}
+
+type ProcessWaitUrl struct {
+	ResponseUrl string `json:"response_url"`
+	WaitSecond  int    `json:"wait_second"`
+}

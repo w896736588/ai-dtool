@@ -18,6 +18,7 @@ type PlaywrightRunParams struct {
 	BrowserAuthUsername string                                           //浏览器自带验证用户名
 	BrowserAuthPassword string                                           //浏览器自带验证密码
 	Domain              string                                           //域名
+	Scheme              string                                           //协议
 	LocatorTimeout      float64                                          //获取元素超时时间秒
 	GetPageTimeout      float64                                          //开启page超时时间
 	UserName            string                                           //选择的登录账号
@@ -28,6 +29,7 @@ type PlaywrightRunParams struct {
 	Channel             string                                           //浏览器类型
 	RunCallFunc         func(define.ProcessType, string, string, string) //注册输出回调
 	ListenUrlList       map[string]*ListenUrl                            //监听
+	ResponseUrls        []*ProcessResponseUrl                            //注册等待请求完成
 }
 
 type ListenUrl struct {

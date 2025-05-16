@@ -21,6 +21,7 @@ const RedirectUri ProcessType = `redirect_uri`
 const CanvasImage ProcessType = `canvas_image`  //提取canvas中的图片
 const ExistWait ProcessType = `exist_wait`      //等待元素出现
 const NoExistWait ProcessType = `no_exist_wait` //等待元素消息
+const WaitUrl ProcessType = `wait_url`          //等待某个url执行完成
 
 const ElementClick = `click`              //点击
 const ElementTextContent = `text_content` //提取
