@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cast"
 	"log"
 	"math"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -202,7 +203,12 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 			return runParams, errors.New(`配置失败` + decodeErr.Error())
 		}
 	}
-	runParams.Domain = gstool.UrlGetHost(runParams.Link)
+	parsedURL, err := url.Parse(runParams.Link)
+	if err != nil {
+		return runParams, gstool.Error(`解析地址%s失败 %s`, runParams.Link, err.Error())
+	}
+	runParams.Domain = parsedURL.Host
+	runParams.Scheme = parsedURL.Scheme
 	runParams.UserName = userName
 	runParams.Password = password
 	runParams.ProcessList = processList

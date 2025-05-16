@@ -179,8 +179,8 @@ func (h *ContextPageList) GetLastUserDataIndex(runParams *_struct.PlaywrightRunP
 	if runParams.UserName == `` {
 		return 0
 	}
-	sql := `select * from tbl_smart_link_last where  smart_link_id = ? and user_name = ? and domain = ? `
-	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, runParams.Id, runParams.UserName, runParams.Domain).One()
+	sql := `select * from tbl_smart_link_last where user_name = ? and domain = ? `
+	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, runParams.UserName, runParams.Domain).One()
 	if smartLinkErr != nil {
 		return 0
 	} else {
@@ -224,11 +224,28 @@ func (h *ContextPageList) GetFindUserDataIndex(runParams *_struct.PlaywrightRunP
 	}
 	//没有能够复用的数据索引 那么
 	for i := 1; i < define.MaxUserDataIndex; i++ {
-		if !gstool.ArrayExistValue(&ignoreIndexList, i) {
-			return i
+		if gstool.ArrayExistValue(&ignoreIndexList, i) {
+			continue
 		}
+		//是否已存在相同域名在使用
+		if h.ExistDomainUserDataIndex(i, runParams) {
+			continue
+		}
+		return i
 	}
 	return 99
+}
+
+func (h *ContextPageList) ExistDomainUserDataIndex(userDataIndex int, runParams *_struct.PlaywrightRunParams) bool {
+	sql := `select * from tbl_smart_link_last where domain = ? and user_data_index = ? `
+	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, runParams.Domain, userDataIndex).One()
+	if smartLinkErr != nil {
+		return false
+	} else if len(smartLinkLast) > 0 {
+		return true
+	} else {
+		return false
+	}
 }
 
 func (h *ContextPageList) IsSameLink(smartLinkUniqueKeyS, smartLinkUniqueKeyT string) bool {

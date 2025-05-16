@@ -40,7 +40,6 @@ func (h *Playwright) Open() error {
 	if pageErr != nil {
 		return gstool.Error(`获取page失败 %s`, pageErr.Error())
 	}
-	//输出结果存储
 	h.log.Debugf(`开始处理process list`)
 	for _, processVal := range h.RunParams.ProcessList {
 		h.RunParams.ReplaceList = append(h.RunParams.ReplaceList, h.TakeContentMap)
