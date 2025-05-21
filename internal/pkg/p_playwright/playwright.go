@@ -103,7 +103,11 @@ func (h *Playwright) GetPage() (*playwright.Page, error) {
 		contextPage.CloseFirstPage()
 	}
 	//跳转链接
-	u, _ := url.Parse(h.RunParams.Link)
+	link := h.RunParams.Link
+	link = gstool.SReplaces(link, map[string]string{
+		`{rand}`: base.Component.TBase.GetUnique(`tool_`),
+	})
+	u, _ := url.Parse(link)
 	if _, goErr := page.Goto(u.String()); goErr != nil {
 		return nil, goErr
 	}

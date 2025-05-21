@@ -188,6 +188,9 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	}
 	gstool.FmtPrintlnLogTime(`开始运行`)
 	for i := 0; i < runParams.OpenNum; i++ {
+		if i > 0 {
+			time.Sleep(time.Second)
+		}
 		go func() {
 			p := p_playwright.NewPlaywright(runParams, base.Component.TPlaywright.Log)
 			openErr := p.Open()
