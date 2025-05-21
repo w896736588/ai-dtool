@@ -1,7 +1,7 @@
 package base
 
-import "C"
 import (
+	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
@@ -10,18 +10,6 @@ import (
 
 type TSse struct {
 	Sse *gsgin.TSse
-}
-
-type ChunkType string
-
-const ChunkEnter ChunkType = `enter`
-const ChunkNum ChunkType = `num`
-const ChunkR = `\r`
-
-type Chunk struct {
-	Type  ChunkType //num \n
-	Num   int
-	Split string //分割符
 }
 
 func (h *TSse) SendMsg(sseClient, msg string, delayMills int) error {
@@ -47,22 +35,22 @@ func (h *TSse) SendMsg(sseClient, msg string, delayMills int) error {
 	return nil
 }
 
-func (h *TSse) SendMsgChunk(sseClient, msg string, chunkT Chunk, delayMills int) error {
+func (h *TSse) SendMsgChunk(sseClient, msg string, chunkT _struct.Chunk, delayMills int) error {
 	var chunkList []string
 	split := ``
-	if chunkT.Type == ChunkNum {
+	if chunkT.Type == define.ChunkNum {
 		if chunkT.Num == 0 {
 			chunkList = append(chunkList, msg)
 		} else {
 			chunkList = gstool.SChunks(msg, chunkT.Num)
 		}
 
-	} else if chunkT.Type == ChunkEnter {
+	} else if chunkT.Type == define.ChunkEnter {
 		if chunkT.Split == `` {
 			split = "\n"
 		}
 		chunkList = strings.Split(msg, split)
-	} else if chunkT.Type == ChunkR {
+	} else if chunkT.Type == define.ChunkR {
 		if chunkT.Split == `` {
 			split = "\r"
 		}
