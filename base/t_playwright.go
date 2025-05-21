@@ -163,6 +163,8 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 	runParams.AutoCloseSecond = cast.ToInt(smartLink[`auto_close_second`])
 	runParams.Channel = cast.ToString(smartLink[`channel`])
 	runParams.ContextUnique = h.GetContextUnique(runParams)
+	runParams.ShowCookies = make([]_struct.ShowCookie, 0)
+	_ = gstool.JsonDecode(cast.ToString(smartLink[`show_cookies`]), &runParams.ShowCookies)
 	if runParams.Channel == `` {
 		runParams.Channel = `chromium`
 	}
@@ -228,24 +230,12 @@ func (h *TPlaywright) SmartLinkDownloadPath() error {
 }
 
 // ShowCookieTip 展示cookie中的某个值
-func (h *TPlaywright) ShowCookieTip(page *playwright.Page) {
-	configList := []_struct.ShowCookie{
-		{
-			FindType:   `cookie`,
-			FindKey:    "xkf_userid",
-			Label:      "UserId",
-			DomainList: []string{"xiaokefu.com.cn", "applnk.cn", "ishipinhao.com"},
-		},
-		{
-			FindType:     `any`,
-			Label:        "Username",
-			FormatList:   []string{`url_decode`},
-			RegexFindKey: `s:8:"username";s:\d+:"(.+)"`,
-			DomainList:   []string{"xiaokefu.com.cn", "applnk.cn", "ishipinhao.com"},
-		},
+func (h *TPlaywright) ShowCookieTip(page *playwright.Page, runParams *_struct.PlaywrightRunParams) {
+	if len(runParams.ShowCookies) == 0 {
+		return
 	}
 	replaceList := make([]_struct.ShowCookie, 0)
-	for _, config := range configList {
+	for _, config := range runParams.ShowCookies {
 		if gstool.SContains(strings.ToLower((*page).URL()), config.DomainList) {
 			replaceList = append(replaceList, config)
 		}

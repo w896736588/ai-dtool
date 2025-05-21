@@ -24,6 +24,7 @@ type ContextPage struct {
 	CloseEvent         func()                        //关闭事件
 	log                *gstool.GsSlog
 	ActiveTime         *PageActiveTime
+	RunParams          *_struct.PlaywrightRunParams
 }
 
 func NewContextPage(context *playwright.BrowserContext, runParams *_struct.PlaywrightRunParams, userDataPath string,
@@ -41,6 +42,7 @@ func NewContextPage(context *playwright.BrowserContext, runParams *_struct.Playw
 		CloseEvent:         closeEvent,
 		log:                log,
 		ActiveTime:         NewPageActiveTime(),
+		RunParams:          runParams,
 	}
 	c.Init()
 	return c
@@ -94,7 +96,7 @@ func (h *ContextPage) InitEvents(page *playwright.Page) {
 	}
 
 	(*page).On(`load`, func() {
-		go base.Component.TPlaywright.ShowCookieTip(page)
+		go base.Component.TPlaywright.ShowCookieTip(page, h.RunParams)
 	})
 
 	//可以监听到 前端下载

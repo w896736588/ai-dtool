@@ -30,6 +30,7 @@ type PlaywrightRunParams struct {
 	RunCallFunc         func(define.ProcessType, string, string, string) //注册输出回调
 	ListenUrlList       map[string]*ListenUrl                            //监听
 	ResponseUrls        []*ProcessResponseUrl                            //注册等待请求完成
+	ShowCookies         []ShowCookie                                     //信息提取
 }
 
 type ListenUrl struct {
