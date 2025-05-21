@@ -1,6 +1,8 @@
 package base
 
 import (
+	"dev_tool/base/define"
+	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gsssh"
@@ -71,8 +73,8 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 			h.log.Errof(`解析后的 %s`, gstool.JsonEncode(msgList))
 			_ = Component.TSse.SendMsgChunkList(sseClientId, msgList, 10)
 		} else {
-			_ = Component.TSse.SendMsgChunk(sseClientId, msg, Chunk{
-				Type: ChunkNum,
+			_ = Component.TSse.SendMsgChunk(sseClientId, msg, _struct.Chunk{
+				Type: define.ChunkNum,
 				Num:  50,
 			}, 10)
 		}
@@ -130,8 +132,8 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 	//猪油：下面3个注册回调，放到这里的话就不会输出pwd以及连接相关信息
 	//回调准备输出的内容
 	gsShell.SetFuncStreamReceive(func(msg string) {
-		_ = Component.TSse.SendMsgChunk(sseClientId, msg+"  \n", Chunk{
-			Type: ChunkEnter,
+		_ = Component.TSse.SendMsgChunk(sseClientId, msg+"  \n", _struct.Chunk{
+			Type: define.ChunkEnter,
 		}, 50)
 	})
 	gsShell.SetFuncStartCommand(func() {
