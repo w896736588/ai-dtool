@@ -39,12 +39,12 @@ go run -ldflags "-X main.DbPath=D:/go/cache_manager_api/config/zhima/ -X main.Vi
 export CGO_ENABLED=1  
 export GOARCH=amd64   
 export GOOS=windows
-go build -tags timetzdata -ldflags "-X main.IsBuild=1 -X main.DbPath=D:/go/cache_manager_api/config/zhima/ -X main.ViewPath=D:/job/cache_manager_web/dist -s -w" -o ./build/zhima.exe ./cmd/zhima/main.go
-#git add ./build/zhima.exe
-#git update-index --chmod=+x ./build/zhima.exe
-git ls-files --stage ./build/zhima.exe
-go build -tags timetzdata -ldflags "-X main.IsBuild=1 -X main.DbPath= -X main.ViewPath= -s -w" -o ./build/zhimaPub.exe ./cmd/zhima/main.go
-git ls-files --stage ./build/zhimaPub.exe
+go build -tags timetzdata -ldflags "-X main.IsBuild=1 -X main.DbPath=D:/job/cache_manager_api/config/zw/ -X main.ViewPath=D:/job/cache_manager_web/dist -s -w" -o ./build/zw.exe ./cmd/zw/main.go
+#git add ./build/zw.exe
+#git update-index --chmod=+x ./build/zw.exe
+git ls-files --stage ./build/zwPub.exe
+go build -tags timetzdata -ldflags "-X main.IsBuild=1 -X main.DbPath= -X main.ViewPath= -s -w" -o ./build/zwPub.exe ./cmd/zw/main.go
+git ls-files --stage ./build/zwPub.exe
 ```
 
 ```shell
