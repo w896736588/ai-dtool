@@ -29,6 +29,7 @@ git ls-files --stage ./build/zhimaPub.exe
 
 ```shell
 #编辑器运行
+export CGO_ENABLED=1
 go run -ldflags "-X main.DbPath=D:/go/cache_manager_api/config/zhima/ -X main.ViewPath=D:/go/devtool/dist" cmd/zhima/main.go
 ```
 

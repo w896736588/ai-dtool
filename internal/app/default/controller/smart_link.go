@@ -179,25 +179,25 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	}
 	userName := cast.ToString(dataMap[`user_name`])
 	password := cast.ToString(dataMap[`password`])
-	openNum := cast.ToInt(dataMap[`open_num`])
+	openNum := max(1, cast.ToInt(dataMap[`open_num`]))
 	replaceList := make([]map[string]string, 0)
-	runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, userName, password, openNum, &replaceList)
-	if runParamsErr != nil {
-		gsgin.GinResponseError(c, runParamsErr.Error(), nil)
-		return
-	}
-	gstool.FmtPrintlnLogTime(`开始运行`)
-	for i := 0; i < runParams.OpenNum; i++ {
-		if i > 0 {
-			time.Sleep(time.Second)
-		}
+	gstool.FmtPrintlnLogTime(`开始运行 %d`, openNum)
+	for i := 0; i < openNum; i++ {
 		go func() {
+			runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, userName, password, openNum, &replaceList)
+			gstool.FmtPrintlnLogTime(`初始化结束1`)
+			if runParamsErr != nil {
+				gstool.FmtPrintlnLogTime(`打开错误 %s`, runParamsErr.Error())
+				return
+			}
+			gstool.FmtPrintlnLogTime(`初始化结束`)
 			p := p_playwright.NewPlaywright(runParams, base.Component.TPlaywright.Log)
 			openErr := p.Open()
 			if openErr != nil {
 				gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
 			}
 		}()
+		time.Sleep(time.Second * 2)
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
