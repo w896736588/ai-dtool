@@ -190,6 +190,9 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 	if runParams.Link == `` {
 		return runParams, errors.New(`链接不存在，检查是否json格式错误`)
 	}
+	runParams.Link = gstool.SReplaces(runParams.Link, map[string]string{
+		`{rand}`: Component.TBase.GetUnique(`tool_`),
+	})
 	runParams.CombineType = cast.ToInt(smartLink[`combine_type`])
 	runParams.OpenNum = cast.ToInt(math.Max(1, cast.ToFloat64(openNum)))
 	runParams.OpenType = define.OpenType(cast.ToInt(smartLink[`open_type`]))
@@ -208,6 +211,12 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 	runParams.Domain = parsedURL.Host
 	runParams.Scheme = parsedURL.Scheme
 	runParams.UserName = userName
+	if runParams.UserName != `` {
+		runParams.LastIndexLabel = runParams.UserName
+	} else {
+		runParams.LastIndexLabel = label
+	}
+	gstool.FmtPrintlnLogTime(`打开链接 %s LastIndexLabel ： %s`, runParams.Link, runParams.LastIndexLabel)
 	runParams.Password = password
 	runParams.ProcessList = processList
 	runParams.ReplaceList = *replaceList

@@ -23,6 +23,7 @@ type PlaywrightRunParams struct {
 	GetPageTimeout      float64                                          //开启page超时时间
 	UserName            string                                           //选择的登录账号
 	Password            string                                           //登录密码
+	LastIndexLabel      string                                           //用于查找最后一次使用的index 优先赋值前端传过来的userName,其次赋值label
 	ContextUnique       string                                           //context唯一ID
 	DownloadFinds       []string                                         //哪些url请求会被定义为下载
 	AutoCloseSecond     int                                              //多少秒内没有操作 就进行关闭page 0表示不处理

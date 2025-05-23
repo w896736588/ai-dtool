@@ -176,11 +176,11 @@ func (h *ContextPageList) GetUserDataIndex(runParams *_struct.PlaywrightRunParam
 }
 
 func (h *ContextPageList) GetLastUserDataIndex(runParams *_struct.PlaywrightRunParams) int {
-	if runParams.UserName == `` {
+	if runParams.LastIndexLabel == `` {
 		return 0
 	}
 	sql := `select * from tbl_smart_link_last where user_name = ? and domain = ? `
-	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, runParams.UserName, runParams.Domain).One()
+	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, runParams.LastIndexLabel, runParams.Domain).One()
 	if smartLinkErr != nil {
 		return 0
 	} else {

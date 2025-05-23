@@ -103,11 +103,7 @@ func (h *Playwright) GetPage() (*playwright.Page, error) {
 		contextPage.CloseFirstPage()
 	}
 	//跳转链接
-	link := h.RunParams.Link
-	link = gstool.SReplaces(link, map[string]string{
-		`{rand}`: base.Component.TBase.GetUnique(`tool_`),
-	})
-	u, _ := url.Parse(link)
+	u, _ := url.Parse(h.RunParams.Link)
 	if _, goErr := page.Goto(u.String()); goErr != nil {
 		return nil, goErr
 	}
@@ -117,11 +113,11 @@ func (h *Playwright) GetPage() (*playwright.Page, error) {
 }
 
 func (h *Playwright) LastUserDataIndex(runParams *_struct.PlaywrightRunParams, userDataIndex int) {
-	if runParams.UserName == `` || runParams.Id == 0 || runParams.Domain == `` {
+	if runParams.LastIndexLabel == `` || runParams.Id == 0 || runParams.Domain == `` {
 		return
 	}
 	sql := `select * from tbl_smart_link_last where  smart_link_id = ? and user_name = ? and domain = ?`
-	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, runParams.Id, runParams.UserName, runParams.Domain).One()
+	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, runParams.Id, runParams.LastIndexLabel, runParams.Domain).One()
 	if smartLinkErr != nil {
 		h.log.Debugf(`获取最后使用索引失败 %s %s`, sql, smartLinkErr.Error())
 		gstool.FmtPrintlnLogTime(`查询失败 %s`, smartLinkErr.Error())
@@ -129,7 +125,7 @@ func (h *Playwright) LastUserDataIndex(runParams *_struct.PlaywrightRunParams, u
 	} else if len(smartLinkLast) > 0 {
 		_, err := base.Component.TSqlite.Client.QuickUpdate(`tbl_smart_link_last`, map[string]any{
 			`smart_link_id`: runParams.Id,
-			`user_name`:     runParams.UserName,
+			`user_name`:     runParams.LastIndexLabel,
 			`domain`:        runParams.Domain,
 		}, map[string]any{
 			`user_data_index`: userDataIndex,
@@ -141,7 +137,7 @@ func (h *Playwright) LastUserDataIndex(runParams *_struct.PlaywrightRunParams, u
 	} else {
 		_, err := base.Component.TSqlite.Client.QuickCreate(`tbl_smart_link_last`, map[string]any{
 			`smart_link_id`:   runParams.Id,
-			`user_name`:       runParams.UserName,
+			`user_name`:       runParams.LastIndexLabel,
 			`user_data_index`: userDataIndex,
 			`domain`:          runParams.Domain,
 			`create_time`:     time.Now().Unix(),
