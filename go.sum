@@ -42,8 +42,8 @@ cloud.google.com/go/storage v1.6.0/go.mod h1:N7U0C8pVQ/+NIKOBQyamJIeKQKkZ+mxpohl
 cloud.google.com/go/storage v1.8.0/go.mod h1:Wv1Oy7z6Yz3DshWRJFhqM/UCfaWIRTdp0RXyy7KQOVs=
 cloud.google.com/go/storage v1.10.0/go.mod h1:FLPqc6j+Ki4BU591ie1oL6qBQGu2Bl/tZ9ullr3+Kg0=
 dmitri.shuralyov.com/gpu/mtl v0.0.0-20190408044501-666a987793e9/go.mod h1:H6x//7gZCb22OMCxBHrMx7a5I7Hp++hsVxbQ4BYO7hU=
-gitee.com/Sxiaobai/gs v1.3.8 h1:4gwYc4XyBcd9yV99X1uON2RRl2aPE8/blOH43p4IBYk=
-gitee.com/Sxiaobai/gs v1.3.8/go.mod h1:b/p3p1ZWMlcARuNKKQr4sPb9YWgKydD/viF+voQBGtQ=
+gitee.com/Sxiaobai/gs v1.4.5 h1:52Bb/X7mo2X8wUVn8siAI2I0Ci1ZcBIqJAiASp6kJX8=
+gitee.com/Sxiaobai/gs v1.4.5/go.mod h1:rS3Vx9syZvUN7N6qdx3yLJ9Wey4G+EtedlsIl7ZSWxE=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
@@ -354,6 +354,8 @@ github.com/ryanuber/columnize v0.0.0-20160712163229-9b3edd62028f/go.mod h1:sm1tb
 github.com/sagikazarmark/crypt v0.1.0/go.mod h1:B/mN0msZuINBtQ1zZLEQcegFJJf9vnYIR88KRMEuODE=
 github.com/sbabiv/xml2map v1.2.1 h1:1lT7t0hhUvXZCkdxqtq4n8/ZCnwLWGq4rDuDv5XOoFE=
 github.com/sbabiv/xml2map v1.2.1/go.mod h1:2TPoAfcaM7+Sd4iriPvzyntb2mx7GY+kkQpB/GQa/eo=
+github.com/sbzhu/weworkapi_golang v0.0.0-20210525081115-1799804a7c8d h1:XGmsfwnqoYU4PIcLFusOe6mJWb6p9iuj1OT7b1/9diY=
+github.com/sbzhu/weworkapi_golang v0.0.0-20210525081115-1799804a7c8d/go.mod h1:gLXVYg36wlOl44Uh8Uw0aDiNMcZNnV+tzZq1FBj+f6A=
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529/go.mod h1:DxrIzT+xaE7yg65j358z/aeFdxmN0P9QXhEzd20vsDc=
 github.com/shirou/gopsutil/v3 v3.24.5 h1:i0t8kL+kQTvpAYToeuiVk3TgDeKOFioZO3Ztz/iZ9pI=
 github.com/shirou/gopsutil/v3 v3.24.5/go.mod h1:bsoOS1aStSs9ErQ1WWfxllSeS1K5D+U30r2NfcubMVk=

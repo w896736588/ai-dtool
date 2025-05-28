@@ -30,16 +30,16 @@ func (h *Env) Init(appName, dbPath, ViewPath string) {
 	if dbPath != `` {
 		h.DbPath = fmt.Sprintf(dbPath+`%s`, h.AppName+`.db`)
 	} else {
-		h.DbPath = h.RootPath + `/config/` + h.AppName + `/` + h.AppName + `.db`
+		h.DbPath = filepath.Join(h.RootPath, `config`, h.AppName, h.AppName+`.db`)
 	}
 	//前端目录
 	if ViewPath == `` {
-		h.ViewPath = filepath.Dir(h.RootPath) + `/devtool/dist`
+		h.ViewPath = filepath.Join(filepath.Dir(h.RootPath), `devtool`, `dist`)
 	} else {
 		h.ViewPath = ViewPath
 	}
 	//基础
-	h.ConfigPath = Component.Env.RootPath + `/config/` + Component.Env.AppName
+	h.ConfigPath = filepath.Join(Component.Env.RootPath, `config`, Component.Env.AppName)
 	//配置初始化
 	Component.ConfigViper.AddConfigPath(h.ConfigPath)
 	Component.ConfigViper.SetConfigName(`config`)
@@ -47,8 +47,8 @@ func (h *Env) Init(appName, dbPath, ViewPath string) {
 	if readErr := Component.ConfigViper.ReadInConfig(); readErr != nil {
 		panic(readErr.Error())
 	}
-	h.PkgPath = h.RootPath + `/internal/pkg`
-	h.LogPath = h.RootPath + `/logs`
+	h.PkgPath = filepath.Join(h.RootPath, `internal`, `pkg`)
+	h.LogPath = filepath.Join(h.RootPath, `logs`)
 	//webkit
 	h.NodePath = gstool.SReplaces(Component.ConfigViper.GetString(`path.webkit_node_path`), map[string]string{
 		`{PKG_PATH}`: h.PkgPath,

@@ -4,7 +4,10 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	"gitee.com/Sxiaobai/gs/gs"
+	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gsgin"
+	"gitee.com/Sxiaobai/gs/gsssh"
+	"gitee.com/Sxiaobai/gs/gstask"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
@@ -289,6 +292,7 @@ func SetRedisList(c *gin.Context) {
 		gsgin.GinResponseError(c, allSshErr.Error(), nil)
 		return
 	}
+	task := gstask.NewTask()
 	for gitKey, gitValue := range allRedis {
 		allRedis[gitKey][`ssh_name`] = ``
 		gitSshId := cast.ToInt(gitValue[`ssh_id`])
@@ -299,8 +303,74 @@ func SetRedisList(c *gin.Context) {
 				}
 			}
 		}
+		callBack := gstask.CallbackFunc{
+			Func: func() *gstask.Result {
+				return testRedisConn(gitValue)
+			},
+			Timeout: 6 * time.Second,
+		}
+		task.Add(callBack)
+	}
+	resultList := task.RunAll()
+	//填充链接状态
+	for _, result := range resultList {
+		for redisKey, redisValue := range allRedis {
+			if cast.ToInt(redisValue[`id`]) == cast.ToInt(result.Result) {
+				if result.Err != nil {
+					allRedis[redisKey][`status`] = result.Err.Error()
+				} else {
+					allRedis[redisKey][`status`] = `success`
+				}
+			}
+		}
 	}
 	gsgin.GinResponseSuccess(c, ``, allRedis)
+}
+
+func testRedisConn(redisConfig map[string]any) *gstask.Result {
+	gsRedis := &gsdb.GsRedis{
+		RedisConfig: &gsdb.RedisConfig{
+			Name:              cast.ToString(redisConfig[`name`]),
+			Host:              cast.ToString(redisConfig[`host`]),
+			Port:              cast.ToInt64(redisConfig[`port`]),
+			Password:          cast.ToString(redisConfig[`password`]),
+			MaxOpenConns:      1,
+			MaxIdleConns:      1,
+			Default:           0,
+			Username:          cast.ToString(redisConfig[`username`]),
+			MaxLifetimeSecond: 3600,
+		},
+	}
+	if cast.ToInt(redisConfig[`ssh_id`]) != 0 {
+		sshConfig, sshConfigErr := base.Component.TSqlite.GetSshConfig(redisConfig[`ssh_id`])
+		if sshConfigErr != nil {
+			return &gstask.Result{
+				Err:    gstool.Error(`获取ssh配置失败 %s`, sshConfigErr.Error()),
+				Result: redisConfig[`id`],
+			}
+		}
+		gsRedis.Ssh = &gsssh.SshConfig{
+			Name:     cast.ToString(sshConfig[`name`]),
+			Host:     cast.ToString(sshConfig[`host`]),
+			Port:     cast.ToString(sshConfig[`port`]),
+			UserName: cast.ToString(sshConfig[`username`]),
+			Password: cast.ToString(sshConfig[`password`]),
+			GsSlog:   base.Component.GsLog,
+		}
+	}
+	connErr := gsRedis.CreateConn()
+	if connErr != nil {
+		return &gstask.Result{
+			Err:    connErr,
+			Result: redisConfig[`id`],
+		}
+	}
+	_ = gsRedis.Client.Close()
+	gsRedis = nil
+	return &gstask.Result{
+		Err:    nil,
+		Result: redisConfig[`id`],
+	}
 }
 
 func SetRedisAdd(c *gin.Context) {

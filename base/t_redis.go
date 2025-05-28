@@ -29,15 +29,15 @@ func (h *TRedis) GetClient(redisConfig map[string]any) (*gsdb.GsRedis, error) {
 	}
 	gsRedis := &gsdb.GsRedis{
 		RedisConfig: &gsdb.RedisConfig{
-			Name:        cast.ToString(redisConfig[`name`]),
-			Host:        cast.ToString(redisConfig[`host`]),
-			Port:        cast.ToInt64(redisConfig[`port`]),
-			Password:    cast.ToString(redisConfig[`password`]),
-			PoolSize:    1,
-			Default:     0,
-			Username:    "",
-			DialTimeout: 3000,
-			MaxLifetime: 3600 * 1000,
+			Name:              cast.ToString(redisConfig[`name`]),
+			Host:              cast.ToString(redisConfig[`host`]),
+			Port:              cast.ToInt64(redisConfig[`port`]),
+			Password:          cast.ToString(redisConfig[`password`]),
+			MaxOpenConns:      1,
+			MaxIdleConns:      0,
+			Default:           0,
+			Username:          "",
+			MaxLifetimeSecond: 3600 * 1000,
 		},
 	}
 	if cast.ToInt(redisConfig[`ssh_id`]) != 0 {

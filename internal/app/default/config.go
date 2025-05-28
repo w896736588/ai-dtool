@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 )
 
@@ -85,7 +86,7 @@ func initComponent(IsBuild, appName, dbPath, ViewPath string) {
 	//初始化playwright
 	base.Component.TPlaywright = base.NewTSmartLink()
 	base.Component.TPlaywright.SetWebkitPath()
-	base.Component.TPlaywright.LockFileFullPath = base.Component.Env.RootPath + `/playwright.RunLock`
+	base.Component.TPlaywright.LockFileFullPath = filepath.Join(base.Component.Env.RootPath, `playwright.RunLock`)
 	p_playwright.InitPageActiveTime()
 	p_playwright.InitContextPageList()
 	go base.Component.TPlaywright.WitchDownload()
