@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.23.3
 
 require (
-	gitee.com/Sxiaobai/gs v1.3.8
+	gitee.com/Sxiaobai/gs v1.4.5
 	github.com/gin-gonic/gin v1.9.0
 	github.com/gorilla/websocket v1.5.1
 	github.com/playwright-community/playwright-go v0.4901.0
@@ -61,6 +61,7 @@ require (
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.4 // indirect
 	github.com/sbabiv/xml2map v1.2.1 // indirect
+	github.com/sbzhu/weworkapi_golang v0.0.0-20210525081115-1799804a7c8d // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
