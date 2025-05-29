@@ -5,6 +5,9 @@ go开发工具集合：
 注意：
 如果编译遇到错误 那么修改包中的检测内容大小后再编译（我们的编译是32位的）
 如果发布时报错，那么打开一个cmd窗口，然后直接输入.exe完整目录执行
+
+新环境安装：
+go env -w GOPROXY=https://goproxy.cn,direct
 ```
 
 ```
@@ -39,7 +42,7 @@ go run -ldflags "-X main.DbPath=D:/go/cache_manager_api/config/zhima/ -X main.Vi
 export CGO_ENABLED=1  
 export GOARCH=amd64   
 export GOOS=windows
-go build -tags timetzdata -ldflags "-X main.IsBuild=1 -X main.DbPath=D:/job/cache_manager_api/config/zw/ -X main.ViewPath=D:/job/cache_manager_web/dist -s -w" -o ./build/zw.exe ./cmd/zw/main.go
+go build -tags timetzdata -ldflags "-X main.IsBuild=1 -X main.DbPath=C:\work\frog\cache_manager_api\config\zw\ -X main.ViewPath=C:\work\frog\cache_manager_web\dist -s -w" -o ./build/zw.exe ./cmd/zw/main.go
 #git add ./build/zw.exe
 #git update-index --chmod=+x ./build/zw.exe
 git ls-files --stage ./build/zwPub.exe
@@ -50,7 +53,7 @@ git ls-files --stage ./build/zwPub.exe
 ```shell
 #zw
 export CGO_ENABLED=1  
-go run -ldflags "-X main.DbPath=D:/job/cache_manager_api/config/zw/ -X main.ViewPath=D:/job/cache_manager_web/dist" cmd/zw/main.go
+go run -ldflags "-X main.DbPath=C:\work\frog\cache_manager_api\config\zw\ -X main.ViewPath=C:\work\frog\cache_manager_web\dist" cmd/zw/main.go
 ```
 
 
