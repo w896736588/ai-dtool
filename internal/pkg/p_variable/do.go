@@ -105,7 +105,7 @@ func (h *Variable) Run() (_struct.VCmdResult, error) {
 			}
 		case define.VariableCmdMysql, define.VariableCmdBash, define.VariableCmdCommand,
 			define.VariableCmdRedis, define.VariableCmdCurl, define.VariableCmdPlaywright,
-			define.VariableCmdCombine:
+			define.VariableCmdCombine, define.VariableCmdMakefile, define.VariableCmdUpload:
 			runErr := h.RunCmd(cmd)
 			cmdResult.ReplaceList = h.ReplaceList
 			if runErr != nil {
@@ -142,8 +142,12 @@ func (h *Variable) RunCmd(cmd map[string]any) error {
 	switch cast.ToInt(cmd[`type`]) {
 	case define.VariableCmdMysql:
 		err = rCmd.RunMysql()
+	case define.VariableCmdUpload:
+		_, err = rCmd.RunUpload()
 	case define.VariableCmdBash:
 		_, err = rCmd.RunBash()
+	case define.VariableCmdMakefile:
+		_, err = rCmd.RunMakefile()
 	case define.VariableCmdCommand:
 		_, err = rCmd.RunCommand()
 	case define.VariableCmdRedis:

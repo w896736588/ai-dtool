@@ -1,6 +1,7 @@
 package p_variable
 
 import (
+	"bytes"
 	"context"
 	"dev_tool/base"
 	"dev_tool/base/define"
@@ -12,6 +13,8 @@ import (
 	"gitee.com/Sxiaobai/gs/gsssh"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
 )
@@ -83,6 +86,58 @@ func (h *RCmd) RunMysql() error {
 	return nil
 }
 
+func (h *RCmd) RunMakefile() (string, error) {
+	configStr := cast.ToString(h.cmd[`bash`])
+	//cmdId := cast.ToString(h.cmd[`id`])
+	base.Component.TVariable.Log.Debugf(`run bash \n 替换列表 %s`, gstool.JsonEncode(h.replaceList))
+	configStr = base.Component.TVariable.Replace(configStr, h.replaceList)
+	config := make(map[string]any)
+	deErr := gstool.JsonDecode(configStr, &config)
+	if deErr != nil {
+		return ``, deErr
+	}
+	// 确保 make 工具路径正确
+	global, globalErr := base.Component.TSqlite.Client.QuickQuery(`tbl_global`, `*`, map[string]any{
+		`key`: `mingw32-make`,
+	}).One()
+	if globalErr != nil {
+		return ``, globalErr
+	}
+	makePath := cast.ToString(global[`value`])
+	if !gstool.FileIsExisted(makePath) {
+		return ``, gstool.Error(`未找到mingw32-make`)
+	}
+	makefileDir := cast.ToString(config[`makefile`])
+	if ok, _ := gstool.DirPathExists(makefileDir); !ok {
+		return ``, gstool.Error(`Makefile所在目录不存在`)
+	}
+	err := os.Chdir(makefileDir)
+	if err != nil {
+		return ``, gstool.Error("切换目录失败: %v\n", err)
+	}
+	buildName := cast.ToString(config[`build_name`])
+	// 构建命令
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd := exec.Command(makePath, buildName)
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+	h.StreamMsg(fmt.Sprintf("执行：%s %s ", makePath, buildName), true)
+	err = cmd.Run()
+	if err != nil {
+		return ``, gstool.Error("make 执行失败: %v\n", err)
+	}
+	stdoutStr := stdoutBuf.String()
+	stderrStr := stderrBuf.String()
+	h.StreamMsg(stdoutStr, true)
+	h.StreamMsg(stderrStr, true)
+	targetFile := cast.ToString(config[`target_file`])
+	if !gstool.FileIsExisted(targetFile) {
+		return ``, gstool.Error(`执行完成后未找到目标文件`)
+	}
+	h.StreamMsg(`构建完成`, true)
+	return ``, nil
+}
+
 func (h *RCmd) RunBash() (string, error) {
 	cmdBash := cast.ToString(h.cmd[`bash`])
 	cmdId := cast.ToString(h.cmd[`id`])
@@ -117,6 +172,12 @@ func (h *RCmd) RunBash() (string, error) {
 	}
 	var sshClientErr error
 	var sshClient *gsssh.SshConfig
+	//家目录
+	home := `/var/www`
+	if cast.ToString(sshConfig[`home`]) != `` {
+		home = cast.ToString(sshConfig[`home`])
+	}
+	variableDir := home + `/variable`
 	//ssh
 	sshClient, sshClientErr = base.Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, define.SseVariable)
 	if sshClientErr != nil {
@@ -129,7 +190,7 @@ func (h *RCmd) RunBash() (string, error) {
 	}
 	var err error
 	//创建目录
-	_, err = sshClient.RunCommandWait(`sudo mkdir -p /var/www/variable`)
+	_, err = sshClient.RunCommandWait(fmt.Sprintf(`sudo mkdir -p %s`, variableDir))
 	if err != nil {
 		return ``, err
 	}
@@ -138,22 +199,85 @@ func (h *RCmd) RunBash() (string, error) {
 	//if err != nil {
 	//	return ``, err
 	//}
-	base.Component.TVariable.Log.Debugf(`%s \n %s `, fmt.Sprintf(`/var/www/variable/variable_%s.sh`, cmdId), bash)
-	err = sftpClient.UploadFile(fmt.Sprintf(`/var/www/variable/variable_%s.sh`, cmdId), bash)
+	base.Component.TVariable.Log.Debugf(`%s \n %s `, fmt.Sprintf(variableDir+`/variable_%s.sh`, cmdId), bash)
+	err = sftpClient.UploadFile(fmt.Sprintf(variableDir+`/variable_%s.sh`, cmdId), bash)
 	if err != nil {
 		return "", err
 	}
-	_, err = sshClient.RunCommandWait(fmt.Sprintf(`sudo chmod +x /var/www/variable/variable_%s.sh`, cmdId))
+	_, err = sshClient.RunCommandWait(fmt.Sprintf(`sudo chmod +x %s/variable_%s.sh`, variableDir, cmdId))
 	if err != nil {
 		return ``, err
 	}
 	//var result string
 	var result string
-	result, err = sshClient.RunCommandWait(fmt.Sprintf(`sudo /var/www/variable/variable_%s.sh`, cmdId))
+	result, err = sshClient.RunCommandWait(fmt.Sprintf(`sudo %s/variable_%s.sh`, variableDir, cmdId))
 	if err != nil {
 		return ``, err
 	}
 	return result, nil
+}
+
+func (h *RCmd) RunUpload() (string, error) {
+	cmdBash := cast.ToString(h.cmd[`bash`])
+	//cmdId := cast.ToString(h.cmd[`id`])
+	cmdBash = base.Component.TVariable.Replace(cmdBash, h.replaceList)
+	sshId, bash, parseIdErr := base.Component.TVariable.ParseIdContent(cmdBash)
+	if parseIdErr != nil {
+		return ``, parseIdErr
+	}
+	//如果脚本还有未替换的
+	if base.Component.TVariable.ExistReplaceParam(bash) {
+		return ``, gstool.Error("上传的脚本还存在需要替换的内容")
+	}
+	//解析配置
+	bash = gstool.SReplaces(bash, map[string]string{
+		`\`: `\\`,
+	})
+	uploadConfig := make(map[string]any)
+	deErr := gstool.JsonDecode(bash, &uploadConfig)
+	if deErr != nil {
+		gstool.FmtPrintlnLogTime(`--%s-- %s`, bash, deErr.Error())
+		h.StreamMsg(fmt.Sprintf(`解析上传配置失败 %s`, bash), true)
+		return ``, deErr
+	}
+	targetDir := cast.ToString(uploadConfig[`target_dir`])
+	sourceFile := cast.ToString(uploadConfig[`source_file`])
+	if targetDir == `` {
+		h.StreamMsg(`目标目录不能为空`, true)
+		return ``, gstool.Error(`目标目录不能为空`)
+	}
+	if sourceFile == `` {
+		h.StreamMsg(`源文件不能为空`, true)
+		return ``, gstool.Error(`源文件不能为空`)
+	}
+	if !gstool.FileIsExisted(sourceFile) {
+		h.StreamMsg(`源文件不存在`, true)
+		return ``, gstool.Error(`源文件不存在`)
+	}
+	//注册ssh
+	sftpUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
+	base.Component.TVariable.AddSshClient(h.RunUniqueId, sftpUniqueKey)
+	//初始化
+	sshConfig, sshConfigErr := base.Component.TSqlite.GetSshConfig(sshId)
+	if sshConfigErr != nil {
+		return ``, sshConfigErr
+	}
+	//sftp
+	sftpClient, sftpClientErr := base.Component.TShell.GetClientMarkdown(sshConfig, sftpUniqueKey, define.SseVariable)
+	if sftpClientErr != nil {
+		return ``, sftpClientErr
+	}
+	var err error
+	fileName := gstool.FileGetNameByPath(sourceFile)
+	targetFile := targetDir + `/` + fileName
+	h.StreamMsg(fmt.Sprintf(`准备上传文件 %s 到目标文件 %s`, sourceFile, targetFile), true)
+	err = sftpClient.UploadFile(targetFile, sourceFile)
+	if err != nil {
+		h.StreamMsg(fmt.Sprintf(`上传文件失败 %s`, err.Error()), true)
+		return "", err
+	}
+	h.StreamMsg(`上传完成`, true)
+	return ``, nil
 }
 
 func (h *RCmd) RunCommand() (string, error) {
