@@ -16,6 +16,7 @@ func InitRouter() {
 	supervisorRouter()
 	gitRouter()
 	gitLabTokenRouter()
+	globalSetRouter()
 	loginRouter()
 	codeRouter()
 	initSocket()
@@ -86,6 +87,12 @@ func gitLabTokenRouter() {
 	base.Component.TGin.GinPost(`/api/Set/GitLabTokenCreate`, controller.SetGitlabTokenAdd)    //创建
 	base.Component.TGin.GinPost(`/api/Set/GitLabTokenDelete`, controller.SetGitlabTokenDelete) //删除
 	base.Component.TGin.GinPost(`/api/Set/GitLabTokenList`, controller.SetGitlabTokenList)     //列表
+}
+
+func globalSetRouter() {
+	base.Component.TGin.GinPost(`/api/Set/GlobalCreate`, controller.SetGlobalAdd)    //创建
+	base.Component.TGin.GinPost(`/api/Set/GlobalDelete`, controller.SetGlobalDelete) //删除
+	base.Component.TGin.GinPost(`/api/Set/GlobalList`, controller.SetGlobalList)     //列表
 }
 
 // login相关
