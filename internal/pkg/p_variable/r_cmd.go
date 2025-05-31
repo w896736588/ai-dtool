@@ -13,7 +13,6 @@ import (
 	"gitee.com/Sxiaobai/gs/gsssh"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -86,43 +85,19 @@ func (h *RCmd) RunMysql() error {
 	return nil
 }
 
-func (h *RCmd) RunMakefile() (string, error) {
-	configStr := cast.ToString(h.cmd[`bash`])
+func (h *RCmd) RunBat() (string, error) {
+	bat := cast.ToString(h.cmd[`bash`])
 	//cmdId := cast.ToString(h.cmd[`id`])
 	base.Component.TVariable.Log.Debugf(`run bash \n 替换列表 %s`, gstool.JsonEncode(h.replaceList))
-	configStr = base.Component.TVariable.Replace(configStr, h.replaceList)
-	config := make(map[string]any)
-	deErr := gstool.JsonDecode(configStr, &config)
-	if deErr != nil {
-		return ``, deErr
-	}
-	// 确保 make 工具路径正确
-	global, globalErr := base.Component.TSqlite.Client.QuickQuery(`tbl_global`, `*`, map[string]any{
-		`key`: `mingw32-make`,
-	}).One()
-	if globalErr != nil {
-		return ``, globalErr
-	}
-	makePath := cast.ToString(global[`value`])
-	if !gstool.FileIsExisted(makePath) {
-		return ``, gstool.Error(`未找到mingw32-make`)
-	}
-	makefileDir := cast.ToString(config[`makefile`])
-	if ok, _ := gstool.DirPathExists(makefileDir); !ok {
-		return ``, gstool.Error(`Makefile所在目录不存在`)
-	}
-	err := os.Chdir(makefileDir)
-	if err != nil {
-		return ``, gstool.Error("切换目录失败: %v\n", err)
-	}
-	buildName := cast.ToString(config[`build_name`])
+	bat = base.Component.TVariable.Replace(bat, h.replaceList)
 	// 构建命令
 	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd := exec.Command(makePath, buildName)
+	cmd := exec.Command(`cmd.exe`, `/C`, bat)
+	gstool.FmtPrintlnLogTime(`bat %s`, bat)
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
-	h.StreamMsg(fmt.Sprintf("执行：%s %s ", makePath, buildName), true)
-	err = cmd.Run()
+	h.StreamMsg(fmt.Sprintf("执行：%s ", bat), true)
+	err := cmd.Run()
 	if err != nil {
 		return ``, gstool.Error("make 执行失败: %v\n", err)
 	}
@@ -130,10 +105,6 @@ func (h *RCmd) RunMakefile() (string, error) {
 	stderrStr := stderrBuf.String()
 	h.StreamMsg(stdoutStr, true)
 	h.StreamMsg(stderrStr, true)
-	targetFile := cast.ToString(config[`target_file`])
-	if !gstool.FileIsExisted(targetFile) {
-		return ``, gstool.Error(`执行完成后未找到目标文件`)
-	}
 	h.StreamMsg(`构建完成`, true)
 	return ``, nil
 }
