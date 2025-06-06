@@ -22,7 +22,7 @@ func NewVariable() *TVariable {
 	return &TVariable{
 		TaskList:      make(map[string]string),
 		SshClientList: make(map[string][]string),
-		Log:           gstool.NewSlogDefault(Component.Env.LogPath, `variable`),
+		Log:           gstool.NewSlog3(Component.Env.LogPath, `variable`),
 	}
 }
 

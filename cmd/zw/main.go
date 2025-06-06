@@ -13,4 +13,5 @@ func main() {
 	zw.InitBase(IsBuild, DbPath, ViewPath)
 	gstool.CpuSetUsePercent(0.6)
 	gstool.SignalDefault()
+	zw.Stop()
 }

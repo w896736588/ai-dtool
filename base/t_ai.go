@@ -11,8 +11,7 @@ type TAi struct {
 }
 
 func (h *TAi) Init() {
-	h.log = gstool.NewSlogDefault(Component.Env.LogPath, `ai`)
-	h.log.DeleteLogs(``)
+	h.log = gstool.NewSlog3(Component.Env.LogPath, `ai`)
 }
 
 // ParseStream 解析流式数据

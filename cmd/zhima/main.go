@@ -13,4 +13,5 @@ func main() {
 	zhima.InitBase(IsBuild, DbPath, ViewPath)
 	gstool.CpuSetUsePercent(0.6)
 	gstool.SignalDefault()
+	zhima.Stop()
 }
