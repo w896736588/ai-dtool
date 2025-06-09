@@ -61,12 +61,12 @@
         floater.style.position = 'fixed';
         floater.style.bottom = '0px';
         floater.style.padding = '3px';
-        floater.style.backgroundColor = '#66CDAA';
+        floater.style.backgroundColor = 'white';
         floater.style.border = '1px solid #ccc';
         floater.style.borderRadius = '4px';
         floater.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
         floater.style.zIndex = '9999';
-        floater.style.fontSize = '13px';
+        floater.style.fontSize = '12px';
         floater.style.opacity  = "0.9"
         // floater.style.transition = "all 0.5s ease-in-out";
 
