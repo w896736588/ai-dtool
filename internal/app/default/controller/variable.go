@@ -24,7 +24,8 @@ func VariableList(c *gin.Context) {
 	variableList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_variable`, `*`, map[string]interface{}{
 		`status`: define.VariableStatusNormal,
 	}).All()
-	for _, variable := range variableList {
+	for keyVariable, variable := range variableList {
+		variableList[keyVariable][`id`] = cast.ToString(variable[`id`])
 		variableCmdList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_variable_cmd`, `*`, map[string]any{
 			`variable_id`: cast.ToString(variable[`id`]),
 			`status`:      define.VariableStatusNormal,
@@ -32,6 +33,7 @@ func VariableList(c *gin.Context) {
 		//转换类型
 		for cmdKey, variableCmd := range variableCmdList {
 			variableCmdList[cmdKey][`type`] = cast.ToString(variableCmd[`type`])
+			variableCmdList[cmdKey][`id`] = cast.ToString(variableCmd[`id`])
 		}
 		variable[`variable_cmd_list`] = variableCmdList
 		//归到分组中

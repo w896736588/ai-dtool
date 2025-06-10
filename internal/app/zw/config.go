@@ -3,6 +3,7 @@ package zw
 import (
 	"dev_tool/base"
 	_default "dev_tool/internal/app/default"
+	"fmt"
 	"gitee.com/Sxiaobai/gs/gsencrypt"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"os"
@@ -33,8 +34,8 @@ func initComponent() {
 }
 
 func Stop() {
-	base.Component.GsLog.Debugf(`停止`)
-	_ = base.Component.TGin.GinStop(5)
+	fmt.Println(`停止`)
+	_ = base.Component.TGin.GinStop(1)
 	_ = base.Component.TPlaywright.Log.Close()
 	_ = base.Component.TVariable.Log.Close()
 	_ = base.Component.GsLog.Close()
