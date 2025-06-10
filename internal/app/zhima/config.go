@@ -34,7 +34,7 @@ func initComponent() {
 
 func Stop() {
 	base.Component.GsLog.Debugf(`停止`)
-	_ = base.Component.TGin.GinStop(5)
+	_ = base.Component.TGin.GinStop(1)
 	_ = base.Component.TPlaywright.Log.Close()
 	_ = base.Component.TVariable.Log.Close()
 	_ = base.Component.GsLog.Close()

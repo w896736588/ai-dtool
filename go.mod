@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.23.3
 
 require (
-	gitee.com/Sxiaobai/gs v1.5.1
+	gitee.com/Sxiaobai/gs v1.5.4
 	github.com/gin-gonic/gin v1.9.0
 	github.com/gorilla/websocket v1.5.1
 	github.com/playwright-community/playwright-go v0.4901.0

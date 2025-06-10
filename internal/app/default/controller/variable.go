@@ -29,6 +29,10 @@ func VariableList(c *gin.Context) {
 			`variable_id`: cast.ToString(variable[`id`]),
 			`status`:      define.VariableStatusNormal,
 		}).Order(`weight asc`).All()
+		//转换类型
+		for cmdKey, variableCmd := range variableCmdList {
+			variableCmdList[cmdKey][`type`] = cast.ToString(variableCmd[`type`])
+		}
 		variable[`variable_cmd_list`] = variableCmdList
 		//归到分组中
 		for _, variableGroup := range variableGroupList {

@@ -56,6 +56,11 @@ export CGO_ENABLED=1
 go run -ldflags "-X main.DbPath=C:\work\frog\cache_manager_api\config\zw\ -X main.ViewPath=C:\work\frog\cache_manager_web\dist" cmd/zw/main.go
 ```
 
+```shell
+#zw
+export CGO_ENABLED=1  
+go run -ldflags "-X main.DbPath=D:/go/cache_manager_api/config/zw/ -X main.ViewPath=D:/go/devtool/dist" cmd/zw/main.go
+```
 
 
 
