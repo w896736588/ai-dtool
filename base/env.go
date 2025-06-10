@@ -3,6 +3,7 @@ package base
 import (
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gstool"
+	"os"
 	"path/filepath"
 )
 
@@ -53,9 +54,27 @@ func (h *Env) Init(appName, dbPath, ViewPath string) {
 	h.NodePath = gstool.SReplaces(Component.ConfigViper.GetString(`path.webkit_node_path`), map[string]string{
 		`{PKG_PATH}`: h.PkgPath,
 	})
+	//判断是否存在D盘如果没有那么就改为C盘
+	drive := ``
+	drivePath := string(`D`) + ":\\"
+	_, err := os.Stat(drivePath)
+	if err == nil {
+		drive = `D`
+	} else {
+		drive = `C`
+	}
 	h.WebkitDriverPath = Component.ConfigViper.GetString(`path.webkit_driver_path`)
 	h.WebkitDataPath = Component.ConfigViper.GetString(`path.webkit_data_path`)
 	h.WebkitDownloadPath = Component.ConfigViper.GetString(`path.webkit_download_path`)
+	h.WebkitDataPath = gstool.SReplaces(h.WebkitDataPath, map[string]string{
+		`{DRIVE}`: drive,
+	})
+	h.WebkitDownloadPath = gstool.SReplaces(h.WebkitDownloadPath, map[string]string{
+		`{DRIVE}`: drive,
+	})
+	h.WebkitDriverPath = gstool.SReplaces(h.WebkitDriverPath, map[string]string{
+		`{DRIVE}`: drive,
+	})
 	//创建目录
 	_ = gstool.DirCreatePath(h.LogPath)
 	_ = gstool.DirCreatePath(h.ViewPath)
