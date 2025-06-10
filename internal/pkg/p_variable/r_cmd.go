@@ -98,11 +98,11 @@ func (h *RCmd) RunBat() (string, error) {
 	cmd.Stderr = &stderrBuf
 	h.StreamMsg(fmt.Sprintf("执行：%s ", bat), true)
 	err := cmd.Run()
-	if err != nil {
-		return ``, gstool.Error("make 执行失败: %v\n", err)
-	}
 	stdoutStr := stdoutBuf.String()
 	stderrStr := stderrBuf.String()
+	if err != nil {
+		return ``, gstool.Error("make 执行失败: %v\n %s", err, stderrStr)
+	}
 	h.StreamMsg(stdoutStr, true)
 	h.StreamMsg(stderrStr, true)
 	h.StreamMsg(`构建完成`, true)
