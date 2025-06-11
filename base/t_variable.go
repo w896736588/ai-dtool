@@ -6,6 +6,7 @@ import (
 	"errors"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -200,10 +201,11 @@ func (h *TVariable) Replace(data string, replaceList *[]map[string]string) strin
 
 // ParseIdContent 解析sql或者bash脚本第一行定义的id，格式：[RunUniqueId=1]
 func (h *TVariable) ParseIdContent(str string) (int, string, error) {
-	sqlParamList := strings.Split(str, "\n")
-	content := gstool.SReplaces(str, map[string]string{
-		sqlParamList[0] + "\n": ``,
-	})
+	re := regexp.MustCompile(`[\r\n]`)
+	sqlParamList := re.Split(str, -1)
+	//过滤掉空行
+	sqlParamList = gstool.ArrayFilterEmpty(&sqlParamList)
+	content := strings.Join(sqlParamList[1:], "\n")
 	baseId := sqlParamList[0]
 	id := gstool.SReplaces(baseId, map[string]string{
 		`[id=`: ``,
@@ -211,7 +213,7 @@ func (h *TVariable) ParseIdContent(str string) (int, string, error) {
 	})
 	cId := cast.ToInt(id)
 	if cId == 0 {
-		return cId, content, errors.New(`id不能为空`)
+		return cId, content, errors.New(`id不能为空 ` + str + ` ` + gstool.JsonFormat(sqlParamList))
 	}
 	return cId, content, nil
 }
