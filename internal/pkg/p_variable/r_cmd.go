@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 type RCmd struct {
@@ -85,7 +86,7 @@ func (h *RCmd) RunMysql() error {
 	return nil
 }
 
-func (h *RCmd) RunBat() (string, error) {
+func (h *RCmd) RunWindowsCmd() (string, error) {
 	bat := cast.ToString(h.cmd[`bash`])
 	//cmdId := cast.ToString(h.cmd[`id`])
 	base.Component.TVariable.Log.Debugf(`run bash \n 替换列表 %s`, gstool.JsonEncode(h.replaceList))
@@ -105,7 +106,6 @@ func (h *RCmd) RunBat() (string, error) {
 	}
 	h.StreamMsg(stdoutStr, true)
 	h.StreamMsg(stderrStr, true)
-	h.StreamMsg(`构建完成`, true)
 	return ``, nil
 }
 
@@ -207,7 +207,6 @@ func (h *RCmd) RunUpload() (string, error) {
 	uploadConfig := make(map[string]any)
 	deErr := gstool.JsonDecode(bash, &uploadConfig)
 	if deErr != nil {
-		gstool.FmtPrintlnLogTime(`--%s-- %s`, bash, deErr.Error())
 		h.StreamMsg(fmt.Sprintf(`解析上传配置失败 %s`, bash), true)
 		return ``, deErr
 	}
@@ -240,12 +239,50 @@ func (h *RCmd) RunUpload() (string, error) {
 	}
 	var err error
 	fileName := gstool.FileGetNameByPath(sourceFile)
-	targetFile := targetDir + `/` + fileName
-	h.StreamMsg(fmt.Sprintf(`准备上传文件 %s 到目标文件 %s`, sourceFile, targetFile), true)
-	err = sftpClient.UploadFile(targetFile, ``, sourceFile)
+	targetTempFileName := fileName + base.Component.TBase.GetUnique(`_upload`)
+	targetTempFile := targetDir + `/` + targetTempFileName
+	fileSizeMb, _ := gstool.FileSize(sourceFile, `mb`)
+	h.StreamMsg(fmt.Sprintf(`准备上传文件 %s  %s 到目标文件 %s`, fileSizeMb, sourceFile, targetTempFile), true)
+	var lastPrintedStep int = -1
+	err = sftpClient.UploadFileProcess(targetTempFile, ``, sourceFile, func(bytesWritten, totalBytes int64) {
+		// 计算当前进度百分比
+		currentPercent := float64(bytesWritten) / float64(totalBytes) * 100
+		currentStep := int(currentPercent) / 1 // 每1%为一个step
+
+		// 只有当进入新的5%区间或完成时才打印
+		if currentStep > lastPrintedStep || bytesWritten == totalBytes {
+			h.StreamMsg(fmt.Sprintf("上传进度: %d%% (%d/%d bytes)",
+				currentStep*1, // 显示5%的整数倍
+				bytesWritten,
+				totalBytes), true)
+
+			lastPrintedStep = currentStep
+
+			// 上传完成时换行
+			if bytesWritten == totalBytes {
+				h.StreamMsg(fmt.Sprintf("上传进度: 100%% (%d/%d bytes)",
+					bytesWritten,
+					totalBytes), true)
+			}
+		}
+	})
+	time.Sleep(time.Second)
 	if err != nil {
 		h.StreamMsg(fmt.Sprintf(`上传文件失败 %s`, err.Error()), true)
 		return "", err
+	}
+	//ssh
+	sshUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `run`)
+	sshClient, sshClientErr := base.Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, define.SseVariable)
+	if sshClientErr != nil {
+		h.StreamMsg(fmt.Sprintf(`上传文件失败2 %s`, sshClientErr.Error()), true)
+		return ``, gstool.Error(`上传失败 %s`, sshClientErr.Error())
+	}
+	h.StreamMsg(fmt.Sprintf(`迁移%s %s`, targetTempFile, targetDir+`/`+fileName), true)
+	_, err = sshClient.RunCommandWait(fmt.Sprintf(`sudo mv %s %s`, targetTempFile, targetDir+`/`+fileName))
+	if err != nil {
+		h.StreamMsg(fmt.Sprintf(`迁移失败 %s`, err.Error()), true)
+		return ``, gstool.Error(`迁移失败 %s`, err.Error())
 	}
 	h.StreamMsg(`上传完成`, true)
 	return ``, nil
