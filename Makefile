@@ -1,18 +1,20 @@
 
 
-.PHONY:xkf_tool_widows
-xkf_tool_widows:
-	cd cmd/xkf_tool
-	set CGO_ENABLED=0;GOOS=windows;GOARCH=amd64 CC=x86_64-w64-mingw32-gcc&&go build -o ./build/xkf_tool.exe ./cmd/xkf_tool/main.go
-	cd build&&git add xkf_tool.exe&&git update-index --chmod=+x xkf_tool.exe&&git ls-files --stage xkf_tool.exe
+.PHONY:zhima_tool_widows
+zhima_tool_widows:
+	go env -w CGO_ENABLED=1 GOOS=windows GOARCH=amd64
+	go build -tags timetzdata -ldflags "-X main.IsBuild=1 -X main.DbPath=D:/go/cache_manager_api/config/zhima/ -X main.ViewPath=D:/go/devtool/dist -s -w" -o ./build/zhima.exe ./cmd/zhima/main.go
+	git ls-files --stage build/zhima.exe
 
-.PHONY:xkf_tool_linux
-xkf_tool_linux:
-	cd cmd/xkf_tool&&go mod tidy
-	set CGO_ENABLED=0&&set GOARCH=amd64&&set GOOS=linux&&go build -o ./build/xkf_tool -ldflags "-s -w" ./cmd/xkf_tool/main.go
-	cd build&&git add xkf_tool&&git update-index --chmod=+x xkf_tool&&git ls-files --stage xkf_tool
+.PHONE:zhima_tool_pub_widows
+zhima_tool_pub_widows:
+	go env -w CGO_ENABLED=1 GOOS=windows GOARCH=amd64
+	go build -tags timetzdata -ldflags "-X main.IsBuild=1 -X main.DbPath= -X main.ViewPath= -s -w" -o ./build/zhima.exe ./cmd/zhima/main.go
+	git ls-files --stage build/zhimaPub.exe
+
+
 
 .PHONY:make_all
 make_all:
-	make xkf_tool_widows
-	make xkf_tool_linux
+	make zhima_tool_widows
+	make zhima_tool_pub_widows
