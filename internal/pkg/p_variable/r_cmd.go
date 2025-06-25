@@ -244,7 +244,7 @@ func (h *RCmd) RunUpload() (string, error) {
 	fileSizeMb, _ := gstool.FileSize(sourceFile, `mb`)
 	h.StreamMsg(fmt.Sprintf(`准备上传文件 %s  %s 到目标文件 %s`, fileSizeMb, sourceFile, targetTempFile), true)
 	var lastPrintedStep int = -1
-	err = sftpClient.UploadFileProcess(targetTempFile, ``, sourceFile, func(bytesWritten, totalBytes int64) {
+	err = sftpClient.UploadFileProcessSCP(targetTempFile, ``, sourceFile, func(bytesWritten, totalBytes int64) {
 		// 计算当前进度百分比
 		currentPercent := float64(bytesWritten) / float64(totalBytes) * 100
 		currentStep := int(currentPercent) / 1 // 每1%为一个step
