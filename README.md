@@ -52,6 +52,7 @@ git ls-files --stage ./build/zwPub.exe
 
 ```shell
 #zw
+#注意 go run时环境变量的代入会有问题，无法识别mingw32-make 尤其是把默认终端设置为git的bash
 export CGO_ENABLED=1  
 go run -ldflags "-X main.DbPath=C:\work\frog\cache_manager_api\config\zw\ -X main.ViewPath=C:\work\frog\cache_manager_web\dist" cmd/zw/main.go
 ```

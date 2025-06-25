@@ -13,6 +13,7 @@ import (
 	"gitee.com/Sxiaobai/gs/gsssh"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -91,13 +92,12 @@ func (h *RCmd) RunWindowsCmd() (string, error) {
 	//cmdId := cast.ToString(h.cmd[`id`])
 	base.Component.TVariable.Log.Debugf(`run bash \n 替换列表 %s`, gstool.JsonEncode(h.replaceList))
 	bat = base.Component.TVariable.Replace(bat, h.replaceList)
+	h.StreamMsg(fmt.Sprintf("执行：%s ", bat), true)
 	// 构建命令
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd := exec.Command(`cmd.exe`, `/C`, bat)
-	gstool.FmtPrintlnLogTime(`bat %s`, bat)
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
-	h.StreamMsg(fmt.Sprintf("执行：%s ", bat), true)
 	err := cmd.Run()
 	stdoutStr := stdoutBuf.String()
 	stderrStr := stderrBuf.String()
@@ -220,10 +220,6 @@ func (h *RCmd) RunUpload() (string, error) {
 		h.StreamMsg(`源文件不能为空`, true)
 		return ``, gstool.Error(`源文件不能为空`)
 	}
-	if !gstool.FileIsExisted(sourceFile) {
-		h.StreamMsg(`源文件不存在`, true)
-		return ``, gstool.Error(`源文件不存在`)
-	}
 	//注册ssh
 	sftpUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
 	base.Component.TVariable.AddSshClient(h.RunUniqueId, sftpUniqueKey)
@@ -237,6 +233,38 @@ func (h *RCmd) RunUpload() (string, error) {
 	if sftpClientErr != nil {
 		return ``, sftpClientErr
 	}
+	//如果是上传文件
+	isErr := false
+	if gstool.FileIsExisted(sourceFile) {
+		uploadErr := h.uploadFile(sshConfig, sshId, sftpClient, sourceFile, targetDir)
+		if uploadErr != nil {
+			return ``, uploadErr
+		}
+	} else {
+		_ = gstool.DirWalk(sourceFile, func(path string, info os.FileInfo, err error) {
+			if err != nil {
+				return
+			}
+			if info.IsDir() {
+				return
+			}
+			uploadErr := h.uploadFile(sshConfig, sshId, sftpClient, path, targetDir)
+			if uploadErr != nil {
+				base.Component.TVariable.Log.Errof(`上传失败`)
+				h.StreamMsg(fmt.Sprintf(`上传失败 %s`, uploadErr.Error()), true)
+				isErr = true
+				return
+			}
+		})
+	}
+	if isErr {
+		return ``, gstool.Error(`上传失败`)
+	}
+	h.StreamMsg(`上传完成`, true)
+	return ``, nil
+}
+
+func (h *RCmd) uploadFile(sshConfig map[string]any, sshId int, sftpClient *gsssh.SshConfig, sourceFile, targetDir string) error {
 	var err error
 	fileName := gstool.FileGetNameByPath(sourceFile)
 	targetTempFileName := fileName + base.Component.TBase.GetUnique(`_upload`)
@@ -269,23 +297,22 @@ func (h *RCmd) RunUpload() (string, error) {
 	time.Sleep(time.Second)
 	if err != nil {
 		h.StreamMsg(fmt.Sprintf(`上传文件失败 %s`, err.Error()), true)
-		return "", err
+		return err
 	}
 	//ssh
 	sshUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `run`)
 	sshClient, sshClientErr := base.Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, define.SseVariable)
 	if sshClientErr != nil {
 		h.StreamMsg(fmt.Sprintf(`上传文件失败2 %s`, sshClientErr.Error()), true)
-		return ``, gstool.Error(`上传失败 %s`, sshClientErr.Error())
+		return gstool.Error(`上传失败 %s`, sshClientErr.Error())
 	}
 	h.StreamMsg(fmt.Sprintf(`迁移%s %s`, targetTempFile, targetDir+`/`+fileName), true)
 	_, err = sshClient.RunCommandWait(fmt.Sprintf(`sudo mv %s %s`, targetTempFile, targetDir+`/`+fileName))
 	if err != nil {
 		h.StreamMsg(fmt.Sprintf(`迁移失败 %s`, err.Error()), true)
-		return ``, gstool.Error(`迁移失败 %s`, err.Error())
+		return gstool.Error(`迁移失败 %s`, err.Error())
 	}
-	h.StreamMsg(`上传完成`, true)
-	return ``, nil
+	return nil
 }
 
 func (h *RCmd) RunCommand() (string, error) {

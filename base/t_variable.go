@@ -339,9 +339,9 @@ func (h *TVariable) PreConnSsh(sshId int, sshUniqueKey, sftpUniqueKey string) er
 func (h *TVariable) SelectChooseReplace(variableForm *_struct.VForm,
 	replaceList *[]map[string]string, chooseValue string) {
 
-	gstool.FmtPrintlnLogTime(`resultKey %s`, variableForm.ResultKey)
-	gstool.FmtPrintlnLogTime(`chooseValue %s`, chooseValue)
-	gstool.FmtPrintlnLogTime(`option list %s`, gstool.JsonEncode(variableForm.Select.OptionList))
+	//gstool.FmtPrintlnLogTime(`resultKey %s`, variableForm.ResultKey)
+	//gstool.FmtPrintlnLogTime(`chooseValue %s`, chooseValue)
+	//gstool.FmtPrintlnLogTime(`option list %s`, gstool.JsonEncode(variableForm.Select.OptionList))
 
 	for _, option := range variableForm.Select.OptionList {
 		if variableForm.ResultKey != `` && chooseValue != `` && chooseValue == option.Value {
