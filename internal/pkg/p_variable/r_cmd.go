@@ -271,6 +271,8 @@ func (h *RCmd) uploadFile(sshConfig map[string]any, sshId int, sftpClient *gsssh
 	targetTempFile := targetDir + `/` + targetTempFileName
 	fileSizeMb, _ := gstool.FileSize(sourceFile, `mb`)
 	h.StreamMsg(fmt.Sprintf(`准备上传文件 %s  %s 到目标文件 %s`, fileSizeMb, sourceFile, targetTempFile), true)
+	startTime := gstool.TimeNowUnixToString(`Y-m-d H:i:s`)
+	h.StreamMsg(fmt.Sprintf(`[PROCESS]%s %s`, startTime, `上传进度:\s+\d+%\s+\(\d+\/\d+\s+bytes\)`), false)
 	var lastPrintedStep int = -1
 	err = sftpClient.UploadFileProcessScp(targetTempFile, sourceFile, func(bytesWritten, totalBytes int64) {
 		// 计算当前进度百分比
@@ -279,7 +281,8 @@ func (h *RCmd) uploadFile(sshConfig map[string]any, sshId int, sftpClient *gsssh
 
 		// 只有当进入新的5%区间或完成时才打印
 		if currentStep > lastPrintedStep || bytesWritten == totalBytes {
-			h.StreamMsg(fmt.Sprintf("上传进度: %d%% (%d/%d bytes)",
+			h.StreamMsg(fmt.Sprintf("%s 上传进度: %d%% (%d/%d bytes)",
+				startTime,
 				currentStep*1, // 显示5%的整数倍
 				bytesWritten,
 				totalBytes), true)
@@ -288,13 +291,14 @@ func (h *RCmd) uploadFile(sshConfig map[string]any, sshId int, sftpClient *gsssh
 
 			// 上传完成时换行
 			if bytesWritten == totalBytes {
-				h.StreamMsg(fmt.Sprintf("上传进度: 100%% (%d/%d bytes)",
+				h.StreamMsg(fmt.Sprintf("%s 上传进度: 100%% (%d/%d bytes)",
+					startTime,
 					bytesWritten,
 					totalBytes), true)
 			}
 		}
 	})
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 500)
 	if err != nil {
 		h.StreamMsg(fmt.Sprintf(`上传文件失败 %s`, err.Error()), true)
 		return err
