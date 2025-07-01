@@ -101,3 +101,11 @@ func BaseSshList(c *gin.Context) {
 		`ssh_list`: sshList,
 	})
 }
+
+// Ip 外网IP
+func Ip(c *gin.Context) {
+	ip, _ := base.Component.TBase.GetPublicIPWithSTUN()
+	gsgin.GinResponseSuccess(c, `获取成功`, map[string]string{
+		`ip`: ip,
+	})
+}

@@ -8,6 +8,7 @@ require (
 	gitee.com/Sxiaobai/gs v1.6.7
 	github.com/gin-gonic/gin v1.9.0
 	github.com/gorilla/websocket v1.5.1
+	github.com/pion/stun v0.6.1
 	github.com/playwright-community/playwright-go v0.4901.0
 	github.com/redis/go-redis/v9 v9.2.0
 	github.com/spf13/cast v1.7.1
@@ -54,6 +55,9 @@ require (
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.6 // indirect
+	github.com/pion/dtls/v2 v2.2.7 // indirect
+	github.com/pion/logging v0.2.2 // indirect
+	github.com/pion/transport/v2 v2.2.1 // indirect
 	github.com/pkg/sftp v1.13.9 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/richardlehane/mscfb v1.0.4 // indirect
