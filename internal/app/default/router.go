@@ -35,6 +35,7 @@ func baseRouter() {
 	base.Component.TGin.GinPost(`/api/BaseRegisterService`, controller.BaseRegisterService)   //注册各类服务 CheckUnikeyExist
 	base.Component.TGin.GinPost(`/api/BaseCheckUnikeyExist`, controller.BaseCheckUnikeyExist) //检查unikey是否已经登录注册
 	base.Component.TGin.GinPost(`/api/BaseSshList`, controller.BaseSshList)                   //ssh列表
+	base.Component.TGin.GinPost(`/api/Ip`, controller.Ip)                                     //登录
 }
 
 // redis相关
