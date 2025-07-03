@@ -63,6 +63,9 @@ func SmartLinkList(c *gin.Context) {
 				linkList[linkKey][`userList`] = userList
 			}
 			smartLinkList[smartLinkKey][`links`] = gstool.JsonEncode(linkList)
+			smartLinkList[smartLinkKey][`open_type`] = cast.ToInt(smartLink[`open_type`])
+			smartLinkList[smartLinkKey][`combine_type`] = cast.ToString(smartLink[`combine_type`])
+			smartLinkList[smartLinkKey][`channel`] = cast.ToString(smartLink[`channel`])
 		}
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
