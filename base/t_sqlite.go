@@ -212,3 +212,32 @@ func (h *TSqlite) StarList(_type any) ([]map[string]any, error) {
 		`type`: _type,
 	}).All()
 }
+
+func (h *TSqlite) MarkdownAdd(id, name, value any) (int64, error) {
+	if cast.ToInt(id) == 0 {
+		return h.Client.QuickCreate(`tbl_markdown`, map[string]any{
+			`name`:        name,
+			`content`:     value,
+			`create_time`: time.Now().Unix(),
+			`update_time`: time.Now().Unix(),
+		}).Exec()
+	} else {
+		return h.Client.QuickUpdate(`tbl_markdown`, map[string]any{
+			`id`: id,
+		}, map[string]any{
+			`name`:        name,
+			`content`:     value,
+			`update_time`: time.Now().Unix(),
+		}).Exec()
+	}
+}
+
+func (h *TSqlite) MarkdownDel(id any) (int64, error) {
+	return h.Client.QuickDelete(`tbl_markdown`, map[string]any{
+		`id`: id,
+	}).Exec()
+}
+
+func (h *TSqlite) MarkdownList() ([]map[string]any, error) {
+	return h.Client.QuickQuery(`tbl_markdown`, `*`, map[string]any{}).All()
+}

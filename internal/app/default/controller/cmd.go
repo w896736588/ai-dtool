@@ -4,7 +4,6 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
-	"gitee.com/Sxiaobai/gs/gs"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
@@ -75,13 +74,12 @@ func CmdAdd(c *gin.Context) {
 func CmdDelete(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	dataGMap := gs.NewTransMap(&dataMap)
-	if dataGMap.G(`id`).IsZero() {
+	if cast.ToInt(dataMap[`id`]) == 0 {
 		gsgin.GinResponseError(c, `id不能为空`, nil)
 		return
 	} else {
 		_, _ = base.Component.TSqlite.Client.QuickDelete(`tbl_variable`, map[string]any{
-			`id`: dataGMap.G(`id`).ToStr(),
+			`id`: cast.ToString(dataMap[`id`]),
 		}).Exec()
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)

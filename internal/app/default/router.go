@@ -22,6 +22,7 @@ func InitRouter() {
 	initSocket()
 	setRouter()
 	setStar()
+	setMarkdown()
 	variable()
 	smartLink()
 	docker()
@@ -151,6 +152,12 @@ func setStar() {
 	base.Component.TGin.GinPost(`/api/StarList`, controller.StarList)
 	base.Component.TGin.GinPost(`/api/StarAdd`, controller.StarAdd)
 	base.Component.TGin.GinPost(`/api/StarDel`, controller.StarDel)
+}
+
+func setMarkdown() {
+	base.Component.TGin.GinPost(`/api/MarkdownList`, controller.MarkdownList)
+	base.Component.TGin.GinPost(`/api/MarkdownAdd`, controller.MarkdownAdd)
+	base.Component.TGin.GinPost(`/api/MarkdownDel`, controller.MarkdownDel)
 }
 
 func variable() {

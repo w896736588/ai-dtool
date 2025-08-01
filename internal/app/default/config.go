@@ -17,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
 func InitBase(IsBuild, appName, dbPath, ViewPath string) {
@@ -92,13 +91,8 @@ func initComponent(IsBuild, appName, dbPath, ViewPath string) {
 	p_playwright.InitContextPageList()
 	go base.Component.TPlaywright.WitchDownload()
 	go base.Component.TPlaywright.SmartCheckAndUpdate()
-	gstool.DirWalk(base.Component.Env.RootPath, func(path string, info os.FileInfo, err error) {
-		if !info.IsDir() && strings.HasSuffix(strings.ToLower(info.Name()), `.log`) {
-			gstool.FmtPrintlnLogTime(`删除日志 %s`, path)
-			_ = gstool.FileDelete(path)
-		}
-	})
 	base.Component.GsLog = gstool.NewSlog3(base.Component.Env.LogPath, base.Component.Env.AppName)
+	_ = base.Component.GsLog.CleanOldLogs(7)
 }
 
 func initSqlite() {
@@ -107,6 +101,7 @@ func initSqlite() {
 		panic(fmt.Sprintf(`连接sqlite失败 %s`, err.Error()))
 	}
 	sqlite.SetGsLog(base.Component.GsLog)
+	sqlite.OpenDebug()
 	createErr := sqlite.CreateConn()
 	if createErr != nil {
 		panic(fmt.Sprintf(`打开sqlite失败 %s`, createErr.Error()))

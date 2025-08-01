@@ -5,7 +5,6 @@ import (
 	"dev_tool/base/define"
 	"dev_tool/internal/pkg/p_variable"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gs"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
@@ -104,13 +103,12 @@ func VariableAdd(c *gin.Context) {
 func VariableDelete(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	dataGMap := gs.NewTransMap(&dataMap)
-	if dataGMap.G(`id`).IsZero() {
+	if cast.ToInt(dataMap[`id`]) == 0 {
 		gsgin.GinResponseError(c, `id不能为空`, nil)
 		return
 	} else {
 		_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_variable`, map[string]any{
-			`id`: dataGMap.G(`id`).ToStr(),
+			`id`: cast.ToInt(dataMap[`id`]),
 		}, map[string]interface{}{
 			`status`: define.VariableStatusDelete,
 		}).Exec()
@@ -177,13 +175,12 @@ func VariableCmdAdd(c *gin.Context) {
 func VariableCmdDelete(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	dataGMap := gs.NewTransMap(&dataMap)
-	if dataGMap.G(`id`).IsZero() {
+	if cast.ToInt(dataMap[`id`]) == 0 {
 		gsgin.GinResponseError(c, `id不能为空`, nil)
 		return
 	} else {
 		_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_variable_cmd`, map[string]any{
-			`id`: dataGMap.G(`id`).ToStr(),
+			`id`: cast.ToInt(dataMap[`id`]),
 		}, map[string]interface{}{
 			`status`: define.VariableStatusDelete,
 		}).Exec()

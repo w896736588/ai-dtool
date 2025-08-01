@@ -6,11 +6,11 @@ import (
 	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gs"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"github.com/spf13/cast"
 )
 
 // BaseLogin 登录
@@ -30,7 +30,7 @@ func BaseLogin(c *gin.Context) {
 		})
 		return
 	}
-	token, tokenErr := base.Component.AesGcm.Encrypt(gs.NewGs(userId).ToByte())
+	token, tokenErr := base.Component.AesGcm.Encrypt([]byte(cast.ToString(userId)))
 	if tokenErr != nil {
 		gsgin.GinResponseError(c, `登录失败（`+tokenErr.Error()+`）`, map[string]string{
 			`NeedLogin`: `1`,

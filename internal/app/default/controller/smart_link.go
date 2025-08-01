@@ -6,7 +6,6 @@ import (
 	"dev_tool/internal/pkg/p_playwright"
 	"errors"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gs"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
@@ -209,13 +208,12 @@ func validateProcess(process string) error {
 func SmartLinkDelete(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	dataGMap := gs.NewTransMap(&dataMap)
-	if dataGMap.G(`id`).IsZero() {
+	if cast.ToInt(dataMap[`id`]) == 0 {
 		gsgin.GinResponseError(c, `id不能为空`, nil)
 		return
 	} else {
 		_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_smart_link`, map[string]any{
-			`id`: dataGMap.G(`id`).ToStr(),
+			`id`: cast.ToInt(dataMap[`id`]),
 		}, map[string]interface{}{
 			`status`: define.SmartLinkStatusDelete,
 		}).Exec()

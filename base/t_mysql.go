@@ -34,7 +34,9 @@ func (h *TMysql) GetClient(mysqlConfig map[string]any) (*gsdb.GsMysql, error) {
 			Username: cast.ToString(mysqlConfig[`username`]),
 			Dbname:   cast.ToString(mysqlConfig[`dbname`]),
 		},
+		GsLog: Component.GsLog,
 	}
+	gsMysql.OpenDebug()
 	if cast.ToInt(mysqlConfig[`ssh_id`]) != 0 {
 		sshConfig, sshConfigErr := Component.TSqlite.GetSshConfig(mysqlConfig[`ssh_id`])
 		if sshConfigErr != nil {
