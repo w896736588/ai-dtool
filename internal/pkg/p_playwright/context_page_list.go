@@ -297,6 +297,7 @@ func (h *ContextPageList) GetContextParam(runParams *_struct.PlaywrightRunParams
 
 // GetContextSaveUserData 获取context 需要保存用户数据
 func (h *ContextPageList) GetContextSaveUserData(runParams *_struct.PlaywrightRunParams) (*ContextPage, bool, error) {
+	h.log.Debugf(`需要保存用户数据`)
 	existContextPage, userDataIndex, userDataPath := h.GetContextParam(runParams)
 	if existContextPage != nil {
 		return existContextPage, false, nil
@@ -310,6 +311,7 @@ func (h *ContextPageList) GetContextSaveUserData(runParams *_struct.PlaywrightRu
 	var contextErr error
 	//浏览器自带验证
 	if runParams.BrowserAuthUsername != `` && runParams.BrowserAuthPassword != `` {
+		h.log.Debugf(`打开contxt，使用用户名和密码%s %s`, runParams.BrowserAuthUsername, runParams.BrowserAuthPassword)
 		context, contextErr = base.Component.TPlaywright.Pw.Chromium.LaunchPersistentContext(userDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
 			//DownloadsPath:     &h.downloadPath,
 			Headless:          &Headless,
@@ -375,10 +377,12 @@ func (h *ContextPageList) GetContextSaveUserData(runParams *_struct.PlaywrightRu
 
 func (h *ContextPageList) GetContextNotSaveUserData(browser playwright.Browser, runParams *_struct.PlaywrightRunParams) (*ContextPage, error) {
 	//查找可用的context
+	h.log.Debugf(`不保留用户数据`)
 	rContext := h.FindNotSaveUserDataContext(runParams)
 	if rContext != nil {
 		return rContext, nil
 	}
+	h.log.Debugf(`准备创建新的context %s %s`, runParams.BrowserAuthUsername, runParams.BrowserAuthPassword)
 	var context playwright.BrowserContext
 	var contextErr error
 	if runParams.BrowserAuthUsername != `` && runParams.BrowserAuthPassword != `` {
