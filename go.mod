@@ -11,6 +11,7 @@ require (
 	github.com/pion/stun v0.6.1
 	github.com/playwright-community/playwright-go v0.4901.0
 	github.com/redis/go-redis/v9 v9.2.0
+	github.com/sourcegraph/go-diff v0.7.0
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/viper v1.9.0
 )

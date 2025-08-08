@@ -5,6 +5,8 @@ import (
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/pion/stun"
 	"net"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -76,4 +78,46 @@ func (h *TBase) GetPublicIPWithSTUN() (string, error) {
 	}
 
 	return publicIP, nil
+}
+
+func (h *TBase) DiffText(text1, text2 string) string {
+	// 创建临时文件
+	tmpFileName1 := Component.TBase.GetUnique(`diff`) + `.md`
+	tmpFile1 := filepath.Join(Component.Env.LogPath, tmpFileName1)
+
+	defer func() {
+		_ = gstool.FileDelete(tmpFile1)
+	}()
+
+	err := gstool.FileCreate(Component.Env.LogPath, tmpFileName1, text1)
+	if err != nil {
+		return ``
+	}
+
+	//defer gstool.FileDelete(tmpFile1)
+	tmpFileName2 := Component.TBase.GetUnique(`diff`) + `.md`
+	tmpFile2 := filepath.Join(Component.Env.LogPath, tmpFileName2)
+
+	defer func() {
+		_ = gstool.FileDelete(tmpFile2)
+	}()
+
+	err = gstool.FileCreate(Component.Env.LogPath, tmpFileName2, text2)
+	if err != nil {
+		return ``
+	}
+
+	// 执行 git diff --numstat file1 file2
+	cmd := exec.Command("git", "diff", "--no-index", "--shortstat", tmpFile1, tmpFile2)
+	output, _ := cmd.CombinedOutput()
+	lines := strings.Split(string(output), "\n")
+	stats := ""
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			stats = lines[i]
+			break
+		}
+	}
+	return stats
+
 }

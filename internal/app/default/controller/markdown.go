@@ -3,13 +3,20 @@ package controller
 import (
 	"dev_tool/base"
 	"gitee.com/Sxiaobai/gs/gsgin"
+	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/cast"
+	"time"
 )
 
 func MarkdownAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	id, err := base.Component.TSqlite.MarkdownAdd(dataMap[`id`], dataMap[`name`], dataMap[`content`])
+	if cast.ToString(dataMap[`name`]) == `` || cast.ToString(dataMap[`markdown_type`]) == `` {
+		gsgin.GinResponseError(c, `名称，类型不能为空`, nil)
+		return
+	}
+	id, err := base.Component.TSqlite.MarkdownAdd(dataMap[`id`], dataMap[`name`], dataMap[`markdown_type`], dataMap[`content`])
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -33,10 +40,32 @@ func MarkdownDel(c *gin.Context) {
 func MarkdownList(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	starList, err := base.Component.TSqlite.MarkdownList()
+	if cast.ToString(dataMap[`markdown_type`]) == `` {
+		gsgin.GinResponseError(c, `名称，类型不能为空`, nil)
+		return
+	}
+	starList, err := base.Component.TSqlite.MarkdownList(cast.ToString(dataMap[`markdown_type`]))
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
+	}
+	gsgin.GinResponseSuccess(c, ``, starList)
+}
+
+func MarkdownHistoryList(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	if cast.ToInt(dataMap[`id`]) == 0 {
+		gsgin.GinResponseError(c, `文档id不能为空`, nil)
+		return
+	}
+	starList, err := base.Component.TSqlite.MarkdownHistoryList(cast.ToInt(dataMap[`id`]))
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	for i := range starList {
+		starList[i][`create_time_desc`] = gstool.TimeUnixToString(time.Unix(cast.ToInt64(starList[i][`create_time`]), 0), `Y-m-d H:i:s`)
 	}
 	gsgin.GinResponseSuccess(c, ``, starList)
 }
