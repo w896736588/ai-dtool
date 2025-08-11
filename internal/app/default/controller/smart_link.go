@@ -281,11 +281,6 @@ func SmartProcessList(c *gin.Context) {
 func SmartProcessAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	validateErr := validateProcess(dataMap)
-	if validateErr != nil {
-		gsgin.GinResponseError(c, validateErr.Error(), nil)
-		return
-	}
 	var id any
 	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
@@ -349,6 +344,11 @@ func SmartProcessItemList(c *gin.Context) {
 func SmartProcessItemAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
+	validateErr := validateProcess(dataMap)
+	if validateErr != nil {
+		gsgin.GinResponseError(c, validateErr.Error(), nil)
+		return
+	}
 	smartLinkProcessId := cast.ToInt(dataMap[`smart_link_process_id`])
 	if smartLinkProcessId == 0 {
 		gsgin.GinResponseError(c, `smart_link_process_id不能为空`, nil)

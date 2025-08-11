@@ -190,7 +190,7 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 		return runParams, errors.New(`链接不存在，检查是否json格式错误`)
 	}
 	runParams.Link = gstool.SReplaces(runParams.Link, map[string]string{
-		`{rand}`: Component.TBase.GetUnique(`tool_`),
+		`{rand}`: Component.TBase.GetUnique(`link_rand_`),
 	})
 	runParams.CombineType = cast.ToInt(smartLink[`combine_type`])
 	runParams.OpenNum = cast.ToInt(math.Max(1, cast.ToFloat64(openNum)))
