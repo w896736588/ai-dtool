@@ -177,6 +177,28 @@ func (h *TVariable) ParseConfig(config string) (string, error) {
 		}
 		config = gstool.SReplaces(config, replaceList)
 		return config, nil
+	} else if gstool.RegexMatchString(config, `{config:account_group:\w*}`) { //账号列表
+		retList := gstool.RegexMatchSubString(config, `{config:account_group:(\w*)}`)
+		gstool.FmtPrintlnLogTime(`retList %#v`, retList)
+		if len(retList) != 2 {
+			return ``, gstool.Error(`获取配置失败 %s`, config)
+		}
+		//查询组
+		accountGroup, _ := Component.TSqlite.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
+			`type`: define.GroupTypeAccount,
+			`name`: retList[1],
+		}).One()
+		accountList, accountListErr := Component.TSqlite.Client.QuickQuery(`tbl_account`, `*`, map[string]any{
+			`account_group_id`: cast.ToInt(accountGroup[`id`]),
+		}).All()
+		if accountListErr == nil {
+			for k, accountMap := range accountList {
+				accountMap[`value`] = accountMap[`id`]
+				accountMap[`label`] = accountMap[`username`]
+				accountList[k] = accountMap
+			}
+			return gstool.JsonEncode(accountList), nil
+		}
 	}
 	return config, nil
 }

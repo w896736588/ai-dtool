@@ -59,6 +59,7 @@ func (h *Playwright) Open() error {
 			`BoolResultMap`:  h.BoolResultMap,
 			`耗时ms`:           gstool.TimeNowMilliInt64() - sTime,
 		}))
+		gstool.FmtPrintlnLogTime(`提取结果合集 %v`, h.TakeContentMap)
 		if err != nil {
 			return err
 		}

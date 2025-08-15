@@ -467,6 +467,14 @@ func (h *RCmd) RunPlaywright() (string, error) {
 		if openErr != nil {
 			h.StreamMsg(base.Component.TMarkDown.BlockQuote(cast.ToString(h.cmd[`name`])+`,启动失败，`+openErr.Error()), true)
 		}
+		gstool.FmtPrintlnLogTime(`提取的内容 %v`, p.TakeContentMap)
+		//将结果增加到replaceList
+		for k, v := range p.TakeContentMap {
+			*h.replaceList = append(*h.replaceList, map[string]string{
+				k: v,
+			})
+		}
+
 	}
 	return ``, nil
 }
@@ -474,6 +482,7 @@ func (h *RCmd) RunPlaywright() (string, error) {
 func (h *RCmd) RunCombine() (string, error) {
 	resultKey := cast.ToString(h.cmd[`result_key`])
 	combine := base.Component.TVariable.Replace(cast.ToString(h.cmd[`options`]), h.replaceList)
+
 	//增加替换变量
 	if resultKey != `` {
 		base.Component.TVariable.AddReplace(h.replaceList, resultKey, combine)

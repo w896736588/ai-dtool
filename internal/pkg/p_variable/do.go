@@ -6,6 +6,7 @@ import (
 	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
+	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
 )
 
@@ -89,7 +90,7 @@ func (h *Variable) Run() (_struct.VCmdResult, error) {
 		runType := cast.ToString(cmd[`run_type`])
 		//非最终执行并且等待客户点击运行
 		if h.IsRun != 1 && runType == define.RunTypeRun {
-			h.StreamMsg(fmt.Sprintf(`%s %s`, base.Component.TMarkDown.Bold(`wait run`), name), true)
+			h.StreamMsg(fmt.Sprintf(`%s %s`, base.Component.TMarkDown.Bold(`wait run 请点击执行`), name), true)
 			cmdResult.ReplaceList = h.ReplaceList
 			cmdResult.Form = _struct.VForm{Id: cmdId}
 			cmdResult.RunStatus = define.RunStatusCanRun
@@ -157,6 +158,7 @@ func (h *Variable) RunCmd(cmd map[string]any) error {
 	case define.VariableCmdCombine:
 		_, err = rCmd.RunCombine()
 	case define.VariableCmdPlaywright:
+		gstool.FmtPrintlnLogTime(`resp %v`, h.ReplaceList)
 		_, err = rCmd.RunPlaywright()
 	default:
 		return errors.New(`不支持的类型` + cast.ToString(cmd[`type`]))
