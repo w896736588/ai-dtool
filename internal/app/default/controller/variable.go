@@ -70,6 +70,14 @@ func VariableInfo(c *gin.Context) {
 	})
 }
 
+func VariableSetLogin(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	base.Component.TVariable.LoginUsername = cast.ToString(dataMap[`username`])
+	base.Component.TVariable.LoginPassword = cast.ToString(dataMap[`password`])
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
 func VariableAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
@@ -200,13 +208,13 @@ func VariableCmdSet(c *gin.Context) {
 		return
 	}
 	replaceLists := cast.ToString(dataMap[`replace_list`])
-	replaceList := make([]map[string]string, 0)
+	replaceList := make(map[string]string, 0)
 	err := gstool.JsonDecode(replaceLists, &replaceList)
 	if err != nil {
 		gsgin.GinResponseError(c, `解析replace_list失败`, nil)
 		return
 	}
-	set := p_variable.NewVariableSet(variableId, runCmdId, editValue, runUniqueId, &replaceList)
+	set := p_variable.NewVariableSet(variableId, runCmdId, editValue, runUniqueId, replaceList)
 	result, setErr := set.Set()
 	if setErr != nil {
 		result.RunStatus = 2
@@ -228,7 +236,7 @@ func VariableCmdRun(c *gin.Context) {
 	}
 	isRun := cast.ToInt(dataMap[`is_run`])
 	replaceLists := cast.ToString(dataMap[`replace_list`])
-	replaceList := make([]map[string]string, 0)
+	replaceList := make(map[string]string, 0)
 	if replaceLists != `` {
 		err := gstool.JsonDecode(replaceLists, &replaceList)
 		if err != nil {

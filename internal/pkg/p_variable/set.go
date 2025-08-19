@@ -16,11 +16,11 @@ type VariableSet struct {
 	RunCmdId    int
 	EditValue   string
 	RunUniqueId string
-	ReplaceList *[]map[string]string
+	ReplaceList map[string]string
 	StreamMsg   func(string, bool)
 }
 
-func NewVariableSet(variableId, runCmdId int, editValue, runUniqueId string, replaceList *[]map[string]string) *VariableSet {
+func NewVariableSet(variableId, runCmdId int, editValue, runUniqueId string, replaceList map[string]string) *VariableSet {
 	return &VariableSet{
 		RunCmdId:    runCmdId,
 		RunUniqueId: runUniqueId,
@@ -85,7 +85,7 @@ func (h *VariableSet) Set() (_struct.VCmdResult, error) {
 		cmdResult.RunStatus = define.RunStatusFinish
 		return cmdResult, errors.New(`不支持的操作` + form.CmdType)
 	}
-	cmdResult.ReplaceList = *h.ReplaceList
+	cmdResult.ReplaceList = h.ReplaceList
 	cmdResult.Form = form
 	return cmdResult, nil
 }

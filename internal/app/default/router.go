@@ -170,8 +170,9 @@ func variable() {
 	base.Component.TGin.GinPost(`/api/VariableInfo`, controller.VariableInfo)
 	base.Component.TGin.GinPost(`/api/VariableCmdAdd`, controller.VariableCmdAdd)
 	base.Component.TGin.GinPost(`/api/VariableCmdDel`, controller.VariableCmdDelete)
-	base.Component.TGin.GinPost(`/api/VariableRun`, controller.VariableCmdRun) //执行
-	base.Component.TGin.GinPost(`/api/VariableSet`, controller.VariableCmdSet) //设置项
+	base.Component.TGin.GinPost(`/api/VariableRun`, controller.VariableCmdRun)        //执行
+	base.Component.TGin.GinPost(`/api/VariableSet`, controller.VariableCmdSet)        //设置项
+	base.Component.TGin.GinPost(`/api/VariableSetLogin`, controller.VariableSetLogin) //设置登录的账号密码
 }
 
 func smartLink() {

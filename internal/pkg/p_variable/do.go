@@ -11,15 +11,15 @@ import (
 )
 
 type Variable struct {
-	RunCmdId    int                 //当前运行的cmd
-	VariableId  int                 //脚本ID
-	RunUniqueId string              //本次执行唯一ID
-	ReplaceList []map[string]string //替换列表
-	IsRun       int                 //最终执行1 最终执行
-	StreamMsg   func(string, bool)  //输出方法
+	RunCmdId    int                //当前运行的cmd
+	VariableId  int                //脚本ID
+	RunUniqueId string             //本次执行唯一ID
+	ReplaceList map[string]string  //替换列表
+	IsRun       int                //最终执行1 最终执行
+	StreamMsg   func(string, bool) //输出方法
 }
 
-func NewVariable(variableId, runCmdId int, isRun int, replaceList []map[string]string, runUniqueId string) *Variable {
+func NewVariable(variableId, runCmdId int, isRun int, replaceList map[string]string, runUniqueId string) *Variable {
 	variable := &Variable{
 		VariableId:  variableId,
 		RunCmdId:    runCmdId,
@@ -138,7 +138,7 @@ func (h *Variable) Run() (_struct.VCmdResult, error) {
 
 func (h *Variable) RunCmd(cmd map[string]any) error {
 	//执行
-	rCmd := NewRCmd(cmd, &h.ReplaceList, h.RunUniqueId, h.StreamMsg)
+	rCmd := NewRCmd(cmd, h.ReplaceList, h.RunUniqueId, h.StreamMsg)
 	var err error
 	switch cast.ToInt(cmd[`type`]) {
 	case define.VariableCmdMysql:
@@ -156,6 +156,7 @@ func (h *Variable) RunCmd(cmd map[string]any) error {
 	case define.VariableCmdCurl:
 		_, err = rCmd.RunCurl()
 	case define.VariableCmdCombine:
+		gstool.FmtPrintlnLogTime(`合并时 %s`, gstool.JsonFormat(h.ReplaceList))
 		_, err = rCmd.RunCombine()
 	case define.VariableCmdPlaywright:
 		gstool.FmtPrintlnLogTime(`resp %v`, h.ReplaceList)
@@ -176,7 +177,7 @@ func (h *Variable) BuildCmd(cmd map[string]any) (_struct.VForm, error) {
 		CmdType:    cast.ToString(cmd[`type`]),       //cmd 类型
 	}
 	//执行
-	vCmd := NewPCmd(cmd, &h.ReplaceList, h.RunUniqueId)
+	vCmd := NewPCmd(cmd, h.ReplaceList, h.RunUniqueId)
 	var err error
 	switch cast.ToInt(cmd[`type`]) {
 	case define.VariableCmdInput, define.VariableCmdTextarea:
@@ -193,8 +194,8 @@ func (h *Variable) BuildCmd(cmd map[string]any) (_struct.VForm, error) {
 }
 
 func (h *Variable) Replace(cmd map[string]any) {
-	cmd[`options`] = base.Component.TVariable.Replace(cast.ToString(cmd[`options`]), &h.ReplaceList)
-	cmd[`checks`] = base.Component.TVariable.Replace(cast.ToString(cmd[`checks`]), &h.ReplaceList)
+	cmd[`options`] = base.Component.TVariable.Replace(cast.ToString(cmd[`options`]), h.ReplaceList)
+	cmd[`checks`] = base.Component.TVariable.Replace(cast.ToString(cmd[`checks`]), h.ReplaceList)
 }
 
 func (h *Variable) input(cmd map[string]any, variableForm *_struct.VForm) {

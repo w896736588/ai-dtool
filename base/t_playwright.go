@@ -141,7 +141,7 @@ func (h *TPlaywright) Install(version string) {
 	}
 }
 
-func (h *TPlaywright) GetRunParams(id int, label, userName, password string, openNum int, replaceList *[]map[string]string) (*_struct.PlaywrightRunParams, error) {
+func (h *TPlaywright) GetRunParams(id int, label, userName, password string, openNum int, replaceList map[string]string) (*_struct.PlaywrightRunParams, error) {
 	runParams := &_struct.PlaywrightRunParams{}
 	if id == 0 {
 		return runParams, errors.New(`链接ID不能为空`)
@@ -192,9 +192,7 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 	runParams.Link = gstool.SReplaces(runParams.Link, map[string]string{
 		`{rand}`: Component.TBase.GetUnique(`link_rand_`),
 	})
-	for _, replace := range *replaceList {
-		runParams.Link = gstool.SReplaces(runParams.Link, replace)
-	}
+	runParams.Link = gstool.SReplaces(runParams.Link, replaceList)
 	runParams.CombineType = cast.ToInt(smartLink[`combine_type`])
 	runParams.OpenNum = cast.ToInt(math.Max(1, cast.ToFloat64(openNum)))
 	runParams.OpenType = define.OpenType(cast.ToInt(smartLink[`open_type`]))
@@ -211,16 +209,16 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 	}
 	runParams.Domain = parsedURL.Host
 	runParams.Scheme = parsedURL.Scheme
-	runParams.UserName = userName
-	if runParams.UserName != `` {
-		runParams.LastIndexLabel = runParams.UserName
+	replaceList[`{user_name}`] = userName
+	replaceList[`{password}`] = password
+	if userName != `` {
+		runParams.LastIndexLabel = userName
 	} else {
 		runParams.LastIndexLabel = label
 	}
 	gstool.FmtPrintlnLogTime(`打开链接 %s LastIndexLabel ： %s`, runParams.Link, runParams.LastIndexLabel)
-	runParams.Password = password
 	runParams.ProcessList = processList
-	runParams.ReplaceList = *replaceList
+	runParams.ReplaceList = replaceList
 	runParams.LocatorTimeout = 1000
 	runParams.GetPageTimeout = 3000
 	return runParams, nil
@@ -258,18 +256,19 @@ func (h *TPlaywright) ShowCookieTip(page *playwright.Page, runParams *_struct.Pl
 	_, _ = (*page).Evaluate(content)
 }
 
-func (h *TPlaywright) ValueFormat(value string, runParams *_struct.PlaywrightRunParams) string {
-	value = gstool.SReplaces(value, map[string]string{
-		`{user_name}`: runParams.UserName,
-		`{password}`:  runParams.Password,
-		`{rand}`:      Component.TBase.GetUnique(`input_rand_`),
-		`{domain}`:    runParams.Domain,
-	})
-	//针对输入进行替换
-	for _, replaceVal := range runParams.ReplaceList {
-		value = gstool.SReplaces(value, replaceVal)
+func (h *TPlaywright) ValueFormat(name, value string, runParams *_struct.PlaywrightRunParams) string {
+	if value == `` {
+		return value
 	}
-	return value
+	replaceValue := gstool.SReplaces(value, map[string]string{
+		`{rand}`:   Component.TBase.GetUnique(`input_rand_`),
+		`{domain}`: runParams.Domain,
+	})
+
+	//针对输入进行替换
+	replaceValue = gstool.SReplaces(replaceValue, runParams.ReplaceList)
+	gstool.FmtPrintlnLogTime(`对%s的value %s进行替换后%s`, name, value, replaceValue)
+	return replaceValue
 }
 
 func (h *TPlaywright) ValueClean(value string) string {

@@ -14,15 +14,13 @@ type PlaywrightRunParams struct {
 	OpenType            define.OpenType                                  //打开类型 1通过js打开 2 静默打开(内置核心打开)  3 浏览器打开(内置核心打开)
 	CombineType         int                                              //查找context方案
 	ProcessList         []map[string]any                                 //执行流程
-	ReplaceList         []map[string]string                              //替换内容
+	ReplaceList         map[string]string                                //替换内容
 	BrowserAuthUsername string                                           //浏览器自带验证用户名
 	BrowserAuthPassword string                                           //浏览器自带验证密码
 	Domain              string                                           //域名
 	Scheme              string                                           //协议
 	LocatorTimeout      float64                                          //获取元素超时时间秒
 	GetPageTimeout      float64                                          //开启page超时时间
-	UserName            string                                           //选择的登录账号
-	Password            string                                           //登录密码
 	LastIndexLabel      string                                           //用于查找最后一次使用的index 优先赋值前端传过来的userName,其次赋值label
 	ContextUnique       string                                           //context唯一ID
 	DownloadFinds       []string                                         //哪些url请求会被定义为下载

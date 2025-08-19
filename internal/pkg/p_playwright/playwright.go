@@ -7,6 +7,7 @@ import (
 	"errors"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/playwright-community/playwright-go"
+	"github.com/spf13/cast"
 	"net/url"
 	"sync"
 	"time"
@@ -19,15 +20,17 @@ type Playwright struct {
 	BoolResultMap   map[string]bool              //判断结果
 	ContextPageList *ContextPageList             //浏览器上下文列表
 	log             *gstool.GsSlog
+	streamFunc      func(string, string) //流程日志
 }
 
-func NewPlaywright(runParams *_struct.PlaywrightRunParams, log *gstool.GsSlog) *Playwright {
+func NewPlaywright(runParams *_struct.PlaywrightRunParams, log *gstool.GsSlog, streamFunc func(string, string)) *Playwright {
 	return &Playwright{
 		RunParams:       runParams,
 		TakeContentMap:  make(map[string]string),
 		BoolResultMap:   make(map[string]bool),
 		ContextPageList: NewContextList(log),
 		log:             log,
+		streamFunc:      streamFunc,
 	}
 }
 
@@ -35,15 +38,13 @@ func (h *Playwright) Open() error {
 	if base.Component.TPlaywright.Pw == nil {
 		return errors.New(`未启动浏览器核心`)
 	}
-	h.log.Debugf(`###############################################开始获取page`)
+	h.streamFunc(`启动playwright`, `获取page`)
 	page, pageErr := h.GetPage()
 	if pageErr != nil {
 		return gstool.Error(`获取page失败 %s`, pageErr.Error())
 	}
-	h.log.Debugf(`开始处理process list`)
 	for _, processVal := range h.RunParams.ProcessList {
-		h.RunParams.ReplaceList = append(h.RunParams.ReplaceList, h.TakeContentMap)
-		process := NewProcess(processVal, page, h.RunParams, h.BoolResultMap, h.TakeContentMap, h.log)
+		process := NewProcess(processVal, page, h.RunParams, h.BoolResultMap, h.TakeContentMap, h.log, h.streamFunc)
 		sTime := gstool.TimeNowMilliInt64()
 		code, reason, err := process.Do()
 		h.log.Debugf(`执行结果 %s `, gstool.JsonFormat(map[string]any{
@@ -59,9 +60,14 @@ func (h *Playwright) Open() error {
 			`BoolResultMap`:  h.BoolResultMap,
 			`耗时ms`:           gstool.TimeNowMilliInt64() - sTime,
 		}))
-		gstool.FmtPrintlnLogTime(`提取结果合集 %v`, h.TakeContentMap)
 		if err != nil {
 			return err
+		}
+		//对结果写入到替换列表
+		for takeKey, takeValue := range h.TakeContentMap {
+			if takeKey == cast.ToString(processVal[`out_key`]) && cast.ToInt(processVal[`append_to_replace`]) == 1 {
+				h.RunParams.ReplaceList[takeKey] = takeValue
+			}
 		}
 		if code == define.ProcessBreak {
 			return nil
@@ -109,6 +115,7 @@ func (h *Playwright) GetPage() (*playwright.Page, error) {
 		return nil, goErr
 	}
 	//等待加载完成
+	//h.RunParams.ReplaceList[`{link}`] = u.String()
 	base.Component.TPlaywright.WaitForLoadState(&page, h.RunParams.LocatorTimeout)
 	return &page, nil
 }

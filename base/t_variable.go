@@ -17,6 +17,9 @@ type TVariable struct {
 	SshClientList map[string][]string
 	lock          sync.RWMutex
 	Log           *gstool.GsSlog
+	//临时输入的账号密码
+	LoginUsername string
+	LoginPassword string
 }
 
 func NewVariable() *TVariable {
@@ -204,20 +207,18 @@ func (h *TVariable) ParseConfig(config string) (string, error) {
 }
 
 // Replace 替换变量
-func (h *TVariable) Replace(data string, replaceList *[]map[string]string) string {
-	for _, replace := range *replaceList {
-		//处理特殊情况
-		for replaceKey, replaceVal := range replace {
-			//取模
-			matchSubList := gstool.RegexMatchSubString(data, replaceKey+`%(\d+)`)
-			if len(matchSubList) >= 2 {
-				data = gstool.SReplaces(data, map[string]string{
-					matchSubList[0]: cast.ToString(cast.ToInt64(replaceVal) % cast.ToInt64(matchSubList[1])),
-				})
-			}
+func (h *TVariable) Replace(data string, replaceList map[string]string) string {
+	//处理特殊情况
+	for replaceKey, replaceVal := range replaceList {
+		//取模
+		matchSubList := gstool.RegexMatchSubString(data, replaceKey+`%(\d+)`)
+		if len(matchSubList) >= 2 {
+			data = gstool.SReplaces(data, map[string]string{
+				matchSubList[0]: cast.ToString(cast.ToInt64(replaceVal) % cast.ToInt64(matchSubList[1])),
+			})
 		}
-		data = gstool.SReplaces(data, replace)
 	}
+	data = gstool.SReplaces(data, replaceList)
 	return data
 }
 
@@ -241,26 +242,11 @@ func (h *TVariable) ParseIdContent(str string) (int, string, error) {
 }
 
 // AddReplace 增加替换变量
-func (h *TVariable) AddReplace(replaceList *[]map[string]string, key, value string) {
+func (h *TVariable) AddReplace(replaceList map[string]string, key, value string) {
 	if key == `` {
 		return
 	}
-	boolFind := false
-	for index, replace := range *replaceList {
-		for mapKey, _ := range replace {
-			if mapKey == key {
-				boolFind = true
-				(*replaceList)[index] = map[string]string{
-					key: value,
-				}
-			}
-		}
-	}
-	if !boolFind {
-		*replaceList = append(*replaceList, map[string]string{
-			key: value,
-		})
-	}
+	replaceList[key] = value
 }
 
 // ChecksCanDo 检查是否需要执行 true 可以执行 false不可以执行
@@ -359,7 +345,7 @@ func (h *TVariable) PreConnSsh(sshId int, sshUniqueKey, sftpUniqueKey string) er
 
 // SelectChooseReplace 单选选中后替换
 func (h *TVariable) SelectChooseReplace(variableForm *_struct.VForm,
-	replaceList *[]map[string]string, chooseValue string) {
+	replaceList map[string]string, chooseValue string) {
 
 	//gstool.FmtPrintlnLogTime(`resultKey %s`, variableForm.ResultKey)
 	//gstool.FmtPrintlnLogTime(`chooseValue %s`, chooseValue)

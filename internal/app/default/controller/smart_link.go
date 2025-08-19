@@ -24,7 +24,8 @@ func SmartLinkUpWebkit(c *gin.Context) {
 }
 
 func SmartLinkRecycle(c *gin.Context) {
-	p := p_playwright.NewPlaywright(nil, base.Component.TPlaywright.Log)
+	streamFunc := func(name, msg string) {}
+	p := p_playwright.NewPlaywright(nil, base.Component.TPlaywright.Log, streamFunc)
 	err := p.Recycle()
 	if err != nil {
 		gsgin.GinResponseError(c, fmt.Sprintf(`释放失败 %s`, err.Error()), nil)
@@ -219,15 +220,18 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	userName := cast.ToString(dataMap[`user_name`])
 	password := cast.ToString(dataMap[`password`])
 	openNum := max(1, cast.ToInt(dataMap[`open_num`]))
-	replaceList := make([]map[string]string, 0)
+	replaceList := make(map[string]string, 0)
 	for i := 0; i < openNum; i++ {
 		go func() {
-			runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, userName, password, openNum, &replaceList)
+			runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, userName, password, openNum, replaceList)
 			if runParamsErr != nil {
 				gstool.FmtPrintlnLogTime(`打开错误 %s`, runParamsErr.Error())
 				return
 			}
-			p := p_playwright.NewPlaywright(runParams, base.Component.TPlaywright.Log)
+			streamFunc := func(name, msg string) {
+				//执行流程输出 TODO 输出到前端
+			}
+			p := p_playwright.NewPlaywright(runParams, base.Component.TPlaywright.Log, streamFunc)
 			openErr := p.Open()
 			if openErr != nil {
 				gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
@@ -355,7 +359,7 @@ func SmartProcessItemAdd(c *gin.Context) {
 		return
 	}
 	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `wait_mills`, `smart_link_process_id`, `type`, `locator`, `tip`, `value`, `out_key`, `check_key`, `weight`, `domain_limit`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `wait_mills`, `append_to_replace`, `smart_link_process_id`, `type`, `locator`, `tip`, `value`, `out_key`, `check_key`, `weight`, `domain_limit`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()

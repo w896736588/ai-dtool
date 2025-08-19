@@ -22,13 +22,13 @@ import (
 
 type RCmd struct {
 	cmd            map[string]any
-	replaceList    *[]map[string]string
+	replaceList    map[string]string
 	StreamMsg      func(string, bool)
 	PlaywrightLock sync.RWMutex
 	RunUniqueId    string
 }
 
-func NewRCmd(cmd map[string]any, replace *[]map[string]string, RunUniqueId string, streamMsg func(string, bool)) *RCmd {
+func NewRCmd(cmd map[string]any, replace map[string]string, RunUniqueId string, streamMsg func(string, bool)) *RCmd {
 	return &RCmd{
 		cmd:         cmd,
 		replaceList: replace,
@@ -429,6 +429,19 @@ func (h *RCmd) RunPlaywright() (string, error) {
 			h.StreamMsg(content, true)
 		case define.ExistWait, define.NoExistWait:
 			h.StreamMsg(base.Component.TMarkDown.Bold(tip)+`,`+errmsg, true)
+		case define.LoginUsernamePassword: //前端弹窗输入账号密码
+			base.Component.TVariable.LoginUsername = ``
+			base.Component.TVariable.LoginPassword = ``
+			h.StreamMsg(define.SseEventLogin, false)
+			for i := 0; i < 30; i++ {
+				time.Sleep(time.Second * 2)
+				if base.Component.TVariable.LoginUsername != `` && base.Component.TVariable.LoginPassword != `` {
+					break
+				}
+			}
+			h.replaceList[`{user_name}`] = base.Component.TVariable.LoginUsername
+			h.replaceList[`{password}`] = base.Component.TVariable.LoginPassword
+			gstool.FmtPrintlnLogTime(`输入了账号密码后 %s`, gstool.JsonFormat(h.replaceList))
 		}
 	}
 	//注册需要监听的接口
@@ -462,19 +475,14 @@ func (h *RCmd) RunPlaywright() (string, error) {
 	runParams.ListenUrlList = ListenUrlList
 	for i := 0; i < runParams.OpenNum; i++ {
 		h.StreamMsg("\n"+base.Component.TMarkDown.Bold(label)+`,启动`, true)
-		p := p_playwright.NewPlaywright(runParams, base.Component.TVariable.Log)
+		streamFunc := func(name, msg string) {
+			h.StreamMsg(base.Component.TMarkDown.BlockQuote(name)+`,`+msg, true)
+		}
+		p := p_playwright.NewPlaywright(runParams, base.Component.TVariable.Log, streamFunc)
 		openErr := p.Open()
 		if openErr != nil {
 			h.StreamMsg(base.Component.TMarkDown.BlockQuote(cast.ToString(h.cmd[`name`])+`,启动失败，`+openErr.Error()), true)
 		}
-		gstool.FmtPrintlnLogTime(`提取的内容 %v`, p.TakeContentMap)
-		//将结果增加到replaceList
-		for k, v := range p.TakeContentMap {
-			*h.replaceList = append(*h.replaceList, map[string]string{
-				k: v,
-			})
-		}
-
 	}
 	return ``, nil
 }

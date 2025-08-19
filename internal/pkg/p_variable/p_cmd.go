@@ -10,12 +10,12 @@ import (
 
 type PCmd struct {
 	cmd         map[string]any
-	replaceList *[]map[string]string
+	replaceList map[string]string
 	StreamMsg   func(string, bool)
 	RunUniqueId string
 }
 
-func NewPCmd(cmd map[string]any, replace *[]map[string]string, runUniqueId string) *PCmd {
+func NewPCmd(cmd map[string]any, replace map[string]string, runUniqueId string) *PCmd {
 	return &PCmd{cmd: cmd, replaceList: replace, RunUniqueId: runUniqueId, StreamMsg: base.Component.TVariable.StreamMsgFunc(runUniqueId)}
 }
 
@@ -63,7 +63,7 @@ func (h *PCmd) ParseSelect(form *_struct.VForm) error {
 }
 
 // SelectChooseReplace 单选选中后替换
-func (h *PCmd) SelectChooseReplace(variableForm *_struct.VForm, replaceList *[]map[string]string, chooseValue string) error {
+func (h *PCmd) SelectChooseReplace(variableForm *_struct.VForm, replaceList map[string]string, chooseValue string) error {
 	for _, option := range variableForm.Select.OptionList {
 		if variableForm.ResultKey != `` && chooseValue != `` && chooseValue == option.Value {
 			sourceOptionList := make(map[string]any, 0)

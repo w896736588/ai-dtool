@@ -18,10 +18,12 @@ const WaitClose ProcessType = `wait_close`
 const Click ProcessType = `click`
 const Input ProcessType = `input`
 const RedirectUri ProcessType = `redirect_uri`
-const CanvasImage ProcessType = `canvas_image`  //提取canvas中的图片
-const ExistWait ProcessType = `exist_wait`      //等待元素出现
-const NoExistWait ProcessType = `no_exist_wait` //等待元素消息
-const WaitUrl ProcessType = `wait_url`          //等待某个url执行完成
+const CanvasImage ProcessType = `canvas_image`                      //提取canvas中的图片
+const ExistWait ProcessType = `exist_wait`                          //等待元素出现
+const NoExistWait ProcessType = `no_exist_wait`                     //等待元素消息
+const WaitUrl ProcessType = `wait_url`                              //等待某个url执行完成
+const LoginUsernamePassword ProcessType = `login_username_password` //输入账号密码
+const BoolExist = `bool_exist`                                      //是否存在
 
 const ElementClick = `click`              //点击
 const ElementTextContent = `text_content` //提取
