@@ -47,7 +47,7 @@ func (h *VariableSet) Set() (_struct.VCmdResult, error) {
 	cmdResult.RunUniqueId = h.RunUniqueId
 	vCmd := NewPCmd(cmd, h.ReplaceList, h.RunUniqueId)
 	switch cast.ToInt(form.CmdType) {
-	case define.VariableCmdRadio:
+	case define.VariableCmdRadio: //单选
 		err := vCmd.ParseSelect(&form)
 		if err != nil {
 			return cmdResult, errors.New(`解析select失败 ` + err.Error())

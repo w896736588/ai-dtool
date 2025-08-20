@@ -356,7 +356,10 @@ func (h *TVariable) SelectChooseReplace(variableForm *_struct.VForm,
 			sourceOptionList := make(map[string]any, 0)
 			_ = gstool.JsonDecode(option.Source, &sourceOptionList)
 			for optionKey, optionValue := range sourceOptionList {
+				//这里本来预计为{product}.label这种替换，但是因为map是无序的，所以循环替换的时候会导致{product}.label只会被替换掉{product}
 				h.AddReplace(replaceList, variableForm.ResultKey+`.`+optionKey, cast.ToString(optionValue))
+				//再增加一个替换的{product.label} 防止前面说的情况
+				h.AddReplace(replaceList, strings.Replace(variableForm.ResultKey, `}`, `.`+optionKey+`}`, 1), cast.ToString(optionValue))
 			}
 			//替换整体
 			h.AddReplace(replaceList, variableForm.ResultKey, option.Source)
