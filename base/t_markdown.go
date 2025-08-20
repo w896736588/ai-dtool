@@ -18,7 +18,7 @@ func (h *TMarkDown) Json(data any) string {
 }
 
 func (h *TMarkDown) BlockQuote(str string) string {
-	return fmt.Sprintf("> %s", str)
+	return fmt.Sprintf("> %s\n", str)
 }
 
 func (h *TMarkDown) Enter(str string) string {
