@@ -23,6 +23,7 @@ func InitBase(IsBuild, appName, dbPath, ViewPath string) {
 	initComponent(IsBuild, appName, dbPath, ViewPath)
 	initSqlite()
 	initGin()
+	initPlaywright()
 	stdLog(IsBuild)
 }
 
@@ -83,6 +84,11 @@ func initComponent(IsBuild, appName, dbPath, ViewPath string) {
 	//aesGcm
 	gcm := gsencrypt.NewAesGcm(base.Component.Env.AppName)
 	base.Component.AesGcm = gcm
+	base.Component.GsLog = gstool.NewSlog3(base.Component.Env.LogPath, base.Component.Env.AppName)
+	_ = base.Component.GsLog.CleanOldLogs(7)
+}
+
+func initPlaywright() {
 	//初始化playwright
 	base.Component.TPlaywright = base.NewTSmartLink()
 	base.Component.TPlaywright.SetWebkitPath()
@@ -91,8 +97,6 @@ func initComponent(IsBuild, appName, dbPath, ViewPath string) {
 	p_playwright.InitContextPageList()
 	go base.Component.TPlaywright.WitchDownload()
 	go base.Component.TPlaywright.SmartCheckAndUpdate()
-	base.Component.GsLog = gstool.NewSlog3(base.Component.Env.LogPath, base.Component.Env.AppName)
-	_ = base.Component.GsLog.CleanOldLogs(7)
 }
 
 func initSqlite() {

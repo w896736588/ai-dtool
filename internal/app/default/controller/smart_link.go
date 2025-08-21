@@ -24,12 +24,15 @@ func SmartLinkUpWebkit(c *gin.Context) {
 }
 
 func SmartLinkRecycle(c *gin.Context) {
+	base.Component.TPlaywright.SseMsg(`开始释放实例`, true)
 	p := p_playwright.NewPlaywright(nil, base.Component.TPlaywright.Log)
 	err := p.Recycle()
 	if err != nil {
+		base.Component.TPlaywright.SseMsg(fmt.Sprintf(`释放失败 `+err.Error()), true)
 		gsgin.GinResponseError(c, fmt.Sprintf(`释放失败 %s`, err.Error()), nil)
 		return
 	}
+	base.Component.TPlaywright.SseMsg(fmt.Sprintf(`释放成功 `), true)
 	gsgin.GinResponseSuccess(c, `释放成功`, ``)
 	return
 }
@@ -220,13 +223,12 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	password := cast.ToString(dataMap[`password`])
 	openNum := max(1, cast.ToInt(dataMap[`open_num`]))
 	replaceList := make(map[string]string, 0)
-	runStreamFunc := base.Component.TPlaywright.StreamMsgFunc(`smart_link`)
-	runStreamFunc(base.Component.TMarkDown.BlockQuote(`运行,开始----------------我是分隔君`), true)
+	base.Component.TPlaywright.SseMsg(base.Component.TMarkDown.BlockQuote(`运行,开始----------------我是分隔君`), true)
 	for i := 0; i < openNum; i++ {
 		go func() {
 			streamFunc := func(name, msg string) {
 				//输出到前端
-				runStreamFunc(base.Component.TMarkDown.Bold(name)+`,`+msg, true)
+				base.Component.TPlaywright.SseMsg(base.Component.TMarkDown.Bold(name)+`,`+msg, true)
 			}
 			runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, userName, password, openNum, replaceList)
 			if runParamsErr != nil {

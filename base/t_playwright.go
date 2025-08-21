@@ -95,28 +95,29 @@ func (h *TPlaywright) AddTipMsg(page *playwright.Page, tip string) {
 }
 
 func (h *TPlaywright) SmartCheckAndUpdate() {
+	h.SseMsg(`检查并更新核心`, true)
 	pw, _ := playwright.NewDriver()
 	if !gstool.FileIsExisted(h.LockFileFullPath) {
 		go h.Install(pw.Version)
 	} else {
 		content, contentErr := gstool.FileGetContent(h.LockFileFullPath)
 		if contentErr != nil {
-			h.Log.Errof(`获取文件内容失败 %s`, contentErr.Error())
+			h.SseMsg(fmt.Sprintf(`获取文件内容失败 %s`, contentErr.Error()), true)
 		} else if content != pw.Version {
 			go h.Install(pw.Version)
 		} else {
-			h.Log.Debugf(`浏览器核心最新版本为：%s ，当前安装版本为：%s,不需要进行更新`, pw.Version, content)
+			h.SseMsg(fmt.Sprintf(`浏览器核心最新版本为：%s ，当前安装版本为：%s,不需要进行更新`, pw.Version, content), true)
 			go h.InitPlaywright()
 		}
 	}
 }
 
 func (h *TPlaywright) InitPlaywright() {
-	h.Log.Debugf(`启动浏览器核心..`)
+	h.SseMsg(`启动浏览器核心..`, true)
 	var pwErr error
 	h.Pw, pwErr = playwright.Run()
 	if pwErr != nil {
-		h.Log.Debugf(`启动浏览器核心失败 %s`, pwErr.Error())
+		h.SseMsg(fmt.Sprintf(`启动浏览器核心失败 %s`, pwErr.Error()), true)
 		return
 	}
 	h.BrowserWebkitSilence, _ = h.Pw.Chromium.Launch()
@@ -124,19 +125,20 @@ func (h *TPlaywright) InitPlaywright() {
 		//DownloadsPath: &h.DownloadPath,
 		Headless: playwright.Bool(false), //有界面模式
 	})
+	h.SseMsg(`启动成功..`, true)
 }
 
 func (h *TPlaywright) Install(version string) {
-	gstool.FmtPrintlnLogTime(`开始安装浏览器核心(只安装chrome),大约几分钟时间`)
+	h.SseMsg(`开始安装浏览器核心(只安装chrome),大约几分钟时间`, true)
 	err := playwright.Install(&playwright.RunOptions{
 		Browsers: []string{`chromium`},
 	})
 	if err != nil {
-		gstool.FmtPrintlnLogTime(`安装浏览器核心失败 %s`, err.Error())
+		h.SseMsg(fmt.Sprintf(`安装浏览器核心失败 %s`, err.Error()), true)
 		_ = gstool.FileDelete(h.LockFileFullPath)
 	} else {
 		_ = gstool.FilePutContentCover(h.LockFileFullPath, version)
-		gstool.FmtPrintlnLogTime(`安装完成`)
+		h.SseMsg(`安装完成`, true)
 		h.InitPlaywright()
 	}
 }
@@ -278,14 +280,16 @@ func (h *TPlaywright) ValueClean(value string) string {
 
 func (h *TPlaywright) StreamMsgFunc(runUniqueId string) func(msg string, enter bool) {
 	return func(msg string, enter bool) {
-		//如果本次任务已经停止 那么不再输出
-		if Component.TVariable.Get(runUniqueId) == `stop` {
-			Component.TSse.Sse.CleanMsg(runUniqueId)
-			return
-		}
 		if enter {
 			msg += "\n"
 		}
 		_ = Component.TSse.SendMsg(runUniqueId, msg, 0)
 	}
+}
+
+func (h *TPlaywright) SseMsg(msg string, enter bool) {
+	if enter {
+		msg += "\n"
+	}
+	_ = Component.TSse.SendMsg(define.SseSmartLink, msg, 50)
 }
