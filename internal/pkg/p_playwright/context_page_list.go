@@ -162,8 +162,9 @@ func (h *ContextPageList) GetUserDataIndex(runParams *_struct.PlaywrightRunParam
 	runParams.StreamFunc(`context`, fmt.Sprintf(`当前合并类型为 %s`, combineNameMap[runParams.CombineType]))
 	//固定索引目录
 	if runParams.CombineType == define.CombineTypeFix {
-		runParams.StreamFunc(`context`, `固定目录，以`+cast.ToString(runParams.Id)+`作为数据目录`)
-		return runParams.Id
+		userDataIndex := runParams.Id
+		runParams.StreamFunc(`context`, `固定目录，以`+cast.ToString(userDataIndex)+`作为数据目录`)
+		return userDataIndex
 	}
 	//不需要合并 找到一个没有用到的就行
 	if runParams.CombineType == define.CombineTypeNo {
@@ -324,6 +325,7 @@ func (h *ContextPageList) GetContextSaveUserData(runParams *_struct.PlaywrightRu
 	runParams.StreamFunc(`处理session`, `需要保存用户数据 `+runParams.ContextUnique+` `+runParams.SmartLinkUniqueKey)
 	existContextPage, userDataIndex, userDataPath := h.GetContextParam(runParams)
 	if existContextPage != nil {
+		runParams.StreamFunc(`处理session`, fmt.Sprintf(`已存在context %s ,直接使用%s`, existContextPage.ContextUnique, userDataPath))
 		return existContextPage, false, nil
 	}
 	//打开模式

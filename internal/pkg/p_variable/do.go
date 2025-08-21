@@ -6,7 +6,6 @@ import (
 	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
 )
 
@@ -156,10 +155,8 @@ func (h *Variable) RunCmd(cmd map[string]any) error {
 	case define.VariableCmdCurl:
 		_, err = rCmd.RunCurl()
 	case define.VariableCmdCombine:
-		gstool.FmtPrintlnLogTime(`合并时 %s`, gstool.JsonFormat(h.ReplaceList))
 		_, err = rCmd.RunCombine()
 	case define.VariableCmdPlaywright:
-		gstool.FmtPrintlnLogTime(`resp %v`, h.ReplaceList)
 		_, err = rCmd.RunPlaywright()
 	default:
 		return errors.New(`不支持的类型` + cast.ToString(cmd[`type`]))

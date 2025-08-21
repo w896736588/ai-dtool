@@ -112,20 +112,19 @@ func (h *Playwright) GetPage() (*playwright.Page, error) {
 	} else { //保留用户数据
 		contextPage, boolCleanFirstBlank, contextErr = h.ContextPageList.GetContextSaveUserData(h.RunParams)
 	}
-	h.log.Debugf(`获取context结束 %v`, contextErr)
+	h.RunParams.StreamFunc(`context`, `获取context结束`)
 	if contextErr != nil {
 		return nil, contextErr
 	}
-	//注册新的监听
-	h.log.Debugf(`NOTICE：注册新的监听，旧的监听失效 %#v`, h.RunParams.ListenUrlList)
-	(*contextPage).ListenUrlList = h.RunParams.ListenUrlList
 	var page playwright.Page
 	var pageErr error
 	page, pageErr = (*contextPage.Context).NewPage()
-	h.log.Debugf(`创建page结束 %v`, pageErr)
+	h.RunParams.StreamFunc(`context`, `创建page`)
 	if pageErr != nil {
+		h.RunParams.StreamFunc(`context`, `创建page报错`)
 		return nil, pageErr
 	}
+	(*contextPage).RegisterLinks(page, h.RunParams.ListenUrlList)
 	//记录登录记录
 	h.LastUserDataIndex(h.RunParams, contextPage.UserDataIndex)
 	// 关闭一个blank

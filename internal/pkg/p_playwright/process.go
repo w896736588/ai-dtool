@@ -413,7 +413,7 @@ func (h *Process) PClose() (define.ProcessCode, string, error) {
 func (h *Process) PWait() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
 	time.Sleep(time.Duration(cast.ToInt(h.Value)) * time.Millisecond)
-	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.Value)+`ms`)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(cast.ToInt(h.Value)*1000)+`ms`)
 	return define.ProcessOk, ``, nil
 }
 

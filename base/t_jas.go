@@ -25,7 +25,6 @@ func (h *TJas) Load() {
 				gstool.FmtPrintlnLogTime(`读取文件内容失败%s %s`, path, contentErr.Error())
 				return
 			}
-			gstool.FmtPrintlnLogTime(`读取%s 成功`, name+"/"+info.Name())
 			h.JsData[name+"/"+info.Name()] = content
 		})
 		if workErr != nil {

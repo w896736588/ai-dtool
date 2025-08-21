@@ -387,7 +387,7 @@ func (h *RCmd) RunCurl() (string, error) {
 				return
 			}
 			sendMsg := base.Component.TAi.ParseStream(url, msg)
-			h.StreamMsg(base.Component.TMarkDown.BlockQuote(cast.ToString(sendMsg)), false)
+			h.StreamMsg(cast.ToString(sendMsg), false)
 		}, func(bytes []byte) []byte {
 			sendMsg := base.Component.TAi.ParseStream(url, cast.ToString(bytes))
 			if gstool.SContains(cast.ToString(sendMsg), []string{`commit 共：`, `获取完项目列表 共：`}) { //这种内容不要汇集到最终结果中
@@ -423,12 +423,12 @@ func (h *RCmd) RunPlaywright() (string, error) {
 	runParams.RunCallFunc = func(cmdType define.ProcessType, errmsg, tip, content string) {
 		switch cmdType {
 		case define.Input:
-			h.StreamMsg(base.Component.TMarkDown.Bold(tip)+`,`+content+` `+errmsg, true)
+			//h.StreamMsg(base.Component.TMarkDown.Bold(tip)+`,`+content+` `+errmsg, true)
 		case define.CanvasImage:
-			h.StreamMsg(base.Component.TMarkDown.Bold(tip)+`,`+errmsg, true)
+			//h.StreamMsg(base.Component.TMarkDown.Bold(tip)+`,`+errmsg, true)
 			h.StreamMsg(content, true)
 		case define.ExistWait, define.NoExistWait:
-			h.StreamMsg(base.Component.TMarkDown.Bold(tip)+`,`+errmsg, true)
+			//h.StreamMsg(base.Component.TMarkDown.Bold(tip)+`,`+errmsg, true)
 		case define.LoginUsernamePassword: //前端弹窗输入账号密码
 			base.Component.TVariable.LoginUsername = ``
 			base.Component.TVariable.LoginPassword = ``
@@ -441,7 +441,6 @@ func (h *RCmd) RunPlaywright() (string, error) {
 			}
 			h.replaceList[`{user_name}`] = base.Component.TVariable.LoginUsername
 			h.replaceList[`{password}`] = base.Component.TVariable.LoginPassword
-			gstool.FmtPrintlnLogTime(`输入了账号密码后 %s`, gstool.JsonFormat(h.replaceList))
 		}
 	}
 	//注册需要监听的接口
