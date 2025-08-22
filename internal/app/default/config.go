@@ -16,22 +16,18 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 )
 
-func InitBase(IsBuild, appName, dbPath, ViewPath string) {
-	initComponent(IsBuild, appName, dbPath, ViewPath)
+func InitBase(appName, dbPath, ViewPath string) {
+	initComponent(appName, dbPath, ViewPath)
 	initSqlite()
 	initGin()
 	initPlaywright()
-	stdLog(IsBuild)
+	stdLog()
 }
 
 // 如果是编译后运行 那么将所有标准输出和报错重定向到 日志文件
-func stdLog(IsBuild string) {
-	if IsBuild != `1` {
-		return
-	}
+func stdLog() {
 	//outFile, outFileErr := os.OpenFile(base.Component.Env.RootPath+`/out.log`, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	//if outFileErr != nil {
 	//	gstool.FmtPrintlnLogTime("error opening file: %v", outFileErr)
@@ -46,8 +42,7 @@ func stdLog(IsBuild string) {
 	//os.Stderr = errFile
 }
 
-func initComponent(IsBuild, appName, dbPath, ViewPath string) {
-	gstool.FmtPrintlnLogTime(`IsBuild %#v`, IsBuild)
+func initComponent(appName, dbPath, ViewPath string) {
 	base.Component = base.TComponent{}
 	base.Component.Env = &base.Env{}
 	base.Component.TGin = &base.Gin{}
@@ -61,16 +56,9 @@ func initComponent(IsBuild, appName, dbPath, ViewPath string) {
 	base.Component.TSocket = &base.TSocket{
 		SocketList: make(map[string]*websocket.Conn),
 	}
-	base.Component.Env.IsBuild = IsBuild == `1`
 	base.Component.ConfigViper = viper.New()
 
-	wd := ``
-	gstool.FmtPrintlnLogTime(`运行模式 %v`, base.Component.Env.IsBuild)
-	if base.Component.Env.IsBuild {
-		wd, _ = os.Executable()
-	} else {
-		_, wd, _, _ = runtime.Caller(0)
-	}
+	wd, _ := os.Getwd()
 	var err error
 	gstool.FmtPrintlnLogTime(`%v`, wd)
 	base.Component.Env.RootPath, err = gstool.GetRootPath(wd)
