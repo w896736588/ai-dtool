@@ -60,7 +60,7 @@ func initComponent(appName, dbPath, ViewPath string) {
 
 	wd, _ := os.Getwd()
 	var err error
-	gstool.FmtPrintlnLogTime(`%v`, wd)
+	gstool.FmtPrintlnLogTime(`当前运行目录 %v`, wd)
 	base.Component.Env.RootPath, err = gstool.GetRootPath(wd)
 	if err != nil {
 		panic(err.Error())

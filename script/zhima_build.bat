@@ -26,7 +26,7 @@ if not exist "%targetDirectory3%" (
 
 copy D:\go\cache_manager_api\build\zhima.exe D:\go\release\zhima\goservice\build\zhima.exe /Y
 xcopy D:\go\cache_manager_api\config D:\go\release\zhima\goservice\config /E /Y /I
-xcopy D:\go\cache_manager_api\script\start.bat D:\go\release\zhima\ /y
+xcopy D:\go\cache_manager_api\script\start.bat D:\go\release\zhima\goservice\ /y
 xcopy D:\go\cache_manager_api\go.mod D:\go\release\zhima\goservice /y
 xcopy D:\go\cache_manager_api\internal\pkg\p_js D:\go\release\zhima\goservice\internal\pkg\p_js /E /Y /I
 xcopy D:\go\cache_manager_api\internal\pkg\p_node D:\go\release\zhima\goservice\internal\pkg\p_node /E /Y /I
@@ -37,7 +37,7 @@ copy D:\go\cache_manager_api\build\zhimaPub.exe D:\go\release\zhimaPub\goservice
 xcopy D:\go\cache_manager_api\config D:\go\release\zhimaPub\goservice\config\ /E /Y /I
 xcopy D:\go\cache_manager_api\internal\pkg\p_js D:\go\release\zhimaPub\goservice\internal\pkg\p_js /E /Y /I
 xcopy D:\go\cache_manager_api\internal\pkg\p_node D:\go\release\zhimaPub\goservice\internal\pkg\p_node /E /Y /I
-xcopy D:\go\cache_manager_api\script\start.bat D:\go\release\zhimaPub\ /y
+xcopy D:\go\cache_manager_api\script\start.bat D:\go\release\zhimaPub\goservice\ /y
 xcopy D:\go\cache_manager_api\go.mod D:\go\release\zhimaPub\goservice\ /y
 xcopy D:\go\devtool\public\favicon.ico D:\go\release\zhimaPub\devtool\ /y
 xcopy D:\go\devtool\dist D:\go\release\zhimaPub\devtool\dist\ /E /Y /I
