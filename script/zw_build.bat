@@ -26,7 +26,7 @@ if not exist "%targetDirectory3%" (
 
 copy C:\work\frog\cache_manager_api\build\zw.exe C:\work\frog\tool_zw\goservice\build\zw.exe /Y
 xcopy C:\work\frog\cache_manager_api\config\zw C:\work\frog\tool_zw\goservice\config\zw /E /Y /I
-xcopy C:\work\frog\cache_manager_api\script\zw_start.bat C:\work\frog\tool_zw\ /y
+xcopy C:\work\frog\cache_manager_api\script\zw_start.bat C:\work\frog\tool_zw\goservice\ /y
 xcopy C:\work\frog\cache_manager_api\go.mod C:\work\frog\tool_zw\goservice /y
 xcopy C:\work\frog\cache_manager_api\internal\pkg\p_js C:\work\frog\tool_zw\goservice\internal\pkg\p_js /E /Y /I
 xcopy C:\work\frog\cache_manager_api\internal\pkg\p_node C:\work\frog\tool_zw\goservice\internal\pkg\p_node /E /Y /I
@@ -37,7 +37,7 @@ copy C:\work\frog\cache_manager_api\build\zwPub.exe C:\work\frog\tool_zwPub\gose
 xcopy C:\work\frog\cache_manager_api\config C:\work\frog\tool_zwPub\goservice\config\ /E /Y /I
 xcopy C:\work\frog\cache_manager_api\internal\pkg\p_js C:\work\frog\tool_zwPub\goservice\internal\pkg\p_js /E /Y /I
 xcopy C:\work\frog\cache_manager_api\internal\pkg\p_node C:\work\frog\tool_zwPub\goservice\internal\pkg\p_node /E /Y /I
-xcopy C:\work\frog\cache_manager_api\script\zw_start.bat C:\work\frog\tool_zwPub\ /y
+xcopy C:\work\frog\cache_manager_api\script\zw_start.bat C:\work\frog\tool_zwPub\goservice\ /y
 xcopy C:\work\frog\cache_manager_api\go.mod C:\work\frog\tool_zwPub\goservice\ /y
 xcopy C:\work\frog\cache_manager_web\public\favicon.ico C:\work\frog\tool_zwPub\devtool\ /y
 xcopy C:\work\frog\cache_manager_web\dist C:\work\frog\tool_zwPub\devtool\dist\ /E /Y /I

@@ -1,7 +1,3 @@
 @echo off
- 
-
-start ./goservice/build/zhima.exe --IsProd=true  >> ./error.log 2>&1
-
-::start chrome http://localhost:17170/
+start "" cmd /c ".\build\zhima.exe --IsProd=true & pause"
 start http://localhost:17170/
