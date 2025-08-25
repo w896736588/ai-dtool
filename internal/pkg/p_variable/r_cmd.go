@@ -456,21 +456,30 @@ func (h *RCmd) RunPlaywright() (string, error) {
 				continue
 			}
 			ListenUrlList[uri] = &_struct.ListenUrl{
-				IsSse: true,
+				ParseType: cast.ToString(v[`parse_type`]),
+				IsSse:     true,
 				Callback: func(url, msg string, err error) {
-					base.Component.TVariable.Log.Debugf(`收到消息---%s---`, msg)
-					sendMsg := base.Component.TAi.ParseStream(url, msg)
-					h.StreamMsg(cast.ToString(sendMsg), false)
+					if cast.ToString(v[`parse_type`]) == define.RegisterLinkParseTypeJson {
+						base.Component.TVariable.Log.Debugf(`收到消息---%s---`, msg)
+						sendMsg := base.Component.TAi.ParseStreamJson(url, msg)
+						h.StreamMsg(cast.ToString(sendMsg), false)
+					} else {
+						base.Component.TVariable.Log.Debugf(`收到消息---%s---`, msg)
+						sendMsg := base.Component.TAi.ParseStream(url, msg)
+						h.StreamMsg(cast.ToString(sendMsg), false)
+					}
 				},
 				StartCallBack: func(url string) {
 					base.Component.TVariable.Log.Debugf(`监听到%s`, url)
 					h.StreamMsg(base.Component.TMarkDown.BlockQuote("开始回答...")+"\n\n", true)
 				},
 				EndCallBack: func(msg string) {
+					h.StreamMsg(base.Component.TMarkDown.BlockQuote("回答结束...")+"\n\n", true)
 				},
 			}
 		}
 	}
+
 	runParams.ListenUrlList = ListenUrlList
 	for i := 0; i < runParams.OpenNum; i++ {
 		h.StreamMsg("\n"+base.Component.TMarkDown.Bold(label)+`,启动`, true)

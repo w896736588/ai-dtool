@@ -43,3 +43,15 @@ type ProcessWaitUrl struct {
 	ResponseUrl string `json:"response_url"`
 	WaitSecond  int    `json:"wait_second"`
 }
+
+type StreamJson struct {
+	Op          string `json:"op"`
+	Mask        string `json:"mask"`
+	EventOffset int    `json:"eventOffset"`
+	Block       struct {
+		Id   string `json:"id"`
+		Text struct {
+			Content string `json:"content"`
+		} `json:"text"`
+	} `json:"block"`
+}

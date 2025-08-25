@@ -36,6 +36,32 @@ func (h *TAi) ParseStream(url, msg string) []byte {
 	return resBytes
 }
 
+func (h *TAi) ParseStreamJson(url, msg string) []byte {
+	h.log.Debugf(`%s`, msg)
+	findIndex := -1
+	for i := 0; i < len(msg)-1; i++ {
+		if msg[i] >= 'a' && msg[i] <= 'z' && msg[i+1] == '{' {
+			findIndex = i
+			break
+		}
+	}
+	if findIndex == -1 {
+		return []byte(``)
+	}
+
+	realMsg := msg[findIndex+1:]
+	realMsgObj := _struct.StreamJson{}
+	decodeErr := gstool.JsonDecode(realMsg, &realMsgObj)
+	if decodeErr != nil {
+		if strings.Contains(realMsg, `MESSAGE_STATUS_COMPLETED`) {
+			return []byte(``)
+		}
+		return []byte(realMsg)
+	} else {
+		return []byte(realMsgObj.Block.Text.Content)
+	}
+}
+
 // ParseBot 纳米AI格式
 func (h *TAi) ParseBot(msg string, resBytes *[]byte) {
 	msg = gstool.SReplaces(msg, map[string]string{

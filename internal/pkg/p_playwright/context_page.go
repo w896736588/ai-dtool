@@ -159,11 +159,20 @@ func (h *ContextPage) ListenUrl(route playwright.Route, listen *_struct.ListenUr
 	var resErr error
 	listen.StartCallBack(requestUrl)
 	if listen.IsSse {
-		res, resErr = cli.OpenStreamBytesEnd([]byte("\n\n"), func(s string, err error) {
-			listen.Callback(requestUrl, s, err)
-		}, func(bytes []byte) []byte {
-			return bytes
-		}).Request(200).Result()
+		if listen.ParseType == define.RegisterLinkParseTypeJson {
+			res, resErr = cli.OpenStreamBytesEnd([]byte("}}}"), func(s string, err error) {
+				listen.Callback(requestUrl, s, err)
+			}, func(bytes []byte) []byte {
+				return bytes
+			}).Request(200).Result()
+		} else {
+			res, resErr = cli.OpenStreamBytesEnd([]byte("\n\n"), func(s string, err error) {
+				listen.Callback(requestUrl, s, err)
+			}, func(bytes []byte) []byte {
+				return bytes
+			}).Request(200).Result()
+		}
+
 	} else {
 		res, resErr = cli.Request(200).Result()
 		if resErr == nil {

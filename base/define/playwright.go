@@ -33,6 +33,9 @@ const ElementCount = `count`              //元素个数
 
 const MaxUserDataIndex = 500
 
+const RegisterLinkParseTypeStream = `stream`
+const RegisterLinkParseTypeJson = `application/connect+json`
+
 var (
 	OpenTypeDirect        OpenType = 1 //直接打开链接 通过js，现有浏览器打开
 	OpenTypeWebkitSilence OpenType = 2 //静默打开(内置核心打开)
