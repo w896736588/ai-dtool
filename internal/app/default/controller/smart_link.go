@@ -252,7 +252,6 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 func SmartLinkRunPlaywrightList(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	gstool.FmtPrintlnLogTime(`开始第一`)
 	contextPageList := p_playwright.NewContextList(base.Component.TPlaywright.Log)
 	runList := contextPageList.GetPlaywrightRunList()
 	gsgin.GinResponseSuccess(c, ``, runList)

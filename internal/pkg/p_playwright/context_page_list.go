@@ -164,7 +164,7 @@ func (h *ContextPageList) GetUserDataIndex(runParams *_struct.PlaywrightRunParam
 	runParams.StreamFunc(`context`, fmt.Sprintf(`当前合并类型为 %s`, combineNameMap[runParams.CombineType]))
 	//固定索引目录
 	if runParams.CombineType == define.CombineTypeFix {
-		userDataIndex := runParams.Id
+		userDataIndex := 1000000 + runParams.Id
 		runParams.StreamFunc(`context`, `固定目录，以`+cast.ToString(userDataIndex)+`作为数据目录`)
 		return userDataIndex
 	}
