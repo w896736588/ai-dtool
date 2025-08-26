@@ -95,7 +95,6 @@ func (h *ContextPageList) CloseContextPages(context *playwright.BrowserContext) 
 
 func (h *ContextPageList) GetPlaywrightRunList() []map[string]any {
 	runList := make([]map[string]any, 0)
-	gstool.FmtPrintlnLogTime(`开始循环？`)
 	h.EachContextList(func(context *ContextPage) bool {
 		pageList := (*context.Context).Pages()
 		runList = append(runList, map[string]any{
@@ -104,7 +103,6 @@ func (h *ContextPageList) GetPlaywrightRunList() []map[string]any {
 		})
 		return false
 	})
-	gstool.FmtPrintlnLogTime(`结束循环`)
 	return runList
 }
 

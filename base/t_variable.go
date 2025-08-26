@@ -23,10 +23,12 @@ type TVariable struct {
 }
 
 func NewVariable() *TVariable {
+	log := gstool.NewSlog3(Component.Env.LogPath, `variable`)
+	_ = log.CleanOldLogs(2)
 	return &TVariable{
 		TaskList:      make(map[string]string),
 		SshClientList: make(map[string][]string),
-		Log:           gstool.NewSlog3(Component.Env.LogPath, `variable`),
+		Log:           log,
 	}
 }
 

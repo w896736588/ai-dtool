@@ -63,6 +63,7 @@ func (h *Variable) Run() (_struct.VCmdResult, error) {
 	//当前执行的cmd
 	cmdInfo, _ := base.Component.TVariable.CmdInfo(h.RunCmdId)
 	runWeight := cast.ToInt(cmdInfo[`weight`])
+	havePlaywright := false //如果有自定义链接 那么不输出end
 	for _, cmd := range cmdList {
 		name := cast.ToString(cmd[`name`])
 		cmdId := cast.ToString(cmd[`id`])
@@ -94,6 +95,9 @@ func (h *Variable) Run() (_struct.VCmdResult, error) {
 			cmdResult.Form = _struct.VForm{Id: cmdId}
 			cmdResult.RunStatus = define.RunStatusCanRun
 			return cmdResult, nil
+		}
+		if cmdType == define.VariableCmdPlaywright {
+			havePlaywright = true
 		}
 		var err error
 		switch cmdType {
@@ -130,7 +134,9 @@ func (h *Variable) Run() (_struct.VCmdResult, error) {
 		}
 	}
 	//执行结束
-	h.StreamMsg(base.Component.TMarkDown.Bold(`end.`), true)
+	if !havePlaywright {
+		h.StreamMsg(base.Component.TMarkDown.Bold(`end.`), true)
+	}
 	cmdResult.RunStatus = define.RunStatusFinish
 	return cmdResult, nil
 }

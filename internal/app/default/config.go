@@ -73,7 +73,7 @@ func initComponent(appName, dbPath, ViewPath string) {
 	gcm := gsencrypt.NewAesGcm(base.Component.Env.AppName)
 	base.Component.AesGcm = gcm
 	base.Component.GsLog = gstool.NewSlog3(base.Component.Env.LogPath, base.Component.Env.AppName)
-	_ = base.Component.GsLog.CleanOldLogs(7)
+	_ = base.Component.GsLog.CleanOldLogs(2)
 }
 
 func initPlaywright() {

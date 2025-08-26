@@ -3,6 +3,7 @@ package base
 import (
 	_struct "dev_tool/base/struct"
 	"gitee.com/Sxiaobai/gs/gstool"
+	"regexp"
 	"strings"
 )
 
@@ -12,6 +13,7 @@ type TAi struct {
 
 func (h *TAi) Init() {
 	h.log = gstool.NewSlog3(Component.Env.LogPath, `ai`)
+	_ = h.log.CleanOldLogs(2)
 }
 
 // ParseStream 解析流式数据
@@ -36,29 +38,37 @@ func (h *TAi) ParseStream(url, msg string) []byte {
 	return resBytes
 }
 
-func (h *TAi) ParseStreamJson(url, msg string) []byte {
-	h.log.Debugf(`%s`, msg)
-	findIndex := -1
-	for i := 0; i < len(msg)-1; i++ {
-		if msg[i] >= 'a' && msg[i] <= 'z' && msg[i+1] == '{' {
-			findIndex = i
-			break
+func (h *TAi) ParseStreamJson(url, msg string, sendFunc func(string)) {
+	gstool.FmtPrintlnLogTime(`--收到###%v###`, msg)
+	re := regexp.MustCompile(`\s{4}.\{`)
+	parts := re.Split(msg, -1)
+	for _, part := range parts {
+		if strings.Trim(part, ` `) == `` {
+			continue
 		}
-	}
-	if findIndex == -1 {
-		return []byte(``)
-	}
+		//在按照
+		secondList := regexp.MustCompile(`\s{3}.{2}\{`)
+		for _, secondPart := range secondList.Split(part, -1) {
+			//再按照!{进行切割
+			threeList := regexp.MustCompile(`[\x00-\x1F]`)
+			for _, threePart := range threeList.Split(secondPart, -1) {
+				if threePart == `` {
+					continue
+				}
+				if threePart[0:1] != `{` {
+					threePart = threePart[1:]
+				}
+				gstool.FmtPrintlnLogTime(`解析--%v--`, threePart)
+				realMsgObj := _struct.StreamJson{}
+				decodeErr := gstool.JsonDecode(threePart, &realMsgObj)
+				if decodeErr != nil {
 
-	realMsg := msg[findIndex+1:]
-	realMsgObj := _struct.StreamJson{}
-	decodeErr := gstool.JsonDecode(realMsg, &realMsgObj)
-	if decodeErr != nil {
-		if strings.Contains(realMsg, `MESSAGE_STATUS_COMPLETED`) {
-			return []byte(``)
+				} else {
+					sendFunc(realMsgObj.Block.Text.Content)
+				}
+			}
+
 		}
-		return []byte(realMsg)
-	} else {
-		return []byte(realMsgObj.Block.Text.Content)
 	}
 }
 

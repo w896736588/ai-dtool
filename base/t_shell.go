@@ -20,6 +20,7 @@ type TShell struct {
 
 func NewTShell() *TShell {
 	log := gstool.NewSlog3(Component.Env.LogPath, `shell`)
+	_ = log.CleanOldLogs(2)
 	return &TShell{
 		ShellClientMap: make(map[string]*gsssh.SshConfig),
 		log:            log,

@@ -68,21 +68,21 @@ func (h *Playwright) Open() error {
 
 func (h *Playwright) ProcessRun(processVal map[string]any, page *playwright.Page) (bool, error) {
 	process := NewProcess(processVal, page, h.RunParams, h.BoolResultMap, h.TakeContentMap, h.log)
-	sTime := gstool.TimeNowMilliInt64()
-	code, reason, err := process.Do()
-	h.log.Debugf(`执行结果 %s `, gstool.JsonFormat(map[string]any{
-		`type`:           process.ProcessType,
-		`reason`:         reason,
-		`domain`:         h.RunParams.Domain,
-		`domain_limit`:   process.DomainLimit,
-		`Locator`:        process.Locator,
-		`tip`:            process.Tip,
-		`code`:           code,
-		`Checks`:         process.Checks,
-		`TakeContextMap`: h.TakeContentMap,
-		`BoolResultMap`:  h.BoolResultMap,
-		`耗时ms`:           gstool.TimeNowMilliInt64() - sTime,
-	}))
+	//sTime := gstool.TimeNowMilliInt64()
+	code, _, err := process.Do()
+	//h.log.Debugf(`执行结果 %s `, gstool.JsonFormat(map[string]any{
+	//	`type`:           process.ProcessType,
+	//	`reason`:         reason,
+	//	`domain`:         h.RunParams.Domain,
+	//	`domain_limit`:   process.DomainLimit,
+	//	`Locator`:        process.Locator,
+	//	`tip`:            process.Tip,
+	//	`code`:           code,
+	//	`Checks`:         process.Checks,
+	//	`TakeContextMap`: h.TakeContentMap,
+	//	`BoolResultMap`:  h.BoolResultMap,
+	//	`耗时ms`:           gstool.TimeNowMilliInt64() - sTime,
+	//}))
 	if err != nil {
 		return false, err
 	}

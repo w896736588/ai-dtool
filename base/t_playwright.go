@@ -32,6 +32,7 @@ type TPlaywright struct {
 
 func NewTSmartLink() *TPlaywright {
 	gsLog := gstool.NewSlog3(Component.Env.LogPath, `playwright`)
+	_ = gsLog.CleanOldLogs(2)
 	return &TPlaywright{
 		Log:          gsLog,
 		DownloadPath: Component.Env.WebkitDownloadPath,
