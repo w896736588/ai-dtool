@@ -39,7 +39,6 @@ func (h *TAi) ParseStream(url, msg string) []byte {
 }
 
 func (h *TAi) ParseStreamJson(url, msg string, sendFunc func(string)) {
-	gstool.FmtPrintlnLogTime(`--收到###%v###`, msg)
 	re := regexp.MustCompile(`\s{4}.\{`)
 	parts := re.Split(msg, -1)
 	for _, part := range parts {
@@ -58,7 +57,6 @@ func (h *TAi) ParseStreamJson(url, msg string, sendFunc func(string)) {
 				if threePart[0:1] != `{` {
 					threePart = threePart[1:]
 				}
-				gstool.FmtPrintlnLogTime(`解析--%v--`, threePart)
 				realMsgObj := _struct.StreamJson{}
 				decodeErr := gstool.JsonDecode(threePart, &realMsgObj)
 				if decodeErr != nil {

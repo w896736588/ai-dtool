@@ -223,7 +223,6 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	password := cast.ToString(dataMap[`password`])
 	openNum := max(1, cast.ToInt(dataMap[`open_num`]))
 	replaceList := make(map[string]string)
-	gstool.FmtPrintlnLogTime(`开始运行？`)
 	base.Component.TPlaywright.SseMsg(base.Component.TMarkDown.BlockQuote(`运行,开始----------------我是分隔君`), true)
 	for i := 0; i < openNum; i++ {
 		go func() {

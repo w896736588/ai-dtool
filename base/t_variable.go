@@ -184,7 +184,6 @@ func (h *TVariable) ParseConfig(config string) (string, error) {
 		return config, nil
 	} else if gstool.RegexMatchString(config, `{config:account_group:\w*}`) { //账号列表
 		retList := gstool.RegexMatchSubString(config, `{config:account_group:(\w*)}`)
-		gstool.FmtPrintlnLogTime(`retList %#v`, retList)
 		if len(retList) != 2 {
 			return ``, gstool.Error(`获取配置失败 %s`, config)
 		}

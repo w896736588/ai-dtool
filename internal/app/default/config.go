@@ -153,7 +153,6 @@ func initSocket() {
 		AllowOrigin: true,
 	}
 	base.Component.WebSocket.GetClientFunc = func(r *http.Request) string {
-		gstool.FmtPrintlnLogTime(`%s`, r.FormValue(`uniqueKey`))
 		return r.FormValue(`uniqueKey`)
 	}
 	base.Component.WebSocket.ReceMsgFunc = func(clientId, receiveMsg string) {

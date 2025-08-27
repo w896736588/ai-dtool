@@ -25,7 +25,6 @@ func TestFpmNoSession(t *testing.T) {
 }
 
 func HttpNoCookie() {
-	gstool.FmtPrintlnLogTime(`开始`)
 	gslog := gstool.NewSlog3(`./`, `test`)
 	headers := make(map[string]string)
 	get, err := gstool.NewHttp(time.Second*60, gslog).

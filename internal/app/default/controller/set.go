@@ -28,7 +28,6 @@ func SetSshAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `host`, `port`, `username`, `password`, `home`})
-	gstool.FmtPrintlnLogTime(`编辑ssh %#v`, dataMap)
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
@@ -46,7 +45,6 @@ func SetSshAdd(c *gin.Context) {
 func SetSshDelete(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	gstool.FmtPrintlnLogTime(`%#v`, dataMap)
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		gsgin.GinResponseError(c, `id不能为空`, nil)
 		return

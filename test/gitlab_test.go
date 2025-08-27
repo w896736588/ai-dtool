@@ -31,8 +31,6 @@ func TestGitLab(t *testing.T) {
 	endOfDay, _ := gstool.TimeStringToUnix(`2025-03-24 23:59:59`, `Y-m-d H:i:s`)
 	startTimestamp := startOfDay.Unix()
 	endTimestamp := endOfDay.Unix()
-	gstool.FmtPrintlnLogTime(`开始时间 %s`, gstool.TimeUnixToString(startOfDay, `Y-m-d H:i:s`))
-	gstool.FmtPrintlnLogTime(`结束时间 %s`, gstool.TimeUnixToString(endOfDay, `Y-m-d H:i:s`))
 	//所有有权限项目
 	for page := 1; page < 10; page++ {
 		projectParam := gsapi.GsGitLabParam{
@@ -66,12 +64,10 @@ func TestGitLab(t *testing.T) {
 		//所有合并请求
 		checkMerges(&gitLab, projectId, projectName, author, perPage, startTimestamp, endTimestamp, &combineList, &masterCommits)
 	}
-	gstool.FmtPrintlnLogTime(`%s`, gstool.JsonEncode(combineList))
 }
 
 func checkMerges(gitLab *gsapi.GsGitLab, projectId, projectName, author string,
 	perPage int, startTimestamp, endTimestamp int64, combineList *[]Combine, masterCommits *[]string) {
-	gstool.FmtPrintlnLogTime(`开始检查已合并`)
 	for page := 1; page < 100; page++ {
 		gitLabParam := gsapi.GsGitLabParam{
 			State:   "opened",
@@ -117,7 +113,6 @@ func checkMerges(gitLab *gsapi.GsGitLab, projectId, projectName, author string,
 
 func checkCommits(gitLab *gsapi.GsGitLab, projectId, projectName, author string,
 	perPage int, startTimestamp, endTimestamp int64, combineList *[]Combine, masterCommits *[]string) {
-	gstool.FmtPrintlnLogTime(`开始检查commits`)
 	//拿到所有的已合并到master的提交
 	for page := 1; page < 100; page++ {
 		gitLabParam := gsapi.GsGitLabParam{

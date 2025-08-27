@@ -300,7 +300,6 @@ func (h *Process) PWaitUrl() (define.ProcessCode, string, error) {
 }
 
 func (h *Process) PRedirect() (define.ProcessCode, string, error) {
-	gstool.FmtPrintlnLogTime(`跳转地址 %s %s`, h.Value, h.runParams.ReplaceList)
 	//尝试解析
 	processRedirect := _struct.ProcessRedirect{}
 	_ = gstool.JsonDecode(h.Value, &processRedirect)

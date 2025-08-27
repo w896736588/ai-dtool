@@ -66,7 +66,6 @@ func getAiModel(model string) ai_model.AiModel {
 				}
 			} else {
 				sendMsg := base.Component.TAi.ParseStream(`basic`, s)
-				gstool.FmtPrintlnLogTime(`解析结果 %s %s`, sendMsg, s)
 				sendErr := base.Component.TSse.SendMsg(define.SseAiCode, cast.ToString(sendMsg), 0)
 				if sendErr != nil {
 					gstool.FmtPrintlnLogTime(`发送0#code失败 %s`, sendErr.Error())

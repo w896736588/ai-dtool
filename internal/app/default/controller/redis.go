@@ -142,7 +142,6 @@ func RedisSearch(c *gin.Context) {
 		gsCons = gstool.ConsNew(resultArray)
 	} else if keyType == gsdb.RedisKeyZSet {
 		var resultArray []redis.Z
-		gstool.FmtPrintlnLogTime(`cyrsir %d`, cursor)
 		resultArray, err = redisCli.Client.ZRangeWithScores(context.Background(), cacheKey, cast.ToInt64(cursor), int64(cast.ToInt(cursor)+maxQuery-1)).Result()
 		if len(resultArray) >= maxQuery {
 			isMore = 1
