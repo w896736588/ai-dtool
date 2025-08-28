@@ -17,22 +17,28 @@ import (
 
 // SmartLinkUpWebkit 更新核心
 func SmartLinkUpWebkit(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	sseId := cast.ToString(dataMap[`sse_id`])
 	pw, _ := playwright.NewDriver()
-	go base.Component.TPlaywright.Install(pw.Version)
+	go base.Component.TPlaywright.Install(sseId, pw.Version)
 	gsgin.GinResponseSuccess(c, `更新浏览器核心中`, ``)
 	return
 }
 
 func SmartLinkRecycle(c *gin.Context) {
-	base.Component.TPlaywright.SseMsg(`开始释放实例`, true)
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	sseId := cast.ToString(dataMap[`sse_id`])
+	base.Component.TPlaywright.SseMsgByClient(sseId, `开始释放实例`, true)
 	p := p_playwright.NewPlaywright(nil, base.Component.TPlaywright.Log)
 	err := p.Recycle()
 	if err != nil {
-		base.Component.TPlaywright.SseMsg(fmt.Sprintf(`释放失败 `+err.Error()), true)
+		base.Component.TPlaywright.SseMsgByClient(sseId, fmt.Sprintf(`释放失败 `+err.Error()), true)
 		gsgin.GinResponseError(c, fmt.Sprintf(`释放失败 %s`, err.Error()), nil)
 		return
 	}
-	base.Component.TPlaywright.SseMsg(fmt.Sprintf(`释放成功 `), true)
+	base.Component.TPlaywright.SseMsgByClient(sseId, fmt.Sprintf(`释放成功 `), true)
 	gsgin.GinResponseSuccess(c, `释放成功`, ``)
 	return
 }
@@ -215,6 +221,7 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	_ = gsgin.GinPostBody(c, &dataMap)
 	id := cast.ToInt(dataMap[`id`])
 	label := cast.ToString(dataMap[`label`])
+	sseId := cast.ToString(dataMap[`sse_id`])
 	if id == 0 || label == `` {
 		gsgin.GinResponseError(c, `id和label不能为空`, nil)
 		return
@@ -223,12 +230,12 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	password := cast.ToString(dataMap[`password`])
 	openNum := max(1, cast.ToInt(dataMap[`open_num`]))
 	replaceList := make(map[string]string)
-	base.Component.TPlaywright.SseMsg(base.Component.TMarkDown.BlockQuote(`运行,开始----------------我是分隔君`), true)
+	base.Component.TPlaywright.SseMsgByClient(sseId, base.Component.TMarkDown.BlockQuote(`运行,开始----------------我是分隔君`), true)
 	for i := 0; i < openNum; i++ {
 		go func() {
 			streamFunc := func(name, msg string) {
 				//输出到前端
-				base.Component.TPlaywright.SseMsg(base.Component.TMarkDown.Bold(name)+`,`+msg, true)
+				base.Component.TPlaywright.SseMsgByClient(sseId, base.Component.TMarkDown.Bold(name)+`,`+msg, true)
 			}
 			runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, userName, password, openNum, replaceList)
 			if runParamsErr != nil {
@@ -257,25 +264,28 @@ func SmartLinkRunPlaywrightList(c *gin.Context) {
 }
 
 func SmartLinkPlaywrightVersion(c *gin.Context) {
-	base.Component.TPlaywright.SseMsg(`获取核心版本`, true)
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	sseId := cast.ToString(dataMap[`sse_id`])
+	base.Component.TPlaywright.SseMsgByClient(sseId, `获取核心版本`, true)
 	pw, pwErr := base.Component.TPlaywright.SmartLinkPlaywrightVersion()
 	if pwErr != nil {
-		base.Component.TPlaywright.SseMsg(`获取核心版本失败`+pwErr.Error(), true)
+		base.Component.TPlaywright.SseMsgByClient(sseId, `获取核心版本失败`+pwErr.Error(), true)
 		gsgin.GinResponseError(c, `查询失败`+pwErr.Error(), nil)
 		return
 	}
 	//是否在安装中
 	isInstall := 0
 	if !gstool.FileIsExisted(base.Component.TPlaywright.LockFileFullPath) {
-		base.Component.TPlaywright.SseMsg(`核心正在安装中`, true)
+		base.Component.TPlaywright.SseMsgByClient(sseId, `核心正在安装中`, true)
 		isInstall = 1
 	} else {
 		content, _ := gstool.FileGetContent(base.Component.TPlaywright.LockFileFullPath)
 		if content == `` {
-			base.Component.TPlaywright.SseMsg(`核心正在安装中`, true)
+			base.Component.TPlaywright.SseMsgByClient(sseId, `核心正在安装中`, true)
 			isInstall = 1
 		} else {
-			base.Component.TPlaywright.SseMsg(`当前核心版本`+content, true)
+			base.Component.TPlaywright.SseMsgByClient(sseId, `当前核心版本`+content, true)
 		}
 	}
 	gsgin.GinResponseSuccess(c, pw.Version, map[string]any{

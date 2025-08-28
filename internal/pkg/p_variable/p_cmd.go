@@ -15,8 +15,8 @@ type PCmd struct {
 	RunUniqueId string
 }
 
-func NewPCmd(cmd map[string]any, replace map[string]string, runUniqueId string) *PCmd {
-	return &PCmd{cmd: cmd, replaceList: replace, RunUniqueId: runUniqueId, StreamMsg: base.Component.TVariable.StreamMsgFunc(runUniqueId)}
+func NewPCmd(sseId string, cmd map[string]any, replace map[string]string, runUniqueId string) *PCmd {
+	return &PCmd{cmd: cmd, replaceList: replace, RunUniqueId: runUniqueId, StreamMsg: base.Component.TVariable.StreamMsgFuncBySseId(sseId, runUniqueId)}
 }
 
 func (h *PCmd) ParseInput(form *_struct.VForm) error {

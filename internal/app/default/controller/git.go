@@ -84,6 +84,50 @@ func GitChangeBranch(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
+// GitChangeBranchRemote 切换远程分支
+func GitChangeBranchRemote(c *gin.Context) {
+	reqMap, sshClient, err := getGitComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	codePath := cast.ToString(reqMap[`code_path`])
+	branchName := cast.ToString(reqMap[`BranchName`])
+	if codePath == `` {
+		gsgin.GinResponseError(c, `git未配置目录`, nil)
+		return
+	}
+	if branchName == `` {
+		gsgin.GinResponseError(c, `切换的分支不能为空`, nil)
+		return
+	}
+	command1 := base.NewCommand()
+	command1.Init()
+	command1.Sudo()
+	command1.Cd(codePath)
+	command1.GitShowBranch()
+	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr())
+
+	command := base.NewCommand()
+	command.Sudo()
+	command.Cd(codePath)
+	command.GitIgnoreAll()
+	command.GitFetch()
+	command.GitPull()
+	currentBranch = strings.Replace(currentBranch, "\n", "", -1)
+	if !strings.Contains(currentBranch, branchName) {
+		command.RemoteOriginBranch(branchName)
+		command.GitCheckout(branchName)
+	}
+	command.GitPullOrigin(branchName)
+	command.Echo(`当前分支：`)
+	command.GitShowBranch()
+	command.Echo(`远程分支：`)
+	command.GitShowOriginBranch()
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr())
+	gsgin.GinResponseSuccess(c, ``, result)
+}
+
 // GitPullBranchOrigin 拉取当前分支最新代码
 func GitPullBranchOrigin(c *gin.Context) {
 	reqMap, sshClient, err := getGitComponent(c)

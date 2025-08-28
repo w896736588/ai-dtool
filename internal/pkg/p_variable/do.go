@@ -16,20 +16,22 @@ type Variable struct {
 	ReplaceList map[string]string  //替换列表
 	IsRun       int                //最终执行1 最终执行
 	StreamMsg   func(string, bool) //输出方法
+	SseId       string             //sse id
 }
 
-func NewVariable(variableId, runCmdId int, isRun int, replaceList map[string]string, runUniqueId string) *Variable {
+func NewVariable(sseId string, variableId, runCmdId int, isRun int, replaceList map[string]string, runUniqueId string) *Variable {
 	variable := &Variable{
 		VariableId:  variableId,
 		RunCmdId:    runCmdId,
 		ReplaceList: replaceList,
 		IsRun:       isRun,
 		RunUniqueId: runUniqueId,
+		SseId:       sseId,
 	}
 	if variable.RunCmdId == 0 {
 		variable.InitRunUniqueId()
 	} else {
-		variable.StreamMsg = base.Component.TVariable.StreamMsgFunc(variable.RunUniqueId)
+		variable.StreamMsg = base.Component.TVariable.StreamMsgFuncBySseId(variable.SseId, variable.RunUniqueId)
 	}
 
 	return variable
@@ -45,7 +47,7 @@ func (h *Variable) InitRunUniqueId() {
 	//清除服务端所有的消息
 	base.Component.TSse.Sse.CleanMsg(define.SseVariable)
 	//消息输出函数注册
-	h.StreamMsg = base.Component.TVariable.StreamMsgFunc(h.RunUniqueId)
+	h.StreamMsg = base.Component.TVariable.StreamMsgFuncBySseId(h.SseId, h.RunUniqueId)
 	//清除前端所有的消息
 	h.StreamMsg(define.SseEventClean, false)
 }
@@ -180,7 +182,7 @@ func (h *Variable) BuildCmd(cmd map[string]any) (_struct.VForm, error) {
 		CmdType:    cast.ToString(cmd[`type`]),       //cmd 类型
 	}
 	//执行
-	vCmd := NewPCmd(cmd, h.ReplaceList, h.RunUniqueId)
+	vCmd := NewPCmd(h.SseId, cmd, h.ReplaceList, h.RunUniqueId)
 	var err error
 	switch cast.ToInt(cmd[`type`]) {
 	case define.VariableCmdInput, define.VariableCmdTextarea:

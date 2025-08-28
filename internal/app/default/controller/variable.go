@@ -229,6 +229,7 @@ func VariableCmdRun(c *gin.Context) {
 	_ = gsgin.GinPostBody(c, &dataMap)
 	variableId := cast.ToInt(dataMap[`variable_id`])
 	runCmdId := cast.ToInt(dataMap[`run_cmd_id`])
+	sseId := cast.ToString(dataMap[`sse_id`])
 	runUniqueId := cast.ToString(dataMap[`run_unique_id`])
 	if runCmdId != 0 && runUniqueId == `` { //初始
 		gsgin.GinResponseError(c, `缺少本次执行唯一ID`, nil)
@@ -245,7 +246,7 @@ func VariableCmdRun(c *gin.Context) {
 		}
 	}
 
-	variable := p_variable.NewVariable(variableId, runCmdId, isRun, replaceList, runUniqueId)
+	variable := p_variable.NewVariable(sseId, variableId, runCmdId, isRun, replaceList, runUniqueId)
 	result, resultErr := variable.Run()
 	if resultErr != nil {
 		result.RunStatus = 2

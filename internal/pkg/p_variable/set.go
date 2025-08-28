@@ -27,7 +27,7 @@ func NewVariableSet(variableId, runCmdId int, editValue, runUniqueId string, rep
 		EditValue:   editValue,
 		VariableId:  variableId,
 		ReplaceList: replaceList,
-		StreamMsg:   base.Component.TVariable.StreamMsgFunc(runUniqueId),
+		StreamMsg:   base.Component.TVariable.StreamMsgFuncBySseId(``, runUniqueId),
 	}
 }
 
@@ -45,7 +45,7 @@ func (h *VariableSet) Set() (_struct.VCmdResult, error) {
 		VariableId: h.VariableId,
 	}
 	cmdResult.RunUniqueId = h.RunUniqueId
-	vCmd := NewPCmd(cmd, h.ReplaceList, h.RunUniqueId)
+	vCmd := NewPCmd(``, cmd, h.ReplaceList, h.RunUniqueId)
 	switch cast.ToInt(form.CmdType) {
 	case define.VariableCmdRadio: //单选
 		err := vCmd.ParseSelect(&form)

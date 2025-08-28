@@ -75,13 +75,14 @@ func supervisorRouter() {
 
 // git相关
 func gitRouter() {
-	base.Component.TGin.GinPost(`/api/GitQueryCurrentBranch`, controller.GitCurrentBranch)  //查询当前分支
-	base.Component.TGin.GinPost(`/api/GitChangeBranch`, controller.GitChangeBranch)         //切换分支
-	base.Component.TGin.GinPost(`/api/GitPullBranchOrigin`, controller.GitPullBranchOrigin) //拉取最新分支
-	base.Component.TGin.GinPost(`/api/GitQueryStatus`, controller.QueryStatus)              //查询分支本地状态
-	base.Component.TGin.GinPost(`/api/GitCommitLog`, controller.GitCommitLog)               //查询提交日志
-	base.Component.TGin.GinPost(`/api/GitConfigList`, controller.GitConfigList)             //git配置
-	base.Component.TGin.GinPost(`/api/CreateMerge`, controller.CreateMerge)                 //创建合并请求
+	base.Component.TGin.GinPost(`/api/GitQueryCurrentBranch`, controller.GitCurrentBranch)      //查询当前分支
+	base.Component.TGin.GinPost(`/api/GitChangeBranch`, controller.GitChangeBranch)             //切换分支
+	base.Component.TGin.GinPost(`/api/GitChangeBranchRemote`, controller.GitChangeBranchRemote) //切换远程分支
+	base.Component.TGin.GinPost(`/api/GitPullBranchOrigin`, controller.GitPullBranchOrigin)     //拉取最新分支
+	base.Component.TGin.GinPost(`/api/GitQueryStatus`, controller.QueryStatus)                  //查询分支本地状态
+	base.Component.TGin.GinPost(`/api/GitCommitLog`, controller.GitCommitLog)                   //查询提交日志
+	base.Component.TGin.GinPost(`/api/GitConfigList`, controller.GitConfigList)                 //git配置
+	base.Component.TGin.GinPost(`/api/CreateMerge`, controller.CreateMerge)                     //创建合并请求
 }
 
 // gitlab token相关

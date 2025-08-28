@@ -368,7 +368,7 @@ func (h *TVariable) SelectChooseReplace(variableForm *_struct.VForm,
 	}
 }
 
-func (h *TVariable) StreamMsgFunc(runUniqueId string) func(msg string, enter bool) {
+func (h *TVariable) StreamMsgFuncBySseId(sseId, runUniqueId string) func(msg string, enter bool) {
 	return func(msg string, enter bool) {
 		//如果本次任务已经停止 那么不再输出
 		if Component.TVariable.Get(runUniqueId) == `stop` {
@@ -378,6 +378,6 @@ func (h *TVariable) StreamMsgFunc(runUniqueId string) func(msg string, enter boo
 		if enter {
 			msg += "\n"
 		}
-		_ = Component.TSse.SendMsg(define.SseVariable, msg, 0)
+		_ = Component.TSse.SendMsg(sseId, msg, 0)
 	}
 }

@@ -99,13 +99,13 @@ func (h *TPlaywright) SmartCheckAndUpdate() {
 	h.SseMsg(`检查并更新核心`, true)
 	pw, _ := playwright.NewDriver()
 	if !gstool.FileIsExisted(h.LockFileFullPath) {
-		go h.Install(pw.Version)
+		go h.Install(``, pw.Version)
 	} else {
 		content, contentErr := gstool.FileGetContent(h.LockFileFullPath)
 		if contentErr != nil {
 			h.SseMsg(fmt.Sprintf(`获取文件内容失败 %s`, contentErr.Error()), true)
 		} else if content != pw.Version {
-			go h.Install(pw.Version)
+			go h.Install(``, pw.Version)
 		} else {
 			h.SseMsg(fmt.Sprintf(`浏览器核心最新版本为：%s ，当前安装版本为：%s,不需要进行更新`, pw.Version, content), true)
 			go h.InitPlaywright()
@@ -129,17 +129,17 @@ func (h *TPlaywright) InitPlaywright() {
 	h.SseMsg(`启动成功..`, true)
 }
 
-func (h *TPlaywright) Install(version string) {
-	h.SseMsg(`开始安装浏览器核心(只安装chrome),大约几分钟时间`, true)
+func (h *TPlaywright) Install(sseId, version string) {
+	h.SseMsgByClient(sseId, `开始安装浏览器核心(只安装chrome),大约几分钟时间`, true)
 	err := playwright.Install(&playwright.RunOptions{
 		Browsers: []string{`chromium`},
 	})
 	if err != nil {
-		h.SseMsg(fmt.Sprintf(`安装浏览器核心失败 %s`, err.Error()), true)
+		h.SseMsgByClient(sseId, fmt.Sprintf(`安装浏览器核心失败 %s`, err.Error()), true)
 		_ = gstool.FileDelete(h.LockFileFullPath)
 	} else {
 		_ = gstool.FilePutContentCover(h.LockFileFullPath, version)
-		h.SseMsg(`安装完成`, true)
+		h.SseMsgByClient(sseId, `安装完成`, true)
 		h.InitPlaywright()
 	}
 }
@@ -293,4 +293,11 @@ func (h *TPlaywright) SseMsg(msg string, enter bool) {
 		msg += "\n"
 	}
 	_ = Component.TSse.SendMsg(define.SseSmartLink, msg, 50)
+}
+
+func (h *TPlaywright) SseMsgByClient(sseId string, msg string, enter bool) {
+	if enter {
+		msg += "\n"
+	}
+	_ = Component.TSse.SendMsg(sseId, msg, 50)
 }
