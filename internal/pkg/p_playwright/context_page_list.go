@@ -114,6 +114,11 @@ func (h *ContextPageList) FindNotSaveUserDataContext(runParams *_struct.Playwrig
 			runParams.StreamFunc(`context`, context.ContextUnique+`不是每次打开新的session，不处理`)
 			return nil
 		}
+		//打开方式
+		if context.OpenType != runParams.OpenType {
+			runParams.StreamFunc(`context`, context.ContextUnique+`打开方式不一致，不处理`)
+			return nil
+		}
 		//非同种类型的context跳过
 		if !base.Component.TPlaywright.IsSameLink(context.SmartLinkUniqueKey, runParams.SmartLinkUniqueKey) {
 			runParams.StreamFunc(`context`, context.ContextUnique+`不属于同一类型链接，不处理，`+context.SmartLinkUniqueKey)
@@ -143,10 +148,16 @@ func (h *ContextPageList) CleanContextPagesFixDataId(runParams *_struct.Playwrig
 	}
 	runParams.StreamFunc(`context`, `固定目录，开始清理旧页面`)
 	h.EachContextList(func(context *ContextPage) bool {
+		//打开方式
+		if context.OpenType != runParams.OpenType {
+			runParams.StreamFunc(`context`, context.ContextUnique+`打开方式不一致，不处理`)
+			return false
+		}
 		if context.ContextUnique == runParams.ContextUnique {
 			runParams.StreamFunc(`context`, `固定目录，开始清理context`+context.ContextUnique)
 			context.CloseContextPages()
 		}
+
 		return false
 	})
 	time.Sleep(time.Second * 1)

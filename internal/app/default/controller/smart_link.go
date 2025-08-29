@@ -229,6 +229,7 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	userName := cast.ToString(dataMap[`user_name`])
 	password := cast.ToString(dataMap[`password`])
 	openNum := max(1, cast.ToInt(dataMap[`open_num`]))
+	openType := cast.ToInt(dataMap[`open_type`])
 	replaceList := make(map[string]string)
 	base.Component.TPlaywright.SseMsgByClient(sseId, base.Component.TMarkDown.BlockQuote(`运行,开始----------------我是分隔君`), true)
 	for i := 0; i < openNum; i++ {
@@ -237,7 +238,7 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 				//输出到前端
 				base.Component.TPlaywright.SseMsgByClient(sseId, base.Component.TMarkDown.Bold(name)+`,`+msg, true)
 			}
-			runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, userName, password, openNum, replaceList)
+			runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, userName, password, openType, openNum, replaceList)
 			if runParamsErr != nil {
 				gstool.FmtPrintlnLogTime(`打开错误 %s`, runParamsErr.Error())
 				return

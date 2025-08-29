@@ -37,6 +37,13 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="c3-seniro-mass">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="common-fansSyncConsumer">
         <serverdata>
           <mappings>
@@ -80,6 +87,13 @@
         </serverdata>
       </paths>
       <paths name="test-seniro-mass">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="timintLottery-c3">
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />

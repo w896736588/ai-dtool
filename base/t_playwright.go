@@ -144,7 +144,7 @@ func (h *TPlaywright) Install(sseId, version string) {
 	}
 }
 
-func (h *TPlaywright) GetRunParams(id int, label, userName, password string, openNum int, replaceList map[string]string) (*_struct.PlaywrightRunParams, error) {
+func (h *TPlaywright) GetRunParams(id int, label, userName, password string, openType int, openNum int, replaceList map[string]string) (*_struct.PlaywrightRunParams, error) {
 	runParams := &_struct.PlaywrightRunParams{}
 	if id == 0 {
 		return runParams, errors.New(`链接ID不能为空`)
@@ -198,7 +198,12 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 	runParams.Link = gstool.SReplaces(runParams.Link, replaceList)
 	runParams.CombineType = cast.ToInt(smartLink[`combine_type`])
 	runParams.OpenNum = cast.ToInt(math.Max(1, cast.ToFloat64(openNum)))
-	runParams.OpenType = define.OpenType(cast.ToInt(smartLink[`open_type`]))
+	if openType != 0 {
+		runParams.OpenType = define.OpenType(openType)
+	} else {
+		runParams.OpenType = define.OpenType(cast.ToInt(smartLink[`open_type`]))
+	}
+
 	//查询process
 	processList := make([]map[string]any, 0)
 	processId := cast.ToInt(smartLink[`process_id`])

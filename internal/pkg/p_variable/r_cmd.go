@@ -415,7 +415,7 @@ func (h *RCmd) RunPlaywright() (string, error) {
 	if label == `` {
 		return ``, errors.New(`链接label不能为空`)
 	}
-	runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, ``, ``, 0, h.replaceList)
+	runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, ``, ``, 0, 0, h.replaceList)
 	if runParamsErr != nil {
 		return ``, errors.New(runParamsErr.Error())
 	}
