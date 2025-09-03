@@ -4,6 +4,7 @@
 /zhima/
 /config/.db/
 /build/*
+/.idea/*
 /playwright.lock
 /build/
 /playwright.RunLock
@@ -14,7 +15,6 @@
 /internal/app/zhima/playwright_download/
 /internal/pkg/p_webkit/
 /internal/pkg/p_webkit/.links/
-/.idea/material_theme_project_new.xml
 /internal/pkg/p_node/package/bin/install_media_pack.ps1
 /internal/pkg/p_node/package/bin/PrintDeps.exe
 /internal/pkg/p_node/package/bin/README.md
