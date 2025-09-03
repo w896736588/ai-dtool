@@ -1,26 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<module type="WEB_MODULE" version="4">
+<module version="4">
   <component name="Go" enabled="true" />
-  <component name="NewModuleRootManager">
-    <content url="file://$MODULE_DIR$">
-      <excludeFolder url="file://$MODULE_DIR$/views/src/config" />
-      <excludeFolder url="file://$MODULE_DIR$/views/.idea" />
-      <excludeFolder url="file://$MODULE_DIR$/build" />
-      <excludeFolder url="file://$MODULE_DIR$/config/.db" />
-      <excludeFolder url="file://$MODULE_DIR$/logs" />
-      <excludeFolder url="file://$MODULE_DIR$/internal/app/zhima/playwright_download" />
-      <excludeFolder url="file://$MODULE_DIR$/internal/app/zhima/playwright_userdata" />
-      <excludeFolder url="file://$MODULE_DIR$/internal/app/zhima/playwright_userdata/0" />
-      <excludeFolder url="file://$MODULE_DIR$/internal/app/zhima/playwright_userdata/1" />
-      <excludeFolder url="file://$MODULE_DIR$/internal/app/zhima/playwright_userdata/2" />
-      <excludeFolder url="file://$MODULE_DIR$/internal/app/zhima/playwright_userdata/3" />
-      <excludeFolder url="file://$MODULE_DIR$/script/zhima" />
-      <excludeFolder url="file://$MODULE_DIR$/script/zhimaPub" />
-      <excludeFolder url="file://$MODULE_DIR$/script/zhimaPub/devtool" />
-      <excludeFolder url="file://$MODULE_DIR$/script/zhimaPub/goservice" />
-      <excludeFolder url="file://$MODULE_DIR$/internal/pkg/p_node" />
-    </content>
-    <orderEntry type="inheritedJdk" />
-    <orderEntry type="sourceFolder" forTests="false" />
-  </component>
 </module>

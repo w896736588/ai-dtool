@@ -3,7 +3,7 @@ package controller
 import (
 	"context"
 	"dev_tool/base"
-	"dev_tool/internal/app/zhima/define"
+	"dev_tool/internal/pkg/define"
 	"errors"
 	"fmt"
 	"gitee.com/Sxiaobai/gs/gsdb"

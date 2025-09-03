@@ -17,7 +17,6 @@ func InitRouter() {
 	gitRouter()
 	gitLabTokenRouter()
 	globalSetRouter()
-	loginRouter()
 	codeRouter()
 	initSocket()
 	setRouter()
@@ -96,11 +95,6 @@ func globalSetRouter() {
 	base.Component.TGin.GinPost(`/api/Set/GlobalCreate`, controller.SetGlobalAdd)    //创建
 	base.Component.TGin.GinPost(`/api/Set/GlobalDelete`, controller.SetGlobalDelete) //删除
 	base.Component.TGin.GinPost(`/api/Set/GlobalList`, controller.SetGlobalList)     //列表
-}
-
-// login相关
-func loginRouter() {
-	base.Component.TGin.GinPost(`/api/LoginLink`, controller.LoginLink) //拿到登录链接
 }
 
 // 代码生成相关
