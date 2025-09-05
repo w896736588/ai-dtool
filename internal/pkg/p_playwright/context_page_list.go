@@ -97,10 +97,8 @@ func (h *ContextPageList) CloseContextPages(context *playwright.BrowserContext) 
 }
 
 func (h *ContextPageList) GetPlaywrightRunList() []map[string]any {
-	gstool.FmtPrintlnLogTime(`开始循环获取数据目录`)
 	runList := make([]map[string]any, 0)
 	h.EachContextList(func(context *ContextPage) bool {
-		gstool.FmtPrintlnLogTime(`循环第一个`)
 		pageList := (*context.Context).Pages()
 		runList = append(runList, map[string]any{
 			`name`:     context.SmartLinkUniqueKey,
@@ -108,7 +106,6 @@ func (h *ContextPageList) GetPlaywrightRunList() []map[string]any {
 		})
 		return false
 	})
-	gstool.FmtPrintlnLogTime(`结束`)
 	return runList
 }
 
