@@ -15,14 +15,17 @@ import (
 
 // list 所有浏览器列表
 var list []*ContextPage
-
-func InitContextPageList() {
-	list = make([]*ContextPage, 0)
-}
+var ContextLock sync.RWMutex
 
 type ContextPageList struct {
-	ContextLock sync.RWMutex
-	log         *gstool.GsSlog
+	log *gstool.GsSlog
+}
+
+func getList() *[]*ContextPage {
+	if list == nil {
+		list = make([]*ContextPage, 0)
+	}
+	return &list
 }
 
 func NewContextList(log *gstool.GsSlog) *ContextPageList {
@@ -39,16 +42,16 @@ func (h *ContextPageList) EventContextClose(contextP *ContextPage) {
 }
 
 func (h *ContextPageList) AddContextList(contextP *ContextPage) {
-	h.ContextLock.Lock()
-	defer h.ContextLock.Unlock()
-	list = append(list, contextP)
+	ContextLock.Lock()
+	defer ContextLock.Unlock()
+	*getList() = append(*getList(), contextP)
 	h.EventContextClose(contextP)
 }
 
 func (h *ContextPageList) EachContextList(f func(context *ContextPage) bool) {
-	h.ContextLock.Lock()
-	defer h.ContextLock.Unlock()
-	for _, context := range list {
+	ContextLock.Lock()
+	defer ContextLock.Unlock()
+	for _, context := range *getList() {
 		if f(context) {
 			break
 		}
@@ -56,9 +59,9 @@ func (h *ContextPageList) EachContextList(f func(context *ContextPage) bool) {
 }
 
 func (h *ContextPageList) FindContextList(f func(context *ContextPage) *ContextPage) *ContextPage {
-	h.ContextLock.Lock()
-	defer h.ContextLock.Unlock()
-	for _, context := range list {
+	ContextLock.Lock()
+	defer ContextLock.Unlock()
+	for _, context := range *getList() {
 		rContext := f(context)
 		if rContext != nil {
 			return rContext
@@ -68,21 +71,21 @@ func (h *ContextPageList) FindContextList(f func(context *ContextPage) *ContextP
 }
 
 func (h *ContextPageList) CleanContextList(cleanAll bool) {
-	h.ContextLock.Lock()
-	defer h.ContextLock.Unlock()
+	ContextLock.Lock()
+	defer ContextLock.Unlock()
 	if cleanAll {
-		for _, context := range list {
+		for _, context := range *getList() {
 			h.CloseContextPages(context.Context)
 		}
-		list = make([]*ContextPage, 0)
+		*getList() = make([]*ContextPage, 0)
 	} else {
 		newContextList := make([]*ContextPage, 0)
-		for _, context := range list {
+		for _, context := range *getList() {
 			if context.Context != nil && len((*context.Context).Pages()) > 0 {
 				newContextList = append(newContextList, context)
 			}
 		}
-		list = newContextList
+		*getList() = newContextList
 	}
 }
 
@@ -94,8 +97,10 @@ func (h *ContextPageList) CloseContextPages(context *playwright.BrowserContext) 
 }
 
 func (h *ContextPageList) GetPlaywrightRunList() []map[string]any {
+	gstool.FmtPrintlnLogTime(`开始循环获取数据目录`)
 	runList := make([]map[string]any, 0)
 	h.EachContextList(func(context *ContextPage) bool {
+		gstool.FmtPrintlnLogTime(`循环第一个`)
 		pageList := (*context.Context).Pages()
 		runList = append(runList, map[string]any{
 			`name`:     context.SmartLinkUniqueKey,
@@ -103,6 +108,7 @@ func (h *ContextPageList) GetPlaywrightRunList() []map[string]any {
 		})
 		return false
 	})
+	gstool.FmtPrintlnLogTime(`结束`)
 	return runList
 }
 

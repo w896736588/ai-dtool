@@ -318,7 +318,7 @@ func (h *TVariable) ChecksCanDo(cmd map[string]any) bool {
 }
 
 // PreConnSsh 初始化ssh连接
-func (h *TVariable) PreConnSsh(sshId int, sshUniqueKey, sftpUniqueKey string) error {
+func (h *TVariable) PreConnSsh(sshId int, sshUniqueKey, sftpUniqueKey, sseId string) error {
 	if sshId == 0 {
 		return errors.New(`ssh_id不能为空`)
 	}
@@ -332,12 +332,12 @@ func (h *TVariable) PreConnSsh(sshId int, sshUniqueKey, sftpUniqueKey string) er
 		return sshConfigErr
 	}
 	//ssh
-	_, sshClientErr := Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, define.SseVariable)
+	_, sshClientErr := Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, sseId)
 	if sshClientErr != nil {
 		return sshClientErr
 	}
 	//sftp
-	_, sftpClientErr := Component.TShell.GetClientMarkdown(sshConfig, sftpUniqueKey, define.SseVariable)
+	_, sftpClientErr := Component.TShell.GetClientMarkdown(sshConfig, sftpUniqueKey, sseId)
 	if sftpClientErr != nil {
 		return sftpClientErr
 	}
@@ -372,7 +372,7 @@ func (h *TVariable) StreamMsgFuncBySseId(sseId, runUniqueId string) func(msg str
 	return func(msg string, enter bool) {
 		//如果本次任务已经停止 那么不再输出
 		if Component.TVariable.Get(runUniqueId) == `stop` {
-			Component.TSse.Sse.CleanMsg(define.SseVariable)
+			Component.TSse.Sse.CleanMsg(sseId)
 			return
 		}
 		if enter {

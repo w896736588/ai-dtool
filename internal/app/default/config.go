@@ -82,7 +82,6 @@ func initPlaywright() {
 	base.Component.TPlaywright.SetWebkitPath()
 	base.Component.TPlaywright.LockFileFullPath = filepath.Join(base.Component.Env.RootPath, `playwright.RunLock`)
 	p_playwright.InitPageActiveTime()
-	p_playwright.InitContextPageList()
 	go base.Component.TPlaywright.WitchDownload()
 	go base.Component.TPlaywright.SmartCheckAndUpdate()
 }

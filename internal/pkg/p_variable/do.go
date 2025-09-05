@@ -45,7 +45,7 @@ func (h *Variable) InitRunUniqueId() {
 	//停止其他任务
 	base.Component.TVariable.StopOther(h.RunUniqueId)
 	//清除服务端所有的消息
-	base.Component.TSse.Sse.CleanMsg(define.SseVariable)
+	base.Component.TSse.Sse.CleanMsg(h.SseId)
 	//消息输出函数注册
 	h.StreamMsg = base.Component.TVariable.StreamMsgFuncBySseId(h.SseId, h.RunUniqueId)
 	//清除前端所有的消息
@@ -145,7 +145,7 @@ func (h *Variable) Run() (_struct.VCmdResult, error) {
 
 func (h *Variable) RunCmd(cmd map[string]any) error {
 	//执行
-	rCmd := NewRCmd(cmd, h.ReplaceList, h.RunUniqueId, h.StreamMsg)
+	rCmd := NewRCmd(cmd, h.ReplaceList, h.RunUniqueId, h.StreamMsg, h.SseId)
 	var err error
 	switch cast.ToInt(cmd[`type`]) {
 	case define.VariableCmdMysql:

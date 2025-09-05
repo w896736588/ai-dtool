@@ -257,9 +257,10 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshConfig, 
 	if cast.ToString(sshId) == `` {
 		return nil, nil, errors.New(`缺少ssh_id参数`)
 	}
+	sseId := reqMap[`sse_id`]
 	sshConfig, _ := base.Component.TSqlite.GetSshConfig(sshId)
-	uniqueKey := base.Component.TBase.GetCombineKey(sshId, `git`)
-	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, define.SseGit, func(s string) []string {
+	uniqueKey := base.Component.TBase.GetCombineKey(sshId, sseId)
+	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, cast.ToString(sseId), func(s string) []string {
 		if gstool.SContains(s, []string{
 			`Receiving objects:`,
 			`remote: Counting objects:`,
