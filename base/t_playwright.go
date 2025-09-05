@@ -96,29 +96,29 @@ func (h *TPlaywright) AddTipMsg(page *playwright.Page, tip string) {
 }
 
 func (h *TPlaywright) SmartCheckAndUpdate() {
-	h.SseMsg(`检查并更新核心`, true)
+	gstool.FmtPrintlnLogTime(`检查并更新核心`)
 	pw, _ := playwright.NewDriver()
 	if !gstool.FileIsExisted(h.LockFileFullPath) {
 		go h.Install(``, pw.Version)
 	} else {
 		content, contentErr := gstool.FileGetContent(h.LockFileFullPath)
 		if contentErr != nil {
-			h.SseMsg(fmt.Sprintf(`获取文件内容失败 %s`, contentErr.Error()), true)
+			gstool.FmtPrintlnLogTime(`获取文件内容失败 %s`, contentErr.Error())
 		} else if content != pw.Version {
 			go h.Install(``, pw.Version)
 		} else {
-			h.SseMsg(fmt.Sprintf(`浏览器核心最新版本为：%s ，当前安装版本为：%s,不需要进行更新`, pw.Version, content), true)
+			gstool.FmtPrintlnLogTime(`浏览器核心最新版本为：%s ，当前安装版本为：%s,不需要进行更新`, pw.Version, content)
 			go h.InitPlaywright()
 		}
 	}
 }
 
 func (h *TPlaywright) InitPlaywright() {
-	h.SseMsg(`启动浏览器核心..`, true)
+	gstool.FmtPrintlnLogTime(`启动浏览器核心..`)
 	var pwErr error
 	h.Pw, pwErr = playwright.Run()
 	if pwErr != nil {
-		h.SseMsg(fmt.Sprintf(`启动浏览器核心失败 %s`, pwErr.Error()), true)
+		gstool.FmtPrintlnLogTime(`启动浏览器核心失败 %s`, pwErr.Error())
 		return
 	}
 	h.BrowserWebkitSilence, _ = h.Pw.Chromium.Launch()
@@ -126,7 +126,7 @@ func (h *TPlaywright) InitPlaywright() {
 		//DownloadsPath: &h.DownloadPath,
 		Headless: playwright.Bool(false), //有界面模式
 	})
-	h.SseMsg(`启动成功..`, true)
+	gstool.FmtPrintlnLogTime(`启动成功..`)
 }
 
 func (h *TPlaywright) Install(sseId, version string) {
@@ -289,13 +289,6 @@ func (h *TPlaywright) StreamMsgFunc(runUniqueId string) func(msg string, enter b
 		}
 		_ = Component.TSse.SendMsg(runUniqueId, msg, 0)
 	}
-}
-
-func (h *TPlaywright) SseMsg(msg string, enter bool) {
-	if enter {
-		msg += "\n"
-	}
-	_ = Component.TSse.SendMsg(define.SseSmartLink, msg, 50)
 }
 
 func (h *TPlaywright) SseMsgByClient(sseId string, msg string, enter bool) {

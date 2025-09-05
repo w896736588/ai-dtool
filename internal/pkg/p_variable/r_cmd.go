@@ -26,14 +26,16 @@ type RCmd struct {
 	StreamMsg      func(string, bool)
 	PlaywrightLock sync.RWMutex
 	RunUniqueId    string
+	SseId          string
 }
 
-func NewRCmd(cmd map[string]any, replace map[string]string, RunUniqueId string, streamMsg func(string, bool)) *RCmd {
+func NewRCmd(cmd map[string]any, replace map[string]string, RunUniqueId string, streamMsg func(string, bool), sseId string) *RCmd {
 	return &RCmd{
 		cmd:         cmd,
 		replaceList: replace,
 		StreamMsg:   streamMsg,
 		RunUniqueId: RunUniqueId,
+		SseId:       sseId,
 	}
 }
 
@@ -126,7 +128,7 @@ func (h *RCmd) RunBash() (string, error) {
 	sshUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `run`)
 	sftpUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
 	//链接ssh
-	preConnErr := base.Component.TVariable.PreConnSsh(sshId, sshUniqueKey, sftpUniqueKey)
+	preConnErr := base.Component.TVariable.PreConnSsh(sshId, sshUniqueKey, sftpUniqueKey, h.SseId)
 	if preConnErr != nil {
 		return ``, gstool.Error(`链接失败 %s`, preConnErr.Error())
 	}
@@ -150,12 +152,12 @@ func (h *RCmd) RunBash() (string, error) {
 	}
 	variableDir := home + `/variable`
 	//ssh
-	sshClient, sshClientErr = base.Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, define.SseVariable)
+	sshClient, sshClientErr = base.Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, h.SseId)
 	if sshClientErr != nil {
 		return ``, sshClientErr
 	}
 	//sftp
-	sftpClient, sftpClientErr := base.Component.TShell.GetClientMarkdown(sshConfig, sftpUniqueKey, define.SseVariable)
+	sftpClient, sftpClientErr := base.Component.TShell.GetClientMarkdown(sshConfig, sftpUniqueKey, h.SseId)
 	if sftpClientErr != nil {
 		return ``, sftpClientErr
 	}
@@ -229,7 +231,7 @@ func (h *RCmd) RunUpload() (string, error) {
 		return ``, sshConfigErr
 	}
 	//sftp
-	sftpClient, sftpClientErr := base.Component.TShell.GetClientMarkdown(sshConfig, sftpUniqueKey, define.SseVariable)
+	sftpClient, sftpClientErr := base.Component.TShell.GetClientMarkdown(sshConfig, sftpUniqueKey, h.SseId)
 	if sftpClientErr != nil {
 		return ``, sftpClientErr
 	}
@@ -305,7 +307,7 @@ func (h *RCmd) uploadFile(sshConfig map[string]any, sshId int, sftpClient *gsssh
 	}
 	//ssh
 	sshUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `run`)
-	sshClient, sshClientErr := base.Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, define.SseVariable)
+	sshClient, sshClientErr := base.Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, h.SseId)
 	if sshClientErr != nil {
 		h.StreamMsg(fmt.Sprintf(`上传文件失败2 %s`, sshClientErr.Error()), true)
 		return gstool.Error(`上传失败 %s`, sshClientErr.Error())
@@ -329,7 +331,7 @@ func (h *RCmd) RunCommand() (string, error) {
 	//注册client
 	sshUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `run`)
 	sftpUniqueKey := base.Component.TBase.GetCombineKey(`variable`, sshId, `sftp`)
-	preConnErr := base.Component.TVariable.PreConnSsh(sshId, sshUniqueKey, sftpUniqueKey)
+	preConnErr := base.Component.TVariable.PreConnSsh(sshId, sshUniqueKey, sftpUniqueKey, h.SseId)
 	if preConnErr != nil {
 		return ``, gstool.Error(`链接失败 %s`, preConnErr.Error())
 	}
@@ -353,7 +355,7 @@ func (h *RCmd) RunCommand() (string, error) {
 		var sshClientErr error
 		var sshClient *gsssh.SshConfig
 		//ssh
-		sshClient, sshClientErr = base.Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, define.SseVariable)
+		sshClient, sshClientErr = base.Component.TShell.GetClientMarkdown(sshConfig, sshUniqueKey, h.SseId)
 		if sshClientErr != nil {
 			return ``, sshClientErr
 		}

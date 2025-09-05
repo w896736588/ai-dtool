@@ -1,12 +1,8 @@
 package define
 
+// 废弃
 const (
-	SseVariable   = `variable`
-	SseDocker     = `docker`
-	SseGit        = `git`
-	SseSupervisor = `supervisor`
-	SseAiCode     = `ai_code`
-	SseSmartLink  = `smart_link`
+	SseAiCode = `ai_code`
 )
 
 const (

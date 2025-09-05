@@ -2,11 +2,11 @@ package controller
 
 import (
 	"dev_tool/base"
-	"dev_tool/base/define"
 	"errors"
 	"gitee.com/Sxiaobai/gs/gsdefine"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gsssh"
+	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 	"strings"
@@ -84,7 +84,9 @@ func getConsumerStatus(dockerName string, sshClient *gsssh.SshConfig) ([]string,
 	} else {
 		xkfStatusCommand := base.NewCommand().Sudo()
 		xkfStatusCommand.DockerExecConsumerStatus(dockerName)
+		gstool.FmtPrintlnLogTime(`开始获取列表`)
 		xkfStatusRet, _ := sshClient.RunCommandWait(xkfStatusCommand.GetCommand().ToStr())
+		gstool.FmtPrintlnLogTime(`结束获取列表`)
 		retMsgList = append(retMsgList, xkfStatusRet)
 	}
 	return retMsgList, nil
@@ -187,9 +189,10 @@ func getSupervisorComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshC
 	if cast.ToString(sshId) == `` {
 		return nil, nil, errors.New(`缺少ssh_id参数`)
 	}
+	sseId := reqMap[`sse_id`]
 	sshConfig, _ := base.Component.TSqlite.GetSshConfig(sshId)
-	uniqueKey := base.Component.TBase.GetCombineKey(sshId, `supervisor`)
-	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, define.SseSupervisor, nil)
+	uniqueKey := base.Component.TBase.GetCombineKey(sshId, sseId)
+	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, cast.ToString(sseId), nil)
 	if sshClientErr != nil {
 		return nil, nil, err
 	}
