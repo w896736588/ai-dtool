@@ -53,6 +53,7 @@ func (h *Playwright) Open() error {
 			}()
 
 		} else {
+			h.RunParams.StreamFunc(cast.ToString(processVal[`name`]), `按顺序执行`)
 			boolContinue, runErr := h.ProcessRun(processVal, page)
 			if runErr != nil {
 				return runErr
@@ -112,16 +113,16 @@ func (h *Playwright) GetPage() (*playwright.Page, error) {
 	} else { //保留用户数据
 		contextPage, boolCleanFirstBlank, contextErr = h.ContextPageList.GetContextSaveUserData(h.RunParams)
 	}
-	h.RunParams.StreamFunc(`context`, `获取context结束`)
+	h.RunParams.StreamFunc(`启动playwright`, `获取浏览器实例结束`)
 	if contextErr != nil {
 		return nil, contextErr
 	}
 	var page playwright.Page
 	var pageErr error
 	page, pageErr = (*contextPage.Context).NewPage()
-	h.RunParams.StreamFunc(`context`, `创建page`)
+	h.RunParams.StreamFunc(`启动playwright`, `创建page`)
 	if pageErr != nil {
-		h.RunParams.StreamFunc(`context`, `创建page报错`)
+		h.RunParams.StreamFunc(`启动playwright`, `创建page报错：`+pageErr.Error())
 		return nil, pageErr
 	}
 	(*contextPage).RegisterLinks(page, h.RunParams.ListenUrlList)
@@ -149,8 +150,7 @@ func (h *Playwright) LastUserDataIndex(runParams *_struct.PlaywrightRunParams, u
 	sql := `select * from tbl_smart_link_last where  smart_link_id = ? and user_name = ? and domain = ?`
 	smartLinkLast, smartLinkErr := base.Component.TSqlite.Client.QueryBySql(sql, runParams.Id, runParams.LastIndexLabel, runParams.Domain).One()
 	if smartLinkErr != nil {
-		h.log.Debugf(`获取最后使用索引失败 %s %s`, sql, smartLinkErr.Error())
-		gstool.FmtPrintlnLogTime(`查询失败 %s`, smartLinkErr.Error())
+		runParams.StreamFunc(`记录历史数据目录`, `失败：`+smartLinkErr.Error())
 		return
 	} else if len(smartLinkLast) > 0 {
 		_, err := base.Component.TSqlite.Client.QuickUpdate(`tbl_smart_link_last`, map[string]any{
@@ -162,7 +162,7 @@ func (h *Playwright) LastUserDataIndex(runParams *_struct.PlaywrightRunParams, u
 			`update_time`:     time.Now().Unix(),
 		}).Exec()
 		if err != nil {
-			gstool.FmtPrintlnLogTime(`更新最后使用索引失败 %s`, err.Error())
+			runParams.StreamFunc(`记录历史数据目录`, `更新最后使用索引失败：`+err.Error())
 		}
 	} else {
 		_, err := base.Component.TSqlite.Client.QuickCreate(`tbl_smart_link_last`, map[string]any{
@@ -174,7 +174,7 @@ func (h *Playwright) LastUserDataIndex(runParams *_struct.PlaywrightRunParams, u
 			`update_time`:     time.Now().Unix(),
 		}).Exec()
 		if err != nil {
-			gstool.FmtPrintlnLogTime(`创建最后使用索引失败 %s`, err.Error())
+			runParams.StreamFunc(`记录历史数据目录`, `创建最后使用索引失败：`+err.Error())
 		}
 	}
 }

@@ -31,7 +31,7 @@ type TPlaywright struct {
 }
 
 func NewTSmartLink() *TPlaywright {
-	gsLog := gstool.NewSlog3(Component.Env.LogPath, `playwright`)
+	gsLog := gstool.NewSlog2(Component.Env.LogPath, `playwright`)
 	_ = gsLog.CleanOldLogs(2)
 	return &TPlaywright{
 		Log:          gsLog,
@@ -170,7 +170,6 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 	if runParams.Channel == `` {
 		runParams.Channel = `chromium`
 	}
-	h.Log.Debugf(`使用浏览器核心 ` + runParams.Channel)
 	decodeErr := gstool.JsonDecode(cast.ToString(smartLink[`links`]), &linkList)
 	if decodeErr != nil {
 		return runParams, errors.New(decodeErr.Error())
@@ -255,7 +254,6 @@ func (h *TPlaywright) ShowCookieTip(page *playwright.Page, runParams *_struct.Pl
 		return
 	}
 	config := gstool.JsonEncode(replaceList)
-	Component.TPlaywright.Log.Debugf(`配置的js %s`, config)
 	content := Component.TJas.Get(`p_js`, `info.js`)
 	content = gstool.SReplaces(content, map[string]string{
 		`{config}`: config,

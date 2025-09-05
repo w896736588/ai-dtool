@@ -231,28 +231,39 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	openNum := max(1, cast.ToInt(dataMap[`open_num`]))
 	openType := cast.ToInt(dataMap[`open_type`])
 	replaceList := make(map[string]string)
-	base.Component.TPlaywright.SseMsgByClient(sseId, base.Component.TMarkDown.BlockQuote(`运行,开始----------------我是分隔君`), true)
+	PushSseMsg(sseId, base.Component.TMarkDown.BlockQuote(`运行,开始----------------我是分隔君`), true)
 	for i := 0; i < openNum; i++ {
 		go func() {
+			//生成一个唯一ID
+			runUniqueId := base.Component.TBase.GetUnique(`playwright_run_`)
 			streamFunc := func(name, msg string) {
 				//输出到前端
-				base.Component.TPlaywright.SseMsgByClient(sseId, base.Component.TMarkDown.Bold(name)+`,`+msg, true)
+				PushSseMsg(sseId, base.Component.TMarkDown.Bold(label+`,`+runUniqueId)+` `+name+` `+msg, true)
 			}
+			streamFunc(`构建run_params`, `开始`)
 			runParams, runParamsErr := base.Component.TPlaywright.GetRunParams(id, label, userName, password, openType, openNum, replaceList)
 			if runParamsErr != nil {
-				gstool.FmtPrintlnLogTime(`打开错误 %s`, runParamsErr.Error())
+				streamFunc(`构建run_params`, `失败:`+runParamsErr.Error())
 				return
 			}
 			runParams.StreamFunc = streamFunc
+			streamFunc(`构建run_params`, `成功，准备打开的链接：`+runParams.Link+`,链接类型：`+runParams.SmartLinkUniqueKey)
+			streamFunc(`打开浏览器实例`, `开始`)
 			p := p_playwright.NewPlaywright(runParams, base.Component.TPlaywright.Log)
 			openErr := p.Open()
 			if openErr != nil {
-				gstool.FmtPrintlnLogTime(`错误 %s`, openErr.Error())
+				streamFunc(`打开浏览器实例`, `失败：`+openErr.Error())
+				return
 			}
+			streamFunc(`浏览器实例执行`, `结束`)
 		}()
 		time.Sleep(time.Second * 2)
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+func PushSseMsg(sseId, msg string, enter bool) {
+	base.Component.TPlaywright.SseMsgByClient(sseId, msg, enter)
 }
 
 // SmartLinkRunPlaywrightList 获取运行的列表
