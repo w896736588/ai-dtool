@@ -41,5 +41,5 @@ go run -ldflags "-X main.DbPath=D:/go/cache_manager_api/config/zhima/ -X main.Vi
 ```shell
 #家里go run
 export CGO_ENABLED=1
-go run -ldflags "-X main.DbPath=C:\work\frog\cache_manager_api\config\zhima\ -X main.ViewPath=C:\work\frog\cache_manager_web\dist" cmd/zhima/main.go
+go run -ldflags "-X main.DbPath=C:\work\frog\dev_tool_master\config\zhima\ -X main.ViewPath=C:\work\frog\cache_manager_web\dist" cmd/zhima/main.go
 ```

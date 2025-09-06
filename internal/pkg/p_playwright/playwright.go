@@ -56,7 +56,12 @@ func (h *Playwright) Open() error {
 			h.RunParams.StreamFunc(cast.ToString(processVal[`name`]), `按顺序执行`)
 			boolContinue, runErr := h.ProcessRun(processVal, page)
 			if runErr != nil {
-				return runErr
+				if cast.ToInt(processVal[`is_error_continue`]) == 1 {
+					h.RunParams.StreamFunc(cast.ToString(processVal[`name`]), fmt.Sprintf(`本节点执行失败 %s，继续执行下一个`, runErr.Error()))
+				} else {
+					h.RunParams.StreamFunc(cast.ToString(processVal[`name`]), fmt.Sprintf(`执行失败 %s`, runErr.Error()))
+					return runErr
+				}
 			}
 			if !boolContinue {
 				return nil
@@ -99,20 +104,25 @@ func (h *Playwright) ProcessRun(processVal map[string]any, page *playwright.Page
 	return true, nil
 }
 
-func (h *Playwright) GetPage() (*playwright.Page, error) {
-	var contextErr error
-	var contextPage *ContextPage
-	boolCleanFirstBlank := false
+// GetContext 获取浏览器实例
+func (h *Playwright) GetContext() (*ContextPage, bool, error) {
 	if h.RunParams.CombineType == define.CombineTypeNo { //不保存用户数据
 		browser, browserErr := h.GetBrowser()
 		if browserErr != nil {
 			h.RunParams.StreamFunc(`启动playwright`, fmt.Sprintf(`获取browser失败 %s`, browserErr.Error()))
-			return nil, browserErr
+			return nil, false, browserErr
 		}
-		contextPage, contextErr = h.ContextPageList.GetContextNotSaveUserData(browser, h.RunParams)
+		contextPage, contextErr := h.ContextPageList.GetContextNotSaveUserData(browser, h.RunParams)
+		return contextPage, false, contextErr
 	} else { //保留用户数据
-		contextPage, boolCleanFirstBlank, contextErr = h.ContextPageList.GetContextSaveUserData(h.RunParams)
+		return h.ContextPageList.GetContextSaveUserData(h.RunParams)
 	}
+}
+
+// GetPage 获取page
+func (h *Playwright) GetPage() (*playwright.Page, error) {
+	//获取浏览器实例
+	contextPage, boolCleanFirstBlank, contextErr := h.GetContext()
 	h.RunParams.StreamFunc(`启动playwright`, `获取浏览器实例结束`)
 	if contextErr != nil {
 		return nil, contextErr
@@ -122,8 +132,20 @@ func (h *Playwright) GetPage() (*playwright.Page, error) {
 	page, pageErr = (*contextPage.Context).NewPage()
 	h.RunParams.StreamFunc(`启动playwright`, `创建page`)
 	if pageErr != nil {
-		h.RunParams.StreamFunc(`启动playwright`, `创建page报错：`+pageErr.Error())
-		return nil, pageErr
+		h.RunParams.StreamFunc(`启动playwright`, `创建page报错，尝试重建浏览器实例：`+pageErr.Error())
+		//重试创建浏览器实例
+		h.ContextPageList.RemoveContextPage(contextPage)
+		contextPage, boolCleanFirstBlank, contextErr = h.GetContext()
+		if contextErr != nil {
+			h.RunParams.StreamFunc(`启动playwright`, `再次创建浏览器实例报错，返回：`+contextErr.Error())
+			return nil, contextErr
+		}
+		page, pageErr = (*contextPage.Context).NewPage()
+		h.RunParams.StreamFunc(`启动playwright`, `再次创建page`)
+		if pageErr != nil {
+			h.RunParams.StreamFunc(`启动playwright`, `再次创建page报错，返回：`+pageErr.Error())
+			return nil, pageErr
+		}
 	}
 	(*contextPage).RegisterLinks(page, h.RunParams.ListenUrlList)
 	//记录登录记录

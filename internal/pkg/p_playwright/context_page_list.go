@@ -36,7 +36,7 @@ func NewContextList(log *gstool.GsSlog) *ContextPageList {
 
 func (h *ContextPageList) EventContextClose(contextP *ContextPage) {
 	go (*contextP.Context).OnClose(func(context playwright.BrowserContext) {
-		contextP.RunParams.StreamFunc(`浏览器页面关闭`, fmt.Sprintf(`%s %d %s`, contextP.ContextUnique, contextP.UserDataIndex, contextP.SmartLinkUniqueKey))
+		contextP.RunParams.StreamFunc(`浏览器页面关闭`, fmt.Sprintf(`%s %d %s`, contextP.LinkId, contextP.UserDataIndex, contextP.LinkIdLabel))
 		h.CleanContextList(false)
 	})
 }
@@ -89,6 +89,7 @@ func (h *ContextPageList) CleanContextList(cleanAll bool) {
 	}
 }
 
+// CloseContextPages 关闭所有页面
 func (h *ContextPageList) CloseContextPages(context *playwright.BrowserContext) {
 	pageList := (*context).Pages()
 	for _, page := range pageList {
@@ -96,12 +97,32 @@ func (h *ContextPageList) CloseContextPages(context *playwright.BrowserContext) 
 	}
 }
 
+// RemoveContextPage 移除context_page
+func (h *ContextPageList) RemoveContextPage(rmContextPage *ContextPage) {
+	ContextLock.Lock()
+	defer ContextLock.Unlock()
+	defer func() {
+		if err := recover(); err != nil {
+			h.log.Errof(`移除浏览器实例失败 %v`, err)
+		}
+	}()
+	newList := make([]*ContextPage, 0)
+	for _, context := range *getList() {
+		if context.LinkId == rmContextPage.LinkId {
+			_ = (*context.Context).Close()
+		} else {
+			newList = append(newList, context)
+		}
+	}
+	*getList() = newList
+}
+
 func (h *ContextPageList) GetPlaywrightRunList() []map[string]any {
 	runList := make([]map[string]any, 0)
 	h.EachContextList(func(context *ContextPage) bool {
 		pageList := (*context.Context).Pages()
 		runList = append(runList, map[string]any{
-			`name`:     context.SmartLinkUniqueKey,
+			`name`:     context.LinkIdLabel,
 			`page_num`: len(pageList),
 		})
 		return false
@@ -115,17 +136,17 @@ func (h *ContextPageList) FindNotSaveUserDataContext(runParams *_struct.Playwrig
 	return h.FindContextList(func(context *ContextPage) *ContextPage {
 		//不保存数据过滤
 		if context.CombineType != define.CombineTypeNo {
-			runParams.StreamFunc(`获取无痕浏览器实例`, context.SmartLinkUniqueKey+`,`+context.ContextUnique+` 不是无痕实例，跳过`)
+			runParams.StreamFunc(`获取无痕浏览器实例`, context.LinkIdLabel+`,`+context.LinkId+` 不是无痕实例，跳过`)
 			return nil
 		}
 		//打开方式
 		if context.OpenType != runParams.OpenType {
-			runParams.StreamFunc(`获取无痕浏览器实例`, context.SmartLinkUniqueKey+`,`+context.ContextUnique+` 无头有头不一致，跳过`)
+			runParams.StreamFunc(`获取无痕浏览器实例`, context.LinkIdLabel+`,`+context.LinkId+` 无头有头不一致，跳过`)
 			return nil
 		}
 		//非同种类型的context跳过
-		if !base.Component.TPlaywright.IsSameLink(context.SmartLinkUniqueKey, runParams.SmartLinkUniqueKey) {
-			runParams.StreamFunc(`获取无痕浏览器实例`, context.SmartLinkUniqueKey+`,`+context.ContextUnique+` 不属于同一链接类型，当前需要的链接类型为：`+context.SmartLinkUniqueKey)
+		if !base.Component.TPlaywright.IsSameLink(context.LinkIdLabel, runParams.LinkIdLabel) {
+			runParams.StreamFunc(`获取无痕浏览器实例`, context.LinkIdLabel+`,`+context.LinkId+` 不属于同一链接类型，当前需要的链接类型为：`+context.LinkIdLabel)
 			return nil
 		}
 		//找到一个context没有当前域名的
@@ -139,7 +160,7 @@ func (h *ContextPageList) FindNotSaveUserDataContext(runParams *_struct.Playwrig
 		}
 		//h.RunParams.CombineType != define.CombineTypeNo
 		if !existSameDomain {
-			runParams.StreamFunc(`获取无痕浏览器实例`, context.SmartLinkUniqueKey+`,`+context.ContextUnique+` 没有打开准备打开的域名的网页，可以使用`)
+			runParams.StreamFunc(`获取无痕浏览器实例`, context.LinkIdLabel+`,`+context.LinkId+` 没有打开准备打开的域名的网页，可以使用`)
 			return context
 		}
 		return nil
@@ -155,11 +176,11 @@ func (h *ContextPageList) CleanContextPagesFixDataId(runParams *_struct.Playwrig
 	h.EachContextList(func(context *ContextPage) bool {
 		//打开方式
 		if context.OpenType != runParams.OpenType {
-			runParams.StreamFunc(`获取数据目录`, context.SmartLinkUniqueKey+`,`+context.ContextUnique+` 打开方式不一致，不进行清理`)
+			runParams.StreamFunc(`获取数据目录`, context.LinkIdLabel+`,`+context.LinkId+` 打开方式不一致，不进行清理`)
 			return false
 		}
-		if context.ContextUnique == runParams.ContextUnique {
-			runParams.StreamFunc(`获取数据目录`, context.SmartLinkUniqueKey+`,`+context.ContextUnique+` 查找到当前实例，开始清理旧页面`)
+		if context.LinkId == runParams.LinkId {
+			runParams.StreamFunc(`获取数据目录`, context.LinkIdLabel+`,`+context.LinkId+` 查找到当前实例，开始清理旧页面`)
 			context.CloseContextPages()
 		}
 
@@ -230,13 +251,13 @@ func (h *ContextPageList) GetFindUserDataIndex(runParams *_struct.PlaywrightRunP
 	rContext := h.FindContextList(func(context *ContextPage) *ContextPage {
 		//非同一类型打开方式 不管
 		if context.OpenType != runParams.OpenType {
-			runParams.StreamFunc(`获取数据目录`, context.ContextUnique+`非同一类型打开方式，不处理`)
+			runParams.StreamFunc(`获取数据目录`, context.LinkId+`非同一类型打开方式，不处理`)
 			ignoreIndexList = append(ignoreIndexList, context.UserDataIndex)
 			return nil
 		}
 		//非同一类型的链接 不管
-		if !h.IsSameLink(context.SmartLinkUniqueKey, runParams.SmartLinkUniqueKey) {
-			runParams.StreamFunc(`获取数据目录`, context.ContextUnique+`不属于同一类型链接，不处理，`+context.SmartLinkUniqueKey)
+		if !h.IsSameLink(context.LinkIdLabel, runParams.LinkIdLabel) {
+			runParams.StreamFunc(`获取数据目录`, context.LinkId+`不属于同一类型链接，不处理，`+context.LinkIdLabel)
 			ignoreIndexList = append(ignoreIndexList, context.UserDataIndex)
 			return nil
 		}
@@ -245,14 +266,14 @@ func (h *ContextPageList) GetFindUserDataIndex(runParams *_struct.PlaywrightRunP
 		pageList := (*context.Context).Pages()
 		for _, page := range pageList {
 			if gstool.UrlGetHost(page.URL()) == runParams.Domain {
-				runParams.StreamFunc(`获取数据目录`, context.ContextUnique+`有当前域名的网页，不可以打开`)
+				runParams.StreamFunc(`获取数据目录`, context.LinkId+`有当前域名的网页，不可以打开`)
 				boolFindSameDomainPage = true
 				break
 			}
 		}
 		//没有找到相同域名的page
 		if !boolFindSameDomainPage { //需要合并时才处理
-			runParams.StreamFunc(`获取数据目录`, fmt.Sprintf(`找到了已经存在的浏览器实例 %s`, context.ContextUnique))
+			runParams.StreamFunc(`获取数据目录`, fmt.Sprintf(`找到了已经存在的浏览器实例 %s`, context.LinkId))
 			return context
 		} else {
 			ignoreIndexList = append(ignoreIndexList, context.UserDataIndex)
@@ -330,7 +351,7 @@ func (h *ContextPageList) GetContextParam(runParams *_struct.PlaywrightRunParams
 	//通过索引目录拿到已存在的context
 	existContextPage := h.GetContextByIndex(userDataIndex)
 	if existContextPage != nil {
-		runParams.StreamFunc(`获取数据目录`, fmt.Sprintf(`已存在浏览器实例 %s ,直接使用`, existContextPage.ContextUnique))
+		runParams.StreamFunc(`获取数据目录`, fmt.Sprintf(`已存在浏览器实例 %s ,直接使用`, existContextPage.LinkId))
 		return existContextPage, existContextPage.UserDataIndex, existContextPage.UserDataPath
 	}
 	userDataPath := fmt.Sprintf(base.Component.Env.WebkitDataPath+`/%d`, userDataIndex)
@@ -342,10 +363,10 @@ func (h *ContextPageList) GetContextParam(runParams *_struct.PlaywrightRunParams
 
 // GetContextSaveUserData 获取context 需要保存用户数据
 func (h *ContextPageList) GetContextSaveUserData(runParams *_struct.PlaywrightRunParams) (*ContextPage, bool, error) {
-	runParams.StreamFunc(`获取浏览器实例`, `需要保存用户数据 `+runParams.SmartLinkUniqueKey+`,`+runParams.ContextUnique)
+	runParams.StreamFunc(`获取浏览器实例`, `需要保存用户数据 `+runParams.LinkIdLabel+`,`+runParams.LinkId)
 	existContextPage, userDataIndex, userDataPath := h.GetContextParam(runParams)
 	if existContextPage != nil {
-		runParams.StreamFunc(`获取浏览器实例`, fmt.Sprintf(`已存在实例：%s ,直接使用 数据保存目录：%s`, runParams.SmartLinkUniqueKey+`,`+runParams.ContextUnique, userDataPath))
+		runParams.StreamFunc(`获取浏览器实例`, fmt.Sprintf(`已存在实例：%s ,直接使用 数据保存目录：%s`, runParams.LinkIdLabel+`,`+runParams.LinkId, userDataPath))
 		return existContextPage, false, nil
 	}
 	//打开模式
@@ -416,13 +437,13 @@ func (h *ContextPageList) GetContextSaveUserData(runParams *_struct.PlaywrightRu
 		runParams.StreamFunc(`获取浏览器实例`, `启动完成`)
 	}
 	closeEvent := func() {
-		runParams.StreamFunc(`浏览器实例关闭事件`, `关闭 `+runParams.SmartLinkUniqueKey+`,`+runParams.ContextUnique)
+		runParams.StreamFunc(`浏览器实例关闭事件`, `关闭 `+runParams.LinkIdLabel+`,`+runParams.LinkId)
 		h.CleanContextList(false)
 	}
 	runParams.StreamFunc(`获取浏览器实例`, `成功，创建实例对象`)
 	contextPage := NewContextPage(&context, runParams, userDataPath, userDataIndex, h.log, closeEvent)
 	h.AddContextList(contextPage)
-	runParams.StreamFunc(`获取浏览器实例`, `创建实例对象成功，类型值：`+contextPage.SmartLinkUniqueKey+`,唯一值：`+contextPage.ContextUnique)
+	runParams.StreamFunc(`获取浏览器实例`, `创建实例对象成功，类型值：`+contextPage.LinkIdLabel+`,唯一值：`+contextPage.LinkId)
 	return contextPage, true, nil
 }
 
@@ -461,12 +482,12 @@ func (h *ContextPageList) GetContextNotSaveUserData(browser playwright.Browser, 
 		return nil, contextErr
 	}
 	closeEvent := func() {
-		runParams.StreamFunc(`无痕浏览器实例关闭事件`, `关闭 `+runParams.SmartLinkUniqueKey+`,`+runParams.ContextUnique)
+		runParams.StreamFunc(`无痕浏览器实例关闭事件`, `关闭 `+runParams.LinkIdLabel+`,`+runParams.LinkId)
 		h.CleanContextList(false)
 	}
 	runParams.StreamFunc(`获取无痕浏览器实例`, `成功，创建实例对象`)
 	contextPage := NewContextPage(&context, runParams, ``, 0, h.log, closeEvent)
 	h.AddContextList(contextPage)
-	runParams.StreamFunc(`获取无痕浏览器实例`, `创建实例对象成功，类型值：`+contextPage.SmartLinkUniqueKey+`,唯一值：`+contextPage.ContextUnique)
+	runParams.StreamFunc(`获取无痕浏览器实例`, `创建实例对象成功，类型值：`+contextPage.LinkIdLabel+`,唯一值：`+contextPage.LinkId)
 	return contextPage, nil
 }
