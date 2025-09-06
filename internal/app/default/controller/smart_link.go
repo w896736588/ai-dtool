@@ -148,7 +148,7 @@ func SmartLinkAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `smart_link_group_id`, `links`, `open_num`, `open_type`, `weight`, `combine_type`, `download_finds`, `auto_close_second`, `channel`, `show_cookies`, `process_id`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `smart_link_group_id`, `links`, `is_error_continue`, `open_num`, `open_type`, `weight`, `combine_type`, `download_finds`, `auto_close_second`, `channel`, `show_cookies`, `process_id`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
@@ -247,7 +247,7 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 				return
 			}
 			runParams.StreamFunc = streamFunc
-			streamFunc(`构建run_params`, `成功，准备打开的链接：`+runParams.Link+`,链接类型：`+runParams.SmartLinkUniqueKey)
+			streamFunc(`构建run_params`, `成功，准备打开的链接：`+runParams.Link+`,链接类型：`+runParams.LinkIdLabel)
 			streamFunc(`打开浏览器实例`, `开始`)
 			p := p_playwright.NewPlaywright(runParams, base.Component.TPlaywright.Log)
 			openErr := p.Open()

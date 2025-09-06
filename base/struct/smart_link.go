@@ -7,7 +7,7 @@ import (
 type PlaywrightRunParams struct {
 	Id                  int                                              //链接ID
 	Link                string                                           //打开的链接
-	SmartLinkUniqueKey  string                                           //在链接下面的唯一值   索引值_label 例如第一个链接 id_label
+	LinkIdLabel         string                                           //在链接下面的唯一值   索引值_label 例如第一个链接 id_label
 	OpenNum             int                                              //打开次数 0会被默认为1次
 	Cookie              string                                           //打开链接时需要设置的cookie
 	Headers             map[string]string                                //设置的headers
@@ -22,7 +22,7 @@ type PlaywrightRunParams struct {
 	LocatorTimeout      float64                                          //获取元素超时时间秒
 	GetPageTimeout      float64                                          //开启page超时时间
 	LastIndexLabel      string                                           //用于查找最后一次使用的index 优先赋值前端传过来的userName,其次赋值label
-	ContextUnique       string                                           //context唯一ID
+	LinkId              string                                           //context唯一ID link_id_xx
 	DownloadFinds       []string                                         //哪些url请求会被定义为下载
 	AutoCloseSecond     int                                              //多少秒内没有操作 就进行关闭page 0表示不处理
 	Channel             string                                           //浏览器类型

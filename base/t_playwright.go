@@ -46,8 +46,8 @@ func (h *TPlaywright) SetWebkitPath() {
 	_ = os.Setenv("GOPROXY", "https://goproxy.cn,direct")
 }
 
-func (h *TPlaywright) GetContextUnique(runParams *_struct.PlaywrightRunParams) string {
-	return fmt.Sprintf(`context_unique_%d`, runParams.Id)
+func (h *TPlaywright) GetLinkId(runParams *_struct.PlaywrightRunParams) string {
+	return fmt.Sprintf(`link_id_%d`, runParams.Id)
 }
 
 func (h *TPlaywright) WaitForLoadState(page *playwright.Page, timeout float64) {
@@ -164,7 +164,7 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 	runParams.DownloadFinds = strings.Split(cast.ToString(smartLink[`download_finds`]), `,`)
 	runParams.AutoCloseSecond = cast.ToInt(smartLink[`auto_close_second`])
 	runParams.Channel = cast.ToString(smartLink[`channel`])
-	runParams.ContextUnique = h.GetContextUnique(runParams)
+	runParams.LinkId = h.GetLinkId(runParams)
 	runParams.ShowCookies = make([]_struct.ShowCookie, 0)
 	_ = gstool.JsonDecode(cast.ToString(smartLink[`show_cookies`]), &runParams.ShowCookies)
 	if runParams.Channel == `` {
@@ -177,7 +177,7 @@ func (h *TPlaywright) GetRunParams(id int, label, userName, password string, ope
 	for _, link := range linkList {
 		if cast.ToString(link[`label`]) == label {
 			runParams.Link = cast.ToString(link[`link`])
-			runParams.SmartLinkUniqueKey = cast.ToString(runParams.Id) + `_` + label
+			runParams.LinkIdLabel = `link_id_` + cast.ToString(runParams.Id) + `_label_` + label
 			runParams.OpenNum = 0
 			runParams.Cookie = cast.ToString(link[`cookie`])
 			headerMap := make(map[string]string)

@@ -12,35 +12,35 @@ import (
 )
 
 type ContextPage struct {
-	Context            *playwright.BrowserContext
-	SmartLinkUniqueKey string          //选项唯一值  链接配置ID_label  记录是哪个类型的context 用于计数
-	UserDataIndex      int             //数据目录索引
-	UserDataPath       string          //数据目录
-	ContextUnique      string          //唯一标记 context 记录是哪个目录的context
-	OpenType           define.OpenType //打开类型
-	CombineType        int             //查找context类型
-	AutoCloseSecond    int             //非活跃自动关闭 1开启 0关闭
-	CloseEvent         func()          //关闭事件
-	log                *gstool.GsSlog
-	ActiveTime         *PageActiveTime
-	RunParams          *_struct.PlaywrightRunParams
+	Context         *playwright.BrowserContext
+	LinkIdLabel     string          //选项唯一值  链接配置ID_label  记录是哪个类型的context 用于计数
+	UserDataIndex   int             //数据目录索引
+	UserDataPath    string          //数据目录
+	LinkId          string          //唯一标记 context 记录是哪个目录的context
+	OpenType        define.OpenType //打开类型
+	CombineType     int             //查找context类型
+	AutoCloseSecond int             //非活跃自动关闭 1开启 0关闭
+	CloseEvent      func()          //关闭事件
+	log             *gstool.GsSlog
+	ActiveTime      *PageActiveTime
+	RunParams       *_struct.PlaywrightRunParams
 }
 
 func NewContextPage(context *playwright.BrowserContext, runParams *_struct.PlaywrightRunParams, userDataPath string,
 	userDataIndex int, log *gstool.GsSlog, closeEvent func()) *ContextPage {
 	c := &ContextPage{
-		Context:            context,
-		SmartLinkUniqueKey: runParams.SmartLinkUniqueKey,
-		UserDataIndex:      userDataIndex,
-		UserDataPath:       userDataPath,
-		ContextUnique:      runParams.ContextUnique,
-		OpenType:           runParams.OpenType,
-		AutoCloseSecond:    runParams.AutoCloseSecond,
-		CombineType:        runParams.CombineType,
-		CloseEvent:         closeEvent,
-		log:                log,
-		ActiveTime:         NewPageActiveTime(),
-		RunParams:          runParams,
+		Context:         context,
+		LinkIdLabel:     runParams.LinkIdLabel,
+		UserDataIndex:   userDataIndex,
+		UserDataPath:    userDataPath,
+		LinkId:          runParams.LinkId,
+		OpenType:        runParams.OpenType,
+		AutoCloseSecond: runParams.AutoCloseSecond,
+		CombineType:     runParams.CombineType,
+		CloseEvent:      closeEvent,
+		log:             log,
+		ActiveTime:      NewPageActiveTime(),
+		RunParams:       runParams,
 	}
 	c.Init()
 	return c
