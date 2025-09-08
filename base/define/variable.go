@@ -48,3 +48,5 @@ const RunStatusFinish = 2
 const RunTypeForm = `form`     //输出表单给前端
 const RunTypeMiddle = `middle` //输出中间结果
 const RunTypeRun = `run`       //最终执行，等待用户确认（一旦确认最终执行，那么往下的所有cmd都会直接执行，不会再考虑runType）
+
+const GlobalMake = `{global_make}` //make

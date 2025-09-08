@@ -92,8 +92,15 @@ func (h *RCmd) RunMysql() error {
 func (h *RCmd) RunWindowsCmd() (string, error) {
 	bat := cast.ToString(h.cmd[`bash`])
 	//cmdId := cast.ToString(h.cmd[`id`])
-	base.Component.TVariable.Log.Debugf(`run bash \n 替换列表 %s`, gstool.JsonEncode(h.replaceList))
 	bat = base.Component.TVariable.Replace(bat, h.replaceList)
+	makeRet, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_global`, `*`, map[string]any{
+		`key`: define.GlobalMake,
+	}).One()
+	if len(makeRet) > 0 {
+		bat = gstool.SReplaces(bat, map[string]string{
+			cast.ToString(makeRet[`key`]): cast.ToString(makeRet[`value`]),
+		})
+	}
 	h.StreamMsg(fmt.Sprintf("执行：%s ", bat), true)
 	// 构建命令
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -238,11 +245,13 @@ func (h *RCmd) RunUpload() (string, error) {
 	//如果是上传文件
 	isErr := false
 	if gstool.FileIsExisted(sourceFile) {
+		h.StreamMsg(`本地存在文件：`+sourceFile+`，准备上传`, true)
 		uploadErr := h.uploadFile(sshConfig, sshId, sftpClient, sourceFile, targetDir)
 		if uploadErr != nil {
 			return ``, uploadErr
 		}
 	} else {
+		h.StreamMsg(`本地不存在文件,那么将上传整个文件夹：`+sourceFile, true)
 		_ = gstool.DirWalk(sourceFile, func(path string, info os.FileInfo, err error) {
 			if err != nil {
 				return

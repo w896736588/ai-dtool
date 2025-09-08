@@ -38,13 +38,10 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 	if shell, ok := h.ShellClientMap[shellClientId]; ok && shell != nil {
 		return shell, nil
 	}
-	gsShell := &gsssh.SshConfig{
-		Host:     cast.ToString(sshConfig["host"]),
-		Port:     cast.ToString(sshConfig["port"]),
-		UserName: cast.ToString(sshConfig["username"]),
-		Password: cast.ToString(sshConfig["password"]),
-		GsSlog:   Component.GsLog,
-	}
+	gsShell := gsssh.NewSshAuthPassword(cast.ToString(sshConfig["host"]),
+		cast.ToString(sshConfig["port"]), cast.ToString(sshConfig["username"]),
+		cast.ToString(sshConfig["password"]))
+	gsShell.GsSlog = Component.GsLog
 
 	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
 	//设置关闭事件
@@ -103,13 +100,11 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 	if shell, ok := h.ShellClientMap[shellClientId]; ok && shell != nil {
 		return shell, nil
 	}
-	gsShell := &gsssh.SshConfig{
-		Host:     cast.ToString(sshConfig["host"]),
-		Port:     cast.ToString(sshConfig["port"]),
-		UserName: cast.ToString(sshConfig["username"]),
-		Password: cast.ToString(sshConfig["password"]),
-		GsSlog:   Component.GsLog,
-	}
+
+	gsShell := gsssh.NewSshAuthPassword(cast.ToString(sshConfig["host"]),
+		cast.ToString(sshConfig["port"]), cast.ToString(sshConfig["username"]),
+		cast.ToString(sshConfig["password"]))
+	gsShell.GsSlog = Component.GsLog
 
 	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
 	//设置关闭事件
