@@ -3,13 +3,13 @@ package controller
 import (
 	"dev_tool/base"
 	"errors"
+	"strings"
+
 	"gitee.com/Sxiaobai/gs/gsdefine"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gsssh"
-	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
-	"strings"
 )
 
 // SupervisorRestartAll 重启所有
@@ -84,9 +84,7 @@ func getConsumerStatus(dockerName string, sshClient *gsssh.SshConfig) ([]string,
 	} else {
 		xkfStatusCommand := base.NewCommand().Sudo()
 		xkfStatusCommand.DockerExecConsumerStatus(dockerName)
-		gstool.FmtPrintlnLogTime(`开始获取列表`)
 		xkfStatusRet, _ := sshClient.RunCommandWait(xkfStatusCommand.GetCommand().ToStr())
-		gstool.FmtPrintlnLogTime(`结束获取列表`)
 		retMsgList = append(retMsgList, xkfStatusRet)
 	}
 	return retMsgList, nil

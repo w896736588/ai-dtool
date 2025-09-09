@@ -6,12 +6,13 @@ import (
 	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gstool"
-	"github.com/playwright-community/playwright-go"
-	"github.com/spf13/cast"
 	"net/url"
 	"strings"
 	"time"
+
+	"gitee.com/Sxiaobai/gs/gstool"
+	"github.com/playwright-community/playwright-go"
+	"github.com/spf13/cast"
 )
 
 type Process struct {
@@ -110,6 +111,8 @@ func (h *Process) Do() (define.ProcessCode, string, error) {
 
 func (h *Process) CanvasImage() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	h.ElementOp.Type = define.ElementExist
 	element, elementErr := h.Locator.Do(h.WaitMills)
 	if elementErr != nil {
@@ -134,6 +137,8 @@ func (h *Process) CanvasImage() (define.ProcessCode, string, error) {
 
 func (h *Process) ExistWait() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	h.ElementOp.Type = define.ElementExist
 	paramList := strings.Split(h.Value, `|`)
 	if len(paramList) != 2 {
@@ -159,6 +164,8 @@ func (h *Process) ExistWait() (define.ProcessCode, string, error) {
 
 func (h *Process) NoExistWait() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	h.ElementOp.Type = define.ElementExist
 	paramList := strings.Split(h.Value, `|`)
 	if len(paramList) != 2 {
@@ -184,6 +191,8 @@ func (h *Process) NoExistWait() (define.ProcessCode, string, error) {
 
 func (h *Process) PTextContent() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	h.ElementOp.Type = define.ElementTextContent
 	_, elementErr := h.Locator.Do(h.WaitMills)
 	if elementErr != nil {
@@ -200,6 +209,8 @@ func (h *Process) PTextContent() (define.ProcessCode, string, error) {
 
 func (h *Process) PBoolResult() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	if h.Locators != `` {
 		h.ElementOp.Type = define.ElementCount
 		boolRet, boolErr := h.Locator.DoBoolResult(h.WaitMills)
@@ -220,6 +231,8 @@ func (h *Process) PBoolResult() (define.ProcessCode, string, error) {
 
 func (h *Process) PBoolExist() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	if h.Locators == `` {
 		h.runParams.StreamFunc(h.Name, `locator为空，配置错误`)
 		return define.ProcessBreak, `locators为空`, gstool.Error(`locators为空`)
@@ -239,6 +252,8 @@ func (h *Process) PBoolExist() (define.ProcessCode, string, error) {
 func (h *Process) PLoginUsernamePassword() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
 	h.runParams.StreamFunc(h.Name, `等待输入账号密码登录 30s后超时`)
+	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	//根据上面的执行来判断
 	h.callRun(``, ``)
 	return define.ProcessOk, ``, nil
@@ -246,6 +261,8 @@ func (h *Process) PLoginUsernamePassword() (define.ProcessCode, string, error) {
 
 func (h *Process) PClick() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	h.ElementOp.Type = define.ElementClick
 	_, elementErr := h.Locator.Do(h.WaitMills)
 	if elementErr != nil {
@@ -259,6 +276,8 @@ func (h *Process) PClick() (define.ProcessCode, string, error) {
 
 func (h *Process) PInput() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	h.ElementOp.Type = define.ElementInput
 	h.Value = base.Component.TVariable.Replace(h.Value, h.runParams.ReplaceList)
 	h.ElementOp.FillValue = h.Value
@@ -275,6 +294,8 @@ func (h *Process) PInput() (define.ProcessCode, string, error) {
 
 func (h *Process) PWaitUrl() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	waitResponse := _struct.ProcessWaitUrl{}
 	_ = gstool.JsonDecode(h.Value, &waitResponse)
 	parseU, _ := url.Parse((*h.Page).URL())
@@ -300,6 +321,8 @@ func (h *Process) PWaitUrl() (define.ProcessCode, string, error) {
 }
 
 func (h *Process) PRedirect() (define.ProcessCode, string, error) {
+	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	//尝试解析
 	processRedirect := _struct.ProcessRedirect{}
 	_ = gstool.JsonDecode(h.Value, &processRedirect)
@@ -404,6 +427,8 @@ func (h *Process) PChecks() (define.ProcessCode, string, error) {
 
 func (h *Process) PClose() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
+	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	_ = (*h.Page).Close()
 	h.runParams.StreamFunc(h.Name, `关闭page`)
 	return define.ProcessBreak, `页面关闭，结束`, nil
@@ -411,8 +436,8 @@ func (h *Process) PClose() (define.ProcessCode, string, error) {
 
 func (h *Process) PWait() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
-	time.Sleep(time.Duration(cast.ToInt(h.Value)) * time.Millisecond)
-	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(cast.ToInt(h.Value)*1000)+`ms`)
+	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
+	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	return define.ProcessOk, ``, nil
 }
 

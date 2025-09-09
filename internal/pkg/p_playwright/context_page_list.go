@@ -5,12 +5,13 @@ import (
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gstool"
-	"github.com/playwright-community/playwright-go"
-	"github.com/spf13/cast"
 	"strings"
 	"sync"
 	"time"
+
+	"gitee.com/Sxiaobai/gs/gstool"
+	"github.com/playwright-community/playwright-go"
+	"github.com/spf13/cast"
 )
 
 // list 所有浏览器列表
@@ -396,6 +397,9 @@ func (h *ContextPageList) GetContextSaveUserData(runParams *_struct.PlaywrightRu
 				Username: runParams.BrowserAuthUsername,
 				Password: runParams.BrowserAuthPassword,
 			},
+			Args: []string{
+				`--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36`, //隐藏无头
+			},
 			IgnoreDefaultArgs: []string{
 				`--enable-automation`,
 				`--disable-infobars`,                            //禁用“正在使用自动化软件”提示信息栏。
@@ -421,6 +425,9 @@ func (h *ContextPageList) GetContextSaveUserData(runParams *_struct.PlaywrightRu
 			IgnoreHttpsErrors: playwright.Bool(true),
 			Locale:            playwright.String(`zh-CN`),
 			Timeout:           &runParams.GetPageTimeout,
+			Args: []string{
+				`--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36`, //隐藏无头
+			},
 			IgnoreDefaultArgs: []string{
 				`--enable-automation`,
 				`--disable-infobars`,                            //禁用“正在使用自动化软件”提示信息栏。
