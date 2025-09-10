@@ -2,10 +2,11 @@ package base
 
 import (
 	"errors"
+	"time"
+
 	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
-	"time"
 )
 
 type TSqlite struct {
@@ -272,4 +273,8 @@ func (h *TSqlite) MarkdownHistoryDel(historyId any) (int64, error) {
 	return h.Client.QuickDelete(`tbl_markdown_history`, map[string]any{
 		`id`: historyId,
 	}).Exec()
+}
+
+func (h *TSqlite) AllGlobal() ([]map[string]any, error) {
+	return h.Client.QuickQuery(`tbl_global`, `*`, map[string]any{}).All()
 }

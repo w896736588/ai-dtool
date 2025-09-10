@@ -37,7 +37,7 @@ func NewContextList(log *gstool.GsSlog) *ContextPageList {
 
 func (h *ContextPageList) EventContextClose(contextP *ContextPage) {
 	go (*contextP.Context).OnClose(func(context playwright.BrowserContext) {
-		contextP.RunParams.StreamFunc(`浏览器页面关闭`, fmt.Sprintf(`%s %d %s`, contextP.LinkId, contextP.UserDataIndex, contextP.LinkIdLabel))
+		contextP.RunParams.StreamFunc(`浏览器实例关闭`, fmt.Sprintf(`%s,%s`, contextP.LinkId, contextP.LinkIdLabel))
 		h.CleanContextList(false)
 	})
 }
@@ -443,9 +443,9 @@ func (h *ContextPageList) GetContextSaveUserData(runParams *_struct.PlaywrightRu
 		}
 		runParams.StreamFunc(`获取浏览器实例`, `启动完成`)
 	}
+	//context关闭回调
 	closeEvent := func() {
-		runParams.StreamFunc(`浏览器实例关闭事件`, `关闭 `+runParams.LinkIdLabel+`,`+runParams.LinkId)
-		h.CleanContextList(false)
+		//runParams.StreamFunc(`浏览器实例关闭事件回调`, `关闭 `+runParams.LinkIdLabel+`,`+runParams.LinkId)
 	}
 	runParams.StreamFunc(`获取浏览器实例`, `成功，创建实例对象`)
 	contextPage := NewContextPage(&context, runParams, userDataPath, userDataIndex, h.log, closeEvent)

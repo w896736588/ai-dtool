@@ -3,6 +3,9 @@ package controller
 import (
 	"dev_tool/base"
 	"dev_tool/base/define"
+	"strings"
+	"time"
+
 	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gsssh"
@@ -10,8 +13,6 @@ import (
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
-	"strings"
-	"time"
 )
 
 // SetSshList ssh列表
@@ -21,7 +22,38 @@ func SetSshList(c *gin.Context) {
 		gsgin.GinResponseError(c, allErr.Error(), nil)
 		return
 	}
-	gsgin.GinResponseSuccess(c, ``, all)
+	allSsh := map[int]map[string]any{}
+	//返回连接状态
+	task := gstask.NewTask()
+	for _, sshValue := range all {
+		allSsh[cast.ToInt(sshValue[`id`])] = sshValue
+		callBack := gstask.CallbackFunc{
+			Func: func() *gstask.Result {
+				return testSshConn(sshValue)
+			},
+			Timeout: 3 * time.Second,
+			Id:      cast.ToString(sshValue[`id`]),
+		}
+		task.Add(callBack)
+	}
+	resultList := task.RunAll()
+	//填充链接状态
+	for _, result := range resultList {
+		for sshId, _ := range allSsh {
+			if sshId == cast.ToInt(result.Id) {
+				if result.Err != nil {
+					allSsh[sshId][`status`] = result.Err.Error()
+				} else {
+					allSsh[sshId][`status`] = `success`
+				}
+			}
+		}
+	}
+	returnList := make([]map[string]any, 0)
+	for _, sshValue := range allSsh {
+		returnList = append(returnList, sshValue)
+	}
+	gsgin.GinResponseSuccess(c, ``, returnList)
 }
 
 func SetSshAdd(c *gin.Context) {
@@ -288,6 +320,7 @@ func SetRedisList(c *gin.Context) {
 		gsgin.GinResponseError(c, allSshErr.Error(), nil)
 		return
 	}
+	//返回连接状态
 	task := gstask.NewTask()
 	for gitKey, gitValue := range allRedis {
 		allRedis[gitKey][`ssh_name`] = ``
@@ -303,7 +336,8 @@ func SetRedisList(c *gin.Context) {
 			Func: func() *gstask.Result {
 				return testRedisConn(gitValue)
 			},
-			Timeout: 6 * time.Second,
+			Timeout: 3 * time.Second,
+			Id:      cast.ToString(gitValue[`id`]),
 		}
 		task.Add(callBack)
 	}
@@ -311,7 +345,7 @@ func SetRedisList(c *gin.Context) {
 	//填充链接状态
 	for _, result := range resultList {
 		for redisKey, redisValue := range allRedis {
-			if cast.ToInt(redisValue[`id`]) == cast.ToInt(result.Result) {
+			if cast.ToInt(redisValue[`id`]) == cast.ToInt(result.Id) {
 				if result.Err != nil {
 					allRedis[redisKey][`status`] = result.Err.Error()
 				} else {
@@ -366,6 +400,28 @@ func testRedisConn(redisConfig map[string]any) *gstask.Result {
 	return &gstask.Result{
 		Err:    nil,
 		Result: redisConfig[`id`],
+	}
+}
+
+func testSshConn(sshConfig map[string]any) *gstask.Result {
+	ssh := &gsssh.SshConfig{
+		Name:     cast.ToString(sshConfig[`name`]),
+		Host:     cast.ToString(sshConfig[`host`]),
+		Port:     cast.ToString(sshConfig[`port`]),
+		Password: cast.ToString(sshConfig[`password`]),
+		UserName: cast.ToString(sshConfig[`username`]),
+	}
+	connErr := ssh.ConnectAuthPassword()
+	if connErr != nil {
+		return &gstask.Result{
+			Err:    connErr,
+			Result: sshConfig[`id`],
+		}
+	}
+	ssh.Close()
+	return &gstask.Result{
+		Err:    nil,
+		Result: sshConfig[`id`],
 	}
 }
 

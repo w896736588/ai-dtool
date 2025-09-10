@@ -75,6 +75,10 @@ func (h *Process) Do() (define.ProcessCode, string, error) {
 		h.runParams.StreamFunc(h.Name, `不满足check_key条件`)
 		return code, reason, err
 	}
+	if h.WaitMills != 0 {
+		h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
+		time.Sleep(time.Duration(h.WaitMills))
+	}
 	switch h.ProcessType {
 	case define.TextContent: //提取内容
 		return h.PTextContent()
@@ -114,17 +118,16 @@ func (h *Process) CanvasImage() (define.ProcessCode, string, error) {
 	h.ElementOp.Type = define.ElementExist
 	element, elementErr := h.Locator.Do(h.WaitMills)
 	if elementErr != nil {
-		h.runParams.StreamFunc(h.Name, `提取扫码登录的二维码失败 `+elementErr.Error())
+		h.runParams.StreamFunc(h.Name, h.Locators+` 提取扫码登录的二维码失败 `+elementErr.Error())
 		h.callRun(elementErr.Error(), h.Locators)
 	} else {
 		base64Data, err := element.Evaluate(`canvas => {
 		  return canvas.toDataURL('image/png'); // 导出为 PNG 格式的 Base64 字符串
 		}`, nil)
 		if err != nil {
-			h.runParams.StreamFunc(h.Name, `提取扫码登录的二维码失败 `+err.Error())
-			h.log.Debugf("提取canvas为图片失败 %v", err)
+			h.runParams.StreamFunc(h.Name, h.Locators+` 提取扫码登录的二维码失败 `+err.Error())
 		} else {
-			h.runParams.StreamFunc(h.Name, `提取二维码内容成功，请扫码登录`)
+			h.runParams.StreamFunc(h.Name, h.Locators+` 提取二维码内容成功，请扫码登录`)
 			// 提取 Base64 部分（去掉前缀 "data:image/png;base64,"）
 			base64Str := strings.Split(base64Data.(string), ",")[1]
 			h.callRun(`获取二维码成功`, fmt.Sprintf(`<img src='data:image/png;base64,%s' />`, base64Str))
@@ -138,13 +141,13 @@ func (h *Process) ExistWait() (define.ProcessCode, string, error) {
 	h.ElementOp.Type = define.ElementExist
 	paramList := strings.Split(h.Value, `|`)
 	if len(paramList) != 2 {
-		h.runParams.StreamFunc(h.Name, `exist_wait类型value格式错误 `+h.Value)
+		h.runParams.StreamFunc(h.Name, h.Locators+` exist_wait类型value格式错误 `+h.Value)
 		return define.ProcessBreak, ``, gstool.Error(`exist_wait类型value格式错误`)
 	}
 	for i := 0; i < cast.ToInt(paramList[1]); i++ {
 		element, elementErr := h.Locator.Do(cast.ToFloat64(cast.ToInt(paramList[0]) * 1000))
 		if elementErr != nil || element == nil {
-			h.callRun(fmt.Sprintf(`等待中(%d/%d)..`, i+1, cast.ToInt(paramList[1])), h.Locators)
+			h.callRun(fmt.Sprintf(h.Locators+` 等待中(%d/%d)..`, i+1, cast.ToInt(paramList[1])), h.Locators)
 		} else {
 			if h.OutKey != `` {
 				h.BoolResultMap[h.OutKey] = true
@@ -163,7 +166,8 @@ func (h *Process) NoExistWait() (define.ProcessCode, string, error) {
 	h.ElementOp.Type = define.ElementExist
 	paramList := strings.Split(h.Value, `|`)
 	if len(paramList) != 2 {
-		return define.ProcessBreak, ``, gstool.Error(`exist_wait类型value格式错误`)
+		h.runParams.StreamFunc(h.Name, h.Locators+` no_exist_wait类型value格式错误 `+h.Value)
+		return define.ProcessBreak, ``, gstool.Error(`no_exist_wait类型value格式错误`)
 	}
 	for i := 0; i < cast.ToInt(paramList[1]); i++ {
 		element, elementErr := h.Locator.Do(cast.ToFloat64(cast.ToInt(paramList[0]) * 1000))
@@ -174,7 +178,7 @@ func (h *Process) NoExistWait() (define.ProcessCode, string, error) {
 			return define.ProcessOk, ``, nil
 		} else {
 			time.Sleep(time.Second * time.Duration(cast.ToInt(paramList[0])))
-			h.callRun(fmt.Sprintf(`等待中(%d/%d)..`, i+1, cast.ToInt(paramList[1])), h.Locators)
+			h.callRun(fmt.Sprintf(h.Locators+` 等待中(%d/%d)..`, i+1, cast.ToInt(paramList[1])), h.Locators)
 		}
 	}
 	if h.OutKey != `` {
@@ -190,11 +194,11 @@ func (h *Process) PTextContent() (define.ProcessCode, string, error) {
 	if elementErr != nil {
 		h.callRun(elementErr.Error(), h.Locators)
 		h.TakeContentMap[h.OutKey] = ``
-		h.runParams.StreamFunc(h.Name, `未提取到内容`)
+		h.runParams.StreamFunc(h.Name, h.Locators+` 未提取到内容`)
 	} else {
 		h.TakeContentMap[h.OutKey] = h.ElementOp.TextContent
 		h.callRun(``, h.ElementOp.TextContent)
-		h.runParams.StreamFunc(h.Name, `提取到内容:`+h.OutKey+`,`+h.ElementOp.TextContent)
+		h.runParams.StreamFunc(h.Name, h.Locators+` 提取到内容:`+h.OutKey+`,`+h.ElementOp.TextContent)
 	}
 	return define.ProcessOk, ``, nil
 }
@@ -205,11 +209,11 @@ func (h *Process) PBoolResult() (define.ProcessCode, string, error) {
 		h.ElementOp.Type = define.ElementCount
 		boolRet, boolErr := h.Locator.DoBoolResult(h.WaitMills)
 		if boolErr != nil {
-			h.runParams.StreamFunc(h.Name, `根据多个locators判断是否存在失败`)
+			h.runParams.StreamFunc(h.Name, h.Locators+` 根据多个locators判断是否存在失败`)
 			return define.ProcessBreak, `没有找到任意的元素` + h.Locators, errors.New(`没有找到任意的元素` + h.Locators)
 		} else {
 			h.BoolResultMap[h.OutKey] = boolRet
-			h.runParams.StreamFunc(h.Name, `根据多个locators判断是否存在成功,`+h.OutKey+`,`+fmt.Sprintf(`%t`, boolRet))
+			h.runParams.StreamFunc(h.Name, h.Locators+` 根据多个locators判断是否存在成功,`+h.OutKey+`,`+fmt.Sprintf(`%t`, boolRet))
 		}
 	} else {
 		//根据上面的执行来判断
@@ -221,8 +225,6 @@ func (h *Process) PBoolResult() (define.ProcessCode, string, error) {
 
 func (h *Process) PBoolExist() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
-	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
-	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	if h.Locators == `` {
 		h.runParams.StreamFunc(h.Name, `locator为空，配置错误`)
 		return define.ProcessBreak, `locators为空`, gstool.Error(`locators为空`)
@@ -230,10 +232,10 @@ func (h *Process) PBoolExist() (define.ProcessCode, string, error) {
 	h.ElementOp.Type = define.ElementCount
 	result := h.Locator.FindLocator(h.Locators, h.WaitMills)
 	if result.Err != nil || result.Result == nil {
-		h.runParams.StreamFunc(h.Name, `未找到locator：`+h.Locators+` `+h.OutKey+`,设置为:false`)
+		h.runParams.StreamFunc(h.Name, h.Locators+` 未找到 `+h.OutKey+`,设置为:false`)
 		h.BoolResultMap[h.OutKey] = false
 	} else {
-		h.runParams.StreamFunc(h.Name, `找到locator：`+h.Locators+` `+h.OutKey+`,设置为:true`)
+		h.runParams.StreamFunc(h.Name, h.Locators+` 找到了 `+h.OutKey+`,设置为:true`)
 		h.BoolResultMap[h.OutKey] = true
 	}
 	return define.ProcessOk, ``, nil
@@ -255,8 +257,10 @@ func (h *Process) PClick() (define.ProcessCode, string, error) {
 	_, elementErr := h.Locator.Do(h.WaitMills)
 	if elementErr != nil {
 		h.callRun(elementErr.Error(), h.Locators)
-		return define.ProcessBreak, `获取需要点击的元素失败`, gstool.Error(`获取元素%s失败`, h.Locators)
+		h.runParams.StreamFunc(h.Name, h.Locators+` 获取点击元素失败 `)
+		return define.ProcessBreak, h.Locators + ` 获取需要点击的元素失败`, gstool.Error(`获取元素%s失败`, h.Locators)
 	} else {
+		h.runParams.StreamFunc(h.Name, h.Locators+` 点击元素成功 `)
 		h.callRun(``, h.Locators)
 	}
 	return define.ProcessOk, ``, nil
@@ -270,18 +274,16 @@ func (h *Process) PInput() (define.ProcessCode, string, error) {
 	_, elementErr := h.Locator.Do(h.WaitMills)
 	if elementErr != nil {
 		h.callRun(elementErr.Error(), h.Locators)
-		h.runParams.StreamFunc(h.Name, `输入内容`+h.Value+`，失败,`+elementErr.Error())
+		h.runParams.StreamFunc(h.Name, h.Locators+` 输入内容 `+h.Value+`，失败,`+elementErr.Error())
 		return define.ProcessBreak, `获取需要输入的元素失败`, gstool.Error(`获取元素%s失败`, h.Locators)
 	}
 	h.callRun(``, h.Value)
-	h.runParams.StreamFunc(h.Name, `输入内容`+h.Value+`，成功`)
+	h.runParams.StreamFunc(h.Name, h.Locators+` 输入内容 `+h.Value+`，成功`)
 	return define.ProcessOk, ``, nil
 }
 
 func (h *Process) PWaitUrl() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
-	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
-	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	waitResponse := _struct.ProcessWaitUrl{}
 	_ = gstool.JsonDecode(h.Value, &waitResponse)
 	parseU, _ := url.Parse((*h.Page).URL())
@@ -307,8 +309,6 @@ func (h *Process) PWaitUrl() (define.ProcessCode, string, error) {
 }
 
 func (h *Process) PRedirect() (define.ProcessCode, string, error) {
-	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
-	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	//尝试解析
 	processRedirect := _struct.ProcessRedirect{}
 	_ = gstool.JsonDecode(h.Value, &processRedirect)
@@ -413,8 +413,6 @@ func (h *Process) PChecks() (define.ProcessCode, string, error) {
 
 func (h *Process) PClose() (define.ProcessCode, string, error) {
 	base.Component.TPlaywright.AddTipMsg(h.Page, h.Tip)
-	time.Sleep(time.Duration(cast.ToInt(h.WaitMills)) * time.Millisecond)
-	h.runParams.StreamFunc(h.Name, `等待`+cast.ToString(h.WaitMills)+`ms`)
 	_ = (*h.Page).Close()
 	h.runParams.StreamFunc(h.Name, `关闭page`)
 	return define.ProcessBreak, `页面关闭，结束`, nil

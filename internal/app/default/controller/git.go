@@ -4,12 +4,13 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	"errors"
+	"strings"
+
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gsssh"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
-	"strings"
 )
 
 var (
@@ -29,7 +30,7 @@ func GitCurrentBranch(c *gin.Context) {
 		return
 	}
 	command := base.NewCommand()
-	command.Sudo()
+	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
 	command.Echo(`当前分支：`)
 	command.GitShowBranch()
@@ -58,13 +59,13 @@ func GitChangeBranch(c *gin.Context) {
 	}
 	command1 := base.NewCommand()
 	command1.Init()
-	command1.Sudo()
+	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command1.Cd(codePath)
 	command1.GitShowBranch()
 	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr())
 
 	command := base.NewCommand()
-	command.Sudo()
+	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
 	command.GitIgnoreAll()
 	command.GitCleanAll()
@@ -103,13 +104,13 @@ func GitChangeBranchRemote(c *gin.Context) {
 	}
 	command1 := base.NewCommand()
 	command1.Init()
-	command1.Sudo()
+	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command1.Cd(codePath)
 	command1.GitShowBranch()
 	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr())
 
 	command := base.NewCommand()
-	command.Sudo()
+	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
 	command.GitIgnoreAll()
 	command.GitFetch()
@@ -142,14 +143,14 @@ func GitPullBranchOrigin(c *gin.Context) {
 	}
 	command1 := base.NewCommand()
 	command1.Init()
-	command1.Sudo()
+	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command1.Cd(codePath)
 	command1.GitShowBranch()
 	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr())
 	currentBranch = strings.Replace(currentBranch, "\n", "", -1)
 
 	command := base.NewCommand()
-	command.Sudo()
+	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
 	command.GitIgnoreAll()
 	command.GitCleanAll()
@@ -178,7 +179,7 @@ func QueryStatus(c *gin.Context) {
 	}
 
 	command := base.NewCommand()
-	command.Sudo()
+	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
 	command.GitStatus()
 
@@ -199,7 +200,7 @@ func GitCommitLog(c *gin.Context) {
 		return
 	}
 	command := base.NewCommand()
-	command.Sudo()
+	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
 	command.GitCommitLog()
 
@@ -239,7 +240,7 @@ func CreateMerge(c *gin.Context) {
 		return
 	}
 	command := base.NewCommand()
-	command.Sudo()
+	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
 	command.GitCommitLog()
 
@@ -279,7 +280,7 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshConfig, 
 		}
 	})
 	if sshClientErr != nil {
-		return nil, nil, err
+		return nil, nil, sshClientErr
 	}
 	return reqMap, sshClient, nil
 }

@@ -4,12 +4,14 @@ import (
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
 	"errors"
-	"gitee.com/Sxiaobai/gs/gstool"
-	"github.com/spf13/cast"
+	"fmt"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
+
+	"gitee.com/Sxiaobai/gs/gstool"
+	"github.com/spf13/cast"
 )
 
 type TVariable struct {
@@ -248,6 +250,19 @@ func (h *TVariable) AddReplace(replaceList map[string]string, key, value string)
 		return
 	}
 	replaceList[key] = value
+}
+
+func (h *TVariable) RegisterAllGlobal(replaceList map[string]string, call func(string)) {
+	allGlobalList, _ := Component.TSqlite.AllGlobal()
+	for _, globalMap := range allGlobalList {
+		if existVal, ok := replaceList[cast.ToString(globalMap[`key`])]; ok {
+			if cast.ToString(globalMap[`value`]) == existVal {
+				continue
+			}
+		}
+		h.AddReplace(replaceList, cast.ToString(globalMap[`key`]), cast.ToString(globalMap[`value`]))
+		call(fmt.Sprintf(`%s,%s`, cast.ToString(globalMap[`key`]), cast.ToString(globalMap[`value`])))
+	}
 }
 
 // ChecksCanDo 检查是否需要执行 true 可以执行 false不可以执行

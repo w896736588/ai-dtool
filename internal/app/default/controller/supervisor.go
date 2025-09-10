@@ -192,7 +192,7 @@ func getSupervisorComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshC
 	uniqueKey := base.Component.TBase.GetCombineKey(sshId, sseId)
 	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, cast.ToString(sseId), nil)
 	if sshClientErr != nil {
-		return nil, nil, err
+		return nil, nil, sshClientErr
 	}
 	return reqMap, sshClient, nil
 }

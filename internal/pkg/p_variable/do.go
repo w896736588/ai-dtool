@@ -6,6 +6,7 @@ import (
 	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
+
 	"github.com/spf13/cast"
 )
 
@@ -53,6 +54,10 @@ func (h *Variable) InitRunUniqueId() {
 }
 
 func (h *Variable) Run() (_struct.VCmdResult, error) {
+	//注入全局替换
+	base.Component.TVariable.RegisterAllGlobal(h.ReplaceList, func(s string) {
+		h.StreamMsg(`注入全局常量 `+s, true)
+	})
 	//初始化结果
 	cmdResult := _struct.VCmdResult{
 		VariableId: h.VariableId,

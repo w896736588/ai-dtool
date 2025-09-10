@@ -3,13 +3,14 @@ package controller
 import (
 	"dev_tool/base"
 	"errors"
+	"path"
+	"strings"
+
 	"gitee.com/Sxiaobai/gs/gsdefine"
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gsssh"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
-	"path"
-	"strings"
 )
 
 func DockerComposeList(c *gin.Context) {
@@ -148,7 +149,7 @@ func getDockerComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshConfi
 	uniqueKey := base.Component.TBase.GetCombineKey(sshId, sseId)
 	sshClient, sshClientErr := base.Component.TShell.GetClient(sshConfig, uniqueKey, sseId, nil)
 	if sshClientErr != nil {
-		return nil, nil, err
+		return nil, nil, sshClientErr
 	}
 	return reqMap, sshClient, nil
 }

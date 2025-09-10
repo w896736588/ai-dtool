@@ -2,8 +2,9 @@ package base
 
 import (
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gstool"
 	"strings"
+
+	"gitee.com/Sxiaobai/gs/gstool"
 )
 
 type Command struct {
@@ -50,7 +51,7 @@ func (h *Command) Echo(msg string) *Command {
 }
 
 func (h *Command) GitShowOriginBranch() *Command {
-	h.SetCommand(h.sudo + `git ls-remote --heads origin "$(git symbolic-ref --short -q HEAD)"`)
+	h.SetCommand(h.sudo + `git ls-remote --heads origin "$(` + h.sudo + ` git symbolic-ref --short -q HEAD)"`)
 	return h
 }
 
