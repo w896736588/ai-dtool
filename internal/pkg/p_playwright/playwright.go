@@ -6,12 +6,13 @@ import (
 	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gstool"
-	"github.com/playwright-community/playwright-go"
-	"github.com/spf13/cast"
 	"net/url"
 	"sync"
 	"time"
+
+	"gitee.com/Sxiaobai/gs/gstool"
+	"github.com/playwright-community/playwright-go"
+	"github.com/spf13/cast"
 )
 
 type Playwright struct {
@@ -74,8 +75,9 @@ func (h *Playwright) Open() error {
 
 func (h *Playwright) ProcessRun(processVal map[string]any, page *playwright.Page) (bool, error) {
 	process := NewProcess(processVal, page, h.RunParams, h.BoolResultMap, h.TakeContentMap, h.log)
-	//sTime := gstool.TimeNowMilliInt64()
+	sTime := gstool.TimeNowMilliInt64()
 	code, _, err := process.Do()
+	h.RunParams.StreamFunc(cast.ToString(processVal[`name`]), fmt.Sprintf(`执行时长 %dms`, gstool.TimeNowMilliInt64()-sTime))
 	//h.log.Debugf(`执行结果 %s `, gstool.JsonFormat(map[string]any{
 	//	`type`:           process.ProcessType,
 	//	`reason`:         reason,
