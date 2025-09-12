@@ -58,63 +58,73 @@
         // 创建浮动块
         const floater = document.createElement('div');
         floater.id = 'cookie-floater';
-        floater.style.position = 'fixed';
-        floater.style.bottom = '0px';
-        floater.style.padding = '3px';
-        floater.style.backgroundColor = '#D0EBFF';
-        // floater.style.border = '1px solid #D0EBFF';
-        floater.style.borderRadius = '4px';
-        floater.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
-        floater.style.zIndex = '9999';
-        floater.style.fontSize = '12px';
-        floater.style.opacity  = "0.9"
-        // floater.style.transition = "all 0.5s ease-in-out";
+        /* ========== 统一漂亮样式 ========== */
+        Object.assign(floater.style, {
+            position: 'fixed',
+            zIndex: '9999',
+            padding: '10px 14px',
+            fontSize: '13px',
+            fontFamily: 'system-ui, Segoe UI, Roboto, sans-serif',
+            color: '#0b2253',
+            background: 'rgba(255,255,255,0.65)',
+            backdropFilter: 'blur(12px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+            border: '1px solid rgba(255,255,255,0.35)',
+            borderRadius: '10px',
+            boxShadow: '0 8px 32px rgba(31, 38, 135, 0.25)',
+            transition: 'all .35s cubic-bezier(.4,0,.2,1)',
+            cursor: 'default'
+        });
 
-        // 从 localStorage 读取位置状态（默认右侧）
-        // const savedPosition = localStorage.getItem('cookieFloaterPosition') || 'right';
-        // if (savedPosition === 'left') {
-        //     floater.style.left = '20px';
-        //     floater.style.right = 'auto';
-        // } else {
-        //     floater.style.right = '20px';
-        //     floater.style.left = 'auto';
-        // }
-        // ---------- 随机位置工具 ----------
-        // 产生 [min, max] 随机整数
-        let rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+        /* 按钮统一风格 */
+        const btnStyle = `
+            background: rgba(30,111,255,0.12);
+            border: 1px solid rgba(30,111,255,0.22);
+            border-radius: 6px;
+            color: #1e6fff;
+            padding: 4px 8px;
+            margin: 0 2px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background .25s;
+        `;
 
-        /**
-         * 把 el 随机放到可视区域内，不改变它原来的宽高
-         * @param {HTMLElement} el
-         */
-        function randomPos(el) {
-            const pad = 20;                                      // 留边距
-            const maxX = window.innerWidth - el.offsetWidth - pad;
-            const maxY = window.innerHeight - el.offsetHeight - pad;
+        /* ========== 四选一随机定位 ========== */
+        const POSITIONS = [
+            { name: 'bottom-left',  apply(el) { el.style.left = '20px';  el.style.bottom = '20px'; el.style.top = el.style.right = 'auto'; } },
+            { name: 'bottom-right', apply(el) { el.style.right = '20px'; el.style.bottom = '20px'; el.style.top = el.style.left = 'auto'; } },
+            { name: 'top-left',     apply(el) { el.style.left = '20px';  el.style.top = '20px';    el.style.bottom = el.style.right = 'auto'; } },
+            { name: 'top-right',    apply(el) { el.style.right = '20px'; el.style.top = '20px';    el.style.bottom = el.style.left = 'auto'; } }
+        ];
 
-            const x = rand(pad, Math.max(pad, maxX));
-            const y = rand(pad, Math.max(pad, maxY));
-
-            /* 关键：只写 left/top，right/bottom 必须 auto */
-            el.style.position = 'fixed';
-            el.style.left = x + 'px';
-            el.style.top  = y + 'px';
-            el.style.right = 'auto';
-            el.style.bottom = 'auto';
-
-            /* 记忆坐标，刷新后还原 */
-            localStorage.setItem('cookieFloaterPos', JSON.stringify({ x, y }));
+        /* 读取当前位置名称 */
+        function getCurrentPosName(el) {
+            const l = el.style.left, r = el.style.right, t = el.style.top, b = el.style.bottom;
+            if (l === '20px' && b === '20px') return 'bottom-left';
+            if (r === '20px' && b === '20px') return 'bottom-right';
+            if (l === '20px' && t === '20px') return 'top-left';
+            if (r === '20px' && t === '20px') return 'top-right';
+            return null;
         }
+
+        /* 随机换到“另外三个位置”中的任意一个 */
+        function randomPos(el) {
+            const current = getCurrentPosName(el);
+            const candidates = POSITIONS.filter(p => p.name !== current);
+            const picked = candidates[Math.floor(Math.random() * candidates.length)];
+            picked.apply(el);
+            /* 记忆 */
+            localStorage.setItem('cookieFloaterPos', JSON.stringify({ pos: picked.name }));
+        }
+
+        /* ========== 初始化时还原上次位置 ========== */
         const saved = localStorage.getItem('cookieFloaterPos');
         if (saved) {
-            const { x, y } = JSON.parse(saved);
-            floater.style.position = 'fixed';
-            floater.style.left = x + 'px';
-            floater.style.top = y + 'px';
-            floater.style.right = 'auto';
-            floater.style.bottom = 'auto';
+            const { pos } = JSON.parse(saved);
+            const p = POSITIONS.find(i => i.name === pos);
+            if (p) p.apply(floater);
         } else {
-            randomPos(floater);                              // 第一次随机
+            randomPos(floater);          // 第一次随机
         }
 
         // 添加内容
@@ -127,6 +137,8 @@
         html += '</div>';
         html += '</div>';
         floater.innerHTML = html;
+
+        floater.querySelectorAll('button').forEach(b => b.setAttribute('style', btnStyle));
 
         // 添加移动按钮事件
         floater.querySelector('#move-floater').addEventListener('click', () => {
