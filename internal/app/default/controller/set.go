@@ -654,13 +654,29 @@ func SetDockerComposeList(c *gin.Context) {
 		gsgin.GinResponseError(c, allErr.Error(), nil)
 		return
 	}
+	allSsh, allSshErr := base.Component.TSqlite.Client.QuickQuery(`tbl_ssh`, `*`, nil).All()
+	if allSshErr != nil {
+		gsgin.GinResponseError(c, allSshErr.Error(), nil)
+		return
+	}
+	for key, value := range all {
+		all[key][`ssh_name`] = ``
+		gitSshId := cast.ToInt(value[`ssh_id`])
+		if gitSshId != 0 {
+			for _, sshValue := range allSsh {
+				if cast.ToInt(sshValue[`id`]) == gitSshId {
+					all[key][`ssh_name`] = sshValue[`name`]
+				}
+			}
+		}
+	}
 	gsgin.GinResponseSuccess(c, ``, all)
 }
 
 func SetDockerComposeAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `compose_yml_path`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `compose_yml_path`, `ssh_id`, `docker_cmd`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()

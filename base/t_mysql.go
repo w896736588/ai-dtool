@@ -2,12 +2,13 @@ package base
 
 import (
 	"errors"
+	"sync"
+	"time"
+
 	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gsssh"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
-	"sync"
-	"time"
 )
 
 type TMysql struct {
@@ -22,8 +23,11 @@ func (h *TMysql) GetClient(mysqlConfig map[string]any) (*gsdb.GsMysql, error) {
 	if mysqlId == `` {
 		return nil, errors.New(`mysql配置错误`)
 	}
-	if redisCli, ok := h.MysqlClientMap[mysqlId]; ok {
-		return redisCli, nil
+	if mysqlCli, ok := h.MysqlClientMap[mysqlId]; ok {
+		_, err := mysqlCli.QueryBySql(`select 1`).All()
+		if err == nil {
+			return mysqlCli, nil
+		}
 	}
 	gsMysql := &gsdb.GsMysql{
 		MysqlConfig: &gsdb.MysqlConfig{

@@ -14,24 +14,27 @@ import (
 )
 
 func DockerComposeList(c *gin.Context) {
-	_, sshClient, err := getDockerComponent(c)
+	dataMap, sshClient, err := getDockerComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	sshId := cast.ToInt(dataMap[`ssh_id`])
 	all, allErr := base.Component.TSqlite.Client.QuickQuery(`tbl_docker_compose`, `*`, map[string]any{
 		`status`: 1,
+		`ssh_id`: sshId,
 	}).All()
 	if allErr != nil {
 		gsgin.GinResponseError(c, allErr.Error(), nil)
 		return
 	}
 	for k, v := range all {
+
 		composeYmlPath := v[`compose_yml_path`].(string)
 		command := base.NewCommand()
 		command.Sudo()
 		command.Cd(path.Dir(composeYmlPath))
-		command.DockerComposePs()
+		command.DockerComposePs(cast.ToString(v[`docker_cmd`]))
 		result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr())
 		all[k][`result`] = strings.Join(strings.Split(result, "\n"), "<br/>")
 	}
@@ -75,7 +78,7 @@ func DockerComposeRestart(c *gin.Context) {
 	command := base.NewCommand()
 	command.Sudo()
 	command.Cd(path.Dir(composeYmlPath))
-	command.DockerComposeRestart()
+	command.DockerComposeRestart(cast.ToString(one[`docker_cmd`]))
 	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr())
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 }
@@ -102,7 +105,7 @@ func DockerComposeStop(c *gin.Context) {
 	command := base.NewCommand()
 	command.Sudo()
 	command.Cd(path.Dir(composeYmlPath))
-	command.DockerComposeStop()
+	command.DockerComposeStop(cast.ToString(one[`docker_cmd`]))
 	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr())
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 }
@@ -129,7 +132,7 @@ func DockerComposeStart(c *gin.Context) {
 	command := base.NewCommand()
 	command.Sudo()
 	command.Cd(path.Dir(composeYmlPath))
-	command.DockerComposeStart()
+	command.DockerComposeStart(cast.ToString(one[`docker_cmd`]))
 	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr())
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 }

@@ -245,27 +245,27 @@ func (h *Command) FindGitDir(dirPath string, depth int) *Command {
 	return h
 }
 
-func (h *Command) DockerComposePs() *Command {
-	h.SetCommand(fmt.Sprintf(`%s docker-compose ps `, h.sudo))
+func (h *Command) DockerComposePs(dockerCmd string) *Command {
+	h.SetCommand(fmt.Sprintf(`%s %s ps `, h.sudo, dockerCmd))
 	return h
 }
 
-func (h *Command) DockerComposeStop() *Command {
-	h.SetCommand(fmt.Sprintf(`%s docker-compose down `, h.sudo))
+func (h *Command) DockerComposeStop(dockerCmd string) *Command {
+	h.SetCommand(fmt.Sprintf(`%s %s down `, h.sudo, dockerCmd))
 	return h
 }
 
-func (h *Command) DockerComposeRestart() *Command {
-	h.SetCommand(fmt.Sprintf(`%s docker-compose restart`, h.sudo))
+func (h *Command) DockerComposeRestart(dockerCmd string) *Command {
+	h.SetCommand(fmt.Sprintf(`%s %s restart`, h.sudo, dockerCmd))
 	return h
 }
 
-func (h *Command) DockerComposeStart() *Command {
-	h.SetCommand(fmt.Sprintf(`%s docker-compose up -d`, h.sudo))
+func (h *Command) DockerComposeStart(dockerCmd string) *Command {
+	h.SetCommand(fmt.Sprintf(`%s %s up -d`, h.sudo, dockerCmd))
 	return h
 }
 
-func (h *Command) DockerComposeConfig() *Command {
-	h.SetCommand(fmt.Sprintf(`%s docker-compose config`, h.sudo))
+func (h *Command) DockerComposeConfig(dockerCmd string) *Command {
+	h.SetCommand(fmt.Sprintf(`%s %s config`, h.sudo, dockerCmd))
 	return h
 }

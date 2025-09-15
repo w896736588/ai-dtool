@@ -3,13 +3,14 @@ package base
 import (
 	"context"
 	"errors"
+	"strings"
+	"sync"
+	"time"
+
 	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gsssh"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/spf13/cast"
-	"strings"
-	"sync"
-	"time"
 )
 
 type TRedis struct {
@@ -25,7 +26,9 @@ func (h *TRedis) GetClient(redisConfig map[string]any) (*gsdb.GsRedis, error) {
 		return nil, errors.New(`redis配置错误`)
 	}
 	if redisCli, ok := h.RedisClientMap[redisId]; ok {
-		return redisCli, nil
+		if redisCli.Client.Ping(context.Background()).Err() == nil {
+			return redisCli, nil
+		}
 	}
 	gsRedis := &gsdb.GsRedis{
 		RedisConfig: &gsdb.RedisConfig{
