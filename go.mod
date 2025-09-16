@@ -5,13 +5,12 @@ go 1.24
 toolchain go1.24.4
 
 require (
-	gitee.com/Sxiaobai/gs v1.8.0
+	gitee.com/Sxiaobai/gs v1.8.3
 	github.com/gin-gonic/gin v1.9.0
 	github.com/gorilla/websocket v1.5.1
 	github.com/pion/stun v0.6.1
 	github.com/playwright-community/playwright-go v0.4901.0
 	github.com/redis/go-redis/v9 v9.2.0
-	github.com/sourcegraph/go-diff v0.7.0
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/viper v1.9.0
 )

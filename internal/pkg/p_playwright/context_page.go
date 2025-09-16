@@ -4,11 +4,12 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
+	"time"
+
 	"gitee.com/Sxiaobai/gs/gshttp"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
-	"time"
 )
 
 type ContextPage struct {
@@ -83,6 +84,7 @@ func (h *ContextPage) InitEvents(page *playwright.Page) {
 	})
 
 	(*page).On(`load`, func() {
+		gstool.FmtPrintlnLogTime(`打开新的页面`)
 		go base.Component.TPlaywright.ShowCookieTip(page, h.RunParams)
 	})
 

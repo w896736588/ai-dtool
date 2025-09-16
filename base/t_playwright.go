@@ -5,15 +5,16 @@ import (
 	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gstool"
-	"github.com/playwright-community/playwright-go"
-	"github.com/spf13/cast"
 	"log"
 	"math"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
+
+	"gitee.com/Sxiaobai/gs/gstool"
+	"github.com/playwright-community/playwright-go"
+	"github.com/spf13/cast"
 )
 
 type TPlaywright struct {

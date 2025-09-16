@@ -118,7 +118,7 @@
         }
 
         /* ========== 初始化时还原上次位置 ========== */
-        const saved = localStorage.getItem('cookieFloaterPos');
+        const saved = localStorage.getItem('cookieFloaterPos_v1');
         if (saved) {
             const { pos } = JSON.parse(saved);
             const p = POSITIONS.find(i => i.name === pos);

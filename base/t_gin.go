@@ -1,10 +1,11 @@
 package base
 
 import (
+	"net/url"
+
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
-	"net/url"
 )
 
 type Gin struct {

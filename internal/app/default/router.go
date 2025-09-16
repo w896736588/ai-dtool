@@ -3,10 +3,11 @@ package _default
 import (
 	"dev_tool/base"
 	"dev_tool/internal/app/default/controller"
+	"net/url"
+
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
-	"net/url"
 )
 
 func InitRouter() {
@@ -229,10 +230,12 @@ func api() {
 		base.Component.TSse.Sse.UnRegister(sse.ClientId)
 	})
 	//sse 替换 websocket
-	base.Component.TGin.SseRoute(`/sse`, func(urlValues url.Values, stopC chan int, c *gin.Context) *gsgin.Sse {
+	openFunc := func(urlValues url.Values, stopC chan int, c *gin.Context) *gsgin.Sse {
 		clientId := urlValues.Get(`client_id`)
 		return base.Component.TSse.Sse.Register(clientId, stopC, c)
-	}, func(sse *gsgin.Sse) {
-		base.Component.TSse.Sse.Pause(sse)
-	})
+	}
+	closeFunc := func(sse *gsgin.Sse) {
+		base.Component.TSse.Sse.UnRegister(sse.ClientId)
+	}
+	base.Component.TGin.SseRoute(`/sse`, openFunc, closeFunc)
 }
