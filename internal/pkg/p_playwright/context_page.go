@@ -84,7 +84,6 @@ func (h *ContextPage) InitEvents(page *playwright.Page) {
 	})
 
 	(*page).On(`load`, func() {
-		gstool.FmtPrintlnLogTime(`打开新的页面`)
 		go base.Component.TPlaywright.ShowCookieTip(page, h.RunParams)
 	})
 

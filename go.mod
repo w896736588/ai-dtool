@@ -5,7 +5,7 @@ go 1.24
 toolchain go1.24.4
 
 require (
-	gitee.com/Sxiaobai/gs v1.8.3
+	gitee.com/Sxiaobai/gs v1.8.4
 	github.com/gin-gonic/gin v1.9.0
 	github.com/gorilla/websocket v1.5.1
 	github.com/pion/stun v0.6.1

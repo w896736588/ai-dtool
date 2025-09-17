@@ -1,26 +1,24 @@
 package test
 
 import (
-	"fmt"
-	"gitee.com/Sxiaobai/gs/gstool"
 	"sync"
 	"testing"
 	"time"
+
+	"gitee.com/Sxiaobai/gs/gstool"
 )
 
 var wg sync.WaitGroup
 
 // TestFpm 测试fpm无session的情况
 func TestFpmNoSession(t *testing.T) {
-	config := `http://localhost:17170/api/GitLab?access_token={config:gitlab_token:33}&base_url=https%3A%2F%2Fgitlab.zmwk.cn%2Fapi%2Fv4&author=frog&is_stream=1`
-	if gstool.RegexMatchString(config, `{config:gitlab_token:\d*}`) {
-		retList := gstool.RegexMatchSubString(config, `{config:gitlab_token:(\d+)}`)
-		if len(retList) == 0 {
-			panic(`空`)
-		}
-		gstool.FmtPrintlnLogTime(`%s`, gstool.JsonEncode(retList))
+	str := `[{"label":"传统机器人","value":"ai_server","build":"D:\GnuWin32\bin\make.exe -v && cd D:\\go\\go-micro-server1.14\\aiServer && D:\GnuWin32\bin\make.exe SHELL=cmd.exe aiServer","docker_cmd":"sudo docker exec xkf_common sh -c 'supervisorctl restart aiServer'","local_file":"D:\\go\\go-micro-server1.14\\aiServer\\aiServer","chmod_x_cmd":"sudo chmod +x /var/www/docker_apps/common/go-micro-server1.14/aiServer/aiServer","target_dir":"/var/www/docker_apps/common/go-micro-server1.14/aiServer"},{"label":"表单","value":"form","build":"D:\GnuWin32\bin\make.exe -v && cd D:\\go\\fansdiscover && D:\GnuWin32\bin\make.exe SHELL=cmd.exe linux_fansDiscover","docker_cmd":"sudo docker exec xkf_common sh -c 'supervisorctl restart fansDiscover'","local_file":"D:\\go\\fansdiscover\\fansDiscover","chmod_x_cmd":"sudo chmod +x /var/www/docker_apps/common/fansdiscover/fansDiscover","target_dir":"/var/www/docker_apps/common/fansdiscover"}]`
+	list := make([]map[string]any, 0)
+	err := gstool.JsonDecode(str, &list)
+	if err != nil {
+		gstool.FmtPrintlnLogTime(`%s`, err.Error())
 	} else {
-		fmt.Println(`每天匹配上`)
+		gstool.FmtPrintlnLogTime(`%s`, gstool.JsonFormat(list))
 	}
 }
 
