@@ -191,6 +191,8 @@ func smartLink() {
 	base.Component.TGin.GinPost(`/api/SmartProcessItemAdd`, controller.SmartProcessItemAdd)
 	base.Component.TGin.GinPost(`/api/SmartProcessItemDelete`, controller.SmartProcessItemDelete)
 	base.Component.TGin.GinPost(`/api/SmartProcessItemSort`, controller.SmartProcessItemSort)
+	base.Component.TGin.GinPost(`/api/SmartProcessSetPosition`, controller.SmartProcessSetPosition)
+	base.Component.TGin.GinPost(`/api/SmartProcessSetRelation`, controller.SmartProcessSetRelation)
 }
 
 func docker() {

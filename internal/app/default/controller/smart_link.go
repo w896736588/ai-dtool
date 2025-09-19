@@ -6,13 +6,14 @@ import (
 	"dev_tool/internal/pkg/p_playwright"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
-	"strings"
-	"time"
 )
 
 // SmartLinkUpWebkit 更新核心
@@ -392,7 +393,7 @@ func SmartProcessItemAdd(c *gin.Context) {
 		return
 	}
 	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `wait_mills`, `is_async`, `append_to_replace`, `smart_link_process_id`, `type`, `locator`, `tip`, `value`, `out_key`, `check_key`, `weight`, `domain_limit`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `wait_mills`, `is_async`, `append_to_replace`, `smart_link_process_id`, `type`, `locator`, `tip`, `value`, `out_key`, `check_key`, `weight`, `domain_limit`, `x`, `y`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
@@ -456,5 +457,59 @@ func SmartProcessItemSort(c *gin.Context) {
 			`weight`: index + 1,
 		}).Exec()
 	}
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+func SmartProcessSetPosition(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	smartLinkProcessId := cast.ToInt(dataMap[`id`])
+	if smartLinkProcessId == 0 {
+		gsgin.GinResponseError(c, `smart_link_process_id不能为空`, nil)
+		return
+	}
+	x := cast.ToInt(dataMap[`x`])
+	y := cast.ToInt(dataMap[`y`])
+	_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_smart_link_process_item`, map[string]any{
+		`id`: cast.ToInt(smartLinkProcessId),
+	}, map[string]interface{}{
+		`x`: x,
+		`y`: y,
+	}).Exec()
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+func SmartProcessSetRelation(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	prevId := cast.ToInt(dataMap[`prev_id`])
+	nextId := cast.ToInt(dataMap[`next_id`])
+	if prevId == 0 || nextId == 0 {
+		gsgin.GinResponseError(c, `prev_id或next_id不能为空`, nil)
+		return
+	}
+	info, err := base.Component.TSqlite.Client.QuickQuery(`tbl_smart_link_process_item`, `*`, map[string]any{
+		`id`:     prevId,
+		`status`: 1,
+	}).One()
+	if err != nil {
+		gsgin.GinResponseError(c, `prev_id不存在`, nil)
+		return
+	}
+	nextIds := cast.ToString(info[`next_ids`])
+	nextIdList := strings.Split(nextIds, `,`)
+	for _, item := range nextIdList {
+		if item == cast.ToString(nextId) {
+			gsgin.GinResponseError(c, `next_id已存在`, nil)
+			return
+		}
+	}
+	nextIdList = append(nextIdList, cast.ToString(nextId))
+
+	_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_smart_link_process_item`, map[string]any{
+		`id`: cast.ToInt(prevId),
+	}, map[string]interface{}{
+		`next_ids`: strings.Join(nextIdList, `,`),
+	}).Exec()
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
