@@ -114,7 +114,7 @@
             const picked = candidates[Math.floor(Math.random() * candidates.length)];
             picked.apply(el);
             /* 记忆 */
-            localStorage.setItem('cookieFloaterPos', JSON.stringify({ pos: picked.name }));
+            localStorage.setItem('cookieFloaterPos_v1', JSON.stringify({ pos: picked.name }));
         }
 
         /* ========== 初始化时还原上次位置 ========== */
