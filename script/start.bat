@@ -1,3 +1,3 @@
 @echo off
-.\build\zhima.exe --IsProd=true
 start http://localhost:17170/
+.\build\zhima.exe --IsProd=true
