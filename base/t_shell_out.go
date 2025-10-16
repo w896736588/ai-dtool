@@ -34,15 +34,15 @@ func NewTShellOut() *TShellOut {
 
 // GetClient 正常输出
 func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClientId string,
-	formatStream func(string) []string) (*gsssh.SshConfig, error) {
+	formatStream func(string) []string) (*gsssh.SshConfig, bool, error) {
 	defer h.lock.Unlock()
 	h.lock.Lock()
 	sshId := cast.ToString(sshConfig[`id`])
 	if sshId == `` {
-		return nil, errors.New(`ssh配置错误，GetClient ` + cast.ToString(debug.Stack()))
+		return nil, false, errors.New(`ssh配置错误，GetClient ` + cast.ToString(debug.Stack()))
 	}
 	if shell, ok := h.ShellClientMap[shellClientId]; ok && shell != nil {
-		return shell, nil
+		return shell, true, nil
 	}
 	gsShell := gsssh.NewSshAuthPassword(cast.ToString(sshConfig["host"]),
 		cast.ToString(sshConfig["port"]), cast.ToString(sshConfig["username"]),
@@ -59,12 +59,12 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClient
 	gsShell.SetMaxRunSecond(40)
 	createErr := gsShell.ConnectAuthPassword()
 	if createErr != nil {
-		return nil, createErr
+		return nil, false, createErr
 	}
 	//先执行一次确保连接正常
 	_, err := gsShell.RunCommandWait(`pwd`)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	//回调准备输出的内容 放到这里 就不需要链接linux出现的一大段文字
 	gsShell.SetFuncStreamReceive(func(msg string) {
@@ -91,30 +91,31 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClient
 	gsShell.CloseFirstReceiveMsg()
 
 	h.ShellClientMap[shellClientId] = gsShell
-	return gsShell, nil
+	return gsShell, false, nil
 }
 
-func (h *TShellOut) SetClientSseId(shellClientId, sseClientId string, formatStream func(string) []string) error {
-	var gsShell *gsssh.SshConfig
-	var ok bool
-	if gsShell, ok = h.ShellClientMap[shellClientId]; !ok || gsShell == nil {
-		return errors.New(`找不到链接`)
+func (h *TShellOut) SetClientSseId(shellClientId, sshId, sseClientId, command string, formatStream func(string) []string) error {
+	sshConfig, _ := Component.TSqlite.GetSshConfig(sshId)
+	gsShell, boolExist, err := h.GetClient(sshConfig, shellClientId, sseClientId, formatStream)
+	if err != nil {
+		return err
 	}
+	gstool.FmtPrintlnLogTime(`设置接收事件`)
 	gsShell.SetFuncStreamReceive(func(msg string) {
-		h.log.Debugf(`receive：%s`, msg)
+		gstool.FmtPrintlnLogTime(`receive：%s`, msg)
 		if formatStream != nil {
-			h.log.Errof(`解析前的 %s`, msg)
 			msgList := formatStream(msg)
-			h.log.Errof(`解析后的 %s`, gstool.JsonEncode(msgList))
 			_ = Component.TSse.SendMsgChunkList(sseClientId, msgList, 10)
 		} else {
-			gstool.FmtPrintlnLogTime(`设置接收sse ` + sseClientId + ` ` + msg)
 			_ = Component.TSse.SendMsgChunk(sseClientId, msg, _struct.Chunk{
 				Type: define.ChunkNum,
 				Num:  50,
 			}, 10)
 		}
 	})
+	if !boolExist {
+		_ = gsShell.RunCommand(command)
+	}
 	return nil
 }
 

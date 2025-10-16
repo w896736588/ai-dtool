@@ -33,7 +33,9 @@ func ShellOutSetSeeId(c *gin.Context) {
 	}
 	connUniqueKey := cast.ToString(reqMap[`conn_unique_key`])
 	sseId := cast.ToString(reqMap[`sse_id`])
-	err = base.Component.TShellOut.SetClientSseId(connUniqueKey, sseId, nil)
+	sshId := cast.ToString(reqMap[`ssh_id`])
+	command := cast.ToString(reqMap[`command`])
+	err = base.Component.TShellOut.SetClientSseId(connUniqueKey, sshId, sseId, command, nil)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -55,7 +57,7 @@ func getShellOutComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshCon
 	sseId := reqMap[`sse_id`]
 	sshConfig, _ := base.Component.TSqlite.GetSshConfig(sshId)
 	uniqueKey := base.Component.TBase.GetCombineKey(sshId, sseId)
-	sshClient, sshClientErr := base.Component.TShellOut.GetClient(sshConfig, uniqueKey, cast.ToString(sseId), nil)
+	sshClient, _, sshClientErr := base.Component.TShellOut.GetClient(sshConfig, uniqueKey, cast.ToString(sseId), nil)
 	if sshClientErr != nil {
 		return nil, nil, ``, sshClientErr
 	}
