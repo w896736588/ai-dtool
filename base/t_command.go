@@ -268,7 +268,7 @@ func (h *Command) DockerComposeStatus(dockerCmd, envFile string) *Command {
 }
 
 func (h *Command) DockerComposeRestart(dockerCmd, envFile string, services []string) *Command {
-	h.SetCommand(fmt.Sprintf(`%s %s %s restart %s`, h.sudo, dockerCmd, strings.Join(services, ` `), h.getEnvFileCommand(envFile)))
+	h.SetCommand(fmt.Sprintf(`%s %s %s restart %s`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile), strings.Join(services, ` `)))
 	return h
 }
 
