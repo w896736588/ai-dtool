@@ -53,11 +53,12 @@ func DockerComposeServices(c *gin.Context) {
 		gsgin.GinResponseError(c, oneErr.Error(), nil)
 		return
 	}
+	envFile := cast.ToString(one[`env_file`])
 	composeYmlPath := one[`compose_yml_path`].(string)
 	command1 := base.NewCommand()
 	command1.Sudo()
 	command1.Cd(path.Dir(composeYmlPath))
-	command1.DockerComposeServices(cast.ToString(one[`docker_cmd`]))
+	command1.DockerComposeServices(cast.ToString(one[`docker_cmd`]), envFile)
 	result1, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr())
 	services := strings.Split(result1, "\n")
 	services = gstool.ArrayFilterEmpty(&services)
@@ -105,11 +106,12 @@ func DockerComposeRestart(c *gin.Context) {
 		return
 	}
 	service := cast.ToString(data[`service`])
+	envFile := cast.ToString(one[`env_file`])
 	composeYmlPath := one[`compose_yml_path`].(string)
 	command := base.NewCommand()
 	command.Sudo()
 	command.Cd(path.Dir(composeYmlPath))
-	command.DockerComposeRestart(cast.ToString(one[`docker_cmd`]), service)
+	command.DockerComposeRestart(cast.ToString(one[`docker_cmd`]), envFile, []string{service})
 	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr())
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 }
@@ -133,10 +135,11 @@ func DockerComposeStatus(c *gin.Context) {
 		return
 	}
 	composeYmlPath := one[`compose_yml_path`].(string)
+	envFile := cast.ToString(one[`env_file`])
 	command := base.NewCommand()
 	command.Sudo()
 	command.Cd(path.Dir(composeYmlPath))
-	command.DockerComposeStatus(cast.ToString(one[`docker_cmd`]))
+	command.DockerComposeStatus(cast.ToString(one[`docker_cmd`]), envFile)
 	status, _ := sshClient.RunCommandWait(command.GetCommand().ToStr())
 	headers := []string{`服务名`, `CPU 使用率`, `内存用量 / 内存上限`, `内存使用率`, `网络收发流量`, `磁盘块设备读写量`}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
@@ -200,10 +203,11 @@ func DockerComposeStop(c *gin.Context) {
 		return
 	}
 	composeYmlPath := one[`compose_yml_path`].(string)
+	envFile := cast.ToString(one[`env_file`])
 	command := base.NewCommand()
 	command.Sudo()
 	command.Cd(path.Dir(composeYmlPath))
-	command.DockerComposeStop(cast.ToString(one[`docker_cmd`]))
+	command.DockerComposeStop(cast.ToString(one[`docker_cmd`]), envFile)
 	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr())
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 }
@@ -227,10 +231,11 @@ func DockerComposeStart(c *gin.Context) {
 		return
 	}
 	composeYmlPath := one[`compose_yml_path`].(string)
+	envFile := cast.ToString(one[`env_file`])
 	command := base.NewCommand()
 	command.Sudo()
 	command.Cd(path.Dir(composeYmlPath))
-	command.DockerComposeStart(cast.ToString(one[`docker_cmd`]))
+	command.DockerComposeStart(cast.ToString(one[`docker_cmd`]), envFile)
 	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr())
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 }

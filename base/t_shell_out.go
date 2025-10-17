@@ -100,9 +100,7 @@ func (h *TShellOut) SetClientSseId(shellClientId, sshId, sseClientId, command st
 	if err != nil {
 		return err
 	}
-	gstool.FmtPrintlnLogTime(`设置接收事件`)
 	gsShell.SetFuncStreamReceive(func(msg string) {
-		gstool.FmtPrintlnLogTime(`receive：%s`, msg)
 		if formatStream != nil {
 			msgList := formatStream(msg)
 			_ = Component.TSse.SendMsgChunkList(sseClientId, msgList, 10)

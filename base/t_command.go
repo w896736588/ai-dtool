@@ -245,37 +245,39 @@ func (h *Command) FindGitDir(dirPath string, depth int) *Command {
 	return h
 }
 
-func (h *Command) DockerComposePs(dockerCmd string) *Command {
-	h.SetCommand(fmt.Sprintf(`%s %s ps`, h.sudo, dockerCmd))
+func (h *Command) DockerComposeServices(dockerCmd, envFile string) *Command {
+	h.SetCommand(fmt.Sprintf(`%s %s %s config --services`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile)))
 	return h
 }
 
-func (h *Command) DockerComposeServices(dockerCmd string) *Command {
-	h.SetCommand(fmt.Sprintf(`%s %s config --services`, h.sudo, dockerCmd))
+func (h *Command) getEnvFileCommand(envFile string) string {
+	if envFile == `` {
+		return ``
+	}
+	return ` --env-file ` + envFile
+}
+
+func (h *Command) DockerComposeStop(dockerCmd, envFile string) *Command {
+	h.SetCommand(fmt.Sprintf(`%s %s %s down`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile)))
 	return h
 }
 
-func (h *Command) DockerComposeStop(dockerCmd string) *Command {
-	h.SetCommand(fmt.Sprintf(`%s %s down`, h.sudo, dockerCmd))
+func (h *Command) DockerComposeStatus(dockerCmd, envFile string) *Command {
+	h.SetCommand(fmt.Sprintf(`%s docker stats $(sudo %s %s ps -q) --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.BlockIO}}"`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile)))
 	return h
 }
 
-func (h *Command) DockerComposeStatus(dockerCmd string) *Command {
-	h.SetCommand(fmt.Sprintf(`%s docker stats $(sudo %s ps -q) --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.BlockIO}}"`, h.sudo, dockerCmd))
+func (h *Command) DockerComposeRestart(dockerCmd, envFile string, services []string) *Command {
+	h.SetCommand(fmt.Sprintf(`%s %s %s restart %s`, h.sudo, dockerCmd, strings.Join(services, ` `), h.getEnvFileCommand(envFile)))
 	return h
 }
 
-func (h *Command) DockerComposeRestart(dockerCmd string, services ...string) *Command {
-	h.SetCommand(fmt.Sprintf(`%s %s restart %s`, h.sudo, dockerCmd, strings.Join(services, ` `)))
+func (h *Command) DockerComposeStart(dockerCmd, envFile string) *Command {
+	h.SetCommand(fmt.Sprintf(`%s %s %s up -d`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile)))
 	return h
 }
 
-func (h *Command) DockerComposeStart(dockerCmd string) *Command {
-	h.SetCommand(fmt.Sprintf(`%s %s up -d`, h.sudo, dockerCmd))
-	return h
-}
-
-func (h *Command) DockerComposeConfig(dockerCmd string) *Command {
-	h.SetCommand(fmt.Sprintf(`%s %s config`, h.sudo, dockerCmd))
+func (h *Command) DockerComposeConfig(dockerCmd, envFile string) *Command {
+	h.SetCommand(fmt.Sprintf(`%s %s %s config`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile)))
 	return h
 }
