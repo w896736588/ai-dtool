@@ -6,6 +6,8 @@ import (
 	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
+	"strings"
+
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
 	"github.com/gin-gonic/gin"
@@ -38,9 +40,10 @@ func BaseLogin(c *gin.Context) {
 			`token`:     ``,
 		})
 	}
-	gsgin.GinResponseSuccess(c, `获取成功`, map[string]string{
+	gsgin.GinResponseSuccess(c, `获取成功`, map[string]any{
 		`unikey`: token,
 		`token`:  token,
+		`ports`:  strings.Split(base.Component.ConfigViper.GetString(`run.ports`), `,`),
 	})
 }
 

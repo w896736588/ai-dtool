@@ -10,215 +10,215 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func InitRouter() {
-	baseRouter()
-	redisRouter()
-	phpRouter()
-	supervisorRouter()
-	gitRouter()
-	gitLabTokenRouter()
-	globalSetRouter()
-	codeRouter()
-	initSocket()
-	setRouter()
-	setStar()
-	setMarkdown()
-	shellOut()
-	variable()
-	smartLink()
-	docker()
-	ai()
-	api()
+func InitRouter(tGin *base.Gin) {
+	baseRouter(tGin)
+	redisRouter(tGin)
+	phpRouter(tGin)
+	supervisorRouter(tGin)
+	gitRouter(tGin)
+	gitLabTokenRouter(tGin)
+	globalSetRouter(tGin)
+	codeRouter(tGin)
+	//initSocket()
+	setRouter(tGin)
+	setStar(tGin)
+	setMarkdown(tGin)
+	shellOut(tGin)
+	variable(tGin)
+	smartLink(tGin)
+	docker(tGin)
+	ai(tGin)
+	api(tGin)
 }
 
 // 基础接口
-func baseRouter() {
-	base.Component.TGin.GinPost(`/api/BaseLogin`, controller.BaseLogin)                       //登录
-	base.Component.TGin.GinPost(`/api/BaseRegisterService`, controller.BaseRegisterService)   //注册各类服务 CheckUnikeyExist
-	base.Component.TGin.GinPost(`/api/BaseCheckUnikeyExist`, controller.BaseCheckUnikeyExist) //检查unikey是否已经登录注册
-	base.Component.TGin.GinPost(`/api/BaseSshList`, controller.BaseSshList)                   //ssh列表
-	base.Component.TGin.GinPost(`/api/Ip`, controller.Ip)                                     //登录
+func baseRouter(tGin *base.Gin) {
+	tGin.GinPost(`/api/BaseLogin`, controller.BaseLogin)                       //登录
+	tGin.GinPost(`/api/BaseRegisterService`, controller.BaseRegisterService)   //注册各类服务 CheckUnikeyExist
+	tGin.GinPost(`/api/BaseCheckUnikeyExist`, controller.BaseCheckUnikeyExist) //检查unikey是否已经登录注册
+	tGin.GinPost(`/api/BaseSshList`, controller.BaseSshList)                   //ssh列表
+	tGin.GinPost(`/api/Ip`, controller.Ip)                                     //登录
 }
 
 // redis相关
-func redisRouter() {
-	base.Component.TGin.GinPost(`/api/RedisAvailableList`, controller.RedisAvailableList) //可用的redis列表
-	base.Component.TGin.GinPost(`/api/RedisSearch`, controller.RedisSearch)               //查询某个key
-	base.Component.TGin.GinPost(`/api/RedisKeys`, controller.RedisKeys)                   //模糊搜索key
-	base.Component.TGin.GinPost(`/api/RedisKeysType`, controller.RedisKeysType)           //批量获取key缓存类型
-	base.Component.TGin.GinPost(`/api/RedisKeyType`, controller.RedisKeyType)             //获取key类型
-	base.Component.TGin.GinPost(`/api/RedisSaveString`, controller.RedisSaveString)       //保存string
-	base.Component.TGin.GinPost(`/api/RedisDelKey`, controller.RedisDelKey)               //删除key
-	base.Component.TGin.GinPost(`/api/RedisDelSub`, controller.RedisDelSub)               //删除sub key
-	base.Component.TGin.GinPost(`/api/RedisEditTtl`, controller.RedisEditTtl)             //更改ttl
-	base.Component.TGin.GinPost(`/api/RedisDeleteAll`, controller.RedisDelAllKey)         //删除所有缓存
-	base.Component.TGin.GinPost(`/api/RedisCreateCache`, controller.RedisCreateCache)     //创建缓存
-	base.Component.TGin.GinPost(`/api/RedisEditSub`, controller.RedisEditSub)             //编辑二级缓存
+func redisRouter(tGin *base.Gin) {
+	tGin.GinPost(`/api/RedisAvailableList`, controller.RedisAvailableList) //可用的redis列表
+	tGin.GinPost(`/api/RedisSearch`, controller.RedisSearch)               //查询某个key
+	tGin.GinPost(`/api/RedisKeys`, controller.RedisKeys)                   //模糊搜索key
+	tGin.GinPost(`/api/RedisKeysType`, controller.RedisKeysType)           //批量获取key缓存类型
+	tGin.GinPost(`/api/RedisKeyType`, controller.RedisKeyType)             //获取key类型
+	tGin.GinPost(`/api/RedisSaveString`, controller.RedisSaveString)       //保存string
+	tGin.GinPost(`/api/RedisDelKey`, controller.RedisDelKey)               //删除key
+	tGin.GinPost(`/api/RedisDelSub`, controller.RedisDelSub)               //删除sub key
+	tGin.GinPost(`/api/RedisEditTtl`, controller.RedisEditTtl)             //更改ttl
+	tGin.GinPost(`/api/RedisDeleteAll`, controller.RedisDelAllKey)         //删除所有缓存
+	tGin.GinPost(`/api/RedisCreateCache`, controller.RedisCreateCache)     //创建缓存
+	tGin.GinPost(`/api/RedisEditSub`, controller.RedisEditSub)             //编辑二级缓存
 }
 
 // php相关
-func phpRouter() {
-	base.Component.TGin.GinPost(`/api/PhpUnserialize`, controller.PhpPhpUnSerialize)   //PHP反序列化
-	base.Component.TGin.GinPost(`/api/PhpUnserialize2`, controller.PhpPhpUnSerialize2) //PHP反序列化
+func phpRouter(tGin *base.Gin) {
+	tGin.GinPost(`/api/PhpUnserialize`, controller.PhpPhpUnSerialize)   //PHP反序列化
+	tGin.GinPost(`/api/PhpUnserialize2`, controller.PhpPhpUnSerialize2) //PHP反序列化
 }
 
 // 消费者相关
-func supervisorRouter() {
-	base.Component.TGin.GinPost(`/api/SupervisorRestartAll`, controller.SupervisorRestartAll) //重启所有消费者
-	base.Component.TGin.GinPost(`/api/SupervisorStopAll`, controller.SupervisorStopAll)       //重启所有消费者
-	base.Component.TGin.GinPost(`/api/SupervisorStatusList`, controller.SupervisorStatusList) //查看消费者状态
-	base.Component.TGin.GinPost(`/api/SupervisorConfigShow`, controller.SupervisorConfigShow) //查看消费者配置
-	base.Component.TGin.GinPost(`/api/SupervisorRestart`, controller.SupervisorRestart)       //重启单个消费者
-	base.Component.TGin.GinPost(`/api/SupervisorStop`, controller.SupervisorStop)             //重启单个消费者
-	base.Component.TGin.GinPost(`/api/SupervisorConfList`, controller.SupervisorConfList)     //查看所有的配置
-	base.Component.TGin.GinPost(`/api/SupervisorConfigList`, controller.SupervisorConfigList) //配置的supervisor
+func supervisorRouter(tGin *base.Gin) {
+	tGin.GinPost(`/api/SupervisorRestartAll`, controller.SupervisorRestartAll) //重启所有消费者
+	tGin.GinPost(`/api/SupervisorStopAll`, controller.SupervisorStopAll)       //重启所有消费者
+	tGin.GinPost(`/api/SupervisorStatusList`, controller.SupervisorStatusList) //查看消费者状态
+	tGin.GinPost(`/api/SupervisorConfigShow`, controller.SupervisorConfigShow) //查看消费者配置
+	tGin.GinPost(`/api/SupervisorRestart`, controller.SupervisorRestart)       //重启单个消费者
+	tGin.GinPost(`/api/SupervisorStop`, controller.SupervisorStop)             //重启单个消费者
+	tGin.GinPost(`/api/SupervisorConfList`, controller.SupervisorConfList)     //查看所有的配置
+	tGin.GinPost(`/api/SupervisorConfigList`, controller.SupervisorConfigList) //配置的supervisor
 }
 
 // git相关
-func gitRouter() {
-	base.Component.TGin.GinPost(`/api/GitQueryCurrentBranch`, controller.GitCurrentBranch)      //查询当前分支
-	base.Component.TGin.GinPost(`/api/GitChangeBranch`, controller.GitChangeBranch)             //切换分支
-	base.Component.TGin.GinPost(`/api/GitChangeBranchRemote`, controller.GitChangeBranchRemote) //切换远程分支
-	base.Component.TGin.GinPost(`/api/GitPullBranchOrigin`, controller.GitPullBranchOrigin)     //拉取最新分支
-	base.Component.TGin.GinPost(`/api/GitQueryStatus`, controller.QueryStatus)                  //查询分支本地状态
-	base.Component.TGin.GinPost(`/api/GitCommitLog`, controller.GitCommitLog)                   //查询提交日志
-	base.Component.TGin.GinPost(`/api/GitConfigList`, controller.GitConfigList)                 //git配置
-	base.Component.TGin.GinPost(`/api/CreateMerge`, controller.CreateMerge)                     //创建合并请求
+func gitRouter(tGin *base.Gin) {
+	tGin.GinPost(`/api/GitQueryCurrentBranch`, controller.GitCurrentBranch)      //查询当前分支
+	tGin.GinPost(`/api/GitChangeBranch`, controller.GitChangeBranch)             //切换分支
+	tGin.GinPost(`/api/GitChangeBranchRemote`, controller.GitChangeBranchRemote) //切换远程分支
+	tGin.GinPost(`/api/GitPullBranchOrigin`, controller.GitPullBranchOrigin)     //拉取最新分支
+	tGin.GinPost(`/api/GitQueryStatus`, controller.QueryStatus)                  //查询分支本地状态
+	tGin.GinPost(`/api/GitCommitLog`, controller.GitCommitLog)                   //查询提交日志
+	tGin.GinPost(`/api/GitConfigList`, controller.GitConfigList)                 //git配置
+	tGin.GinPost(`/api/CreateMerge`, controller.CreateMerge)                     //创建合并请求
 }
 
 // gitlab token相关
-func gitLabTokenRouter() {
-	base.Component.TGin.GinPost(`/api/Set/GitLabTokenCreate`, controller.SetGitlabTokenAdd)    //创建
-	base.Component.TGin.GinPost(`/api/Set/GitLabTokenDelete`, controller.SetGitlabTokenDelete) //删除
-	base.Component.TGin.GinPost(`/api/Set/GitLabTokenList`, controller.SetGitlabTokenList)     //列表
+func gitLabTokenRouter(tGin *base.Gin) {
+	tGin.GinPost(`/api/Set/GitLabTokenCreate`, controller.SetGitlabTokenAdd)    //创建
+	tGin.GinPost(`/api/Set/GitLabTokenDelete`, controller.SetGitlabTokenDelete) //删除
+	tGin.GinPost(`/api/Set/GitLabTokenList`, controller.SetGitlabTokenList)     //列表
 }
 
-func globalSetRouter() {
-	base.Component.TGin.GinPost(`/api/Set/GlobalCreate`, controller.SetGlobalAdd)    //创建
-	base.Component.TGin.GinPost(`/api/Set/GlobalDelete`, controller.SetGlobalDelete) //删除
-	base.Component.TGin.GinPost(`/api/Set/GlobalList`, controller.SetGlobalList)     //列表
+func globalSetRouter(tGin *base.Gin) {
+	tGin.GinPost(`/api/Set/GlobalCreate`, controller.SetGlobalAdd)    //创建
+	tGin.GinPost(`/api/Set/GlobalDelete`, controller.SetGlobalDelete) //删除
+	tGin.GinPost(`/api/Set/GlobalList`, controller.SetGlobalList)     //列表
 }
 
 // 代码生成相关
-func codeRouter() {
-	//base.Component.TGin.GinAll(`/api/CodeGenerate`, controller.GenerateCode) //生成代码
+func codeRouter(tGin *base.Gin) {
+	//tGin.GinAll(`/api/CodeGenerate`, controller.GenerateCode) //生成代码
 }
 
 // 设置相关
-func setRouter() {
-	base.Component.TGin.GinPost(`/api/Set/SshList`, controller.SetSshList)
-	base.Component.TGin.GinPost(`/api/Set/SshAdd`, controller.SetSshAdd)
-	base.Component.TGin.GinPost(`/api/Set/SshDelete`, controller.SetSshDelete)
-	base.Component.TGin.GinPost(`/api/Set/GitList`, controller.SetGitList)
-	base.Component.TGin.GinPost(`/api/Set/GitAdd`, controller.SetGitAdd)
-	base.Component.TGin.GinPost(`/api/Set/GitDelete`, controller.SetGitDelete)
-	base.Component.TGin.GinPost(`/api/Set/GitGroupList`, controller.SetGitGroupList)
-	base.Component.TGin.GinPost(`/api/Set/GitGroupAdd`, controller.SetGitGroupAdd)
-	base.Component.TGin.GinPost(`/api/Set/GitGroupDelete`, controller.SetGitGroupDelete)
-	base.Component.TGin.GinPost(`/api/Set/GitQuickList`, controller.SetGitQuickList)
-	base.Component.TGin.GinPost(`/api/Set/SupervisorList`, controller.SetSupervisorctlList)
-	base.Component.TGin.GinPost(`/api/Set/SupervisorAdd`, controller.SetSupervisorAdd)
-	base.Component.TGin.GinPost(`/api/Set/SupervisorDelete`, controller.SetSupervisorDelete)
-	base.Component.TGin.GinPost(`/api/Set/RedisList`, controller.SetRedisList)
-	base.Component.TGin.GinPost(`/api/Set/RedisAdd`, controller.SetRedisAdd)
-	base.Component.TGin.GinPost(`/api/Set/RedisDelete`, controller.SetRedisDelete)
-	base.Component.TGin.GinPost(`/api/Set/MysqlList`, controller.SetMysqlList)
-	base.Component.TGin.GinPost(`/api/Set/MysqlAdd`, controller.SetMysqlAdd)
-	base.Component.TGin.GinPost(`/api/Set/MysqlDelete`, controller.SetMysqlDelete)
-	base.Component.TGin.GinPost(`/api/Set/VariableGroupList`, controller.SetVariableGroupList)
-	base.Component.TGin.GinPost(`/api/Set/VariableGroupAdd`, controller.SetVariableGroupAdd)
-	base.Component.TGin.GinPost(`/api/Set/VariableGroupDelete`, controller.SetVariableGroupDelete)
-	base.Component.TGin.GinPost(`/api/Set/CmdGroupList`, controller.SetCmdGroupList)
-	base.Component.TGin.GinPost(`/api/Set/CmdGroupAdd`, controller.SetCmdGroupAdd)
-	base.Component.TGin.GinPost(`/api/Set/CmdGroupDelete`, controller.SetCmdGroupDelete)
-	base.Component.TGin.GinPost(`/api/Set/SmartLinkGroupList`, controller.SetSmartLinkGroupList)
-	base.Component.TGin.GinPost(`/api/Set/SmartLinkGroupAdd`, controller.SetSmartLinkGroupAdd)
-	base.Component.TGin.GinPost(`/api/Set/SmartLinkGroupDelete`, controller.SetSmartLinkGroupDelete)
-	base.Component.TGin.GinPost(`/api/Set/DockerComposeList`, controller.SetDockerComposeList)
-	base.Component.TGin.GinPost(`/api/Set/DockerComposeAdd`, controller.SetDockerComposeAdd)
-	base.Component.TGin.GinPost(`/api/Set/DockerComposeDelete`, controller.SetDockerComposeDelete)
-	base.Component.TGin.GinPost(`/api/Set/AccountList`, controller.SetAccountList)
-	base.Component.TGin.GinPost(`/api/Set/AccountAdd`, controller.SetAccountAdd)
-	base.Component.TGin.GinPost(`/api/Set/AccountDelete`, controller.SetAccountDelete)
-	base.Component.TGin.GinPost(`/api/Set/AccountGroupList`, controller.SetAccountGroupList)
-	base.Component.TGin.GinPost(`/api/Set/AccountGroupAdd`, controller.SetAccountGroupAdd)
-	base.Component.TGin.GinPost(`/api/Set/AccountGroupDelete`, controller.SetAccountGroupDelete)
+func setRouter(tGin *base.Gin) {
+	tGin.GinPost(`/api/Set/SshList`, controller.SetSshList)
+	tGin.GinPost(`/api/Set/SshAdd`, controller.SetSshAdd)
+	tGin.GinPost(`/api/Set/SshDelete`, controller.SetSshDelete)
+	tGin.GinPost(`/api/Set/GitList`, controller.SetGitList)
+	tGin.GinPost(`/api/Set/GitAdd`, controller.SetGitAdd)
+	tGin.GinPost(`/api/Set/GitDelete`, controller.SetGitDelete)
+	tGin.GinPost(`/api/Set/GitGroupList`, controller.SetGitGroupList)
+	tGin.GinPost(`/api/Set/GitGroupAdd`, controller.SetGitGroupAdd)
+	tGin.GinPost(`/api/Set/GitGroupDelete`, controller.SetGitGroupDelete)
+	tGin.GinPost(`/api/Set/GitQuickList`, controller.SetGitQuickList)
+	tGin.GinPost(`/api/Set/SupervisorList`, controller.SetSupervisorctlList)
+	tGin.GinPost(`/api/Set/SupervisorAdd`, controller.SetSupervisorAdd)
+	tGin.GinPost(`/api/Set/SupervisorDelete`, controller.SetSupervisorDelete)
+	tGin.GinPost(`/api/Set/RedisList`, controller.SetRedisList)
+	tGin.GinPost(`/api/Set/RedisAdd`, controller.SetRedisAdd)
+	tGin.GinPost(`/api/Set/RedisDelete`, controller.SetRedisDelete)
+	tGin.GinPost(`/api/Set/MysqlList`, controller.SetMysqlList)
+	tGin.GinPost(`/api/Set/MysqlAdd`, controller.SetMysqlAdd)
+	tGin.GinPost(`/api/Set/MysqlDelete`, controller.SetMysqlDelete)
+	tGin.GinPost(`/api/Set/VariableGroupList`, controller.SetVariableGroupList)
+	tGin.GinPost(`/api/Set/VariableGroupAdd`, controller.SetVariableGroupAdd)
+	tGin.GinPost(`/api/Set/VariableGroupDelete`, controller.SetVariableGroupDelete)
+	tGin.GinPost(`/api/Set/CmdGroupList`, controller.SetCmdGroupList)
+	tGin.GinPost(`/api/Set/CmdGroupAdd`, controller.SetCmdGroupAdd)
+	tGin.GinPost(`/api/Set/CmdGroupDelete`, controller.SetCmdGroupDelete)
+	tGin.GinPost(`/api/Set/SmartLinkGroupList`, controller.SetSmartLinkGroupList)
+	tGin.GinPost(`/api/Set/SmartLinkGroupAdd`, controller.SetSmartLinkGroupAdd)
+	tGin.GinPost(`/api/Set/SmartLinkGroupDelete`, controller.SetSmartLinkGroupDelete)
+	tGin.GinPost(`/api/Set/DockerComposeList`, controller.SetDockerComposeList)
+	tGin.GinPost(`/api/Set/DockerComposeAdd`, controller.SetDockerComposeAdd)
+	tGin.GinPost(`/api/Set/DockerComposeDelete`, controller.SetDockerComposeDelete)
+	tGin.GinPost(`/api/Set/AccountList`, controller.SetAccountList)
+	tGin.GinPost(`/api/Set/AccountAdd`, controller.SetAccountAdd)
+	tGin.GinPost(`/api/Set/AccountDelete`, controller.SetAccountDelete)
+	tGin.GinPost(`/api/Set/AccountGroupList`, controller.SetAccountGroupList)
+	tGin.GinPost(`/api/Set/AccountGroupAdd`, controller.SetAccountGroupAdd)
+	tGin.GinPost(`/api/Set/AccountGroupDelete`, controller.SetAccountGroupDelete)
 }
 
-func setStar() {
-	base.Component.TGin.GinPost(`/api/StarList`, controller.StarList)
-	base.Component.TGin.GinPost(`/api/StarAdd`, controller.StarAdd)
-	base.Component.TGin.GinPost(`/api/StarDel`, controller.StarDel)
+func setStar(tGin *base.Gin) {
+	tGin.GinPost(`/api/StarList`, controller.StarList)
+	tGin.GinPost(`/api/StarAdd`, controller.StarAdd)
+	tGin.GinPost(`/api/StarDel`, controller.StarDel)
 }
 
-func setMarkdown() {
-	base.Component.TGin.GinPost(`/api/MarkdownHistoryList`, controller.MarkdownHistoryList)
-	base.Component.TGin.GinPost(`/api/MarkdownList`, controller.MarkdownList)
-	base.Component.TGin.GinPost(`/api/MarkdownAdd`, controller.MarkdownAdd)
-	base.Component.TGin.GinPost(`/api/MarkdownDel`, controller.MarkdownDel)
-	base.Component.TGin.GinPost(`/api/MarkdownHistoryDel`, controller.MarkdownHistoryDel)
-	base.Component.TGin.GinPost(`/api/MarkdownSort`, controller.MarkdownSort)
+func setMarkdown(tGin *base.Gin) {
+	tGin.GinPost(`/api/MarkdownHistoryList`, controller.MarkdownHistoryList)
+	tGin.GinPost(`/api/MarkdownList`, controller.MarkdownList)
+	tGin.GinPost(`/api/MarkdownAdd`, controller.MarkdownAdd)
+	tGin.GinPost(`/api/MarkdownDel`, controller.MarkdownDel)
+	tGin.GinPost(`/api/MarkdownHistoryDel`, controller.MarkdownHistoryDel)
+	tGin.GinPost(`/api/MarkdownSort`, controller.MarkdownSort)
 }
 
-func shellOut() {
-	base.Component.TGin.GinPost(`/api/shellOut`, controller.ShellOut)
-	base.Component.TGin.GinPost(`/api/shellOutSetSeeId`, controller.ShellOutSetSeeId)
+func shellOut(tGin *base.Gin) {
+	tGin.GinPost(`/api/shellOut`, controller.ShellOut)
+	tGin.GinPost(`/api/shellOutSetSeeId`, controller.ShellOutSetSeeId)
 }
 
-func variable() {
-	base.Component.TGin.GinPost(`/api/VariableList`, controller.VariableList)
-	base.Component.TGin.GinPost(`/api/VariableAdd`, controller.VariableAdd)
-	base.Component.TGin.GinPost(`/api/VariableDel`, controller.VariableDelete)
-	base.Component.TGin.GinPost(`/api/VariableInfo`, controller.VariableInfo)
-	base.Component.TGin.GinPost(`/api/VariableCmdAdd`, controller.VariableCmdAdd)
-	base.Component.TGin.GinPost(`/api/VariableCmdDel`, controller.VariableCmdDelete)
-	base.Component.TGin.GinPost(`/api/VariableRun`, controller.VariableCmdRun)        //执行
-	base.Component.TGin.GinPost(`/api/VariableSet`, controller.VariableCmdSet)        //设置项
-	base.Component.TGin.GinPost(`/api/VariableSetLogin`, controller.VariableSetLogin) //设置登录的账号密码
+func variable(tGin *base.Gin) {
+	tGin.GinPost(`/api/VariableList`, controller.VariableList)
+	tGin.GinPost(`/api/VariableAdd`, controller.VariableAdd)
+	tGin.GinPost(`/api/VariableDel`, controller.VariableDelete)
+	tGin.GinPost(`/api/VariableInfo`, controller.VariableInfo)
+	tGin.GinPost(`/api/VariableCmdAdd`, controller.VariableCmdAdd)
+	tGin.GinPost(`/api/VariableCmdDel`, controller.VariableCmdDelete)
+	tGin.GinPost(`/api/VariableRun`, controller.VariableCmdRun)        //执行
+	tGin.GinPost(`/api/VariableSet`, controller.VariableCmdSet)        //设置项
+	tGin.GinPost(`/api/VariableSetLogin`, controller.VariableSetLogin) //设置登录的账号密码
 }
 
-func smartLink() {
-	base.Component.TGin.GinPost(`/api/SmartLinkList`, controller.SmartLinkList)
-	base.Component.TGin.GinPost(`/api/SmartLinkAdd`, controller.SmartLinkAdd)
-	base.Component.TGin.GinPost(`/api/SmartLinkDel`, controller.SmartLinkDelete)
-	base.Component.TGin.GinPost(`/api/SmartLinkInfo`, controller.SmartLinkInfo)
-	base.Component.TGin.GinPost(`/api/SmartLinkRun`, controller.SmartLinkRunPlaywright)
-	base.Component.TGin.GinPost(`/api/SmartLinkRunList`, controller.SmartLinkRunPlaywrightList)
-	//base.Component.TGin.GinPost(`/api/SmartLinkForward`, controller.SmartLinkPlaywrightForward)
-	base.Component.TGin.GinPost(`/api/SmartLinkChromeVersion`, controller.SmartLinkPlaywrightVersion)
-	base.Component.TGin.GinPost(`/api/SmartLinkChromeDownload`, controller.SmartLinkUpWebkit)
-	base.Component.TGin.GinPost(`/api/SmartLinkRecycle`, controller.SmartLinkRecycle)
-	base.Component.TGin.GinPost(`/api/SmartLinkDownloadPath`, controller.SmartLinkDownloadPath)
+func smartLink(tGin *base.Gin) {
+	tGin.GinPost(`/api/SmartLinkList`, controller.SmartLinkList)
+	tGin.GinPost(`/api/SmartLinkAdd`, controller.SmartLinkAdd)
+	tGin.GinPost(`/api/SmartLinkDel`, controller.SmartLinkDelete)
+	tGin.GinPost(`/api/SmartLinkInfo`, controller.SmartLinkInfo)
+	tGin.GinPost(`/api/SmartLinkRun`, controller.SmartLinkRunPlaywright)
+	tGin.GinPost(`/api/SmartLinkRunList`, controller.SmartLinkRunPlaywrightList)
+	//tGin.GinPost(`/api/SmartLinkForward`, controller.SmartLinkPlaywrightForward)
+	tGin.GinPost(`/api/SmartLinkChromeVersion`, controller.SmartLinkPlaywrightVersion)
+	tGin.GinPost(`/api/SmartLinkChromeDownload`, controller.SmartLinkUpWebkit)
+	tGin.GinPost(`/api/SmartLinkRecycle`, controller.SmartLinkRecycle)
+	tGin.GinPost(`/api/SmartLinkDownloadPath`, controller.SmartLinkDownloadPath)
 	//执行逻辑
-	base.Component.TGin.GinPost(`/api/SmartProcessList`, controller.SmartProcessList)
-	base.Component.TGin.GinPost(`/api/SmartProcessAdd`, controller.SmartProcessAdd)
-	base.Component.TGin.GinPost(`/api/SmartProcessDelete`, controller.SmartProcessDelete)
-	base.Component.TGin.GinPost(`/api/SmartProcessItemList`, controller.SmartProcessItemList)
-	base.Component.TGin.GinPost(`/api/SmartProcessItemAdd`, controller.SmartProcessItemAdd)
-	base.Component.TGin.GinPost(`/api/SmartProcessItemDelete`, controller.SmartProcessItemDelete)
-	base.Component.TGin.GinPost(`/api/SmartProcessItemSort`, controller.SmartProcessItemSort)
-	base.Component.TGin.GinPost(`/api/SmartProcessSetPosition`, controller.SmartProcessSetPosition)
-	base.Component.TGin.GinPost(`/api/SmartProcessSetRelation`, controller.SmartProcessSetRelation)
-	base.Component.TGin.GinPost(`/api/SmartProcessCancelRelation`, controller.SmartProcessCancelRelation)
+	tGin.GinPost(`/api/SmartProcessList`, controller.SmartProcessList)
+	tGin.GinPost(`/api/SmartProcessAdd`, controller.SmartProcessAdd)
+	tGin.GinPost(`/api/SmartProcessDelete`, controller.SmartProcessDelete)
+	tGin.GinPost(`/api/SmartProcessItemList`, controller.SmartProcessItemList)
+	tGin.GinPost(`/api/SmartProcessItemAdd`, controller.SmartProcessItemAdd)
+	tGin.GinPost(`/api/SmartProcessItemDelete`, controller.SmartProcessItemDelete)
+	tGin.GinPost(`/api/SmartProcessItemSort`, controller.SmartProcessItemSort)
+	tGin.GinPost(`/api/SmartProcessSetPosition`, controller.SmartProcessSetPosition)
+	tGin.GinPost(`/api/SmartProcessSetRelation`, controller.SmartProcessSetRelation)
+	tGin.GinPost(`/api/SmartProcessCancelRelation`, controller.SmartProcessCancelRelation)
 }
 
-func docker() {
-	base.Component.TGin.GinPost(`/api/DockerComposeList`, controller.DockerComposeList)
-	base.Component.TGin.GinPost(`/api/DockerComposeRestart`, controller.DockerComposeRestart)
-	base.Component.TGin.GinPost(`/api/DockerComposeStatus`, controller.DockerComposeStatus)
-	base.Component.TGin.GinPost(`/api/DockerComposeServices`, controller.DockerComposeServices)
-	base.Component.TGin.GinPost(`/api/DockerComposeStop`, controller.DockerComposeStop)
-	base.Component.TGin.GinPost(`/api/DockerComposeConfigShow`, controller.DockerComposeConfigShow)
-	base.Component.TGin.GinPost(`/api/DockerComposeStart`, controller.DockerComposeStart)
+func docker(tGin *base.Gin) {
+	tGin.GinPost(`/api/DockerComposeList`, controller.DockerComposeList)
+	tGin.GinPost(`/api/DockerComposeRestart`, controller.DockerComposeRestart)
+	tGin.GinPost(`/api/DockerComposeStatus`, controller.DockerComposeStatus)
+	tGin.GinPost(`/api/DockerComposeServices`, controller.DockerComposeServices)
+	tGin.GinPost(`/api/DockerComposeStop`, controller.DockerComposeStop)
+	tGin.GinPost(`/api/DockerComposeConfigShow`, controller.DockerComposeConfigShow)
+	tGin.GinPost(`/api/DockerComposeStart`, controller.DockerComposeStart)
 }
 
-func ai() {
-	base.Component.TGin.GinPost(`/api/AiRun`, controller.AiRun)
+func ai(tGin *base.Gin) {
+	tGin.GinPost(`/api/AiRun`, controller.AiRun)
 }
 
-func api() {
+func api(tGin *base.Gin) {
 	//api git logs
-	base.Component.TGin.SseRoute(`/api/GitLab`, func(urlValues url.Values, stopC chan int, c *gin.Context) *gsgin.Sse {
+	tGin.SseRoute(`/api/GitLab`, func(urlValues url.Values, stopC chan int, c *gin.Context) *gsgin.Sse {
 		clientId := base.Component.TBase.GetUnique(`api_gitlab_`)
 		sse := base.Component.TSse.Sse.Register(clientId, stopC, c)
 		go func() {
@@ -248,5 +248,5 @@ func api() {
 	closeFunc := func(sse *gsgin.Sse) {
 		base.Component.TSse.Sse.UnRegister(sse.ClientId)
 	}
-	base.Component.TGin.SseRoute(`/sse`, openFunc, closeFunc)
+	tGin.SseRoute(`/sse`, openFunc, closeFunc)
 }

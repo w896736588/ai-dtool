@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gsencrypt"
@@ -23,6 +24,7 @@ func InitBase(appName, dbPath, ViewPath string) {
 	initComponent(appName, dbPath, ViewPath)
 	initSqlite()
 	initGin()
+	initOther()
 	initPlaywright()
 	stdLog()
 }
@@ -46,7 +48,7 @@ func stdLog() {
 func initComponent(appName, dbPath, ViewPath string) {
 	base.Component = base.TComponent{}
 	base.Component.Env = &base.Env{}
-	base.Component.TGin = &base.Gin{}
+	base.Component.TGins = make([]*base.Gin, 0)
 	base.Component.TRedis = &base.TRedis{RedisClientMap: make(map[string]*gsdb.GsRedis)}
 	base.Component.TRedis.PingAll()
 	base.Component.TMysql = &base.TMysql{MysqlClientMap: make(map[string]*gsdb.GsMysql)}
@@ -105,30 +107,44 @@ func initSqlite() {
 }
 
 func Stop() {
-	err := base.Component.TGin.GinStop(10)
-	if err != nil {
-		base.Component.GsLog.Errof(fmt.Sprintf(`关闭gin失败%s`, err.Error()))
+	for _, tGin := range base.Component.TGins {
+		err := tGin.GinStop(10)
+		if err != nil {
+			base.Component.GsLog.Errof(fmt.Sprintf(`关闭gin失败%s`, err.Error()))
+		}
 	}
+
 }
 
 func initGin() {
 	host := base.Component.ConfigViper.GetString(`run.host`)
-	port := base.Component.ConfigViper.GetString(`run.port`)
-	if !gstool.NetIsPortAvailable(host + `:` + port) {
-		gstool.FmtPrintlnLogTime(`端口已被占用 %s`, host+`:`+port)
-		return
-	}
-	base.Component.TGin.SetMode(gin.DebugMode)
-	base.Component.TGin.GinInit(host, port)
-	base.Component.TGin.GinSetAllowCrossDomain()
+	ports := strings.Split(base.Component.ConfigViper.GetString(`run.ports`), `,`)
 	gin.DefaultWriter = io.Discard
-	base.Component.TGin.GinStatic(`/js`, base.Component.Env.ViewPath+`/js`)
-	base.Component.TGin.GinStaticFile(`/favicon.ico`, base.Component.Env.ViewPath+`/favicon.ico`)
-	base.Component.TGin.GinStatic(`/css`, base.Component.Env.ViewPath+`/css`)
-	base.Component.TGin.GinLoadHTMLFiles(base.Component.Env.ViewPath + `/index.html`)
-	base.Component.TGin.GinGet(`/`, func(context *gin.Context) {
-		context.HTML(200, `index.html`, nil)
-	})
+	for key, port := range ports {
+		if !gstool.NetIsPortAvailable(host + `:` + port) {
+			gstool.FmtPrintlnLogTime(`端口已被占用 %s`, host+`:`+port)
+			return
+		}
+		tGin := &base.Gin{}
+		tGin.SetMode(gin.DebugMode)
+		tGin.GinInit(host, port)
+		tGin.GinSetAllowCrossDomain()
+		//第一个加载前端
+		if key == 0 {
+			tGin.GinStatic(`/js`, base.Component.Env.ViewPath+`/js`)
+			tGin.GinStaticFile(`/favicon.ico`, base.Component.Env.ViewPath+`/favicon.ico`)
+			tGin.GinStatic(`/css`, base.Component.Env.ViewPath+`/css`)
+			tGin.GinLoadHTMLFiles(base.Component.Env.ViewPath + `/index.html`)
+			tGin.GinGet(`/`, func(context *gin.Context) {
+				context.HTML(200, `index.html`, nil)
+			})
+		}
+		tGin.IsRun = true
+		base.Component.TGins = append(base.Component.TGins, tGin)
+	}
+}
+
+func initOther() {
 	base.Component.TSse = &base.TSse{
 		Sse: &gsgin.TSse{SseList: make(map[string]*gsgin.Sse)},
 	}
@@ -144,7 +160,6 @@ func initGin() {
 	}
 	base.Component.TJas.Load()
 	base.Component.TVariable = base.NewVariable()
-	base.Component.TGin.IsRun = true
 }
 
 func initSocket() {

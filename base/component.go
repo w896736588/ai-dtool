@@ -14,7 +14,7 @@ type TComponent struct {
 	GsLog         *gstool.GsSlog
 	EncryptDesCbc *gsencrypt.DesCbc
 	Env           *Env
-	TGin          *Gin
+	TGins         []*Gin
 	WebSocket     *gssocket.Server
 	TShell        *TShell
 	TShellOut     *TShellOut
