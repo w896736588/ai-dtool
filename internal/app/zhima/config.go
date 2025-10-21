@@ -4,10 +4,11 @@ import (
 	"dev_tool/base"
 	_default "dev_tool/internal/app/default"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gsencrypt"
-	"gitee.com/Sxiaobai/gs/gstool"
 	"os"
 	"time"
+
+	"gitee.com/Sxiaobai/gs/gsencrypt"
+	"gitee.com/Sxiaobai/gs/gstool"
 )
 
 var AppName = `zhima`
@@ -23,19 +24,24 @@ func initComponent() {
 		Key: base.Component.ConfigViper.GetString(`encrypt.key`),
 		Iv:  base.Component.ConfigViper.GetString(`encrypt.iv`),
 	}
-	if base.Component.TGin.IsRun == true {
-		initRouter()
-		base.Component.TGin.GinRun()
-	} else {
-		gstool.FmtPrintlnLogTime(`5秒钟后退出`)
-		time.Sleep(5 * time.Second)
-		os.Exit(0)
+	for _, tGin := range base.Component.TGins {
+		if tGin.IsRun == true {
+			initRouter(tGin)
+			tGin.GinRun()
+		} else {
+			gstool.FmtPrintlnLogTime(`5秒钟后退出`)
+			time.Sleep(5 * time.Second)
+			os.Exit(0)
+		}
 	}
+
 }
 
 func Stop() {
 	fmt.Println(`停止`)
-	_ = base.Component.TGin.GinStop(1)
+	for _, tGin := range base.Component.TGins {
+		_ = tGin.GinStop(1)
+	}
 	_ = base.Component.TPlaywright.Log.Close()
 	_ = base.Component.TVariable.Log.Close()
 	_ = base.Component.GsLog.Close()
