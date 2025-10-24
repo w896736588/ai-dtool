@@ -4,8 +4,9 @@ import (
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
 	"errors"
-	"fmt"
+	"regexp"
 	"runtime/debug"
+	"strings"
 	"sync"
 
 	"gitee.com/Sxiaobai/gs/gsssh"
@@ -13,194 +14,232 @@ import (
 	"github.com/spf13/cast"
 )
 
-/*
-	等待式输出ssh 不重复使用 持续等待ssh返回结果
-*/
+/*  等待式输出 ssh 不重复使用，持续等待 ssh 返回结果 */
 
-type TShellOut struct {
-	ShellClientMap map[string]*gsssh.SshConfig
-	lock           sync.Mutex
-	log            *gstool.GsSlog
+const ErrRegex = `(?i)\b(error|exception|fatal|panic|err|错误|报错|fail)\b`
+
+// ShellOut 单个 ssh 会话
+type ShellOut struct {
+	Client        *gsssh.SshConfig
+	errorList     []ErrorBlock        // 最终归档的错误块
+	errorContent  string              // 错误检测内容
+	remainContent string              // 保留的内容（最后 10 000 字符）
+	seen          map[string]struct{} // 去重表：key=错误行
+	errorRegex    *regexp.Regexp      // 错误行正则
+	mu            sync.Mutex          // 保护 errorContent / errorList / seen
 }
 
+// ErrorBlock 错误块
+type ErrorBlock struct {
+	Lines      []string `json:"lines"`      // 最多 11 行
+	ErrorLine  string   `json:"error_line"` // 用于去重
+	LineNumber int      `json:"line_no"`    // 错误行在快照里的行号（从 0 起）
+}
+
+// TShellOut 管理多个 ShellOut
+type TShellOut struct {
+	ShellOutMap map[string]*ShellOut
+	lock        sync.Mutex
+	log         *gstool.GsSlog
+}
+
+// NewTShellOut 构造函数
 func NewTShellOut() *TShellOut {
 	log := gstool.NewSlog3(Component.Env.LogPath, `shell_wait`)
 	_ = log.CleanOldLogs(2)
 	return &TShellOut{
-		ShellClientMap: make(map[string]*gsssh.SshConfig),
-		log:            log,
+		ShellOutMap: make(map[string]*ShellOut),
+		log:         log,
 	}
 }
 
-// GetClient 正常输出
+// GetClient 获取或新建 ssh 客户端
 func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClientId string,
-	formatStream func(string) []string) (*gsssh.SshConfig, bool, error) {
-	defer h.lock.Unlock()
+	formatStream func(string) []string) (*ShellOut, bool, error) {
 	h.lock.Lock()
+	defer h.lock.Unlock()
+
 	sshId := cast.ToString(sshConfig[`id`])
 	if sshId == `` {
 		return nil, false, errors.New(`ssh配置错误，GetClient ` + cast.ToString(debug.Stack()))
 	}
-	if shell, ok := h.ShellClientMap[shellClientId]; ok && shell != nil {
-		return shell, true, nil
+	if shellOut, ok := h.ShellOutMap[shellClientId]; ok && shellOut != nil {
+		return shellOut, true, nil
 	}
-	gsShell := gsssh.NewSshAuthPassword(cast.ToString(sshConfig["host"]),
-		cast.ToString(sshConfig["port"]), cast.ToString(sshConfig["username"]),
+
+	gsShell := gsssh.NewSshAuthPassword(
+		cast.ToString(sshConfig["host"]),
+		cast.ToString(sshConfig["port"]),
+		cast.ToString(sshConfig["username"]),
 		cast.ToString(sshConfig["password"]))
 	gsShell.GsSlog = Component.GsLog
 
-	//设置关闭事件
+	// 断开回调
 	gsShell.SetFuncBroken(func() {
 		_ = Component.TSse.SendMsg(sseClientId, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n", 0)
 		h.RmClient(shellClientId)
-		//已经加了自动重连
-		//h.ReConn(shellClientId , sshConfig)
 	})
 	gsShell.SetMaxRunSecond(40)
-	createErr := gsShell.ConnectAuthPassword()
-	if createErr != nil {
-		return nil, false, createErr
-	}
-	//先执行一次确保连接正常
-	_, err := gsShell.RunCommandWait(`pwd`)
-	if err != nil {
+
+	if err := gsShell.ConnectAuthPassword(); err != nil {
 		return nil, false, err
 	}
-	//回调准备输出的内容 放到这里 就不需要链接linux出现的一大段文字
-	gsShell.SetFuncStreamReceive(func(msg string) {
-		h.log.Debugf(`receive：%s`, msg)
-		if formatStream != nil {
-			h.log.Errof(`解析前的 %s`, msg)
-			msgList := formatStream(msg)
-			h.log.Errof(`解析后的 %s`, gstool.JsonEncode(msgList))
-			_ = Component.TSse.SendMsgChunkList(sseClientId, msgList, 10)
-		} else {
-			_ = Component.TSse.SendMsgChunk(sseClientId, msg, _struct.Chunk{
-				Type: define.ChunkNum,
-				Num:  50,
-			}, 10)
-		}
-	})
-	//设置执行命令前处理
-	gsShell.SetFuncBefore(func(command string) string {
-		return command
-	})
-	//设置对收到的结果是否进行合并后处理 建议1-2
-	gsShell.SetCombineNum(1)
-	//是否显示执行命令后linux返回的执行的命令 如果设置了SetFuncBefore处理，那么就关闭
-	gsShell.CloseFirstReceiveMsg()
+	if _, err := gsShell.RunCommandWait(`pwd`); err != nil {
+		return nil, false, err
+	}
 
-	h.ShellClientMap[shellClientId] = gsShell
-	return gsShell, false, nil
+	// 新建 ShellOut
+	shellOut := &ShellOut{
+		Client:     gsShell,
+		seen:       make(map[string]struct{}),
+		errorRegex: regexp.MustCompile(ErrRegex),
+	}
+	h.SetReceiveMsg(shellOut, sseClientId, formatStream)
+	h.ShellOutMap[shellClientId] = shellOut
+	return shellOut, false, nil
 }
 
-func (h *TShellOut) SetClientSseId(shellClientId, sshId, sseClientId, command string, formatStream func(string) []string) error {
+// SetClientSseId 设置 sse 推送 & 错误检测
+func (h *TShellOut) SetClientSseId(shellClientId, sshId, sseClientId, command string,
+	formatStream func(string) []string) error {
+
 	sshConfig, _ := Component.TSqlite.GetSshConfig(sshId)
-	gsShell, boolExist, err := h.GetClient(sshConfig, shellClientId, sseClientId, formatStream)
+	shellOut, exist, err := h.GetClient(sshConfig, shellClientId, sseClientId, formatStream)
 	if err != nil {
 		return err
 	}
-	gsShell.SetFuncStreamReceive(func(msg string) {
-		if formatStream != nil {
-			msgList := formatStream(msg)
-			_ = Component.TSse.SendMsgChunkList(sseClientId, msgList, 10)
-		} else {
-			_ = Component.TSse.SendMsgChunk(sseClientId, msg, _struct.Chunk{
-				Type: define.ChunkNum,
-				Num:  50,
-			}, 10)
-		}
-	})
-	if !boolExist {
-		_ = gsShell.RunCommand(command)
+	h.SetReceiveMsg(shellOut, sseClientId, formatStream)
+	if !exist {
+		return shellOut.Client.RunCommand(command)
 	}
 	return nil
 }
 
-// GetClientMarkdown 输出markdown格式
-func (h *TShellOut) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseClientId string) (*gsssh.SshConfig, error) {
-	defer h.lock.Unlock()
-	h.lock.Lock()
-	sshId := cast.ToString(sshConfig[`id`])
-	if sshId == `` {
-		return nil, errors.New(`ssh配置错误，GetClientMarkdown ` + cast.ToString(debug.Stack()))
-	}
-	if shell, ok := h.ShellClientMap[shellClientId]; ok && shell != nil {
-		return shell, nil
-	}
+func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, sseClientId string, formatStream func(string) []string) {
+	shellOut.Client.SetFuncStreamReceive(func(msg string) {
+		// 1. 追加内容
+		shellOut.mu.Lock()
+		shellOut.remainContent += msg
+		shellOut.remainContent = StringLastRunes(shellOut.remainContent, 10000)
+		shellOut.errorContent += msg
+		shellOut.mu.Unlock()
 
-	gsShell := gsssh.NewSshAuthPassword(cast.ToString(sshConfig["host"]),
-		cast.ToString(sshConfig["port"]), cast.ToString(sshConfig["username"]),
-		cast.ToString(sshConfig["password"]))
-	gsShell.GsSlog = Component.GsLog
+		// 2. 提取错误块（内部会清理已处理部分）
+		shellOut.extractErrorBlocks()
 
-	//设置关闭事件
-	gsShell.SetFuncBroken(func() {
-		_ = Component.TSse.SendMsg(sseClientId, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n", 0)
-		h.RmClient(shellClientId)
-		//已经加了自动重连
-		//h.ReConn(shellClientId , sshConfig)
+		// 3. SSE 推送
+		if formatStream != nil {
+			msgList := formatStream(msg)
+			_ = Component.TSse.SendMsgChunkList(sseClientId, msgList, 10)
+		} else {
+			_ = Component.TSse.SendMsgChunk(sseClientId, msg, _struct.Chunk{
+				Type: define.ChunkNum,
+				Num:  50,
+			}, 10)
+		}
 	})
-	gsShell.SetMaxRunSecond(40)
-	createErr := gsShell.ConnectAuthPassword()
-	if createErr != nil {
-		return nil, createErr
+}
+
+// 核心：正则提取错误块 + 清理已扫描内容
+func (so *ShellOut) extractErrorBlocks() {
+	so.mu.Lock()
+	defer so.mu.Unlock()
+
+	lines := strings.Split(so.errorContent, "\n")
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !so.errorRegex.MatchString(line) {
+			continue
+		}
+		// 去重
+		if _, ok := so.seen[line]; ok {
+			continue
+		}
+		so.seen[line] = struct{}{}
+
+		// 取前后 5 行
+		start := i - 5
+		if start < 0 {
+			start = 0
+		}
+		end := i + 5 + 1
+		if end > len(lines) {
+			end = len(lines)
+		}
+		block := ErrorBlock{
+			Lines:      lines[start:end],
+			ErrorLine:  line,
+			LineNumber: i,
+		}
+		Component.GsLog.Debugf(`提取到错误 %s`, gstool.JsonFormat(block))
+		so.errorList = append(so.errorList, block)
+
+		// 清理：扔掉该错误行及之前的内容
+		remainLines := lines[i+1:]
+		so.errorContent = strings.Join(remainLines, "\n")
+		if len(remainLines) > 0 {
+			so.errorContent += "\n"
+		}
+		return // 一次只处理第一个错误，避免嵌套
 	}
-	//先执行一次确保连接正常
-	_, err := gsShell.RunCommandWait(`pwd`)
+}
+
+// SetErrorPattern 运行时替换正则
+func (so *ShellOut) SetErrorPattern(expr string) error {
+	re, err := regexp.Compile(expr)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	//猪油：下面3个注册回调，放到这里的话就不会输出pwd以及连接相关信息
-	//回调准备输出的内容
-	gsShell.SetFuncStreamReceive(func(msg string) {
-		_ = Component.TSse.SendMsgChunk(sseClientId, msg+"  \n", _struct.Chunk{
-			Type: define.ChunkEnter,
-		}, 50)
-	})
-	gsShell.SetFuncStartCommand(func() {
-		_ = Component.TSse.SendMsg(sseClientId, fmt.Sprintf("```%s\n#%s", `bash`, `bash`)+"\n", 0)
-	})
-	gsShell.SetFuncEndCommand(func() {
-		_ = Component.TSse.SendMsg(sseClientId, "```\n", 0)
-	})
-	//设置执行命令前处理
-	gsShell.SetFuncBefore(func(command string) string {
-		return command
-		//return Component.TMarkDown.Code(command, `shell`)
-	})
-	//设置对收到的结果是否进行合并后处理 建议1-2
-	gsShell.SetCombineNum(1)
-	//是否显示执行命令后linux返回的执行的命令 如果设置了SetFuncBefore处理，那么就关闭
-	gsShell.CloseFirstReceiveMsg()
-
-	h.ShellClientMap[shellClientId] = gsShell
-	return gsShell, nil
+	so.mu.Lock()
+	so.errorRegex = re
+	so.mu.Unlock()
+	return nil
 }
 
+// GetErrorList 并发安全获取已归档错误
+func (so *ShellOut) GetErrorList() []ErrorBlock {
+	so.mu.Lock()
+	defer so.mu.Unlock()
+	dst := make([]ErrorBlock, len(so.errorList))
+	copy(dst, so.errorList)
+	return dst
+}
+
+// 以下原有方法保持不变
 func (h *TShellOut) Exist(uniqueKey string) bool {
-	defer h.lock.Unlock()
 	h.lock.Lock()
-	if _, ok := h.ShellClientMap[uniqueKey]; ok {
-		return true
-	}
-	return false
+	defer h.lock.Unlock()
+	_, ok := h.ShellOutMap[uniqueKey]
+	return ok
 }
 
-// RmClient 移除连接
 func (h *TShellOut) RmClient(uniqueKey string) {
-	defer h.lock.Unlock()
 	h.lock.Lock()
-	if ssh, ok := h.ShellClientMap[uniqueKey]; ok {
-		ssh.CloseTerminal()
+	defer h.lock.Unlock()
+	if sh, ok := h.ShellOutMap[uniqueKey]; ok {
+		sh.Client.CloseTerminal()
 	}
-	delete(h.ShellClientMap, uniqueKey)
+	delete(h.ShellOutMap, uniqueKey)
 }
 
 func (h *TShellOut) WalkShellList(businessFunc func(uniqueKey string, gsShell *gsssh.SshConfig)) {
-	defer h.lock.Unlock()
 	h.lock.Lock()
-	for uniqueKey, gsShell := range h.ShellClientMap {
-		businessFunc(uniqueKey, gsShell)
+	defer h.lock.Unlock()
+	for k, v := range h.ShellOutMap {
+		businessFunc(k, v.Client)
 	}
+}
+
+func StringLastRunes(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) > n {
+		runes = runes[len(runes)-n:]
+	}
+	return string(runes)
 }

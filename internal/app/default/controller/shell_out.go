@@ -57,9 +57,9 @@ func getShellOutComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshCon
 	sseId := reqMap[`sse_id`]
 	sshConfig, _ := base.Component.TSqlite.GetSshConfig(sshId)
 	uniqueKey := base.Component.TBase.GetCombineKey(sshId, sseId)
-	sshClient, _, sshClientErr := base.Component.TShellOut.GetClient(sshConfig, uniqueKey, cast.ToString(sseId), nil)
+	shellOut, _, sshClientErr := base.Component.TShellOut.GetClient(sshConfig, uniqueKey, cast.ToString(sseId), nil)
 	if sshClientErr != nil {
 		return nil, nil, ``, sshClientErr
 	}
-	return reqMap, sshClient, uniqueKey, nil
+	return reqMap, shellOut.Client, uniqueKey, nil
 }

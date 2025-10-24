@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"gitee.com/Sxiaobai/gs/gsencrypt"
+	"gitee.com/Sxiaobai/gs/gstask"
 	"gitee.com/Sxiaobai/gs/gstool"
+	"github.com/spf13/cast"
 )
 
 var AppName = `zhima`
@@ -39,9 +41,21 @@ func initComponent() {
 
 func Stop() {
 	fmt.Println(`停止`)
-	for _, tGin := range base.Component.TGins {
-		_ = tGin.GinStop(1)
+	task := gstask.NewTask()
+	for key, tGin := range base.Component.TGins {
+		task.Add(gstask.CallbackFunc{
+			Id: cast.ToString(key),
+			Func: func() *gstask.Result {
+				_ = tGin.GinStop(1)
+				return &gstask.Result{
+					Result: nil,
+					Err:    nil,
+				}
+			},
+			Timeout: time.Second * 1,
+		})
 	}
+	task.RunAll()
 	_ = base.Component.TPlaywright.Log.Close()
 	_ = base.Component.TVariable.Log.Close()
 	_ = base.Component.GsLog.Close()
