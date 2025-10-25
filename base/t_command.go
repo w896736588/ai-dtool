@@ -93,12 +93,12 @@ func (h *Command) GitCheckout(branch string) *Command {
 }
 
 func (h *Command) GitPullOrigin(branch string) *Command {
-	h.SetCommand(fmt.Sprintf(`%sgit -c core.progress=false -c progress.enabled=false pull --no-progress origin %s`, h.sudo, branch))
+	h.SetCommand(fmt.Sprintf(`%sgit pull --quiet origin %s`, h.sudo, branch))
 	return h
 }
 
 func (h *Command) GitPull() *Command {
-	h.SetCommand(fmt.Sprintf(`%sgit -c core.progress=false -c progress.enabled=false pull --no-progressd cx`, h.sudo))
+	h.SetCommand(fmt.Sprintf(`%sgit pull  --quiet`, h.sudo))
 	return h
 }
 
@@ -108,7 +108,7 @@ func (h *Command) GitStatus() *Command {
 }
 
 func (h *Command) GitCommitLog() *Command {
-	h.SetCommand(fmt.Sprintf(`%sgit log --oneline -n 5 `, h.sudo))
+	h.SetCommand(fmt.Sprintf(`%sgit log --oneline -n 20 `, h.sudo))
 	return h
 }
 
