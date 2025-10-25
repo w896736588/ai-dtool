@@ -21,16 +21,20 @@ type Env struct {
 	WebkitDataPath     string //浏览器核心用户数据目录
 }
 
-func (h *Env) Init(appName, dbPath, ViewPath string) {
+func (h *Env) Init(appName, dbPath, DbName, ViewPath string) {
 	if h.RootPath == `` {
 		panic(`root_path不能为空`)
 	}
 	h.AppName = appName
+	dbFileName := h.AppName + `.db`
+	if DbName != `` {
+		dbFileName = DbName
+	}
 	//配置文件目录
 	if dbPath != `` {
-		h.DbPath = fmt.Sprintf(dbPath+`%s`, h.AppName+`.db`)
+		h.DbPath = fmt.Sprintf(dbPath+`%s`, dbFileName)
 	} else {
-		h.DbPath = filepath.Join(h.RootPath, `config`, h.AppName, h.AppName+`.db`)
+		h.DbPath = filepath.Join(h.RootPath, `config`, h.AppName, dbFileName)
 	}
 	//前端目录
 	if ViewPath == `` {
