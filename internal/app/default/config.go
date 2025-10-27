@@ -70,6 +70,7 @@ func initComponent(appName, dbPath, DbName, ViewPath string) {
 	}
 	//初始化配置
 	base.Component.Env.Init(appName, dbPath, DbName, ViewPath)
+	base.Component.Env.DatabaseUpPath = filepath.Join(base.Component.Env.RootPath, `internal`, `app`, `default`, `database`)
 	//初始化shell
 	base.Component.TShell = base.NewTShell()
 	base.Component.TShellOut = base.NewTShellOut()
@@ -102,8 +103,7 @@ func initSqlite() {
 		panic(fmt.Sprintf(`打开sqlite失败 %s`, createErr.Error()))
 	}
 	base.Component.TSqlite = &base.TSqlite{Client: sqlite, Env: base.Component.Env}
-	//检查表结构
-	base.Component.TSqlite.InitTable()
+	base.Component.TDataBaseUp.Run()
 }
 
 func Stop() {
@@ -160,6 +160,7 @@ func initOther() {
 	}
 	base.Component.TJas.Load()
 	base.Component.TVariable = base.NewVariable()
+	base.Component.TDataBaseUp = base.NewTDataBaseUp()
 }
 
 func initSocket() {
