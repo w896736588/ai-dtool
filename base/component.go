@@ -32,4 +32,5 @@ type TComponent struct {
 	TAi           *TAi
 	TVariable     *TVariable
 	TJas          *TJas
+	TDataBaseUp   *TDataBaseUp
 }

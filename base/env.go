@@ -13,6 +13,7 @@ type Env struct {
 	DbName             string //数据库文件名
 	AppName            string //项目名称
 	ConfigPath         string //配置文件目录
+	DatabaseUpPath     string //数据库升级目录
 	LogPath            string //日志目录
 	ViewPath           string //前端目录
 	DbPath             string //配置数据库目录
