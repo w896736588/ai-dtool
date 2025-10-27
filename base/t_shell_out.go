@@ -117,11 +117,19 @@ func (h *TShellOut) SetClientSseId(shellClientId, sshId, sseClientId, command st
 		return shellOut.Client.RunCommand(command)
 	} else {
 		h.SendMsg(shellOut, shellOut.remainContent)
-		for _, err := range shellOut.errorList {
-			h.SendErr(shellOut, err)
-		}
+		h.SendErrList(shellOut)
 	}
 	return nil
+}
+
+func (h *TShellOut) CleanErrors(shellClientId string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	shellOut := h.ShellOutMap[shellClientId]
+	if shellOut == nil {
+		return
+	}
+	shellOut.errorList = make([]ErrorBlock, 0)
 }
 
 func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, sseClientId string, formatStream func(string) []string) {
@@ -129,7 +137,7 @@ func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, sseClientId string, format
 		// 1. 追加内容
 		shellOut.mu.Lock()
 		shellOut.remainContent += msg
-		shellOut.remainContent = StringLastRunes(shellOut.remainContent, 10000)
+		shellOut.remainContent = StringLastRunes(shellOut.remainContent, 50000)
 		shellOut.errorContent += msg
 		shellOut.mu.Unlock()
 

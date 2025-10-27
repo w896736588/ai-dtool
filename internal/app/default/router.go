@@ -2,6 +2,7 @@ package _default
 
 import (
 	"dev_tool/base"
+	"dev_tool/base/define"
 	"dev_tool/internal/app/default/controller"
 	"errors"
 	"net/url"
@@ -165,6 +166,7 @@ func setMarkdown(tGin *base.Gin) {
 func shellOut(tGin *base.Gin) {
 	tGin.GinPost(`/api/shellOut`, controller.ShellOut)
 	tGin.GinPost(`/api/shellOutSetSeeId`, controller.ShellOutSetSeeId)
+	tGin.GinPost(`/api/shellOutCleanErrors`, controller.ShellOutCleanErrors)
 }
 
 func variable(tGin *base.Gin) {
@@ -259,6 +261,8 @@ func api(tGin *base.Gin) {
 		}
 		sse := base.Component.TSse.Sse.Register(clientId, stopC, c)
 		isBreakClient = ``
+		//发送一个事件 前端才会建立连接
+		_ = base.Component.TSse.Sse.Send(clientId, define.SseConnect, 1)
 		return sse, nil
 	}
 	closeFunc := func(sse *gsgin.Sse) {

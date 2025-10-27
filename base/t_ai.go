@@ -1,10 +1,12 @@
 package base
 
 import (
+	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
-	"gitee.com/Sxiaobai/gs/gstool"
 	"regexp"
 	"strings"
+
+	"gitee.com/Sxiaobai/gs/gstool"
 )
 
 type TAi struct {
@@ -109,7 +111,7 @@ func (h *TAi) ParseDeepseek(msg string, resBytes *[]byte) {
 	msg = gstool.SReplaces(msg, map[string]string{
 		`data: `: ``,
 	})
-	if msg == "[DONE]" {
+	if msg == define.SseDown {
 		*resBytes = append(*resBytes, []byte("\n")...)
 		return
 	}
