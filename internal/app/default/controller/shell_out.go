@@ -11,7 +11,7 @@ import (
 )
 
 func ShellOut(c *gin.Context) {
-	reqMap, client, uniqueKey, err := getShellOutComponent(c)
+	reqMap, client, shellClientId, err := getShellOutComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -19,7 +19,7 @@ func ShellOut(c *gin.Context) {
 	command := cast.ToString(reqMap[`command`])
 	_ = client.RunCommand(command)
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`conn_unique_key`: uniqueKey,
+		`shell_client_id`: shellClientId,
 	})
 	return
 }
@@ -31,15 +31,28 @@ func ShellOutSetSeeId(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	connUniqueKey := cast.ToString(reqMap[`conn_unique_key`])
+	shellClientId := cast.ToString(reqMap[`shell_client_id`])
 	sseId := cast.ToString(reqMap[`sse_id`])
 	sshId := cast.ToString(reqMap[`ssh_id`])
 	command := cast.ToString(reqMap[`command`])
-	err = base.Component.TShellOut.SetClientSseId(connUniqueKey, sshId, sseId, command, nil)
+	err = base.Component.TShellOut.SetClientSseId(shellClientId, sshId, sseId, command, nil)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+	return
+}
+
+func ShellOutCleanErrors(c *gin.Context) {
+	reqMap := make(map[string]interface{})
+	err := gsgin.GinPostBody(c, &reqMap)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	shellClientId := cast.ToString(reqMap[`shell_client_id`])
+	base.Component.TShellOut.CleanErrors(shellClientId)
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 	return
 }
@@ -56,10 +69,10 @@ func getShellOutComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshCon
 	}
 	sseId := reqMap[`sse_id`]
 	sshConfig, _ := base.Component.TSqlite.GetSshConfig(sshId)
-	uniqueKey := base.Component.TBase.GetCombineKey(sshId, sseId)
-	shellOut, _, sshClientErr := base.Component.TShellOut.GetClient(sshConfig, uniqueKey, cast.ToString(sseId), nil)
+	shellClientId := base.Component.TBase.GetUnique(`shell_out_`)
+	shellOut, _, sshClientErr := base.Component.TShellOut.GetClient(sshConfig, shellClientId, cast.ToString(sseId), nil)
 	if sshClientErr != nil {
 		return nil, nil, ``, sshClientErr
 	}
-	return reqMap, shellOut.Client, uniqueKey, nil
+	return reqMap, shellOut.Client, shellClientId, nil
 }
