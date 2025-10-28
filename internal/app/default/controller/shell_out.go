@@ -87,6 +87,28 @@ func GetShellOuts(c *gin.Context) {
 	return
 }
 
+func ShellOutDelete(c *gin.Context) {
+	reqMap := make(map[string]interface{})
+	err := gsgin.GinPostBody(c, &reqMap)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	sc := base.Component.TSqlite.Client.QuickDelete(`tbl_shell_out`, map[string]any{
+		`id`: reqMap[`id`],
+	})
+	_, err = sc.Exec()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), map[string]any{
+			`sql`: sc.GetSql()})
+		return
+	}
+	shellClientId := cast.ToString(reqMap[`shell_client_id`])
+	base.Component.TShellOut.Delete(shellClientId)
+	gsgin.GinResponseSuccess(c, ``, nil)
+	return
+}
+
 func getShellOutComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshConfig, string, error) {
 	reqMap := make(map[string]interface{})
 	err := gsgin.GinPostBody(c, &reqMap)
