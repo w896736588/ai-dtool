@@ -132,6 +132,18 @@ func (h *TShellOut) CleanErrors(shellClientId string) {
 	shellOut.errorList = make([]ErrorBlock, 0)
 }
 
+func (h *TShellOut) Delete(shellClientId string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	shellOut := h.ShellOutMap[shellClientId]
+	if shellOut == nil {
+		return
+	}
+	shellOut.Client.CloseTerminal()
+	delete(h.ShellOutMap, shellClientId)
+
+}
+
 func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, sseClientId string, formatStream func(string) []string) {
 	shellOut.Client.SetFuncStreamReceive(func(msg string) {
 		// 1. 追加内容
