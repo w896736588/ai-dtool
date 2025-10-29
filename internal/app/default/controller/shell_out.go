@@ -23,6 +23,7 @@ func ShellOut(c *gin.Context) {
 		`command`:         command,
 		`shell_client_id`: shellClientId,
 		`name`:            cast.ToString(reqMap[`name`]),
+		`group_id`:        reqMap[`group_id`],
 		`is_run`:          1,
 		`ssh_id`:          cast.ToString(reqMap[`ssh_id`]),
 		`create_time`:     time.Now().Unix(),
@@ -35,6 +36,30 @@ func ShellOut(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`shell_client_id`: shellClientId,
 		`id`:              cast.ToString(id),
+	})
+	return
+}
+
+func ShellOutEdit(c *gin.Context) {
+	reqMap := make(map[string]interface{})
+	err := gsgin.GinPostBody(c, &reqMap)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	id, err := base.Component.TSqlite.Client.QuickUpdate(`tbl_shell_out`, map[string]any{
+		`id`: reqMap[`id`],
+	}, map[string]any{
+		`name`:        cast.ToString(reqMap[`name`]),
+		`group_id`:    reqMap[`group_id`],
+		`update_time`: time.Now().Unix(),
+	}).Exec()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`id`: cast.ToString(id),
 	})
 	return
 }

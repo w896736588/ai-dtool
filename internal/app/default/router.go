@@ -24,6 +24,7 @@ func InitRouter(tGin *base.Gin) {
 	codeRouter(tGin)
 	//initSocket()
 	setRouter(tGin)
+	setGroupRouter(tGin)
 	setStar(tGin)
 	setMarkdown(tGin)
 	shellOut(tGin)
@@ -107,6 +108,12 @@ func codeRouter(tGin *base.Gin) {
 	//tGin.GinAll(`/api/CodeGenerate`, controller.GenerateCode) //生成代码
 }
 
+func setGroupRouter(tGin *base.Gin) {
+	tGin.GinPost(`/api/Set/GroupList`, controller.GroupList)
+	tGin.GinPost(`/api/Set/GroupAdd`, controller.GroupAdd)
+	tGin.GinPost(`/api/Set/GroupDelete`, controller.GroupDelete)
+}
+
 // 设置相关
 func setRouter(tGin *base.Gin) {
 	tGin.GinPost(`/api/Set/SshList`, controller.SetSshList)
@@ -170,6 +177,7 @@ func shellOut(tGin *base.Gin) {
 	tGin.GinPost(`/api/shellOuts`, controller.GetShellOuts)
 	tGin.GinPost(`/api/shellOutDelete`, controller.ShellOutDelete)
 	tGin.GinPost(`/api/shellOutStop`, controller.ShellOutStop)
+	tGin.GinPost(`/api/shellOutEdit`, controller.ShellOutEdit)
 }
 
 func variable(tGin *base.Gin) {

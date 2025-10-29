@@ -1,0 +1,1 @@
+ALTER TABLE tbl_shell_out ADD COLUMN group_id integer NOT NULL DEFAULT 0;
