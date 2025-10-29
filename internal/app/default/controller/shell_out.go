@@ -23,6 +23,7 @@ func ShellOut(c *gin.Context) {
 		`command`:         command,
 		`shell_client_id`: shellClientId,
 		`name`:            cast.ToString(reqMap[`name`]),
+		`is_run`:          1,
 		`ssh_id`:          cast.ToString(reqMap[`ssh_id`]),
 		`create_time`:     time.Now().Unix(),
 		`update_time`:     time.Now().Unix(),
@@ -50,6 +51,16 @@ func ShellOutSetSeeId(c *gin.Context) {
 	sshId := cast.ToString(reqMap[`ssh_id`])
 	command := cast.ToString(reqMap[`command`])
 	err = base.Component.TShellOut.SetClientSseId(shellClientId, sshId, sseId, command, nil)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	_, err = base.Component.TSqlite.Client.QuickUpdate(`tbl_shell_out`, map[string]any{
+		`id`: reqMap[`id`],
+	}, map[string]any{
+		`is_run`:      1,
+		`update_time`: time.Now().Unix(),
+	}).Exec()
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -101,6 +112,19 @@ func ShellOutDelete(c *gin.Context) {
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), map[string]any{
 			`sql`: sc.GetSql()})
+		return
+	}
+	shellClientId := cast.ToString(reqMap[`shell_client_id`])
+	base.Component.TShellOut.Delete(shellClientId)
+	gsgin.GinResponseSuccess(c, ``, nil)
+	return
+}
+
+func ShellOutStop(c *gin.Context) {
+	reqMap := make(map[string]interface{})
+	err := gsgin.GinPostBody(c, &reqMap)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	shellClientId := cast.ToString(reqMap[`shell_client_id`])

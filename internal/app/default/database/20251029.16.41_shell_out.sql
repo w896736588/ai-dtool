@@ -1,0 +1,1 @@
+ALTER TABLE tbl_shell_out ADD COLUMN is_run integer NOT NULL DEFAULT 0;
