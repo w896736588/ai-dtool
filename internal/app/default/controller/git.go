@@ -4,6 +4,7 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	"errors"
+	"regexp"
 	"strings"
 
 	"gitee.com/Sxiaobai/gs/gsgin"
@@ -62,6 +63,7 @@ func GitChangeBranch(c *gin.Context) {
 	command1.Cd(codePath)
 	command1.GitShowBranch()
 	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr())
+	currentBranch = CleanBranchName(currentBranch)
 
 	command := base.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
@@ -107,6 +109,7 @@ func GitChangeBranchRemote(c *gin.Context) {
 	command1.Cd(codePath)
 	command1.GitShowBranch()
 	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr())
+	currentBranch = CleanBranchName(currentBranch)
 
 	command := base.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
@@ -114,7 +117,6 @@ func GitChangeBranchRemote(c *gin.Context) {
 	command.GitIgnoreAll()
 	command.GitFetch()
 	command.GitPull()
-	currentBranch = strings.Replace(currentBranch, "\n", "", -1)
 	if !strings.Contains(currentBranch, branchName) {
 		command.RemoteOriginBranch(branchName)
 		command.GitCheckout(branchName)
@@ -146,7 +148,7 @@ func GitPullBranchOrigin(c *gin.Context) {
 	command1.Cd(codePath)
 	command1.GitShowBranch()
 	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr())
-	currentBranch = strings.Replace(currentBranch, "\n", "", -1)
+	currentBranch = CleanBranchName(currentBranch)
 
 	command := base.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
@@ -163,6 +165,26 @@ func GitPullBranchOrigin(c *gin.Context) {
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr())
 	gsgin.GinResponseSuccess(c, ``, result)
 }
+
+// 1. 先把非 Git 合法字符全部删掉
+// 2. 再把开头结尾的 "/""." 去掉，防止出现 ".foo" 或 "bar/"
+var cleanBranchRe = regexp.MustCompile(`[^A-Za-z0-9._/-]+`)
+
+func CleanBranchName(s string) string {
+	s = cleanBranchRe.ReplaceAllString(s, "") // 只留合法字符
+	s = strings.TrimPrefix(s, ".")            // 不能以 . 开头
+	s = strings.TrimSuffix(s, "/")            // 不能以 / 结尾
+	if s == "" {                              // 兜底，防止空串
+		s = "branch"
+	}
+	return s
+}
+
+// 过滤所有常见的 bracketed-paste 序列
+// 兼容日志里 ^[ 或真实 ESC 两种情况
+var reESC = regexp.MustCompile(`(\x1b|\^\[)\[?2004[hl]`)
+
+func stripESC(s string) string { return reESC.ReplaceAllString(s, "") }
 
 // QueryStatus 查询分支状态
 func QueryStatus(c *gin.Context) {

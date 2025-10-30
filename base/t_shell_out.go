@@ -2,6 +2,7 @@ package base
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"runtime/debug"
 	"strings"
@@ -19,14 +20,16 @@ const ErrRegex = `(?i)\b(error|exception|fatal|panic|err|错误|报错|fail)\b`
 
 // ShellOut 单个 ssh 会话
 type ShellOut struct {
-	Client        *gsssh.SshConfig
-	sseClientId   string
-	errorList     []ErrorBlock        // 最终归档的错误块
-	errorContent  string              // 错误检测内容
-	remainContent string              // 保留的内容（最后 10 000 字符）
-	seen          map[string]struct{} // 去重表：key=错误行
-	errorRegex    *regexp.Regexp      // 错误行正则
-	mu            sync.Mutex          // 保护 errorContent / errorList / seen
+	Client           *gsssh.SshConfig
+	sseClientId      string
+	errorList        []ErrorBlock        // 最终归档的错误块
+	errorContent     string              // 错误检测内容
+	remainContent    string              // 保留的内容（最后 10 000 字符）
+	seen             map[string]struct{} // 去重表：key=错误行
+	errorRegex       *regexp.Regexp      // 错误行正则
+	mu               sync.Mutex          // 保护 errorContent / errorList / seen
+	regexFilters     []string            //正则过滤
+	regexFiltersTips map[string]int      //过滤正则数量统计
 
 	extractTimer *time.Timer // 延迟提取计时器
 }
@@ -92,10 +95,12 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClient
 
 	// 新建 ShellOut
 	shellOut := &ShellOut{
-		Client:      gsShell,
-		seen:        make(map[string]struct{}),
-		sseClientId: sseClientId,
-		errorRegex:  regexp.MustCompile(ErrRegex),
+		Client:           gsShell,
+		seen:             make(map[string]struct{}),
+		sseClientId:      sseClientId,
+		errorRegex:       regexp.MustCompile(ErrRegex),
+		regexFilters:     make([]string, 0),
+		regexFiltersTips: map[string]int{},
 	}
 	h.SetReceiveMsg(shellOut, sseClientId, formatStream)
 	h.ShellOutMap[shellClientId] = shellOut
@@ -122,6 +127,13 @@ func (h *TShellOut) SetClientSseId(shellClientId, sshId, sseClientId, command st
 	return nil
 }
 
+func (h *TShellOut) SetRegexFilters(shellClientId, regexFilters string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	shellOut := h.ShellOutMap[shellClientId]
+	shellOut.regexFilters = strings.Split(regexFilters, "\n")
+}
+
 func (h *TShellOut) CleanErrors(shellClientId string) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
@@ -146,6 +158,10 @@ func (h *TShellOut) Delete(shellClientId string) {
 
 func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, sseClientId string, formatStream func(string) []string) {
 	shellOut.Client.SetFuncStreamReceive(func(msg string) {
+		boolFilter := h.RegexFilter(shellOut, msg)
+		if boolFilter {
+			return
+		}
 		// 1. 追加内容
 		shellOut.mu.Lock()
 		shellOut.remainContent += msg
@@ -168,6 +184,35 @@ func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, sseClientId string, format
 	})
 }
 
+func (h *TShellOut) RegexFilter(shellOut *ShellOut, msg string) bool {
+	boolFilter := false
+	for _, regexFilter := range shellOut.regexFilters {
+		if strings.TrimSpace(regexFilter) == `` {
+			continue
+		}
+		var re = regexp.MustCompile(regexFilter)
+		if re.MatchString(msg) {
+			if gstool.MapKeyExist(&shellOut.regexFiltersTips, regexFilter) {
+				shellOut.regexFiltersTips[regexFilter] += 1
+			} else {
+				shellOut.regexFiltersTips[regexFilter] = 1
+			}
+			boolFilter = true
+			break
+		}
+	}
+	if boolFilter {
+		sendNum := 10
+		for regexFilter, tipNumber := range shellOut.regexFiltersTips {
+			if tipNumber > sendNum {
+				h.SendMsg(shellOut, fmt.Sprintf(`过滤输出：%s,已过滤：%d次`+"\n", regexFilter, tipNumber))
+				shellOut.regexFiltersTips[regexFilter] = 0
+			}
+		}
+	}
+	return boolFilter
+}
+
 // resetExtractTimer 保证 1 秒内没新消息才真正去提取
 func (h *TShellOut) resetExtractTimer(so *ShellOut) {
 	so.mu.Lock()
@@ -186,6 +231,16 @@ func (h *TShellOut) resetExtractTimer(so *ShellOut) {
 func (h *TShellOut) SendMsg(shellOut *ShellOut, msg string) {
 	send := map[string]any{
 		`type`: `msg`,
+		`data`: msg,
+	}
+	msg = strings.Replace(msg, `\n`, "\n", -1)
+	Component.GsLog.Debugf(`输出 ----%q----`, msg)
+	_ = Component.TSse.SendMsg(shellOut.sseClientId, gstool.JsonEncode(send)+"\n", 0)
+}
+
+func (h *TShellOut) SendEvent(shellOut *ShellOut, eventType, msg string) {
+	send := map[string]any{
+		`type`: eventType,
 		`data`: msg,
 	}
 	msg = strings.Replace(msg, `\n`, "\n", -1)
