@@ -30,6 +30,7 @@ type ShellOut struct {
 	mu               sync.Mutex          // 保护 errorContent / errorList / seen
 	regexFilters     []string            //正则过滤
 	regexFiltersTips map[string]int      //过滤正则数量统计
+	startTime        int64               //启动时间
 
 	extractTimer *time.Timer // 延迟提取计时器
 }
@@ -101,6 +102,7 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClient
 		errorRegex:       regexp.MustCompile(ErrRegex),
 		regexFilters:     make([]string, 0),
 		regexFiltersTips: map[string]int{},
+		startTime:        time.Now().Unix(),
 	}
 	h.SetReceiveMsg(shellOut, sseClientId, formatStream)
 	h.ShellOutMap[shellClientId] = shellOut
@@ -190,24 +192,28 @@ func (h *TShellOut) RegexFilter(shellOut *ShellOut, msg string) bool {
 		if strings.TrimSpace(regexFilter) == `` {
 			continue
 		}
+		name := ``
+		regexParams := strings.Split(regexFilter, `#`)
+		if len(regexParams) == 2 {
+			regexFilter = regexParams[1]
+			name = regexParams[0]
+		}
 		var re = regexp.MustCompile(regexFilter)
 		if re.MatchString(msg) {
+			boolFilter = true
 			if gstool.MapKeyExist(&shellOut.regexFiltersTips, regexFilter) {
 				shellOut.regexFiltersTips[regexFilter] += 1
 			} else {
 				shellOut.regexFiltersTips[regexFilter] = 1
 			}
-			boolFilter = true
-			break
-		}
-	}
-	if boolFilter {
-		sendNum := 10
-		for regexFilter, tipNumber := range shellOut.regexFiltersTips {
-			if tipNumber > sendNum {
-				h.SendMsg(shellOut, fmt.Sprintf(`过滤输出：%s,已过滤：%d次`+"\n", regexFilter, tipNumber))
-				shellOut.regexFiltersTips[regexFilter] = 0
+			if shellOut.regexFiltersTips[regexFilter]%10 == 0 {
+				if name != `` {
+					h.SendMsg(shellOut, fmt.Sprintf(`过滤输出：%s,%s,已过滤：%d次`+"\n", name, regexFilter, shellOut.regexFiltersTips[regexFilter]))
+				} else {
+					h.SendMsg(shellOut, fmt.Sprintf(`过滤输出：%s,已过滤：%d次`+"\n", regexFilter, shellOut.regexFiltersTips[regexFilter]))
+				}
 			}
+			break
 		}
 	}
 	return boolFilter
