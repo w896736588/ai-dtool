@@ -6,6 +6,7 @@ toolchain go1.24.4
 
 require (
 	gitee.com/Sxiaobai/gs v1.9.2
+	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
 	github.com/gin-gonic/gin v1.9.0
 	github.com/gorilla/websocket v1.5.1
 	github.com/pion/stun v0.6.1

@@ -12,26 +12,13 @@ type TSse struct {
 	Sse *gsgin.TSse
 }
 
-func (h *TSse) SendMsg(sseClient, msg string, delayMills int) error {
-	data := _struct.StreamData{
-		Choices: []struct {
-			Delta struct {
-				Content string `json:"content"`
-				Role    string `json:"role"`
-			} `json:"delta"`
-		}{
-			{
-				Delta: struct {
-					Content string `json:"content"`
-					Role    string `json:"role"`
-				}{
-					Content: msg,
-					Role:    "",
-				},
-			},
-		},
+func (h *TSse) SendMsg(sseClient, contentType string, msg any, delayMills int) error {
+	data := define.SseData{
+		SseClientId: sseClient,
+		Data:        msg,
+		Type:        contentType,
 	}
-	_ = h.Sse.Send(sseClient, `data: `+gstool.JsonEncode(data), delayMills)
+	_ = h.Sse.Send(define.SseIdDistribute, `data: `+gstool.JsonEncode(data), delayMills)
 	return nil
 }
 
@@ -61,25 +48,12 @@ func (h *TSse) SendMsgChunk(sseClient, msg string, chunkT _struct.Chunk, delayMi
 		if k+1 == nums {
 			chunk += "\n"
 		}
-		data := _struct.StreamData{
-			Choices: []struct {
-				Delta struct {
-					Content string `json:"content"`
-					Role    string `json:"role"`
-				} `json:"delta"`
-			}{
-				{
-					Delta: struct {
-						Content string `json:"content"`
-						Role    string `json:"role"`
-					}{
-						Content: chunk,
-						Role:    "",
-					},
-				},
-			},
+		data := define.SseData{
+			SseClientId: sseClient,
+			Data:        chunk,
+			Type:        define.SseContentTypeMsg,
 		}
-		_ = h.Sse.Send(sseClient, `data: `+gstool.JsonEncode(data), delayMills)
+		_ = h.Sse.Send(define.SseIdDistribute, `data: `+gstool.JsonEncode(data), delayMills)
 	}
 	return nil
 }
@@ -90,25 +64,12 @@ func (h *TSse) SendMsgChunkList(sseClient string, chunkList []string, delayMills
 		if k+1 == nums {
 			chunk += "\n"
 		}
-		data := _struct.StreamData{
-			Choices: []struct {
-				Delta struct {
-					Content string `json:"content"`
-					Role    string `json:"role"`
-				} `json:"delta"`
-			}{
-				{
-					Delta: struct {
-						Content string `json:"content"`
-						Role    string `json:"role"`
-					}{
-						Content: chunk,
-						Role:    "",
-					},
-				},
-			},
+		data := define.SseData{
+			SseClientId: sseClient,
+			Data:        chunk,
+			Type:        define.SseContentTypeMsg,
 		}
-		_ = h.Sse.Send(sseClient, `data: `+gstool.JsonEncode(data), delayMills)
+		_ = h.Sse.Send(define.SseIdDistribute, `data: `+gstool.JsonEncode(data), delayMills)
 	}
 	return nil
 }

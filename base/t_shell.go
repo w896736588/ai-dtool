@@ -48,7 +48,7 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
 	//设置关闭事件
 	gsShell.SetFuncBroken(func() {
-		_ = Component.TSse.SendMsg(sseClientId, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n", 0)
+		_ = Component.TSse.SendMsg(sseClientId, define.SseContentTypeMsg, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n", 0)
 		h.RmClient(shellClientId)
 		//已经加了自动重连
 		//h.ReConn(shellClientId , sshConfig)
@@ -75,7 +75,7 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 			h.log.Errof(`解析后的 %s`, gstool.JsonEncode(msgList))
 			_ = Component.TSse.SendMsgChunkList(sseClientId, msgList, 10)
 		} else {
-			_ = Component.TSse.SendMsg(sseClientId, msg, 10)
+			_ = Component.TSse.SendMsg(sseClientId, define.SseContentTypeMsg, msg, 10)
 		}
 	})
 	//设置执行命令前处理
@@ -111,7 +111,7 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
 	//设置关闭事件
 	gsShell.SetFuncBroken(func() {
-		_ = Component.TSse.SendMsg(sseClientId, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n", 0)
+		_ = Component.TSse.SendMsg(sseClientId, define.SseContentTypeMsg, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n", 0)
 		h.RmClient(shellClientId)
 		//已经加了自动重连
 		//h.ReConn(shellClientId , sshConfig)
@@ -134,10 +134,10 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 		}, 50)
 	})
 	gsShell.SetFuncStartCommand(func() {
-		_ = Component.TSse.SendMsg(sseClientId, fmt.Sprintf("```%s\n#%s", `bash`, `bash`)+"\n", 0)
+		_ = Component.TSse.SendMsg(sseClientId, define.SseContentTypeMsg, fmt.Sprintf("```%s\n#%s", `bash`, `bash`)+"\n", 0)
 	})
 	gsShell.SetFuncEndCommand(func() {
-		_ = Component.TSse.SendMsg(sseClientId, "```\n", 0)
+		_ = Component.TSse.SendMsg(sseClientId, define.SseContentTypeMsg, "```\n", 0)
 	})
 	//设置执行命令前处理
 	gsShell.SetFuncBefore(func(command string) string {

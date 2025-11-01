@@ -112,3 +112,9 @@ func Ip(c *gin.Context) {
 		`ip`: ip,
 	})
 }
+
+func Ports(c *gin.Context) {
+	gsgin.GinResponseSuccess(c, `获取成功`, map[string]any{
+		`ports`: base.Component.Env.Ports,
+	})
+}
