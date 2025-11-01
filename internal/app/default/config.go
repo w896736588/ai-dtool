@@ -119,6 +119,7 @@ func Stop() {
 func initGin() {
 	host := base.Component.ConfigViper.GetString(`run.host`)
 	ports := strings.Split(base.Component.ConfigViper.GetString(`run.ports`), `,`)
+	base.Component.Env.Ports = ports
 	gin.DefaultWriter = io.Discard
 	for key, port := range ports {
 		if !gstool.NetIsPortAvailable(host + `:` + port) {

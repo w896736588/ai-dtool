@@ -288,7 +288,7 @@ func (h *TPlaywright) StreamMsgFunc(runUniqueId string) func(msg string, enter b
 		if enter {
 			msg += "\n"
 		}
-		_ = Component.TSse.SendMsg(runUniqueId, msg, 0)
+		_ = Component.TSse.SendMsg(runUniqueId, define.SseContentTypeMsg, msg, 0)
 	}
 }
 
@@ -296,5 +296,5 @@ func (h *TPlaywright) SseMsgByClient(sseId string, msg string, enter bool) {
 	if enter {
 		msg += "\n"
 	}
-	_ = Component.TSse.SendMsg(sseId, msg, 50)
+	_ = Component.TSse.SendMsg(sseId, define.SseContentTypeMsg, msg, 50)
 }
