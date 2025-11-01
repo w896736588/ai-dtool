@@ -1,6 +1,7 @@
 package base
 
 import (
+	"dev_tool/base/define"
 	"errors"
 	"fmt"
 	"regexp"
@@ -82,7 +83,7 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClient
 
 	// 断开回调
 	gsShell.SetFuncBroken(func() {
-		_ = Component.TSse.SendMsg(sseClientId, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n", 0)
+		_ = Component.TSse.SendMsg(sseClientId, define.SseContentTypeMsg, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n", 0)
 		h.RmClient(shellClientId)
 	})
 	gsShell.SetMaxRunSecond(40)
@@ -208,7 +209,7 @@ func (h *TShellOut) RegexFilter(shellOut *ShellOut, msg string) bool {
 			}
 			if shellOut.regexFiltersTips[regexFilter]%10 == 0 {
 				if name != `` {
-					h.SendMsg(shellOut, fmt.Sprintf(`过滤输出：%s,%s,已过滤：%d次`+"\n", name, regexFilter, shellOut.regexFiltersTips[regexFilter]))
+					h.SendMsg(shellOut, fmt.Sprintf(`过滤输出：%s,已过滤：%d次`+"\n", name, shellOut.regexFiltersTips[regexFilter]))
 				} else {
 					h.SendMsg(shellOut, fmt.Sprintf(`过滤输出：%s,已过滤：%d次`+"\n", regexFilter, shellOut.regexFiltersTips[regexFilter]))
 				}
@@ -235,39 +236,21 @@ func (h *TShellOut) resetExtractTimer(so *ShellOut) {
 }
 
 func (h *TShellOut) SendMsg(shellOut *ShellOut, msg string) {
-	send := map[string]any{
-		`type`: `msg`,
-		`data`: msg,
-	}
 	msg = strings.Replace(msg, `\n`, "\n", -1)
-	Component.GsLog.Debugf(`输出 ----%q----`, msg)
-	_ = Component.TSse.SendMsg(shellOut.sseClientId, gstool.JsonEncode(send)+"\n", 0)
+	_ = Component.TSse.SendMsg(shellOut.sseClientId, define.SseContentTypeMsg, msg, 0)
 }
 
 func (h *TShellOut) SendEvent(shellOut *ShellOut, eventType, msg string) {
-	send := map[string]any{
-		`type`: eventType,
-		`data`: msg,
-	}
 	msg = strings.Replace(msg, `\n`, "\n", -1)
-	Component.GsLog.Debugf(`输出 ----%q----`, msg)
-	_ = Component.TSse.SendMsg(shellOut.sseClientId, gstool.JsonEncode(send)+"\n", 0)
+	_ = Component.TSse.SendMsg(define.SseIdDistribute, eventType, msg, 0)
 }
 
 func (h *TShellOut) SendErrList(shellOut *ShellOut) {
-	send := map[string]any{
-		`type`: `error_list`,
-		`data`: shellOut.errorList,
-	}
-	_ = Component.TSse.SendMsg(shellOut.sseClientId, gstool.JsonEncode(send)+"\n", 0)
+	_ = Component.TSse.SendMsg(define.SseIdDistribute, define.SseContentTypeErrorList, shellOut.errorList, 0)
 }
 
 func (h *TShellOut) SendErr(shellOut *ShellOut, err ErrorBlock) {
-	send := map[string]any{
-		`type`: `error`,
-		`data`: err,
-	}
-	_ = Component.TSse.SendMsg(shellOut.sseClientId, gstool.JsonEncode(send)+"\n", 0)
+	_ = Component.TSse.SendMsg(define.SseIdDistribute, define.SseContentTypeError, err, 0)
 }
 
 // 真正的提取逻辑，运行在计时器回调里，无锁竞争

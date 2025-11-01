@@ -8,19 +8,20 @@ import (
 )
 
 type Env struct {
-	RootPath           string //项目根目录
-	PkgPath            string //pkg目录
-	DbName             string //数据库文件名
-	AppName            string //项目名称
-	ConfigPath         string //配置文件目录
-	DatabaseUpPath     string //数据库升级目录
-	LogPath            string //日志目录
-	ViewPath           string //前端目录
-	DbPath             string //配置数据库目录
-	NodePath           string //node js可执行程序目录
-	WebkitDriverPath   string //浏览器核心目录
-	WebkitDownloadPath string //浏览器核心下载临时文件数据目录
-	WebkitDataPath     string //浏览器核心用户数据目录
+	RootPath           string   //项目根目录
+	PkgPath            string   //pkg目录
+	DbName             string   //数据库文件名
+	AppName            string   //项目名称
+	ConfigPath         string   //配置文件目录
+	DatabaseUpPath     string   //数据库升级目录
+	LogPath            string   //日志目录
+	ViewPath           string   //前端目录
+	DbPath             string   //配置数据库目录
+	NodePath           string   //node js可执行程序目录
+	WebkitDriverPath   string   //浏览器核心目录
+	WebkitDownloadPath string   //浏览器核心下载临时文件数据目录
+	WebkitDataPath     string   //浏览器核心用户数据目录
+	Ports              []string //gin支持的端口
 }
 
 func (h *Env) Init(appName, dbPath, DbName, ViewPath string) {

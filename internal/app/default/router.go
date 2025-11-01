@@ -42,6 +42,7 @@ func baseRouter(tGin *base.Gin) {
 	tGin.GinPost(`/api/BaseCheckUnikeyExist`, controller.BaseCheckUnikeyExist) //检查unikey是否已经登录注册
 	tGin.GinPost(`/api/BaseSshList`, controller.BaseSshList)                   //ssh列表
 	tGin.GinPost(`/api/Ip`, controller.Ip)                                     //登录
+	tGin.GinPost(`/api/ports`, controller.Ports)
 }
 
 // redis相关
@@ -238,7 +239,7 @@ func api(tGin *base.Gin) {
 		sse := base.Component.TSse.Sse.Register(clientId, stopC, c)
 		go func() {
 			controller.GitLogs(gsgin.GinGetParams(c), func(s string) {
-				err := base.Component.TSse.SendMsg(clientId, s+"\n", 0)
+				err := base.Component.TSse.SendMsg(clientId, define.SseContentTypeMsg, s+"\n", 0)
 				if err != nil {
 					gstool.FmtPrintlnLogTime(`错误 %s`, err.Error())
 					return
@@ -248,7 +249,7 @@ func api(tGin *base.Gin) {
 		}()
 		return sse, nil
 	}, func(sse *gsgin.Sse) {
-		err := base.Component.TSse.SendMsg(sse.ClientId, "[DONE]", 0)
+		err := base.Component.TSse.SendMsg(sse.ClientId, define.SseContentTypeMsg, "[DONE]", 0)
 		if err != nil {
 			gstool.FmtPrintlnLogTime(`错误 %s`, err.Error())
 			return

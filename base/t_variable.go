@@ -393,6 +393,6 @@ func (h *TVariable) StreamMsgFuncBySseId(sseId, runUniqueId string) func(msg str
 		if enter {
 			msg += "\n"
 		}
-		_ = Component.TSse.SendMsg(sseId, msg, 0)
+		_ = Component.TSse.SendMsg(sseId, define.SseContentTypeMsg, msg, 0)
 	}
 }
