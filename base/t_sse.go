@@ -3,9 +3,10 @@ package base
 import (
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
+	"strings"
+
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
-	"strings"
 )
 
 type TSse struct {
@@ -18,7 +19,9 @@ func (h *TSse) SendMsg(sseClient, contentType string, msg any, delayMills int) e
 		Data:        msg,
 		Type:        contentType,
 	}
-	_ = h.Sse.Send(define.SseIdDistribute, `data: `+gstool.JsonEncode(data), delayMills)
+	for _, sseClientId := range define.SseClientIds {
+		_ = h.Sse.Send(sseClientId, `data: `+gstool.JsonEncode(data), delayMills)
+	}
 	return nil
 }
 
@@ -53,7 +56,10 @@ func (h *TSse) SendMsgChunk(sseClient, msg string, chunkT _struct.Chunk, delayMi
 			Data:        chunk,
 			Type:        define.SseContentTypeMsg,
 		}
-		_ = h.Sse.Send(define.SseIdDistribute, `data: `+gstool.JsonEncode(data), delayMills)
+		for _, sseClientId := range define.SseClientIds {
+			_ = h.Sse.Send(sseClientId, `data: `+gstool.JsonEncode(data), delayMills)
+		}
+
 	}
 	return nil
 }
@@ -69,7 +75,9 @@ func (h *TSse) SendMsgChunkList(sseClient string, chunkList []string, delayMills
 			Data:        chunk,
 			Type:        define.SseContentTypeMsg,
 		}
-		_ = h.Sse.Send(define.SseIdDistribute, `data: `+gstool.JsonEncode(data), delayMills)
+		for _, sseClientId := range define.SseClientIds {
+			_ = h.Sse.Send(sseClientId, `data: `+gstool.JsonEncode(data), delayMills)
+		}
 	}
 	return nil
 }

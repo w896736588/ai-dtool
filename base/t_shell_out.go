@@ -16,6 +16,7 @@ import (
 )
 
 const ErrRegex = `(?i)\b(error|exception|fatal|panic|err|错误|报错|fail)\b`
+const MaxLength = 500000
 
 /*  等待式输出 ssh 不重复使用，持续等待 ssh 返回结果 */
 
@@ -25,7 +26,8 @@ type ShellOut struct {
 	sseClientId      string
 	errorList        []ErrorBlock        // 最终归档的错误块
 	errorContent     string              // 错误检测内容
-	remainContent    string              // 保留的内容（最后 10 000 字符）
+	remainContent    string              // 保留的内容(替换后的)
+	sourceContent    string              // 原本内容
 	seen             map[string]struct{} // 去重表：key=错误行
 	errorRegex       *regexp.Regexp      // 错误行正则
 	mu               sync.Mutex          // 保护 errorContent / errorList / seen
@@ -105,7 +107,7 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClient
 		regexFiltersTips: map[string]int{},
 		startTime:        time.Now().Unix(),
 	}
-	h.SetReceiveMsg(shellOut, sseClientId, formatStream)
+	h.SetReceiveMsg(shellOut, formatStream)
 	h.ShellOutMap[shellClientId] = shellOut
 	return shellOut, false, nil
 }
@@ -120,11 +122,18 @@ func (h *TShellOut) SetClientSseId(shellClientId, sshId, sseClientId, command st
 		return err
 	}
 	shellOut.sseClientId = sseClientId
-	h.SetReceiveMsg(shellOut, sseClientId, formatStream)
+	h.SetReceiveMsg(shellOut, formatStream)
 	if !exist {
-		return shellOut.Client.RunCommand(command)
+		go func() {
+			err := shellOut.Client.RunCommand(command)
+			if err != nil {
+				fmt.Println(fmt.Sprintf(`执行错误 %s`, err.Error()))
+			}
+		}()
+		return nil
 	} else {
-		h.SendMsg(shellOut, shellOut.remainContent)
+		//最多展示10000个字符
+		h.SendMsg(shellOut, StringLastRunes(shellOut.remainContent, 10000))
 		h.SendErrList(shellOut)
 	}
 	return nil
@@ -159,23 +168,22 @@ func (h *TShellOut) Delete(shellClientId string) {
 
 }
 
-func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, sseClientId string, formatStream func(string) []string) {
+func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, formatStream func(string) []string) {
 	shellOut.Client.SetFuncStreamReceive(func(msg string) {
+		//原内容处理
+		shellOut.sourceContent += msg
+		shellOut.sourceContent = StringLastRunes(shellOut.sourceContent, MaxLength*2)
+		//保留内容处理
+		shellOut.remainContent += msg
+		shellOut.remainContent = StringLastRunes(shellOut.remainContent, MaxLength)
+		//过滤内容处理
 		boolFilter := h.RegexFilter(shellOut, msg)
 		if boolFilter {
 			return
 		}
-		// 1. 追加内容
-		shellOut.mu.Lock()
-		shellOut.remainContent += msg
-		shellOut.remainContent = StringLastRunes(shellOut.remainContent, 50000)
-		shellOut.errorContent += msg
-		shellOut.mu.Unlock()
-
-		// 2. 重置/启动 1 秒延迟提取器
-		h.resetExtractTimer(shellOut)
-
-		// 3. SSE 推送
+		//错误检测
+		h.CheckError(shellOut, msg)
+		//推送
 		if formatStream != nil {
 			msgList := formatStream(msg)
 			for _, msg := range msgList {
@@ -185,6 +193,24 @@ func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, sseClientId string, format
 			h.SendMsg(shellOut, msg)
 		}
 	})
+}
+
+func (h *TShellOut) CheckError(shellOut *ShellOut, msg string) {
+	if !shellOut.errorRegex.MatchString(msg) {
+		return
+	}
+	// 去重
+	if _, ok := shellOut.seen[msg]; ok {
+		return
+	}
+	shellOut.seen[msg] = struct{}{}
+
+	block := ErrorBlock{
+		Lines:     []string{},
+		ErrorLine: msg,
+	}
+	shellOut.errorList = append(shellOut.errorList, block)
+	h.SendErr(shellOut, block)
 }
 
 func (h *TShellOut) RegexFilter(shellOut *ShellOut, msg string) bool {
@@ -209,30 +235,15 @@ func (h *TShellOut) RegexFilter(shellOut *ShellOut, msg string) bool {
 			}
 			if shellOut.regexFiltersTips[regexFilter]%10 == 0 {
 				if name != `` {
-					h.SendMsg(shellOut, fmt.Sprintf(`过滤输出：%s,已过滤：%d次`+"\n", name, shellOut.regexFiltersTips[regexFilter]))
+					h.SendMsg(shellOut, fmt.Sprintf(`%s 过滤输出：%s,已过滤：%d次`+"\n", gstool.TimeNowUnixToString(``), name, shellOut.regexFiltersTips[regexFilter]))
 				} else {
-					h.SendMsg(shellOut, fmt.Sprintf(`过滤输出：%s,已过滤：%d次`+"\n", regexFilter, shellOut.regexFiltersTips[regexFilter]))
+					h.SendMsg(shellOut, fmt.Sprintf(`%s 过滤输出：%s,已过滤：%d次`+"\n", gstool.TimeNowUnixToString(``), regexFilter, shellOut.regexFiltersTips[regexFilter]))
 				}
 			}
 			break
 		}
 	}
 	return boolFilter
-}
-
-// resetExtractTimer 保证 1 秒内没新消息才真正去提取
-func (h *TShellOut) resetExtractTimer(so *ShellOut) {
-	so.mu.Lock()
-	defer so.mu.Unlock()
-
-	// 如果已经有一个计时器，先停掉
-	if so.extractTimer != nil {
-		so.extractTimer.Stop()
-	}
-	// 重新计时 1 秒
-	so.extractTimer = time.AfterFunc(time.Second, func() {
-		h.doExtractErrorBlocks(so)
-	})
 }
 
 func (h *TShellOut) SendMsg(shellOut *ShellOut, msg string) {
@@ -242,63 +253,15 @@ func (h *TShellOut) SendMsg(shellOut *ShellOut, msg string) {
 
 func (h *TShellOut) SendEvent(shellOut *ShellOut, eventType, msg string) {
 	msg = strings.Replace(msg, `\n`, "\n", -1)
-	_ = Component.TSse.SendMsg(define.SseIdDistribute, eventType, msg, 0)
+	_ = Component.TSse.SendMsg(shellOut.sseClientId, eventType, msg, 0)
 }
 
 func (h *TShellOut) SendErrList(shellOut *ShellOut) {
-	_ = Component.TSse.SendMsg(define.SseIdDistribute, define.SseContentTypeErrorList, shellOut.errorList, 0)
+	_ = Component.TSse.SendMsg(shellOut.sseClientId, define.SseContentTypeErrorList, shellOut.errorList, 0)
 }
 
 func (h *TShellOut) SendErr(shellOut *ShellOut, err ErrorBlock) {
-	_ = Component.TSse.SendMsg(define.SseIdDistribute, define.SseContentTypeError, err, 0)
-}
-
-// 真正的提取逻辑，运行在计时器回调里，无锁竞争
-func (h *TShellOut) doExtractErrorBlocks(shellOut *ShellOut) {
-	shellOut.mu.Lock()
-	defer shellOut.mu.Unlock()
-
-	lines := strings.Split(shellOut.errorContent, "\n")
-	for i, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if !shellOut.errorRegex.MatchString(line) {
-			continue
-		}
-		// 去重
-		if _, ok := shellOut.seen[line]; ok {
-			continue
-		}
-		shellOut.seen[line] = struct{}{}
-
-		// 取前后 5 行
-		start := i - 5
-		if start < 0 {
-			start = 0
-		}
-		end := i + 5 + 1
-		if end > len(lines) {
-			end = len(lines)
-		}
-		block := ErrorBlock{
-			Lines:      lines[start:end],
-			ErrorLine:  line,
-			LineNumber: i,
-		}
-		Component.GsLog.Debugf(`提取到错误 %s`, gstool.JsonFormat(block))
-		shellOut.errorList = append(shellOut.errorList, block)
-		h.SendErr(shellOut, block)
-
-		// 清理：扔掉该错误行及之前的内容
-		remainLines := lines[i+1:]
-		shellOut.errorContent = strings.Join(remainLines, "\n")
-		if len(remainLines) > 0 {
-			shellOut.errorContent += "\n"
-		}
-		return // 一次只处理第一个错误，避免嵌套
-	}
+	_ = Component.TSse.SendMsg(shellOut.sseClientId, define.SseContentTypeError, err, 0)
 }
 
 func (h *TShellOut) RmClient(uniqueKey string) {

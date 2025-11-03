@@ -6,7 +6,6 @@ import (
 	"dev_tool/internal/app/default/controller"
 	"errors"
 	"net/url"
-	"time"
 
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
@@ -259,34 +258,19 @@ func api(tGin *base.Gin) {
 	//sse 替换 websocket
 	openFunc := func(urlValues url.Values, stopC chan int, c *gin.Context) (*gsgin.Sse, error) {
 		clientId := urlValues.Get(`client_id`)
-		isBreakClient := clientId
-		go func(t *string) {
-			time.Sleep(time.Second * 5)
-			if *t != `` {
-				gstool.FmtPrintlnLogTime(`sse %s 链接失败`, *t)
-			}
-		}(&isBreakClient)
 		sseC := base.Component.TSse.Sse.GetSseByClientId(clientId)
 		if sseC != nil {
-			isBreakClient = ``
 			return nil, errors.New(`已存在链接`)
 		}
 		sse := base.Component.TSse.Sse.Register(clientId, stopC, c)
-		isBreakClient = ``
 		//发送一个事件 前端才会建立连接
 		_ = base.Component.TSse.Sse.Send(clientId, define.SseConnect, 1)
+		define.RegisterDistributeSseId(clientId)
 		return sse, nil
 	}
 	closeFunc := func(sse *gsgin.Sse) {
-		isBreakClient := sse.ClientId
-		go func(t *string) {
-			time.Sleep(time.Second * 5)
-			if *t != `` {
-				gstool.FmtPrintlnLogTime(`sse %s 断开失败`, *t)
-			}
-		}(&isBreakClient)
 		base.Component.TSse.Sse.UnRegister(sse.ClientId)
-		isBreakClient = ``
+		define.UnRegisterDistributeSseId(sse.ClientId)
 	}
 	tGin.SseRoute(`/sse`, openFunc, closeFunc)
 }
