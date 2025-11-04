@@ -24,7 +24,6 @@ func ShellOut(c *gin.Context) {
 		`shell_client_id`: shellClientId,
 		`name`:            cast.ToString(reqMap[`name`]),
 		`group_id`:        reqMap[`group_id`],
-		`regex_filters`:   reqMap[`regex_filters`],
 		`is_run`:          1,
 		`ssh_id`:          cast.ToString(reqMap[`ssh_id`]),
 		`create_time`:     time.Now().Unix(),
@@ -34,7 +33,6 @@ func ShellOut(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	base.Component.TShellOut.SetRegexFilters(shellClientId, cast.ToString(reqMap[`regex_filters`]))
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`shell_client_id`: shellClientId,
 		`id`:              cast.ToString(id),
@@ -52,12 +50,11 @@ func ShellOutEdit(c *gin.Context) {
 	id, err := base.Component.TSqlite.Client.QuickUpdate(`tbl_shell_out`, map[string]any{
 		`id`: reqMap[`id`],
 	}, map[string]any{
-		`name`:          cast.ToString(reqMap[`name`]),
-		`command`:       cast.ToString(reqMap[`command`]),
-		`ssh_id`:        cast.ToInt(reqMap[`ssh_id`]),
-		`regex_filters`: reqMap[`regex_filters`],
-		`group_id`:      reqMap[`group_id`],
-		`update_time`:   time.Now().Unix(),
+		`name`:        cast.ToString(reqMap[`name`]),
+		`command`:     cast.ToString(reqMap[`command`]),
+		`ssh_id`:      cast.ToInt(reqMap[`ssh_id`]),
+		`group_id`:    reqMap[`group_id`],
+		`update_time`: time.Now().Unix(),
 	}).Exec()
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -80,13 +77,16 @@ func ShellOutSetSeeId(c *gin.Context) {
 	sseId := cast.ToString(reqMap[`sse_id`])
 	sshId := cast.ToString(reqMap[`ssh_id`])
 	command := cast.ToString(reqMap[`command`])
-	regexFilters := cast.ToString(reqMap[`regex_filters`])
-	err = base.Component.TShellOut.SetClientSseId(shellClientId, sshId, sseId, command, nil)
+	groupId := cast.ToInt(reqMap[`group_id`])
+	if groupId == 0 {
+		gsgin.GinResponseError(c, `组id不能为空`, nil)
+		return
+	}
+	err = base.Component.TShellOut.SetClientSseId(shellClientId, sshId, sseId, command, groupId, nil)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	base.Component.TShellOut.SetRegexFilters(shellClientId, regexFilters)
 	_, err = base.Component.TSqlite.Client.QuickUpdate(`tbl_shell_out`, map[string]any{
 		`id`: reqMap[`id`],
 	}, map[string]any{
@@ -186,9 +186,10 @@ func getShellOutComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshCon
 		return nil, nil, ``, errors.New(`缺少ssh_id参数`)
 	}
 	sseId := reqMap[`sse_id`]
+	groupId := cast.ToInt(reqMap[`group_id`])
 	sshConfig, _ := base.Component.TSqlite.GetSshConfig(sshId)
 	shellClientId := base.Component.TBase.GetUnique(`shell_out_`)
-	shellOut, _, sshClientErr := base.Component.TShellOut.GetClient(sshConfig, shellClientId, cast.ToString(sseId), nil)
+	shellOut, _, sshClientErr := base.Component.TShellOut.GetClient(sshConfig, shellClientId, cast.ToString(sseId), groupId, nil)
 	if sshClientErr != nil {
 		return nil, nil, ``, sshClientErr
 	}

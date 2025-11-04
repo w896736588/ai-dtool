@@ -3,8 +3,9 @@ package controller
 import (
 	"dev_tool/base"
 	"dev_tool/base/define"
-	"gitee.com/Sxiaobai/gs/gstool"
 	"time"
+
+	"gitee.com/Sxiaobai/gs/gstool"
 
 	"gitee.com/Sxiaobai/gs/gsgin"
 	"github.com/gin-gonic/gin"
@@ -33,13 +34,13 @@ func GroupList(c *gin.Context) {
 func GroupAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `extra_1`, `extra_2`, `extra_3`, `extra_4`, `extra_5`, `extra_6`})
 	if cast.ToString(dataMap[`name`]) == `` {
 		gsgin.GinResponseError(c, `分组名称不能为空`, nil)
 		return
 	}
+	groupType := cast.ToInt(dataMap[`type`])
 	if cast.ToInt(dataMap[`id`]) == 0 {
-		groupType := cast.ToInt(dataMap[`type`])
 		allowGroupList := define.GetGroupTypeList()
 		if !gstool.ArrayExistValue(&allowGroupList, groupType) {
 			gsgin.GinResponseError(c, `分组类型错误`, nil)
@@ -59,6 +60,9 @@ func GroupAdd(c *gin.Context) {
 			map[string]any{
 				`id`: dataMap[`id`],
 			}, updateData).Exec()
+	}
+	if groupType == define.GroupTypeShellOut {
+		base.Component.TShellOut.InitGroupConfigs()
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }

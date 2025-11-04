@@ -1,0 +1,6 @@
+ALTER TABLE tbl_group ADD COLUMN extra_1 text NOT NULL DEFAULT '';
+ALTER TABLE tbl_group ADD COLUMN extra_2 text NOT NULL DEFAULT '';
+ALTER TABLE tbl_group ADD COLUMN extra_3 text NOT NULL DEFAULT '';
+ALTER TABLE tbl_group ADD COLUMN extra_4 text NOT NULL DEFAULT '';
+ALTER TABLE tbl_group ADD COLUMN extra_5 text NOT NULL DEFAULT '';
+ALTER TABLE tbl_group ADD COLUMN extra_6 text NOT NULL DEFAULT '';

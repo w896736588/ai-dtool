@@ -31,11 +31,10 @@ type ShellOut struct {
 	seen             map[string]struct{} // 去重表：key=错误行
 	errorRegex       *regexp.Regexp      // 错误行正则
 	mu               sync.Mutex          // 保护 errorContent / errorList / seen
-	regexFilters     []string            //正则过滤
 	regexFiltersTips map[string]int      //过滤正则数量统计
 	startTime        int64               //启动时间
-
-	extractTimer *time.Timer // 延迟提取计时器
+	groupId          int                 //分组id
+	extractTimer     *time.Timer         // 延迟提取计时器
 }
 
 // ErrorBlock 错误块
@@ -47,23 +46,45 @@ type ErrorBlock struct {
 
 // TShellOut 管理多个 ShellOut
 type TShellOut struct {
-	ShellOutMap map[string]*ShellOut
-	lock        sync.Mutex
-	log         *gstool.GsSlog
+	ShellOutMap       map[string]*ShellOut
+	lock              sync.Mutex
+	log               *gstool.GsSlog
+	GroupRegexFilters map[int][]string
+	GroupConfigLock   sync.Mutex
 }
 
 // NewTShellOut 构造函数
 func NewTShellOut() *TShellOut {
 	log := gstool.NewSlog3(Component.Env.LogPath, `shell_wait`)
 	_ = log.CleanOldLogs(2)
-	return &TShellOut{
-		ShellOutMap: make(map[string]*ShellOut),
-		log:         log,
+	shellOut := &TShellOut{
+		ShellOutMap:       make(map[string]*ShellOut),
+		log:               log,
+		GroupRegexFilters: make(map[int][]string),
 	}
+	return shellOut
+}
+
+func (h *TShellOut) InitGroupConfigs() {
+	h.GroupConfigLock.Lock()
+	defer h.GroupConfigLock.Unlock()
+	all, allErr := Component.TSqlite.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
+		`type`: define.GroupTypeShellOut,
+	}).All()
+	if allErr != nil {
+		gstool.FmtPrintlnLogTime(`获取ssh配置错误 %s`, allErr.Error())
+		return
+	}
+	for _, item := range all {
+		groupId := cast.ToInt(item[`id`])
+		extra1 := cast.ToString(item[`extra_1`])
+		h.GroupRegexFilters[groupId] = strings.Split(extra1, "\n")
+	}
+	gstool.FmtPrintlnLogTime(`初始化正则 %s`, gstool.JsonEncode(h.GroupRegexFilters))
 }
 
 // GetClient 获取或新建 ssh 客户端
-func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClientId string,
+func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClientId string, groupId int,
 	formatStream func(string) []string) (*ShellOut, bool, error) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
@@ -73,6 +94,7 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClient
 		return nil, false, errors.New(`ssh配置错误，GetClient ` + cast.ToString(debug.Stack()))
 	}
 	if shellOut, ok := h.ShellOutMap[shellClientId]; ok && shellOut != nil {
+		shellOut.groupId = groupId
 		return shellOut, true, nil
 	}
 
@@ -103,9 +125,9 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClient
 		seen:             make(map[string]struct{}),
 		sseClientId:      sseClientId,
 		errorRegex:       regexp.MustCompile(ErrRegex),
-		regexFilters:     make([]string, 0),
 		regexFiltersTips: map[string]int{},
 		startTime:        time.Now().Unix(),
+		groupId:          groupId,
 	}
 	h.SetReceiveMsg(shellOut, formatStream)
 	h.ShellOutMap[shellClientId] = shellOut
@@ -113,11 +135,11 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClient
 }
 
 // SetClientSseId 设置 sse 推送 & 错误检测
-func (h *TShellOut) SetClientSseId(shellClientId, sshId, sseClientId, command string,
+func (h *TShellOut) SetClientSseId(shellClientId, sshId, sseClientId, command string, groupId int,
 	formatStream func(string) []string) error {
 
 	sshConfig, _ := Component.TSqlite.GetSshConfig(sshId)
-	shellOut, exist, err := h.GetClient(sshConfig, shellClientId, sseClientId, formatStream)
+	shellOut, exist, err := h.GetClient(sshConfig, shellClientId, sseClientId, groupId, formatStream)
 	if err != nil {
 		return err
 	}
@@ -139,11 +161,10 @@ func (h *TShellOut) SetClientSseId(shellClientId, sshId, sseClientId, command st
 	return nil
 }
 
-func (h *TShellOut) SetRegexFilters(shellClientId, regexFilters string) {
-	h.lock.Lock()
-	defer h.lock.Unlock()
-	shellOut := h.ShellOutMap[shellClientId]
-	shellOut.regexFilters = strings.Split(regexFilters, "\n")
+func (h *TShellOut) GetRegexFilters(shellOut *ShellOut) []string {
+	h.GroupConfigLock.Lock()
+	defer h.GroupConfigLock.Unlock()
+	return h.GroupRegexFilters[shellOut.groupId]
 }
 
 func (h *TShellOut) CleanErrors(shellClientId string) {
@@ -215,7 +236,7 @@ func (h *TShellOut) CheckError(shellOut *ShellOut, msg string) {
 
 func (h *TShellOut) RegexFilter(shellOut *ShellOut, msg string) bool {
 	boolFilter := false
-	for _, regexFilter := range shellOut.regexFilters {
+	for _, regexFilter := range h.GetRegexFilters(shellOut) {
 		if strings.TrimSpace(regexFilter) == `` {
 			continue
 		}

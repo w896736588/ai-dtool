@@ -104,6 +104,7 @@ func initSqlite() {
 	}
 	base.Component.TSqlite = &base.TSqlite{Client: sqlite, Env: base.Component.Env}
 	base.Component.TDataBaseUp.Run()
+	base.Component.TShellOut.InitGroupConfigs()
 }
 
 func Stop() {
