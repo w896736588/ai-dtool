@@ -472,7 +472,6 @@ func (h *RCmd) RunPlaywright() (string, error) {
 				IsSse:     true,
 				Callback: func(url, msg string, err error) {
 					if cast.ToString(v[`parse_type`]) == define.RegisterLinkParseTypeJson {
-						base.Component.TVariable.Log.Debugf(`收到消息1---%s---`, msg)
 						base.Component.TAi.ParseStreamJson(url, msg, func(sendMsg string) {
 							h.StreamMsg(cast.ToString(sendMsg), false)
 						})
@@ -484,6 +483,7 @@ func (h *RCmd) RunPlaywright() (string, error) {
 					}
 				},
 				StartCallBack: func(url string) {
+					runParams.StopEchoTips = true
 					base.Component.TVariable.Log.Debugf(`监听到%s`, url)
 					h.StreamMsg(base.Component.TMarkDown.BlockQuote("开始回答...")+"\n\n", true)
 				},
@@ -498,6 +498,9 @@ func (h *RCmd) RunPlaywright() (string, error) {
 	for i := 0; i < runParams.OpenNum; i++ {
 		h.StreamMsg("\n"+base.Component.TMarkDown.Bold(label)+`,启动`, true)
 		streamFunc := func(name, msg string) {
+			if runParams.StopEchoTips {
+				return
+			}
 			h.StreamMsg(base.Component.TMarkDown.Bold(name)+`,`+msg, true)
 		}
 		runParams.StreamFunc = streamFunc

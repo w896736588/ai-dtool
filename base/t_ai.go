@@ -3,7 +3,6 @@ package base
 import (
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
-	"regexp"
 	"strings"
 
 	"gitee.com/Sxiaobai/gs/gstool"
@@ -58,33 +57,18 @@ func (h *TAi) ParseBaseStruct(msg string, resBytes *[]byte) {
 }
 
 func (h *TAi) ParseStreamJson(url, msg string, sendFunc func(string)) {
-	re := regexp.MustCompile(`\s{4}.\{`)
-	parts := re.Split(msg, -1)
-	for _, part := range parts {
-		if strings.Trim(part, ` `) == `` {
+	Component.TVariable.Log.Debugf(`准备解析消息-%v-`, msg)
+	jsonLists := gstool.JsonParseFromStr([]byte(msg))
+	for _, part := range jsonLists {
+		if part == `` {
 			continue
 		}
-		//在按照
-		secondList := regexp.MustCompile(`\s{3}.{2}\{`)
-		for _, secondPart := range secondList.Split(part, -1) {
-			//再按照!{进行切割
-			threeList := regexp.MustCompile(`[\x00-\x1F]`)
-			for _, threePart := range threeList.Split(secondPart, -1) {
-				if threePart == `` {
-					continue
-				}
-				if threePart[0:1] != `{` {
-					threePart = threePart[1:]
-				}
-				realMsgObj := _struct.StreamJson{}
-				decodeErr := gstool.JsonDecode(threePart, &realMsgObj)
-				if decodeErr != nil {
-
-				} else {
-					sendFunc(realMsgObj.Block.Text.Content)
-				}
-			}
-
+		realMsgObj := _struct.StreamJson{}
+		decodeErr := gstool.JsonDecode(part, &realMsgObj)
+		if decodeErr != nil {
+			gstool.FmtPrintlnLogTime(`解析失败 %s`, decodeErr.Error())
+		} else if realMsgObj.Block.Text.Content != `` {
+			sendFunc(realMsgObj.Block.Text.Content)
 		}
 	}
 }
