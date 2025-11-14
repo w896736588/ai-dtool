@@ -20,8 +20,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-func InitBase(appName, dbPath, DbName, ViewPath string) {
-	initComponent(appName, dbPath, DbName, ViewPath)
+func InitBase(appName, ViewPath string) {
+	initComponent(appName, ViewPath)
 	initSqlite()
 	initGin()
 	initOther()
@@ -45,7 +45,7 @@ func stdLog() {
 	//os.Stderr = errFile
 }
 
-func initComponent(appName, dbPath, DbName, ViewPath string) {
+func initComponent(appName, ViewPath string) {
 	base.Component = base.TComponent{}
 	base.Component.Env = &base.Env{}
 	base.Component.TGins = make([]*base.Gin, 0)
@@ -69,7 +69,7 @@ func initComponent(appName, dbPath, DbName, ViewPath string) {
 		panic(err.Error())
 	}
 	//初始化配置
-	base.Component.Env.Init(appName, dbPath, DbName, ViewPath)
+	base.Component.Env.Init(appName)
 	base.Component.Env.DatabaseUpPath = filepath.Join(base.Component.Env.RootPath, `internal`, `app`, `default`, `database`)
 	//初始化shell
 	base.Component.TShell = base.NewTShell()
@@ -92,7 +92,9 @@ func initPlaywright() {
 }
 
 func initSqlite() {
-	sqlite, err := gsdb.NewSqlite(base.Component.Env.DbPath, true)
+	fmt.Println(fmt.Sprintf(`配置库目录 %s`, base.Component.Env.DbConfig.DbPath))
+	fmt.Println(fmt.Sprintf(`配置库路径 %s`, filepath.Join(base.Component.Env.DbConfig.DbPath, base.Component.Env.DbConfig.DbName)))
+	sqlite, err := gsdb.NewSqlite(filepath.Join(base.Component.Env.DbConfig.DbPath, base.Component.Env.DbConfig.DbName), true)
 	if err != nil {
 		panic(fmt.Sprintf(`连接sqlite失败 %s`, err.Error()))
 	}
@@ -133,10 +135,10 @@ func initGin() {
 		tGin.GinSetAllowCrossDomain()
 		//第一个加载前端
 		if key == 0 {
-			tGin.GinStatic(`/js`, base.Component.Env.ViewPath+`/js`)
-			tGin.GinStaticFile(`/favicon.ico`, base.Component.Env.ViewPath+`/favicon.ico`)
-			tGin.GinStatic(`/css`, base.Component.Env.ViewPath+`/css`)
-			tGin.GinLoadHTMLFiles(base.Component.Env.ViewPath + `/index.html`)
+			tGin.GinStatic(`/js`, base.Component.Env.WebConfig.WebPath+`/js`)
+			tGin.GinStaticFile(`/favicon.ico`, base.Component.Env.WebConfig.WebPath+`/favicon.ico`)
+			tGin.GinStatic(`/css`, base.Component.Env.WebConfig.WebPath+`/css`)
+			tGin.GinLoadHTMLFiles(base.Component.Env.WebConfig.WebPath + `/index.html`)
 			tGin.GinGet(`/`, func(context *gin.Context) {
 				context.HTML(200, `index.html`, nil)
 			})
