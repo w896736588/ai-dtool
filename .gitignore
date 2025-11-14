@@ -3,6 +3,7 @@
 /logs/
 /zhima/
 /config/.db/
+*.db
 /build/*
 /.idea/*
 /playwright.lock
