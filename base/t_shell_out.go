@@ -15,7 +15,6 @@ import (
 	"github.com/spf13/cast"
 )
 
-const ErrRegex = `(?i)\b(error|exception|fatal|panic|err|错误|报错|fail)\b`
 const MaxSourceLength = 20000 //原始内容最多保留多少行 用于搜索
 const MaxRemainLength = 10000 //过滤后内容最多保留多少行
 const MaxSendLength = 1000    //刷新页面后最多发送给前端多少行
@@ -46,8 +45,9 @@ type TShellOut struct {
 	ShellOutMap       map[string]*ShellOut
 	lock              sync.Mutex
 	log               *gstool.GsSlog
-	GroupRegexFilters map[int][]string
-	GroupRegexErrors  map[int][]string
+	GroupRegexFilters map[int][]string //过滤规则
+	GroupRegexErrors  map[int][]string //错误规则
+	GroupNoErrors     map[int][]string //错误再次排除规则
 	GroupConfigLock   sync.Mutex
 }
 
@@ -60,6 +60,7 @@ func NewTShellOut() *TShellOut {
 		log:               log,
 		GroupRegexFilters: make(map[int][]string),
 		GroupRegexErrors:  make(map[int][]string),
+		GroupNoErrors:     make(map[int][]string),
 	}
 	return shellOut
 }
@@ -78,8 +79,10 @@ func (h *TShellOut) InitGroupConfigs() {
 		groupId := cast.ToInt(item[`id`])
 		extra1 := cast.ToString(item[`extra_1`])
 		extra2 := cast.ToString(item[`extra_2`])
+		extra3 := cast.ToString(item[`extra_3`])
 		h.GroupRegexFilters[groupId] = strings.Split(extra1, "\n")
 		h.GroupRegexErrors[groupId] = strings.Split(extra2, "\n")
+		h.GroupNoErrors[groupId] = strings.Split(extra3, "\n")
 	}
 }
 
@@ -166,6 +169,7 @@ func (h *TShellOut) SetClientSseId(shellClientId, sshId, sseClientId, command st
 			h.SendMsg(shellOut, strings.Join(shellOut.remainContents, "\n"))
 		}
 		h.SendErrList(shellOut)
+		h.SendFilterList(shellOut)
 	}
 	return nil
 }
@@ -180,6 +184,12 @@ func (h *TShellOut) GetRegexErrors(shellOut *ShellOut) []string {
 	h.GroupConfigLock.Lock()
 	defer h.GroupConfigLock.Unlock()
 	return h.GroupRegexErrors[shellOut.groupId]
+}
+
+func (h *TShellOut) GetNoErrors(shellOut *ShellOut) []string {
+	h.GroupConfigLock.Lock()
+	defer h.GroupConfigLock.Unlock()
+	return h.GroupNoErrors[shellOut.groupId]
 }
 
 func (h *TShellOut) CleanErrors(shellClientId string) {
@@ -204,12 +214,22 @@ func (h *TShellOut) Delete(shellClientId string) {
 
 }
 
+func (h *TShellOut) CleanLog(shellClientId string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	shellOut := h.ShellOutMap[shellClientId]
+	if shellOut == nil {
+		return
+	}
+	shellOut.remainContents = []string{}
+}
+
 func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, formatStream func(string) []string) {
 	shellOut.Client.SetFuncStreamReceive(func(msg string) {
 		msg = gstool.StringFilterANSI(msg)
 		msg = strings.Replace(msg, "\u001B", "", -1)
 		//原内容处理
-		shellOut.sourceContents = append(shellOut.sourceContents, msg)
+		shellOut.sourceContents = append(shellOut.sourceContents, gstool.TimeNowUnixToString(``)+` `+msg)
 		if len(shellOut.sourceContents) > MaxSourceLength {
 			shellOut.sourceContents = shellOut.sourceContents[MaxSourceLength:]
 		}
@@ -238,6 +258,7 @@ func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, formatStream func(string) 
 }
 
 func (h *TShellOut) RegexError(shellOut *ShellOut, msg string) {
+	noErrors := h.GetNoErrors(shellOut)
 	for _, regexError := range h.GetRegexErrors(shellOut) {
 		if regexError == `` {
 			continue
@@ -251,6 +272,12 @@ func (h *TShellOut) RegexError(shellOut *ShellOut, msg string) {
 		}
 		var re = regexp.MustCompile(regexError)
 		if re.MatchString(msg) {
+			//再次过滤
+			for _, noError := range noErrors {
+				if strings.Contains(msg, noError) {
+					continue
+				}
+			}
 			block := ErrorBlock{
 				Lines:     []string{},
 				ErrorLine: msg,
@@ -264,6 +291,7 @@ func (h *TShellOut) RegexError(shellOut *ShellOut, msg string) {
 
 func (h *TShellOut) RegexFilter(shellOut *ShellOut, msg string) bool {
 	boolFilter := false
+	split := `#`
 	for _, regexFilter := range h.GetRegexFilters(shellOut) {
 		if regexFilter == `` {
 			continue
@@ -272,7 +300,7 @@ func (h *TShellOut) RegexFilter(shellOut *ShellOut, msg string) bool {
 			continue
 		}
 		name := ``
-		regexParams := strings.Split(regexFilter, `#`)
+		regexParams := strings.Split(regexFilter, split)
 		if len(regexParams) == 2 {
 			regexFilter = regexParams[1]
 			name = regexParams[0]
@@ -280,18 +308,13 @@ func (h *TShellOut) RegexFilter(shellOut *ShellOut, msg string) bool {
 		var re = regexp.MustCompile(regexFilter)
 		if re.MatchString(msg) {
 			boolFilter = true
+			unikey := name + split + regexFilter
 			if gstool.MapKeyExist(&shellOut.regexFiltersTips, regexFilter) {
-				shellOut.regexFiltersTips[regexFilter] += 1
+				shellOut.regexFiltersTips[unikey] += 1
 			} else {
-				shellOut.regexFiltersTips[regexFilter] = 1
+				shellOut.regexFiltersTips[unikey] = 1
 			}
-			if shellOut.regexFiltersTips[regexFilter]%10 == 0 {
-				if name != `` {
-					h.SendMsg(shellOut, fmt.Sprintf(`%s 过滤输出：%s,已过滤：%d次`+"\n", gstool.TimeNowUnixToString(``), name, shellOut.regexFiltersTips[regexFilter]))
-				} else {
-					h.SendMsg(shellOut, fmt.Sprintf(`%s 过滤输出：%s,已过滤：%d次`+"\n", gstool.TimeNowUnixToString(``), regexFilter, shellOut.regexFiltersTips[regexFilter]))
-				}
-			}
+			h.SendFilter(shellOut, unikey)
 			break
 		}
 	}
@@ -310,6 +333,14 @@ func (h *TShellOut) SendEvent(shellOut *ShellOut, eventType, msg string) {
 
 func (h *TShellOut) SendErrList(shellOut *ShellOut) {
 	_ = Component.TSse.SendMsg(shellOut.sseClientId, define.SseContentTypeErrorList, shellOut.errorList, 0)
+}
+
+func (h *TShellOut) SendFilterList(shellOut *ShellOut) {
+	_ = Component.TSse.SendMsg(shellOut.sseClientId, define.SseContentTypeFilterList, shellOut.regexFiltersTips, 0)
+}
+
+func (h *TShellOut) SendFilter(shellOut *ShellOut, msg string) {
+	_ = Component.TSse.SendMsg(shellOut.sseClientId, define.SseContentTypeFilter, msg, 0)
 }
 
 func (h *TShellOut) SendErr(shellOut *ShellOut, err ErrorBlock) {

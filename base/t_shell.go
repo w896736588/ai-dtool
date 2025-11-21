@@ -62,9 +62,6 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 	//回调准备输出的内容 放到这里 就不需要链接linux出现的一大段文字
 	gsShell.SetFuncStreamReceive(func(msg string) {
 		//msg = gstool.StringFilterANSI(msg)
-		if msg == "\n" {
-			return
-		}
 		h.log.Debugf(`receive：%s`, msg)
 		if formatStream != nil {
 			msgList := formatStream(msg)

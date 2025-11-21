@@ -38,11 +38,9 @@ func (h *TVariable) StopAll() {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 	for k, _ := range h.TaskList {
-		h.Log.Debugf(`停止执行变量唯一ID %s`, k)
 		h.TaskList[k] = "stop"
 		if clientList, ok := h.SshClientList[k]; ok {
 			for _, clientId := range clientList {
-				h.Log.Debugf(`移除 ssh client id %s`, clientId)
 				Component.TShell.RmClient(clientId)
 			}
 			delete(h.SshClientList, k)
@@ -57,11 +55,9 @@ func (h *TVariable) StopOther(runUniqueId string) {
 		if k == runUniqueId {
 			continue
 		}
-		h.Log.Debugf(`停止执行变量唯一ID %s`, k)
 		h.TaskList[k] = "stop"
 		if clientList, ok := h.SshClientList[k]; ok {
 			for _, clientId := range clientList {
-				h.Log.Debugf(`移除 ssh client id %s`, clientId)
 				Component.TShell.RmClient(clientId)
 			}
 			delete(h.SshClientList, k)

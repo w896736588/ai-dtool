@@ -42,7 +42,9 @@ type SseData struct {
 type SseEvent string
 
 const (
-	SseContentTypeMsg       = `msg`        //消息
-	SseContentTypeErrorList = `error_list` //错误列表
-	SseContentTypeError     = `error`      //错误
+	SseContentTypeMsg        = `msg`         //消息
+	SseContentTypeErrorList  = `error_list`  //错误列表
+	SseContentTypeFilterList = `filter_list` //拦截数量
+	SseContentTypeFilter     = `filter`      //拦截
+	SseContentTypeError      = `error`       //错误
 )

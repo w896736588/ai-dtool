@@ -26,22 +26,22 @@ export GOARCH=amd64
 export GOOS=windows
 # DbPath数据库目录
 # DbName数据库文件名 为空的话取服务名
-go build -tags timetzdata -ldflags "-X main.DbPath=D:/go/cache_manager_api/config/zhima -X main.DbName=frog.db -X main.ViewPath=D:/go/devtool/dist -s -w" -o ./build/zhima.exe ./cmd/zhima/main.go
+go build -tags timetzdata -ldflags " -s -w" -o ./build/zhima.exe ./cmd/zhima/main.go
 #git add ./build/zhima.exe
 #git update-index --chmod=+x ./build/zhima.exe
 git ls-files --stage ./build/zhima.exe
-go build -tags timetzdata -ldflags "-X main.DbPath= -X main.DbName=frog.db -X main.ViewPath= -s -w" -o ./build/zhimaPub.exe ./cmd/zhima/main.go
+go build -tags timetzdata -ldflags " -s -w" -o ./build/zhimaPub.exe ./cmd/zhima/main.go
 git ls-files --stage ./build/zhimaPub.exe
 ```
 
 ```shell
 #公司go run
 export CGO_ENABLED=1
-go run -ldflags "-X main.DbPath=D:/go/cache_manager_api/config/zhima/ -X main.DbName=frog.db -X main.ViewPath=D:/go/devtool/dist" cmd/zhima/main.go
+go run -ldflags " -s -w" cmd/zhima/main.go
 ```
 
 ```shell
 #家里go run
 export CGO_ENABLED=1
-go run -ldflags "-X main.DbPath=C:\work\frog\dev_tool_master\config\zhima\ -X main.DbName=frog.db -X main.ViewPath=C:\work\frog\cache_manager_web\dist" cmd/zhima/main.go
+go run -ldflags cmd/zhima/main.go
 ```

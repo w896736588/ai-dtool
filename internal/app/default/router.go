@@ -32,6 +32,7 @@ func InitRouter(tGin *base.Gin) {
 	docker(tGin)
 	ai(tGin)
 	api(tGin)
+	apiUse(tGin)
 }
 
 // 基础接口
@@ -180,6 +181,7 @@ func shellOut(tGin *base.Gin) {
 	tGin.GinPost(`/api/shellOutEdit`, controller.ShellOutEdit)
 	tGin.GinPost(`/api/shellOutErrorContext`, controller.ShellOutErrorContext)
 	tGin.GinPost(`/api/shellOutSearchContent`, controller.ShellOutSearchContent)
+	tGin.GinPost(`/api/shellOutCleanLog`, controller.ShellOutCleanLog)
 }
 
 func variable(tGin *base.Gin) {
@@ -234,6 +236,15 @@ func ai(tGin *base.Gin) {
 }
 
 func api(tGin *base.Gin) {
+	tGin.GinPost(`/api/CreateCollection`, controller.ApiCreateCollection)
+	tGin.GinPost(`/api/Collections`, controller.ApiCollections)
+	tGin.GinPost(`/api/CreateDir`, controller.ApiCreateDir)
+	tGin.GinPost(`/api/CreateApi`, controller.ApiCreateApi)
+	tGin.GinPost(`/api/Apis`, controller.Apis)
+	tGin.GinPost(`/api/ApiRun`, controller.ApiRun)
+}
+
+func apiUse(tGin *base.Gin) {
 	//api git logs
 	tGin.SseRoute(`/api/GitLab`, func(urlValues url.Values, stopC chan int, c *gin.Context) (*gsgin.Sse, error) {
 		clientId := define.SseGitLab

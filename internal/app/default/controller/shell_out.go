@@ -92,10 +92,20 @@ func ShellOutSearchContent(c *gin.Context) {
 	}
 	shellClientId := cast.ToString(reqMap[`shell_client_id`])
 	searchContent := cast.ToString(reqMap[`search_content`])
-	lines, number := base.Component.TShellOut.ShellOutSearchContent(shellClientId, searchContent, 1000)
+	searchContents := strings.Split(searchContent, "##")
+	allLines := make([]string, 0)
+	allNumber := 0
+	for _, searchContent := range searchContents {
+		if searchContent == `` {
+			continue
+		}
+		lines, number := base.Component.TShellOut.ShellOutSearchContent(shellClientId, searchContent, 1000)
+		allLines = append(allLines, lines...)
+		allNumber += number
+	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`lines`:  lines,
-		`number`: number,
+		`lines`:  allLines,
+		`number`: allNumber,
 	})
 	return
 }
@@ -205,6 +215,19 @@ func ShellOutStop(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	gsgin.GinResponseSuccess(c, ``, nil)
+	return
+}
+
+func ShellOutCleanLog(c *gin.Context) {
+	reqMap := make(map[string]interface{})
+	err := gsgin.GinPostBody(c, &reqMap)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	shellClientId := cast.ToString(reqMap[`shell_client_id`])
+	base.Component.TShellOut.CleanLog(shellClientId)
 	gsgin.GinResponseSuccess(c, ``, nil)
 	return
 }

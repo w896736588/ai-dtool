@@ -57,12 +57,17 @@ func (h *TAi) ParseBaseStruct(msg string, resBytes *[]byte) {
 }
 
 func (h *TAi) ParseStreamJson(url, msg string, sendFunc func(string)) {
-	Component.TVariable.Log.Debugf(`准备解析消息-%v-`, msg)
+	Component.TVariable.Log.Debugf(`step one 收到 -%v-`, msg)
+	if strings.Index(msg, `{{"op"`) >= 0 { //奇怪的格式
+		msg = strings.Replace(msg, `{{"op"`, `{"op"`, 1)
+		Component.TVariable.Log.Debugf(`step two 发现奇怪格式 -%v-`, msg)
+	}
 	jsonLists := gstool.JsonParseFromStr([]byte(msg))
 	for _, part := range jsonLists {
 		if part == `` {
 			continue
 		}
+		Component.TVariable.Log.Debugf(`step three 解析出json-%v-`, part)
 		realMsgObj := _struct.StreamJson{}
 		decodeErr := gstool.JsonDecode(part, &realMsgObj)
 		if decodeErr != nil {
