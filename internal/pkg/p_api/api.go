@@ -35,6 +35,7 @@ type Result struct {
 	Status      string            `json:"status"`      //status
 	Millisecond int64             `json:"millisecond"` //花费的时间
 	Headers     map[string]string `json:"headers"`     //header
+	BodyForms   []map[string]any  `json:"body_forms"`  //提交的Form
 }
 
 type Api struct {
@@ -60,6 +61,7 @@ func NewApi(apiInfo map[string]any) *Api {
 			Desc:         cast.ToString(apiInfo[`desc`]),
 			ContentType:  cast.ToString(apiInfo[`content_type`]),
 			Headers:      headers,
+			BodyForm:     cast.ToString(apiInfo[`body_form`]),
 		},
 		Result: Result{},
 	}
@@ -72,15 +74,19 @@ func (h *Api) Run() error {
 			h.Result.Url = h.BaseInfo.Url
 			cli = gshttp.PostJson(h.BaseInfo.Url).BodyStr(h.BaseInfo.BodyJson)
 		} else if h.BaseInfo.ContentType == `application/x-www-form-urlencoded` {
-			urlParams := make(map[string]any)
-			_ = gstool.JsonDecode(h.BaseInfo.BodyForm, &urlParams)
 			h.Result.Url = h.BaseInfo.Url
-			cli = gshttp.PostForm(h.BaseInfo.Url).BodyMap(urlParams)
+			cli = gshttp.PostForm(h.BaseInfo.Url)
+			err := h.FormatBodyData(cli, h.BaseInfo.BodyForm)
+			if err != nil {
+				return err
+			}
 		} else if h.BaseInfo.ContentType == `multipart/form-data` {
-			urlParams := make(map[string]any)
-			_ = gstool.JsonDecode(h.BaseInfo.BodyForm, &urlParams)
 			h.Result.Url = h.BaseInfo.Url
-			cli = gshttp.PostMultiForm(h.BaseInfo.Url).BodyMap(urlParams)
+			cli = gshttp.PostMultiForm(h.BaseInfo.Url)
+			err := h.FormatBodyData(cli, h.BaseInfo.BodyForm)
+			if err != nil {
+				return err
+			}
 		} else {
 			return errors.New(`不支持的请求类型`)
 		}
@@ -103,6 +109,114 @@ func (h *Api) Run() error {
 	h.Result.StatusCode = response.StatusCode
 	h.Result.Status = response.Status
 	h.Result.Millisecond = time.Now().UnixMilli() - startMill
-	h.Result.Headers = h.BaseInfo.Headers
+	h.Result.Headers = cli.GetHeaders()
+	return nil
+}
+
+type KeyValue struct {
+	Description string `json:"description"`
+	Field       string `json:"field"`
+	Type        string `json:"type"`
+	Value       string `json:"value"`
+}
+
+func (h *Api) FormatBodyData(cli *gshttp.Client, bodyForm string) error {
+	resultBodyForms := make([]map[string]any, 0)
+	keyValueList := make([]KeyValue, 0)
+	err := gstool.JsonDecode(bodyForm, &keyValueList)
+	if err != nil {
+		return gstool.Error(`解析bodyForm(%s)失败，%s`, bodyForm, err.Error())
+	}
+	//塞入的数据 所有的数据以数组的形式存入 如果是一个那么自然是单个，如果是多个就自动是数组传递
+	bodyMaps := make(map[string][]any, 0)
+	for _, keyValue := range keyValueList {
+		//如果字段存在
+		if _, ok := bodyMaps[keyValue.Field]; !ok {
+			bodyMaps[keyValue.Field] = []any{}
+		}
+		if keyValue.Type == `string` {
+			bodyMaps[keyValue.Field] = append(bodyMaps[keyValue.Field], cast.ToString(keyValue.Value))
+			if h.BaseInfo.ContentType == `application/x-www-form-urlencoded` {
+				resultBodyForms = append(resultBodyForms, map[string]any{
+					`field`: keyValue.Field,
+					`type`:  keyValue.Type,
+					`value`: gstool.UrlEncode(keyValue.Value),
+				})
+			} else {
+				resultBodyForms = append(resultBodyForms, map[string]any{
+					`field`: keyValue.Field,
+					`type`:  keyValue.Type,
+					`value`: keyValue.Value,
+				})
+			}
+		} else if keyValue.Type == `file` {
+			cli.BodyFile(keyValue.Field, keyValue.Value, gstool.FileGetNameByPath(keyValue.Value))
+		} else if keyValue.Type == `integer` {
+			bodyMaps[keyValue.Field] = append(bodyMaps[keyValue.Field], cast.ToInt(keyValue.Value))
+			if h.BaseInfo.ContentType == `application/x-www-form-urlencoded` {
+				resultBodyForms = append(resultBodyForms, map[string]any{
+					`field`: keyValue.Field,
+					`type`:  keyValue.Type,
+					`value`: gstool.UrlEncode(cast.ToString(cast.ToInt(keyValue.Value))),
+				})
+			} else {
+				resultBodyForms = append(resultBodyForms, map[string]any{
+					`field`: keyValue.Field,
+					`type`:  keyValue.Type,
+					`value`: cast.ToInt(keyValue.Value),
+				})
+			}
+		} else if keyValue.Type == `float` {
+			bodyMaps[keyValue.Field] = append(bodyMaps[keyValue.Field], cast.ToFloat64(keyValue.Value))
+			if h.BaseInfo.ContentType == `application/x-www-form-urlencoded` {
+				resultBodyForms = append(resultBodyForms, map[string]any{
+					`field`: keyValue.Field,
+					`type`:  keyValue.Type,
+					`value`: gstool.UrlEncode(cast.ToString(cast.ToFloat64(keyValue.Value))),
+				})
+			} else {
+				resultBodyForms = append(resultBodyForms, map[string]any{
+					`field`: keyValue.Field,
+					`type`:  keyValue.Type,
+					`value`: cast.ToFloat64(keyValue.Value),
+				})
+			}
+		} else if keyValue.Type == `boolean` {
+			setValue := false
+			if keyValue.Value == `true` {
+				setValue = true
+			} else if keyValue.Value == `false` {
+				setValue = false
+			}
+			bodyMaps[keyValue.Field] = append(bodyMaps[keyValue.Field], setValue)
+			if h.BaseInfo.ContentType == `application/x-www-form-urlencoded` {
+				resultBodyForms = append(resultBodyForms, map[string]any{
+					`field`: keyValue.Field,
+					`type`:  keyValue.Type,
+					`value`: gstool.UrlEncode(cast.ToString(keyValue.Value)),
+				})
+			} else {
+				resultBodyForms = append(resultBodyForms, map[string]any{
+					`field`: keyValue.Field,
+					`type`:  keyValue.Type,
+					`value`: cast.ToString(keyValue.Value),
+				})
+			}
+		} else {
+			return errors.New(`不支持的参数类型(` + keyValue.Type + `)`)
+		}
+	}
+	//最终再次转换
+	bodyMap := make(map[string]any)
+	for k, v := range bodyMaps {
+		if len(v) == 1 {
+			bodyMap[k] = v[0]
+		} else {
+			bodyMap[k] = v // 保持数组格式
+		}
+	}
+	cli.BodyMap(bodyMap)
+	gstool.FmtPrintlnLogTime(`请求的bodyMap %v`, bodyMap)
+	h.Result.BodyForms = resultBodyForms
 	return nil
 }

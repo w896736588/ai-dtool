@@ -33,6 +33,9 @@ func InitRouter(tGin *base.Gin) {
 	ai(tGin)
 	api(tGin)
 	apiUse(tGin)
+	tGin.GinPost(`/test`, func(c *gin.Context) {
+		return
+	})
 }
 
 // 基础接口
