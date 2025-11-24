@@ -4,6 +4,7 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	"dev_tool/internal/pkg/p_api"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -40,6 +41,7 @@ func ApiCreateCollection(c *gin.Context) {
 	}).One()
 	if len(info) > 0 {
 		info[`type`] = define.ApiTypeCollection
+		info[`uniqueid`] = fmt.Sprintf(`collection%d`, info[`id`])
 	}
 	gsgin.GinResponseSuccess(c, ``, info)
 }
@@ -78,15 +80,16 @@ func ApiCollections(c *gin.Context) {
 		item[`type`] = `collection`
 		//child
 		childs, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_api_dir`, `*`, map[string]any{
-			`parent_type`: define.ApiTypeCollection,
-			`parent_id`:   item[`id`],
+			`collection_id`: item[`id`],
 		}).Order(`id asc`).All()
 		for _, child := range childs {
 			child[`type`] = `folder`
+			child[`uniqueid`] = fmt.Sprintf(`folder%d`, child[`id`])
 		}
 		for _, child := range childs {
 			child[`children`] = []map[string]any{}
 		}
+		item[`uniqueid`] = fmt.Sprintf(`collection%d`, item[`id`])
 		item[`children`] = childs
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
@@ -182,6 +185,7 @@ func Apis(c *gin.Context) {
 	list, _ := base.Component.TSqlite.Client.QueryBySql(sql, collectionId, dirId).All()
 	for _, item := range list {
 		item[`type`] = `api`
+		item[`uniqueid`] = fmt.Sprintf(`api%d`, item[`id`])
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`list`: list,
@@ -192,7 +196,7 @@ func ApiCreateDir(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `parent_type`, `parent_id`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `collection_id`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
@@ -215,6 +219,7 @@ func ApiCreateDir(c *gin.Context) {
 	}).One()
 	if len(info) > 0 {
 		info[`type`] = define.ApiTypeFolder
+		info[`uniqueid`] = fmt.Sprintf(`folder%d`, info[`id`])
 	}
 	gsgin.GinResponseSuccess(c, ``, info)
 }
@@ -252,6 +257,7 @@ func ApiCreateApi(c *gin.Context) {
 	}).One()
 	if len(info) > 0 {
 		info[`type`] = define.ApiTypeApi
+		info[`uniqueid`] = fmt.Sprintf(`api%d`, info[`id`])
 	}
 	gsgin.GinResponseSuccess(c, ``, info)
 }

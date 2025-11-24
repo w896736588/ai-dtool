@@ -13,6 +13,7 @@ CREATE TABLE "tbl_api"
     "content_type" text NOT NULL DEFAULT '',
     "body_form" text    NOT NULL DEFAULT '',
     "body_json" text    NOT NULL DEFAULT '',
+    "response_take" text NOT NULL DEFAULT '',
     "create_time"       integer NOT NULL DEFAULT 0,
     "update_time"       integer NOT NULL DEFAULT 0
 );

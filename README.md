@@ -35,13 +35,6 @@ git ls-files --stage ./build/zhimaPub.exe
 ```
 
 ```shell
-#公司go run
 export CGO_ENABLED=1
 go run -ldflags " -s -w" cmd/zhima/main.go
-```
-
-```shell
-#家里go run
-export CGO_ENABLED=1
-go run -ldflags cmd/zhima/main.go
 ```
