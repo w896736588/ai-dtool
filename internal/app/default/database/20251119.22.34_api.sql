@@ -14,6 +14,7 @@ CREATE TABLE "tbl_api"
     "body_form" text    NOT NULL DEFAULT '',
     "body_json" text    NOT NULL DEFAULT '',
     "response_take" text NOT NULL DEFAULT '[]',
+    "last_result" text NOT NULL DEFAULT '{}',
     "env_id" integer NOT NULL DEFAULT 0,
     "create_time"       integer NOT NULL DEFAULT 0,
     "update_time"       integer NOT NULL DEFAULT 0

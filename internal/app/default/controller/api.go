@@ -271,7 +271,7 @@ func ApiCreateApi(c *gin.Context) {
 	_ = gsgin.GinPostBody(c, &dataMap)
 	var id any
 	updateData := gstool.MapTakeKeys(&dataMap, []string{`folder_id`, `collection_id`, `name`, `method`, `url`,
-		`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`, `env_id`})
+		`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`, `env_id`, `response_take`})
 	for key, value := range updateData {
 		if gstool.ArrayExistValue(&[]string{reflect.Array.String(), reflect.Map.String(), reflect.Slice.String()}, gstool.ReflectGetType(value).String()) {
 			updateData[key] = gstool.JsonEncode(value)
@@ -377,5 +377,11 @@ func ApiRun(c *gin.Context) {
 		gsgin.GinResponseError(c, `运行失败 `+err.Error(), nil)
 		return
 	}
+	apiCli.ResponseTake()
+	_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_api`, map[string]any{
+		`id`: id,
+	}, map[string]any{
+		`last_result`: gstool.JsonEncode(apiCli.Result),
+	}).Exec()
 	gsgin.GinResponseSuccess(c, ``, apiCli.Result)
 }

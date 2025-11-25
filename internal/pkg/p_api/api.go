@@ -4,6 +4,7 @@ import (
 	"dev_tool/base"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"gitee.com/Sxiaobai/gs/gshttp"
@@ -23,25 +24,36 @@ type BaseInfo struct {
 	ContentType   string            `json:"content_type"`
 	Headers       map[string]string `json:"headers"`
 	QueryParams   string            `json:"query_params"`
-	BodyForm      string            `json:"body_form"`       // application/x-www-form-urlencoded
+	BodyForm      []KeyValue        `json:"body_form"`       // application/x-www-form-urlencoded
 	BodyJson      string            `json:"body_json"`       // application/json
 	BodyMultiForm string            `json:"body_multi_form"` // multipart/form-data
+	ResponseTake  []ResponseTake    `json:"response_take"`   // 提取
+	EnvItems      map[string]string `json:"env_items"`       //环境变量
+	EnvId         int               `json:"env_id"`          //所属环境变量
+}
+
+type ResponseTake struct {
+	Description string `json:"description"`
+	ItemKey     string `json:"item_key"`
+	Value       string `json:"value"`
+	TakeValue   string `json:"take_value"`
 }
 
 type Result struct {
-	Url         string            `json:"url"`         //请求的url 如果是get那么就是完整的链接
-	StatusCode  int               `json:"status_code"` //http状态码
-	Errmsg      string            `json:"errmsg"`      //请求错误描述
-	Result      string            `json:"result"`      //请求返回
-	Status      string            `json:"status"`      //status
-	Millisecond int64             `json:"millisecond"` //花费的时间
-	Headers     map[string]string `json:"headers"`     //header
-	BodyForms   []map[string]any  `json:"body_forms"`  //提交的Form
+	Url          string            `json:"url"`           //请求的url 如果是get那么就是完整的链接
+	StatusCode   int               `json:"status_code"`   //http状态码
+	Errmsg       string            `json:"errmsg"`        //请求错误描述
+	Result       string            `json:"result"`        //请求返回
+	Status       string            `json:"status"`        //status
+	Millisecond  int64             `json:"millisecond"`   //花费的时间
+	Headers      map[string]string `json:"headers"`       //header
+	BodyForms    []map[string]any  `json:"body_forms"`    //提交的Form
+	ResponseTake []ResponseTake    `json:"response_take"` //返回参数的提取
+	RequestTime  string            `json:"request_time"`  //发起请求时间
 }
 
 type Api struct {
 	BaseInfo *BaseInfo
-	EnvItems map[string]string
 	Result
 }
 
@@ -58,8 +70,17 @@ func NewApi(apiInfo map[string]any) *Api {
 			`env_id`: apiInfo[`env_id`],
 		}).All()
 		for _, envItem := range envItemList {
-			envItems[`{`+cast.ToString(envItem[`key`])+`}`] = cast.ToString(envItem[`value`])
+			envItems[`$`+cast.ToString(envItem[`key`])+`$`] = cast.ToString(envItem[`value`])
 		}
+	}
+	//response take
+	responseTake := make([]ResponseTake, 0)
+	_ = gstool.JsonDecode(cast.ToString(apiInfo[`response_take`]), &responseTake)
+	//body form
+	bodyFormData := make([]KeyValue, 0)
+	err := gstool.JsonDecode(cast.ToString(apiInfo[`body_form`]), &bodyFormData)
+	if err != nil {
+		gstool.FmtPrintlnLogTime(`解析bodyForm(%s)失败，%s`, cast.ToString(apiInfo[`body_form`]), err.Error())
 	}
 	return &Api{
 		BaseInfo: &BaseInfo{
@@ -73,20 +94,31 @@ func NewApi(apiInfo map[string]any) *Api {
 			Desc:         cast.ToString(apiInfo[`desc`]),
 			ContentType:  cast.ToString(apiInfo[`content_type`]),
 			Headers:      headers,
-			BodyForm:     cast.ToString(apiInfo[`body_form`]),
+			BodyForm:     bodyFormData,
+			ResponseTake: responseTake,
+			EnvItems:     envItems,
+			EnvId:        cast.ToInt(apiInfo[`env_id`]),
 		},
-		EnvItems: envItems,
-		Result:   Result{},
+		Result: Result{
+			ResponseTake: responseTake,
+			RequestTime:  gstool.TimeNowUnixToString(`Y-m-d H:i:s`),
+		},
 	}
 }
 
 func (h *Api) ReplaceEnv() {
-	gstool.FmtPrintlnLogTime(`开始替换环境变量 %s`, h.BaseInfo.Url)
-	h.BaseInfo.Url = gstool.SReplaces(h.BaseInfo.Url, h.EnvItems)
-	gstool.FmtPrintlnLogTime(`替换完后 %s %s`, h.BaseInfo.Url, h.BaseInfo.Url)
+	//url替换
+	h.BaseInfo.Url = gstool.SReplaces(h.BaseInfo.Url, h.BaseInfo.EnvItems)
+	//headers替换
 	for k, v := range h.BaseInfo.Headers {
-		h.BaseInfo.Headers[k] = gstool.SReplaces(v, h.EnvItems)
+		h.BaseInfo.Headers[k] = gstool.SReplaces(v, h.BaseInfo.EnvItems)
 	}
+	//body form替换
+	for k, v := range h.BaseInfo.BodyForm {
+		h.BaseInfo.BodyForm[k].Value = gstool.SReplaces(v.Value, h.BaseInfo.EnvItems)
+	}
+	//body json替换
+	h.BaseInfo.BodyJson = gstool.SReplaces(h.BaseInfo.BodyJson, h.BaseInfo.EnvItems)
 }
 
 func (h *Api) Run() error {
@@ -146,16 +178,11 @@ type KeyValue struct {
 	Value       string `json:"value"`
 }
 
-func (h *Api) FormatBodyData(cli *gshttp.Client, bodyForm string) error {
+func (h *Api) FormatBodyData(cli *gshttp.Client, bodyForm []KeyValue) error {
 	resultBodyForms := make([]map[string]any, 0)
-	keyValueList := make([]KeyValue, 0)
-	err := gstool.JsonDecode(bodyForm, &keyValueList)
-	if err != nil {
-		return gstool.Error(`解析bodyForm(%s)失败，%s`, bodyForm, err.Error())
-	}
 	//塞入的数据 所有的数据以数组的形式存入 如果是一个那么自然是单个，如果是多个就自动是数组传递
 	bodyMaps := make(map[string][]any, 0)
-	for _, keyValue := range keyValueList {
+	for _, keyValue := range bodyForm {
 		//如果字段存在
 		if _, ok := bodyMaps[keyValue.Field]; !ok {
 			bodyMaps[keyValue.Field] = []any{}
@@ -242,7 +269,37 @@ func (h *Api) FormatBodyData(cli *gshttp.Client, bodyForm string) error {
 		}
 	}
 	cli.BodyMap(bodyMap)
-	gstool.FmtPrintlnLogTime(`请求的bodyMap %v`, bodyMap)
 	h.Result.BodyForms = resultBodyForms
 	return nil
+}
+
+func (h *Api) ResponseTake() {
+	h.Result.ResponseTake = make([]ResponseTake, 0)
+	if h.Result.Result != `` {
+		extra, err := gstool.NewJsonExtractorFromJSON(h.Result.Result)
+		if err != nil {
+			gstool.FmtPrintlnLogTime(`参数提取失败 %s`, err.Error())
+			return
+		}
+		for _, take := range h.BaseInfo.ResponseTake {
+			value := strings.TrimLeft(take.Value, `res.`)
+			takeValue, err := extra.Extract(value)
+			if err != nil {
+				continue
+			}
+			if takeValue == nil {
+				continue
+			}
+			take.TakeValue = cast.ToString(takeValue)
+			h.Result.ResponseTake = append(h.Result.ResponseTake, take)
+			//反写到环境变量
+			_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_api_env_item`, map[string]any{
+				`env_id`: h.BaseInfo.EnvId,
+				`key`:    take.ItemKey,
+			}, map[string]any{
+				`value`:       take.TakeValue,
+				`update_time`: time.Now().Unix(),
+			}).Exec()
+		}
+	}
 }
