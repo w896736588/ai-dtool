@@ -124,6 +124,7 @@ func (h *Api) ReplaceEnv() {
 func (h *Api) Run() error {
 	var cli *gshttp.Client
 	h.ReplaceEnv()
+	gstool.FmtPrintlnLogTime(`接口地址`, h.BaseInfo.Url)
 	if h.BaseInfo.Method == http.MethodPost {
 		if h.BaseInfo.ContentType == `application/json` {
 			h.Result.Url = h.BaseInfo.Url
@@ -146,6 +147,7 @@ func (h *Api) Run() error {
 			return errors.New(`不支持的请求类型`)
 		}
 	} else {
+		h.Result.Url = h.BaseInfo.Url
 		cli = gshttp.Get(h.Result.Url)
 	}
 	//填充header

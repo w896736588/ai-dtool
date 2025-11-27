@@ -115,6 +115,7 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId, sseClient
 	})
 	gsShell.SetMaxRunSecond(40)
 	gsShell.SetCombineNum(1)
+	gsShell.SetMaxBufferSize(2 * 1024 * 1024) //最大允许2M的输出
 	gsShell.SetPtyConfig(gsssh.PtyConfig{
 		Width: 1000,
 	})
@@ -227,7 +228,6 @@ func (h *TShellOut) CleanLog(shellClientId string) {
 
 func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, formatStream func(string) []string) {
 	shellOut.Client.SetFuncStreamReceive(func(msg string) {
-		gstool.FmtPrintlnLogTime(`收到消息 %s`, msg)
 		msg = gstool.StringFilterANSI(msg)
 		msg = strings.Replace(msg, "\u001B", "", -1)
 		//原内容处理

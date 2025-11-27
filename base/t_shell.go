@@ -50,6 +50,7 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 		h.RmClient(shellClientId)
 	})
 	gsShell.SetMaxRunSecond(40)
+	gsShell.SetMaxBufferSize(2 * 1024 * 1024) //最大允许2M的输出
 	createErr := gsShell.ConnectAuthPassword()
 	if createErr != nil {
 		return nil, createErr
@@ -107,6 +108,7 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 		h.RmClient(shellClientId)
 	})
 	gsShell.SetMaxRunSecond(40)
+	gsShell.SetMaxBufferSize(2 * 1024 * 1024) //最大允许2M的输出
 	createErr := gsShell.ConnectAuthPassword()
 	if createErr != nil {
 		return nil, createErr

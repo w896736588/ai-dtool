@@ -178,12 +178,20 @@ func ApiCollectionEnvItems(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	collectionId := dataMap[`collection_id`]
+	envId := dataMap[`env_id`]
+	if cast.ToInt(envId) == 0 {
+		gsgin.GinResponseSuccess(c, ``, map[string]any{
+			`list`: []map[string]any{},
+		})
+		return
+	}
 	if cast.ToInt(collectionId) == 0 {
 		gsgin.GinResponseError(c, `请选择集合`, nil)
 		return
 	}
 	list, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_api_env_item`, `*`, map[string]any{
 		`collection_id`: collectionId,
+		`env_id`:        envId,
 	}).All()
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`list`: list,
