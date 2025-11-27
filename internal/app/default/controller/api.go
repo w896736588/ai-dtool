@@ -282,7 +282,26 @@ func ApiCreateApi(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`folder_id`, `collection_id`, `name`, `method`, `url`,
+	curlData := cast.ToString(dataMap[`curlData`])
+	var updateData map[string]any
+	if curlData != `` {
+		parsed, err := p_api.ParseCurlCommand(curlData)
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), ``)
+			return
+		}
+		gstool.FmtPrintlnLogTime(`%s`, gstool.JsonFormat(parsed.Form))
+		dataMap[`name`] = `从Curl导入`
+		dataMap[`method`] = parsed.Method
+		dataMap[`query_params`] = p_api.UrlParseParams(parsed.URL)
+		dataMap[`protocol`], dataMap[`url`] = gstool.URLGetBase(parsed.URL)
+		dataMap[`headers`] = parsed.Headers
+		dataMap[`content_type`] = parsed.ContentType
+		dataMap[`body_form`] = parsed.Form
+		dataMap[`body_json`] = parsed.Data
+
+	}
+	updateData = gstool.MapTakeKeys(&dataMap, []string{`folder_id`, `collection_id`, `name`, `method`, `url`,
 		`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`, `env_id`, `response_take`})
 	for key, value := range updateData {
 		if gstool.ArrayExistValue(&[]string{reflect.Array.String(), reflect.Map.String(), reflect.Slice.String()}, gstool.ReflectGetType(value).String()) {

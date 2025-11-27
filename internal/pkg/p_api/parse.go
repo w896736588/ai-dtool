@@ -1,6 +1,7 @@
 package p_api
 
 import (
+	"dev_tool/base/define"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -12,6 +13,7 @@ type CurlCommand struct {
 	URL            string
 	Method         string
 	Headers        map[string]string
+	ContentType    string
 	Data           string
 	FormDataFields map[string]string // 专门存储multipart/form-data字段
 	Form           []KeyValue
@@ -63,6 +65,10 @@ func ParseCurlCommand(curlCmd string) (*CurlCommand, error) {
 					key := strings.TrimSpace(parts[0])
 					value := strings.TrimSpace(parts[1])
 					cmd.Headers[key] = value
+					// 检查是否是Content-Type头部
+					if strings.ToLower(key) == "content-type" {
+						cmd.ContentType = value
+					}
 				}
 			}
 		case "-d", "--data", "--data-raw", "--data-ascii":
@@ -71,6 +77,12 @@ func ParseCurlCommand(curlCmd string) (*CurlCommand, error) {
 				cmd.Data = args[i]
 				if cmd.Method == "GET" {
 					cmd.Method = "POST"
+				}
+
+				// 如果没有显式设置Content-Type，根据数据类型设置默认值
+				if cmd.ContentType == "" {
+					cmd.ContentType = "application/x-www-form-urlencoded"
+					cmd.Headers["Content-Type"] = cmd.ContentType
 				}
 
 				// 检查是否是multipart/form-data格式
@@ -88,6 +100,12 @@ func ParseCurlCommand(curlCmd string) (*CurlCommand, error) {
 				if cmd.Method == "GET" {
 					cmd.Method = "POST"
 				}
+
+				// 如果没有显式设置Content-Type，设置默认值
+				if cmd.ContentType == "" {
+					cmd.ContentType = "application/x-www-form-urlencoded"
+					cmd.Headers["Content-Type"] = cmd.ContentType
+				}
 			}
 		case "-F", "--form":
 			i++
@@ -97,6 +115,14 @@ func ParseCurlCommand(curlCmd string) (*CurlCommand, error) {
 				cmd.Form = append(cmd.Form, field)
 				if cmd.Method == "GET" {
 					cmd.Method = "POST"
+				}
+
+				// 设置multipart/form-data的Content-Type
+				if cmd.ContentType == "" || !strings.Contains(strings.ToLower(cmd.ContentType), "multipart/form-data") {
+					// 生成boundary
+					boundary := cmd.generateBoundary()
+					cmd.ContentType = fmt.Sprintf("multipart/form-data; boundary=%s", boundary)
+					cmd.Headers["Content-Type"] = cmd.ContentType
 				}
 			}
 		case "-u", "--user":
@@ -156,12 +182,34 @@ func ParseCurlCommand(curlCmd string) (*CurlCommand, error) {
 		i++
 	}
 
+	// 如果没有设置Content-Type但有数据，设置默认值
+	if cmd.ContentType == "" && cmd.Data != "" {
+		cmd.ContentType = "application/x-www-form-urlencoded"
+		cmd.Headers["Content-Type"] = cmd.ContentType
+	}
+
 	// 验证URL是否为空
 	if cmd.URL == "" {
 		return nil, fmt.Errorf("no URL found in curl command")
 	}
-
+	if strings.Contains(cmd.ContentType, define.ContentTypeForm) {
+		cmd.ContentType = define.ContentTypeForm
+	} else if strings.Contains(cmd.ContentType, define.ContentTypeJson) {
+		cmd.ContentType = define.ContentTypeJson
+	} else if strings.Contains(cmd.ContentType, define.ContentTypeMultiForm) {
+		cmd.ContentType = define.ContentTypeMultiForm
+	} else if strings.Contains(cmd.ContentType, define.ContentTypeRaw) {
+		cmd.ContentType = define.ContentTypeRaw
+	} else if strings.Contains(cmd.ContentType, define.ContentTypeText) {
+		cmd.ContentType = define.ContentTypeText
+	}
 	return cmd, nil
+}
+
+// generateBoundary 生成multipart/form-data的boundary
+func (c *CurlCommand) generateBoundary() string {
+	// 简单的boundary生成，实际curl可能使用更复杂的算法
+	return fmt.Sprintf("----WebKitFormBoundary%d", len(c.FormDataFields)+len(c.Form))
 }
 
 // processStringEscapes 处理字符串中的转义序列，如$'...'中的\r\n
@@ -313,6 +361,7 @@ func (c *CurlCommand) String() string {
   "URL": "%s",
   "Method": "%s",
   "Headers": %s,
+  "ContentType": "%s",
   "Data": %s,
   "FormDataFields": %s,
   "Form": %s,
@@ -322,7 +371,7 @@ func (c *CurlCommand) String() string {
   "FollowRedirect": %t,
   "Verbose": %t,
   "Insecure": %t
-}`, c.URL, c.Method, formatMap(c.Headers), formatString(c.Data), formatMap(c.FormDataFields), formatSlice(c.Form), c.Cookies, c.UserAgent, c.Timeout, c.FollowRedirect, c.Verbose, c.Insecure)
+}`, c.URL, c.Method, formatMap(c.Headers), c.ContentType, formatString(c.Data), formatMap(c.FormDataFields), formatSlice(c.Form), c.Cookies, c.UserAgent, c.Timeout, c.FollowRedirect, c.Verbose, c.Insecure)
 	return jsonStr
 }
 
@@ -468,7 +517,7 @@ func (c *CurlCommand) ToCurlCommand() string {
 	return result.String()
 }
 
-// parseFormField 增强版，支持更多 curl 表单格式
+// parseFormField 修复版 - 正确处理引号
 func (c *CurlCommand) parseFormField(formData string) KeyValue {
 	field := KeyValue{
 		Field:       "",
@@ -481,12 +530,12 @@ func (c *CurlCommand) parseFormField(formData string) KeyValue {
 	if strings.Contains(formData, "=@") {
 		parts := strings.SplitN(formData, "=@", 2)
 		if len(parts) == 2 {
-			field.Field = parts[0]
+			field.Field = strings.Trim(parts[0], `"`) // 去除字段名的引号
 			field.Type = FieldTypeFile
 
 			// 处理可能的内容类型
 			fileParts := strings.SplitN(parts[1], ";type=", 2)
-			field.Value = fileParts[0]
+			field.Value = strings.Trim(fileParts[0], `"`) // 去除文件路径的引号
 			if len(fileParts) > 1 {
 				field.Description = fmt.Sprintf("File upload with content-type: %s", fileParts[1])
 			} else {
@@ -496,17 +545,36 @@ func (c *CurlCommand) parseFormField(formData string) KeyValue {
 	} else if strings.Contains(formData, "=") { // 2. 普通键值对：field=value
 		parts := strings.SplitN(formData, "=", 2)
 		if len(parts) == 2 {
-			field.Field = parts[0]
-			field.Value = parts[1]
-			field.Type = c.getValueType(field.Value)
+			field.Field = strings.Trim(parts[0], `"`) // 去除字段名的引号
+			fieldValue := strings.Trim(parts[1], `"`) // 去除字段值的引号
+
+			// 处理转义字符
+			fieldValue = processFormValue(fieldValue)
+			field.Value = fieldValue
+			field.Type = c.getValueType(fieldValue)
 			field.Description = fmt.Sprintf("Form field: %s", field.Field)
 		}
 	} else { // 3. 只有字段名
-		field.Field = formData
+		field.Field = strings.Trim(formData, `"`)
 		field.Type = FieldTypeString
 		field.Description = fmt.Sprintf("Form field: %s", formData)
 	}
 	return field
+}
+
+// processFormValue 处理表单字段值中的转义字符
+func processFormValue(value string) string {
+	// 如果值被引号包围，去掉引号
+	value = strings.Trim(value, `"`)
+
+	// 处理常见的转义序列
+	value = strings.ReplaceAll(value, `\\`, `\`)
+	value = strings.ReplaceAll(value, `\"`, `"`)
+	value = strings.ReplaceAll(value, `\n`, "\n")
+	value = strings.ReplaceAll(value, `\r`, "\r")
+	value = strings.ReplaceAll(value, `\t`, "\t")
+
+	return value
 }
 
 // getValueType 判断值的类型

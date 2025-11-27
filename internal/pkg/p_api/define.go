@@ -1,5 +1,9 @@
 package p_api
 
+import (
+	"gitee.com/Sxiaobai/gs/gstool"
+)
+
 const (
 	FieldTypeString = "string"
 	FieldTypeInt    = "int"
@@ -25,4 +29,24 @@ type KeyValue struct {
 	Field       string `json:"field"`
 	Type        string `json:"type"`
 	Value       string `json:"value"`
+}
+
+// UrlParseParams 从URL字符串中解析参数
+func UrlParseParams(urlStr string) []KeyValue {
+	params, err := gstool.UrlParseParams(urlStr)
+	if err != nil {
+		return []KeyValue{}
+	}
+	var result []KeyValue
+	for _, paramValue := range params {
+		for key, value := range paramValue {
+			result = append(result, KeyValue{
+				Description: "",
+				Field:       key,
+				Type:        FieldTypeString,
+				Value:       value,
+			})
+		}
+	}
+	return result
 }
