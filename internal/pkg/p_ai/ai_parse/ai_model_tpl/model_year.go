@@ -3,7 +3,7 @@ package ai_model_tpl
 import (
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"strings"
 )
 

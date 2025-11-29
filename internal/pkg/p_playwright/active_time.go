@@ -3,7 +3,7 @@ package p_playwright
 import (
 	"dev_tool/base"
 	_struct "dev_tool/base/struct"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/playwright-community/playwright-go"
 	"sync"
 	"time"

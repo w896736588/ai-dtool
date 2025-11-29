@@ -6,6 +6,7 @@ toolchain go1.24.4
 
 require (
 	gitee.com/Sxiaobai/gs v1.9.9
+	gitee.com/Sxiaobai/gs/v2 v2.0.3
 	github.com/gin-gonic/gin v1.9.1
 	github.com/gorilla/websocket v1.5.1
 	github.com/pion/stun v0.6.1
@@ -16,15 +17,10 @@ require (
 )
 
 require (
-	github.com/andybalholm/brotli v1.2.0 // indirect
-	github.com/antlabs/gstl v0.1.2 // indirect
-	github.com/antlabs/pcurl v0.0.11 // indirect
-	github.com/antlabs/strsim v0.0.4 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.14.2 // indirect
 	github.com/bytedance/sonic/loader v0.4.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/chenzhuoyu/base64x v0.0.0-20230717121745-296ad89f973d // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/deckarep/golang-set/v2 v2.7.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
@@ -43,8 +39,6 @@ require (
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/guonaihong/clop v0.2.12 // indirect
-	github.com/guonaihong/gout v0.3.11 // indirect
 	github.com/h2non/filetype v1.1.3 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
@@ -68,7 +62,6 @@ require (
 	github.com/pion/dtls/v2 v2.2.7 // indirect
 	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/transport/v2 v2.2.1 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/sftp v1.13.9 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/richardlehane/mscfb v1.0.4 // indirect

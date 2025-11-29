@@ -2,7 +2,7 @@ package controller
 
 import (
 	"dev_tool/base"
-	"gitee.com/Sxiaobai/gs/gsgin"
+	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
 )
 

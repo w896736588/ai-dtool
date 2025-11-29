@@ -6,7 +6,7 @@ import (
 	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
 	"strings"
 )

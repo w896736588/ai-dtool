@@ -7,7 +7,7 @@ import (
 	"dev_tool/internal/pkg/p_ai/ai_model"
 	"dev_tool/internal/pkg/p_ai/ai_parse"
 	"errors"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
 	"strings"
 )

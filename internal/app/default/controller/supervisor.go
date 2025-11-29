@@ -5,9 +5,9 @@ import (
 	"errors"
 	"strings"
 
-	"gitee.com/Sxiaobai/gs/gsdefine"
-	"gitee.com/Sxiaobai/gs/gsgin"
-	"gitee.com/Sxiaobai/gs/gsssh"
+	"gitee.com/Sxiaobai/gs/v2/gsdefine"
+	"gitee.com/Sxiaobai/gs/v2/gsgin"
+	"gitee.com/Sxiaobai/gs/v2/gsssh"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 )

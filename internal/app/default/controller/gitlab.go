@@ -2,8 +2,8 @@ package controller
 
 import (
 	"dev_tool/base"
-	"gitee.com/Sxiaobai/gs/gsapi"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gsapi"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
 	"net/url"
 )

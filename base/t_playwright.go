@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
 )

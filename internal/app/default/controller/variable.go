@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/gsgin"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gsgin"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 )

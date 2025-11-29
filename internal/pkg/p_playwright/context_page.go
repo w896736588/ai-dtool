@@ -6,8 +6,8 @@ import (
 	_struct "dev_tool/base/struct"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/gshttp"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gshttp"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
 )

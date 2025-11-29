@@ -1,9 +1,9 @@
 package base
 
 import (
-	"gitee.com/Sxiaobai/gs/gsencrypt"
-	"gitee.com/Sxiaobai/gs/gssocket"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gsencrypt"
+	"gitee.com/Sxiaobai/gs/v2/gssocket"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/viper"
 )
 

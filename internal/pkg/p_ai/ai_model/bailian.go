@@ -5,8 +5,8 @@ import (
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
 	"errors"
-	"gitee.com/Sxiaobai/gs/gshttp"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gshttp"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
 )
 

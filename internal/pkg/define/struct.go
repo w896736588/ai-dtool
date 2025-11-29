@@ -1,6 +1,6 @@
 package define
 
-import "gitee.com/Sxiaobai/gs/gsdb"
+import "gitee.com/Sxiaobai/gs/v2/gsdb"
 
 type RequestBody struct {
 	UniKey         string `json:"UniKey"`

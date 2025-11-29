@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/gsencrypt"
-	"gitee.com/Sxiaobai/gs/gstask"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gsencrypt"
+	"gitee.com/Sxiaobai/gs/v2/gstask"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
 )
 

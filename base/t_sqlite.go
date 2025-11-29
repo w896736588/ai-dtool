@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/gsdb"
 	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gsdb"
 	"github.com/spf13/cast"
 )
 

@@ -3,8 +3,8 @@ package base
 import (
 	"errors"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gsapi"
 	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gsapi"
 	"github.com/spf13/cast"
 	"regexp"
 	"strings"

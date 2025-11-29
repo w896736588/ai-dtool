@@ -2,7 +2,7 @@ package base
 
 import (
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 )
 
 type TMarkDown struct {

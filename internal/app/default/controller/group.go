@@ -5,9 +5,9 @@ import (
 	"dev_tool/base/define"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 
-	"gitee.com/Sxiaobai/gs/gsgin"
+	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 )

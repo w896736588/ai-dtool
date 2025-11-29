@@ -1,17 +1,23 @@
 package p_api
 
+import (
+	"dev_tool/base/define"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"net/http"
+	"regexp"
+	"strings"
+)
+
 // CurlStruct 表示解析后的 curl 命令结构
 type CurlStruct struct {
-	Method        string            `json:"method"`
-	Url           string            `json:"url"`
-	Protocol      string            `json:"protocol"`
-	Desc          string            `json:"desc"`
-	ContentType   string            `json:"content_type"`
-	Headers       map[string]string `json:"headers"`
-	QueryParams   string            `json:"query_params"`
-	BodyForm      []KeyValue        `json:"body_form"`       // application/x-www-form-urlencoded
-	BodyJson      string            `json:"body_json"`       // application/json
-	BodyMultiForm string            `json:"body_multi_form"` // multipart/form-data
+	Method      string            `json:"method"`       //POST GET
+	Url         string            `json:"url"`          //域名部分 例如 baidu.com
+	Protocol    string            `json:"protocol"`     //协议 http https
+	ContentType string            `json:"content_type"` //请求头Content-Type application/x-www-form-urlencoded application/json multipart/form-data
+	Headers     map[string]string `json:"headers"`      //请求头
+	QueryParams []KeyValue        `json:"query_params"` //url的请求参数
+	BodyForm    []KeyValue        `json:"body_form"`    // 请求数据 当content-type为application/x-www-form-urlencoded或者multipart/form-data
+	Body        string            `json:"body_json"`    // 请求数据当content-type为application/json或raw时
 }
 
 type ParseCurl struct {
@@ -22,11 +28,183 @@ type ParseCurl struct {
 // NewParseCurl 解析curl命令字符串
 func NewParseCurl(curl string) ParseCurl {
 	return ParseCurl{
+		CurlStruct: CurlStruct{
+			Headers:     map[string]string{},
+			BodyForm:    []KeyValue{},
+			QueryParams: []KeyValue{},
+		},
 		Curl: curl,
 	}
 }
 
-func (p *ParseCurl) ParseCurl() error {
-
+func (h *ParseCurl) Parse() error {
+	lines := strings.Split(h.Curl, "\n")
+	gstool.FmtPrintlnLogTime(`换行 %s`, gstool.JsonFormat(lines))
+	for _, line := range lines {
+		//解析地址
+		if strings.HasPrefix(line, `curl`) && h.CurlStruct.Url == `` {
+			h.GetHostScheme(line)
+		}
+		//解析header
+		if strings.Contains(line, `-H`) {
+			h.GetH(line)
+		}
+		//解析header
+		if strings.Contains(line, `--header`) {
+			h.GetHeader(line)
+		}
+		//通过header解析content-type
+		h.contentType()
+		//解析 data
+		if strings.Contains(line, `--data-raw`) {
+			if h.CurlStruct.ContentType == define.ContentTypeJson {
+				h.GetDataRaw(line)
+			} else {
+				h.GetDataRawForm(line)
+			}
+		}
+		//解析 form表单
+		if strings.Contains(line, `--form`) {
+			h.GetDataForm(line)
+		}
+	}
+	if h.CurlStruct.Method == `` {
+		h.CurlStruct.Method = http.MethodGet
+	}
 	return nil
+}
+
+func (h *ParseCurl) GetDataForm(sLine string) {
+	if strings.Contains(sLine, "=@") {
+		line := strings.TrimLeft(sLine, "\t--form '")
+		line = strings.TrimRight(line, "\"' \\")
+		lineParams := strings.Split(line, "=@\"")
+		if len(lineParams) > 1 {
+			keyVal := KeyValue{}
+			keyVal.Field = lineParams[0]
+			keyVal.Value = lineParams[1]
+			keyVal.Type = FieldTypeFile
+			h.CurlStruct.BodyForm = append(h.CurlStruct.BodyForm, keyVal)
+		} else {
+			gstool.FmtPrintlnLogTime(`解析文件错误 %s`, sLine)
+		}
+	} else {
+		line := strings.TrimLeft(sLine, "\t--form '")
+		line = strings.TrimRight(line, "\"' \\")
+		lineParams := strings.Split(line, "=\"")
+		if len(lineParams) > 1 {
+			keyVal := KeyValue{}
+			keyVal.Field = lineParams[0]
+			keyVal.Value = lineParams[1]
+			keyVal.Type = FieldTypeString
+			h.CurlStruct.BodyForm = append(h.CurlStruct.BodyForm, keyVal)
+		} else {
+			gstool.FmtPrintlnLogTime(`解析form属性错误 %s`, sLine)
+		}
+	}
+}
+
+func (h *ParseCurl) GetDataRaw(line string) {
+	line = strings.TrimLeft(line, "--data-raw '")
+	line = strings.TrimRight(line, "'")
+	h.CurlStruct.Body = line
+}
+func (h *ParseCurl) GetDataRawForm(line string) {
+	params := strings.Split(line, `\r\n`)
+	for index, param := range params {
+		if strings.Contains(param, `Content-Disposition`) {
+			paramChilds := strings.Split(param, `;`)
+			keyVal := KeyValue{}
+			for _, paramChild := range paramChilds {
+				if strings.HasPrefix(strings.TrimLeft(paramChild, ` `), `name`) { //字段名
+					matchs := gstool.RegexMatchSubString(paramChild, `name="([^"]*)"`)
+					if len(matchs) > 1 {
+						keyVal.Field = matchs[1]
+					}
+				}
+				if strings.Contains(paramChild, `filename`) { //文件名
+					matchs := gstool.RegexMatchSubString(paramChild, `filename="([^"]*)"`)
+					if len(matchs) > 1 {
+						keyVal.Value = matchs[1]
+					}
+					keyVal.Type = FieldTypeFile
+				}
+			}
+			//如果没有找到文件 那么往下两行是值
+			if keyVal.Type == `` {
+				keyVal.Type = FieldTypeString
+				if len(params) > index+2 {
+					keyVal.Value = params[index+2]
+				}
+			}
+			h.CurlStruct.BodyForm = append(h.CurlStruct.BodyForm, keyVal)
+		}
+	}
+}
+
+func (h *ParseCurl) GetH(line string) {
+	re := regexp.MustCompile(`-H\s+'([^:]+):\s*([^']+)'`)
+	line = strings.TrimSpace(line)
+	matches := re.FindStringSubmatch(line)
+	if len(matches) == 3 {
+		key := strings.TrimSpace(matches[1])
+		value := strings.TrimSpace(matches[2])
+		h.CurlStruct.Headers[key] = value
+	}
+}
+
+func (h *ParseCurl) GetHeader(line string) {
+	re := regexp.MustCompile(`header\s+'([^:]+):\s*([^']+)'`)
+	line = strings.TrimSpace(line)
+	matches := re.FindStringSubmatch(line)
+	if len(matches) == 3 {
+		key := strings.TrimSpace(matches[1])
+		value := strings.TrimSpace(matches[2])
+		h.CurlStruct.Headers[key] = value
+	}
+}
+
+func (h *ParseCurl) contentType() {
+	if _, ok := h.CurlStruct.Headers[`Content-Type`]; ok {
+		if strings.Contains(h.CurlStruct.Headers[`Content-Type`], define.ContentTypeForm) {
+			h.CurlStruct.Headers[`Content-Type`] = define.ContentTypeForm
+			h.CurlStruct.Method = http.MethodPost
+			h.CurlStruct.ContentType = define.ContentTypeForm
+		} else if strings.Contains(h.CurlStruct.Headers[`Content-Type`], define.ContentTypeJson) {
+			h.CurlStruct.Headers[`Content-Type`] = define.ContentTypeJson
+			h.CurlStruct.Method = http.MethodPost
+			h.CurlStruct.ContentType = define.ContentTypeJson
+		} else if strings.Contains(h.CurlStruct.Headers[`Content-Type`], define.ContentTypeMultiForm) {
+			h.CurlStruct.Headers[`Content-Type`] = define.ContentTypeMultiForm
+			h.CurlStruct.Method = http.MethodPost
+			h.CurlStruct.ContentType = define.ContentTypeMultiForm
+		} else if strings.Contains(h.CurlStruct.Headers[`Content-Type`], define.ContentTypeRaw) {
+			h.CurlStruct.Headers[`Content-Type`] = define.ContentTypeRaw
+			h.CurlStruct.ContentType = define.ContentTypeRaw
+			h.CurlStruct.Method = http.MethodPost
+		} else {
+			h.CurlStruct.Method = http.MethodGet
+		}
+	}
+}
+
+func (h *ParseCurl) GetHostScheme(line string) {
+	if strings.Contains(line, `POST`) {
+		h.CurlStruct.Method = `POST`
+	} else if strings.Contains(line, `GET`) {
+		h.CurlStruct.Method = `GET`
+	}
+	re := regexp.MustCompile(`https?://[^\s"'\\]+`)
+	h.CurlStruct.Protocol, h.CurlStruct.Url = gstool.URLGetBase(re.FindString(line))
+	params, _ := gstool.UrlParseParams(re.FindString(line))
+	if len(params) > 0 {
+		gstool.FmtPrintlnLogTime(`params %s`, gstool.JsonFormat(params))
+		for _, param := range params {
+			h.CurlStruct.QueryParams = append(h.CurlStruct.QueryParams, KeyValue{
+				Field: param[`key`],
+				Type:  FieldTypeString,
+				Value: param[`value`],
+			})
+		}
+	}
 }

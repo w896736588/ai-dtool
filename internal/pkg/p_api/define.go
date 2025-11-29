@@ -25,10 +25,10 @@ type ApiDefine struct {
 }
 
 type KeyValue struct {
-	Description string `json:"description"`
-	Field       string `json:"field"`
-	Type        string `json:"type"`
-	Value       string `json:"value"`
+	Description string `json:"description"` //描述
+	Field       string `json:"field"`       //字段key
+	Type        string `json:"type"`        //字段类型 string int  float bool file
+	Value       string `json:"value"`       //字段值，如果是文件则存储文件地址,如果是二进制内容则空着
 }
 
 // UrlParseParams 从URL字符串中解析参数

@@ -9,8 +9,8 @@ import (
 	"reflect"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/gsgin"
 	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 )
@@ -285,20 +285,21 @@ func ApiCreateApi(c *gin.Context) {
 	curlData := cast.ToString(dataMap[`curlData`])
 	var updateData map[string]any
 	if curlData != `` {
-		parsed, err := p_api.ParseCurlCommand(curlData)
+		parsed := p_api.NewParseCurl(curlData)
+		err := parsed.Parse()
 		if err != nil {
-			gsgin.GinResponseError(c, err.Error(), ``)
+			gsgin.GinResponseError(c, `Curl解析失败 `+err.Error(), nil)
 			return
 		}
-		gstool.FmtPrintlnLogTime(`%s`, gstool.JsonFormat(parsed.FormData))
 		dataMap[`name`] = `从Curl导入`
-		dataMap[`method`] = parsed.Method
-		dataMap[`query_params`] = p_api.UrlParseParams(parsed.URL)
-		dataMap[`protocol`], dataMap[`url`] = gstool.URLGetBase(parsed.URL)
-		dataMap[`headers`] = parsed.Headers
-		dataMap[`content_type`] = parsed.ContentType
-		dataMap[`body_form`] = parsed.FormData
-		dataMap[`body_json`] = parsed.Data
+		dataMap[`method`] = parsed.CurlStruct.Method
+		dataMap[`query_params`] = parsed.CurlStruct.QueryParams
+		dataMap[`protocol`] = parsed.CurlStruct.Protocol
+		dataMap[`url`] = parsed.CurlStruct.Url
+		dataMap[`headers`] = parsed.CurlStruct.Headers
+		dataMap[`content_type`] = parsed.CurlStruct.ContentType
+		dataMap[`body_form`] = parsed.CurlStruct.BodyForm
+		dataMap[`body_json`] = parsed.CurlStruct.Body
 
 	}
 	updateData = gstool.MapTakeKeys(&dataMap, []string{`folder_id`, `collection_id`, `name`, `method`, `url`,

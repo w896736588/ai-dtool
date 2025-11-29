@@ -4,8 +4,8 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	ai2 "dev_tool/internal/pkg/p_ai"
-	"gitee.com/Sxiaobai/gs/gsgin"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gsgin"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 )
 

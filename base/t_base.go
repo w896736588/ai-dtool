@@ -2,7 +2,7 @@ package base
 
 import (
 	"fmt"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/pion/stun"
 	"net"
 	"os/exec"
