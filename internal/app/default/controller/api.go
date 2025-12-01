@@ -402,7 +402,6 @@ func ApiRun(c *gin.Context) {
 		gsgin.GinResponseError(c, `api不存在`, nil)
 		return
 	}
-	gstool.FmtPrintlnLogTime(`%s`, gstool.JsonFormat(apiInfo))
 	apiCli := p_api.NewApi(apiInfo)
 	err := apiCli.Run()
 	if err != nil {

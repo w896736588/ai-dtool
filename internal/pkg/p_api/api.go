@@ -54,7 +54,6 @@ func NewApi(apiInfo map[string]any) *Api {
 	urlParams := make(map[string]any)
 	_ = gstool.JsonDecode(cast.ToString(apiInfo[`query_params`]), &urlParams)
 	url, _ := gstool.UrlDecode(gstool.UrlAppendParams(cast.ToString(apiInfo[`url`]), urlParams))
-	requestUrl := cast.ToString(apiInfo[`protocol`]) + `://` + url
 	envItems := make(map[string]string)
 	if cast.ToInt(apiInfo[`env_id`]) > 0 {
 		envItemList, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_api_env_item`, `*`, map[string]any{
@@ -85,7 +84,7 @@ func NewApi(apiInfo map[string]any) *Api {
 		},
 		CurlStruct: CurlStruct{
 			Method:      cast.ToString(apiInfo[`method`]),
-			Url:         requestUrl,
+			Url:         url,
 			Protocol:    cast.ToString(apiInfo[`protocol`]),
 			ContentType: cast.ToString(apiInfo[`content_type`]),
 			Headers:     headers,
