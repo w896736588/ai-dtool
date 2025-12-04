@@ -5,6 +5,8 @@ import (
 	"dev_tool/base/define"
 	"dev_tool/internal/app/default/controller"
 	"errors"
+	"mime/multipart"
+	"net/http"
 	"net/url"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
@@ -33,7 +35,50 @@ func InitRouter(tGin *base.Gin) {
 	ai(tGin)
 	api(tGin)
 	apiUse(tGin)
-	tGin.GinPost(`/test`, func(c *gin.Context) {
+	tGin.GinPost(`/test/multiformdata`, func(c *gin.Context) {
+		// 解析 multipart/form-data
+		form, err := c.MultipartForm()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Failed to parse form data",
+				"details": err.Error(),
+			})
+			return
+		}
+
+		// 获取所有普通字段
+		allValues := make(map[string][]string)
+		for key, values := range form.Value {
+			allValues[key] = values
+		}
+
+		// 获取所有文件
+		allFiles := make(map[string][]*multipart.FileHeader)
+		for key, files := range form.File {
+			allFiles[key] = files
+		}
+
+		// 统计信息
+		fileInfos := []gin.H{}
+		for fieldName, files := range allFiles {
+			for _, file := range files {
+				fileInfos = append(fileInfos, gin.H{
+					"field_name": fieldName,
+					"filename":   file.Filename,
+					"size":       file.Size,
+					"header":     file.Header,
+				})
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"all_fields": allValues,
+			"all_files":  fileInfos,
+			"summary": gin.H{
+				"field_count": len(allValues),
+				"file_count":  len(fileInfos),
+			},
+		})
 		return
 	})
 }

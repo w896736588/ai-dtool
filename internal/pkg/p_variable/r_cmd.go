@@ -482,13 +482,16 @@ func (h *RCmd) RunPlaywright() (string, error) {
 						h.StreamMsg(cast.ToString(sendMsg), false)
 					}
 				},
+				MsgBack: func(msg string) {
+					h.StreamMsg(msg, true)
+				},
 				StartCallBack: func(url string) {
 					runParams.StopEchoTips = true
 					base.Component.TVariable.Log.Debugf(`监听到%s`, url)
 					h.StreamMsg(base.Component.TMarkDown.BlockQuote("开始回答...")+"\n\n", true)
 				},
 				EndCallBack: func(msg string) {
-					h.StreamMsg("\n"+base.Component.TMarkDown.Bold("end.")+"\n\n", true)
+					h.StreamMsg("\n"+base.Component.TMarkDown.Bold("end "+msg)+"\n\n", true)
 				},
 			}
 		}

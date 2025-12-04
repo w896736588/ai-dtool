@@ -122,6 +122,7 @@ func ShellOutSetSeeId(c *gin.Context) {
 	sshId := cast.ToString(reqMap[`ssh_id`])
 	command := cast.ToString(reqMap[`command`])
 	groupId := cast.ToInt(reqMap[`group_id`])
+	isRun := cast.ToInt(reqMap[`is_run`])
 	if groupId == 0 {
 		gsgin.GinResponseError(c, `组id不能为空`, nil)
 		return
@@ -131,15 +132,17 @@ func ShellOutSetSeeId(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	_, err = base.Component.TSqlite.Client.QuickUpdate(`tbl_shell_out`, map[string]any{
-		`id`: reqMap[`id`],
-	}, map[string]any{
-		`is_run`:      1,
-		`update_time`: time.Now().Unix(),
-	}).Exec()
-	if err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
+	if isRun == 1 {
+		_, err = base.Component.TSqlite.Client.QuickUpdate(`tbl_shell_out`, map[string]any{
+			`id`: reqMap[`id`],
+		}, map[string]any{
+			`is_run`:      1,
+			`update_time`: time.Now().Unix(),
+		}).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 	return

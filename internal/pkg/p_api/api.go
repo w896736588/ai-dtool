@@ -253,6 +253,7 @@ func (h *Api) FormatBodyData(cli *gshttp.Client, bodyForm []KeyValue) error {
 			bodyMap[k] = v // 保持数组格式
 		}
 	}
+	gstool.FmtPrintlnLogTime(`传入的body %s`, gstool.JsonEncode(bodyMap))
 	cli.BodyMap(bodyMap)
 	h.Result.BodyForms = resultBodyForms
 	return nil

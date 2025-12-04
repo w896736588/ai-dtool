@@ -37,9 +37,10 @@ type PlaywrightRunParams struct {
 type ListenUrl struct {
 	ParseType     string
 	IsSse         bool
-	Callback      func(string, string, error)
-	StartCallBack func(string)
-	EndCallBack   func(msg string)
+	Callback      func(string, string, error) //HTTP返回消息回调
+	MsgBack       func(string)                //正常消息展示
+	StartCallBack func(string)                //开始回调
+	EndCallBack   func(msg string)            //结束回调
 }
 
 type ShowCookie struct {

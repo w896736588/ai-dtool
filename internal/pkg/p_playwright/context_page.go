@@ -4,6 +4,7 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
+	"fmt"
 	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gshttp"
@@ -124,10 +125,10 @@ func (h *ContextPage) RegisterLinks(page playwright.Page, registerLinks map[stri
 	if registerLinks != nil {
 		for listenUri, listen := range registerLinks {
 			listen.Callback(listenUri, `注册 **`+listenUri, nil)
-			h.RunParams.StreamFunc(`context`, `注册监听链接`+listenUri)
-			_ = page.Route("**"+listenUri, func(route playwright.Route) {
+			h.RunParams.StreamFunc(`注册链接`, `注册的链接`+listenUri)
+			_ = page.Route("**"+listenUri+"*", func(route playwright.Route) {
 				listen.Callback(listenUri, `捕获到请求`+route.Request().URL(), nil)
-				h.RunParams.StreamFunc(`context`, `捕获到注册的连接`+route.Request().URL())
+				h.RunParams.StreamFunc(`注册链接`, `捕获到链接`+route.Request().URL())
 				go h.ListenUrl(route, listen)
 				_ = route.Abort()
 			})
@@ -153,20 +154,51 @@ func (h *ContextPage) ListenUrl(route playwright.Route, listen *_struct.ListenUr
 	requestUrl := originalRequest.URL()
 	postData, _ := originalRequest.PostData()
 	headers := originalRequest.Headers()
-	cli := gshttp.PostJson(requestUrl).
-		BodyStr(postData).
-		Headers(headers)
+
 	var res []byte
 	var resErr error
 	listen.StartCallBack(requestUrl)
 	if listen.IsSse {
-		if listen.ParseType == define.RegisterLinkParseTypeJson {
-			res, resErr = cli.OpenStreamBytesEnd([]byte("}}}"), func(s string, err error) {
-				listen.Callback(requestUrl, s, err)
-			}, func(bytes []byte) []byte {
-				return bytes
-			}).Request(200).Result()
+		if listen.ParseType == define.RegisterLinkParseTypeJson { //增量json流式分段
+			for i := 0; i < 10; i++ { //不知道为什么有时候报错 所以重试看看
+				base.Component.GsLog.Debugf(`----------------------`)
+				cli := gshttp.PostJson(requestUrl).
+					BodyStr(postData).
+					Headers(headers)
+				cli.OpenKeepAlive()
+				res, resErr = cli.OpenStreamBytesEnd([]byte("}}}"), func(s string, err error) {
+					listen.Callback(requestUrl, s, err)
+				}, func(bytes []byte) []byte {
+					return bytes
+				}).Request(200).Result()
+				if resErr == nil {
+					base.Component.GsLog.Debugf(`成功请求 url--%s--`, originalRequest.URL())
+					base.Component.GsLog.Debugf(`成功请求 headers--%s--`, gstool.JsonEncode(originalRequest.Headers()))
+					data, err := originalRequest.PostData()
+					if err != nil {
+						base.Component.GsLog.Debugf(`成功请求 data error %s`, err.Error())
+					} else {
+						base.Component.GsLog.Debugf(`成功请求 data--%s--`, data)
+					}
+					listen.MsgBack(fmt.Sprintf(`%s 第%d次尝试，成功`, "\n"+gstool.TimeNowUnixToString(`Y-m-d H:i:s`), i))
+					break
+				} else {
+					listen.MsgBack(fmt.Sprintf(`%s 第%d次尝试，失败 %s`, "\n"+gstool.TimeNowUnixToString(`Y-m-d H:i:s`), i, resErr.Error()))
+					base.Component.GsLog.Debugf(`失败请求 url--%s--`, originalRequest.URL())
+					base.Component.GsLog.Debugf(`失败请求 headers--%s--`, gstool.JsonEncode(originalRequest.Headers()))
+					data, err := originalRequest.PostData()
+					if err != nil {
+						base.Component.GsLog.Debugf(`失败请求 data error %s`, err.Error())
+					} else {
+						base.Component.GsLog.Debugf(`失败请求 data--%s--`, data)
+					}
+					time.Sleep(time.Second * 5)
+				}
+			}
 		} else {
+			cli := gshttp.PostJson(requestUrl).
+				BodyStr(postData).
+				Headers(headers)
 			res, resErr = cli.OpenStreamBytesEnd([]byte("\n\n"), func(s string, err error) {
 				listen.Callback(requestUrl, s, err)
 			}, func(bytes []byte) []byte {
@@ -175,6 +207,9 @@ func (h *ContextPage) ListenUrl(route playwright.Route, listen *_struct.ListenUr
 		}
 
 	} else {
+		cli := gshttp.PostJson(requestUrl).
+			BodyStr(postData).
+			Headers(headers)
 		res, resErr = cli.Request(200).Result()
 		if resErr == nil {
 			listen.Callback(requestUrl, cast.ToString(res), nil)
