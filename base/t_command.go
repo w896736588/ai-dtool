@@ -272,6 +272,11 @@ func (h *Command) DockerComposeRestart(dockerCmd, envFile string, services []str
 	return h
 }
 
+func (h *Command) DockerComposeStopService(dockerCmd, envFile string, services []string) *Command {
+	h.SetCommand(fmt.Sprintf(`%s %s %s stop %s`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile), strings.Join(services, ` `)))
+	return h
+}
+
 func (h *Command) DockerComposeStart(dockerCmd, envFile string) *Command {
 	h.SetCommand(fmt.Sprintf(`%s %s %s up -d`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile)))
 	return h

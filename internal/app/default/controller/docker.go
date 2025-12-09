@@ -203,12 +203,17 @@ func DockerComposeStop(c *gin.Context) {
 		gsgin.GinResponseError(c, oneErr.Error(), nil)
 		return
 	}
+	service := cast.ToString(data[`service`])
 	composeYmlPath := one[`compose_yml_path`].(string)
 	envFile := cast.ToString(one[`env_file`])
 	command := base.NewCommand()
 	command.Sudo()
 	command.Cd(path.Dir(composeYmlPath))
-	command.DockerComposeStop(cast.ToString(one[`docker_cmd`]), envFile)
+	if service != `` {
+		command.DockerComposeStopService(cast.ToString(one[`docker_cmd`]), envFile, []string{service})
+	} else {
+		command.DockerComposeStop(cast.ToString(one[`docker_cmd`]), envFile)
+	}
 	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 }

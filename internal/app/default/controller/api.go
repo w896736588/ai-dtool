@@ -6,6 +6,7 @@ import (
 	"dev_tool/internal/pkg/p_api"
 	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"time"
 
@@ -134,7 +135,7 @@ func ApiCollections(c *gin.Context) {
 			//查找接口
 			apis, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_api`, `*`, map[string]any{
 				`folder_id`: child[`id`],
-			}).Order(`id asc`).All()
+			}).Order(`weight,id asc`).All()
 			for _, api := range apis {
 				api[`type`] = `api`
 				api[`uniqueid`] = fmt.Sprintf(`api%d`, api[`id`])
@@ -235,7 +236,7 @@ func Apis(c *gin.Context) {
 	_ = gsgin.GinPostBody(c, &dataMap)
 	collectionId := dataMap[`collection_id`]
 	dirId := dataMap[`dir_id`]
-	sql := `select * from tbl_api where collection_id = ? and folder_id = ? order by id asc`
+	sql := `select * from tbl_api where collection_id = ? and folder_id = ? order by weight,id asc`
 	list, _ := base.Component.TSqlite.Client.QueryBySql(sql, collectionId, dirId).All()
 	for _, item := range list {
 		item[`type`] = `api`
@@ -295,7 +296,11 @@ func ApiCreateApi(c *gin.Context) {
 		dataMap[`method`] = parsed.CurlStruct.Method
 		dataMap[`query_params`] = parsed.CurlStruct.QueryParams
 		dataMap[`protocol`] = parsed.CurlStruct.Protocol
-		dataMap[`url`] = parsed.CurlStruct.Url
+		if parsed.CurlStruct.Method == http.MethodGet {
+			dataMap[`url`] = `http://` + parsed.CurlStruct.Url
+		} else {
+			dataMap[`url`] = `https://` + parsed.CurlStruct.Url
+		}
 		dataMap[`headers`] = parsed.CurlStruct.Headers
 		dataMap[`content_type`] = parsed.CurlStruct.ContentType
 		dataMap[`body_form`] = parsed.CurlStruct.BodyForm
@@ -303,7 +308,8 @@ func ApiCreateApi(c *gin.Context) {
 
 	}
 	updateData = gstool.MapTakeKeys(&dataMap, []string{`folder_id`, `collection_id`, `name`, `method`, `url`,
-		`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`, `env_id`, `response_take`})
+		`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`,
+		`env_id`, `response_take`, `take_result`, `take_result_desc`})
 	for key, value := range updateData {
 		if gstool.ArrayExistValue(&[]string{reflect.Array.String(), reflect.Map.String(), reflect.Slice.String()}, gstool.ReflectGetType(value).String()) {
 			updateData[key] = gstool.JsonEncode(value)
@@ -415,4 +421,63 @@ func ApiRun(c *gin.Context) {
 		`last_result`: gstool.JsonEncode(apiCli.Result),
 	}).Exec()
 	gsgin.GinResponseSuccess(c, ``, apiCli.Result)
+}
+
+func ApiCode(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	id := dataMap[`id`]
+	apiInfo, _ := base.Component.TSqlite.Client.QuickQuery(`tbl_api`, `*`, map[string]any{
+		`id`: id,
+	}).One()
+	if len(apiInfo) == 0 {
+		gsgin.GinResponseError(c, `api不存在`, nil)
+		return
+	}
+	codeType := dataMap[`code_type`]
+	apiCli := p_api.NewApi(apiInfo)
+	code := ``
+	if codeType == `curl bash(chrome)` {
+		code = apiCli.ToChromeCurlBash()
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`code`: code,
+	})
+	return
+}
+
+func ApiWeightDown(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	id := dataMap[`id`]
+	apiInfo, err := base.Component.TSqlite.Client.QuickQuery(`tbl_api`, `*`, map[string]any{
+		`id`: id,
+	}).One()
+	if err != nil {
+		gsgin.GinResponseError(c, `api不存在`, nil)
+		return
+	}
+	_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_api`, map[string]any{
+		`id`: id,
+	}, map[string]any{
+		`weight`: cast.ToInt(apiInfo[`weight`]) + 1,
+	}).Exec()
+	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+	return
+}
+
+func ApiResultTake(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	id := dataMap[`id`]
+	resultTake := dataMap[`result_take`]
+	takeResultDesc := dataMap[`take_result_desc`]
+	_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_api`, map[string]any{
+		`id`: id,
+	}, map[string]any{
+		`take_result`:      resultTake,
+		`take_result_desc`: takeResultDesc,
+	}).Exec()
+	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+	return
 }

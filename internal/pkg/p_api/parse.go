@@ -2,10 +2,12 @@ package p_api
 
 import (
 	"dev_tool/base/define"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
+
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 )
 
 // CurlStruct 表示解析后的 curl 命令结构
@@ -39,33 +41,47 @@ func NewParseCurl(curl string) ParseCurl {
 
 func (h *ParseCurl) Parse() error {
 	lines := strings.Split(h.Curl, "\n")
-	gstool.FmtPrintlnLogTime(`换行 %s`, gstool.JsonFormat(lines))
 	for _, line := range lines {
+		line = strings.TrimLeft(line, ` `)
 		//解析地址
 		if strings.HasPrefix(line, `curl`) && h.CurlStruct.Url == `` {
 			h.GetHostScheme(line)
+			continue
 		}
 		//解析header
-		if strings.Contains(line, `-H`) {
+		if strings.HasPrefix(line, `-H`) {
 			h.GetH(line)
+			//通过header解析content-type
+			h.contentType()
+			continue
 		}
 		//解析header
-		if strings.Contains(line, `--header`) {
-			h.GetHeader(line)
+		if strings.HasPrefix(line, `-b`) {
+			h.GetB(line)
+			continue
 		}
-		//通过header解析content-type
-		h.contentType()
+		//解析header
+		if strings.HasPrefix(line, `--header`) {
+			h.GetHeader(line)
+			//通过header解析content-type
+			h.contentType()
+			continue
+		}
 		//解析 data
-		if strings.Contains(line, `--data-raw`) {
+		if strings.HasPrefix(line, `--data-raw`) {
 			if h.CurlStruct.ContentType == define.ContentTypeJson {
 				h.GetDataRaw(line)
+			} else if h.CurlStruct.ContentType == define.ContentTypeForm {
+				h.GetDataRawUrls(line)
 			} else {
 				h.GetDataRawForm(line)
 			}
+			continue
 		}
 		//解析 form表单
 		if strings.Contains(line, `--form`) {
 			h.GetDataForm(line)
+			continue
 		}
 	}
 	if h.CurlStruct.Method == `` {
@@ -109,6 +125,24 @@ func (h *ParseCurl) GetDataRaw(line string) {
 	line = strings.TrimRight(line, "'")
 	h.CurlStruct.Body = line
 }
+
+func (h *ParseCurl) GetDataRawUrls(line string) {
+	line = strings.TrimLeft(line, "--data-raw '")
+	line = strings.TrimRight(line, "'")
+	values, err := url.ParseQuery(line)
+	if err != nil {
+		gstool.FmtPrintlnLogTime(`解析url参数错误 %s`, line)
+	} else {
+		for key, value := range values {
+			keyVal := KeyValue{}
+			keyVal.Field = key
+			keyVal.Value = value[0]
+			keyVal.Type = FieldTypeString
+			h.CurlStruct.BodyForm = append(h.CurlStruct.QueryParams, keyVal)
+		}
+	}
+}
+
 func (h *ParseCurl) GetDataRawForm(line string) {
 	params := strings.Split(line, `\r\n`)
 	for index, param := range params {
@@ -151,6 +185,12 @@ func (h *ParseCurl) GetH(line string) {
 		value := strings.TrimSpace(matches[2])
 		h.CurlStruct.Headers[key] = value
 	}
+}
+
+func (h *ParseCurl) GetB(line string) {
+	line = strings.TrimLeft(line, "-b '")
+	line = strings.TrimRight(line, "'")
+	h.CurlStruct.Headers[`Cookie`] = line
 }
 
 func (h *ParseCurl) GetHeader(line string) {

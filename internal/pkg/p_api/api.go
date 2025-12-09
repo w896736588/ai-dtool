@@ -1,14 +1,18 @@
 package p_api
 
 import (
+	"bytes"
 	"dev_tool/base"
+	"dev_tool/base/define"
 	"errors"
+	"fmt"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/gstool"
 	"gitee.com/Sxiaobai/gs/v2/gshttp"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
 )
 
@@ -253,7 +257,6 @@ func (h *Api) FormatBodyData(cli *gshttp.Client, bodyForm []KeyValue) error {
 			bodyMap[k] = v // 保持数组格式
 		}
 	}
-	gstool.FmtPrintlnLogTime(`传入的body %s`, gstool.JsonEncode(bodyMap))
 	cli.BodyMap(bodyMap)
 	h.Result.BodyForms = resultBodyForms
 	return nil
@@ -288,4 +291,51 @@ func (h *Api) ResponseTake() {
 			}).Exec()
 		}
 	}
+}
+
+func (h *Api) ToChromeCurlBash() string {
+	h.ReplaceEnv()
+	curlBash := make([]string, 0)
+	if h.CurlStruct.Method == http.MethodGet {
+		//url
+		curlBash = append(curlBash, `curl '`+h.CurlStruct.Url+`' \`)
+		//header
+		for k, v := range h.CurlStruct.Headers {
+			curlBash = append(curlBash, fmt.Sprintf(`-H '%s: %s' \`+"\n", k, v))
+		}
+	} else if h.CurlStruct.Method == http.MethodPost {
+		if h.CurlStruct.ContentType == define.ContentTypeMultiForm {
+			var body bytes.Buffer
+			writer := multipart.NewWriter(&body)
+			boundary := writer.Boundary()
+			for _, value := range h.CurlStruct.BodyForm {
+				if value.Type == FieldTypeFile {
+					_, err := writer.CreateFormFile(value.Field, value.Value)
+					if err != nil {
+						gstool.FmtPrintlnLogTime(`添加文件字段失败 %s`, err.Error())
+					}
+					//写入文件内容 这里空 不管
+					//fileWriter.Write([]byte{})
+				} else {
+					_ = writer.WriteField(value.Field, value.Value)
+				}
+			}
+			_ = writer.Close()
+			//url
+			curlBash = append(curlBash, `curl '`+h.CurlStruct.Url+`' \`)
+			//header
+			for k, v := range h.CurlStruct.Headers {
+				if k == define.ContentTypeMultiForm {
+					curlBash = append(curlBash, fmt.Sprintf(`-H '%s: %s' \`+"\n", `Content-Type`, fmt.Sprintf("multipart/form-data; boundary=%s", boundary)))
+				} else {
+					curlBash = append(curlBash, fmt.Sprintf(`-H '%s: %s' \`+"\n", k, v))
+				}
+			}
+			//body
+			curlBash = append(curlBash, "--data-raw "+fmt.Sprintf("$'%s'", body.String()))
+			//end
+			curlBash = append(curlBash, `--insecure`)
+		}
+	}
+	return strings.Join(curlBash, "\n")
 }

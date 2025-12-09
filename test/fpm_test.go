@@ -1,47 +1,161 @@
 package test
 
 import (
-	"dev_tool/internal/pkg/p_api"
+	"encoding/json"
 	"fmt"
-	"sync"
+	"strings"
 	"testing"
 
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 )
 
-var wg sync.WaitGroup
-
 // TestFpm 测试fpm无session的情况
 func TestFpmNoSession(t *testing.T) {
+	// 示例JSON
+	jsonStr := `{
+		"a": [{"xx": 1, "yy": [{"zz": 2}]}],
+		"res": 1,
+		"user": {
+			"info": [{
+				"name": "张三",
+				"age": 30,
+				"addresses": [{
+					"city": "北京",
+					"street": "长安街"
+				}]
+			}],
+			"active": true
+		},
+		"items": [
+			[{"nested": "value"}],
+			{"ignored": "不会被提取"}
+		]
+	}`
 
-	fmt.Println("Curl命令解析器")
-	fmt.Println("=================")
+	// 转换为JSON输出
+	jsonResult, _ := ExtractJSONPaths(jsonStr)
+	fmt.Printf("%s", gstool.JsonFormat(jsonResult))
+}
 
-	//linux cmd bash
-	//example :=
-	//	`curl 'http://dev1.zhikefu.com.cn/UploadManager/upload' \
-	//-H 'Accept: application/json, text/plain, */*' \
-	//-H 'Accept-Language: zh-CN,zh;q=0.9' \
-	//-H 'Connection: keep-alive' \
-	//-H 'Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryIX9Aobw5yhqGUBs0' \
-	//-b 'PHPSID=637f27df6e0fda4107823642d35342b9' \
-	//-H 'Origin: http://dev1admin.zhikefu.com.cn' \
-	//-H 'Referer: http://dev1admin.zhikefu.com.cn/' \
-	//-H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36' \
-	//-H 'token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3NjQzMzU4ODcsIm5iZiI6MTc2NDMzNTg4NywiZXhwIjoxNzY0OTQwNjg3LCJkYXRhIjp7ImlkIjoxLCJ1c2VybmFtZSI6IjE4NTAwMDAwMDAxIiwicGFzc3dvcmQiOiI5MGJjOTA5MzgwYTRjZjQyYmZkODA5ZWU3NGNiZGIzOSIsInVzZXJfdHlwZSI6MSwiYWRtaW5faWQiOjAsImNyZWF0ZV90aW1lIjoxNzYxMzYzMzAyLCJ1cGRhdGVfdGltZSI6MTc2MTM2MzMwMn19.1eTuiVpt-53gxG4hOjZzjMXlPY3q5Cimup2URKqikdg' \
-	//--data-raw $'------WebKitFormBoundaryIX9Aobw5yhqGUBs0\r\nContent-Disposition: form-data; name="file"; filename="u=2990600787,3256164520&fm=253&gp=0.jpg"\r\nContent-Type: image/jpeg\r\n\r\n\r\n------WebKitFormBoundaryIX9Aobw5yhqGUBs0\r\nContent-Disposition: form-data; name="file_type"\r\n\r\nimage\r\n------WebKitFormBoundaryIX9Aobw5yhqGUBs0\r\nContent-Disposition: form-data; name="business"\r\n\r\nuser\r\n------WebKitFormBoundaryIX9Aobw5yhqGUBs0--\r\n' \
-	//--insecure`
+type FlatItem struct {
+	Key  string `json:"key"`
+	Desc string `json:"desc"`
+}
 
-	//linux curl cmd
-	example1 := `curl --location --request POST 'http://dev1.zhikefu.com.cnbaidu.com?ual=xxx' \
---header 'Content-Type: application/json' \
---data-raw '{"aa" : 1}'`
-	//	gstool.FmtPrintlnLog(`%s`, example1)
-	parse := p_api.NewParseCurl(example1)
-	err := parse.ParseCurl()
-	if err != nil {
-		fmt.Println("解析错误:", err)
-		return
+func ExtractJSONPaths(jsonStr string) ([]FlatItem, error) {
+	decoder := json.NewDecoder(strings.NewReader(jsonStr))
+	decoder.UseNumber()
+
+	var data interface{}
+	if err := decoder.Decode(&data); err != nil {
+		return nil, err
 	}
-	gstool.FmtPrintlnLogTime(`%s`, gstool.JsonFormat(parse.CurlStruct))
+
+	results := []FlatItem{}
+	extractAllPaths(data, "", &results, true)
+	return results, nil
+}
+
+// extractAllPaths 提取所有路径，包括中间路径
+func extractAllPaths(data interface{}, currentPath string, results *[]FlatItem, addCurrent bool) {
+	// 添加当前路径（如果是有效路径）
+	if addCurrent && currentPath != "" {
+		cleanPath := strings.TrimPrefix(currentPath, ".")
+		// 避免重复添加
+		exists := false
+		for _, item := range *results {
+			if item.Key == cleanPath {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			*results = append(*results, FlatItem{
+				Key:  cleanPath,
+				Desc: getTypeDesc(data),
+			})
+		}
+	}
+
+	// 递归处理子元素
+	switch v := data.(type) {
+	case map[string]interface{}:
+		keys := getOrderedKeys(v) // 获取有序的keys
+		for _, key := range keys {
+			val := v[key]
+			newPath := currentPath
+			if currentPath == "" {
+				newPath = key
+			} else {
+				newPath = currentPath + "." + key
+			}
+			// 先添加中间路径，再递归处理
+			extractAllPaths(val, newPath, results, true)
+		}
+
+	case []interface{}:
+		if len(v) > 0 {
+			// 处理数组中的第一个元素
+			newPath := currentPath
+			if currentPath != "" && !strings.HasSuffix(currentPath, "]") {
+				// 如果路径不是以数组结束，加上数组索引
+				newPath = currentPath + "[0]"
+			}
+			// 添加数组路径本身
+			if newPath != currentPath && newPath != "" {
+				cleanPath := strings.TrimPrefix(newPath, ".")
+				*results = append(*results, FlatItem{
+					Key:  cleanPath,
+					Desc: "array[0]",
+				})
+			}
+			extractAllPaths(v[0], newPath, results, false)
+		}
+
+	default:
+		// 基本类型，已经在上面的addCurrent中添加过了
+	}
+}
+
+// getTypeDesc 获取数据类型的描述
+func getTypeDesc(data interface{}) string {
+	switch data.(type) {
+	case map[string]interface{}:
+		return "object"
+	case []interface{}:
+		return "array"
+	case string:
+		return "string"
+	case json.Number:
+		return "number"
+	case bool:
+		return "boolean"
+	case nil:
+		return "null"
+	default:
+		return "unknown"
+	}
+}
+
+// getOrderedKeys 从map中获取有序的key（按字母顺序排序以保持一致性）
+func getOrderedKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	// 按字母排序以保持一致的输出顺序
+	// 注意：这不是原始JSON的顺序，但至少是稳定的
+	sortStrings(keys)
+	return keys
+}
+
+// sortStrings 简单的字符串排序
+func sortStrings(strs []string) {
+	for i := 0; i < len(strs); i++ {
+		for j := i + 1; j < len(strs); j++ {
+			if strs[i] > strs[j] {
+				strs[i], strs[j] = strs[j], strs[i]
+			}
+		}
+	}
 }

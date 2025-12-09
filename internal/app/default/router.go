@@ -32,7 +32,6 @@ func InitRouter(tGin *base.Gin) {
 	variable(tGin)
 	smartLink(tGin)
 	docker(tGin)
-	ai(tGin)
 	api(tGin)
 	apiUse(tGin)
 	tGin.GinPost(`/test/multiformdata`, func(c *gin.Context) {
@@ -231,6 +230,7 @@ func shellOut(tGin *base.Gin) {
 	tGin.GinPost(`/api/shellOutErrorContext`, controller.ShellOutErrorContext)
 	tGin.GinPost(`/api/shellOutSearchContent`, controller.ShellOutSearchContent)
 	tGin.GinPost(`/api/shellOutCleanLog`, controller.ShellOutCleanLog)
+	tGin.GinPost(`/api/shellOutRestart`, controller.ShellOutRestart)
 }
 
 func variable(tGin *base.Gin) {
@@ -280,10 +280,6 @@ func docker(tGin *base.Gin) {
 	tGin.GinPost(`/api/DockerComposeStart`, controller.DockerComposeStart)
 }
 
-func ai(tGin *base.Gin) {
-	tGin.GinPost(`/api/AiRun`, controller.AiRun)
-}
-
 func api(tGin *base.Gin) {
 	tGin.GinPost(`/api/CreateCollection`, controller.ApiCreateCollection)
 	tGin.GinPost(`/api/DeleteCollection`, controller.ApiDeleteCollection)
@@ -298,6 +294,9 @@ func api(tGin *base.Gin) {
 	tGin.GinPost(`/api/DeleteDir`, controller.ApiDeleteDir)
 	tGin.GinPost(`/api/Apis`, controller.Apis)
 	tGin.GinPost(`/api/ApiRun`, controller.ApiRun)
+	tGin.GinPost(`/api/ApiCode`, controller.ApiCode)
+	tGin.GinPost(`/api/ApiWeightDown`, controller.ApiWeightDown)
+	tGin.GinPost(`/api/ApiResultTake`, controller.ApiResultTake)
 }
 
 func apiUse(tGin *base.Gin) {

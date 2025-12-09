@@ -65,6 +65,10 @@ func NewTShellOut() *TShellOut {
 	return shellOut
 }
 
+func (h *TShellOut) ShellOutRestart() {
+
+}
+
 func (h *TShellOut) InitGroupConfigs() {
 	h.GroupConfigLock.Lock()
 	defer h.GroupConfigLock.Unlock()

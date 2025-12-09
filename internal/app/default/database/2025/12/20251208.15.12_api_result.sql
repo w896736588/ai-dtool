@@ -1,0 +1,1 @@
+ALTER TABLE tbl_api ADD COLUMN take_result text NOT NULL DEFAULT '';
