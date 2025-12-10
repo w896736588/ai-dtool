@@ -53,16 +53,3 @@ type Kimi struct {
 	Text  string `json:"text"`
 	View  string `json:"view"`
 }
-
-type CurlResultParse struct {
-	Label         string `json:"label"`
-	Uri           string `json:"uri"`
-	IsStream      int    `json:"is_stream"`
-	ReceiveSignal string `json:"receive_signal"`
-	ReceiveRegex  string `json:"receive_regex"`
-	TakeJsons     []struct {
-		Take string `json:"take"`
-	} `json:"take_jsons"`
-	Retry       int `json:"retry"`
-	RetrySecond int `json:"retry_second"`
-}

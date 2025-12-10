@@ -28,6 +28,16 @@ func (h *TSse) SendMsg(sseClient, contentType string, msg any, delayMills int, s
 	return nil
 }
 
+func (h *TSse) SendMsg2(msg string, delayMills int, sseIds ...string) error {
+	if len(sseIds) == 0 {
+		sseIds = define.SseClientIds
+	}
+	for _, sseId := range sseIds {
+		_ = h.Sse.Send(sseId, msg, delayMills)
+	}
+	return nil
+}
+
 func (h *TSse) SendMsgChunk(sseClient, msg string, chunkT _struct.Chunk, delayMills int, sseIds ...string) error {
 	var chunkList []string
 	split := ``

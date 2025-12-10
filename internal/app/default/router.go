@@ -307,7 +307,7 @@ func apiUse(tGin *base.Gin) {
 		gstool.FmtPrintlnLogTime(`收到请求 /api/GitLab`)
 		go func() {
 			controller.GitLogs(gsgin.GinGetParams(c), func(s string) {
-				err := base.Component.TSse.SendMsg(clientId, define.SseContentTypeMsg, s+"\n", 0, []string{define.SseGitLab}...)
+				err := base.Component.TSse.SendMsg2(s+"\n", 0, []string{define.SseGitLab}...)
 				if err != nil {
 					gstool.FmtPrintlnLogTime(`错误 %s`, err.Error())
 					return

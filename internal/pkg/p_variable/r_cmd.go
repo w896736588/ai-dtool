@@ -6,11 +6,11 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
+	"dev_tool/internal/pkg/p_curl"
 	"dev_tool/internal/pkg/p_playwright"
 	"errors"
 	"fmt"
 
-	"gitee.com/Sxiaobai/gs/v2/gshttp/stream"
 	"github.com/tidwall/gjson"
 
 	"os"
@@ -19,7 +19,6 @@ import (
 	"sync"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gshttp"
 	"gitee.com/Sxiaobai/gs/v2/gsssh"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
@@ -392,29 +391,36 @@ func (h *RCmd) RunCurl() (string, error) {
 	if url == `` {
 		return ``, errors.New(`url不能为空`)
 	}
-	url, _ = base.Component.TVariable.ParseConfig(url)
-	h.StreamMsg(base.Component.TMarkDown.BlockQuote(`请求url,`+url), true)
-	isStream := cast.ToInt(gstool.UrlGetParam(url, `is_stream`))
-	var result []byte
-	var err error
-	if isStream == 1 {
-		fac := &stream.Byts{
-			Byts: []byte("\n\n"),
-			CallFunc: func(s string, err error) {
-				h.StreamMsg(s, false)
-			},
-			FormatFunc: func(s []byte) []byte {
-				if gstool.SContains(cast.ToString(s), []string{`commit 共：`, `获取完项目列表 共：`}) { //这种内容不要汇集到最终结果中
-					return []byte{}
-				} else {
-					return s
-				}
-			},
-		}
-		result, err = gshttp.Get(url).SetStreamFac(fac).Request(200).Result()
-	} else {
-		result, err = gshttp.Get(url).Request(200).Result()
+	parseConfig := _struct.CurlResultParse{}
+	err := gstool.JsonDecode(url, &parseConfig)
+	if err != nil {
+		h.StreamMsg(`解析`+url+`失败`, true)
+		return ``, err
 	}
+
+	pCurl := p_curl.CurlRun{
+		IsStream:      parseConfig.IsStream,
+		Method:        parseConfig.Method,
+		Url:           parseConfig.Uri,
+		ContentType:   parseConfig.ContentType,
+		Headers:       map[string]string{},
+		Body:          ``,
+		ReceiveSignal: parseConfig.ReceiveSignal,
+		ReceiveRegex:  parseConfig.ReceiveRegex,
+		TakeJsons:     parseConfig.TakeJsons,
+		Retry:         parseConfig.Retry,
+		RetrySecond:   parseConfig.RetrySecond,
+		StreamDataCall: func(s string) {
+			h.StreamMsg(s, false)
+		},
+		NoticeCall: func(s string) {
+			gstool.FmtPrintlnLogTime(s)
+		},
+		EndCall: func() {
+
+		},
+	}
+	result, err := pCurl.Run()
 	//增加替换变量
 	if resultKey != `` {
 		base.Component.TVariable.AddReplace(h.replaceList, resultKey, cast.ToString(result))
@@ -474,11 +480,10 @@ func (h *RCmd) RunPlaywright() (string, error) {
 			}
 			ListenUrlList[uri] = &_struct.ListenUrl{
 				ParseConfig: parseConfig,
-				Callback: func(url, msg string, err error) {
+				Callback: func(msg string) {
 					h.StreamDataReceive(&parseConfig, msg)
 				},
 				MsgBack: func(msg string) {
-					gstool.FmtPrintlnLogTime(`普通接收消息 %s`, msg)
 					h.StreamMsg(msg, true)
 				},
 				StartCallBack: func(url string) {
@@ -486,8 +491,8 @@ func (h *RCmd) RunPlaywright() (string, error) {
 					base.Component.TVariable.Log.Debugf(`监听到%s`, url)
 					h.StreamMsg(base.Component.TMarkDown.BlockQuote("开始回答...")+"\n\n", true)
 				},
-				EndCallBack: func(msg string) {
-					h.StreamMsg("\n"+base.Component.TMarkDown.Bold("end "+msg)+"\n\n", true)
+				EndCallBack: func() {
+					h.StreamMsg("\n"+base.Component.TMarkDown.Bold("end ")+"\n\n", true)
 				},
 			}
 		}

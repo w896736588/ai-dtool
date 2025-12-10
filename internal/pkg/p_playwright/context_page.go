@@ -4,15 +4,11 @@ import (
 	"dev_tool/base"
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
-	"fmt"
+	"dev_tool/internal/pkg/p_curl"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gshttp/stream"
-
-	"gitee.com/Sxiaobai/gs/v2/gshttp"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/playwright-community/playwright-go"
-	"github.com/spf13/cast"
 )
 
 type ContextPage struct {
@@ -126,11 +122,10 @@ func (h *ContextPage) InitEvents(page *playwright.Page) {
 func (h *ContextPage) RegisterLinks(page playwright.Page, registerLinks map[string]*_struct.ListenUrl) {
 	if registerLinks != nil {
 		for listenUri, listen := range registerLinks {
-			listen.Callback(listenUri, `注册 **`+listenUri, nil)
+			listen.MsgBack(`注册 **` + listenUri)
 			h.RunParams.StreamFunc(`注册链接`, `注册的链接`+listenUri)
 			_ = page.Route("**"+listenUri+"*", func(route playwright.Route) {
-				listen.Callback(listenUri, `捕获到请求`+route.Request().URL(), nil)
-				h.RunParams.StreamFunc(`注册链接`, `捕获到链接`+route.Request().URL())
+				listen.MsgBack(`捕获到请求` + route.Request().URL())
 				go h.ListenUrl(route, listen)
 				_ = route.Abort()
 			})
@@ -156,81 +151,28 @@ func (h *ContextPage) ListenUrl(route playwright.Route, listen *_struct.ListenUr
 	requestUrl := originalRequest.URL()
 	postData, _ := originalRequest.PostData()
 	headers := originalRequest.Headers()
-
-	var res []byte
-	var resErr error
 	listen.StartCallBack(requestUrl)
-	if listen.ParseConfig.IsStream == 1 {
-		retryNum := max(1, listen.ParseConfig.Retry)
-		retryWaitSecond := max(2, listen.ParseConfig.RetrySecond)
-		for i := 0; i < retryNum; i++ { //重试
-			base.Component.GsLog.Debugf(`----------------------`)
-			cli := gshttp.PostJson(requestUrl).
-				BodyStr(postData).
-				Headers(headers)
-			cli.OpenKeepAlive()
-			//注册接收处理函数
-			var fac gshttp.StreamInterface
-			if len(listen.ParseConfig.ReceiveRegex) > 0 {
-				base.Component.TVariable.Log.Debugf(`通过正则分割接收 %q`, listen.ParseConfig.ReceiveRegex)
-				fac = &stream.Reges{
-					Reges: listen.ParseConfig.ReceiveRegex,
-					CallFunc: func(s string, err error) {
-						listen.Callback(requestUrl, s, err)
-					},
-					FormatFunc: nil,
-				}
-			} else if len(listen.ParseConfig.ReceiveSignal) > 0 {
-				base.Component.TVariable.Log.Debugf(`通过字符串分割接收 %q`, listen.ParseConfig.ReceiveSignal)
-				fac = &stream.Byts{
-					Byts: []byte(listen.ParseConfig.ReceiveSignal),
-					CallFunc: func(s string, err error) {
-						listen.Callback(requestUrl, s, err)
-					},
-					FormatFunc: nil,
-				}
-			}
-			if fac != nil {
-				res, resErr = cli.SetStreamFac(fac).Request(200).Result()
-			} else {
-				res, resErr = cli.Request(200).Result()
-			}
-			if resErr == nil {
-				base.Component.GsLog.Debugf(`成功请求 url--%s--`, originalRequest.URL())
-				base.Component.GsLog.Debugf(`成功请求 headers--%s--`, gstool.JsonEncode(originalRequest.Headers()))
-				data, err := originalRequest.PostData()
-				if err != nil {
-					base.Component.GsLog.Debugf(`成功请求 data error %s`, err.Error())
-				} else {
-					base.Component.GsLog.Debugf(`成功请求 data--%s--`, data)
-				}
-				listen.MsgBack(fmt.Sprintf(`%s 第%d次尝试，成功`, "\n"+gstool.TimeNowUnixToString(`Y-m-d H:i:s`), i))
-				break
-			} else {
-				listen.MsgBack(fmt.Sprintf(`%s 第%d次尝试，失败 %s`, "\n"+gstool.TimeNowUnixToString(`Y-m-d H:i:s`), i, resErr.Error()))
-				base.Component.GsLog.Debugf(`失败请求 url--%s--`, originalRequest.URL())
-				base.Component.GsLog.Debugf(`失败请求 headers--%s--`, gstool.JsonEncode(originalRequest.Headers()))
-				data, err := originalRequest.PostData()
-				if err != nil {
-					base.Component.GsLog.Debugf(`失败请求 data error %s`, err.Error())
-				} else {
-					base.Component.GsLog.Debugf(`失败请求 data--%s--`, data)
-				}
-				time.Sleep(time.Second * time.Duration(retryWaitSecond))
-			}
-		}
-	} else {
-		cli := gshttp.PostJson(requestUrl).
-			BodyStr(postData).
-			Headers(headers)
-		res, resErr = cli.Request(200).Result()
-		if resErr == nil {
-			listen.Callback(requestUrl, cast.ToString(res), nil)
-		}
+	pCurl := p_curl.CurlRun{
+		IsStream:      listen.ParseConfig.IsStream,
+		Method:        originalRequest.Method(),
+		Url:           requestUrl,
+		ContentType:   listen.ParseConfig.ContentType,
+		Headers:       headers,
+		Body:          postData,
+		ReceiveSignal: listen.ParseConfig.ReceiveSignal,
+		ReceiveRegex:  listen.ParseConfig.ReceiveRegex,
+		TakeJsons:     listen.ParseConfig.TakeJsons,
+		Retry:         listen.ParseConfig.Retry,
+		RetrySecond:   listen.ParseConfig.RetrySecond,
+		StreamDataCall: func(s string) {
+			listen.Callback(s)
+		},
+		NoticeCall: func(s string) {
+			listen.MsgBack(s)
+		},
+		EndCall: func() {
+			listen.EndCallBack()
+		},
 	}
-	if resErr != nil {
-		listen.EndCallBack(resErr.Error())
-	} else {
-		listen.EndCallBack(`请求完成`)
-	}
+	_, _ = pCurl.Run()
 }

@@ -36,10 +36,10 @@ type PlaywrightRunParams struct {
 
 type ListenUrl struct {
 	ParseConfig   CurlResultParse
-	Callback      func(string, string, error) //HTTP返回消息回调
-	MsgBack       func(string)                //正常消息展示
-	StartCallBack func(string)                //开始回调
-	EndCallBack   func(msg string)            //结束回调
+	Callback      func(string) //HTTP流式返回消息回调
+	MsgBack       func(string) //正常消息展示
+	StartCallBack func(string) //开始回调
+	EndCallBack   func()       //结束回调
 }
 
 type ShowCookie struct {
