@@ -1,5 +1,5 @@
-./config/config.ini
-/config/config.ini
+*.ini
+!config_bak.ini
 /logs/
 /zhima/
 /config/.db/
