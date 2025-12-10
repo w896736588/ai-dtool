@@ -138,7 +138,7 @@ func (h *ParseCurl) GetDataRawUrls(line string) {
 			keyVal.Field = key
 			keyVal.Value = value[0]
 			keyVal.Type = FieldTypeString
-			h.CurlStruct.BodyForm = append(h.CurlStruct.QueryParams, keyVal)
+			h.CurlStruct.BodyForm = append(h.CurlStruct.BodyForm, keyVal)
 		}
 	}
 }
@@ -238,7 +238,6 @@ func (h *ParseCurl) GetHostScheme(line string) {
 	h.CurlStruct.Protocol, h.CurlStruct.Url = gstool.URLGetBase(re.FindString(line))
 	params, _ := gstool.UrlParseParams(re.FindString(line))
 	if len(params) > 0 {
-		gstool.FmtPrintlnLogTime(`params %s`, gstool.JsonFormat(params))
 		for _, param := range params {
 			h.CurlStruct.QueryParams = append(h.CurlStruct.QueryParams, KeyValue{
 				Field: param[`key`],

@@ -5,8 +5,9 @@ import (
 	"dev_tool/base/define"
 	_struct "dev_tool/base/struct"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/v2/gshttp/stream"
 	"time"
+
+	"gitee.com/Sxiaobai/gs/v2/gshttp/stream"
 
 	"gitee.com/Sxiaobai/gs/v2/gshttp"
 	"gitee.com/Sxiaobai/gs/v2/gstool"

@@ -5,8 +5,7 @@ go 1.24.0
 toolchain go1.24.4
 
 require (
-	gitee.com/Sxiaobai/gs v1.9.9
-	gitee.com/Sxiaobai/gs/v2 v2.0.33
+	gitee.com/Sxiaobai/gs/v2 v2.0.36
 	github.com/gin-gonic/gin v1.9.1
 	github.com/gorilla/websocket v1.5.1
 	github.com/pion/stun v0.6.1
@@ -14,6 +13,7 @@ require (
 	github.com/redis/go-redis/v9 v9.2.0
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/viper v1.9.0
+	github.com/tidwall/gjson v1.18.0
 )
 
 require (
@@ -75,6 +75,8 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect

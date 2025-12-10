@@ -14,6 +14,7 @@ import (
 	"gitee.com/Sxiaobai/gs/v2/gshttp"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
+	"github.com/tidwall/gjson"
 )
 
 type BaseInfo struct {
@@ -265,21 +266,10 @@ func (h *Api) FormatBodyData(cli *gshttp.Client, bodyForm []KeyValue) error {
 func (h *Api) ResponseTake() {
 	h.Result.ResponseTake = make([]ResponseTake, 0)
 	if h.Result.Result != `` {
-		extra, err := gstool.NewJsonExtractorFromJSON(h.Result.Result)
-		if err != nil {
-			gstool.FmtPrintlnLogTime(`参数提取失败 %s`, err.Error())
-			return
-		}
 		for _, take := range h.BaseInfo.ResponseTake {
 			value := strings.TrimLeft(take.Value, `res.`)
-			takeValue, err := extra.Extract(value)
-			if err != nil {
-				continue
-			}
-			if takeValue == nil {
-				continue
-			}
-			take.TakeValue = cast.ToString(takeValue)
+			ret := gjson.Get(h.Result.Result, value)
+			take.TakeValue = ret.String()
 			h.Result.ResponseTake = append(h.Result.ResponseTake, take)
 			//反写到环境变量
 			_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_api_env_item`, map[string]any{

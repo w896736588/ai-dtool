@@ -1,7 +1,7 @@
 package p_api
 
 import (
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 )
 
 const (

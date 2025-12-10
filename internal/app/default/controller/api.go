@@ -6,12 +6,12 @@ import (
 	"dev_tool/internal/pkg/p_api"
 	"errors"
 	"fmt"
-	"net/http"
 	"reflect"
+	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/gstool"
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 )
@@ -296,7 +296,7 @@ func ApiCreateApi(c *gin.Context) {
 		dataMap[`method`] = parsed.CurlStruct.Method
 		dataMap[`query_params`] = parsed.CurlStruct.QueryParams
 		dataMap[`protocol`] = parsed.CurlStruct.Protocol
-		if parsed.CurlStruct.Method == http.MethodGet {
+		if strings.ToLower(parsed.CurlStruct.Protocol) == `http` {
 			dataMap[`url`] = `http://` + parsed.CurlStruct.Url
 		} else {
 			dataMap[`url`] = `https://` + parsed.CurlStruct.Url
@@ -466,18 +466,15 @@ func ApiWeightDown(c *gin.Context) {
 	return
 }
 
-func ApiResultTake(c *gin.Context) {
+func ApiTakeJsonResult(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	id := dataMap[`id`]
-	resultTake := dataMap[`result_take`]
-	takeResultDesc := dataMap[`take_result_desc`]
-	_, _ = base.Component.TSqlite.Client.QuickUpdate(`tbl_api`, map[string]any{
-		`id`: id,
-	}, map[string]any{
-		`take_result`:      resultTake,
-		`take_result_desc`: takeResultDesc,
-	}).Exec()
-	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+	json := cast.ToString(dataMap[`json`])
+	list, err := gstool.JsonFlatPaths(json)
+	if err != nil {
+		gsgin.GinResponseError(c, `json格式错误`, nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, list)
 	return
 }

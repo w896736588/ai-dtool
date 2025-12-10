@@ -9,7 +9,10 @@ import (
 	"dev_tool/internal/pkg/p_playwright"
 	"errors"
 	"fmt"
+
 	"gitee.com/Sxiaobai/gs/v2/gshttp/stream"
+	"github.com/tidwall/gjson"
+
 	"os"
 	"os/exec"
 	"strings"
@@ -519,20 +522,12 @@ func (h *RCmd) StreamDataReceive(parseConfig *_struct.CurlResultParse, msg strin
 					continue
 				}
 				for _, takeJson := range parseConfig.TakeJsons {
-					extractor, err := gstool.NewJsonExtractorFromJSON(part)
-					if err != nil {
-						base.Component.TVariable.Log.Debugf(`解析json失败%v`, part)
-						continue
-					}
 					realTakeJson, _ := strings.CutPrefix(takeJson.Take, `res.`)
-					ret, err := extractor.Extract(realTakeJson)
-					if err != nil {
-						base.Component.TVariable.Log.Debugf(`提取json失败%v`, part)
-						continue
-					}
-					base.Component.TVariable.Log.Debugf(`提取json成功%v---%s`, part, cast.ToString(ret))
-					if cast.ToString(ret) != `` { //发送到sse
-						h.StreamMsg(cast.ToString(ret), false)
+					ret := gjson.Get(part, realTakeJson)
+					base.Component.TVariable.Log.Debugf(`提取json成功#%s#%v`, part, ret.String())
+					if ret.String() != `` { //发送到sse
+						base.Component.TVariable.Log.Debugf(`发送到sse#%s#`, ret.String())
+						h.StreamMsg(ret.String(), false)
 					}
 				}
 			}

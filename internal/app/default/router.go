@@ -296,7 +296,7 @@ func api(tGin *base.Gin) {
 	tGin.GinPost(`/api/ApiRun`, controller.ApiRun)
 	tGin.GinPost(`/api/ApiCode`, controller.ApiCode)
 	tGin.GinPost(`/api/ApiWeightDown`, controller.ApiWeightDown)
-	tGin.GinPost(`/api/ApiResultTake`, controller.ApiResultTake)
+	tGin.GinPost(`/api/ApiTakeJsonResult`, controller.ApiTakeJsonResult)
 }
 
 func apiUse(tGin *base.Gin) {

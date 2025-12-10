@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"gitee.com/Sxiaobai/gs/gsdefine"
-	"gitee.com/Sxiaobai/gs/gstool"
+	"gitee.com/Sxiaobai/gs/v2/gsdefine"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
 )
 
