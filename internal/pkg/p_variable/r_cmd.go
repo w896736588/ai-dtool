@@ -387,37 +387,28 @@ func (h *RCmd) RunCommand() (string, error) {
 
 func (h *RCmd) RunCurl() (string, error) {
 	resultKey := cast.ToString(h.cmd[`result_key`])
-	url := base.Component.TVariable.Replace(cast.ToString(h.cmd[`bash`]), h.replaceList)
-	if url == `` {
-		return ``, errors.New(`url不能为空`)
-	}
-	parseConfig := _struct.CurlResultParse{}
-	err := gstool.JsonDecode(url, &parseConfig)
+	parseConfig := _struct.CurlParseConfig{}
+	err := gstool.JsonDecode(cast.ToString(h.cmd[`options`]), &parseConfig)
 	if err != nil {
-		h.StreamMsg(`解析`+url+`失败`, true)
+		h.StreamMsg(`解析失败 `+cast.ToString(h.cmd[`options`]), true)
 		return ``, err
 	}
-
+	parseConfig.Uri = base.Component.TVariable.Replace(parseConfig.Uri, h.replaceList)
 	pCurl := p_curl.CurlRun{
-		IsStream:      parseConfig.IsStream,
-		Method:        parseConfig.Method,
-		Url:           parseConfig.Uri,
-		ContentType:   parseConfig.ContentType,
-		Headers:       map[string]string{},
-		Body:          ``,
-		ReceiveSignal: parseConfig.ReceiveSignal,
-		ReceiveRegex:  parseConfig.ReceiveRegex,
-		TakeJsons:     parseConfig.TakeJsons,
-		Retry:         parseConfig.Retry,
-		RetrySecond:   parseConfig.RetrySecond,
-		StreamDataCall: func(s string) {
-			h.StreamMsg(s, false)
-		},
-		NoticeCall: func(s string) {
-			gstool.FmtPrintlnLogTime(s)
-		},
-		EndCall: func() {
-
+		ParseConfig: parseConfig,
+		CurlEvents: _struct.CurlEvents{
+			StreamDataCall: func(s string) {
+				h.StreamMsg(s, false)
+			},
+			NoticeCall: func(s string) {
+				h.StreamMsg(fmt.Sprintf(`%s`, s), true)
+			},
+			EndCall: func() {
+				h.StreamMsg(fmt.Sprintf(`结束请求 %s`, parseConfig.Uri), true)
+			},
+			StartCall: func() {
+				h.StreamMsg(fmt.Sprintf(`开始请求 %s`, parseConfig.Uri), true)
+			},
 		},
 	}
 	result, err := pCurl.Run()
@@ -466,33 +457,33 @@ func (h *RCmd) RunPlaywright() (string, error) {
 		}
 	}
 	//注册需要监听的接口
-	//需要注册的uri
 	listenUriList := cast.ToString(h.cmd[`options`])
-	ListenUrlList := make(map[string]*_struct.ListenUrl)
+	ListenUrlList := make(map[string]_struct.CurlRunRegister)
 	if listenUriList != `` {
-		parseConfigs := make([]_struct.CurlResultParse, 0)
+		parseConfigs := make([]_struct.CurlParseConfig, 0)
 		_ = gstool.JsonDecode(listenUriList, &parseConfigs)
-		gstool.FmtPrintlnLogTime(`解析规则 %s`, gstool.JsonFormat(parseConfigs))
 		for _, parseConfig := range parseConfigs {
 			uri := parseConfig.Uri
 			if uri == `` {
 				continue
 			}
-			ListenUrlList[uri] = &_struct.ListenUrl{
-				ParseConfig: parseConfig,
-				Callback: func(msg string) {
-					h.StreamDataReceive(&parseConfig, msg)
-				},
-				MsgBack: func(msg string) {
-					h.StreamMsg(msg, true)
-				},
-				StartCallBack: func(url string) {
-					runParams.StopEchoTips = true
-					base.Component.TVariable.Log.Debugf(`监听到%s`, url)
-					h.StreamMsg(base.Component.TMarkDown.BlockQuote("开始回答...")+"\n\n", true)
-				},
-				EndCallBack: func() {
-					h.StreamMsg("\n"+base.Component.TMarkDown.Bold("end ")+"\n\n", true)
+			ListenUrlList[uri] = _struct.CurlRunRegister{
+				CurlParseConfig: parseConfig,
+				CurlEvents: _struct.CurlEvents{
+					StreamDataCall: func(s string) {
+						h.StreamDataReceive(parseConfig, s)
+					},
+					NoticeCall: func(s string) {
+						h.StreamMsg(s, true)
+					},
+					EndCall: func() {
+						h.StreamMsg("\n"+base.Component.TMarkDown.Bold("end ")+"\n\n", true)
+					},
+					StartCall: func() {
+						runParams.StopEchoTips = true
+						base.Component.TVariable.Log.Debugf(`监听到%s`, parseConfig.Uri)
+						h.StreamMsg(base.Component.TMarkDown.BlockQuote("开始回答...")+"\n\n", true)
+					},
 				},
 			}
 		}
@@ -518,7 +509,7 @@ func (h *RCmd) RunPlaywright() (string, error) {
 }
 
 // StreamDataReceive 流式结果解析
-func (h *RCmd) StreamDataReceive(parseConfig *_struct.CurlResultParse, msg string) {
+func (h *RCmd) StreamDataReceive(parseConfig _struct.CurlParseConfig, msg string) {
 	if parseConfig.IsStream == 1 { //流式
 		if len(parseConfig.TakeJsons) > 0 { //配置了提取规则
 			jsonLists := gstool.JsonParseFromStr([]byte(msg))

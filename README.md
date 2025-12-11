@@ -32,5 +32,5 @@ git ls-files --stage ./build/zhimaPub.exe
 
 ```shell
 export CGO_ENABLED=1
-go run -ldflags " -s -w" cmd/dtool/main.go --ConfigFile=home_company
+go run -ldflags " -s -w" cmd/dtool/main.go --ConfigFile=company
 ```

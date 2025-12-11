@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
@@ -288,7 +289,10 @@ func (h *TPlaywright) StreamMsgFunc(runUniqueId string) func(msg string, enter b
 		if enter {
 			msg += "\n"
 		}
-		_ = Component.TSse.SendMsg(runUniqueId, define.SseContentTypeMsg, msg, 0)
+		_ = gsgin.SseGetByClientId(runUniqueId).SendToChan(gstool.JsonEncode(define.SseData{
+			Data: msg,
+			Type: define.SseContentTypeMsg,
+		}))
 	}
 }
 
@@ -296,5 +300,8 @@ func (h *TPlaywright) SseMsgByClient(sseId string, msg string, enter bool) {
 	if enter {
 		msg += "\n"
 	}
-	_ = Component.TSse.SendMsg(sseId, define.SseContentTypeMsg, msg, 50)
+	_ = gsgin.SseGetByClientId(sseId).SendToChan(gstool.JsonEncode(define.SseData{
+		Data: msg,
+		Type: define.SseContentTypeMsg,
+	}))
 }

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gsssh"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
@@ -40,6 +41,7 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 	if shell, ok := h.ShellClientMap[shellClientId]; ok && shell != nil {
 		return shell, nil
 	}
+	sse := gsgin.SseGetByClientId(sseClientId)
 	gsShell := gsssh.NewSshTerminal(gsssh.NewSsh(&gsssh.SshConfig{
 		Name:     "",
 		Host:     cast.ToString(sshConfig["host"]),
@@ -49,7 +51,10 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 	}))
 	//设置关闭事件
 	gsShell.SetFuncBroken(func() {
-		_ = Component.TSse.SendMsg(sseClientId, define.SseContentTypeMsg, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n", 0)
+		_ = sse.SendToChan(gstool.JsonEncode(define.SseData{
+			Data: sseClientId + ` 注意：连接已中断，下次动作时进行链接` + "\n",
+			Type: define.SseContentTypeMsg,
+		}))
 		h.RmClient(shellClientId)
 	})
 	gsShell.SetMaxBufferSize(2 * 1024 * 1024) //最大允许2M的输出
@@ -65,9 +70,17 @@ func (h *TShell) GetClient(sshConfig map[string]any, shellClientId, sseClientId 
 		h.log.Debugf(`receive：%s`, msg)
 		if formatStream != nil {
 			msgList := formatStream(msg)
-			_ = Component.TSse.SendMsgChunkList(sseClientId, msgList, 10)
+			for _, msg := range msgList {
+				_ = sse.SendToChan(gstool.JsonEncode(define.SseData{
+					Data: msg,
+					Type: define.SseContentTypeMsg,
+				}))
+			}
 		} else {
-			_ = Component.TSse.SendMsg(sseClientId, define.SseContentTypeMsg, msg, 10)
+			_ = sse.SendToChan(gstool.JsonEncode(define.SseData{
+				Data: msg,
+				Type: define.SseContentTypeMsg,
+			}))
 		}
 	})
 	//设置执行命令前处理
@@ -94,7 +107,7 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 	if shell, ok := h.ShellClientMap[shellClientId]; ok && shell != nil {
 		return shell, nil
 	}
-
+	sse := gsgin.SseGetByClientId(sseClientId)
 	gsShell := gsssh.NewSshTerminal(gsssh.NewSsh(&gsssh.SshConfig{
 		Name:     "",
 		Host:     cast.ToString(sshConfig["host"]),
@@ -106,7 +119,10 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
 	//设置关闭事件
 	gsShell.SetFuncBroken(func() {
-		_ = Component.TSse.SendMsg(sseClientId, define.SseContentTypeMsg, sseClientId+` 注意：连接已中断，下次动作时进行链接`+"\n", 0)
+		_ = sse.SendToChan(gstool.JsonEncode(define.SseData{
+			Data: sseClientId + ` 注意：连接已中断，下次动作时进行链接` + "\n",
+			Type: define.SseContentTypeMsg,
+		}))
 		h.RmClient(shellClientId)
 	})
 	gsShell.SetMaxBufferSize(2 * 1024 * 1024) //最大允许2M的输出
@@ -118,14 +134,22 @@ func (h *TShell) GetClientMarkdown(sshConfig map[string]any, shellClientId, sseC
 	//猪油：下面3个注册回调，放到这里的话就不会输出pwd以及连接相关信息
 	//回调准备输出的内容
 	gsShell.SetFuncStreamReceive(func(msg string) {
-		//msg = gstool.StringFilterANSI(msg)
-		_ = Component.TSse.SendMsg(sseClientId, define.SseContentTypeMsg, msg, 50)
+		_ = sse.SendToChan(gstool.JsonEncode(define.SseData{
+			Data: msg,
+			Type: define.SseContentTypeMsg,
+		}))
 	})
 	gsShell.SetFuncStartCommand(func() {
-		_ = Component.TSse.SendMsg(sseClientId, define.SseContentTypeMsg, fmt.Sprintf("```%s\n#%s", `bash`, `bash`)+"\n", 0)
+		_ = sse.SendToChan(gstool.JsonEncode(define.SseData{
+			Data: fmt.Sprintf("```%s\n#%s", `bash`, `bash`) + "\n",
+			Type: define.SseContentTypeMsg,
+		}))
 	})
 	gsShell.SetFuncEndCommand(func() {
-		_ = Component.TSse.SendMsg(sseClientId, define.SseContentTypeMsg, "```\n", 0)
+		_ = sse.SendToChan(gstool.JsonEncode(define.SseData{
+			Data: "```\n",
+			Type: define.SseContentTypeMsg,
+		}))
 	})
 	//设置执行命令前处理
 	gsShell.SetFuncBefore(func(command string) string {

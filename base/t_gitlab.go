@@ -131,7 +131,7 @@ func (h *TGitlab) getStatus(authorJoin, authorCommit, otherJoin, selfTest bool) 
 				return `对接`
 			}
 		}
-	} else {          //其他人不参与
+	} else { //其他人不参与
 		if selfTest { //自测完
 			if authorCommit { //作者参与改动
 				return `自测完`

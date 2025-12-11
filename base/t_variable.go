@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
 )
@@ -166,20 +167,6 @@ func (h *TVariable) ParseConfig(config string) (string, error) {
 			}
 			return gstool.JsonEncode(sshList), nil
 		}
-	} else if gstool.RegexMatchString(config, `{config:gitlab_token:\d*}`) {
-		retList := gstool.RegexMatchSubString(config, `{config:gitlab_token:(\d+)}`)
-		if len(retList) != 2 {
-			return ``, gstool.Error(`获取配置失败 %s`, config)
-		}
-		tokenConfig, _ := Component.TSqlite.Client.QuickQuery(`tbl_gitlab_token`, `*`, map[string]any{
-			`id`: retList[1],
-		}).One()
-		replaceList := make(map[string]string)
-		for key, value := range tokenConfig {
-			replaceList[retList[0]+`.`+key] = cast.ToString(value)
-		}
-		config = gstool.SReplaces(config, replaceList)
-		return config, nil
 	} else if gstool.RegexMatchString(config, `{config:account_group:\w*}`) { //账号列表
 		retList := gstool.RegexMatchSubString(config, `{config:account_group:(\w*)}`)
 		if len(retList) != 2 {
@@ -381,14 +368,18 @@ func (h *TVariable) SelectChooseReplace(variableForm *_struct.VForm,
 
 func (h *TVariable) StreamMsgFuncBySseId(sseId, runUniqueId string) func(msg string, enter bool) {
 	return func(msg string, enter bool) {
+		sse := gsgin.SseGetByClientId(sseId)
 		//如果本次任务已经停止 那么不再输出
 		if Component.TVariable.Get(runUniqueId) == `stop` {
-			Component.TSse.Sse.CleanMsg(sseId)
+			sse.CleanMsg()
 			return
 		}
 		if enter {
 			msg += "\n"
 		}
-		_ = Component.TSse.SendMsg(sseId, define.SseContentTypeMsg, msg, 0)
+		_ = sse.SendToChan(gstool.JsonEncode(define.SseData{
+			Data: msg,
+			Type: define.SseContentTypeMsg,
+		}))
 	}
 }

@@ -28,18 +28,10 @@ type PlaywrightRunParams struct {
 	Channel             string                                           //浏览器类型
 	RunCallFunc         func(define.ProcessType, string, string, string) //注册输出回调
 	StreamFunc          func(string, string)                             //执行输出
-	ListenUrlList       map[string]*ListenUrl                            //监听
+	ListenUrlList       map[string]CurlRunRegister                       //监听
 	ResponseUrls        []*ProcessResponseUrl                            //注册等待请求完成
 	ShowCookies         []ShowCookie                                     //信息提取
 	StopEchoTips        bool                                             //是否停止输出执行过程到sse 当大模型正在回复时，不需要再将执行过程输出到sse
-}
-
-type ListenUrl struct {
-	ParseConfig   CurlResultParse
-	Callback      func(string) //HTTP流式返回消息回调
-	MsgBack       func(string) //正常消息展示
-	StartCallBack func(string) //开始回调
-	EndCallBack   func()       //结束回调
 }
 
 type ShowCookie struct {

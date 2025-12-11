@@ -12,7 +12,6 @@ import (
 
 	"gitee.com/Sxiaobai/gs/v2/gsdb"
 	"gitee.com/Sxiaobai/gs/v2/gsencrypt"
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gssocket"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
@@ -149,9 +148,6 @@ func initGin() {
 }
 
 func initOther() {
-	base.Component.TSse = &base.TSse{
-		Sse: &gsgin.TSse{SseList: make(map[string]*gsgin.Sse)},
-	}
 	base.Component.TOs = gstool.NewGsOs()
 	base.Component.TMarkDown = &base.TMarkDown{}
 	base.Component.TAi = &base.TAi{}

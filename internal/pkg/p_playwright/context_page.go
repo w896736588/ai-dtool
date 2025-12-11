@@ -119,19 +119,22 @@ func (h *ContextPage) InitEvents(page *playwright.Page) {
 	})
 }
 
-func (h *ContextPage) RegisterLinks(page playwright.Page, registerLinks map[string]*_struct.ListenUrl) {
+func (h *ContextPage) RegisterLinks(page playwright.Page, registerLinks map[string]_struct.CurlRunRegister) {
 	if registerLinks != nil {
-		for listenUri, listen := range registerLinks {
-			listen.MsgBack(`注册 **` + listenUri)
-			h.RunParams.StreamFunc(`注册链接`, `注册的链接`+listenUri)
+		for listenUri, cur := range registerLinks {
+			cur := p_curl.NewCurlRun(cur.CurlParseConfig, cur.CurlEvents)
+			cur.CurlEvents.NoticeCall(`注册 **` + listenUri)
 			_ = page.Route("**"+listenUri+"*", func(route playwright.Route) {
-				listen.MsgBack(`捕获到请求` + route.Request().URL())
-				go h.ListenUrl(route, listen)
+				go func() {
+					originalRequest := route.Request()
+					cur.ParseConfig.Headers = originalRequest.Headers()
+					cur.ParseConfig.Body, _ = originalRequest.PostData()
+					cur.ParseConfig.Url = originalRequest.URL()
+					_, _ = cur.Run()
+				}()
 				_ = route.Abort()
 			})
 		}
-	} else {
-		h.RunParams.StreamFunc(`context`, `没有注册链接`)
 	}
 }
 
@@ -144,35 +147,4 @@ func (h *ContextPage) SetPageActive(page *playwright.Page) {
 		return
 	}
 	h.ActiveTime.Add(page, h.AutoCloseSecond)
-}
-
-func (h *ContextPage) ListenUrl(route playwright.Route, listen *_struct.ListenUrl) {
-	originalRequest := route.Request()
-	requestUrl := originalRequest.URL()
-	postData, _ := originalRequest.PostData()
-	headers := originalRequest.Headers()
-	listen.StartCallBack(requestUrl)
-	pCurl := p_curl.CurlRun{
-		IsStream:      listen.ParseConfig.IsStream,
-		Method:        originalRequest.Method(),
-		Url:           requestUrl,
-		ContentType:   listen.ParseConfig.ContentType,
-		Headers:       headers,
-		Body:          postData,
-		ReceiveSignal: listen.ParseConfig.ReceiveSignal,
-		ReceiveRegex:  listen.ParseConfig.ReceiveRegex,
-		TakeJsons:     listen.ParseConfig.TakeJsons,
-		Retry:         listen.ParseConfig.Retry,
-		RetrySecond:   listen.ParseConfig.RetrySecond,
-		StreamDataCall: func(s string) {
-			listen.Callback(s)
-		},
-		NoticeCall: func(s string) {
-			listen.MsgBack(s)
-		},
-		EndCall: func() {
-			listen.EndCallBack()
-		},
-	}
-	_, _ = pCurl.Run()
 }

@@ -6,9 +6,10 @@ import (
 	_struct "dev_tool/base/struct"
 	"errors"
 	"fmt"
+	"strings"
+
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
-	"strings"
 )
 
 type VariableSet struct {

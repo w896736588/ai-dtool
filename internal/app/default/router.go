@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
@@ -303,11 +304,13 @@ func apiUse(tGin *base.Gin) {
 	//api git logs
 	tGin.SseRoute(`/api/GitLab`, func(urlValues url.Values, stopC chan int, c *gin.Context) (*gsgin.Sse, error) {
 		clientId := define.SseGitLab
-		sse := base.Component.TSse.Sse.Register(clientId, stopC, c)
-		gstool.FmtPrintlnLogTime(`收到请求 /api/GitLab`)
+		sse := gsgin.SseRegister(clientId, stopC, c)
 		go func() {
 			controller.GitLogs(gsgin.GinGetParams(c), func(s string) {
-				err := base.Component.TSse.SendMsg2(s+"\n", 0, []string{define.SseGitLab}...)
+				if strings.Contains(s, `commit 共`) {
+					return
+				}
+				err := sse.SendToChan(s + "\n\n")
 				if err != nil {
 					gstool.FmtPrintlnLogTime(`错误 %s`, err.Error())
 					return
@@ -317,28 +320,32 @@ func apiUse(tGin *base.Gin) {
 		}()
 		return sse, nil
 	}, func(sse *gsgin.Sse) {
-		err := base.Component.TSse.SendMsg(sse.ClientId, define.SseContentTypeMsg, "[DONE]", 0, []string{define.SseGitLab}...)
+		err := sse.SendToChan(gstool.JsonEncode(define.SseData{
+			SseClientId: "",
+			Data:        "[DONE]",
+			Type:        define.SseContentTypeMsg,
+		}))
 		if err != nil {
 			gstool.FmtPrintlnLogTime(`错误 %s`, err.Error())
 			return
 		}
-		base.Component.TSse.Sse.UnRegister(sse.ClientId)
+		sse.UnRegister()
 	})
 	//sse 替换 websocket
 	openFunc := func(urlValues url.Values, stopC chan int, c *gin.Context) (*gsgin.Sse, error) {
 		clientId := urlValues.Get(`client_id`)
-		sseC := base.Component.TSse.Sse.GetSseByClientId(clientId)
+		sseC := gsgin.SseGetByClientId(clientId)
 		if sseC != nil {
 			return nil, errors.New(`已存在链接`)
 		}
-		sse := base.Component.TSse.Sse.Register(clientId, stopC, c)
+		sse := gsgin.SseRegister(clientId, stopC, c)
 		//发送一个事件 前端才会建立连接
-		_ = base.Component.TSse.Sse.Send(clientId, define.SseConnect, 1)
+		_ = sse.SendToChan(define.SseConnect)
 		define.RegisterDistributeSseId(clientId)
 		return sse, nil
 	}
 	closeFunc := func(sse *gsgin.Sse) {
-		base.Component.TSse.Sse.UnRegister(sse.ClientId)
+		sse.UnRegister()
 		define.UnRegisterDistributeSseId(sse.ClientId)
 	}
 	tGin.SseRoute(`/sse`, openFunc, closeFunc)
