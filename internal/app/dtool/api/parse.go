@@ -122,7 +122,7 @@ func (h *ParseCurl) GetDataForm(sLine string) {
 
 func (h *ParseCurl) GetDataRaw(line string) {
 	line = strings.TrimLeft(line, "--data-raw '")
-	line = strings.TrimRight(line, "'")
+	line = strings.TrimRight(line, "' \\")
 	h.CurlStruct.Body = line
 }
 

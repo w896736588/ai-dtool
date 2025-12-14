@@ -71,6 +71,7 @@ func (h *TDataBaseUp) Up() {
 			}
 		}
 	}
+	gstool.FmtPrintlnLogTime(`检查的文件夹 %s`, gstool.JsonFormat(checkDirs))
 	for _, dir := range checkDirs {
 		gstool.FmtPrintlnLogTime(`开始扫描升级目录 %s`, dir)
 		walkErr := gstool.DirWalk(dir, func(path string, info os.FileInfo, err error) {

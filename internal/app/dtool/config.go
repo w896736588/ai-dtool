@@ -71,7 +71,7 @@ func initComponent(appName, ConfigFile string) {
 	}
 	//初始化配置
 	common.EnvClient.Init(appName, ConfigFile)
-	common.EnvClient.DatabaseUpPath = filepath.Join(common.EnvClient.RootPath, `internal`, `app`, `default`, `database`)
+	common.EnvClient.DatabaseUpPath = filepath.Join(common.EnvClient.RootPath, `internal`, `app`, AppName, `database`)
 	p_common.TBaseClient = &p_common.TBase{
 		StartMillUnix: gstool.TimeNowMilliInt64(),
 		LogPath:       common.EnvClient.LogPath,

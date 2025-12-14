@@ -1,8 +1,8 @@
 package plw
 
 import (
-	"dev_tool/internal/app/curl/p_curl"
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/curl/p_curl"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_common"
 	"errors"
