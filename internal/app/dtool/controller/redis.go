@@ -3,17 +3,18 @@ package controller
 import (
 	"context"
 	"dev_tool/internal/app/dtool/common"
-	"dev_tool/internal/pkg/p_db"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/pkg/p_define"
 	"errors"
 	"fmt"
+	"time"
+
 	"gitee.com/Sxiaobai/gs/v2/gsdb"
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cast"
-	"time"
 )
 
 // RedisAvailableList 拿到可用的redis列表
@@ -455,7 +456,7 @@ func getRedisComponent(c *gin.Context) (map[string]interface{}, *gsdb.GsRedis, e
 	if redisConfigErr != nil {
 		return reqMap, nil, redisConfigErr
 	}
-	redisClient, redisClientErr := p_db.RedisClient.GetClient(redisConfig, common.GetCall())
+	redisClient, redisClientErr := component.RedisClient.GetClient(redisConfig, common.GetCall())
 	if redisClientErr != nil {
 		return reqMap, nil, redisClientErr
 	}

@@ -1,9 +1,9 @@
 package plw
 
 import (
-	"dev_tool/internal/app/dtool/curl/p_curl"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_common"
+	"dev_tool/internal/pkg/p_curl"
 	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gstool"

@@ -1,1 +1,0 @@
-ALTER TABLE tbl_api ADD COLUMN weight integer NOT NULL DEFAULT 0;

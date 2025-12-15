@@ -3,11 +3,12 @@ package variable
 import (
 	"bytes"
 	"context"
-	"dev_tool/internal/app/dtool/curl/p_curl"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/plw"
 	"dev_tool/internal/app/dtool/struct"
 	"dev_tool/internal/pkg/p_common"
+	"dev_tool/internal/pkg/p_curl"
 	"dev_tool/internal/pkg/p_db"
 	"dev_tool/internal/pkg/p_shell"
 	"dev_tool/internal/pkg/p_sse"
@@ -149,7 +150,7 @@ func (h *RCmd) RunBash() (string, error) {
 	if preConnErr != nil {
 		return ``, gstool.Error(`链接失败 %s`, preConnErr.Error())
 	}
-	if !p_shell.ShellClient.Exist(sshUniqueKey) || !p_shell.ShellClient.Exist(sftpUniqueKey) {
+	if !component.ShellClient.Exist(sshUniqueKey) || !component.ShellClient.Exist(sftpUniqueKey) {
 		return ``, errors.New(`ssh连接未初始化`)
 	}
 	//初始化
@@ -166,7 +167,7 @@ func (h *RCmd) RunBash() (string, error) {
 	}
 	variableDir := home + `/variable`
 	//ssh
-	sshClient, sshClientErr = p_shell.ShellClient.GetClientMarkdown(sshConfig, sshUniqueKey, &p_sse.SseShell{
+	sshClient, sshClientErr = component.ShellClient.GetClientMarkdown(sshConfig, sshUniqueKey, &p_sse.SseShell{
 		Sse:             h.Sse.Sse,
 		SseDistributeId: h.Sse.SseDistributeId,
 	})
@@ -174,7 +175,7 @@ func (h *RCmd) RunBash() (string, error) {
 		return ``, sshClientErr
 	}
 	//sftp
-	sshOnce, sshOnceErr := p_shell.ShellClient.GetSshOnce(sshConfig)
+	sshOnce, sshOnceErr := component.ShellClient.GetSshOnce(sshConfig)
 	if sshOnceErr != nil {
 		return ``, sshOnceErr
 	}
@@ -245,7 +246,7 @@ func (h *RCmd) RunUpload() (string, error) {
 		return ``, sshConfigErr
 	}
 	//sftp
-	sshOnce, sshOnceErr := p_shell.ShellClient.GetSshOnce(sshConfig)
+	sshOnce, sshOnceErr := component.ShellClient.GetSshOnce(sshConfig)
 	if sshOnceErr != nil {
 		return ``, sshOnceErr
 	}
@@ -323,7 +324,7 @@ func (h *RCmd) uploadFile(sshConfig map[string]any, sshId int, sshOnce *gsssh.Ss
 	}
 	//ssh
 	sshUniqueKey := p_common.TBaseClient.GetCombineKey(`variable`, sshId, `run`)
-	sshClient, sshClientErr := p_shell.ShellClient.GetClientMarkdown(sshConfig, sshUniqueKey, &p_sse.SseShell{
+	sshClient, sshClientErr := component.ShellClient.GetClientMarkdown(sshConfig, sshUniqueKey, &p_sse.SseShell{
 		Sse:             h.Sse.Sse,
 		SseDistributeId: h.Sse.SseDistributeId,
 	})
@@ -364,7 +365,7 @@ func (h *RCmd) RunCommand() (string, error) {
 			continue
 		}
 		sshUniqueKey := p_common.TBaseClient.GetCombineKey(`variable`, sshId, `run`)
-		if !p_shell.ShellClient.Exist(sshUniqueKey) {
+		if !component.ShellClient.Exist(sshUniqueKey) {
 			return ``, errors.New(`ssh连接未初始化`)
 		}
 		sshConfig, sshConfigErr := h.Call.GetSshConfig(sshId)
@@ -374,7 +375,7 @@ func (h *RCmd) RunCommand() (string, error) {
 		var sshClientErr error
 		var sshClient *gsssh.SshTerminal
 		//ssh
-		sshClient, sshClientErr = p_shell.ShellClient.GetClientMarkdown(sshConfig, sshUniqueKey, &p_sse.SseShell{
+		sshClient, sshClientErr = component.ShellClient.GetClientMarkdown(sshConfig, sshUniqueKey, &p_sse.SseShell{
 			Sse:             h.Sse.Sse,
 			SseDistributeId: h.Sse.SseDistributeId,
 		})
@@ -568,7 +569,7 @@ func (h *RCmd) RunRedis() (string, error) {
 	if redisConfigErr != nil {
 		return ``, redisConfigErr
 	}
-	client, clientErr := p_db.RedisClient.GetClient(redisConfig, h.Call)
+	client, clientErr := component.RedisClient.GetClient(redisConfig, h.Call)
 	if clientErr != nil {
 		return "", clientErr
 	}

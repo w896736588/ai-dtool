@@ -2,12 +2,14 @@ package business
 
 import (
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"fmt"
+	"os"
+	"path/filepath"
+
 	"gitee.com/Sxiaobai/gs/v2/gsdefine"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
-	"os"
-	"path/filepath"
 )
 
 type TDataBaseUp struct {
@@ -64,7 +66,7 @@ func (h *TDataBaseUp) Up() {
 	for startYear := 2025; startYear <= cast.ToInt(gstool.TimeNowUnixToString(`Y`)); startYear++ {
 		for month := 1; month <= 12; month++ {
 			month := fmt.Sprintf(`%02d`, month)
-			dir := filepath.Join(common.EnvClient.DatabaseUpPath, cast.ToString(startYear), month)
+			dir := filepath.Join(component.EnvClient.DatabaseUpPath, cast.ToString(startYear), month)
 			exist, _ := gstool.DirPathExists(dir)
 			if exist {
 				checkDirs = append(checkDirs, dir)
@@ -98,7 +100,7 @@ func (h *TDataBaseUp) Up() {
 		}
 		_, err = common.DbMain.Client.ExecBySql(sql).Exec()
 		if err != nil {
-			gstool.FmtPrintlnLogTime(`数据库升级文件执行失败 %s`, err.Error())
+			gstool.FmtPrintlnLogTime(`数据库升级文件执行失败 %s %s`, file, err.Error())
 			continue
 		}
 		_, err = common.DbMain.Client.QuickCreate(`tbl_database_up`, map[string]any{

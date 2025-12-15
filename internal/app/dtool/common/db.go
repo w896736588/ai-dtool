@@ -1,19 +1,21 @@
 package common
 
 import (
+	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_common"
 	"errors"
+	"time"
+
 	"gitee.com/Sxiaobai/gs/v2/gsdb"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
-	"time"
 )
 
 var DbMain = &CSqlite{}
 
 type CSqlite struct {
 	Client *gsdb.GsSqlite
-	Env    *Env
+	Env    *define.Env
 }
 
 func (h *CSqlite) InitTable() {

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/pkg/p_common"
 	"dev_tool/internal/pkg/p_shell"
 	"dev_tool/internal/pkg/p_sse"
@@ -198,7 +199,7 @@ func getSupervisorComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshT
 		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
 		SseDistributeId: cast.ToString(dataMap[`sse_id`]),
 	}
-	sshClient, sshClientErr := p_shell.ShellClient.GetClient(sshConfig, uniqueKey, sse, nil)
+	sshClient, sshClientErr := component.ShellClient.GetClient(sshConfig, uniqueKey, sse, nil)
 	if sshClientErr != nil {
 		return nil, nil, sshClientErr
 	}

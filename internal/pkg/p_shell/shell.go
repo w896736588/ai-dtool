@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-var ShellClient *Shell
-
 type Shell struct {
 	ShellClientMap map[string]*gsssh.SshTerminal
 	lock           sync.Mutex

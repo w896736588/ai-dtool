@@ -2,6 +2,7 @@ package plw
 
 import (
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"fmt"
 	"strings"
@@ -354,7 +355,7 @@ func (h *ContextPageList) GetContextParam(runParams *PlaywrightRunParams) (*Cont
 		runParams.StreamFunc(`获取数据目录`, fmt.Sprintf(`已存在浏览器实例 %s ,直接使用`, existContextPage.LinkId))
 		return existContextPage, existContextPage.UserDataIndex, existContextPage.UserDataPath
 	}
-	userDataPath := fmt.Sprintf(common.EnvClient.WebkitDataPath+`/%d`, userDataIndex)
+	userDataPath := fmt.Sprintf(component.EnvClient.WebkitDataPath+`/%d`, userDataIndex)
 	runParams.StreamFunc(`获取数据目录`, fmt.Sprintf(`未找到已存在的浏览器实例，使用的数据目录 %s,开始创建实例`, userDataPath))
 	//创建数据索引目录
 	_ = gstool.DirCreatePath(userDataPath)

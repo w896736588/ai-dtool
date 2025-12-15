@@ -1,16 +1,17 @@
 package plw
 
 import (
-	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/pkg/p_common"
 	"dev_tool/internal/pkg/p_sse"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
-	"github.com/playwright-community/playwright-go"
 	"log"
 	"os"
 	"strings"
 	"sync"
+
+	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/playwright-community/playwright-go"
 )
 
 type TPlaywright struct {
@@ -30,18 +31,18 @@ type TPlaywright struct {
 var PlaywrightClient *TPlaywright
 
 func NewTPlaywright() *TPlaywright {
-	gsLog := gstool.NewSlog2(common.EnvClient.LogPath, `playwright`)
+	gsLog := gstool.NewSlog2(component.EnvClient.LogPath, `playwright`)
 	_ = gsLog.CleanOldLogs(2)
 	return &TPlaywright{
 		Log:          gsLog,
-		DownloadPath: common.EnvClient.WebkitDownloadPath,
+		DownloadPath: component.EnvClient.WebkitDownloadPath,
 	}
 }
 
 func (h *TPlaywright) SetWebkitPath() {
 	// 设置自定义浏览器安装路径
-	_ = os.Setenv("PLAYWRIGHT_BROWSERS_PATH", common.EnvClient.WebkitDriverPath)
-	_ = os.Setenv("PLAYWRIGHT_DRIVER_PATH", common.EnvClient.NodePath)
+	_ = os.Setenv("PLAYWRIGHT_BROWSERS_PATH", component.EnvClient.WebkitDriverPath)
+	_ = os.Setenv("PLAYWRIGHT_DRIVER_PATH", component.EnvClient.NodePath)
 	_ = os.Setenv("GOPROXY", "https://goproxy.cn,direct")
 }
 

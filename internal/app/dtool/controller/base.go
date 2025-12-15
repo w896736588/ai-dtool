@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/struct"
 	"dev_tool/internal/pkg/p_common"
 	"errors"
@@ -46,7 +47,7 @@ func BaseLogin(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, `获取成功`, map[string]any{
 		`unikey`: token,
 		`token`:  token,
-		`ports`:  strings.Split(common.ConfigViper.GetString(`run.ports`), `,`),
+		`ports`:  strings.Split(component.ConfigViper.GetString(`run.ports`), `,`),
 	})
 }
 
@@ -118,7 +119,7 @@ func Ip(c *gin.Context) {
 
 func Ports(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, `获取成功`, map[string]any{
-		`ports`: common.EnvClient.Ports,
+		`ports`: component.EnvClient.Ports,
 	})
 }
 
@@ -128,7 +129,7 @@ func Upload(c *gin.Context) {
 		gsgin.GinResponseError(c, `上传失败:`+err.Error(), ``)
 		return
 	}
-	uploadDir := filepath.Join(common.EnvClient.RootPath, `upload`)
+	uploadDir := filepath.Join(component.EnvClient.RootPath, `upload`)
 	_ = gstool.DirCreatePath(uploadDir)
 	// 生成新名字：时间戳+扩展名
 	ext := filepath.Ext(file.Filename)

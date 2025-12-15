@@ -2,17 +2,18 @@ package plw
 
 import (
 	"dev_tool/internal/app/dtool/common"
-	"dev_tool/internal/app/dtool/curl/p_curl"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_common"
+	"dev_tool/internal/pkg/p_curl"
 	"errors"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
-	"github.com/playwright-community/playwright-go"
-	"github.com/spf13/cast"
 	"math"
 	"net/url"
 	"strings"
+
+	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/playwright-community/playwright-go"
+	"github.com/spf13/cast"
 )
 
 func GetRunParams(id int, label, userName, password string, openType int, openNum int, replaceList map[string]string) (*PlaywrightRunParams, error) {

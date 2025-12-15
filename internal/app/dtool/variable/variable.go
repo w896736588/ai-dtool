@@ -1,20 +1,20 @@
 package variable
 
 import (
-	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/struct"
 	"dev_tool/internal/pkg/p_common"
-	"dev_tool/internal/pkg/p_shell"
 	"dev_tool/internal/pkg/p_sse"
 	"errors"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
-	"github.com/spf13/cast"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
+
+	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/spf13/cast"
 )
 
 type TVariable struct {
@@ -30,7 +30,7 @@ type TVariable struct {
 var VariableClient *TVariable
 
 func NewVariableClient() *TVariable {
-	log := gstool.NewSlog3(common.EnvClient.LogPath, `variable`)
+	log := gstool.NewSlog3(component.EnvClient.LogPath, `variable`)
 	_ = log.CleanOldLogs(2)
 	return &TVariable{
 		TaskList:      make(map[string]string),
@@ -46,7 +46,7 @@ func (h *TVariable) StopAll() {
 		h.TaskList[k] = "stop"
 		if clientList, ok := h.SshClientList[k]; ok {
 			for _, clientId := range clientList {
-				p_shell.ShellClient.RmClient(clientId)
+				component.ShellClient.RmClient(clientId)
 			}
 			delete(h.SshClientList, k)
 		}
@@ -63,7 +63,7 @@ func (h *TVariable) StopOther(runUniqueId string) {
 		h.TaskList[k] = "stop"
 		if clientList, ok := h.SshClientList[k]; ok {
 			for _, clientId := range clientList {
-				p_shell.ShellClient.RmClient(clientId)
+				component.ShellClient.RmClient(clientId)
 			}
 			delete(h.SshClientList, k)
 		}
@@ -255,7 +255,7 @@ func (h *TVariable) PreConnSsh(sshId int, sshUniqueKey, sftpUniqueKey string, ss
 		return errors.New(`ssh_id不能为空`)
 	}
 
-	if p_shell.ShellClient.Exist(sshUniqueKey) && p_shell.ShellClient.Exist(sftpUniqueKey) {
+	if component.ShellClient.Exist(sshUniqueKey) && component.ShellClient.Exist(sftpUniqueKey) {
 		return nil
 	}
 	//初始化连接
@@ -264,12 +264,12 @@ func (h *TVariable) PreConnSsh(sshId int, sshUniqueKey, sftpUniqueKey string, ss
 		return sshConfigErr
 	}
 	//ssh
-	_, sshClientErr := p_shell.ShellClient.GetClientMarkdown(sshConfig, sshUniqueKey, sse)
+	_, sshClientErr := component.ShellClient.GetClientMarkdown(sshConfig, sshUniqueKey, sse)
 	if sshClientErr != nil {
 		return sshClientErr
 	}
 	//sftp
-	_, sftpClientErr := p_shell.ShellClient.GetClientMarkdown(sshConfig, sftpUniqueKey, sse)
+	_, sftpClientErr := component.ShellClient.GetClientMarkdown(sshConfig, sftpUniqueKey, sse)
 	if sftpClientErr != nil {
 		return sftpClientErr
 	}

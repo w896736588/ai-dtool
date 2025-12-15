@@ -4,16 +4,15 @@ import (
 	"context"
 	"dev_tool/internal/pkg/p_common"
 	"errors"
+	"strings"
+	"sync"
+	"time"
+
 	"gitee.com/Sxiaobai/gs/v2/gsdb"
 	"gitee.com/Sxiaobai/gs/v2/gsssh"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
-	"strings"
-	"sync"
-	"time"
 )
-
-var RedisClient *TRedis
 
 type TRedis struct {
 	RedisClientMap map[string]*gsdb.GsRedis

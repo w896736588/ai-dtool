@@ -1,6 +1,7 @@
 package common
 
 import (
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_define"
 	"dev_tool/internal/pkg/p_sse"
@@ -56,7 +57,7 @@ var ShellOutClient *TShellOut
 
 // NewTShellOut 构造函数
 func NewTShellOut() *TShellOut {
-	log := gstool.NewSlog3(EnvClient.LogPath, `shell_wait`)
+	log := gstool.NewSlog3(component.EnvClient.LogPath, `shell_wait`)
 	_ = log.CleanOldLogs(2)
 	shellOut := &TShellOut{
 		ShellOutMap:       make(map[string]*ShellOut),

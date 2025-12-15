@@ -1,9 +1,9 @@
 package plw
 
 import (
-	"dev_tool/internal/app/dtool/curl/p_curl"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/struct"
+	"dev_tool/internal/pkg/p_curl"
 )
 
 type PlaywrightRunParams struct {

@@ -3,8 +3,8 @@ package api
 import (
 	"bytes"
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
-	"dev_tool/internal/pkg/p_db"
 	"errors"
 	"fmt"
 	"mime/multipart"
@@ -62,7 +62,7 @@ func NewApi(apiInfo map[string]any) *Api {
 	url, _ := gstool.UrlDecode(gstool.UrlAppendParams(cast.ToString(apiInfo[`url`]), urlParams))
 	envItems := make(map[string]string)
 	if cast.ToInt(apiInfo[`env_id`]) > 0 {
-		envItemList, _ := p_db.SqliteClient.QuickQuery(`tbl_api_env_item`, `*`, map[string]any{
+		envItemList, _ := component.SqliteClient.QuickQuery(`tbl_api_env_item`, `*`, map[string]any{
 			`env_id`: apiInfo[`env_id`],
 		}).All()
 		for _, envItem := range envItemList {

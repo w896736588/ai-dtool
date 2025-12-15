@@ -7,8 +7,6 @@ import (
 	"net/url"
 )
 
-var TGins []*Gin
-
 type Gin struct {
 	gin   *gsgin.GSGin //API接口
 	IsRun bool
