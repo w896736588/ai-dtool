@@ -1,10 +1,12 @@
 package p_gin
 
 import (
+	"net/url"
+
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
-	"net/url"
 )
 
 type Gin struct {
@@ -20,6 +22,7 @@ func (h *Gin) GinInit(host, port string) *gsgin.GSGin {
 		Host: host,
 		Port: cast.ToInt(port),
 	}
+	gstool.FmtPrintlnLogTime(`启动gin %s:%s`, host, port)
 	gsGin.CreateRouter()
 	gsGin.GinH.Use(gin.Logger())
 	gsGin.GinH.UseH2C = true

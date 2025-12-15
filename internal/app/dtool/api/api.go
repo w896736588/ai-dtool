@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/http"
+	url2 "net/url"
 	"strings"
 	"time"
 
@@ -57,9 +58,13 @@ type Api struct {
 func NewApi(apiInfo map[string]any) *Api {
 	headers := make(map[string]string)
 	_ = gstool.JsonDecode(cast.ToString(apiInfo[`headers`]), &headers)
-	urlParams := make(map[string]any)
+	urlParams := make([]map[string]any, 0)
 	_ = gstool.JsonDecode(cast.ToString(apiInfo[`query_params`]), &urlParams)
-	url, _ := gstool.UrlDecode(gstool.UrlAppendParams(cast.ToString(apiInfo[`url`]), urlParams))
+	urlValues := url2.Values{}
+	for _, urlParam := range urlParams {
+		urlValues.Add(cast.ToString(urlParam[`field`]), cast.ToString(urlParam[`value`]))
+	}
+	url, _ := gstool.UrlDecode(gstool.UrlAppendVals(cast.ToString(apiInfo[`url`]), urlValues))
 	envItems := make(map[string]string)
 	if cast.ToInt(apiInfo[`env_id`]) > 0 {
 		envItemList, _ := component.SqliteClient.QuickQuery(`tbl_api_env_item`, `*`, map[string]any{
