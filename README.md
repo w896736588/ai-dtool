@@ -1,6 +1,3 @@
-### 启动
-双击start.bat启动
-
 ### 新环境安装
 go env -w GOPROXY=https://goproxy.cn,direct
 
@@ -12,25 +9,26 @@ go env -w GOPROXY=https://goproxy.cn,direct
 5. 接口开发：支持文件夹详情中显示所有接口文档，支持一键复制 ok
 6. 接口开发：支持从curl命令生成接口 ok
 7. 输出监控：修复某些情况下丢失数据问题（可能是缓冲区不够，还没到换行） ok
-8. 输出监控：优化拦截展示页面，把拦截的标题和次数用表格更清晰展示 0k
-9. docker服务列表固定按自然顺序排序 wait
+8. 输出监控：优化拦截展示页面，把拦截的标题和次数用表格更清晰展示 ok
+9. docker服务列表固定按自然顺序排序 ok
 
-```shell
-#公司编译
-export CGO_ENABLED=1  
-export GOARCH=amd64   
-export GOOS=windows
-# DbPath数据库目录
-# DbName数据库文件名 为空的话取服务名
-go build -tags timetzdata -ldflags " -s -w" -o ./build/dtool.exe ./cmd/dtool/main.go
-#git add ./build/dtool.exe
-#git update-index --chmod=+x ./build/dtool.exe
-git ls-files --stage ./build/dtool.exe
-go build -tags timetzdata -ldflags " -s -w" -o ./build/zhimaPub.exe ./cmd/dtool/main.go
-git ls-files --stage ./build/zhimaPub.exe
-```
-
+### go run 启动
+ConfigFile设置为config/dtool下面的某个文件
 ```shell
 export CGO_ENABLED=1
-go run -ldflags " -s -w" cmd/dtool/main.go --ConfigFile=zkzf_home
+go run -ldflags " -s -w" cmd/dtool/main.go --ConfigFile=xxx
+```
+
+### bat启动
+将下面的内容保存为xxx.bat放到build目录即可双击运行，ctrl + c结束
+```bat
+@echo off
+REM 打开网页（异步）
+start "" "http://localhost:17170/"
+
+REM 同步运行 dtool，保持在当前控制台
+dtool.exe --ConfigFile=xxx
+
+REM 可选：运行结束后暂停（方便看最后日志）
+pause
 ```
