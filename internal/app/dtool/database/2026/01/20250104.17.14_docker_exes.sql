@@ -1,0 +1,1 @@
+ALTER TABLE tbl_docker_compose ADD COLUMN upload_exes text NOT NULL DEFAULT '';

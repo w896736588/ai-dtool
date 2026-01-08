@@ -676,7 +676,7 @@ func SetDockerComposeList(c *gin.Context) {
 func SetDockerComposeAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `compose_yml_path`, `env_file`, `ssh_id`, `docker_cmd`, `default_service`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `compose_yml_path`, `env_file`, `ssh_id`, `docker_cmd`, `default_service`, `upload_exes`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
