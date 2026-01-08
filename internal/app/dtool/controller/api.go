@@ -305,7 +305,7 @@ func ApiCreateApi(c *gin.Context) {
 		dataMap[`headers`] = parsed.CurlStruct.Headers
 		dataMap[`content_type`] = parsed.CurlStruct.ContentType
 		dataMap[`body_form`] = parsed.CurlStruct.BodyForm
-		dataMap[`body_json`] = parsed.CurlStruct.Body
+		dataMap[`body_json`] = parsed.CurlStruct.BodyJson
 
 	}
 	updateData = gstool.MapTakeKeys(&dataMap, []string{`folder_id`, `collection_id`, `name`, `method`, `url`,

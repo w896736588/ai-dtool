@@ -34,7 +34,7 @@ type CurlStruct struct {
 	Headers     map[string]string `json:"headers"`      //请求头
 	QueryParams []KeyValue        `json:"query_params"` //url的请求参数
 	BodyForm    []KeyValue        `json:"body_form"`    // 请求数据 当content-type为application/x-www-form-urlencoded或者multipart/form-data
-	Body        string            `json:"body_json"`    // 请求数据当content-type为application/json或raw时
+	BodyJson    string            `json:"body_json"`    // 请求数据当content-type为application/json或raw时
 }
 
 type ParseCurl struct {
@@ -140,7 +140,7 @@ func (h *ParseCurl) GetDataForm(sLine string) {
 func (h *ParseCurl) GetDataRaw(line string) {
 	line = strings.TrimLeft(line, "--data-raw '")
 	line = strings.TrimRight(line, "' \\")
-	h.CurlStruct.Body = line
+	h.CurlStruct.BodyJson = line
 }
 
 func (h *ParseCurl) GetDataRawUrls(line string) {

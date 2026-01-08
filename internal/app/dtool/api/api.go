@@ -101,6 +101,7 @@ func NewApi(apiInfo map[string]any) *Api {
 			ContentType: cast.ToString(apiInfo[`content_type`]),
 			Headers:     headers,
 			BodyForm:    bodyFormData,
+			BodyJson:    cast.ToString(apiInfo[`body_json`]),
 		},
 		Result: Result{
 			ResponseTake: responseTake,
@@ -121,7 +122,7 @@ func (h *Api) ReplaceEnv() {
 		h.CurlStruct.BodyForm[k].Value = gstool.SReplaces(v.Value, h.BaseInfo.EnvItems)
 	}
 	//body json替换
-	h.CurlStruct.Body = gstool.SReplaces(h.CurlStruct.Body, h.BaseInfo.EnvItems)
+	h.CurlStruct.BodyJson = gstool.SReplaces(h.CurlStruct.BodyJson, h.BaseInfo.EnvItems)
 }
 
 func (h *Api) Run() error {
@@ -130,7 +131,7 @@ func (h *Api) Run() error {
 	if h.CurlStruct.Method == http.MethodPost {
 		if h.CurlStruct.ContentType == `application/json` {
 			h.Result.Url = h.CurlStruct.Url
-			cli = gshttp.PostJson(h.CurlStruct.Url).BodyStr(h.CurlStruct.Body)
+			cli = gshttp.PostJson(h.CurlStruct.Url).BodyStr(h.CurlStruct.BodyJson)
 		} else if h.CurlStruct.ContentType == `application/x-www-form-urlencoded` {
 			h.Result.Url = h.CurlStruct.Url
 			cli = gshttp.PostForm(h.CurlStruct.Url)
