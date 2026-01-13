@@ -1,3 +1,3 @@
 @echo off
 start http://localhost:17170/
-.\build\zhima.exe --IsProd=true
+.\build\dtool.exe --ConfigFile=company

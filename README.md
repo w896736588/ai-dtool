@@ -13,6 +13,7 @@ go env -w GOPROXY=https://goproxy.cn,direct
 9. docker：docker服务列表固定按自然顺序排序 ok
 10. 自定义网页：执行逻辑支持复制新增 ok
 11. nginx：增加nginx配置文件一览 wait
+12. redis：增加10个最近搜索的key显示
 
 ### go run 启动
 ConfigFile设置为config/dtool下面的某个文件
