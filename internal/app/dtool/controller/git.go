@@ -38,7 +38,6 @@ func GitCurrentBranch(c *gin.Context) {
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
-	command.GitCleanCredentialCache()
 	command.Echo(`当前分支：`)
 	command.GitShowBranch()
 	command.Echo(`远程分支：`)
@@ -75,7 +74,6 @@ func GitChangeBranch(c *gin.Context) {
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
-	command.GitCleanCredentialCache()
 	command.GitIgnoreAll()
 	command.GitCleanAll()
 	command.GitFetch()
@@ -122,7 +120,6 @@ func GitChangeBranchRemote(c *gin.Context) {
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
-	command.GitCleanCredentialCache()
 	command.GitIgnoreAll()
 	command.GitFetch()
 	command.GitPull()
@@ -164,7 +161,6 @@ func GitPullBranchOrigin(c *gin.Context) {
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
-	command.GitCleanCredentialCache()
 	command.GitIgnoreAll()
 	command.GitCleanAll()
 	command.GitFetch()
@@ -212,7 +208,6 @@ func QueryStatus(c *gin.Context) {
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
-	command.GitCleanCredentialCache()
 	command.GitStatus()
 
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
@@ -234,7 +229,6 @@ func GitCommitLog(c *gin.Context) {
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
-	command.GitCleanCredentialCache()
 	command.GitCommitLog()
 
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
@@ -275,7 +269,6 @@ func CreateMerge(c *gin.Context) {
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
-	command.GitCleanCredentialCache()
 	command.GitCommitLog()
 
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
@@ -307,4 +300,25 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal
 		return nil, nil, sshClientErr
 	}
 	return dataMap, sshClient, nil
+}
+
+// GitSetSafeLog 设置项目安全
+func GitSetSafeLog(c *gin.Context) {
+	reqMap, sshClient, err := getGitComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	codePath := cast.ToString(reqMap[`code_path`])
+	if codePath == `` {
+		gsgin.GinResponseError(c, `git未配置目录`, nil)
+		return
+	}
+	command := p_shell.NewCommand()
+	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
+	command.Cd(codePath)
+	command.GitSetSafe(codePath)
+
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	gsgin.GinResponseSuccess(c, ``, result)
 }

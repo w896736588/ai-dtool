@@ -131,7 +131,9 @@ func ShellOutSetSeeId(c *gin.Context) {
 		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
 		SseDistributeId: cast.ToString(dataMap[`sse_distribute_id`]),
 	}
-	err = common.ShellOutClient.SetClientSseId(shellClientId, sshId, sse, command, groupId, nil)
+	err = common.ShellOutClient.SetClientSseId(shellClientId, sshId, sse, command, groupId, func(s string) []string {
+		return []string{p_common.TBaseClient.FilterTerminalChars(s)}
+	})
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return

@@ -297,3 +297,8 @@ func (h *Command) DockerComposeConfig(dockerCmd, envFile string) *Command {
 	h.SetCommand(fmt.Sprintf(`%s %s %s config`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile)))
 	return h
 }
+
+func (h *Command) GitSetSafe(codeDir string) *Command {
+	h.SetCommand(fmt.Sprintf(`%sgit config --global --add safe.directory %s `, h.sudo, codeDir))
+	return h
+}

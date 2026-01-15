@@ -139,6 +139,7 @@ func gitRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/GitCommitLog`, controller.GitCommitLog)                   //查询提交日志
 	tGin.GinPost(`/api/GitConfigList`, controller.GitConfigList)                 //git配置
 	tGin.GinPost(`/api/CreateMerge`, controller.CreateMerge)                     //创建合并请求
+	tGin.GinPost(`/api/GitSetSafeLog`, controller.GitSetSafeLog)                 //设置项目安全
 }
 
 // gitlab token相关
