@@ -57,6 +57,9 @@ func (h *Shell) GetClient(sshConfig map[string]any, shellClientId string, sse *p
 		sse.Send(` 注意：连接已中断，下次动作时进行链接,` + msg + "\n")
 		h.RmClient(shellClientId)
 	})
+	gsShell.SetPtyConfig(gsssh.PtyConfig{
+		Echo: 1,
+	})
 	gsShell.SetMaxBufferSize(2 * 1024 * 1024) //最大允许2M的输出
 	//先执行一次确保连接正常
 	maxRunSecond := time.Second * 40
@@ -66,6 +69,7 @@ func (h *Shell) GetClient(sshConfig map[string]any, shellClientId string, sse *p
 	}
 	//回调准备输出的内容 放到这里 就不需要链接linux出现的一大段文字
 	gsShell.SetFuncReceiveMsg(func(msg string) string {
+		gstool.FmtPrintlnLogTime(`收到 %s`, msg)
 		//msg = gstool.StringFilterANSI(msg)
 		h.log.Debugf(`receive：%s`, msg)
 		if formatStream != nil {
@@ -116,7 +120,9 @@ func (h *Shell) GetClientMarkdown(sshConfig map[string]any, shellClientId string
 		UserName: cast.ToString(sshConfig["username"]),
 		Password: cast.ToString(sshConfig["password"]),
 	}))
-
+	gsShell.SetPtyConfig(gsssh.PtyConfig{
+		Echo: 1,
+	})
 	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
 	//设置关闭事件
 	gsShell.SetFuncBroken(func(msg string) {

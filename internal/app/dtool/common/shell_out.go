@@ -125,6 +125,7 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId string, ss
 	gsShell.SetMaxBufferSize(2 * 1024 * 1024) //最大允许2M的输出
 	gsShell.SetPtyConfig(gsssh.PtyConfig{
 		Width: 1000,
+		Echo:  1,
 	})
 
 	if err := gsShell.RunCommand(`pwd`); err != nil {
