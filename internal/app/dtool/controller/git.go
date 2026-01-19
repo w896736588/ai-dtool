@@ -158,6 +158,7 @@ func GitPullBranchOrigin(c *gin.Context) {
 	command1.Cd(codePath)
 	command1.GitShowBranch()
 	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), 40*time.Second)
+	currentBranch = sshClient.FilterEndTip(currentBranch)
 	currentBranch = CleanBranchName(currentBranch)
 
 	gstool.FmtPrintlnLogTime(`获取当前分支为：%q`, currentBranch)

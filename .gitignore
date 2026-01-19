@@ -12,3 +12,4 @@ build/
 /internal/pkg/p_node/
 /config/*/config.ini
 /upload
+/test/*

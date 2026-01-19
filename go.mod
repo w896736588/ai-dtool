@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.4
 
 require (
-	gitee.com/Sxiaobai/gs/v2 v2.0.44
+	gitee.com/Sxiaobai/gs/v2 v2.0.45
 	github.com/gin-gonic/gin v1.9.1
 	github.com/pion/stun v0.6.1
 	github.com/playwright-community/playwright-go v0.4901.0
@@ -13,6 +13,7 @@ require (
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/viper v1.9.0
 	github.com/tidwall/gjson v1.18.0
+	golang.org/x/crypto v0.45.0
 )
 
 require (
@@ -88,7 +89,6 @@ require (
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/arch v0.23.0 // indirect
-	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/image v0.21.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect

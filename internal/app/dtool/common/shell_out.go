@@ -118,11 +118,10 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId string, ss
 		Password: cast.ToString(sshConfig["password"]),
 	}))
 	// 断开回调
-	gsShell.SetFuncBroken(func() {
-		sse.Send(` 注意：连接已中断，下次动作时进行链接` + "\n")
+	gsShell.SetFuncBroken(func(msg string) {
+		sse.Send(` 注意：连接已中断，下次动作时进行链接,` + msg + "\n")
 		h.RmClient(shellClientId)
 	})
-	gsShell.SetCombineNum(1)
 	gsShell.SetMaxBufferSize(2 * 1024 * 1024) //最大允许2M的输出
 	gsShell.SetPtyConfig(gsssh.PtyConfig{
 		Width: 1000,
@@ -238,15 +237,15 @@ func (h *TShellOut) CleanLog(shellClientId string) {
 
 func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, formatStream func(string) []string) {
 	go h.timeBreakSsh(shellOut)
-	shellOut.Client.SetFuncStreamReceive(func(msg string) {
+	shellOut.Client.SetFuncReceiveMsg(func(msg string) string {
 		shellOut.lastReceiveTime = time.Now().Unix()
 		if strings.Contains(msg, ExistTip) {
 			if !strings.Contains(msg, fmt.Sprintf(`;echo '%s'`, ExistTip)) {
 				h.SendMsg(shellOut, msg)
 				h.SendMsg(shellOut, `监听到命令已中断，刷新后再次链接`)
 				h.RmClient(shellOut.ShellClientId)
-				return
 			}
+			return msg
 		}
 		msg = gstool.StringFilterANSI(msg)
 		msg = strings.Replace(msg, "\u001B", "", -1)
@@ -258,7 +257,7 @@ func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, formatStream func(string) 
 		//过滤内容处理
 		boolFilter := h.RegexFilter(shellOut, msg)
 		if boolFilter {
-			return
+			return msg
 		}
 		//保留内容处理
 		shellOut.remainContents = append(shellOut.remainContents, msg)
@@ -276,6 +275,7 @@ func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, formatStream func(string) 
 		} else {
 			h.SendMsg(shellOut, msg)
 		}
+		return msg
 	})
 }
 

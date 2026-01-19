@@ -3,7 +3,6 @@ package p_shell
 import (
 	"dev_tool/internal/pkg/p_sse"
 	"errors"
-	"fmt"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -54,8 +53,8 @@ func (h *Shell) GetClient(sshConfig map[string]any, shellClientId string, sse *p
 		Password: cast.ToString(sshConfig["password"]),
 	}))
 	//设置关闭事件
-	gsShell.SetFuncBroken(func() {
-		sse.Send(` 注意：连接已中断，下次动作时进行链接`)
+	gsShell.SetFuncBroken(func(msg string) {
+		sse.Send(` 注意：连接已中断，下次动作时进行链接,` + msg + "\n")
 		h.RmClient(shellClientId)
 	})
 	gsShell.SetMaxBufferSize(2 * 1024 * 1024) //最大允许2M的输出
@@ -66,7 +65,7 @@ func (h *Shell) GetClient(sshConfig map[string]any, shellClientId string, sse *p
 		return nil, err
 	}
 	//回调准备输出的内容 放到这里 就不需要链接linux出现的一大段文字
-	gsShell.SetFuncStreamReceive(func(msg string) {
+	gsShell.SetFuncReceiveMsg(func(msg string) string {
 		//msg = gstool.StringFilterANSI(msg)
 		h.log.Debugf(`receive：%s`, msg)
 		if formatStream != nil {
@@ -77,6 +76,7 @@ func (h *Shell) GetClient(sshConfig map[string]any, shellClientId string, sse *p
 		} else {
 			sse.Send(msg)
 		}
+		return msg
 	})
 	//提示验证提示
 	if len(promptKeywords) == 0 {
@@ -93,15 +93,6 @@ func (h *Shell) GetClient(sshConfig map[string]any, shellClientId string, sse *p
 	if promptFunc != nil {
 		gsShell.SetFuncAuthPrompt(promptFunc)
 	}
-	//设置执行命令前处理
-	gsShell.SetFuncBefore(func(command string) string {
-		return command
-	})
-	//设置对收到的结果是否进行合并后处理 建议1-2
-	gsShell.SetCombineNum(1)
-	//是否显示执行命令后linux返回的执行的命令 如果设置了SetFuncBefore处理，那么就关闭
-	gsShell.CloseFirstReceiveMsg()
-
 	h.ShellClientMap[shellClientId] = gsShell
 	return gsShell, nil
 }
@@ -128,8 +119,8 @@ func (h *Shell) GetClientMarkdown(sshConfig map[string]any, shellClientId string
 
 	//TODO 有时间研究一下 为什么sftp的链接断开后没有重连
 	//设置关闭事件
-	gsShell.SetFuncBroken(func() {
-		sse.Send(` 注意：连接已中断，下次动作时进行链接` + "\n")
+	gsShell.SetFuncBroken(func(msg string) {
+		sse.Send(` 注意：连接已中断，下次动作时进行链接,` + msg + "\n")
 		h.RmClient(shellClientId)
 	})
 	gsShell.SetMaxBufferSize(2 * 1024 * 1024) //最大允许2M的输出
@@ -140,11 +131,6 @@ func (h *Shell) GetClientMarkdown(sshConfig map[string]any, shellClientId string
 	}
 	//猪油：下面3个注册回调，放到这里的话就不会输出pwd以及连接相关信息
 	h.SetSse(gsShell, sse)
-	//设置执行命令前处理
-	gsShell.SetFuncBefore(func(command string) string {
-		return command
-		//return Component.TMarkDown.Code(command, `shell`)
-	})
 	//提示输入账号密码登处理
 	gsShell.SetAuthPromptKeywords([]string{
 		"Username for",
@@ -166,10 +152,6 @@ func (h *Shell) GetClientMarkdown(sshConfig map[string]any, shellClientId string
 		}
 		return ``
 	})
-	//设置对收到的结果是否进行合并后处理 建议1-2
-	gsShell.SetCombineNum(1)
-	//是否显示执行命令后linux返回的执行的命令 如果设置了SetFuncBefore处理，那么就关闭
-	gsShell.CloseFirstReceiveMsg()
 
 	h.ShellClientMap[shellClientId] = gsShell
 	return gsShell, nil
@@ -177,14 +159,9 @@ func (h *Shell) GetClientMarkdown(sshConfig map[string]any, shellClientId string
 
 func (h *Shell) SetSse(gsShell *gsssh.SshTerminal, sse *p_sse.SseShell) {
 	//回调准备输出的内容
-	gsShell.SetFuncStreamReceive(func(msg string) {
+	gsShell.SetFuncReceiveMsg(func(msg string) string {
 		sse.Send(msg)
-	})
-	gsShell.SetFuncStartCommand(func() {
-		sse.Send(fmt.Sprintf("```%s\n#%s", `bash`, `bash`) + "\n")
-	})
-	gsShell.SetFuncEndCommand(func() {
-		sse.Send("```\n")
+		return msg
 	})
 }
 
