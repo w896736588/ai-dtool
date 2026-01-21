@@ -294,18 +294,21 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal
 	}
 	//验证提示关键词
 	promptKeywords := []string{"Username for", "Password for"}
-	//遇到验证提示关键词时的回调处理
-	promptFunc := func(prompt string, stdin io.WriteCloser, session *ssh.Session) string {
+	promptFunc := func(prompt string, stdin io.WriteCloser, session *ssh.Session) {
+		gstool.FmtPrintlnLogTime(`prompt %s`, prompt)
 		if strings.Contains(prompt, `Username for`) {
 			host := p_common.TBaseClient.GetGitPromptHosts(prompt)
 			if len(host) == 0 {
+				gstool.FmtPrintlnLogTime(`未匹配到需要输入账号的来源 %s`+"\n", prompt)
 				sse.Send(fmt.Sprintf(`未匹配到需要输入账号的来源 %s`, prompt) + "\n")
 			} else {
 				if input, exist := globalMap[host+`_username`]; exist {
 					sse.Send(fmt.Sprintf(`输入git账号（%s）`, host+`_username`) + "\n")
+					gstool.FmtPrintlnLogTime(`输入git账号（%s）,%s`, host+`_username`, input)
 					_, _ = stdin.Write([]byte(fmt.Sprintf("%s\n", input)))
-					return ``
+					return
 				} else {
+					gstool.FmtPrintlnLogTime(`未找到可以输入的git账号，请在全局变量中配置:%s`, host+`_username`)
 					sse.Send(fmt.Sprintf(`未找到可以输入的git账号，请在全局变量中配置:%s`, host+`_username`) + "\n")
 				}
 			}
@@ -313,24 +316,28 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal
 		if strings.Contains(prompt, `Password for`) {
 			host := p_common.TBaseClient.GetGitPromptHosts(prompt)
 			if len(host) == 0 {
+				gstool.FmtPrintlnLogTime(`未匹配到需要输入账号的来源 %s`+"\n", prompt)
 				sse.Send(fmt.Sprintf(`未匹配到需要输入账号的来源 %s`, prompt) + "\n")
-				return ``
 			} else {
 				if input, exist := globalMap[host+`_password`]; exist {
+					gstool.FmtPrintlnLogTime(`输入git密码（%s）,%s`, host+`_password`, input)
 					sse.Send(fmt.Sprintf("\n"+`输入git密码（%s）`, host+`_password`) + "\n")
 					_, _ = stdin.Write([]byte(fmt.Sprintf("%s\n", input)))
-					return ``
+					return
 				} else {
+					gstool.FmtPrintlnLogTime(`未找到可以输入的git密码，请在全局变量中配置:%s`, host+`_password`)
 					sse.Send(fmt.Sprintf(`未找到可以输入的git密码，请在全局变量中配置:%s`, host+`_password`) + "\n")
 				}
 			}
 		}
+		// 只有在未处理任何认证信息时才发送中断信号
 		_ = session.Signal(ssh.SIGINT)
 		//清除认证缓存
 		if strings.Contains(strings.ToLower(prompt), `git`) {
 			_, _ = stdin.Write([]byte("git credential-cache exit; unset GIT_ASKPASS\n"))
 		}
-		return "\n需要输入账号或密码，请按照提示在全局变量中设置后再次执行\n"
+		sse.Send("\n需要输入账号或密码，请按照提示在全局变量中设置后再次执行\n")
+		return
 	}
 	sshClient, sshClientErr := component.ShellClient.GetClient(sshConfig, uniqueKey, sse, formatFunc, promptKeywords, promptFunc)
 	if sshClientErr != nil {

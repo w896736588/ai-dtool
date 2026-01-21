@@ -35,7 +35,7 @@ func NewShell(logPath string) *Shell {
 
 // GetClient 正常输出
 func (h *Shell) GetClient(sshConfig map[string]any, shellClientId string, sse *p_sse.SseShell,
-	formatStream func(string) []string, promptKeywords []string, promptFunc func(string, io.WriteCloser, *ssh.Session) string) (*gsssh.SshTerminal, error) {
+	formatStream func(string) []string, promptKeywords []string, promptFunc func(string, io.WriteCloser, *ssh.Session)) (*gsssh.SshTerminal, error) {
 	defer h.lock.Unlock()
 	h.lock.Lock()
 	sshId := cast.ToString(sshConfig[`id`])
@@ -69,9 +69,6 @@ func (h *Shell) GetClient(sshConfig map[string]any, shellClientId string, sse *p
 	}
 	//回调准备输出的内容 放到这里 就不需要链接linux出现的一大段文字
 	gsShell.SetFuncReceiveMsg(func(msg string) string {
-		gstool.FmtPrintlnLogTime(`收到 %s`, msg)
-		//msg = gstool.StringFilterANSI(msg)
-		h.log.Debugf(`receive：%s`, msg)
 		if formatStream != nil {
 			msgList := formatStream(msg)
 			for _, msg := range msgList {
@@ -146,7 +143,7 @@ func (h *Shell) GetClientMarkdown(sshConfig map[string]any, shellClientId string
 		"passphrase",
 		"Passphrase",
 	})
-	gsShell.SetFuncAuthPrompt(func(prompt string, stdin io.WriteCloser, session *ssh.Session) string {
+	gsShell.SetFuncAuthPrompt(func(prompt string, stdin io.WriteCloser, session *ssh.Session) {
 		// 发送 Ctrl+C 信号（模拟终端中断）
 		if session != nil {
 			_ = session.Signal(ssh.SIGINT)
@@ -154,9 +151,10 @@ func (h *Shell) GetClientMarkdown(sshConfig map[string]any, shellClientId string
 			if strings.Contains(strings.ToLower(prompt), `git`) {
 				_, _ = stdin.Write([]byte("git credential-cache exit; unset GIT_ASKPASS\n"))
 			}
-			return "\n需要输入账号或密码，暂时不支持，请解决后再次执行\n"
+			sse.Send("\n需要输入账号或密码，暂时不支持，请解决后再次执行\n")
+			return
 		}
-		return ``
+		return
 	})
 
 	h.ShellClientMap[shellClientId] = gsShell
