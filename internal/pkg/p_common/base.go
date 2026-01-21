@@ -189,3 +189,8 @@ func (h *TBase) GetGitPromptHosts(input string) string {
 
 	return fullURL
 }
+
+func (h *TBase) FilterGitPromptHosts(input, promptTitle string) string {
+	re := regexp.MustCompile(fmt.Sprintf(`%s 'http(s)?://(?:[^@']+@)?([^']+)`, promptTitle))
+	return re.ReplaceAllString(input, ``)
+}

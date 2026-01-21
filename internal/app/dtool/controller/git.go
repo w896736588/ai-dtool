@@ -159,6 +159,7 @@ func GitPullBranchOrigin(c *gin.Context) {
 	command1.GitShowBranch()
 	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), 40*time.Second)
 	currentBranch = sshClient.FilterEndTip(currentBranch)
+	currentBranch = sshClient.FilterCommand(currentBranch)
 	currentBranch = CleanBranchName(currentBranch)
 
 	gstool.FmtPrintlnLogTime(`获取当前分支为：%q`, currentBranch)
@@ -294,7 +295,7 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal
 	}
 	//验证提示关键词
 	promptKeywords := []string{"Username for", "Password for"}
-	promptFunc := func(prompt string, stdin io.WriteCloser, session *ssh.Session) {
+	promptFunc := func(prompt string, stdin io.WriteCloser, session *ssh.Session) string {
 		gstool.FmtPrintlnLogTime(`prompt %s`, prompt)
 		if strings.Contains(prompt, `Username for`) {
 			host := p_common.TBaseClient.GetGitPromptHosts(prompt)
@@ -306,7 +307,7 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal
 					sse.Send(fmt.Sprintf(`输入git账号（%s）`, host+`_username`) + "\n")
 					gstool.FmtPrintlnLogTime(`输入git账号（%s）,%s`, host+`_username`, input)
 					_, _ = stdin.Write([]byte(fmt.Sprintf("%s\n", input)))
-					return
+					return p_common.TBaseClient.FilterGitPromptHosts(prompt, `Username for`)
 				} else {
 					gstool.FmtPrintlnLogTime(`未找到可以输入的git账号，请在全局变量中配置:%s`, host+`_username`)
 					sse.Send(fmt.Sprintf(`未找到可以输入的git账号，请在全局变量中配置:%s`, host+`_username`) + "\n")
@@ -323,7 +324,7 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal
 					gstool.FmtPrintlnLogTime(`输入git密码（%s）,%s`, host+`_password`, input)
 					sse.Send(fmt.Sprintf("\n"+`输入git密码（%s）`, host+`_password`) + "\n")
 					_, _ = stdin.Write([]byte(fmt.Sprintf("%s\n", input)))
-					return
+					return p_common.TBaseClient.FilterGitPromptHosts(prompt, `Password for`)
 				} else {
 					gstool.FmtPrintlnLogTime(`未找到可以输入的git密码，请在全局变量中配置:%s`, host+`_password`)
 					sse.Send(fmt.Sprintf(`未找到可以输入的git密码，请在全局变量中配置:%s`, host+`_password`) + "\n")
@@ -337,7 +338,7 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal
 			_, _ = stdin.Write([]byte("git credential-cache exit; unset GIT_ASKPASS\n"))
 		}
 		sse.Send("\n需要输入账号或密码，请按照提示在全局变量中设置后再次执行\n")
-		return
+		return prompt
 	}
 	sshClient, sshClientErr := component.ShellClient.GetClient(sshConfig, uniqueKey, sse, formatFunc, promptKeywords, promptFunc)
 	if sshClientErr != nil {

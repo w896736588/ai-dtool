@@ -35,7 +35,7 @@ func NewShell(logPath string) *Shell {
 
 // GetClient 正常输出
 func (h *Shell) GetClient(sshConfig map[string]any, shellClientId string, sse *p_sse.SseShell,
-	formatStream func(string) []string, promptKeywords []string, promptFunc func(string, io.WriteCloser, *ssh.Session)) (*gsssh.SshTerminal, error) {
+	formatStream func(string) []string, promptKeywords []string, promptFunc func(string, io.WriteCloser, *ssh.Session) string) (*gsssh.SshTerminal, error) {
 	defer h.lock.Unlock()
 	h.lock.Lock()
 	sshId := cast.ToString(sshConfig[`id`])
@@ -143,7 +143,7 @@ func (h *Shell) GetClientMarkdown(sshConfig map[string]any, shellClientId string
 		"passphrase",
 		"Passphrase",
 	})
-	gsShell.SetFuncAuthPrompt(func(prompt string, stdin io.WriteCloser, session *ssh.Session) {
+	gsShell.SetFuncAuthPrompt(func(prompt string, stdin io.WriteCloser, session *ssh.Session) string {
 		// 发送 Ctrl+C 信号（模拟终端中断）
 		if session != nil {
 			_ = session.Signal(ssh.SIGINT)
@@ -152,9 +152,9 @@ func (h *Shell) GetClientMarkdown(sshConfig map[string]any, shellClientId string
 				_, _ = stdin.Write([]byte("git credential-cache exit; unset GIT_ASKPASS\n"))
 			}
 			sse.Send("\n需要输入账号或密码，暂时不支持，请解决后再次执行\n")
-			return
+			return prompt
 		}
-		return
+		return prompt
 	})
 
 	h.ShellClientMap[shellClientId] = gsShell
