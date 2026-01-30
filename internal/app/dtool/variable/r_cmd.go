@@ -441,10 +441,10 @@ func (h *RCmd) RunCurl() (string, error) {
 				h.Sse.Send(fmt.Sprintf(`%s`, s) + "\n")
 			},
 			EndCall: func() {
-				h.Sse.Send(fmt.Sprintf(`结束请求 %s`, parseConfig.Uri) + "\n")
+				//h.Sse.Send(fmt.Sprintf(`结束请求 %s`, parseConfig.Uri) + "\n")
 			},
 			StartCall: func() {
-				h.Sse.Send(fmt.Sprintf(`开始请求 %s`, parseConfig.Uri) + "\n")
+				h.Sse.Send("\n***\n")
 			},
 		},
 	}
