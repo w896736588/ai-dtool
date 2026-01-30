@@ -3,16 +3,17 @@ package variable
 import (
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
-	"dev_tool/internal/app/dtool/struct"
+	_struct "dev_tool/internal/app/dtool/struct"
 	"dev_tool/internal/pkg/p_common"
 	"dev_tool/internal/pkg/p_sse"
 	"errors"
 	"fmt"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
-	"github.com/spf13/cast"
 	"regexp"
 	"strings"
 	"sync"
+
+	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/spf13/cast"
 )
 
 type TVariable struct {
@@ -116,7 +117,12 @@ func (h *TVariable) RegisterAllGlobal(replaceList map[string]string, sse *p_sse.
 			}
 		}
 		h.AddReplace(replaceList, cast.ToString(globalMap[`key`]), cast.ToString(globalMap[`value`]))
-		sse.Send(`注入全局常量 ` + fmt.Sprintf(`%s,%s`, cast.ToString(globalMap[`key`]), cast.ToString(globalMap[`value`])) + "\n")
+		//如果是有token 密码 等关键信息的那么用****表示
+		if strings.Contains(cast.ToString(globalMap[`key`]), `token`) || strings.Contains(cast.ToString(globalMap[`key`]), `password`) {
+			sse.Send(`注入全局常量 ` + fmt.Sprintf(`%s,****`, cast.ToString(globalMap[`key`])) + "\n")
+		} else {
+			sse.Send(`注入全局常量 ` + fmt.Sprintf(`%s,%s`, cast.ToString(globalMap[`key`]), cast.ToString(globalMap[`value`])) + "\n")
+		}
 	}
 }
 
