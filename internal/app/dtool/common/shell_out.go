@@ -255,6 +255,8 @@ func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, formatStream func(string) 
 		if len(shellOut.sourceContents) > MaxSourceLength {
 			shellOut.sourceContents = shellOut.sourceContents[MaxSourceLength:]
 		}
+		//错误检测
+		h.RegexError(shellOut, msg)
 		//过滤内容处理
 		boolFilter := h.RegexFilter(shellOut, msg)
 		if boolFilter {
@@ -265,8 +267,7 @@ func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, formatStream func(string) 
 		if len(shellOut.remainContents) > MaxRemainLength {
 			shellOut.remainContents = shellOut.remainContents[MaxRemainLength:]
 		}
-		//错误检测
-		h.RegexError(shellOut, msg)
+
 		//推送
 		if formatStream != nil {
 			msgList := formatStream(msg)
