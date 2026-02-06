@@ -495,3 +495,223 @@ func ApiTakeJsonResult(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, list)
 	return
 }
+
+func ApiBatchImport(c *gin.Context) {
+	// 从form-data中获取json字符串
+	jsonStr := c.PostForm(`json`)
+	if jsonStr == `` {
+		gsgin.GinResponseError(c, `json参数必须提供`, nil)
+		return
+	}
+
+	// 解析JSON字符串
+	importData := make(map[string]any)
+	err := gstool.JsonDecode(jsonStr, &importData)
+	if err != nil {
+		gsgin.GinResponseError(c, `json格式错误: `+err.Error(), nil)
+		return
+	}
+
+	// 只接受collection_id，必须已存在
+	collectionId := cast.ToInt(importData[`collection_id`])
+	if collectionId == 0 {
+		gsgin.GinResponseError(c, `collection_id必须提供`, nil)
+		return
+	}
+
+	// 验证集合是否存在
+	collectionInfo, _ := common.DbMain.Client.QuickQuery(`tbl_api_collection`, `*`, map[string]any{
+		`id`: collectionId,
+	}).One()
+	if len(collectionInfo) == 0 {
+		gsgin.GinResponseError(c, `集合不存在`, nil)
+		return
+	}
+
+	// 处理导入项
+	items, ok := importData[`items`].([]any)
+	if !ok {
+		gsgin.GinResponseError(c, `items格式错误`, nil)
+		return
+	}
+
+	importResult := map[string]any{
+		`folders_created`: 0,
+		`apis_created`:    0,
+		`errors`:         []string{},
+	}
+
+	for _, item := range items {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			importResult[`errors`] = append(importResult[`errors`].([]string), `item格式错误`)
+			continue
+		}
+		itemType := cast.ToString(itemMap[`type`])
+		// 根级别只允许folder类型
+		if itemType == `folder` {
+			err := processFolderItem(c, collectionId, itemMap, importResult)
+			if err != nil {
+				importResult[`errors`] = append(importResult[`errors`].([]string), `创建文件夹失败: `+err.Error())
+			}
+		} else {
+			importResult[`errors`] = append(importResult[`errors`].([]string), `根级别只允许folder类型，不允许: `+itemType)
+		}
+	}
+
+	gsgin.GinResponseSuccess(c, `导入完成`, map[string]any{
+		`result`: importResult,
+	})
+}
+
+func processFolderItem(c *gin.Context, collectionId int, folderData map[string]any, importResult map[string]any) error {
+	folderName := cast.ToString(folderData[`name`])
+
+	// 创建文件夹
+	updateData := map[string]any{
+		`name`:           folderName,
+		`collection_id`:  collectionId,
+		`create_time`:    time.Now().Unix(),
+		`update_time`:    time.Now().Unix(),
+	}
+	newId, err := common.DbMain.Client.QuickCreate(`tbl_api_dir`, updateData).Exec()
+	if err != nil {
+		return err
+	}
+	folderId := cast.ToInt(newId)
+	importResult[`folders_created`] = importResult[`folders_created`].(int) + 1
+
+	// 处理子项 - 文件夹下只能包含api
+	children, ok := folderData[`children`].([]any)
+	if ok {
+		for _, child := range children {
+			childMap, ok := child.(map[string]any)
+			if !ok {
+				importResult[`errors`] = append(importResult[`errors`].([]string), `子项格式错误`)
+				continue
+			}
+			itemType := cast.ToString(childMap[`type`])
+			// 文件夹下只允许api类型，不允许嵌套folder
+			if itemType == `api` {
+				err := processApiItem(c, collectionId, folderId, childMap, importResult)
+				if err != nil {
+					importResult[`errors`] = append(importResult[`errors`].([]string), `创建接口失败: `+err.Error())
+				}
+			} else {
+				importResult[`errors`] = append(importResult[`errors`].([]string), `文件夹下只允许api类型，不允许: `+itemType)
+			}
+		}
+	}
+	return nil
+}
+
+func processApiItem(c *gin.Context, collectionId, folderId int, apiData map[string]any, importResult map[string]any) error {
+	var err error
+	// 支持从curl导入
+	curlData := cast.ToString(apiData[`curlData`])
+	var updateData map[string]any
+
+	if curlData != `` {
+		// 从curl解析
+		parsed := p_curl.NewParseCurl(curlData)
+		err = parsed.Parse()
+		if err != nil {
+			return errors.New(`Curl解析失败: ` + err.Error())
+		}
+		updateData = map[string]any{
+			`folder_id`:     folderId,
+			`collection_id`: collectionId,
+			`name`:         cast.ToString(apiData[`name`]),
+			`method`:       parsed.CurlStruct.Method,
+			`query_params`:  parsed.CurlStruct.QueryParams,
+			`protocol`:      parsed.CurlStruct.Protocol,
+			`url`:          parsed.CurlStruct.Url,
+			`headers`:       parsed.CurlStruct.Headers,
+			`content_type`:  parsed.CurlStruct.ContentType,
+			`body_form`:     parsed.CurlStruct.BodyForm,
+			`body_json`:     parsed.CurlStruct.BodyJson,
+			`env_id`:        cast.ToInt(apiData[`env_id`]),
+			`desc`:         cast.ToString(apiData[`desc`]),
+		}
+		if strings.ToLower(parsed.CurlStruct.Protocol) == `http` {
+			updateData[`url`] = `http://` + parsed.CurlStruct.Url
+		} else {
+			updateData[`url`] = `https://` + parsed.CurlStruct.Url
+		}
+	} else {
+		// 直接从JSON数据创建
+		updateData = gstool.MapTakeKeys(&apiData, []string{
+			`folder_id`, `collection_id`, `name`, `method`, `url`,
+			`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`,
+			`env_id`, `response_take`, `take_result`, `take_result_desc`,
+		})
+		updateData[`folder_id`] = folderId
+		updateData[`collection_id`] = collectionId
+	}
+
+	// 处理数组/对象类型的字段，转换为JSON字符串
+	for key, value := range updateData {
+		if gstool.ArrayExistValue(&[]string{reflect.Array.String(), reflect.Map.String(), reflect.Slice.String()}, gstool.ReflectGetType(value).String()) {
+			updateData[key] = gstool.JsonEncode(value)
+		}
+	}
+
+	// 处理空值过滤 - 只处理存在的字段
+	if queryParams, exists := updateData[`query_params`]; exists && queryParams != nil && cast.ToString(queryParams) != `` {
+		updateData[`query_params`], err = filterEmptyArrayMap(cast.ToString(queryParams), `field`, `请求参数格式错误`, 500)
+		if err != nil {
+			return err
+		}
+	} else {
+		// 如果query_params不存在或为空，设置为空数组字符串
+		updateData[`query_params`] = `[]`
+	}
+
+	if headers, exists := updateData[`headers`]; exists && headers != nil && cast.ToString(headers) != `` {
+		updateData[`headers`], err = filterEmptyMap(cast.ToString(headers), `headers格式错误`, 500)
+		if err != nil {
+			return err
+		}
+	} else {
+		// 如果headers不存在或为空，设置为空对象字符串
+		updateData[`headers`] = `{}`
+	}
+
+	if bodyForm, exists := updateData[`body_form`]; exists && bodyForm != nil && cast.ToString(bodyForm) != `` {
+		updateData[`body_form`], err = filterEmptyArrayMap(cast.ToString(bodyForm), `field`, `请求体格式错误`, 500)
+		if err != nil {
+			return err
+		}
+	} else {
+		// 如果body_form不存在或为空，设置为空数组字符串
+		updateData[`body_form`] = `[]`
+	}
+
+	// 处理env_id：检查环境是否存在且属于当前集合
+	envId := cast.ToInt(updateData[`env_id`])
+	if envId > 0 {
+		// 检查环境是否存在且属于当前集合
+		envInfo, _ := common.DbMain.Client.QuickQuery(`tbl_api_env`, `id`, map[string]any{
+			`id`:            envId,
+			`collection_id`: collectionId,
+		}).One()
+		if len(envInfo) == 0 {
+			// 环境不存在或不属于当前集合，删除env_id字段
+			delete(updateData, `env_id`)
+		}
+	} else {
+		// env_id为0，删除该字段
+		delete(updateData, `env_id`)
+	}
+
+	// 创建接口
+	updateData[`create_time`] = time.Now().Unix()
+	updateData[`update_time`] = time.Now().Unix()
+	_, err = common.DbMain.Client.QuickCreate(`tbl_api`, updateData).Exec()
+	if err != nil {
+		return errors.New(`创建接口失败: ` + err.Error())
+	}
+
+	importResult[`apis_created`] = importResult[`apis_created`].(int) + 1
+	return nil
+}

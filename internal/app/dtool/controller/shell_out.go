@@ -2,6 +2,7 @@ package controller
 
 import (
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/pkg/p_common"
 	"dev_tool/internal/pkg/p_sse"
 	"errors"
@@ -226,6 +227,53 @@ func ShellOutCleanLog(c *gin.Context) {
 	shellClientId := cast.ToString(reqMap[`shell_client_id`])
 	common.ShellOutClient.CleanLog(shellClientId)
 	gsgin.GinResponseSuccess(c, ``, nil)
+	return
+}
+
+func ShellOutGetConnections(c *gin.Context) {
+	// 获取ShellOut类型的连接
+	shellOutConnections := common.ShellOutClient.GetConnections()
+
+	// 获取p_shell.Shell类型的连接
+	shellConnections := component.ShellClient.GetConnections()
+
+	// 合并两种类型的连接
+	allConnections := make([]interface{}, 0, len(shellOutConnections)+len(shellConnections))
+	for _, conn := range shellOutConnections {
+		allConnections = append(allConnections, conn)
+	}
+	for _, conn := range shellConnections {
+		allConnections = append(allConnections, conn)
+	}
+
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`connections`: allConnections,
+		`total`:       len(allConnections),
+	})
+	return
+}
+
+func ShellOutReconnect(c *gin.Context) {
+	reqMap := make(map[string]interface{})
+	err := gsgin.GinPostBody(c, &reqMap)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	shellClientId := cast.ToString(reqMap[`shell_client_id`])
+	if shellClientId == `` {
+		gsgin.GinResponseError(c, `shell_client_id不能为空`, nil)
+		return
+	}
+
+	err = common.ShellOutClient.Reconnect(shellClientId)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	gsgin.GinResponseSuccess(c, `重连成功`, nil)
 	return
 }
 

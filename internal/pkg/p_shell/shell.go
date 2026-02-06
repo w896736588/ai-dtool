@@ -211,3 +211,29 @@ func (h *Shell) WalkShellList(businessFunc func(uniqueKey string, gsShell *gsssh
 		businessFunc(uniqueKey, gsShell)
 	}
 }
+
+// ConnectionInfo 连接信息（用于返回给调用方）
+type ConnectionInfo struct {
+	ShellClientId string `json:"shell_client_id"`
+	Status        string `json:"status"` // active: 活跃
+	Type          string `json:"type"`   // shell
+}
+
+// GetConnections 获取所有连接（p_shell.Shell类型）
+// 注意：p_shell.Shell的连接通常是临时的，这里只返回基本的存在性信息
+func (h *Shell) GetConnections() []ConnectionInfo {
+	defer h.lock.Unlock()
+	h.lock.Lock()
+
+	connections := make([]ConnectionInfo, 0)
+	for shellClientId := range h.ShellClientMap {
+		info := ConnectionInfo{
+			ShellClientId: shellClientId,
+			Status:        "active",
+			Type:          "shell",
+		}
+		connections = append(connections, info)
+	}
+
+	return connections
+}

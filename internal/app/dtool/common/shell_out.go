@@ -442,6 +442,97 @@ type Search struct {
 	IsRead  bool   //true 已经搜索过
 }
 
+// ConnectionInfo 连接信息
+type ConnectionInfo struct {
+	ShellClientId  string `json:"shell_client_id"`
+	Status         string `json:"status"`           // active: 活跃, idle: 闲置, broken: 断开
+	ConnectTime    string `json:"connect_time"`     // 连接时间
+	ConnectSeconds int64  `json:"connect_seconds"`  // 连接时长(秒)
+	LastReceive    string `json:"last_receive"`     // 最后接收时间
+	IdleSeconds    int64  `json:"idle_seconds"`    // 闲置时长(秒)
+	Type           string `json:"type"`             // shell_out
+}
+
+// GetConnections 获取所有连接状态
+func (h *TShellOut) GetConnections() []ConnectionInfo {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	connections := make([]ConnectionInfo, 0)
+	now := time.Now().Unix()
+
+	for shellClientId, shellOut := range h.ShellOutMap {
+		info := ConnectionInfo{
+			ShellClientId:  shellClientId,
+			Status:         "active",
+			ConnectTime:    gstool.TimeNowUnixToString(""),
+			ConnectSeconds: now - shellOut.startTime,
+			LastReceive:    gstool.TimeNowUnixToString(""),
+			IdleSeconds:    now - shellOut.lastReceiveTime,
+			Type:           "shell_out",
+		}
+
+		// 判断连接状态
+		if shellOut.lastReceiveTime > 0 {
+			idleSeconds := now - shellOut.lastReceiveTime
+			if idleSeconds > 30 {
+				info.Status = "idle"
+			}
+		}
+
+		connections = append(connections, info)
+	}
+
+	return connections
+}
+
+// Reconnect 重连
+func (h *TShellOut) Reconnect(shellClientId string) error {
+	// 先查询数据库获取连接参数
+	dbRecords, err := DbMain.Client.QuickQuery(`tbl_shell_out`, `*`, map[string]any{
+		`shell_client_id`: shellClientId,
+	}).Limit(1).All()
+	if err != nil {
+		return fmt.Errorf("查询数据库失败: %s", err.Error())
+	}
+	if len(dbRecords) == 0 {
+		return fmt.Errorf("连接记录不存在")
+	}
+
+	record := dbRecords[0]
+	sshId := cast.ToString(record[`ssh_id`])
+	command := cast.ToString(record[`command`])
+	groupId := cast.ToInt(record[`group_id`])
+
+	// 获取SSH配置
+	sshConfig, err := DbMain.GetSshConfig(sshId)
+	if err != nil {
+		return fmt.Errorf("获取SSH配置失败: %s", err.Error())
+	}
+
+	// 移除旧连接
+	h.RmClient(shellClientId)
+
+	// 创建新的SSE对象（这里使用空的SSE，因为重连后需要前端重新连接）
+	sse := &p_sse.SseShell{}
+
+	// 获取新的客户端
+	shellOut, _, err := h.GetClient(sshConfig, shellClientId, sse, groupId, nil)
+	if err != nil {
+		return fmt.Errorf("重新建立连接失败: %s", err.Error())
+	}
+
+	// 重新执行命令
+	go func() {
+		err := shellOut.Client.RunCommand(command + fmt.Sprintf(";echo '%s'", ExistTip))
+		if err != nil {
+			fmt.Println(fmt.Sprintf(`重连后执行命令错误 %s`, err.Error()))
+		}
+	}()
+
+	return nil
+}
+
 // ShellOutSearchContent 匹配所有
 func (h *TShellOut) ShellOutSearchContent(shellClientId string, searchContent string, maxNum int) ([]Search, int) {
 	h.lock.Lock()

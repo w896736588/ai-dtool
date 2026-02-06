@@ -234,6 +234,8 @@ func shellOut(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/shellOutErrorContext`, controller.ShellOutErrorContext)
 	tGin.GinPost(`/api/shellOutSearchContent`, controller.ShellOutSearchContent)
 	tGin.GinPost(`/api/shellOutCleanLog`, controller.ShellOutCleanLog)
+	tGin.GinPost(`/api/shellOutConnections`, controller.ShellOutGetConnections)
+	tGin.GinPost(`/api/shellOutReconnect`, controller.ShellOutReconnect)
 }
 
 func variableRouter(tGin *p_gin.Gin) {
@@ -300,6 +302,7 @@ func api(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/ApiCode`, controller.ApiCode)
 	tGin.GinPost(`/api/ApiWeightDown`, controller.ApiWeightDown)
 	tGin.GinPost(`/api/ApiTakeJsonResult`, controller.ApiTakeJsonResult)
+	tGin.GinPost(`/api/ApiBatchImport`, controller.ApiBatchImport)
 }
 
 func apiUse(tGin *p_gin.Gin) {
