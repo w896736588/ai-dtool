@@ -180,6 +180,7 @@ func (h *RCmd) RunBash() (string, error) {
 		gstool.FmtPrintlnLogTime(`获取ssh client 失败 %s`, sshClientErr.Error())
 		return ``, sshClientErr
 	}
+	h.Sse.Send(`开始将脚本上传到%s`+"\n", fmt.Sprintf(variableDir+`/variable_%s.sh`, cmdId))
 	//sftp
 	sshOnce, sshOnceErr := component.ShellClient.GetSshOnce(sshConfig)
 	if sshOnceErr != nil {
@@ -190,7 +191,7 @@ func (h *RCmd) RunBash() (string, error) {
 	//创建目录
 	_, err = sshClient.RunCommandWait(fmt.Sprintf(`sudo mkdir -p %s`, variableDir), 40*time.Second)
 	if err != nil {
-		gstool.FmtPrintlnLogTime(`创建目录失败 %s`, err.Error())
+		h.Sse.Send(`创建目录%s失败 %s`, variableDir, err.Error()+"\n")
 		return ``, err
 	}
 	//写入脚本 用replace后不知道为什么打印日志没有问题，一执行echo就会重复写入几次 但是不执行h.replace又没有问题
@@ -201,9 +202,10 @@ func (h *RCmd) RunBash() (string, error) {
 	VariableClient.Log.Debugf(`%s \n %s `, fmt.Sprintf(variableDir+`/variable_%s.sh`, cmdId), bash)
 	err = sshOnce.UploadFile(fmt.Sprintf(variableDir+`/variable_%s.sh`, cmdId), bash, ``)
 	if err != nil {
-		gstool.FmtPrintlnLogTime(`上传失败 %s %s`, fmt.Sprintf(variableDir+`/variable_%s.sh`, cmdId), err.Error())
+		h.Sse.Send(`上传失败 %s %s`, fmt.Sprintf(variableDir+`/variable_%s.sh`, cmdId), err.Error()+"\n")
 		return "", gstool.Error(`上传失败 %s %s`, fmt.Sprintf(variableDir+`/variable_%s.sh`, cmdId), err.Error())
 	}
+	h.Sse.Send(`上传成功 %s`+"\n", fmt.Sprintf(variableDir+`/variable_%s.sh`, cmdId))
 	_, err = sshClient.RunCommandWait(fmt.Sprintf(`sudo chmod +x %s/variable_%s.sh`, variableDir, cmdId), 40*time.Second)
 	if err != nil {
 		gstool.FmtPrintlnLogTime(`修改权限失败 %s`, err.Error())
