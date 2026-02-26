@@ -1043,8 +1043,11 @@ export default {
 <style scoped>
 .collection-container {
   display: flex;
-  height: 100vh;
+  height: calc(100vh - 100px);
+  min-height: 500px;
   background-color: #f5f7fa;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* 左侧样式 */
@@ -1052,8 +1055,10 @@ export default {
   background: white;
   border-right: 1px solid #e4e7ed;
   flex-direction: column;
-  margin-left: -20px;
-  width: 20%;
+  width: 280px;
+  min-width: 250px;
+  max-width: 350px;
+  flex-shrink: 0;
 }
 
 .section-header {
@@ -1185,7 +1190,8 @@ export default {
   display: flex;
   flex-direction: column;
   background: white;
-  width: 80%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .panel-header {

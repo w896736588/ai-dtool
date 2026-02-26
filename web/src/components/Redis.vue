@@ -54,10 +54,11 @@
     </div>
 
     <!-- 主内容区域 -->
-    <el-row :gutter="20" class="main-content">
-      <!-- 左侧Key列表 -->
-      <el-col :span="8">
-        <div :style="{ height: (scrollHeight) + 'px' }" class="key-list-card">
+    <div class="main-content-wrapper">
+      <div class="main-content">
+        <!-- 左侧Key列表 -->
+        <div class="key-list-wrapper">
+          <div class="key-list-card">
           <div class="key-list-header">
             <div class="header-left">
               <span class="key-count" v-if="keysResult && keysResult.length > 0">
@@ -76,7 +77,7 @@
               </el-button>
             </div>
           </div>
-          <div class="key-list-content" :style="{ height: keysResult.length > 0 ? (scrollHeight - 100) + 'px' : (scrollHeight - 60) + 'px' }">
+          <div class="key-list-content">
             <el-input v-if="keysResult.length > 0" v-model="filterValue" placeholder="过滤key,空格多个条件" size="small" class="filter-input" type="text" @input="filterList" clearable>
               <template #prefix>
                 <el-icon><Filter /></el-icon>
@@ -102,17 +103,18 @@
               </div>
             </el-scrollbar>
           </div>
+          </div>
         </div>
-      </el-col>
-      <!-- 右侧详情区域 -->
-      <el-col :span="16">
-        <div class="detail-card" :style="{ height: (scrollHeight) + 'px' }">
-          <el-form ref="form" v-loading="load.callRefresh">
-            <redisHashList ref="redisHashList" :callMoreList="callMoreList" :callRefresh="callRefresh" :star="setCacheHistory"></redisHashList>
-          </el-form>
+        <!-- 右侧详情区域 -->
+        <div class="detail-wrapper">
+          <div class="detail-card">
+            <el-form ref="form" v-loading="load.callRefresh">
+              <redisHashList ref="redisHashList" :callMoreList="callMoreList" :callRefresh="callRefresh" :star="setCacheHistory"></redisHashList>
+            </el-form>
+          </div>
         </div>
-      </el-col>
-    </el-row>
+      </div>
+    </div>
     <!--  收藏列表-->
     <redisStarRecord ref="redisStarRecord" :callStarListSearch="callStarListSearch"></redisStarRecord>
   </div>
@@ -283,8 +285,28 @@
 }
 
 /* 主内容区域 */
+.main-content-wrapper {
+  width: 100%;
+  overflow: hidden;
+}
+
 .main-content {
-  min-height: 500px;
+  display: flex;
+  gap: 20px;
+  height: calc(100vh - 220px);
+  min-height: 400px;
+}
+
+/* 左侧Key列表 */
+.key-list-wrapper {
+  flex: 0 0 33.333%;
+  max-width: 33.333%;
+}
+
+/* 右侧详情 */
+.detail-wrapper {
+  flex: 0 0 66.666%;
+  max-width: 66.666%;
 }
 
 /* 左侧Key列表卡片 */
@@ -295,6 +317,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .key-list-header {
@@ -332,6 +355,7 @@
   display: flex;
   flex-direction: column;
   padding: 0;
+  min-height: 0;
 }
 
 .filter-input {
@@ -442,6 +466,7 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   overflow: hidden;
   padding: 20px;
+  height: 100%;
 }
 
 .box-card .el-tag-he {
@@ -489,6 +514,16 @@
   .redis-select {
     width: 160px;
   }
+  
+  .key-list-wrapper {
+    flex: 0 0 40%;
+    max-width: 40%;
+  }
+  
+  .detail-wrapper {
+    flex: 0 0 60%;
+    max-width: 60%;
+  }
 }
 
 @media (max-width: 768px) {
@@ -502,6 +537,24 @@
   
   .redis-select {
     width: 100%;
+  }
+  
+  .main-content {
+    flex-direction: column;
+    height: auto;
+  }
+  
+  .key-list-wrapper,
+  .detail-wrapper {
+    flex: none;
+    max-width: 100%;
+    width: 100%;
+  }
+  
+  .key-list-card,
+  .detail-card {
+    height: auto;
+    min-height: 300px;
   }
 }
 </style>

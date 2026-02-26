@@ -1,57 +1,125 @@
 <template>
-  配置supervisor
-  <el-button type="primary" link @click="ShowAddSupervisor">添加</el-button>
-  <el-table :data="state.supervisorList" style="width: 100%">
-    <el-table-column prop="id" label="#id" width="80" />
-    <el-table-column prop="name" label="name"  width="120"/>
-    <el-table-column prop="ssh_name" label="ssh" width="140"/>
-    <el-table-column prop="docker_name" label="docker name" width="140"/>
-    <el-table-column prop="config_dir" label="配置目录" />
-    <el-table-column label="操作" width="200">
-      <template #default="scope">
-        <el-button type="primary" link @click="ShowEditSupervisor(scope.row , true)">复制新增</el-button>
-        <el-button type="primary" link @click="ShowEditSupervisor(scope.row , false)">编辑</el-button>
-        <el-button link type="danger" @click="DeleteSupervisor(scope.row)">删除</el-button>
-      </template>
-    </el-table-column>
-  </el-table>
-
-  <el-dialog v-model="state.dialogEditSupervisor" title="编辑" width="500" :close-on-click-modal="false">
-    <el-form>
-      <el-form-item label="name" :label-width="80">
-        <el-input v-model="state.editSupervisorConfig.name" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="docker_name" :label-width="80">
-        <el-input v-model="state.editSupervisorConfig.docker_name" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="目录" :label-width="80">
-        <el-input v-model="state.editSupervisorConfig.config_dir" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="ssh" :label-width="80">
-        <el-select v-model="state.editSupervisorConfig.ssh_id" placeholder="选择分组" style="width: 140px">
-          <el-option v-for="item in state.sshList" :key="item.id" :label="item.name" :value="item.id"/>
-        </el-select>
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button @click="state.dialogEditSupervisor = false">取消</el-button>
-        <el-button type="primary" @click="EditSupervisor">
-          保存
+  <div class="supervisor-config-page">
+    <div class="page-header">
+      <div class="header-content">
+        <div class="header-left">
+          <svg class="header-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
+            <path d="M9 9H15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M9 13H15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M9 17H12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <h3>Supervisor 配置管理</h3>
+        </div>
+        <el-button type="primary" @click="ShowAddSupervisor">
+          <el-icon><Plus /></el-icon>
+          添加配置
         </el-button>
       </div>
-    </template>
-  </el-dialog>
+      <p class="header-desc">管理Supervisor进程监控配置，支持SSH远程和Docker环境</p>
+    </div>
 
+    <div class="config-table-card">
+      <el-table :data="state.supervisorList" style="width: 100%" class="config-table" stripe>
+        <el-table-column prop="id" label="#" width="60" align="center" />
+        <el-table-column prop="name" label="名称" min-width="120">
+          <template #default="scope">
+            <div class="name-cell">
+              <el-icon class="config-icon"><Setting /></el-icon>
+              <span class="name-text">{{ scope.row.name }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="ssh_name" label="SSH" width="140">
+          <template #default="scope">
+            <el-tag v-if="scope.row.ssh_id && scope.row.ssh_id !== '0'" size="small" type="success">
+              {{ scope.row.ssh_name || '已配置' }}
+            </el-tag>
+            <el-tag v-else size="small" type="info">本地</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="docker_name" label="Docker" width="140">
+          <template #default="scope">
+            <el-tag v-if="scope.row.docker_name" size="small" type="warning">
+              {{ scope.row.docker_name }}
+            </el-tag>
+            <span v-else class="empty-text">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="config_dir" label="配置目录" min-width="250">
+          <template #default="scope">
+            <code class="dir-code">{{ scope.row.config_dir || '-' }}</code>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="220" fixed="right">
+          <template #default="scope">
+            <div class="action-buttons">
+              <el-button type="primary" link size="small" @click="ShowEditSupervisor(scope.row , true)">
+                <el-icon><CopyDocument /></el-icon>复制新增
+              </el-button>
+              <el-button type="primary" link size="small" @click="ShowEditSupervisor(scope.row , false)">
+                <el-icon><Edit /></el-icon>编辑
+              </el-button>
+              <el-button type="danger" link size="small" @click="DeleteSupervisor(scope.row)">
+                <el-icon><Delete /></el-icon>删除
+              </el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
+    <!-- 编辑弹窗 -->
+    <el-dialog v-model="state.dialogEditSupervisor" title="编辑Supervisor配置" width="500px" :close-on-click-modal="false" class="edit-dialog">
+      <el-form label-width="90px" class="edit-form">
+        <el-form-item label="名称">
+          <el-input v-model="state.editSupervisorConfig.name" autocomplete="off" placeholder="配置名称">
+            <template #prefix>
+              <el-icon><CollectionTag /></el-icon>
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item label="Docker名称">
+          <el-input v-model="state.editSupervisorConfig.docker_name" autocomplete="off" placeholder="可选，Docker容器名">
+            <template #prefix>
+              <el-icon><Box /></el-icon>
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item label="配置目录">
+          <el-input v-model="state.editSupervisorConfig.config_dir" autocomplete="off" placeholder="supervisord.conf所在目录">
+            <template #prefix>
+              <el-icon><Folder /></el-icon>
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item label="SSH隧道">
+          <el-select v-model="state.editSupervisorConfig.ssh_id" placeholder="选择SSH连接" style="width: 100%">
+            <el-option v-for="item in state.sshList" :key="item.id" :label="item.name" :value="item.id"/>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="state.dialogEditSupervisor = false">取消</el-button>
+          <el-button type="primary" @click="EditSupervisor">
+            <el-icon><Check /></el-icon>保存
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </div>
 </template>
 <script>
 import {defineExpose, defineComponent, inject, defineEmits, getCurrentInstance, reactive, onActivated} from 'vue';
+import { Plus, Setting, CopyDocument, Edit, Delete, CollectionTag, Box, Folder, Check } from '@element-plus/icons-vue';
 import ssh_set from '../../utils/base/ssh_set'
 import set from '../../utils/base/supervisor_set'
 import common from '../../utils/common'
 import list from "@/utils/base/list";
 import Init from "@/utils/base/set_init";
 export default defineComponent({
+  components: { Plus, Setting, CopyDocument, Edit, Delete, CollectionTag, Box, Folder, Check },
   props: {
   },
   data() {
@@ -150,5 +218,132 @@ export default defineComponent({
 </script>
 
 <style scoped>
+/* 页面容器 */
+.supervisor-config-page {
+  padding: 20px;
+}
 
+.page-header {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 20px rgba(17, 153, 142, 0.25);
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-icon {
+  width: 32px;
+  height: 32px;
+  color: #fff;
+}
+
+.header-left h3 {
+  color: #fff;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.header-desc {
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0;
+  font-size: 14px;
+}
+
+.config-table-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.config-table {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.config-table :deep(.el-table__header th) {
+  background: #f5f7fa;
+  color: #606266;
+  font-weight: 600;
+}
+
+.config-table :deep(.el-table__row:hover > td) {
+  background-color: #f0fdf4 !important;
+}
+
+.name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.config-icon {
+  color: #11998e;
+  font-size: 16px;
+}
+
+.name-text {
+  font-weight: 500;
+  color: #303133;
+}
+
+.empty-text {
+  color: #c0c4cc;
+}
+
+.dir-code {
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  color: #11998e;
+  background: #f0fdf4;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+/* 弹窗样式 */
+.edit-dialog :deep(.el-dialog) {
+  border-radius: 16px;
+}
+
+.edit-dialog :deep(.el-dialog__header) {
+  border-bottom: 1px solid #ebeef5;
+  padding: 16px 20px;
+  margin: 0;
+}
+
+.edit-dialog :deep(.el-dialog__body) {
+  padding: 20px;
+}
+
+.edit-dialog :deep(.el-dialog__footer) {
+  border-top: 1px solid #ebeef5;
+  padding: 12px 20px;
+}
+
+.edit-form :deep(.el-input__wrapper) {
+  border-radius: 8px;
+}
+
+.edit-form :deep(.el-select .el-input__wrapper) {
+  border-radius: 8px;
+}
 </style>

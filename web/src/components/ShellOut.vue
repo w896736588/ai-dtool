@@ -1,188 +1,108 @@
 <template>
-  <div class="shell-console">
-    <!-- 操作栏 -->
-    <div class="toolbar">
-      <el-select
-          v-model="chooseGroupId"
-          class="select"
-          placeholder="筛选分组"
-          @change="chooseGroupIdChange"
-      >
-        <el-option
-            key="0"
-            label="全部"
-            value="-1"
-        />
-        <el-option
-            v-for="g in groupList"
-            :key="g.id"
-            :label="g.name"
-            :value="String(g.id)"
-        />
-      </el-select>&nbsp;
-      <el-button
-          type="primary"
-          @click="createTab"
-      >
-        创建
-      </el-button>
-      <el-button
-          type="info"
-          @click="groupDialog = true"
-      >
-        分组管理
-      </el-button>
-      <el-button
-          type="success"
-          @click=""
-      >
-        运行总览
-      </el-button>
+  <div class="shell-page-container">
+    <!-- 顶部操作区域 -->
+    <div class="shell-header-card">
+      <div class="header-title">
+        <svg class="header-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/>
+          <path d="M6 7L10 10L6 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M12 13H18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span>终端输出管理</span>
+      </div>
+      <div class="control-row">
+        <el-select v-model="chooseGroupId" class="group-select" placeholder="筛选分组" @change="chooseGroupIdChange" clearable>
+          <el-option key="0" label="全部" value="-1" />
+          <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="String(g.id)" />
+        </el-select>
+        <div class="action-buttons">
+          <el-button type="primary" @click="createTab">
+            <el-icon><Plus /></el-icon>创建
+          </el-button>
+          <el-button @click="groupDialog = true">
+            <el-icon><FolderOpened /></el-icon>分组管理
+          </el-button>
+          <el-button type="success">
+            <el-icon><DataLine /></el-icon>运行总览
+          </el-button>
+        </div>
+      </div>
     </div>
 
+    <!-- 执行卡片列表 -->
     <template v-for="tab in tabConfigList" :key="tab.id">
-      <!-- 执行信息显示区域 -->
-      <div v-if="getExecutionInfo(tab.id) && (!chooseGroupId || parseInt(chooseGroupId) === -1 || Number(tab.group_id) === Number(chooseGroupId))" class="execution-info-card">
-        <div class="execution-header">
-          <div class="execution-title">
-            <span class="tab-id">#{{ tab.id }}</span>
+      <div v-if="getExecutionInfo(tab.id) && (!chooseGroupId || parseInt(chooseGroupId) === -1 || Number(tab.group_id) === Number(chooseGroupId))" class="execution-card">
+        <div class="card-header">
+          <div class="card-info">
+            <el-tag class="tab-id-tag">#{{ tab.id }}</el-tag>
             <span class="tab-name">{{ tab.name }}</span>
           </div>
-          <div class="execution-command">
-            {{ getExecutionInfo(tab.id).command }}
+          <div class="card-actions">
+            <el-button size="small" @click="showEditTabConfig(tab.id)">
+              <el-icon><Edit /></el-icon>编辑
+            </el-button>
+            <el-button size="small" @click="showCopyCreateTabConfig(tab.id)">
+              <el-icon><CopyDocument /></el-icon>复制
+            </el-button>
+            <el-button size="small" type="danger" @click="removeTab(tab.id)">
+              <el-icon><Delete /></el-icon>删除
+            </el-button>
+            <el-button size="small" type="primary" @click="openNewTab(tab)">
+              <el-icon><Position /></el-icon>新窗口
+            </el-button>
           </div>
         </div>
-
-        <div class="execution-actions">
-          <el-button
-              size="default"
-              icon="Edit"
-              @click="showEditTabConfig(tab.id)"
-          >
-            编辑
-          </el-button>
-          <el-button
-              size="default"
-              icon="CopyDocument"
-              @click="showCopyCreateTabConfig(tab.id)"
-          >
-            复制
-          </el-button>
-          <el-button
-              type="danger"
-              size="default"
-              icon="Delete"
-              @click="removeTab(tab.id)"
-          >
-            删除
-          </el-button>
-          <el-button
-              type="primary"
-              size="default"
-              icon="Position"
-              @click="openNewTab(tab)">
-            新窗口
-          </el-button>
+        <div class="card-command">
+          <el-icon class="command-icon"><Terminal /></el-icon>
+          <code class="command-text">{{ getExecutionInfo(tab.id).command }}</code>
         </div>
       </div>
     </template>
 
-    <el-dialog
-        v-model="shellOutDialog"
-        title="创建终端输出"
-        width="50%"
-        destroy-on-close
-    >
-      <el-form
-          ref="createFormRef"
-          :model="editTabConfigData"
-          label-width="100px"
-          style=" "
-      >
-        <el-form-item
-            label="名称"
-            prop="name"
-            :rules="[{ required: true, message: '请输入名称', trigger: 'blur' }]"
-        >
-          <el-input
-              v-model="editTabConfigData.name"
-              placeholder="请输入名称"
-              clearable
-          />
+    <!-- 创建/编辑弹窗 -->
+    <el-dialog v-model="shellOutDialog" title="创建终端输出" width="550px" destroy-on-close class="create-dialog">
+      <el-form ref="createFormRef" :model="editTabConfigData" label-width="90px" class="create-form">
+        <el-form-item label="名称" prop="name" :rules="[{ required: true, message: '请输入名称', trigger: 'blur' }]">
+          <el-input v-model="editTabConfigData.name" placeholder="输入任务名称" clearable>
+            <template #prefix>
+              <el-icon><CollectionTag /></el-icon>
+            </template>
+          </el-input>
         </el-form-item>
-        <el-form-item
-            label="SSH 环境"
-            prop="ssh_id"
-            :rules="[{ required: true, message: '请选择 SSH 环境', trigger: 'change' }]"
-        >
-          <el-select
-              v-model="editTabConfigData.ssh_id"
-              placeholder="请选择 SSH 环境"
-              style="width: 100%"
-          >
-            <el-option
-                v-for="s in sshList"
-                :key="s.id"
-                :label="s.name"
-                :value="s.id"
-            />
+        <el-form-item label="SSH环境" prop="ssh_id" :rules="[{ required: true, message: '请选择 SSH 环境', trigger: 'change' }]">
+          <el-select v-model="editTabConfigData.ssh_id" placeholder="选择SSH服务器" style="width: 100%">
+            <el-option v-for="s in sshList" :key="s.id" :label="s.name" :value="s.id" />
           </el-select>
         </el-form-item>
-
         <el-form-item label="分组">
-          <el-select
-              v-model="editTabConfigData.group_id"
-              placeholder="请选择分组"
-              style="width: 100%"
-          >
-            <el-option
-                v-for="g in groupList"
-                :key="g.id"
-                :label="g.name"
-                :value="g.id"
-            />
+          <el-select v-model="editTabConfigData.group_id" placeholder="选择分组" style="width: 100%">
+            <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="g.id" />
           </el-select>
         </el-form-item>
-        <el-form-item
-            label="命令"
-            prop="command"
-            :rules="[{ required: true, message: '请输入命令', trigger: 'blur' }]"
-        >
-          <el-input
-              v-model="editTabConfigData.command"
-              placeholder="请输入命令"
-              type="textarea"
-              :rows="4"
-              clearable
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button
-              type="primary"
-              @click="executeCommand"
-              style="width: 100%"
-          >
-            {{ editTabConfigData.id ? '保存更改' : '创建' }}
-          </el-button>
+        <el-form-item label="命令" prop="command" :rules="[{ required: true, message: '请输入命令', trigger: 'blur' }]">
+          <el-input v-model="editTabConfigData.command" placeholder="输入要执行的命令" type="textarea" :rows="4" clearable />
         </el-form-item>
       </el-form>
+      <template #footer>
+        <el-button @click="shellOutDialog = false">取消</el-button>
+        <el-button type="primary" @click="executeCommand" style="min-width: 120px;">
+          <el-icon><Check /></el-icon>{{ editTabConfigData.id ? '保存更改' : '创建' }}
+        </el-button>
+      </template>
     </el-dialog>
 
-    <el-dialog
-        v-model="groupDialog"
-        title="分组管理"
-        width="60%"
-    >
+    <!-- 分组管理弹窗 -->
+    <el-dialog v-model="groupDialog" title="分组管理" width="70%" class="group-dialog">
       <Group
-          :extra1Title="'过滤正则'"
-          :extra1Type="'textarea'"
-          :extra2Title="'错误捕获正则'"
-          :extra2Type="'textarea'"
-          :extra3Title="'排除捕获的错误'"
-          :extra3Type="'textarea'"
-          :groupTitle="'终端输出'"
-          :groupType="groupType"
-          @update="groupUpdate">
+        :extra1Title="'过滤正则'"
+        :extra1Type="'textarea'"
+        :extra2Title="'错误捕获正则'"
+        :extra2Type="'textarea'"
+        :extra3Title="'排除捕获的错误'"
+        :extra3Type="'textarea'"
+        :groupTitle="'终端输出'"
+        :groupType="groupType"
+        @update="groupUpdate">
       </Group>
     </el-dialog>
   </div>
@@ -190,6 +110,7 @@
 
 <script>
 /* 以下 import 保持你原来的即可 */
+import { Plus, FolderOpened, DataLine, Edit, CopyDocument, Delete, Position, CollectionTag, Check, Terminal } from '@element-plus/icons-vue';
 import base from '@/utils/base.js'
 import sse from '@/utils/base/sse'
 import shell from '@/utils/base/shell'
@@ -212,7 +133,20 @@ import Typ from '@/utils/base/type'
 const StoreChooseGroupIdKey = 'shell_out_choose_group_id'
 const StoreChooseShellOutKey = 'shell_out_choose_shell_group'
 export default {
-  components: {shellResult, Group},
+  components: {
+    shellResult,
+    Group,
+    Plus,
+    FolderOpened,
+    DataLine,
+    Edit,
+    CopyDocument,
+    Delete,
+    Position,
+    CollectionTag,
+    Check,
+    Terminal,
+  },
   data() {
     return {
       shellController: {
@@ -538,96 +472,225 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.shell-console {
-  padding: 20px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
-  min-height: 100vh;
+/* 页面容器 */
+.shell-page-container {
+  padding: 0;
+  width: 100%;
 }
 
-.toolbar {
+/* 顶部卡片样式 */
+.shell-header-card {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 20px rgba(52, 152, 219, 0.25);
+}
+
+.header-title {
   display: flex;
   align-items: center;
-  margin-bottom: 20px;
-  padding: 16px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
-
-  .select {
-    width: 220px;
-    margin-right: 12px;
-  }
-
-  .command {
-    width: 300px;
-    margin: 0 10px
-  }
-
-  .name {
-    width: 200px;
-    margin-right: 10px
-  }
-}
-
-.execution-info-card {
+  gap: 12px;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
   margin-bottom: 16px;
-  padding: 16px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
-  border-left: 4px solid #409eff;
+}
+
+.header-icon {
+  width: 28px;
+  height: 28px;
+  color: #fff;
+}
+
+.control-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.group-select {
+  width: 200px;
+}
+
+.group-select :deep(.el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.action-buttons .el-button:not([class*="el-button--"]) {
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  color: #333;
+}
+
+.action-buttons .el-button:not([class*="el-button--"]):hover {
+  background: #fff;
+}
+
+.action-buttons .el-button--primary {
+  background: linear-gradient(135deg, #409eff 0%, #337ecc 100%);
+  border: none;
+  color: #fff;
+}
+
+.action-buttons .el-button--primary:hover {
+  background: linear-gradient(135deg, #66b1ff 0%, #409eff 100%);
+}
+
+.action-buttons .el-button--success {
+  background: linear-gradient(135deg, #67c23a 0%, #529b2e 100%);
+  border: none;
+  color: #fff;
+}
+
+.action-buttons .el-button--success:hover {
+  background: linear-gradient(135deg, #85ce61 0%, #67c23a 100%);
+}
+
+/* 执行卡片 */
+.execution-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border-left: 4px solid #3498db;
   transition: all 0.3s ease;
+}
 
-  &:hover {
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-    transform: translateY(-2px);
+.execution-card:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.card-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tab-id-tag {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: #fff;
+  font-weight: 600;
+  border: none;
+  font-size: 13px;
+}
+
+.tab-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.card-command {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #f8f9fc;
+  padding: 12px 16px;
+  border-radius: 10px;
+}
+
+.command-icon {
+  color: #3498db;
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.command-text {
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  color: #606266;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+/* 弹窗样式 */
+.create-dialog :deep(.el-dialog),
+.group-dialog :deep(.el-dialog) {
+  border-radius: 16px;
+}
+
+.create-dialog :deep(.el-dialog__header),
+.group-dialog :deep(.el-dialog__header) {
+  border-bottom: 1px solid #ebeef5;
+  padding: 16px 20px;
+  margin: 0;
+}
+
+.create-dialog :deep(.el-dialog__body),
+.group-dialog :deep(.el-dialog__body) {
+  padding: 20px;
+}
+
+.create-dialog :deep(.el-dialog__footer),
+.group-dialog :deep(.el-dialog__footer) {
+  border-top: 1px solid #ebeef5;
+  padding: 12px 20px;
+}
+
+.create-form :deep(.el-input__wrapper),
+.create-form :deep(.el-textarea__inner) {
+  border-radius: 8px;
+}
+
+.create-form :deep(.el-select .el-input__wrapper) {
+  border-radius: 8px;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .control-row {
+    flex-direction: column;
+    align-items: stretch;
   }
-
-  .execution-header {
-    margin-bottom: 12px;
-
-    .execution-title {
-      display: flex;
-      align-items: center;
-      margin-bottom: 8px;
-
-      .tab-id {
-        font-weight: bold;
-        color: #409eff;
-        margin-right: 8px;
-        background: #ecf5ff;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 16px;
-      }
-
-      .tab-name {
-        font-size: 16px;
-        font-weight: 600;
-        color: #303133;
-      }
-    }
-
-    .execution-command {
-      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-      font-size: 14px;
-      color: #606266;
-      background: #f8f9fa;
-      padding: 8px 12px;
-      border-radius: 6px;
-      border-left: 3px solid #dcdfe6;
-      word-break: break-all;
-    }
+  
+  .group-select {
+    width: 100%;
   }
-
-  .execution-actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
+  
+  .action-buttons {
+    flex-wrap: wrap;
+  }
+  
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .card-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 
-:deep(.el-tabs--card > .el-tabs__header .el-tabs__item.is-active) {
+// 标签页样式
+::deep(.el-tabs--card > .el-tabs__header .el-tabs__item.is-active) {
   background-color: #ecf5ff !important;
   border: 1px solid #409eff !important;
   border-bottom-color: #409eff !important;
@@ -821,7 +884,7 @@ pre {
 }
 
 // 优化按钮样式
-:deep(.el-button) {
+::deep(.el-button) {
   border-radius: 6px;
   transition: all 0.3s ease;
 
@@ -832,13 +895,13 @@ pre {
 }
 
 // 优化表单样式
-:deep(.el-form-item__label) {
+::deep(.el-form-item__label) {
   font-weight: 500;
   color: #606266;
 }
 
-:deep(.el-input__wrapper),
-:deep(.el-textarea__inner) {
+::deep(.el-input__wrapper),
+::deep(.el-textarea__inner) {
   border-radius: 8px;
   transition: all 0.3s ease;
 
@@ -848,22 +911,17 @@ pre {
 }
 
 // 优化对话框样式
-:deep(.el-dialog) {
+::deep(.el-dialog) {
   border-radius: 12px;
   overflow: hidden;
 }
 
-:deep(.el-dialog__header) {
-  //background: linear-gradient(135deg, #409eff 0%, #337ecc 100%);
+::deep(.el-dialog__header) {
   color: white;
-  //padding: 16px 20px;
   margin: 0;
 }
 
-:deep(.el-dialog__body) {
+::deep(.el-dialog__body) {
   //padding: 20px;
 }
 </style>
-
-
-

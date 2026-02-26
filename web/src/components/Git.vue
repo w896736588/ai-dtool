@@ -1,85 +1,131 @@
 <template>
-  <div id="mainCard" ref="mainCard" class="box-card" style="text-align: center;">
-
-    <el-tabs v-model="chooseGroupId" :tab-position="tabPosition" class="demo-tabs" style="min-height: 150px" @tab-change="changeGitGroup">
-      <el-tab-pane v-for="(groupInfo, k) in gitGroupConfigList" :key="k" :label="groupInfo.name" :name="groupInfo.id">
-        <el-row :gutter="20">
-          <template v-for="(value, key) in gitConfigList">
-            <el-col v-if="value.git_group_id === groupInfo.id" :span="3">
-              <div>
-                <el-radio v-model="chooseGitId" :label="value.id" size="large" @change="ChangeGit(value)">{{
-                    value.name
-                  }}
+  <div class="git-page-container">
+    <!-- 顶部操作区域 -->
+    <div class="git-header-card">
+      <div class="header-title">
+        <svg class="header-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" stroke="currentColor" stroke-width="2"/>
+          <circle cx="12" cy="12" r="3" fill="currentColor"/>
+          <path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <span>Git 版本管理</span>
+      </div>
+      
+      <!-- 项目选择 -->
+      <div class="project-select-row">
+        <el-tabs v-model="chooseGroupId" :tab-position="tabPosition" class="git-tabs" @tab-change="changeGitGroup">
+          <el-tab-pane v-for="(groupInfo, k) in gitGroupConfigList" :key="k" :label="groupInfo.name" :name="groupInfo.id">
+            <div class="git-list">
+              <template v-for="(value, key) in gitConfigList" :key="key">
+                <el-radio 
+                  v-if="value.git_group_id === groupInfo.id"
+                  v-model="chooseGitId" 
+                  :label="value.id" 
+                  size="large" 
+                  @change="ChangeGit(value)"
+                >
+                  {{ value.name }}
                 </el-radio>
-              </div>
-            </el-col>
-          </template>
-        </el-row>
-      </el-tab-pane>
-    </el-tabs>
-    <el-button v-loading="btnLoading.pull" type="primary" @click="GitPullBranchOrigin">拉取</el-button>
-    <el-button v-loading="btnLoading.status" type="primary" @click="GitQueryStatus">状态</el-button>
-    <el-input v-if="showChangeBranch" ref="inputBranchName" v-model="BranchName" placeholder="请输入分支名" style="width: 300px; margin-right: 10px;margin-left:10px;"></el-input>
-    <el-button v-loading="btnLoading.change" type="primary" @click="GitChangeBranch">切换分支</el-button>
-    <!--    <el-input ref="inputBranchNameRemote" v-if="showChangeBranchRemote" style="width: 300px; margin-right: 10px;margin-left:10px;" v-model="BranchNameRemote" placeholder="请输入分支名"></el-input>-->
-    <!--    <el-button type="primary" v-loading="btnLoading.changeRemote" @click="GitChangeBranchRemote">关联远程分支切换（ depth=1）</el-button>-->
-    <el-button v-loading="btnLoading.query" type="primary" @click="queryCurrentBranch">查看当前分支</el-button>
-    <el-button v-loading="btnLoading.queryLog" type="primary" @click="queryCommitLog">查看日志</el-button>
-    <el-button type="primary" @click="drawerVisibleMarkdown = true">帮助文档</el-button>&nbsp;
-    <!--    <el-button type="primary" @click="drawerVisibleMarkdown = true">查看git config</el-button>-->
-    <!--    <el-button type="primary" v-loading="btnLoading.exec" @click="GitExec">增加保存账号密码配置</el-button>-->
+              </template>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
 
-    <el-dropdown @command="handleDropdownCommand">
-      <el-button type="primary">
-        更多操作<i class="el-icon-arrow-down el-icon--right"></i>
-      </el-button>
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item command="changeBranchRemote">关联远程分支切换（depth=1）</el-dropdown-item>
-          <el-dropdown-item command="viewGitConfig">查看git config</el-dropdown-item>
-          <el-dropdown-item command="saveCredentials">增加保存账号密码配置</el-dropdown-item>
-          <el-dropdown-item command="setSafe">设置项目目录安全</el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
+      <!-- 操作按钮 -->
+      <div class="control-row">
+        <div class="action-buttons">
+          <el-button v-loading="btnLoading.pull" type="primary" plain @click="GitPullBranchOrigin">
+            <el-icon><Download /></el-icon>拉取
+          </el-button>
+          <el-button v-loading="btnLoading.status" type="primary" plain @click="GitQueryStatus">
+            <el-icon><View /></el-icon>状态
+          </el-button>
+          <el-button v-loading="btnLoading.query" type="primary" plain @click="queryCurrentBranch">
+            <el-icon><InfoFilled /></el-icon>当前分支
+          </el-button>
+          <el-button v-loading="btnLoading.queryLog" type="primary" plain @click="queryCommitLog">
+            <el-icon><Document /></el-icon>日志
+          </el-button>
+        </div>
+        
+        <div class="branch-input-group">
+          <el-input 
+            v-if="showChangeBranch" 
+            ref="inputBranchName" 
+            v-model="BranchName" 
+            placeholder="请输入分支名"
+            class="branch-input"
+            @keyup.enter="GitChangeBranch"
+          ></el-input>
+          <el-button v-loading="btnLoading.change" type="warning" plain @click="GitChangeBranch">
+            <el-icon><Switch /></el-icon>{{ showChangeBranch ? '确认切换' : '切换分支' }}
+          </el-button>
+        </div>
 
-    <!-- 将原有的按钮移除，并保留输入框逻辑 -->
-    <el-input
-        v-if="showChangeBranchRemote"
-        ref="inputBranchNameRemote"
-        v-model="BranchNameRemote"
-        placeholder="请输入分支名"
-        style="width: 300px; margin-right: 10px;margin-left:10px;"
-    ></el-input>
-  </div>
-  <p></p>
-  <shellResult ref="shellRef" :divHeight="shellController.divHeight" :isRunning="shellController.isRunning" :shellShowResult="shellController.sshResult" :show-model="shellController.showModel"></shellResult>
-  <el-drawer
+        <div class="more-actions-group">
+          <el-button type="primary" plain @click="drawerVisibleMarkdown = true">
+            <el-icon><QuestionFilled /></el-icon>帮助
+          </el-button>
+          <el-dropdown @command="handleDropdownCommand">
+            <el-button type="info" plain>
+              更多操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="changeBranchRemote">关联远程分支切换</el-dropdown-item>
+                <el-dropdown-item command="viewGitConfig">查看 git config</el-dropdown-item>
+                <el-dropdown-item command="saveCredentials">保存账号密码配置</el-dropdown-item>
+                <el-dropdown-item command="setSafe">设置目录安全</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+
+        <el-input
+          v-if="showChangeBranchRemote"
+          ref="inputBranchNameRemote"
+          v-model="BranchNameRemote"
+          placeholder="请输入远程分支名"
+          class="branch-input remote-input"
+          @keyup.enter="handleChangeBranchRemote"
+        ></el-input>
+      </div>
+    </div>
+
+    <!-- 输出窗口 -->
+    <div class="output-card">
+      <div class="output-header">
+        <svg class="output-icon" viewBox="0 0 24 24" fill="none">
+          <rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/>
+          <path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span>执行输出</span>
+      </div>
+      <div class="output-content">
+        <shellResult 
+          ref="shellRef" 
+          :divHeight="shellController.divHeight" 
+          :isRunning="shellController.isRunning" 
+          :shellShowResult="shellController.sshResult" 
+          :show-model="shellController.showModel"
+        ></shellResult>
+      </div>
+    </div>
+
+    <el-drawer
       v-model="drawerVisibleMarkdown"
       direction="rtl"
       size="90%"
       title="文档"
-  >
-    <Markdown v-if="drawerVisibleMarkdown" :markdownType="markdownType"></Markdown>
-  </el-drawer>
+    >
+      <Markdown v-if="drawerVisibleMarkdown" :markdownType="markdownType"></Markdown>
+    </el-drawer>
+  </div>
 </template>
-<style>
-.text {
-  font-size: 14px;
-}
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.item {
-  margin-bottom: 10px;
-}
-
-</style>
 <script>
+import { Download, View, InfoFilled, Document, Switch, QuestionFilled, ArrowDown } from '@element-plus/icons-vue';
 import git from '../utils/base/git.js'
 import shell from "@/utils/base/shell"
 import shellResult from "@/components/shell/result_div.vue";
@@ -98,6 +144,13 @@ export default {
   components: {
     Markdown,
     shellResult,
+    Download,
+    View,
+    InfoFilled,
+    Document,
+    Switch,
+    QuestionFilled,
+    ArrowDown,
   },
   data() {
     return {
@@ -166,7 +219,7 @@ export default {
           break;
         case 'viewGitConfig':
           this.drawerVisibleMarkdown = true;
-          this.markdownType = 'git-config'; // 假设有这个类型
+          this.markdownType = 'git-config';
           break;
         case 'saveCredentials':
           this.GitSaveCredentials();
@@ -228,16 +281,14 @@ export default {
       }
       let throttleStringFunc = new Throttle_string(50, text => {
         _that.shellController.sshResult += text
-        // 限制长度：最多保留最后 50000 个字符
         const maxLen = 50000;
         if (_that.shellController.sshResult.length > maxLen) {
           _that.shellController.sshResult = _that.shellController.sshResult.slice(-maxLen);
         }
-        // 注意这里读取的是“当前最新”结果，避免闭包旧值
         let result = format.formatResult(
             _that.shellController.sshResult, ['copy', 'color', 'replace']);
         result = format.formatResult(result, ['length']);
-        _that.shellController.sshResult = result;   // 一次性赋值，减少 watcher 抖动
+        _that.shellController.sshResult = result;
       });
       sseDistribute.RegisterReceive(_that.sse_distribute_id, function (msg, msgType, sseDistributeId) {
         throttleStringFunc.update(msg)
@@ -245,7 +296,6 @@ export default {
     },
     chooseDefault: function () {
       let _that = this
-      //初始化默认选中的分组和git
       _that.chooseGroupId = git.GitLocalGetLastGroupId()
       _that.chooseGitId = git.GitLocalGetLastGitId()
       for (let i in _that.gitConfigList) {
@@ -263,7 +313,6 @@ export default {
         shell.calculateShellDivHeight(_that)
       });
     },
-    //切换选择git
     ChangeGit: function (selectGitConfig) {
       let _that = this
       _that.shellController.sshResult = '';
@@ -273,7 +322,6 @@ export default {
       shell.calculateShellDivHeight(_that)
       git.GitLocalSetLastGitId(_that.selectGitConfig.id)
     },
-    //获取git和git group列表
     GetGitConfigList: function () {
       let _that = this
       git.GitConfigList({sse_distribute_id: _that.sse_distribute_id}, function (response) {
@@ -287,7 +335,6 @@ export default {
         }
       })
     },
-    //切换分组
     changeGitGroup: function () {
       let _that = this
       git.GitLocalSetLastGroupId(_that.chooseGroupId)
@@ -296,7 +343,6 @@ export default {
       }
       _that.ChangeGit(_that.gitConfigList[0])
     },
-    //查询分支
     queryCurrentBranch: function () {
       let _that = this
       _that.showChangeBranch = false
@@ -310,7 +356,6 @@ export default {
         }, 500)
       })
     },
-    //查询commit log
     queryCommitLog: function () {
       let _that = this
       _that.btnLoading.queryLog = true
@@ -321,7 +366,6 @@ export default {
         }, 500)
       })
     },
-    //拉取代码
     GitPullBranchOrigin: function () {
       let _that = this
       _that.btnLoading.pull = true
@@ -332,7 +376,6 @@ export default {
         }, 500)
       })
     },
-    //查询状态
     GitQueryStatus: function () {
       let _that = this
       _that.btnLoading.status = true
@@ -362,7 +405,6 @@ export default {
           }
       )
     },
-    //切换分支
     GitChangeBranch: function () {
       let _that = this
       if (!this.showChangeBranch) {
@@ -386,4 +428,243 @@ export default {
 }
 </script>
 
-<style scoped></style>
+<style>
+/* 页面容器 */
+.git-page-container {
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* 顶部卡片样式 - 橙色渐变 */
+.git-header-card {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 20px rgba(240, 147, 251, 0.25);
+  flex-shrink: 0;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.header-icon {
+  width: 28px;
+  height: 28px;
+  color: #fff;
+}
+
+/* 项目选择 */
+.project-select-row {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.git-tabs :deep(.el-tabs__header) {
+  margin-bottom: 8px;
+}
+
+.git-tabs :deep(.el-tabs__item) {
+  font-size: 14px;
+  color: #606266;
+}
+
+.git-tabs :deep(.el-tabs__item.is-active) {
+  color: #f5576c;
+  font-weight: 600;
+}
+
+.git-tabs :deep(.el-tabs__nav-wrap::after) {
+  background-color: #ebeef5;
+}
+
+.git-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.git-list :deep(.el-radio__label) {
+  color: #303133;
+}
+
+.git-list :deep(.el-radio__input.is-checked .el-radio__inner) {
+  border-color: #f5576c;
+  background: #f5576c;
+}
+
+.git-list :deep(.el-radio__input.is-checked + .el-radio__label) {
+  color: #f5576c;
+}
+
+/* 控制行 */
+.control-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.action-buttons .el-button {
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+}
+
+.action-buttons .el-button:hover {
+  background: #fff;
+}
+
+.action-buttons .el-button--primary {
+  color: #f5576c;
+}
+
+.action-buttons .el-button--primary:hover {
+  color: #f093fb;
+}
+
+.branch-input-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.branch-input {
+  width: 180px;
+}
+
+.branch-input :deep(.el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.branch-input-group .el-button--warning {
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  color: #e6a23c;
+}
+
+.branch-input-group .el-button--warning:hover {
+  background: #fff;
+  color: #f5576c;
+}
+
+.more-actions-group {
+  display: flex;
+  gap: 8px;
+}
+
+.more-actions-group .el-button {
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+}
+
+.more-actions-group .el-button:hover {
+  background: #fff;
+}
+
+.more-actions-group .el-button--primary {
+  color: #f5576c;
+}
+
+.more-actions-group .el-button--info {
+  color: #909399;
+}
+
+.remote-input {
+  width: 180px;
+}
+
+.remote-input :deep(.el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 输出窗口 */
+.output-card {
+  flex: 1;
+  min-height: 0;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.output-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #434343 0%, #000000 100%);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.output-icon {
+  width: 22px;
+  height: 22px;
+  color: #fff;
+}
+
+.output-content {
+  flex: 1;
+  overflow: hidden;
+  background: #f8f9fa;
+}
+
+/* 响应式 */
+@media (max-width: 1200px) {
+  .control-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .action-buttons,
+  .branch-input-group,
+  .more-actions-group {
+    flex-wrap: wrap;
+  }
+  
+  .branch-input {
+    width: 100%;
+    max-width: 200px;
+  }
+}
+
+@media (max-width: 768px) {
+  .git-header-card {
+    padding: 16px;
+  }
+  
+  .header-title {
+    font-size: 18px;
+  }
+  
+  .action-buttons {
+    justify-content: center;
+  }
+}
+</style>
