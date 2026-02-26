@@ -1,51 +1,95 @@
 <template>
-  <el-row :gutter="10" style="background-color: #545c64;margin-left:0px;margin-right:0px;">
-    <el-col :span="20">
-      <el-menu :default-active="menuName" :ellipsis="false" active-text-color="#ffd04b"
-               background-color="#545c64" mode="horizontal" router size="15"
-               text-color="#fff" @select="handleSelect">
-        <el-menu-item v-if="checkModuleOpen('redis')" index="/Redis">Redis</el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('supervisor')" index="/Supervisor">Supervisor</el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('git')" index="/Git">Git</el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('login')" index="/Link">自定义网页</el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('variable')" index="/Variable">自定义脚本</el-menu-item>
-        <!--        <el-menu-item v-if="checkModuleOpen('tools')" index="/Tools">小工具</el-menu-item>-->
-        <el-menu-item v-if="checkModuleOpen('docker')" index="/Docker">Docker</el-menu-item>
-<!--        <el-menu-item v-if="checkModuleOpen('markdown')" index="/Markdown">Markdown</el-menu-item>-->
-        <el-menu-item v-if="checkModuleOpen('api')" index="/Api">接口开发</el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('shellout')" index="/shellout">
-          终端输出
+  <div class="layout-container">
+    <!-- 左侧菜单 -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span class="logo">🛠️</span>
+        <span class="title">DevTools</span>
+      </div>
+      
+      <el-menu
+        :default-active="menuName"
+        active-text-color="#3a7a3a"
+        background-color="#f5f5f0"
+        text-color="#5a5a5a"
+        router
+        class="sidebar-menu"
+        @select="handleSelect"
+      >
+        <el-menu-item index="/Dashboard">
+          <el-icon><HomeFilled /></el-icon>
+          <span>首页</span>
         </el-menu-item>
-        <el-menu-item index="/Set">配置</el-menu-item>
+        <el-menu-item v-if="checkModuleOpen('redis')" index="/Redis">
+          <el-icon><Coin /></el-icon>
+          <span>Redis</span>
+        </el-menu-item>
+        <el-menu-item v-if="checkModuleOpen('supervisor')" index="/Supervisor">
+          <el-icon><Setting /></el-icon>
+          <span>Supervisor</span>
+        </el-menu-item>
+        <el-menu-item v-if="checkModuleOpen('git')" index="/Git">
+          <el-icon><Folder /></el-icon>
+          <span>Git</span>
+        </el-menu-item>
+        <el-menu-item v-if="checkModuleOpen('login')" index="/Link">
+          <el-icon><Link /></el-icon>
+          <span>自定义网页</span>
+        </el-menu-item>
+        <el-menu-item v-if="checkModuleOpen('variable')" index="/Variable">
+          <el-icon><Document /></el-icon>
+          <span>自定义脚本</span>
+        </el-menu-item>
+        <el-menu-item v-if="checkModuleOpen('docker')" index="/Docker">
+          <el-icon><Box /></el-icon>
+          <span>Docker</span>
+        </el-menu-item>
+        <el-menu-item v-if="checkModuleOpen('api')" index="/Api">
+          <el-icon><Connection /></el-icon>
+          <span>接口开发</span>
+        </el-menu-item>
+        <el-menu-item v-if="checkModuleOpen('shellout')" index="/shellout">
+          <el-icon><Monitor /></el-icon>
+          <span>终端输出</span>
+        </el-menu-item>
+        <el-menu-item index="/Set">
+          <el-icon><Tools /></el-icon>
+          <span>配置</span>
+        </el-menu-item>
       </el-menu>
-    </el-col>
-    <el-col :span="4" style="display: flex; align-items: center; justify-content: flex-end; padding-right: 20px;">
-      <el-tag v-if="ip" style="margin-right: 10px;color:black;" type="info" @click="copyIp()">
-        <i class="el-icon-link"></i> {{ ip }}
-      </el-tag>
-      <el-tag style="margin-right: 10px;color:black;cursor:pointer;" @click="OpenNewBlank()">
-        新页卡
-      </el-tag>
-      <el-tag style="margin-right: 10px;color:black;cursor:pointer;" @click="drawerVisibleTools = true">
-        小工具
-      </el-tag>
-      <el-button v-if="loginInfo.dialog" size="small" @click="loginInfo.dialog = true">登录</el-button>
-    </el-col>
-  </el-row>
 
-  <el-main id="routerV" style="min-height: calc(100vh - 100px); padding: 20px;">
-    <router-view v-slot="{ Component,route }" name="home">
-      <keep-alive>
-        <component :is="Component" ref="currentRef"/>
-      </keep-alive>
-    </router-view>
-  </el-main>
+      <!-- 底部工具栏 -->
+      <div class="sidebar-footer">
+        <el-tag v-if="ip" size="small" type="info" @click="copyIp()" style="cursor: pointer; margin-bottom: 8px;">
+          {{ ip }}
+        </el-tag>
+        <div class="footer-buttons">
+          <el-tag size="small" style="cursor: pointer;" @click="OpenNewBlank()">
+            新页卡
+          </el-tag>
+          <el-tag size="small" style="cursor: pointer;" @click="drawerVisibleTools = true">
+            小工具
+          </el-tag>
+        </div>
+        <el-button v-if="loginInfo.dialog" size="small" @click="loginInfo.dialog = true">登录</el-button>
+      </div>
+    </aside>
+
+    <!-- 主内容区域 -->
+    <main class="main-content">
+      <router-view v-slot="{ Component, route }" name="home">
+        <keep-alive>
+          <component :is="Component" ref="currentRef"/>
+        </keep-alive>
+      </router-view>
+    </main>
+  </div>
 
   <el-drawer
-      v-model="drawerVisibleTools"
-      direction="rtl"
-      size="90%"
-      title="小工具"
+    v-model="drawerVisibleTools"
+    direction="rtl"
+    size="90%"
+    title="小工具"
   >
     <tools></tools>
   </el-drawer>
@@ -66,8 +110,8 @@
       </div>
     </template>
   </el-dialog>
-
 </template>
+
 <script>
 import base from '../utils/base'
 import mod from '../utils/module'
@@ -80,7 +124,18 @@ import module from "@/utils/module"
 import baseApi from '@/utils/base/base_api'
 import Tools from "@/components/Tools.vue";
 import Markdown from '@/components/Markdown.vue'
-import {Burger} from "@element-plus/icons-vue";
+import { 
+  HomeFilled,
+  Coin,
+  Setting,
+  Folder,
+  Link,
+  Document,
+  Box,
+  Connection,
+  Monitor,
+  Tools as ToolsIcon
+} from "@element-plus/icons-vue";
 
 export default {
   data() {
@@ -92,32 +147,22 @@ export default {
         username: 'default',
         password: '111',
       },
-      menuKeyStore: 'lastMenuName.v1',
-      menuName: '/Redis',
-      minHeightMap: {
-        //内容框最小高度配置
-      },
-      showShellMap: [
-        //哪些菜单展示终端
-        '/Git',
-        '/Consumer',
-        '/WechatKefu'
-      ],
+      menuKeyStore: 'lastMenuName.v2',
+      menuName: '/Dashboard',
+      minHeightMap: {},
+      showShellMap: ['/Git', '/Consumer', '/WechatKefu'],
       tags: [],
       showTextarea: true,
       shellShowResult: "",
-      //存储socket链接和结果
       sshMapList: [],
       xtermMapList: [],
       runCommand: '',
       openModuleList: [],
-      //Xterm
       term: '',
       lastShellInfo: {
         sshId: "",
         business: "",
         lastShellInfo: "",
-
       },
       ip: '',
     }
@@ -127,9 +172,7 @@ export default {
   },
   mounted: function () {
     let _that = this
-    //开启的服务
     _that.openModuleList = module.GetOpenModuleList()
-    //登录注册
     base.BaseLogin(_that.loginInfo.username, _that.loginInfo.password, function (response) {
       if (response.ErrCode === 0) {
         store.setStore('token', response.Data.token)
@@ -137,21 +180,12 @@ export default {
         _that.$helperNotify.error('登录失败')
       }
     })
-    //外网IP
     this.forceIp(false)
-
-    //处理默认打开的页卡
     this.menuName = this.$helperStore.getStore(this.menuKeyStore)
-    // if (!this.$helperConfig.getXkfDevSshConfig() || !this.$helperConfig.getWkDevSshConfig() || !this.$helperConfig.getXkfDevDbConfig()) {
-    //   this.menuName = '/Set'
-    // }
     if (this.$route.path !== this.menuName && this.menuName != null) {
       this.$router.push(this.menuName)
     }
-    //监听页面大小变化
-    window.addEventListener('resize', function () {
-    });
-
+    window.addEventListener('resize', function () {});
   },
   provide() {
     return {
@@ -160,12 +194,6 @@ export default {
     };
   },
   methods: {
-    combineMsg: function () {
-      let _that = this
-      setTimeout(function () {
-
-      })
-    },
     OpenNewBlank: function () {
       window.open(window.location.href, '_blank');
     },
@@ -195,20 +223,16 @@ export default {
     },
     resetConn: function () {
       store.removeStore('Unikey')
-      // window.location.reload();
     },
     showNotify: function (notifyList) {
       this.tags = notifyList
     },
-    //供子组件调用
     showTerminal(uniqueKey) {
       this.lastShellInfo.uniqueKey = uniqueKey
       this.shellSetShowResult(uniqueKey)
       this.shellDrawerScrollTop(2000)
     },
-    resizeTerminal: function () {
-
-    },
+    resizeTerminal: function () {},
     shellSetShowResult: function (uniqueKey) {
       for (let i in this.sshMapList) {
         if (this.sshMapList[i].uniqueKey === uniqueKey) {
@@ -224,7 +248,6 @@ export default {
         }
       }, milliseconds)
     },
-
     handleSelect(key, keyPath) {
       let _that = this
       if (keyPath[0].indexOf('Doc-') >= 0) {
@@ -233,13 +256,21 @@ export default {
       if (keyPath[0].indexOf('Ignore-') >= 0) {
         return;
       }
-
       this.menuName = keyPath[0]
       this.$helperStore.setStore(_that.menuKeyStore, this.menuName)
     },
   },
   components: {
-    Burger,
+    HomeFilled,
+    Coin,
+    Setting,
+    Folder,
+    Link,
+    Document,
+    Box,
+    Connection,
+    Monitor,
+    ToolsIcon,
     Markdown,
     Tools,
     Clipboard,
@@ -248,50 +279,105 @@ export default {
 </script>
 
 <style scoped>
+.layout-container {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  background-color: #f8f8f5;
+}
 
-.menu-item-with-badge {
+.sidebar {
+  width: 140px;
+  background-color: #f5f5f0;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-right: 1px solid #e8e8e0;
+}
+
+.sidebar-header {
+  height: 50px;
   display: flex;
   align-items: center;
-  position: relative;
-  gap: 4px;
+  padding: 0 12px;
+  border-bottom: 1px solid #e8e8e0;
 }
 
-.menu-badge {
-  position: absolute;
-  top: -28px;
-  right: -30px;
+.logo {
+  font-size: 20px;
+  margin-right: 6px;
 }
 
-/* 竖排按钮容器（固定在右侧中间） */
-.vertical-button {
-  position: fixed;
-  right: -0;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1000;
-  font-size: 10px;
-
-  /* 背景和边框 */
-  background: #409eff !important; /* Element Plus 主色 */
-  color: white !important; /* 文字颜色 */
-  border: none !important;
-  border-radius: 4px 0 0 4px !important; /* 左侧圆角 */
-  padding: 16px 8px !important;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1); /* 左侧阴影 */
-
-  /* 文字竖排 */
-  letter-spacing: 2px;
+.title {
+  color: #4a4a4a;
+  font-size: 16px;
+  font-weight: 600;
 }
 
-/* 悬停效果 */
-.vertical-button:hover {
-  background: #337ecc !important; /* 深一点的蓝色 */
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.2);
+.sidebar-menu {
+  flex: 1;
+  border-right: none;
+  overflow-y: auto;
 }
 
-/* 移除 Element Plus 按钮的默认样式干扰 */
-.vertical-button :deep(.el-button__text) {
-  display: inline-block;
+.sidebar-menu:not(.el-menu--collapse) {
+  width: 140px;
+}
+
+.sidebar-footer {
+  padding: 10px;
+  border-top: 1px solid #e8e8e0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.footer-buttons {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.main-content {
+  flex: 1;
+  overflow: auto;
+  background-color: #fafaf7;
+  min-height: 100vh;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+/* 覆盖 Element Plus 菜单样式 */
+.sidebar-menu {
+  padding: 6px 0;
+}
+
+.sidebar-menu .el-menu-item {
+  height: 40px;
+  line-height: 40px;
+  margin: 2px 6px;
+  border-radius: 6px;
+  padding-left: 12px !important;
+}
+
+.sidebar-menu .el-menu-item:hover {
+  background-color: #e8f5e8 !important;
+  border-radius: 6px;
+}
+
+.sidebar-menu .el-menu-item.is-active {
+  background-color: #dcedc8 !important;
+  border-radius: 6px;
+  color: #3a7a3a !important;
+}
+
+.sidebar-menu .el-menu-item .el-icon {
+  margin-right: 8px;
+  font-size: 16px;
+}
+
+.sidebar-menu .el-menu-item span {
+  font-size: 13px;
+  font-weight: 500;
 }
 </style>
-
