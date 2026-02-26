@@ -1,0 +1,84 @@
+/* 容器样式 */
+.pretty-json-p {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 16px 0;
+    width: 100%;
+}
+
+/* 核心JSON样式 */
+.pretty-json {
+    /* 布局 */
+    padding: 18px;
+    margin: 0;
+    overflow: auto;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.6;
+
+    /* 深色模式 (可切换) */
+    background: #282c34;
+    color: #abb2bf;
+    border: 1px solid #3e4451;
+
+    /* 滚动条 */
+    &::-webkit-scrollbar {
+        height: 8px;
+        width: 8px;
+    }
+    &::-webkit-scrollbar-thumb {
+        background: #5c6370;
+        border-radius: 4px;
+    }
+
+    /* JSON语法高亮 */
+    :deep(.key) { color: #e06c75; }        /* 键名 */
+    :deep(.string) { color: #98c379; }     /* 字符串 */
+    :deep(.number) { color: #d19a66; }     /* 数字 */
+    :deep(.boolean) { color: #56b6c2; }    /* 布尔值 */
+    :deep(.null) { color: #c678dd; }       /* null */
+}
+
+/* 浅色模式 */
+.light .pretty-json {
+    background: #f8f9fa;
+    color: #495057;
+    border-color: #dee2e6;
+    :deep(.key) { color: #d63384; }
+    :deep(.string) { color: #228b22; }
+    :deep(.number) { color: #ca6e1e; }
+    :deep(.boolean) { color: #1e88e5; }
+    :deep(.null) { color: #7b2cbf; }
+}
+
+
+/* 复制按钮 */
+.copy-btn {
+    z-index: 10;
+    position: absolute;
+    margin-top: 8px;
+    right: 20px;
+    padding: 4px 8px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+
+    &:hover {
+        background: rgba(255,255,255,0.2);
+    }
+}
+
+.copy-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.light .copy-btn {
+    background: rgba(0,0,0,0.05);
+    border-color: rgba(0,0,0,0.1);
+    color: #333;
+}

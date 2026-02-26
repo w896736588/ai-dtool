@@ -1,0 +1,73 @@
+{
+  "name": "devtool",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vue-cli-service serve --mod development",
+    "serve": "vue-cli-service serve",
+    "prod": "vue-cli-service build --mod production",
+    "lint": "vue-cli-service lint"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "@vue-flow/background": "^1.3.2",
+    "@vue-flow/controls": "^1.1.3",
+    "@vue-flow/core": "^1.46.4",
+    "axios": "^1.6.0",
+    "clipboard": "^2.0.11",
+    "codemirror": "^5.65.17",
+    "codemirror-editor-vue3": "^2.7.0",
+    "core-js": "^3.8.3",
+    "diff": "^8.0.2",
+    "diff2html": "^3.4.52",
+    "dompurify": "^3.2.6",
+    "element-plus": "^2.4.1",
+    "js-md5": "^0.8.3",
+    "json-editor-vue": "^0.18.1",
+    "json-editor-vue3": "^1.1.1",
+    "markdown-it": "^14.1.0",
+    "marked": "^16.4.2",
+    "md-editor-v3": "^6.3.0",
+    "nprogress": "^0.2.0",
+    "qrcode.vue": "^3.4.1",
+    "vue": "^3.2.13",
+    "vue-axios": "^3.5.2",
+    "vue-router": "^4.2.5",
+    "vue3-json-viewer": "^2.2.2",
+    "vuedraggable": "^4.1.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.12.16",
+    "@babel/eslint-parser": "^7.12.16",
+    "@babel/plugin-transform-private-methods": "^7.27.1",
+    "@vue/cli-plugin-babel": "~5.0.0",
+    "@vue/cli-plugin-eslint": "~5.0.0",
+    "@vue/cli-service": "~5.0.0",
+    "eslint": "^7.32.0",
+    "eslint-plugin-vue": "^8.0.3",
+    "sass": "^1.89.2",
+    "sass-loader": "^16.0.5"
+  },
+  "eslintConfig": {
+    "root": true,
+    "env": {
+      "node": true
+    },
+    "extends": [
+      "plugin:vue/vue3-essential",
+      "eslint:recommended"
+    ],
+    "parserOptions": {
+      "parser": "@babel/eslint-parser"
+    },
+    "rules": {
+      "no-unused-vars": "off"
+    }
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead",
+    "not ie 11"
+  ]
+}

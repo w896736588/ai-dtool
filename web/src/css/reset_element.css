@@ -1,0 +1,45 @@
+/*解决弹窗一致弹问题*/
+.el-message {
+  top: 20px !important;
+}
+
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px;
+  border-top: 1px solid #ebebeb;
+  position: -webkit-sticky; /* Safari */
+  position: sticky;
+  bottom: 0;
+  background-color: #fff;
+  z-index: 10;
+}
+
+.el-alert {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
+}
+
+.el-alert--info {
+  background: linear-gradient(135deg, var(--el-color-info-light-9), #fff);
+}
+
+.el-alert__icon {
+  font-size: 16px;
+  width: 16px;
+}
+
+.el-alert__content {
+  padding-left: 8px;
+}
+
+.el-alert__title {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--el-text-color-regular);
+}

@@ -13,3 +13,5 @@ build/
 /config/*/config.ini
 /upload
 /test/*
+web/dist/
+web/node_modules/
