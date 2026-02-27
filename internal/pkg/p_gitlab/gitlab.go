@@ -2,8 +2,6 @@ package p_gitlab
 
 import (
 	"errors"
-	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -13,9 +11,9 @@ import (
 	"github.com/spf13/cast"
 )
 
-// MergeMainBranchs 已上线的记录 只要包含以下就可以
+// MergeMainBranchs 已上线的记录，只要目标分支包含以下关键字即可判定。
 var MergeMainBranchs = []string{
-	`master`, `main`,
+	"master", "main",
 }
 
 type TGitlab struct {
@@ -30,8 +28,8 @@ type Combine struct {
 }
 
 func (h *TGitlab) AssignDayLogs(start, end string) ([]Combine, error) {
-	startDay, _ := gstool.TimeStringToUnix(start, `Y-m-d H:i:s`)
-	endDay, _ := gstool.TimeStringToUnix(end, `Y-m-d H:i:s`)
+	startDay, _ := gstool.TimeStringToUnix(start, "Y-m-d H:i:s")
+	endDay, _ := gstool.TimeStringToUnix(end, "Y-m-d H:i:s")
 	return h.getLogs(startDay, endDay)
 }
 
@@ -48,112 +46,98 @@ func (h *TGitlab) getLogs(startDay, endDay time.Time) ([]Combine, error) {
 	endTimestamp := endDay.Unix()
 	combineList := make([]Combine, 0)
 	combineDedup := make(map[string]struct{})
-	//所有有权限项目
-	projectIds := make([]string, 0, perPage*2)
-	projectNameById := make(map[string]string)
+
+	projectIDs := make([]string, 0, perPage*2)
+	projectNameByID := make(map[string]string)
 	for page := 1; page < 10; page++ {
-		projectParam := gsapi.GsGitLabParam{
-			State:   "",
-			Sort:    "",
-			Page:    page,
-			PerPage: perPage,
-			RefName: "",
-		}
+		projectParam := gsapi.GsGitLabParam{Page: page, PerPage: perPage}
 		projectList, resErr := h.GitLab.GetProjects(projectParam)
 		if resErr != nil {
 			return combineList, resErr
 		}
 		for _, project := range projectList {
-			projectId := cast.ToString(project[`id`])
-			if _, exist := projectNameById[projectId]; exist {
+			projectID := cast.ToString(project["id"])
+			if _, exist := projectNameByID[projectID]; exist {
 				continue
 			}
-			projectIds = append(projectIds, projectId)
-			projectNameById[projectId] = cast.ToString(project[`name`])
+			projectIDs = append(projectIDs, projectID)
+			projectNameByID[projectID] = cast.ToString(project["name"])
 		}
 		if len(projectList) < perPage {
 			break
 		}
 	}
-	h.pushLog(`获取完项目列表 共：` + cast.ToString(len(projectIds)) + `个`)
+	h.pushLog("获取项目列表，总计: " + cast.ToString(len(projectIDs)))
 
-	sort.Strings(projectIds)
-	for _, projectId := range projectIds {
-		projectName := projectNameById[projectId]
-		if !strings.Contains(projectName, `chatwiki`) {
+	sort.Strings(projectIDs)
+	for _, projectID := range projectIDs {
+		projectName := projectNameByID[projectID]
+		if !strings.Contains(projectName, "chatwiki") {
 			continue
 		}
+
 		masterCommitSet := make(map[string]struct{}, perPage*2)
-		err := h.checkCommits(projectId, projectName, h.Author, perPage, startTimestamp, endTimestamp, &combineList, combineDedup, masterCommitSet)
+		err := h.collectMainBranchCommits(projectID, perPage, startTimestamp, masterCommitSet)
 		if err != nil {
 			return combineList, err
 		}
-		err = h.checkMerges(projectId, projectName, h.Author, perPage, startTimestamp, endTimestamp, &combineList, combineDedup, masterCommitSet)
+		err = h.checkMerges(projectID, authorMatch(h.Author), perPage, startTimestamp, endTimestamp, &combineList, combineDedup, masterCommitSet)
 		if err != nil {
 			return combineList, err
 		}
 	}
+
 	sort.SliceStable(combineList, func(i, j int) bool {
-		if combineList[i].Status == combineList[j].Status {
+		iw := statusWeight(combineList[i].Status)
+		jw := statusWeight(combineList[j].Status)
+		if iw == jw {
 			return combineList[i].Message < combineList[j].Message
 		}
-		return combineList[i].Status < combineList[j].Status
+		return iw < jw
 	})
 	return combineList, nil
 }
 
-func (h *TGitlab) checkMerges(projectId, projectName, author string, perPage int, startTimestamp, endTimestamp int64, combineList *[]Combine, combineDedup map[string]struct{}, masterCommitSet map[string]struct{}) error {
+func (h *TGitlab) checkMerges(projectID, author string, perPage int, startTimestamp, endTimestamp int64, combineList *[]Combine, combineDedup map[string]struct{}, masterCommitSet map[string]struct{}) error {
 	for page := 1; page < 100; page++ {
-		gitLabParam := gsapi.GsGitLabParam{
-			State:   "all",
-			Sort:    "desc",
-			Page:    page,
-			PerPage: perPage,
-			RefName: "",
-		}
-		mergeList, resErr := h.GitLab.GetMerges(projectId, gitLabParam)
+		gitLabParam := gsapi.GsGitLabParam{State: "all", Sort: "desc", Page: page, PerPage: perPage}
+		mergeList, resErr := h.GitLab.GetMerges(projectID, gitLabParam)
 		if resErr != nil {
 			return resErr
 		}
-		boolBroken := false
 		for _, merge := range mergeList {
-			sourceBranch := cast.ToString(merge[`source_branch`])
-			title := cast.ToString(merge[`title`])
+			sourceBranch := cast.ToString(merge["source_branch"])
+			targetBranch := cast.ToString(merge["target_branch"])
+			title := cast.ToString(merge["title"])
 
-			createdAtUnix, createdAtOk := h.getUnixTime(merge[`created_at`])
-			updatedAtUnix, updatedAtOk := h.getUnixTime(merge[`updated_at`])
-			mergedAtUnix, mergedAtOk := h.getUnixTime(merge[`merged_at`])
-			userCreated := strings.Contains(h.getMergeAuthor(merge), author)
+			createdAtUnix, createdAtOk := h.getUnixTime(merge["created_at"])
+			updatedAtUnix, updatedAtOk := h.getUnixTime(merge["updated_at"])
+			mergedAtUnix, mergedAtOk := h.getUnixTime(merge["merged_at"])
 
-			relevantByTime := (createdAtOk && createdAtUnix >= startTimestamp && createdAtUnix <= endTimestamp) ||
-				(updatedAtOk && updatedAtUnix >= startTimestamp && updatedAtUnix <= endTimestamp) ||
-				(mergedAtOk && mergedAtUnix >= startTimestamp && mergedAtUnix <= endTimestamp)
+			userCreated := strings.Contains(strings.ToLower(h.getMergeAuthor(merge)), author)
+			createdToday := userCreated && inRange(createdAtOk, createdAtUnix, startTimestamp, endTimestamp)
+			updatedToday := inRange(updatedAtOk, updatedAtUnix, startTimestamp, endTimestamp)
+			relevantByTime := createdToday ||
+				updatedToday ||
+				inRange(mergedAtOk, mergedAtUnix, startTimestamp, endTimestamp)
 			if !relevantByTime {
-				if updatedAtOk && updatedAtUnix < startTimestamp {
-					boolBroken = true
-					break
-				}
 				continue
 			}
 
-			authorJoin, authorCommit, otherJoin, selfTest, err := h.checkMergeUserOp(projectId, sourceBranch, author, startTimestamp, endTimestamp, masterCommitSet)
+			authorJoin, authorCommit, otherCommitToday, err := h.checkMergeUserOp(projectID, sourceBranch, author, startTimestamp, endTimestamp, masterCommitSet)
 			if err != nil {
 				return err
 			}
-			status := h.getStatus(authorJoin, authorCommit, otherJoin, selfTest)
-			if status == `` && userCreated && createdAtOk && createdAtUnix >= startTimestamp && createdAtUnix <= endTimestamp {
-				status = `创建`
+			if !authorJoin && !userCreated {
+				continue
 			}
-			if status != `` {
-				combine := Combine{
-					Message: title,
-					Status:  status,
-				}
-				h.addCombine(combineList, combineDedup, combine)
+
+			mergedToMainToday := inRange(mergedAtOk, mergedAtUnix, startTimestamp, endTimestamp) && h.isMainBranch(targetBranch)
+			status := h.getStatus(mergedToMainToday, authorCommit || createdToday || (userCreated && updatedToday), otherCommitToday)
+			if status == "" {
+				continue
 			}
-		}
-		if boolBroken {
-			break
+			h.addCombine(combineList, combineDedup, Combine{Message: title, Status: status})
 		}
 		if len(mergeList) < perPage {
 			break
@@ -162,158 +146,87 @@ func (h *TGitlab) checkMerges(projectId, projectName, author string, perPage int
 	return nil
 }
 
-func (h *TGitlab) getStatus(authorJoin, authorCommit, otherJoin, selfTest bool) string {
-	if !authorJoin {
-		return ``
+func (h *TGitlab) getStatus(mergedToMain, hasCommitToday, hasOtherCommitToday bool) string {
+	if mergedToMain {
+		return "已上线"
 	}
-	if otherJoin { //其他人参与
-		if selfTest { //自测完
-			if authorCommit { //作者参与改动
-				return `开发对接自测完`
-			} else {
-				return `对接自测完`
-			}
-		} else {
-			if authorCommit { //作者参与改动
-				return `开发对接`
-			} else {
-				return `对接`
-			}
-		}
-	} else { //其他人不参与
-		if selfTest { //自测完
-			if authorCommit { //作者参与改动
-				return `自测完`
-			} else {
-				return `自测完`
-			}
-		} else {
-			if authorCommit { //作者参与改动
-				return `开发`
-			} else {
-				return `` //其他人不参与 没有自测 没有开发
-			}
-		}
+	if hasOtherCommitToday {
+		return "对接中"
 	}
+	if hasCommitToday {
+		return "开发中"
+	}
+	return ""
 }
 
-func (h *TGitlab) checkCommits(projectId, projectName, author string,
-	perPage int, startTimestamp, endTimestamp int64, combineList *[]Combine, combineDedup map[string]struct{}, masterCommitSet map[string]struct{}) error {
-	re := regexp.MustCompile(`into\s+['"]([^'"]+)['"]`)
-	for page := 1; page < 100; page++ {
-		gitLabParam := gsapi.GsGitLabParam{
-			State:   "",
-			Sort:    "desc",
-			Page:    page,
-			PerPage: perPage,
-			RefName: "",
+func (h *TGitlab) isMainBranch(branch string) bool {
+	branchLower := strings.ToLower(branch)
+	for _, mainBranch := range MergeMainBranchs {
+		if branchLower == mainBranch || strings.Contains(branchLower, mainBranch) {
+			return true
 		}
-		commitList, resErr := h.GitLab.GetProjectCommits(projectId, gitLabParam)
-		if resErr != nil {
-			return resErr
-		}
-		h.pushLog(fmt.Sprintf(`获取project:%s commit:%d条`, projectName, len(commitList)))
-		boolBroken := false
-		for _, commit := range commitList {
-			id := cast.ToString(commit[`id`])
-			masterCommitSet[id] = struct{}{}
-			createdAt := cast.ToString(commit[`created_at`])
-			beijingTime, beijingTimeErr := h.gBeijingTime(createdAt)
-			if beijingTimeErr != nil {
-				return errors.New(`解析时间报错 ` + beijingTimeErr.Error())
+	}
+	return false
+}
+
+func (h *TGitlab) collectMainBranchCommits(projectID string, perPage int, startTimestamp int64, masterCommitSet map[string]struct{}) error {
+	for _, mainBranch := range MergeMainBranchs {
+		for page := 1; page < 100; page++ {
+			gitLabParam := gsapi.GsGitLabParam{Sort: "desc", Page: page, PerPage: perPage, RefName: mainBranch}
+			commitList, resErr := h.GitLab.GetProjectCommits(projectID, gitLabParam)
+			if resErr != nil {
+				return resErr
 			}
-			if beijingTime.Unix() < startTimestamp { //小于最小时间 那就直接退出
-				boolBroken = true
-				break
-			}
-			if beijingTime.Unix() > endTimestamp { //大于结束时间 继续循环
-				continue
-			}
-			message := cast.ToString(commit[`message`])
-			title := cast.ToString(commit[`title`])
-			if h.isMergeIntoMain(title, re) {
-				if strings.Contains(message, author) {
-					combine := Combine{
-						Message: message,
-						Status:  `已上线`,
-					}
-					h.addCombine(combineList, combineDedup, combine)
-				} else {
-					branchName := h.getBranchName(title)
-					if branchName == `` {
-						continue
-					}
-					authorJoin, _, _, _, err := h.checkMergeUserOp(projectId, branchName, author, startTimestamp, endTimestamp, masterCommitSet)
-					if err != nil {
-						return err
-					}
-					if authorJoin {
-						combine := Combine{
-							Message: message,
-							Status:  `已上线`,
-						}
-						h.addCombine(combineList, combineDedup, combine)
-					}
+			boolBroken := false
+			for _, commit := range commitList {
+				id := cast.ToString(commit["id"])
+				masterCommitSet[id] = struct{}{}
+				createdAt := cast.ToString(commit["created_at"])
+				beijingTime, beijingTimeErr := h.gBeijingTime(createdAt)
+				if beijingTimeErr != nil {
+					return errors.New("解析时间报错 " + beijingTimeErr.Error())
+				}
+				if beijingTime.Unix() < startTimestamp {
+					boolBroken = true
+					break
 				}
 			}
-		}
-		if boolBroken {
-			break
-		}
-		if len(commitList) < perPage {
-			break
+			if boolBroken || len(commitList) < perPage {
+				break
+			}
 		}
 	}
 	return nil
 }
 
-func (h *TGitlab) getBranchName(title string) string {
-	re := regexp.MustCompile(`Merge branch '([^']+)' into`)
-	matches := re.FindStringSubmatch(title)
-	if len(matches) > 1 {
-		return matches[1]
-	} else {
-		return ``
+func (h *TGitlab) checkMergeUserOp(projectID, branchName, author string, startTimestamp, endTimestamp int64, masterCommitSet map[string]struct{}) (bool, bool, bool, error) {
+	authorJoin := false
+	authorCommit := false
+	otherCommitToday := false
+	if branchName == "" {
+		return false, false, false, nil
 	}
-}
-
-// 检查某个分支 在某个范围内是否有某个用户的提交
-func (h *TGitlab) checkMergeUserOp(projectId, branchName, author string, startTimestamp,
-	endTimestamp int64, masterCommitSet map[string]struct{}) (bool, bool, bool, bool, error) {
-	authorJoin := false   //author 是否参与了
-	authorCommit := false //author 是否提交commit了，不算merge
-	otherJoin := false    //其他人是否参与了
-	selfTest := false     //是否自测了
-	if branchName == `` {
-		return false, false, false, false, nil
-	}
-	total := 0
 	for page := 1; page < 100; page++ {
-		gitLabParam := gsapi.GsGitLabParam{
-			State:   "",
-			Sort:    "desc",
-			Page:    page,
-			PerPage: 50,
-			RefName: branchName,
-		}
-		commitList, resErr := h.GitLab.GetProjectCommits(projectId, gitLabParam)
+		gitLabParam := gsapi.GsGitLabParam{Sort: "desc", Page: page, PerPage: 50, RefName: branchName}
+		commitList, resErr := h.GitLab.GetProjectCommits(projectID, gitLabParam)
 		if resErr != nil {
-			return false, false, false, false, resErr
+			return false, false, false, resErr
 		}
-		total += len(commitList)
 		boolBroken := false
 		for _, commit := range commitList {
-			id := cast.ToString(commit[`id`])
+			id := cast.ToString(commit["id"])
 			if _, exist := masterCommitSet[id]; exist {
 				continue
 			}
-			authorName := cast.ToString(commit[`author_name`])
-			committerName := cast.ToString(commit[`committer_name`])
-			createdAt := cast.ToString(commit[`created_at`])
-			message := cast.ToString(commit[`message`])
+
+			authorName := strings.ToLower(cast.ToString(commit["author_name"]))
+			committerName := strings.ToLower(cast.ToString(commit["committer_name"]))
+			createdAt := cast.ToString(commit["created_at"])
+			message := cast.ToString(commit["message"])
+
 			beijingTime, beijingTimeErr := h.gBeijingTime(createdAt)
 			if beijingTimeErr != nil {
-				return false, false, false, false, beijingTimeErr
+				return false, false, false, beijingTimeErr
 			}
 			if beijingTime.Unix() < startTimestamp {
 				boolBroken = true
@@ -322,39 +235,25 @@ func (h *TGitlab) checkMergeUserOp(projectId, branchName, author string, startTi
 			if beijingTime.Unix() > endTimestamp {
 				continue
 			}
-			if h.isTest(message) {
-				selfTest = true
-			}
+
 			if strings.Contains(authorName, author) || strings.Contains(committerName, author) {
 				authorJoin = true
 				if !h.isMergeBranch(message) {
 					authorCommit = true
 				}
-			} else {
-				otherJoin = true
+			} else if !h.isMergeBranch(message) {
+				otherCommitToday = true
 			}
 		}
 		if boolBroken || len(commitList) < 50 {
 			break
 		}
 	}
-	h.pushLog(fmt.Sprintf(`获取%scommit 共：%d条`, branchName, total))
-	return authorJoin, authorCommit, otherJoin, selfTest, nil
+	return authorJoin, authorCommit, otherCommitToday, nil
 }
 
 func (h *TGitlab) isMergeBranch(message string) bool {
-	if strings.Contains(message, `Merge branch`) {
-		return true
-	}
-	return false
-}
-
-func (h *TGitlab) isTest(message string) bool {
-	if strings.Contains(message, `自测`) || strings.Contains(message, `测完`) ||
-		strings.Contains(message, `测试`) {
-		return true
-	}
-	return false
+	return strings.Contains(message, "Merge branch")
 }
 
 func (h *TGitlab) gBeijingTime(utcTimeStr string) (time.Time, error) {
@@ -377,7 +276,7 @@ func (h *TGitlab) pushLog(msg string) {
 }
 
 func (h *TGitlab) addCombine(combineList *[]Combine, combineDedup map[string]struct{}, combine Combine) {
-	key := combine.Status + `|` + combine.Message
+	key := combine.Status + "|" + combine.Message
 	if _, exist := combineDedup[key]; exist {
 		return
 	}
@@ -388,23 +287,9 @@ func (h *TGitlab) addCombine(combineList *[]Combine, combineDedup map[string]str
 	}
 }
 
-func (h *TGitlab) isMergeIntoMain(title string, re *regexp.Regexp) bool {
-	matches := re.FindStringSubmatch(title)
-	if len(matches) < 2 {
-		return false
-	}
-	target := matches[1]
-	for _, mainBranch := range MergeMainBranchs {
-		if target == mainBranch || strings.Contains(target, mainBranch) {
-			return true
-		}
-	}
-	return false
-}
-
 func (h *TGitlab) getUnixTime(v any) (int64, bool) {
 	s := cast.ToString(v)
-	if s == `` || s == `<nil>` {
+	if s == "" || s == "<nil>" {
 		return 0, false
 	}
 	t, err := h.gBeijingTime(s)
@@ -415,20 +300,41 @@ func (h *TGitlab) getUnixTime(v any) (int64, bool) {
 }
 
 func (h *TGitlab) getMergeAuthor(merge map[string]any) string {
-	if v, ok := merge[`author_name`]; ok {
-		if s := cast.ToString(v); s != `` && s != `<nil>` {
+	if v, ok := merge["author_name"]; ok {
+		if s := cast.ToString(v); s != "" && s != "<nil>" {
 			return s
 		}
 	}
-	if v, ok := merge[`author`]; ok {
+	if v, ok := merge["author"]; ok {
 		if m, ok := v.(map[string]any); ok {
-			if s := cast.ToString(m[`name`]); s != `` && s != `<nil>` {
+			if s := cast.ToString(m["name"]); s != "" && s != "<nil>" {
 				return s
 			}
-			if s := cast.ToString(m[`username`]); s != `` && s != `<nil>` {
+			if s := cast.ToString(m["username"]); s != "" && s != "<nil>" {
 				return s
 			}
 		}
 	}
-	return ``
+	return ""
+}
+
+func statusWeight(status string) int {
+	switch status {
+	case "已上线":
+		return 1
+	case "对接中":
+		return 2
+	case "开发中":
+		return 3
+	default:
+		return 4
+	}
+}
+
+func authorMatch(author string) string {
+	return strings.ToLower(author)
+}
+
+func inRange(ok bool, unixVal, startTimestamp, endTimestamp int64) bool {
+	return ok && unixVal >= startTimestamp && unixVal <= endTimestamp
 }
