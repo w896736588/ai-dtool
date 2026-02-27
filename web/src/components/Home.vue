@@ -342,7 +342,7 @@ export default {
   flex: 1;
   overflow: auto;
   background-color: #fafaf7;
-  min-height: 100vh;
+  height: 100%;
   padding: 20px;
   box-sizing: border-box;
 }

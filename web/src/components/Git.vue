@@ -102,7 +102,7 @@
         </svg>
         <span>执行输出</span>
       </div>
-      <div class="output-content">
+      <div ref="outputContent" class="output-content">
         <shellResult 
           ref="shellRef" 
           :divHeight="shellController.divHeight" 
@@ -127,7 +127,6 @@
 <script>
 import { Download, View, InfoFilled, Document, Switch, QuestionFilled, ArrowDown } from '@element-plus/icons-vue';
 import git from '../utils/base/git.js'
-import shell from "@/utils/base/shell"
 import shellResult from "@/components/shell/result_div.vue";
 import format from "@/utils/base/format";
 import arr from "@/utils/base/array";
@@ -193,13 +192,13 @@ export default {
     _that.sse_distribute_id = sseDistribute.GetSseDistributeId('git')
     _that.GetGitConfigList()
     _that.windowChange()
-    shell.calculateShellDivHeight(_that)
+    _that.calculateOutputDivHeight()
     _that.test()
   },
   activated: function () {
     let _that = this
     setTimeout(function () {
-      shell.calculateShellDivHeight(_that)
+      _that.calculateOutputDivHeight()
     }, 500)
     if (Init.GetIsInit('git') === true) {
       let _that = this
@@ -210,6 +209,20 @@ export default {
     }
   },
   methods: {
+    calculateOutputDivHeight: function () {
+      let _that = this
+      _that.$nextTick(function () {
+        const outputContent = _that.$refs.outputContent
+        if (!outputContent) {
+          return
+        }
+        const rect = outputContent.getBoundingClientRect()
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+        const safeBottomSpace = 12
+        const nextHeight = Math.max(viewportHeight - rect.top - safeBottomSpace, 220)
+        _that.shellController.divHeight = nextHeight
+      })
+    },
     test: function () {
     },
     handleDropdownCommand(command) {
@@ -259,6 +272,7 @@ export default {
       let _that = this;
       if (!this.showChangeBranchRemote) {
         this.showChangeBranchRemote = true;
+        this.calculateOutputDivHeight()
         setTimeout(async function () {
           _that.$refs.inputBranchNameRemote?.focus()
         }, 500)
@@ -268,6 +282,7 @@ export default {
       _that.selectGitConfig.sse_distribute_id = _that.sse_distribute_id
       git.GitChangeBranchRemote(_that.selectGitConfig, _that.BranchNameRemote, function (response) {
             _that.showChangeBranchRemote = false
+            _that.calculateOutputDivHeight()
             setTimeout(function () {
               _that.btnLoading.changeRemote = false
             }, 500)
@@ -310,7 +325,7 @@ export default {
     windowChange: function () {
       let _that = this
       window.addEventListener('resize', function () {
-        shell.calculateShellDivHeight(_that)
+        _that.calculateOutputDivHeight()
       });
     },
     ChangeGit: function (selectGitConfig) {
@@ -319,7 +334,7 @@ export default {
       _that.selectGitConfig = selectGitConfig
       _that.chooseGitId = selectGitConfig.id
       _that.queryCurrentBranch()
-      shell.calculateShellDivHeight(_that)
+      _that.calculateOutputDivHeight()
       git.GitLocalSetLastGitId(_that.selectGitConfig.id)
     },
     GetGitConfigList: function () {
@@ -347,6 +362,7 @@ export default {
       let _that = this
       _that.showChangeBranch = false
       _that.showChangeBranchRemote = false
+      _that.calculateOutputDivHeight()
       _that.btnLoading.query = true
       _that.tryReconnectionSocket()
       _that.selectGitConfig.sse_distribute_id = _that.sse_distribute_id
@@ -390,6 +406,7 @@ export default {
       let _that = this
       if (!this.showChangeBranchRemote) {
         this.showChangeBranchRemote = true
+        this.calculateOutputDivHeight()
         setTimeout(async function () {
           _that.$refs.inputBranchNameRemote?.focus()
         }, 500)
@@ -399,6 +416,7 @@ export default {
       _that.selectGitConfig.sse_distribute_id = _that.sse_distribute_id
       git.GitChangeBranchRemote(_that.selectGitConfig, _that.BranchNameRemote, function (response) {
             _that.showChangeBranchRemote = false
+            _that.calculateOutputDivHeight()
             setTimeout(function () {
               _that.btnLoading.changeRemote = false
             }, 500)
@@ -409,6 +427,7 @@ export default {
       let _that = this
       if (!this.showChangeBranch) {
         this.showChangeBranch = true
+        this.calculateOutputDivHeight()
         setTimeout(async function () {
           _that.$refs.inputBranchName?.focus()
         }, 500)
@@ -418,6 +437,7 @@ export default {
       _that.selectGitConfig.sse_distribute_id = _that.sse_distribute_id
       git.GitChangeBranch(_that.selectGitConfig, _that.BranchName, function (response) {
             _that.showChangeBranch = false
+            _that.calculateOutputDivHeight()
             setTimeout(function () {
               _that.btnLoading.change = false
             }, 500)
@@ -436,15 +456,16 @@ export default {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
 }
 
-/* 顶部卡片样式 - 橙色渐变 */
+/* 顶部卡片样式 - 蓝色渐变 */
 .git-header-card {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 16px;
   padding: 20px 24px;
   margin-bottom: 16px;
-  box-shadow: 0 4px 20px rgba(240, 147, 251, 0.25);
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.25);
   flex-shrink: 0;
 }
 
@@ -482,7 +503,7 @@ export default {
 }
 
 .git-tabs :deep(.el-tabs__item.is-active) {
-  color: #f5576c;
+  color: #667eea;
   font-weight: 600;
 }
 
@@ -501,12 +522,12 @@ export default {
 }
 
 .git-list :deep(.el-radio__input.is-checked .el-radio__inner) {
-  border-color: #f5576c;
-  background: #f5576c;
+  border-color: #667eea;
+  background: #667eea;
 }
 
 .git-list :deep(.el-radio__input.is-checked + .el-radio__label) {
-  color: #f5576c;
+  color: #667eea;
 }
 
 /* 控制行 */
@@ -533,11 +554,11 @@ export default {
 }
 
 .action-buttons .el-button--primary {
-  color: #f5576c;
+  color: #667eea;
 }
 
 .action-buttons .el-button--primary:hover {
-  color: #f093fb;
+  color: #764ba2;
 }
 
 .branch-input-group {
@@ -564,7 +585,7 @@ export default {
 
 .branch-input-group .el-button--warning:hover {
   background: #fff;
-  color: #f5576c;
+  color: #667eea;
 }
 
 .more-actions-group {
@@ -582,7 +603,7 @@ export default {
 }
 
 .more-actions-group .el-button--primary {
-  color: #f5576c;
+  color: #667eea;
 }
 
 .more-actions-group .el-button--info {
@@ -603,6 +624,7 @@ export default {
 .output-card {
   flex: 1;
   min-height: 0;
+  height: 100%;
   background: #fff;
   border-radius: 16px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
