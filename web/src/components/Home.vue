@@ -70,6 +70,9 @@
           <el-tag size="small" style="cursor: pointer;" @click="drawerVisibleTools = true">
             小工具
           </el-tag>
+          <el-tag size="small" style="cursor: pointer;" @click="openSshConnectionsDialog">
+            当前SSH连接数 {{ sshConnectionCount }}
+          </el-tag>
         </div>
         <el-button v-if="loginInfo.dialog" size="small" @click="loginInfo.dialog = true">登录</el-button>
       </div>
@@ -110,6 +113,18 @@
       </div>
     </template>
   </el-dialog>
+
+  <el-dialog v-model="sshConnectionsDialogVisible" title="当前SSH连接列表" width="80%">
+    <el-table v-loading="sshConnectionsLoading" :data="sshConnections" style="width: 100%">
+      <el-table-column prop="ssh_name" label="SSH" width="180" />
+      <el-table-column prop="shell_client_id" label="客户端ID" width="220" />
+      <el-table-column prop="current_command" label="当前命令" min-width="260" />
+      <el-table-column prop="status" label="状态" width="120" />
+      <el-table-column prop="connect_time" label="连接开始时间" width="180" />
+      <el-table-column prop="connect_seconds" label="连接时长(秒)" width="120" />
+      <el-table-column prop="type" label="类型" width="120" />
+    </el-table>
+  </el-dialog>
 </template>
 
 <script>
@@ -122,6 +137,7 @@ import Clipboard from "clipboard";
 import copy from "@/utils/base/copy"
 import module from "@/utils/module"
 import baseApi from '@/utils/base/base_api'
+import sshSet from '@/utils/base/ssh_set'
 import Tools from "@/components/Tools.vue";
 import Markdown from '@/components/Markdown.vue'
 import { 
@@ -165,6 +181,11 @@ export default {
         lastShellInfo: "",
       },
       ip: '',
+      sshConnectionCount: 0,
+      sshConnections: [],
+      sshConnectionsDialogVisible: false,
+      sshConnectionsLoading: false,
+      sshConnectionTimer: null,
     }
   },
   created() {
@@ -181,6 +202,10 @@ export default {
       }
     })
     this.forceIp(false)
+    this.refreshSshConnections(false)
+    this.sshConnectionTimer = setInterval(() => {
+      this.refreshSshConnections(false)
+    }, 5000)
     this.menuName = this.$helperStore.getStore(this.menuKeyStore)
     if (this.$route.path !== this.menuName && this.menuName != null) {
       this.$router.push(this.menuName)
@@ -248,6 +273,45 @@ export default {
         }
       }, milliseconds)
     },
+    openSshConnectionsDialog() {
+      this.sshConnectionsDialogVisible = true
+      this.refreshSshConnections(true)
+    },
+    refreshSshConnections(showLoading) {
+      if (showLoading) {
+        this.sshConnectionsLoading = true
+      }
+      const _that = this
+      sshSet.SshList(function (sshResponse) {
+        const sshNameMap = {}
+        if (sshResponse && sshResponse.ErrCode === 0 && Array.isArray(sshResponse.Data)) {
+          sshResponse.Data.forEach(item => {
+            sshNameMap[String(item.id)] = item.name || `#${item.id}`
+          })
+        }
+        sshSet.GetConnections(function (connResponse) {
+          if (_that.sshConnectionsLoading) {
+            _that.sshConnectionsLoading = false
+          }
+          if (!(connResponse && connResponse.ErrCode === 0)) {
+            _that.sshConnectionCount = 0
+            _that.sshConnections = []
+            return
+          }
+          const list = Array.isArray(connResponse.Data?.connections) ? connResponse.Data.connections : []
+          const normalized = list.map(conn => {
+            const shellClientId = String(conn.shell_client_id || '')
+            const sshId = shellClientId.split('#')[0]
+            return {
+              ...conn,
+              ssh_name: sshNameMap[sshId] || `#${sshId || '-'}`
+            }
+          })
+          _that.sshConnectionCount = normalized.length
+          _that.sshConnections = normalized
+        })
+      })
+    },
     handleSelect(key, keyPath) {
       let _that = this
       if (keyPath[0].indexOf('Doc-') >= 0) {
@@ -259,6 +323,12 @@ export default {
       this.menuName = keyPath[0]
       this.$helperStore.setStore(_that.menuKeyStore, this.menuName)
     },
+  },
+  beforeUnmount() {
+    if (this.sshConnectionTimer) {
+      clearInterval(this.sshConnectionTimer)
+      this.sshConnectionTimer = null
+    }
   },
   components: {
     HomeFilled,
@@ -329,13 +399,25 @@ export default {
   border-top: 1px solid #e8e8e0;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
 }
 
 .footer-buttons {
   display: flex;
+  flex-direction: column;
+  width: 100%;
   gap: 6px;
   margin-bottom: 8px;
+}
+
+.footer-buttons .el-tag {
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: center;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.2;
+  padding: 4px 6px;
 }
 
 .main-content {

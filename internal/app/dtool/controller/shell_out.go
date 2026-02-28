@@ -6,6 +6,7 @@ import (
 	"dev_tool/internal/pkg/p_common"
 	"dev_tool/internal/pkg/p_sse"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,6 +15,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 )
+
+type ShellConnectionView struct {
+	ShellClientId  string `json:"shell_client_id"`
+	CurrentCommand string `json:"current_command"`
+	Status         string `json:"status"`
+	ConnectTime    string `json:"connect_time"`
+	ConnectSeconds int64  `json:"connect_seconds"`
+	LastReceive    string `json:"last_receive"`
+	IdleSeconds    int64  `json:"idle_seconds"`
+	Type           string `json:"type"`
+}
 
 func ShellOut(c *gin.Context) {
 	reqMap, client, shellClientId, err := getShellOutComponent(c)
@@ -238,13 +250,35 @@ func ShellOutGetConnections(c *gin.Context) {
 	shellConnections := component.ShellClient.GetConnections()
 
 	// 合并两种类型的连接
-	allConnections := make([]interface{}, 0, len(shellOutConnections)+len(shellConnections))
+	allConnections := make([]ShellConnectionView, 0, len(shellOutConnections)+len(shellConnections))
 	for _, conn := range shellOutConnections {
-		allConnections = append(allConnections, conn)
+		allConnections = append(allConnections, ShellConnectionView{
+			ShellClientId:  conn.ShellClientId,
+			CurrentCommand: conn.CurrentCommand,
+			Status:         conn.Status,
+			ConnectTime:    conn.ConnectTime,
+			ConnectSeconds: conn.ConnectSeconds,
+			LastReceive:    conn.LastReceive,
+			IdleSeconds:    conn.IdleSeconds,
+			Type:           conn.Type,
+		})
 	}
 	for _, conn := range shellConnections {
-		allConnections = append(allConnections, conn)
+		allConnections = append(allConnections, ShellConnectionView{
+			ShellClientId:  conn.ShellClientId,
+			CurrentCommand: conn.CurrentCommand,
+			Status:         conn.Status,
+			ConnectTime:    conn.ConnectTime,
+			ConnectSeconds: conn.ConnectSeconds,
+			Type:           conn.Type,
+		})
 	}
+	sort.Slice(allConnections, func(i, j int) bool {
+		if allConnections[i].ConnectSeconds == allConnections[j].ConnectSeconds {
+			return allConnections[i].ShellClientId < allConnections[j].ShellClientId
+		}
+		return allConnections[i].ConnectSeconds < allConnections[j].ConnectSeconds
+	})
 
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`connections`: allConnections,

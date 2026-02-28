@@ -53,10 +53,13 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="state.dialogConnections" title="连接详情" width="800">
+  <el-dialog v-model="state.dialogConnections" title="连接详情" width="80%">
     <el-table :data="state.connections" style="width: 100%">
       <el-table-column prop="shell_client_id" label="客户端ID" />
+      <el-table-column prop="current_command" label="当前命令" />
       <el-table-column prop="status" label="状态" />
+      <el-table-column prop="connect_time" label="连接开始时间" width="180" />
+      <el-table-column prop="connect_seconds" label="连接时长(秒)" width="120" />
       <el-table-column prop="type" label="类型" />
       <el-table-column label="操作">
         <template #default="scope">
@@ -87,6 +90,16 @@ export default defineComponent({
   setup() {
     const proxy = getCurrentInstance().proxy
     const instance = getCurrentInstance().appContext.config.globalProperties
+    const SortConnectionsByDuration = function (list){
+      return [...(list || [])].sort((a, b) => {
+        const aSeconds = Number(a.connect_seconds || 0)
+        const bSeconds = Number(b.connect_seconds || 0)
+        if(aSeconds === bSeconds){
+          return String(a.shell_client_id || '').localeCompare(String(b.shell_client_id || ''))
+        }
+        return aSeconds - bSeconds
+      })
+    }
     const SshList = function (){
       set.SshList(function (response){
         if(response.ErrCode === 0){
@@ -98,7 +111,7 @@ export default defineComponent({
     const LoadConnections = function (){
       set.GetConnections(function (response){
         if(response.ErrCode === 0){
-          state.allConnections = response.Data.connections || []
+          state.allConnections = SortConnectionsByDuration(response.Data.connections || [])
         }
       })
     }
@@ -149,12 +162,12 @@ export default defineComponent({
       state.selectedSshId = sshConfig.id
       set.GetConnections(function (response){
         if(response.ErrCode === 0){
-          state.allConnections = response.Data.connections || []
+          state.allConnections = SortConnectionsByDuration(response.Data.connections || [])
           // Filter connections for the selected SSH
-          state.connections = state.allConnections.filter(conn => {
+          state.connections = SortConnectionsByDuration(state.allConnections.filter(conn => {
             const sshId = conn.shell_client_id.split('#')[0]
             return sshId === String(sshConfig.id)
-          })
+          }))
         }else{
           instance.$helperNotify.success(response.ErrMsg)
         }
@@ -191,11 +204,11 @@ export default defineComponent({
       if(state.dialogConnections && state.selectedSshId){
         set.GetConnections(function (response){
           if(response.ErrCode === 0){
-            state.allConnections = response.Data.connections || []
-            state.connections = state.allConnections.filter(conn => {
+            state.allConnections = SortConnectionsByDuration(response.Data.connections || [])
+            state.connections = SortConnectionsByDuration(state.allConnections.filter(conn => {
               const sshId = conn.shell_client_id.split('#')[0]
               return sshId === String(state.selectedSshId)
-            })
+            }))
           }
         })
       }

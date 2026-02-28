@@ -8,6 +8,7 @@ import (
 	"dev_tool/internal/pkg/p_sse"
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"runtime/debug"
 	"strings"
@@ -503,12 +504,35 @@ type Search struct {
 // ConnectionInfo 连接信息
 type ConnectionInfo struct {
 	ShellClientId  string `json:"shell_client_id"`
+	CurrentCommand string `json:"current_command"` // 当前命令
 	Status         string `json:"status"`          // active: 活跃, idle: 闲置, broken: 断开
 	ConnectTime    string `json:"connect_time"`    // 连接时间
 	ConnectSeconds int64  `json:"connect_seconds"` // 连接时长(秒)
 	LastReceive    string `json:"last_receive"`    // 最后接收时间
 	IdleSeconds    int64  `json:"idle_seconds"`    // 闲置时长(秒)
 	Type           string `json:"type"`            // shell_out
+}
+
+func getTerminalCurrentCommand(gsShell *gsssh.SshTerminal) string {
+	if gsShell == nil {
+		return ``
+	}
+	defer func() {
+		_ = recover()
+	}()
+	val := reflect.ValueOf(gsShell)
+	if !val.IsValid() || val.Kind() != reflect.Ptr || val.IsNil() {
+		return ``
+	}
+	elem := val.Elem()
+	if !elem.IsValid() || elem.Kind() != reflect.Struct {
+		return ``
+	}
+	field := elem.FieldByName(`command`)
+	if !field.IsValid() || field.Kind() != reflect.String {
+		return ``
+	}
+	return strings.TrimSpace(field.String())
 }
 
 // GetConnections 获取所有连接状态
@@ -520,22 +544,32 @@ func (h *TShellOut) GetConnections() []ConnectionInfo {
 	now := time.Now().Unix()
 
 	for shellClientId, shellOut := range h.ShellOutMap {
+		connectTime := ``
+		connectSeconds := int64(0)
+		if shellOut.startTime > 0 {
+			connectTime = gstool.TimeUnixToString(time.Unix(shellOut.startTime, 0), `Y-m-d H:i:s`)
+			connectSeconds = now - shellOut.startTime
+		}
+		lastReceive := ``
+		idleSeconds := int64(0)
+		if shellOut.lastReceiveTime > 0 {
+			lastReceive = gstool.TimeUnixToString(time.Unix(shellOut.lastReceiveTime, 0), `Y-m-d H:i:s`)
+			idleSeconds = now - shellOut.lastReceiveTime
+		}
 		info := ConnectionInfo{
 			ShellClientId:  shellClientId,
+			CurrentCommand: getTerminalCurrentCommand(shellOut.Client),
 			Status:         "active",
-			ConnectTime:    gstool.TimeNowUnixToString(""),
-			ConnectSeconds: now - shellOut.startTime,
-			LastReceive:    gstool.TimeNowUnixToString(""),
-			IdleSeconds:    now - shellOut.lastReceiveTime,
+			ConnectTime:    connectTime,
+			ConnectSeconds: connectSeconds,
+			LastReceive:    lastReceive,
+			IdleSeconds:    idleSeconds,
 			Type:           "shell_out",
 		}
 
 		// 判断连接状态
-		if shellOut.lastReceiveTime > 0 {
-			idleSeconds := now - shellOut.lastReceiveTime
-			if idleSeconds > 30 {
-				info.Status = "idle"
-			}
+		if idleSeconds > 30 {
+			info.Status = "idle"
 		}
 
 		connections = append(connections, info)
