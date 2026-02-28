@@ -242,7 +242,7 @@ export default {
     },
     getCols: function () {
       let colsList = this.modelSql.split('\n')
-      let regField = /^(  | )`[a-zA-z_0-9]+`/
+      let regField = /^( {2}| )`[a-zA-z_0-9]+`/
       let regFieldComment = /COMMENT '.+',/
       colsList.pop()
       colsList.shift()

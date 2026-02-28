@@ -205,6 +205,7 @@ export default {
       showInteractionSshConfig: {},
       loadingStatus: {},
       sse_distribute_id: '',
+      sseThrottleStringFunc: null,
     }
   },
   inject: ["showTerminal", "resizeTerminal"],
@@ -213,7 +214,6 @@ export default {
   },
   mounted: function () {
     let _that = this
-    _that.sse_distribute_id = sseDistribute.GetSseDistributeId('docker')
     ssh.SshList(function (response) {
       if (response.ErrCode === 0) {
         _that.sshList = response.Data
@@ -234,6 +234,11 @@ export default {
     })
     _that.loadingStatus = _that.$helperLoad.getExecTypeStatus()
   },
+  beforeUnmount() {
+    if (this.sse_distribute_id) {
+      sseDistribute.UnRegisterReceive(this.sse_distribute_id)
+    }
+  },
   onload: function () {
   },
   filters: {
@@ -245,6 +250,30 @@ export default {
     },
   },
   methods: {
+    prepareActionSse: function (action) {
+      let _that = this
+      if (_that.sse_distribute_id) {
+        sseDistribute.UnRegisterReceive(_that.sse_distribute_id)
+      }
+      _that.sse_distribute_id = sseDistribute.GetSseDistributeId(`docker_${action}_${Date.now()}`)
+      if (!_that.sseThrottleStringFunc) {
+        _that.sseThrottleStringFunc = new Throttle_string(50, text => {
+          _that.shellController.sshResult += text
+          const maxLen = 50000
+          if (_that.shellController.sshResult.length > maxLen) {
+            _that.shellController.sshResult = _that.shellController.sshResult.slice(-maxLen)
+          }
+          let result = format.formatResult(
+              _that.shellController.sshResult, ['copy', 'color', 'replace'])
+          result = format.formatResult(result, ['length'])
+          _that.shellController.sshResult = result
+        })
+      }
+      sseDistribute.RegisterReceive(_that.sse_distribute_id, function (msg) {
+        _that.sseThrottleStringFunc.update(msg)
+      })
+      return _that.sse_distribute_id
+    },
     // 切换星标状态
     toggleStar: function(row) {
       let _that = this
@@ -348,6 +377,7 @@ export default {
     },
     refreshServices : function (row){
       let _that = this
+      _that.prepareActionSse('services_refresh')
       //优先从缓存拿
       let servicesKey = 'docker_services_' + _that.chooseSshId + '_' + _that.dialogServiceConfig.id
       let data = {
@@ -381,6 +411,7 @@ export default {
         _that.dialogServiceConfig.services = JSON.parse(services)
         return
       }
+      _that.prepareActionSse('services_list')
       compose.DockerComposeServices(data, function (response) {
             _that.$helperNotify.success('成功')
             _that.shellController.isRunning = false
@@ -426,6 +457,7 @@ export default {
     restart: function (value, service) {
       let _that = this
       _that.shellController.isRunning = true
+      _that.prepareActionSse('restart')
       let data = {
         ssh_id: _that.chooseSshId,
         id: value.id,
@@ -442,6 +474,7 @@ export default {
     stop: function (value , service) {
       let _that = this
       _that.shellController.isRunning = true
+      _that.prepareActionSse('stop')
       let data = {
         ssh_id: _that.chooseSshId,
         id: value.id,
@@ -458,6 +491,7 @@ export default {
     start: function (value , service) {
       let _that = this
       _that.shellController.isRunning = true
+      _that.prepareActionSse('start')
       let data = {
         ssh_id: _that.chooseSshId,
         id: value.id,
@@ -474,6 +508,7 @@ export default {
     status: function (value) {
       let _that = this
       _that.shellController.isRunning = true
+      _that.prepareActionSse('status')
       let data = {
         ssh_id: _that.chooseSshId,
         id: value.id,
@@ -491,6 +526,7 @@ export default {
       let _that = this
       _that.openShellResult()
       _that.shellController.isRunning = true
+      _that.prepareActionSse('show_compose')
       let data = {
         config_path: value.compose_yml_path,
         ssh_id: _that.chooseSshId,
@@ -506,6 +542,7 @@ export default {
       let _that = this
       _that.openShellResult()
       _that.shellController.isRunning = true
+      _that.prepareActionSse('show_env')
       let envFile = value.env_file
       if (envFile === '') {
         envFile = value.compose_yml_path.replace(/\/[^\/]+\.yml$/, '/.env')
@@ -535,6 +572,7 @@ export default {
         return
       }
       _that.shellController.isRunning = true
+      _that.prepareActionSse('compose_list')
       compose.DockerComposeList({ssh_id: _that.chooseSshId, sse_distribute_id: _that.sse_distribute_id}, function (response) {
             if (response.ErrCode === 0) {
               _that.composeList = response.Data.list
@@ -553,21 +591,6 @@ export default {
     changeSsh: function () {
       let _that = this
       _that.$helperStore.setStore('dockerChooseSshId', _that.chooseSshId)
-      let throttleStringFunc = new Throttle_string(50, text => {
-        _that.shellController.sshResult += text
-        // 限制长度：最多保留最后 50000 个字符
-        const maxLen = 50000;
-        if (_that.shellController.sshResult.length > maxLen) {
-          _that.shellController.sshResult = _that.shellController.sshResult.slice(-maxLen);
-        }
-        let result = format.formatResult(
-            _that.shellController.sshResult, ['copy', 'color', 'replace']);
-        result = format.formatResult(result, ['length']);
-        _that.shellController.sshResult = result;   // 一次性赋值，减少 watcher 抖动
-      })
-      sseDistribute.RegisterReceive(_that.sse_distribute_id, function (msg, msgType, sseDistributeId) {
-        throttleStringFunc.update(msg)
-      })
       _that.getComposeList()
     },
     //搜索消费者列表

@@ -185,11 +185,13 @@ export default {
       chooseGroupId: 0,
       chooseGitId: 0,
       sseId: '',
+      sse_distribute_id: '',
+      sseThrottleStringFunc: null,
     }
   },
   mounted: function () {
     let _that = this
-    _that.sse_distribute_id = sseDistribute.GetSseDistributeId('git')
+    _that.prepareActionSse('init')
     _that.GetGitConfigList()
     _that.windowChange()
     _that.calculateOutputDivHeight()
@@ -208,7 +210,36 @@ export default {
       Init.DelInit('git')
     }
   },
+  beforeUnmount() {
+    if (this.sse_distribute_id) {
+      sseDistribute.UnRegisterReceive(this.sse_distribute_id)
+    }
+  },
   methods: {
+    prepareActionSse: function (action) {
+      let _that = this
+      if (_that.sse_distribute_id) {
+        sseDistribute.UnRegisterReceive(_that.sse_distribute_id)
+      }
+      _that.sse_distribute_id = sseDistribute.GetSseDistributeId(`git_${action}_${Date.now()}`)
+      if (!_that.sseThrottleStringFunc) {
+        _that.sseThrottleStringFunc = new Throttle_string(50, text => {
+          _that.shellController.sshResult += text
+          const maxLen = 50000
+          if (_that.shellController.sshResult.length > maxLen) {
+            _that.shellController.sshResult = _that.shellController.sshResult.slice(-maxLen)
+          }
+          let result = format.formatResult(
+              _that.shellController.sshResult, ['copy', 'color', 'replace'])
+          result = format.formatResult(result, ['length'])
+          _that.shellController.sshResult = result
+        })
+      }
+      sseDistribute.RegisterReceive(_that.sse_distribute_id, function (msg) {
+        _that.sseThrottleStringFunc.update(msg)
+      })
+      return _that.sse_distribute_id
+    },
     calculateOutputDivHeight: function () {
       let _that = this
       _that.$nextTick(function () {
@@ -246,6 +277,7 @@ export default {
     },
     GitSaveCredentials(){
       let _that = this
+      _that.prepareActionSse('save_credentials')
       _that.selectGitConfig.sse_distribute_id = _that.sse_distribute_id
       git.GitSaveCredentials(_that.selectGitConfig, function (response) {
             if (response.ErrCode === 0) {
@@ -258,6 +290,7 @@ export default {
     },
     GitSetSafe() {
       let _that = this
+      _that.prepareActionSse('set_safe')
       _that.selectGitConfig.sse_distribute_id = _that.sse_distribute_id
       git.SetSafe(_that.selectGitConfig, function (response) {
             if (response.ErrCode === 0) {
@@ -279,6 +312,7 @@ export default {
         return
       }
       _that.btnLoading.changeRemote = true
+      _that.prepareActionSse('change_branch_remote')
       _that.selectGitConfig.sse_distribute_id = _that.sse_distribute_id
       git.GitChangeBranchRemote(_that.selectGitConfig, _that.BranchNameRemote, function (response) {
             _that.showChangeBranchRemote = false
@@ -288,26 +322,6 @@ export default {
             }, 500)
           }
       )
-    },
-    tryReconnectionSocket: function () {
-      let _that = this
-      if (!_that.selectGitConfig || !_that.selectGitConfig.ssh_id) {
-        return
-      }
-      let throttleStringFunc = new Throttle_string(50, text => {
-        _that.shellController.sshResult += text
-        const maxLen = 50000;
-        if (_that.shellController.sshResult.length > maxLen) {
-          _that.shellController.sshResult = _that.shellController.sshResult.slice(-maxLen);
-        }
-        let result = format.formatResult(
-            _that.shellController.sshResult, ['copy', 'color', 'replace']);
-        result = format.formatResult(result, ['length']);
-        _that.shellController.sshResult = result;
-      });
-      sseDistribute.RegisterReceive(_that.sse_distribute_id, function (msg, msgType, sseDistributeId) {
-        throttleStringFunc.update(msg)
-      })
     },
     chooseDefault: function () {
       let _that = this
@@ -364,7 +378,7 @@ export default {
       _that.showChangeBranchRemote = false
       _that.calculateOutputDivHeight()
       _that.btnLoading.query = true
-      _that.tryReconnectionSocket()
+      _that.prepareActionSse('query_current_branch')
       _that.selectGitConfig.sse_distribute_id = _that.sse_distribute_id
       git.GitCurrentBranch(_that.selectGitConfig, function (response) {
         setTimeout(function () {
@@ -375,6 +389,7 @@ export default {
     queryCommitLog: function () {
       let _that = this
       _that.btnLoading.queryLog = true
+      _that.prepareActionSse('query_commit_log')
       _that.selectGitConfig.sse_distribute_id = _that.sse_distribute_id
       git.GitCommitLog(_that.selectGitConfig, function (response) {
         setTimeout(function () {
@@ -385,6 +400,7 @@ export default {
     GitPullBranchOrigin: function () {
       let _that = this
       _that.btnLoading.pull = true
+      _that.prepareActionSse('pull_branch_origin')
       _that.selectGitConfig.sse_distribute_id = _that.sse_distribute_id
       git.GitPullBranchOrigin(_that.selectGitConfig, function (response) {
         setTimeout(function () {
@@ -395,6 +411,7 @@ export default {
     GitQueryStatus: function () {
       let _that = this
       _that.btnLoading.status = true
+      _that.prepareActionSse('query_status')
       _that.selectGitConfig.sse_distribute_id = _that.sse_distribute_id
       git.GitQueryStatus(_that.selectGitConfig, function (response) {
         setTimeout(function () {
@@ -413,6 +430,7 @@ export default {
         return
       }
       _that.btnLoading.changeRemote = true
+      _that.prepareActionSse('change_branch_remote')
       _that.selectGitConfig.sse_distribute_id = _that.sse_distribute_id
       git.GitChangeBranchRemote(_that.selectGitConfig, _that.BranchNameRemote, function (response) {
             _that.showChangeBranchRemote = false
@@ -434,6 +452,7 @@ export default {
         return
       }
       _that.btnLoading.change = true
+      _that.prepareActionSse('change_branch')
       _that.selectGitConfig.sse_distribute_id = _that.sse_distribute_id
       git.GitChangeBranch(_that.selectGitConfig, _that.BranchName, function (response) {
             _that.showChangeBranch = false

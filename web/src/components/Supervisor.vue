@@ -186,12 +186,14 @@ export default {
       showInteractionSshConfig: {},
       loadingStatus: {},
       sseId : '',
+      sse_distribute_id: '',
+      sseThrottleStringFunc: null,
     }
   },
   inject: ["showTerminal", "resizeTerminal"],
   mounted: function () {
     let _that = this
-    _that.sse_distribute_id = sseDistribute.GetSseDistributeId('supervisor')
+    _that.prepareActionSse('init')
     supervisor.SupervisorConfigList({sse_distribute_id : _that.sse_distribute_id},function (response){
       if(response.ErrCode === 0){
         _that.supervisorConfigList = response.Data.supervisor_list
@@ -201,6 +203,11 @@ export default {
       }
     })
     _that.loadingStatus = _that.$helperLoad.getExecTypeStatus()
+  },
+  beforeUnmount() {
+    if (this.sse_distribute_id) {
+      sseDistribute.UnRegisterReceive(this.sse_distribute_id)
+    }
   },
   onload: function () {
   },
@@ -213,6 +220,29 @@ export default {
     },
   },
   methods: {
+    prepareActionSse: function (action) {
+      let _that = this
+      if (_that.sse_distribute_id) {
+        sseDistribute.UnRegisterReceive(_that.sse_distribute_id)
+      }
+      _that.sse_distribute_id = sseDistribute.GetSseDistributeId(`supervisor_${action}_${Date.now()}`)
+      if (!_that.sseThrottleStringFunc) {
+        _that.sseThrottleStringFunc = new Throttle_string(50, text => {
+          _that.shellController.sshResult += text
+          const maxLen = 10000
+          if (_that.shellController.sshResult.length > maxLen) {
+            _that.shellController.sshResult = _that.shellController.sshResult.slice(-maxLen)
+          }
+          let result = format.formatResult(_that.shellController.sshResult, ['copy', 'color', 'replace'])
+          result = format.formatResult(result, ['length'])
+          _that.shellController.sshResult = result
+        })
+      }
+      sseDistribute.RegisterReceive(_that.sse_distribute_id , function (msg){
+        _that.sseThrottleStringFunc.update(msg)
+      })
+      return _that.sse_distribute_id
+    },
     getLastSupervisorId : function (){
       let _that = this
       let chooseSupervisorId = _that.$helperStore.getStore('chooseSupervisorId')
@@ -249,6 +279,7 @@ export default {
     restart: function (value) {
       let _that = this
       _that.shellController.isRunning = true
+      _that.prepareActionSse('restart')
       _that.chooseSupervisorConfig.sse_distribute_id = _that.sse_distribute_id
       supervisor.SupervisorRestart(_that.chooseSupervisorConfig, value.supervisor_name, function (response) {
             _that.$helperNotify.success('成功')
@@ -262,6 +293,7 @@ export default {
     stop: function (value) {
       let _that = this
       _that.shellController.isRunning = true
+      _that.prepareActionSse('stop')
       _that.chooseSupervisorConfig.sse_distribute_id = _that.sse_distribute_id
       supervisor.SupervisorStop(_that.chooseSupervisorConfig, value.supervisor_name, function (response) {
             _that.$helperNotify.success('成功')
@@ -276,6 +308,7 @@ export default {
       let _that = this
       _that.openShellResult()
       _that.shellController.isRunning = true
+      _that.prepareActionSse('config_show')
       _that.chooseSupervisorConfig.sse_distribute_id = _that.sse_distribute_id
       supervisor.SupervisorConfigShow(_that.chooseSupervisorConfig,value.supervisor_config, function (response) {
             _that.execResult = response.Data
@@ -310,6 +343,7 @@ export default {
         return
       }
       _that.shellController.isRunning = true
+      _that.prepareActionSse('config_list')
       _that.chooseSupervisorConfig.sse_distribute_id = _that.sse_distribute_id
       supervisor.SupervisorConfList(_that.chooseSupervisorConfig, function (response) {
             let tempList = response.Data.split(`\n`)
@@ -332,20 +366,6 @@ export default {
         }
       }
       _that.$helperStore.setStore('chooseSupervisorId' , _that.chooseSupervisorId)
-      let throttleStringFunc = new Throttle_string(50, text => {
-        _that.shellController.sshResult += text
-        // 限制长度：最多保留最后 10000 个字符
-        const maxLen = 10000;
-        if (_that.shellController.sshResult.length > maxLen) {
-          _that.shellController.sshResult = _that.shellController.sshResult.slice(-maxLen);
-        }
-        let result = format.formatResult(_that.shellController.sshResult, ['copy', 'color', 'replace'])
-        result = format.formatResult(result, ['length'])
-        _that.shellController.sshResult = result
-      })
-      sseDistribute.RegisterReceive(_that.sse_distribute_id , function (msg,msgType,sseDistributeId){
-        throttleStringFunc.update(msg)
-      })
       _that.getOriginSupervisorConf()
     },
     //搜索消费者列表
@@ -359,6 +379,7 @@ export default {
     restartSupervisorAll: function () {
       let _that = this
       _that.shellController.isRunning = true
+      _that.prepareActionSse('restart_all')
       _that.chooseSupervisorConfig.sse_distribute_id = _that.sse_distribute_id
       supervisor.SupervisorRestartAll(_that.chooseSupervisorConfig, function (response) {
             _that.execResult = response.Data
@@ -372,6 +393,7 @@ export default {
     supervisorStatusList: function () {
       let _that = this
       _that.shellController.isRunning = true
+      _that.prepareActionSse('status_list')
       _that.chooseSupervisorConfig.sse_distribute_id = _that.sse_distribute_id
       supervisor.SupervisorStatusList(_that.chooseSupervisorConfig, function (response) {
             _that.execResult = response.Data

@@ -105,6 +105,7 @@ const commandConfig = [
     name: 'Git',
     icon: '📚',
     desc: 'Git管理',
+    aliases: ['g', 'gi', '代码管理', '仓库'],
     module: 'git',
     path: '/Git',
     children: [
@@ -112,6 +113,7 @@ const commandConfig = [
         command: 'pull',
         name: '拉取',
         desc: '拉取远程代码',
+        aliases: ['pl', 'update', 'sync', '拉取', '更新'],
         action: 'gitPull',
         needTarget: true,
         dynamicChildren: 'gitProjectList'
@@ -120,6 +122,7 @@ const commandConfig = [
         command: 'status',
         name: '状态',
         desc: '查看状态',
+        aliases: ['st', 'stat', 'check', '状态', '状态检查'],
         action: 'gitStatus',
         needTarget: true,
         dynamicChildren: 'gitProjectList'
@@ -128,6 +131,19 @@ const commandConfig = [
         command: 'branch',
         name: '当前分支',
         desc: '查看当前分支',
+        aliases: [
+          'br',
+          'current',
+          'curr',
+          'show',
+          'show-branch',
+          'showbranch',
+          'current-branch',
+          'branch',
+          '当前',
+          '当前分支',
+          '分支'
+        ],
         action: 'gitBranch',
         needTarget: true,
         dynamicChildren: 'gitProjectList'
@@ -136,6 +152,7 @@ const commandConfig = [
         command: 'log',
         name: '日志',
         desc: '查看提交日志',
+        aliases: ['lg', 'history', 'his', 'commit', '日志', '提交记录'],
         action: 'gitLog',
         needTarget: true,
         dynamicChildren: 'gitProjectList'
@@ -144,11 +161,55 @@ const commandConfig = [
         command: 'checkout',
         name: '切换分支',
         desc: '切换到指定分支',
+        aliases: ['ch', 'co', 'switch', '切换', '切分支', '切换分支', '换分支'],
         action: 'gitCheckout',
         needTarget: true,
         dynamicChildren: 'gitProjectList',
         needInput: true,
-        inputPlaceholder: '请输入分支名'
+        inputPlaceholder: '请输入要切换的分支名'
+      },
+      {
+        command: 'checkout-remote',
+        name: '关联远程分支切换',
+        desc: '切换并关联远程分支',
+        aliases: ['chr', 'cor', 'remote', 'track', '关联', '关联远程', '远程切换'],
+        action: 'gitCheckoutRemote',
+        needTarget: true,
+        dynamicChildren: 'gitProjectList',
+        needInput: true,
+        inputPlaceholder: '请输入远程分支名'
+      },
+      {
+        command: 'save-credentials',
+        name: '保存账号密码配置',
+        desc: '执行 git credential 配置',
+        aliases: ['save', 'cred', 'remember', 'credential', '记住密码', '保存凭据'],
+        action: 'gitSaveCredentials',
+        needTarget: true,
+        dynamicChildren: 'gitProjectList'
+      },
+      {
+        command: 'set-safe',
+        name: '设置目录安全',
+        desc: '将当前目录加入 git safe.directory',
+        aliases: ['safe', 'trust', 'safe-dir', '安全目录', '信任目录'],
+        action: 'gitSetSafe',
+        needTarget: true,
+        dynamicChildren: 'gitProjectList'
+      },
+      {
+        command: 'view-config',
+        name: '查看 git config 文档',
+        desc: '跳转到 Git 页面查看文档',
+        aliases: ['cfg', 'config', 'git-config', 'show-config', '配置'],
+        action: 'gitViewConfig'
+      },
+      {
+        command: 'help',
+        name: 'Git 帮助',
+        desc: '跳转到 Git 页面帮助',
+        aliases: ['h', '?', 'doc', 'docs', '帮助', '文档'],
+        action: 'gitHelp'
       }
     ]
   },

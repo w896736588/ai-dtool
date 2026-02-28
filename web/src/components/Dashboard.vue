@@ -5,14 +5,22 @@
       <div ref="messageList" class="message-list">
         <div class="welcome-message">
           <h2>开发者工具平台</h2>
-          <p class="hint">输入 <kbd>/</kbd> 快速访问功能，<kbd>Tab</kbd> 补全，<kbd>Space</kbd> 继续</p>
+          <p class="hint">输入 <kbd>/</kbd> 或直接输入命令（如 <kbd>g</kbd>），<kbd>Tab</kbd> 补全，<kbd>Space</kbd> 继续</p>
         </div>
         <div
           v-for="(msg, index) in messages"
           :key="index"
           :class="['message', msg.type]"
         >
-          <div class="message-content">{{ msg.content }}</div>
+          <template v-if="hasCommandLayout(msg)">
+            <div class="message-command">{{ msg.commandText }}</div>
+            <div v-if="msg.resultText" class="message-content">{{ msg.resultText }}</div>
+            <div v-if="msg.processText" class="process-window">
+              <div class="process-title">执行过程 (SSE)</div>
+              <pre class="process-text">{{ msg.processText }}</pre>
+            </div>
+          </template>
+          <div v-else class="message-content">{{ msg.content }}</div>
         </div>
       </div>
 
@@ -23,7 +31,7 @@
         </div>
         <div
           v-for="(cmd, index) in filteredCommands"
-          :key="cmd.command || cmd.path"
+          :key="getCommandKey(cmd, index)"
           :class="['command-item', { active: activeCommandIndex === index }]"
           @click="selectCommand(cmd)"
           @mouseenter="activeCommandIndex = index"
@@ -72,7 +80,7 @@ import sseDistribute from '@/utils/base/sse_distribute'
 import { Throttle_string } from '@/utils/base/throttle_string'
 
 export default {
-  name: 'Dashboard',
+  name: 'DashboardPage',
   setup() {
     const inputText = ref('')
     const messages = ref([])
@@ -84,9 +92,9 @@ export default {
     // 多级命令状态
     const commandStack = ref([]) // 命令栈，存储已选择的命令
     const currentChildren = ref([]) // 当前可选的子命令
-    const selectedTarget = ref(null) // 已选择的目标
     const dynamicDataCache = ref({}) // 动态数据缓存
     const isLoadingDynamic = ref(false) // 是否正在加载动态数据
+    const currentInputValue = ref('')
     
     // SSE 相关状态
     const sseDistributeId = ref('') // SSE 分发 ID
@@ -95,6 +103,92 @@ export default {
 
     // 开放的模块列表
     const openModules = module.GetOpenModuleList()
+
+    const normalizeCommandPart = (value) => {
+      if (value === null || value === undefined) return ''
+      return String(value).trim()
+    }
+
+    const getCommandKeywords = (cmd) => {
+      const aliases = Array.isArray(cmd?.aliases) ? cmd.aliases : []
+      return [
+        normalizeCommandPart(cmd?.command).toLowerCase(),
+        normalizeCommandPart(cmd?.name).toLowerCase(),
+        normalizeCommandPart(cmd?.desc).toLowerCase(),
+        ...aliases.map(alias => normalizeCommandPart(alias).toLowerCase())
+      ].filter(Boolean)
+    }
+
+    const findCommandByToken = (commands, token) => {
+      const normalizedToken = normalizeCommandPart(token).toLowerCase()
+      if (!normalizedToken) return null
+      return commands.find(cmd => {
+        const keywords = getCommandKeywords(cmd)
+        return keywords.some(keyword => keyword === normalizedToken)
+      }) || null
+    }
+
+    const getCommandKey = (cmd, index) => {
+      if (cmd && cmd.id !== undefined && cmd.id !== null && String(cmd.id) !== '') {
+        return `id:${cmd.id}`
+      }
+      if (cmd && cmd.command && cmd.path) {
+        return `cp:${cmd.command}:${cmd.path}`
+      }
+      if (cmd && cmd.command) {
+        return `c:${cmd.command}:${index}`
+      }
+      if (cmd && cmd.path) {
+        return `p:${cmd.path}:${index}`
+      }
+      return `idx:${index}`
+    }
+
+    const parseTokens = (rawText) => {
+      const text = String(rawText || '')
+      const leftTrimmed = text.trimStart()
+      const useSlash = leftTrimmed.startsWith('/')
+      const withoutSlash = useSlash ? leftTrimmed.slice(1) : leftTrimmed
+      const parts = withoutSlash.trim().length > 0
+        ? withoutSlash.trim().split(/\s+/)
+        : []
+      return { useSlash, parts }
+    }
+
+    const hasCommandLayout = (msg) => {
+      return !!(msg && (msg.commandText !== undefined || msg.resultText !== undefined || msg.processText !== undefined))
+    }
+
+    const isCommandModeByText = (rawText) => {
+      const tokenInfo = parseTokens(rawText)
+      if (tokenInfo.useSlash) return true
+      if (tokenInfo.parts.length === 0) return false
+      const first = normalizeCommandPart(tokenInfo.parts[0]).toLowerCase()
+      return availableCommands.value.some(cmd => {
+        const keywords = getCommandKeywords(cmd)
+        return keywords.some(keyword => keyword.includes(first))
+      })
+    }
+
+    const refreshCommandDropdownVisibility = () => {
+      showCommands.value = isCommandModeByText(inputText.value) && currentChildren.value.length > 0
+    }
+
+    const appendOutputResult = (text) => {
+      if (!currentOutputMessage.value) return
+      const current = String(currentOutputMessage.value.resultText || '')
+      const merged = current + String(text || '')
+      currentOutputMessage.value.resultText = merged.length > 50000 ? merged.slice(-50000) : merged
+      scrollToBottom()
+    }
+
+    const appendOutputProcess = (text) => {
+      if (!currentOutputMessage.value) return
+      const current = String(currentOutputMessage.value.processText || '')
+      const merged = current + String(text || '')
+      currentOutputMessage.value.processText = merged.length > 50000 ? merged.slice(-50000) : merged
+      scrollToBottom()
+    }
 
     // 根据模块配置过滤可用命令
     const availableCommands = computed(() => {
@@ -113,14 +207,25 @@ export default {
     // 输入框提示
     const inputPlaceholder = computed(() => {
       if (commandStack.value.length === 0) {
-        return '输入 / 快速访问功能，Tab 补全，Space 继续...'
+        return '输入 / 或直接输入命令（如 g），Tab 补全，Space 继续...'
       }
       const lastCmd = commandStack.value[commandStack.value.length - 1]
+      const actionCmd = commandStack.value.find(item => item.action)
+      if (actionCmd && actionCmd.needInput) {
+        const actionIndex = commandStack.value.findIndex(item => item.action)
+        const targetReady = !actionCmd.needTarget || !!(commandStack.value[actionIndex + 1] && commandStack.value[actionIndex + 1].data)
+        if (targetReady && !currentInputValue.value) {
+          return actionCmd.inputPlaceholder || '请输入参数...'
+        }
+      }
       if (lastCmd.needInput) {
         return lastCmd.inputPlaceholder || '请输入...'
       }
-      if (lastCmd.needTarget && !selectedTarget.value) {
+      if (lastCmd.needTarget) {
         return '选择目标...'
+      }
+      if (currentInputValue.value && lastCmd.action) {
+        return '按 Enter 执行命令'
       }
       return '继续输入或选择...'
     })
@@ -128,48 +233,63 @@ export default {
     // 过滤后的命令列表
     const filteredCommands = computed(() => {
       let commands = currentChildren.value.length > 0 
-        ? currentChildren.value 
-        : availableCommands.value
+        ? currentChildren.value
+        : (commandStack.value.length === 0 ? availableCommands.value : [])
       
       // 获取当前输入的搜索文本
-      const parts = inputText.value.split(' ')
-      const searchText = parts[parts.length - 1].toLowerCase().replace('/', '')
+      const tokenInfo = parseTokens(inputText.value)
+      const parts = tokenInfo.parts
+      const rawSearchText = parts.length > 0
+        ? normalizeCommandPart(parts[parts.length - 1]).toLowerCase().replace('/', '')
+        : ''
+      let searchText = rawSearchText
+
+      // 场景：已完整输入动作词（如 git checkout），当前候选已切到“目标列表”
+      // 这时不应再用动作词过滤目标，否则会把项目列表全部过滤为空。
+      if (commandStack.value.length > 0 && commands.length > 0) {
+        const lastCmd = commandStack.value[commandStack.value.length - 1]
+        const hasTrailingSpace = /\s$/.test(String(inputText.value || ''))
+        if (!hasTrailingSpace && lastCmd?.needTarget) {
+          const lastCmdKeywords = getCommandKeywords(lastCmd)
+          if (lastCmdKeywords.some(keyword => keyword === rawSearchText)) {
+            searchText = ''
+          }
+        }
+      }
       
       if (!searchText) {
         return commands
       }
       
-      return commands.filter(cmd =>
-        cmd.name.toLowerCase().includes(searchText) ||
-        cmd.command?.toLowerCase().includes(searchText) ||
-        cmd.desc?.toLowerCase().includes(searchText)
-      )
+      return commands.filter(cmd => {
+        const keywords = getCommandKeywords(cmd)
+        return keywords.some(keyword => keyword.includes(searchText))
+      })
     })
 
     // 解析输入文本，获取当前命令层级
     const parseInput = () => {
-      if (!inputText.value.startsWith('/')) {
+      if (!isCommandModeByText(inputText.value)) {
         commandStack.value = []
         currentChildren.value = []
-        selectedTarget.value = null
+        currentInputValue.value = ''
+        showCommands.value = false
         return
       }
 
-      const parts = inputText.value.slice(1).split(' ').filter(p => p)
+      const tokenInfo = parseTokens(inputText.value)
+      const parts = tokenInfo.parts
       
       // 重置状态
       commandStack.value = []
       currentChildren.value = []
-      selectedTarget.value = null
+      currentInputValue.value = ''
       
       let currentLevel = availableCommands.value
       
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i].toLowerCase()
-        const found = currentLevel.find(cmd => 
-          cmd.command?.toLowerCase() === part ||
-          cmd.name?.toLowerCase() === part
-        )
+        const found = findCommandByToken(currentLevel, part)
         
         if (found) {
           commandStack.value.push(found)
@@ -178,25 +298,40 @@ export default {
           if (found.children && found.children.length > 0) {
             currentLevel = found.children
             currentChildren.value = found.children
-          } 
+            continue
+          }
           // 如果需要动态子命令
-          else if (found.dynamicChildren) {
-            loadDynamicChildren(found.dynamicChildren, found)
+          if (found.dynamicChildren) {
+            loadDynamicChildren(found.dynamicChildren)
+            const dynamicList = dynamicDataCache.value[found.dynamicChildren] || []
+            currentChildren.value = dynamicList
+            const targetToken = parts[i + 1]
+            if (targetToken) {
+              const targetFound = findCommandByToken(dynamicList, targetToken)
+              if (targetFound) {
+                commandStack.value.push(targetFound)
+                i += 1
+                currentChildren.value = []
+                if (found.needInput) {
+                  currentInputValue.value = parts.slice(i + 1).join(' ')
+                }
+              } else if (found.needInput && parts.length > i + 1) {
+                currentInputValue.value = parts.slice(i + 1).join(' ')
+              }
+            }
             break
           }
           // 如果需要选择目标
-          else if (found.needTarget && !selectedTarget.value) {
-            // 目标选择模式，等待选择
+          if (found.needTarget) {
             break
           }
           // 如果需要输入
-          else if (found.needInput) {
+          if (found.needInput) {
+            currentInputValue.value = parts.slice(i + 1).join(' ')
             break
           }
-          else {
-            currentChildren.value = []
-            break
-          }
+          currentChildren.value = []
+          break
         } else {
           // 没找到，可能是目标选择或输入
           if (commandStack.value.length > 0) {
@@ -208,16 +343,28 @@ export default {
                 currentChildren.value = dynamicDataCache.value[dynamicKey]
               }
             }
+            if (lastCmd.needInput) {
+              currentInputValue.value = parts.slice(i).join(' ')
+            }
           }
           break
         }
       }
+
+      if (parts.length === 0) {
+        currentChildren.value = availableCommands.value
+      }
+      if (commandStack.value.length === 0 && parts.length > 0) {
+        currentChildren.value = availableCommands.value
+      }
+      showCommands.value = currentChildren.value.length > 0
     }
 
     // 加载动态子命令
-    const loadDynamicChildren = (type, parentCmd) => {
-      if (dynamicDataCache.value[type]) {
+    const loadDynamicChildren = (type) => {
+      if (type !== 'gitProjectList' && dynamicDataCache.value[type]) {
         currentChildren.value = dynamicDataCache.value[type]
+        refreshCommandDropdownVisibility()
         return
       }
       
@@ -330,15 +477,38 @@ export default {
       git.GitConfigList({}, (response) => {
         isLoadingDynamic.value = false
         if (response.ErrCode === 0) {
-          const list = response.Data.git_list.map(item => ({
-            command: item.name,
-            name: item.name,
-            desc: item.path || '',
-            id: item.id,
-            data: item
-          }))
+          const groupMap = {}
+          if (Array.isArray(response.Data.git_group_list)) {
+            response.Data.git_group_list.forEach(group => {
+              groupMap[group.id] = group.name
+            })
+          }
+          const seen = new Set()
+          const list = []
+          const gitList = Array.isArray(response.Data.git_list) ? response.Data.git_list : []
+          gitList.forEach(item => {
+            const itemId = normalizeCommandPart(item.id)
+            const dedupeKey = itemId || [
+              normalizeCommandPart(item.name),
+              normalizeCommandPart(item.path || item.code_path),
+              normalizeCommandPart(item.ssh_id)
+            ].join('::')
+            if (seen.has(dedupeKey)) {
+              return
+            }
+            seen.add(dedupeKey)
+            list.push({
+              command: item.name,
+              name: item.name,
+              aliases: [item.path || '', item.code_path || ''].filter(Boolean),
+              desc: `${groupMap[item.git_group_id] || '未分组'} ${item.path || item.code_path || ''}`.trim(),
+              id: item.id,
+              data: item
+            })
+          })
           dynamicDataCache.value['gitProjectList'] = list
           currentChildren.value = list
+          refreshCommandDropdownVisibility()
         }
       })
     }
@@ -400,21 +570,20 @@ export default {
 
     // 处理输入
     const handleInput = () => {
-      if (inputText.value.startsWith('/')) {
-        showCommands.value = true
-        activeCommandIndex.value = 0
+      if (isCommandModeByText(inputText.value)) {
         parseInput()
+        activeCommandIndex.value = 0
       } else {
         showCommands.value = false
         commandStack.value = []
         currentChildren.value = []
+        currentInputValue.value = ''
       }
     }
 
     // 处理焦点
     const handleFocus = () => {
-      if (inputText.value.startsWith('/')) {
-        showCommands.value = true
+      if (isCommandModeByText(inputText.value)) {
         parseInput()
       }
     }
@@ -455,6 +624,20 @@ export default {
           break
         case 'Enter':
           e.preventDefault()
+          parseInput()
+          {
+            const actionCmd = commandStack.value.find(item => item.action)
+            if (actionCmd) {
+              const actionIndex = commandStack.value.findIndex(item => item.action)
+              const targetCmd = actionCmd.needTarget ? commandStack.value[actionIndex + 1] : null
+              const targetReady = !actionCmd.needTarget || !!(targetCmd && targetCmd.data)
+              const inputReady = !actionCmd.needInput || !!normalizeCommandPart(currentInputValue.value)
+              if (targetReady && inputReady) {
+                executeCommand()
+                break
+              }
+            }
+          }
           if (filteredCommands.value[activeCommandIndex.value]) {
             selectCommand(filteredCommands.value[activeCommandIndex.value])
           } else {
@@ -470,11 +653,13 @@ export default {
           }
           break
         case 'Backspace':
-          // 如果输入为空且有命令栈，退回上一级
-          const parts = inputText.value.split(' ')
-          if (parts[parts.length - 1] === '' && commandStack.value.length > 0) {
-            e.preventDefault()
-            goBackCommand()
+          {
+            // 如果输入为空且有命令栈，退回上一级
+            const parts = inputText.value.split(' ')
+            if (parts[parts.length - 1] === '' && commandStack.value.length > 0) {
+              e.preventDefault()
+              goBackCommand()
+            }
           }
           break
       }
@@ -485,14 +670,16 @@ export default {
       if (commandStack.value.length === 0) return
       
       commandStack.value.pop()
-      selectedTarget.value = null
+      currentInputValue.value = ''
       
       // 重新构建输入文本
-      const prefix = '/' + commandStack.value.map(c => c.command).join(' ')
-      if (prefix.length > 1) {
-        inputText.value = prefix + ' '
+      const tokenInfo = parseTokens(inputText.value)
+      const prefix = tokenInfo.useSlash ? '/' : ''
+      const commandText = commandStack.value.map(c => c.command).join(' ')
+      if (commandText.length > 0) {
+        inputText.value = prefix + commandText + ' '
       } else {
-        inputText.value = '/'
+        inputText.value = prefix
       }
       
       // 重新解析
@@ -501,9 +688,6 @@ export default {
 
     // 选择命令
     const selectCommand = (cmd) => {
-      console.log('selectCommand called:', cmd)
-      console.log('commandStack before push:', JSON.stringify(commandStack.value.map(c => c.name || c.command)))
-      
       // 构建新的输入文本
       const parts = inputText.value.split(' ')
       parts[parts.length - 1] = cmd.command || cmd.name
@@ -512,19 +696,19 @@ export default {
       const parentCmd = commandStack.value.length > 0 
         ? commandStack.value[commandStack.value.length - 1] 
         : null
-      
-      console.log('parentCmd:', parentCmd ? parentCmd.name || parentCmd.command : null)
-      
+
       // 添加到命令栈
       commandStack.value.push(cmd)
       
       // 更新输入文本
-      inputText.value = '/' + commandStack.value.map(c => c.command || c.name).join(' ') + ' '
+      const tokenInfo = parseTokens(inputText.value)
+      const prefix = tokenInfo.useSlash ? '/' : ''
+      inputText.value = prefix + commandStack.value.map(c => c.command || c.name).join(' ') + ' '
       
       // 检查父命令是否有 nextDynamicChildren（用于快速重启/停止等二级选择）
       if (parentCmd && parentCmd.nextDynamicChildren) {
         // 加载下一级动态数据
-        loadDynamicChildren(parentCmd.nextDynamicChildren, cmd)
+        loadDynamicChildren(parentCmd.nextDynamicChildren)
         activeCommandIndex.value = 0
         return
       }
@@ -539,7 +723,7 @@ export default {
       
       if (cmd.dynamicChildren) {
         // 需要加载动态数据
-        loadDynamicChildren(cmd.dynamicChildren, cmd)
+        loadDynamicChildren(cmd.dynamicChildren)
         activeCommandIndex.value = 0
         return
       }
@@ -558,20 +742,34 @@ export default {
       
       if (cmd.action) {
         // 有动作，执行动作
-        console.log('executing action:', cmd.action)
         executeAction(cmd)
         return
       }
       
       // 选择的是目标（项目/环境等），检查父命令是否有 action
       if (cmd.data && parentCmd && parentCmd.action) {
-        console.log('executing parent action:', parentCmd.action)
+        if (parentCmd.needInput) {
+          showCommands.value = false
+          return
+        }
         executeAction(parentCmd)
         return
       }
+
+      // 兼容命令栈层级异常时的目标执行：回溯最近 action 命令
+      if (cmd.data) {
+        const nearestAction = [...commandStack.value].reverse().find(item => item.action)
+        if (nearestAction) {
+          if (nearestAction.needInput) {
+            showCommands.value = false
+            return
+          }
+          executeAction(nearestAction)
+          return
+        }
+      }
       
       // 没有可执行的操作，提示用户
-      console.log('no action found, showing message')
       messages.value.push({
         type: 'system',
         content: `命令 "${cmd.name}" 暂不支持快捷操作\n`
@@ -580,6 +778,7 @@ export default {
       showCommands.value = false
       commandStack.value = []
       currentChildren.value = []
+      currentInputValue.value = ''
       scrollToBottom()
     }
 
@@ -587,13 +786,40 @@ export default {
     const executeCommand = () => {
       if (!inputText.value.trim()) return
 
+      if (isCommandModeByText(inputText.value)) {
+        parseInput()
+      }
+
       // 如果有命令栈，执行最后一个命令
       if (commandStack.value.length > 0) {
-        const lastCmd = commandStack.value[commandStack.value.length - 1]
-        if (lastCmd.action) {
-          executeAction(lastCmd)
+        const actionCmd = commandStack.value.find(item => item.action)
+        if (actionCmd) {
+          const actionIndex = commandStack.value.findIndex(item => item.action)
+          const targetCmd = actionCmd.needTarget ? commandStack.value[actionIndex + 1] : null
+          if (actionCmd.needTarget && !(targetCmd && targetCmd.data)) {
+            messages.value.push({
+              type: 'system',
+              content: '命令未完成：请先选择项目/环境\n'
+            })
+            scrollToBottom()
+            return
+          }
+          if (actionCmd.needInput) {
+            const branchName = normalizeCommandPart(currentInputValue.value)
+            if (!branchName) {
+              messages.value.push({
+                type: 'system',
+                content: `命令未完成：${actionCmd.inputPlaceholder || '请输入参数'}\n`
+              })
+              scrollToBottom()
+              return
+            }
+          }
+          executeAction(actionCmd, { inputValue: currentInputValue.value })
           return
         }
+
+        const lastCmd = commandStack.value[commandStack.value.length - 1]
         // 没有可执行的动作
         messages.value.push({
           type: 'system',
@@ -603,6 +829,7 @@ export default {
         showCommands.value = false
         commandStack.value = []
         currentChildren.value = []
+        currentInputValue.value = ''
         scrollToBottom()
         return
       }
@@ -616,7 +843,7 @@ export default {
       setTimeout(() => {
         messages.value.push({
           type: 'system',
-          content: `未知命令，请使用 / 开头访问快捷操作`
+          content: `未知命令，请使用 / 或直接输入命令关键字访问快捷操作`
         })
         scrollToBottom()
       }, 300)
@@ -625,11 +852,12 @@ export default {
       showCommands.value = false
       commandStack.value = []
       currentChildren.value = []
+      currentInputValue.value = ''
       scrollToBottom()
     }
 
     // 执行动作
-    const executeAction = (cmd) => {
+    const executeAction = (cmd, options = {}) => {
       if (isExecuting.value) {
         messages.value.push({
           type: 'system',
@@ -641,7 +869,9 @@ export default {
       // 创建输出消息
       const outputMsg = {
         type: 'system',
-        content: `执行操作: ${cmd.name}\n\n`
+        commandText: `执行操作: ${cmd.name}`,
+        resultText: '',
+        processText: ''
       }
       messages.value.push(outputMsg)
       currentOutputMessage.value = outputMsg
@@ -653,38 +883,56 @@ export default {
       const currentStack = [...commandStack.value]
       commandStack.value = []
       currentChildren.value = []
+      currentInputValue.value = ''
       scrollToBottom()
       
       // 根据 action 执行具体操作
       switch (cmd.action) {
         case 'gitPull':
-          executeGitAction('pull', cmd, currentStack)
+          executeGitAction('pull', currentStack, options.inputValue || '')
           break
         case 'gitStatus':
-          executeGitAction('status', cmd, currentStack)
+          executeGitAction('status', currentStack, options.inputValue || '')
           break
         case 'gitBranch':
-          executeGitAction('branch', cmd, currentStack)
+          executeGitAction('branch', currentStack, options.inputValue || '')
           break
         case 'gitLog':
-          executeGitAction('log', cmd, currentStack)
+          executeGitAction('log', currentStack, options.inputValue || '')
           break
         case 'gitCheckout':
-          executeGitAction('checkout', cmd, currentStack)
+          executeGitAction('checkout', currentStack, options.inputValue || '')
+          break
+        case 'gitCheckoutRemote':
+          executeGitAction('checkoutRemote', currentStack, options.inputValue || '')
+          break
+        case 'gitSaveCredentials':
+          executeGitAction('saveCredentials', currentStack, options.inputValue || '')
+          break
+        case 'gitSetSafe':
+          executeGitAction('setSafe', currentStack, options.inputValue || '')
+          break
+        case 'gitViewConfig':
+          appendOutputResult('已禁用页面跳转，请仅使用命令快捷操作。\n')
+          finishExecution()
+          break
+        case 'gitHelp':
+          appendOutputResult('已禁用页面跳转，请仅使用命令快捷操作。\n')
+          finishExecution()
           break
         default:
           // 未实现的操作
-          currentOutputMessage.value.content += '该操作暂未实现\n'
+          appendOutputResult('该操作暂未实现\n')
           finishExecution()
       }
     }
     
     // 执行 Git 相关操作
-    const executeGitAction = (action, cmd, stack) => {
+    const executeGitAction = (action, stack, inputValue) => {
       // 获取选中的 git 项目配置
       const projectCmd = stack.find(c => c.data && c.data.id)
       if (!projectCmd || !projectCmd.data) {
-        currentOutputMessage.value.content += '错误：未找到 Git 项目配置\n'
+        appendOutputResult('错误：未找到 Git 项目配置\n')
         finishExecution()
         return
       }
@@ -695,11 +943,7 @@ export default {
       // 注册当前操作的 SSE 回调
       const throttleStringFunc = new Throttle_string(50, (text) => {
         if (currentOutputMessage.value) {
-          currentOutputMessage.value.content += text
-          if (currentOutputMessage.value.content.length > 50000) {
-            currentOutputMessage.value.content = currentOutputMessage.value.content.slice(-50000)
-          }
-          scrollToBottom()
+          appendOutputProcess(text)
         }
       })
       
@@ -714,47 +958,74 @@ export default {
       
       // 处理 HTTP 响应的回调
       const callback = (response) => {
-        // 取消注册 SSE 回调
-        sseDistribute.UnRegisterReceive(newSseDistributeId)
-        
         if (response.ErrCode !== 0) {
-          currentOutputMessage.value.content += `错误: ${response.ErrMsg || '未知错误'}\n`
+          appendOutputResult(`错误: ${response.ErrMsg || '未知错误'}\n`)
         } else if (response.Data) {
           // 显示返回的数据
-          currentOutputMessage.value.content += response.Data
+          if (typeof response.Data === 'string') {
+            appendOutputResult(response.Data)
+          } else {
+            appendOutputResult(`${JSON.stringify(response.Data, null, 2)}\n`)
+          }
+        } else {
+          appendOutputResult('执行成功\n')
         }
         setTimeout(() => {
+          // 给 SSE 尾包一点时间，避免过程/结果末尾被截断
+          sseDistribute.UnRegisterReceive(newSseDistributeId)
           finishExecution()
-        }, 500)
+        }, 1200)
       }
       
       switch (action) {
         case 'pull':
-          currentOutputMessage.value.content += '正在拉取代码...\n\n'
+          appendOutputResult('正在拉取代码...\n\n')
           git.GitPullBranchOrigin(gitConfig, callback)
           break
         case 'status':
-          currentOutputMessage.value.content += '正在查询状态...\n\n'
+          appendOutputResult('正在查询状态...\n\n')
           git.GitQueryStatus(gitConfig, callback)
           break
         case 'branch':
-          currentOutputMessage.value.content += '正在查询分支...\n\n'
+          appendOutputResult('正在查询分支...\n\n')
           git.GitCurrentBranch(gitConfig, callback)
           break
         case 'log':
-          currentOutputMessage.value.content += '正在查询日志...\n\n'
+          appendOutputResult('正在查询日志...\n\n')
           git.GitCommitLog(gitConfig, callback)
           break
         case 'checkout':
-          // 需要分支名
-          const branchName = stack.find(c => c.needInput)?.inputValue || ''
-          if (!branchName) {
-            currentOutputMessage.value.content += '错误：请输入分支名\n'
-            finishExecution()
-            return
+          {
+            // 需要分支名
+            const branchName = normalizeCommandPart(inputValue)
+            if (!branchName) {
+              appendOutputResult('错误：请输入分支名\n')
+              finishExecution()
+              return
+            }
+            appendOutputResult(`正在切换到分支 ${branchName}...\n\n`)
+            git.GitChangeBranch(gitConfig, branchName, callback)
           }
-          currentOutputMessage.value.content += `正在切换到分支 ${branchName}...\n\n`
-          git.GitChangeBranch(gitConfig, branchName, callback)
+          break
+        case 'checkoutRemote':
+          {
+            const branchNameRemote = normalizeCommandPart(inputValue)
+            if (!branchNameRemote) {
+              appendOutputResult('错误：请输入远程分支名\n')
+              finishExecution()
+              return
+            }
+            appendOutputResult(`正在关联并切换远程分支 ${branchNameRemote}...\n\n`)
+            git.GitChangeBranchRemote(gitConfig, branchNameRemote, callback)
+          }
+          break
+        case 'saveCredentials':
+          appendOutputResult('正在保存账号密码配置...\n\n')
+          git.GitSaveCredentials(gitConfig, callback)
+          break
+        case 'setSafe':
+          appendOutputResult('正在设置目录安全...\n\n')
+          git.SetSafe(gitConfig, callback)
           break
         default:
           sseDistribute.UnRegisterReceive(newSseDistributeId)
@@ -766,7 +1037,7 @@ export default {
     const finishExecution = () => {
       isExecuting.value = false
       if (currentOutputMessage.value) {
-        currentOutputMessage.value.content += '\n[完成]\n'
+        appendOutputResult('\n[完成]\n')
       }
       currentOutputMessage.value = null
       scrollToBottom()
@@ -776,7 +1047,14 @@ export default {
     const scrollToBottom = () => {
       nextTick(() => {
         if (messageList.value) {
-          messageList.value.scrollTop = messageList.value.scrollHeight
+          requestAnimationFrame(() => {
+            messageList.value.scrollTop = messageList.value.scrollHeight
+            const processTextList = messageList.value.querySelectorAll('.process-text')
+            if (processTextList && processTextList.length > 0) {
+              const latestProcessText = processTextList[processTextList.length - 1]
+              latestProcessText.scrollTop = latestProcessText.scrollHeight
+            }
+          })
         }
       })
     }
@@ -804,12 +1082,7 @@ export default {
       // 注册消息回调（用于通用的 dashboard 消息）
       const throttleStringFunc = new Throttle_string(50, (text) => {
         if (currentOutputMessage.value) {
-          currentOutputMessage.value.content += text
-          // 限制最大长度
-          if (currentOutputMessage.value.content.length > 50000) {
-            currentOutputMessage.value.content = currentOutputMessage.value.content.slice(-50000)
-          }
-          scrollToBottom()
+          appendOutputProcess(text)
         }
       })
       
@@ -844,6 +1117,8 @@ export default {
       handleBlur,
       selectCommand,
       executeCommand,
+      getCommandKey,
+      hasCommandLayout,
     }
   }
 }
@@ -931,10 +1206,48 @@ export default {
   align-self: flex-start;
 }
 
+.message-command {
+  font-size: 13px;
+  color: #5a8a5a;
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+
 .message-content {
   padding: 12px 16px;
   border-radius: 12px;
   line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.process-window {
+  margin-top: 8px;
+  border: 1px solid #d9d9cf;
+  border-radius: 10px;
+  background: #1f1f1b;
+  color: #d8e0d2;
+  overflow: hidden;
+}
+
+.process-title {
+  font-size: 12px;
+  color: #cdd5c8;
+  background: #2a2a25;
+  padding: 6px 10px;
+  border-bottom: 1px solid #3a3a34;
+}
+
+.process-text {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.45;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
 }
 
 .message.user .message-content {
