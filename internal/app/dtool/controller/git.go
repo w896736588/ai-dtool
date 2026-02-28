@@ -10,7 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
@@ -37,15 +39,12 @@ func GitCurrentBranch(c *gin.Context) {
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
 		return
 	}
-	command := p_shell.NewCommand()
-	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
-	command.Cd(codePath)
-	command.Echo(`当前分支：`)
-	command.GitShowBranch()
-	command.Echo(`远程分支：`)
-	command.GitShowOriginBranch()
-	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
-	gsgin.GinResponseSuccess(c, ``, result)
+	result, runErr := queryCurrentBranchInfo(sshClient, codePath, 40*time.Second)
+	if runErr != nil {
+		gsgin.GinResponseError(c, runErr.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, result.RawOutput)
 }
 
 // GitChangeBranch 切换分支
@@ -246,6 +245,224 @@ func GitConfigList(c *gin.Context) {
 		`git_group_list`: gitGroupList,
 		`git_list`:       gitList,
 	})
+}
+
+func GitGroupBranchList(c *gin.Context) {
+	reqMap := make(map[string]interface{})
+	if err := gsgin.GinPostBody(c, &reqMap); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gitGroupId := cast.ToString(reqMap[`git_group_id`])
+	if gitGroupId == `` {
+		gsgin.GinResponseError(c, `缺少git_group_id参数`, nil)
+		return
+	}
+
+	groupInfo, _ := common.DbMain.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
+		`type`: define.GroupTypeGit,
+		`id`:   gitGroupId,
+	}).One()
+	if len(groupInfo) == 0 {
+		gsgin.GinResponseError(c, `未找到对应Git分组`, nil)
+		return
+	}
+
+	gitList, _ := common.DbMain.Client.QuickQuery(`tbl_git`, `*`, map[string]any{
+		`git_group_id`: gitGroupId,
+	}).All()
+	if len(gitList) == 0 {
+		gsgin.GinResponseSuccess(c, ``, map[string]any{
+			`git_group_id`: gitGroupId,
+			`group_name`:   cast.ToString(groupInfo[`name`]),
+			`list`:         []map[string]any{},
+			`summary_text`: fmt.Sprintf("Git分组 [%s] 下暂无项目\n", cast.ToString(groupInfo[`name`])),
+		})
+		return
+	}
+
+	sseDistributeId := cast.ToString(reqMap[`sse_distribute_id`])
+	sse := &p_sse.SseShell{
+		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
+		SseDistributeId: sseDistributeId,
+	}
+
+	writeSummary := func(msg string) {
+		if sse != nil && sse.Sse != nil {
+			sse.Send(msg)
+		}
+	}
+
+	writeSummary(fmt.Sprintf("开始并发查询分组 [%s] 下 %d 个项目（每项最多5秒）...\n", cast.ToString(groupInfo[`name`]), len(gitList)))
+
+	type gitItemResult struct {
+		Index int
+		Data  map[string]any
+		Line  string
+	}
+
+	resultChan := make(chan gitItemResult, len(gitList))
+	var wg sync.WaitGroup
+	semaphore := make(chan struct{}, 8)
+
+	for idx, gitConfig := range gitList {
+		wg.Add(1)
+		go func(i int, item map[string]any) {
+			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			itemName := cast.ToString(item[`name`])
+			itemPath := cast.ToString(item[`code_path`])
+			sshId := cast.ToString(item[`ssh_id`])
+			itemResult := map[string]any{
+				`id`:            cast.ToString(item[`id`]),
+				`name`:          itemName,
+				`code_path`:     itemPath,
+				`ssh_id`:        sshId,
+				`local_branch`:  `N/A`,
+				`remote_branch`: `N/A`,
+				`ok`:            false,
+				`error`:         ``,
+			}
+
+			if itemPath == `` || sshId == `` {
+				itemResult[`error`] = `缺少 code_path 或 ssh_id 配置`
+				resultChan <- gitItemResult{Index: i, Data: itemResult, Line: fmt.Sprintf("%s | %s | 失败: %s", itemName, itemPath, itemResult[`error`])}
+				return
+			}
+
+			sshConfig, sshErr := common.DbMain.GetSshConfig(sshId)
+			if sshErr != nil || len(sshConfig) == 0 {
+				itemResult[`error`] = `SSH配置不存在`
+				resultChan <- gitItemResult{Index: i, Data: itemResult, Line: fmt.Sprintf("%s | %s | 失败: %s", itemName, itemPath, itemResult[`error`])}
+				return
+			}
+
+			uniqueKey := p_common.TBaseClient.GetCombineKey(
+				sshId,
+				`group_branch_`+gitGroupId+`_`+cast.ToString(item[`id`])+`_`+cast.ToString(time.Now().UnixNano()),
+			)
+			sshClient, clientErr := component.ShellClient.GetClient(sshConfig, uniqueKey, sse, func(s string) []string {
+				return []string{p_common.TBaseClient.FilterTerminalChars(s)}
+			}, nil, nil)
+			if clientErr != nil {
+				itemResult[`error`] = clientErr.Error()
+				resultChan <- gitItemResult{Index: i, Data: itemResult, Line: fmt.Sprintf("%s | %s | 失败: %s", itemName, itemPath, itemResult[`error`])}
+				return
+			}
+
+			branchInfo, queryErr := queryCurrentBranchInfo(sshClient, itemPath, 5*time.Second)
+			if queryErr != nil {
+				itemResult[`error`] = queryErr.Error()
+				resultChan <- gitItemResult{Index: i, Data: itemResult, Line: fmt.Sprintf("%s | %s | 失败: %s", itemName, itemPath, itemResult[`error`])}
+				return
+			}
+
+			itemResult[`local_branch`] = branchInfo.LocalBranch
+			itemResult[`remote_branch`] = branchInfo.RemoteBranch
+			itemResult[`ok`] = true
+			resultChan <- gitItemResult{
+				Index: i,
+				Data:  itemResult,
+				Line:  fmt.Sprintf("%s | %s | 当前:%s | 远程:%s", itemName, itemPath, branchInfo.LocalBranch, branchInfo.RemoteBranch),
+			}
+		}(idx, gitConfig)
+	}
+
+	wg.Wait()
+	close(resultChan)
+
+	collected := make([]gitItemResult, 0, len(gitList))
+	for item := range resultChan {
+		collected = append(collected, item)
+	}
+	sort.Slice(collected, func(i, j int) bool {
+		return collected[i].Index < collected[j].Index
+	})
+
+	resultList := make([]map[string]any, 0, len(collected))
+	summaryLines := make([]string, 0, len(collected)+2)
+	summaryLines = append(summaryLines, fmt.Sprintf("Git分组 [%s] 分支总览（每行一个项目）", cast.ToString(groupInfo[`name`])))
+	summaryLines = append(summaryLines, "名称 | 路径 | 当前分支 | 远程分支/错误")
+	for _, item := range collected {
+		resultList = append(resultList, item.Data)
+		summaryLines = append(summaryLines, item.Line)
+	}
+	summaryText := strings.Join(summaryLines, "\n")
+	writeSummary("\n" + summaryText)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`git_group_id`:  gitGroupId,
+		`group_name`:    cast.ToString(groupInfo[`name`]),
+		`list`:          resultList,
+		`summary_lines`: summaryLines,
+		`summary_text`:  summaryText,
+	})
+}
+
+type GitCurrentBranchInfo struct {
+	LocalBranch  string
+	RemoteBranch string
+	RawOutput    string
+}
+
+func queryCurrentBranchInfo(sshClient *gsssh.SshTerminal, codePath string, timeout time.Duration) (*GitCurrentBranchInfo, error) {
+	command := p_shell.NewCommand()
+	command.Cd(codePath)
+	command.Echo(`当前分支：`)
+	command.GitShowBranch()
+	command.Echo(`远程分支：`)
+	command.GitShowOriginBranch()
+	output, err := sshClient.RunCommandWait(command.GetCommand().ToStr(), timeout)
+	if err != nil {
+		return nil, err
+	}
+	localBranch, remoteBranch := parseBranchFromCurrentBranchOutput(output)
+	if localBranch == `` {
+		localBranch = `N/A`
+	}
+	if remoteBranch == `` {
+		remoteBranch = `N/A`
+	}
+	return &GitCurrentBranchInfo{
+		LocalBranch:  localBranch,
+		RemoteBranch: remoteBranch,
+		RawOutput:    output,
+	}, nil
+}
+
+func parseBranchFromCurrentBranchOutput(output string) (string, string) {
+	text := p_common.TBaseClient.FilterTerminalChars(output)
+	lines := strings.Split(text, "\n")
+	localBranch := ``
+	remoteBranch := ``
+
+	findNextValue := func(start int) string {
+		for i := start; i < len(lines); i++ {
+			line := strings.TrimSpace(lines[i])
+			if line == `` {
+				continue
+			}
+			if strings.Contains(line, `当前分支：`) || strings.Contains(line, `远程分支：`) {
+				continue
+			}
+			return line
+		}
+		return ``
+	}
+
+	for idx, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, `当前分支：`) && localBranch == `` {
+			localBranch = findNextValue(idx + 1)
+			continue
+		}
+		if strings.Contains(trimmed, `远程分支：`) && remoteBranch == `` {
+			remoteBranch = findNextValue(idx + 1)
+			continue
+		}
+	}
+	return localBranch, remoteBranch
 }
 
 func CreateMerge(c *gin.Context) {

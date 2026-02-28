@@ -67,6 +67,10 @@ function GitCommitLog(gitConfig , callBack) {
     base.BasePost('/api/GitCommitLog', gitConfig, callBack)
 }
 
+function GitGroupBranchList(data, callBack) {
+    base.BasePost('/api/GitGroupBranchList', data, callBack)
+}
+
 export default {
     GitCurrentBranch,
     GitPullBranchOrigin,
@@ -81,4 +85,5 @@ export default {
     GitChangeBranchRemote,
     SetSafe,
     GitSaveCredentials,
+    GitGroupBranchList,
 }

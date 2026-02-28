@@ -138,6 +138,7 @@ func gitRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/GitQueryStatus`, controller.QueryStatus)                  //查询分支本地状态
 	tGin.GinPost(`/api/GitCommitLog`, controller.GitCommitLog)                   //查询提交日志
 	tGin.GinPost(`/api/GitConfigList`, controller.GitConfigList)                 //git配置
+	tGin.GinPost(`/api/GitGroupBranchList`, controller.GitGroupBranchList)       //查询某个git组下所有项目分支
 	tGin.GinPost(`/api/CreateMerge`, controller.CreateMerge)                     //创建合并请求
 	tGin.GinPost(`/api/GitSetSafeLog`, controller.GitSetSafeLog)                 //设置项目安全
 	tGin.GinPost(`/api/GitSaveCredentials`, controller.GitSaveCredentials)       //保存git记住密码账号

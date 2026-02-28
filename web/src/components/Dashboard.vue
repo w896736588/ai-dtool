@@ -38,7 +38,12 @@
         >
           <span class="command-icon">{{ cmd.icon }}</span>
           <span class="command-name">{{ cmd.name }}</span>
-          <span class="command-desc">{{ cmd.desc }}</span>
+          <div class="command-meta">
+            <span class="command-desc">{{ cmd.desc }}</span>
+            <span v-if="getCommandMatchHint(cmd)" class="command-match-hint">
+              匹配: {{ getCommandMatchHint(cmd) }}
+            </span>
+          </div>
           <span v-if="cmd.children || cmd.needTarget" class="command-arrow">→</span>
         </div>
       </div>
@@ -46,18 +51,25 @@
       <!-- 输入区域 -->
       <div class="input-container">
         <div class="input-wrapper">
-          <input
-            ref="inputRef"
-            v-model="inputText"
-            type="text"
-            class="chat-input"
-            :placeholder="inputPlaceholder"
-            @input="handleInput"
-            @keydown="handleKeydown"
-            @blur="handleBlur"
-            @focus="handleFocus"
-          />
-          <button class="send-btn" @click="executeCommand">
+          <div class="input-overlay-box">
+            <div
+              v-if="inputText"
+              class="input-highlight-layer"
+              v-html="highlightedInputHtml"
+            ></div>
+            <input
+              ref="inputRef"
+              v-model="inputText"
+              type="text"
+              :class="['chat-input', { 'chat-input-overlay': !!inputText }]"
+              :placeholder="inputPlaceholder"
+              @input="handleInput"
+              @keydown="handleKeydown"
+              @blur="handleBlur"
+              @focus="handleFocus"
+            />
+          </div>
+          <button class="send-btn" :disabled="!canExecuteCommand" @click="executeCommand">
             <span class="send-icon">→</span>
           </button>
         </div>
@@ -119,6 +131,15 @@ export default {
       ].filter(Boolean)
     }
 
+    const getCommandMatchHint = (cmd) => {
+      const aliases = Array.isArray(cmd?.aliases) ? cmd.aliases : []
+      const tokens = [cmd?.command, ...aliases]
+        .map(v => normalizeCommandPart(v).toLowerCase())
+        .filter(v => /^[a-z][a-z0-9-]*$/.test(v))
+      if (tokens.length === 0) return ''
+      return [...new Set(tokens)].join(', ')
+    }
+
     const findCommandByToken = (commands, token) => {
       const normalizedToken = normalizeCommandPart(token).toLowerCase()
       if (!normalizedToken) return null
@@ -153,6 +174,13 @@ export default {
         ? withoutSlash.trim().split(/\s+/)
         : []
       return { useSlash, parts }
+    }
+
+    const escapeHtml = (value) => {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
     }
 
     const hasCommandLayout = (msg) => {
@@ -239,16 +267,16 @@ export default {
       // 获取当前输入的搜索文本
       const tokenInfo = parseTokens(inputText.value)
       const parts = tokenInfo.parts
+      const hasTrailingSpace = /\s$/.test(String(inputText.value || ''))
       const rawSearchText = parts.length > 0
         ? normalizeCommandPart(parts[parts.length - 1]).toLowerCase().replace('/', '')
         : ''
-      let searchText = rawSearchText
+      let searchText = hasTrailingSpace ? '' : rawSearchText
 
       // 场景：已完整输入动作词（如 git checkout），当前候选已切到“目标列表”
       // 这时不应再用动作词过滤目标，否则会把项目列表全部过滤为空。
       if (commandStack.value.length > 0 && commands.length > 0) {
         const lastCmd = commandStack.value[commandStack.value.length - 1]
-        const hasTrailingSpace = /\s$/.test(String(inputText.value || ''))
         if (!hasTrailingSpace && lastCmd?.needTarget) {
           const lastCmdKeywords = getCommandKeywords(lastCmd)
           if (lastCmdKeywords.some(keyword => keyword === rawSearchText)) {
@@ -267,6 +295,126 @@ export default {
       })
     })
 
+    const commandAnalysis = computed(() => {
+      const rawText = String(inputText.value || '')
+      const hasText = !!rawText.trim()
+      const chunks = rawText.match(/\S+|\s+/g) || []
+
+      if (!hasText) {
+        return {
+          canExecute: false,
+          highlightedTokens: []
+        }
+      }
+
+      const inCommandMode = isCommandModeByText(rawText)
+      if (!inCommandMode) {
+        return {
+          canExecute: false,
+          highlightedTokens: chunks.map(chunk => ({ text: chunk, type: 'plain' }))
+        }
+      }
+
+      const highlightedTokens = []
+      let currentLevel = availableCommands.value
+      let waitingTargetOptions = null
+      let waitingForInput = false
+
+      for (let tokenIndex = 0; tokenIndex < chunks.length; tokenIndex += 1) {
+        const chunk = chunks[tokenIndex]
+        if (/^\s+$/.test(chunk)) {
+          highlightedTokens.push({ text: chunk, type: 'plain' })
+          continue
+        }
+
+        const tokenRaw = chunk
+        let normalized = normalizeCommandPart(tokenRaw).toLowerCase()
+        if (highlightedTokens.filter(item => !/^\s+$/.test(item.text)).length === 0 && normalized.startsWith('/')) {
+          normalized = normalizeCommandPart(normalized.slice(1))
+        }
+
+        if (!normalized) {
+          highlightedTokens.push({ text: tokenRaw, type: 'plain' })
+          continue
+        }
+
+        if (waitingForInput) {
+          highlightedTokens.push({ text: tokenRaw, type: 'argument' })
+          continue
+        }
+
+        if (waitingTargetOptions) {
+          const targetFound = findCommandByToken(waitingTargetOptions, normalized)
+          if (targetFound) {
+            highlightedTokens.push({ text: tokenRaw, type: 'matched' })
+            waitingTargetOptions = null
+          } else {
+            highlightedTokens.push({ text: tokenRaw, type: 'invalid' })
+          }
+          continue
+        }
+
+        const found = findCommandByToken(currentLevel, normalized)
+        if (!found) {
+          highlightedTokens.push({ text: tokenRaw, type: 'invalid' })
+          continue
+        }
+
+        highlightedTokens.push({ text: tokenRaw, type: 'matched' })
+
+        if (found.needInput) {
+          waitingForInput = true
+        }
+
+        if (found.needTarget) {
+          waitingTargetOptions = found.dynamicChildren
+            ? (dynamicDataCache.value[found.dynamicChildren] || [])
+            : (found.children || [])
+        }
+
+        if (found.children && found.children.length > 0) {
+          currentLevel = found.children
+        } else if (found.dynamicChildren) {
+          currentLevel = dynamicDataCache.value[found.dynamicChildren] || []
+        } else {
+          currentLevel = []
+        }
+      }
+
+      const actionCmd = commandStack.value.find(item => item.action)
+      if (!actionCmd || isExecuting.value) {
+        return { canExecute: false, highlightedTokens }
+      }
+
+      const actionIndex = commandStack.value.findIndex(item => item.action)
+      const targetCmd = actionCmd.needTarget ? commandStack.value[actionIndex + 1] : null
+      const targetReady = !actionCmd.needTarget || !!(targetCmd && targetCmd.data)
+      const inputReady = !actionCmd.needInput || !!normalizeCommandPart(currentInputValue.value)
+
+      return {
+        canExecute: targetReady && inputReady,
+        highlightedTokens
+      }
+    })
+
+    const canExecuteCommand = computed(() => commandAnalysis.value.canExecute)
+
+    const highlightedInputHtml = computed(() => {
+      return commandAnalysis.value.highlightedTokens.map(item => {
+        const safe = escapeHtml(item.text)
+        if (item.type === 'matched') {
+          return `<span class="token-bg token-bg-valid">${safe}</span>`
+        }
+        if (item.type === 'invalid') {
+          return `<span class="token-bg token-bg-invalid">${safe}</span>`
+        }
+        if (item.type === 'argument') {
+          return `<span class="token-bg token-bg-arg">${safe}</span>`
+        }
+        return `<span>${safe}</span>`
+      }).join('')
+    })
+
     // 解析输入文本，获取当前命令层级
     const parseInput = () => {
       if (!isCommandModeByText(inputText.value)) {
@@ -279,6 +427,7 @@ export default {
 
       const tokenInfo = parseTokens(inputText.value)
       const parts = tokenInfo.parts
+      const hasTrailingSpace = /\s$/.test(String(inputText.value || ''))
       
       // 重置状态
       commandStack.value = []
@@ -289,6 +438,33 @@ export default {
       
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i].toLowerCase()
+        const isLastPart = i === parts.length - 1
+
+        // 最后一个 token 且没有尾随空格：视为“正在输入中”，仅用于筛选，不进入下一层。
+        if (isLastPart && !hasTrailingSpace) {
+          if (commandStack.value.length > 0) {
+            const lastCmd = commandStack.value[commandStack.value.length - 1]
+            if (lastCmd.needInput) {
+              currentInputValue.value = parts.slice(i).join(' ')
+              currentChildren.value = []
+              break
+            }
+            if (lastCmd.needTarget) {
+              if (lastCmd.dynamicChildren) {
+                loadDynamicChildren(lastCmd.dynamicChildren)
+                currentChildren.value = dynamicDataCache.value[lastCmd.dynamicChildren] || []
+              } else if (lastCmd.children && lastCmd.children.length > 0) {
+                currentChildren.value = lastCmd.children
+              } else {
+                currentChildren.value = currentLevel
+              }
+              break
+            }
+          }
+          currentChildren.value = currentLevel
+          break
+        }
+
         const found = findCommandByToken(currentLevel, part)
         
         if (found) {
@@ -362,7 +538,7 @@ export default {
 
     // 加载动态子命令
     const loadDynamicChildren = (type) => {
-      if (type !== 'gitProjectList' && dynamicDataCache.value[type]) {
+      if (type !== 'gitProjectList' && type !== 'gitGroupList' && dynamicDataCache.value[type]) {
         currentChildren.value = dynamicDataCache.value[type]
         refreshCommandDropdownVisibility()
         return
@@ -376,6 +552,9 @@ export default {
           break
         case 'gitProjectList':
           loadGitProjectList()
+          break
+        case 'gitGroupList':
+          loadGitGroupList()
           break
         case 'supervisorEnvList':
           loadSupervisorEnvList()
@@ -513,6 +692,27 @@ export default {
       })
     }
 
+    // 加载 Git 分组列表
+    const loadGitGroupList = () => {
+      git.GitConfigList({}, (response) => {
+        isLoadingDynamic.value = false
+        if (response.ErrCode === 0) {
+          const gitGroupList = Array.isArray(response.Data.git_group_list) ? response.Data.git_group_list : []
+          const list = gitGroupList.map(item => ({
+            command: item.name,
+            name: item.name,
+            aliases: [String(item.id || '')].filter(Boolean),
+            desc: `分组ID: ${item.id}`,
+            id: item.id,
+            data: item
+          }))
+          dynamicDataCache.value['gitGroupList'] = list
+          currentChildren.value = list
+          refreshCommandDropdownVisibility()
+        }
+      })
+    }
+
     // 加载 Supervisor 环境列表
     const loadSupervisorEnvList = () => {
       supervisor.SupervisorConfigList({}, (response) => {
@@ -597,6 +797,11 @@ export default {
 
     // 处理键盘事件
     const handleKeydown = (e) => {
+      if (e.key === 'Enter' && !canExecuteCommand.value) {
+        e.preventDefault()
+        return
+      }
+
       if (!showCommands.value) {
         if (e.key === 'Enter') {
           executeCommand()
@@ -622,25 +827,15 @@ export default {
             selectCommand(filteredCommands.value[activeCommandIndex.value])
           }
           break
+        case ' ':
+          if (filteredCommands.value[activeCommandIndex.value]) {
+            e.preventDefault()
+            selectCommand(filteredCommands.value[activeCommandIndex.value])
+          }
+          break
         case 'Enter':
           e.preventDefault()
-          parseInput()
-          {
-            const actionCmd = commandStack.value.find(item => item.action)
-            if (actionCmd) {
-              const actionIndex = commandStack.value.findIndex(item => item.action)
-              const targetCmd = actionCmd.needTarget ? commandStack.value[actionIndex + 1] : null
-              const targetReady = !actionCmd.needTarget || !!(targetCmd && targetCmd.data)
-              const inputReady = !actionCmd.needInput || !!normalizeCommandPart(currentInputValue.value)
-              if (targetReady && inputReady) {
-                executeCommand()
-                break
-              }
-            }
-          }
-          if (filteredCommands.value[activeCommandIndex.value]) {
-            selectCommand(filteredCommands.value[activeCommandIndex.value])
-          } else {
+          if (canExecuteCommand.value) {
             executeCommand()
           }
           break
@@ -741,8 +936,9 @@ export default {
       }
       
       if (cmd.action) {
-        // 有动作，执行动作
-        executeAction(cmd)
+        // 动作命令仅进入待执行状态，实际执行由 Enter / 发送按钮触发
+        showCommands.value = false
+        currentChildren.value = []
         return
       }
       
@@ -752,7 +948,9 @@ export default {
           showCommands.value = false
           return
         }
-        executeAction(parentCmd)
+        // 目标选择完成后进入待执行状态
+        showCommands.value = false
+        currentChildren.value = []
         return
       }
 
@@ -764,27 +962,20 @@ export default {
             showCommands.value = false
             return
           }
-          executeAction(nearestAction)
+          // 仅完成选择，不自动执行
+          showCommands.value = false
+          currentChildren.value = []
           return
         }
       }
-      
-      // 没有可执行的操作，提示用户
-      messages.value.push({
-        type: 'system',
-        content: `命令 "${cmd.name}" 暂不支持快捷操作\n`
-      })
-      inputText.value = ''
+
+      // 其余情况默认关闭下拉，等待用户继续输入或执行
       showCommands.value = false
-      commandStack.value = []
-      currentChildren.value = []
-      currentInputValue.value = ''
-      scrollToBottom()
     }
 
     // 执行命令
     const executeCommand = () => {
-      if (!inputText.value.trim()) return
+      if (!canExecuteCommand.value) return
 
       if (isCommandModeByText(inputText.value)) {
         parseInput()
@@ -897,6 +1088,9 @@ export default {
         case 'gitBranch':
           executeGitAction('branch', currentStack, options.inputValue || '')
           break
+        case 'gitGroupBranches':
+          executeGitGroupBranchAction(currentStack)
+          break
         case 'gitLog':
           executeGitAction('log', currentStack, options.inputValue || '')
           break
@@ -925,6 +1119,48 @@ export default {
           appendOutputResult('该操作暂未实现\n')
           finishExecution()
       }
+    }
+
+    const executeGitGroupBranchAction = (stack) => {
+      const groupCmd = stack.find(c => c.data && c.data.id !== undefined && c.data.id !== null)
+      if (!groupCmd || !groupCmd.data) {
+        appendOutputResult('错误：未找到 Git 分组配置\n')
+        finishExecution()
+        return
+      }
+
+      const newSseDistributeId = sseDistribute.GetSseDistributeId('dashboard_git_group_' + Date.now())
+      const throttleStringFunc = new Throttle_string(50, (text) => {
+        if (currentOutputMessage.value) {
+          appendOutputProcess(text)
+        }
+      })
+
+      sseDistribute.RegisterReceive(newSseDistributeId, (msg) => {
+        throttleStringFunc.update(msg)
+      })
+
+      const callback = (response) => {
+        if (response.ErrCode !== 0) {
+          appendOutputResult(`错误: ${response.ErrMsg || '未知错误'}\n`)
+        } else if (response.Data && typeof response.Data.summary_text === 'string') {
+          appendOutputResult(response.Data.summary_text + '\n')
+        } else if (response.Data) {
+          appendOutputResult(`${JSON.stringify(response.Data, null, 2)}\n`)
+        } else {
+          appendOutputResult('执行成功\n')
+        }
+        setTimeout(() => {
+          sseDistribute.UnRegisterReceive(newSseDistributeId)
+          finishExecution()
+        }, 1200)
+      }
+
+      appendOutputResult(`正在查询分组 [${groupCmd.name}] 全部环境分支...\n\n`)
+      git.GitGroupBranchList({
+        git_group_id: groupCmd.data.id,
+        sse_distribute_id: newSseDistributeId
+      }, callback)
     }
     
     // 执行 Git 相关操作
@@ -1111,6 +1347,8 @@ export default {
       messageList,
       commandBreadcrumb,
       inputPlaceholder,
+      canExecuteCommand,
+      highlightedInputHtml,
       handleInput,
       handleKeydown,
       handleFocus,
@@ -1118,6 +1356,7 @@ export default {
       selectCommand,
       executeCommand,
       getCommandKey,
+      getCommandMatchHint,
       hasCommandLayout,
     }
   }
@@ -1307,10 +1546,21 @@ export default {
   min-width: 80px;
 }
 
+.command-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
 .command-desc {
   color: #8a8a7a;
   font-size: 13px;
-  flex: 1;
+}
+
+.command-match-hint {
+  color: #6a7f6a;
+  font-size: 12px;
 }
 
 .command-arrow {
@@ -1353,18 +1603,71 @@ export default {
   border-color: #8fc88f;
 }
 
+.input-overlay-box {
+  position: relative;
+  flex: 1;
+}
+
+.input-highlight-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: block;
+  padding: 12px 16px;
+  font-size: 15px;
+  line-height: normal;
+  font-family: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  white-space: pre;
+  overflow: hidden;
+  color: #4a4a4a;
+}
+
 .chat-input {
   flex: 1;
   background: transparent;
   border: none;
   padding: 12px 16px;
   font-size: 15px;
+  line-height: normal;
+  font-family: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
   color: #4a4a4a;
   outline: none;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.chat-input-overlay {
+  color: transparent;
+  caret-color: #4a4a4a;
 }
 
 .chat-input::placeholder {
   color: #a0a090;
+}
+
+.token-bg {
+  border-radius: 4px;
+  padding: 0;
+}
+
+.token-bg-valid {
+  background: rgba(95, 180, 95, 0.25);
+  color: #246524;
+}
+
+.token-bg-invalid {
+  background: rgba(220, 80, 80, 0.22);
+  color: #922f2f;
+}
+
+.token-bg-arg {
+  background: rgba(218, 165, 32, 0.24);
+  color: #7a5504;
 }
 
 .send-btn {
@@ -1379,6 +1682,13 @@ export default {
 .send-btn:hover {
   transform: scale(1.05);
   box-shadow: 0 4px 12px rgba(120, 180, 120, 0.3);
+}
+
+.send-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+  box-shadow: none;
 }
 
 .send-icon {

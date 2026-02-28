@@ -74,6 +74,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="changeBranchRemote">关联远程分支切换</el-dropdown-item>
+                <el-dropdown-item v-loading="btnLoading.groupBranch" command="groupBranches">查看当前组全部分支</el-dropdown-item>
                 <el-dropdown-item command="viewGitConfig">查看 git config</el-dropdown-item>
                 <el-dropdown-item command="saveCredentials">保存账号密码配置</el-dropdown-item>
                 <el-dropdown-item command="setSafe">设置目录安全</el-dropdown-item>
@@ -176,6 +177,8 @@ export default {
         changeRemote: false,
         status: false,
         query: false,
+        queryLog: false,
+        groupBranch: false,
       },
       BranchName: '', //分支名
       BranchNameRemote: '',
@@ -265,6 +268,9 @@ export default {
           this.drawerVisibleMarkdown = true;
           this.markdownType = 'git-config';
           break;
+        case 'groupBranches':
+          this.GitQueryGroupBranches();
+          break;
         case 'saveCredentials':
           this.GitSaveCredentials();
           break;
@@ -300,6 +306,28 @@ export default {
             }
           }
       )
+    },
+    GitQueryGroupBranches() {
+      let _that = this
+      if (!_that.chooseGroupId || parseInt(_that.chooseGroupId) === 0) {
+        _that.$helperNotify.error('请先选择Git分组')
+        return
+      }
+      _that.btnLoading.groupBranch = true
+      _that.prepareActionSse('query_group_branches')
+      git.GitGroupBranchList({
+        git_group_id: _that.chooseGroupId,
+        sse_distribute_id: _that.sse_distribute_id,
+      }, function (response) {
+        if (response.ErrCode !== 0) {
+          _that.$helperNotify.error(response.ErrMsg || '查询失败')
+        } else {
+          _that.$helperNotify.success('查询完成')
+        }
+        setTimeout(function () {
+          _that.btnLoading.groupBranch = false
+        }, 500)
+      })
     },
     handleChangeBranchRemote() {
       let _that = this;

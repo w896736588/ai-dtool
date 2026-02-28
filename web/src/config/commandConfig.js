@@ -149,6 +149,15 @@ const commandConfig = [
         dynamicChildren: 'gitProjectList'
       },
       {
+        command: 'group-branches',
+        name: '组内分支总览',
+        desc: '查看某个Git组内所有环境当前分支和远程分支',
+        aliases: ['gb', 'group-branch', 'group-branches', '组分支', '分组分支', '组内分支'],
+        action: 'gitGroupBranches',
+        needTarget: true,
+        dynamicChildren: 'gitGroupList'
+      },
+      {
         command: 'log',
         name: '日志',
         desc: '查看提交日志',
