@@ -1,32 +1,39 @@
 <template>
-  配置命令组 <el-button type="primary" link @click="ShowAddCmdGroup">添加</el-button>
-  <el-table :data="state.CmdGroupList" style="width: 100%">
-    <el-table-column prop="id" label="#id" />
-    <el-table-column prop="name" label="name" />
-    <el-table-column label="操作" >
-      <template #default="scope">
-        <el-button type="primary" link @click="ShowEditCmdGroup(scope.row)">编辑</el-button>
-        <el-button link type="danger" @click="DeleteCmdGroup(scope.row)">删除</el-button>
-      </template>
-    </el-table-column>
-  </el-table>
-  <p></p>
-  <el-dialog v-model="state.dialogEditCmdGroup" title="编辑" width="500">
-    <el-form>
-      <el-form-item label="组名" :label-width="80">
-        <el-input v-model="state.editCmdGroupConfig.name" autocomplete="off" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button @click="state.dialogEditCmdGroup = false">取消</el-button>
-        <el-button type="primary" @click="EditCmdGroup">
-          保存
-        </el-button>
+  <div class="set-config-page">
+    <div class="set-config-header">
+      <h3 class="set-config-title">命令组管理</h3>
+      <div class="set-config-actions">
+        <el-button type="primary" @click="ShowAddCmdGroup">添加命令组</el-button>
       </div>
-    </template>
-  </el-dialog>
-
+    </div>
+    <div class="set-config-table-card">
+      <el-table :data="state.CmdGroupList" class="set-config-table">
+        <el-table-column prop="id" label="#id" width="80" />
+        <el-table-column prop="name" label="组名" min-width="180" />
+        <el-table-column label="操作" width="150">
+          <template #default="scope">
+            <div class="set-op-group">
+              <el-button type="primary" link @click="ShowEditCmdGroup(scope.row)">编辑</el-button>
+              <el-button link type="danger" @click="DeleteCmdGroup(scope.row)">删除</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+    <el-dialog v-model="state.dialogEditCmdGroup" title="编辑命令组" width="500">
+      <el-form label-width="80px">
+        <el-form-item label="组名">
+          <el-input v-model="state.editCmdGroupConfig.name" autocomplete="off" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="state.dialogEditCmdGroup = false">取消</el-button>
+          <el-button type="primary" @click="EditCmdGroup">保存</el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </div>
 </template>
 <script>
 import {defineExpose , defineComponent , inject , defineEmits , getCurrentInstance , reactive} from 'vue';
@@ -110,5 +117,5 @@ export default defineComponent({
 </script>
 
 <style scoped>
-
+@import "@/css/set_module_unified.css";
 </style>

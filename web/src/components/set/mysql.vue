@@ -1,58 +1,67 @@
 <template>
-  配置mysql <el-button type="primary" link @click="ShowAddMysql">添加</el-button>
-  <el-table :data="state.mysqlList" style="width: 100%">
-    <el-table-column prop="id" label="#id" />
-    <el-table-column prop="name" label="name" width="180" />
-    <el-table-column prop="ssh_name" label="ssh" width="140"/>
-    <el-table-column prop="host" label="Host" width="180" />
-    <el-table-column prop="port" label="port" />
-    <el-table-column prop="username" label="username" />
-    <el-table-column prop="dbname" label="dbname" />
-    <el-table-column label="操作" width="200">
-      <template #default="scope">
-        <el-button type="primary" link @click="ShowEditMysql(scope.row , true)">复制新增</el-button>
-        <el-button type="primary" link @click="ShowEditMysql(scope.row , false)">编辑</el-button>
-        <el-button link type="danger" @click="DeleteMysql(scope.row)">删除</el-button>
-      </template>
-    </el-table-column>
-  </el-table>
-
-  <el-dialog v-model="state.dialogEditMysql" title="编辑" width="500">
-    <el-form :model="state.starForm">
-      <el-form-item label="name" :label-width="80">
-        <el-input v-model="state.editMysqlConfig.name" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="host" :label-width="80">
-        <el-input v-model="state.editMysqlConfig.host" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="port" :label-width="80">
-        <el-input v-model="state.editMysqlConfig.port" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="username" :label-width="80">
-        <el-input v-model="state.editMysqlConfig.username" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="password" :label-width="80">
-        <el-input v-model="state.editMysqlConfig.password" type="password" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="dbname" :label-width="80">
-        <el-input v-model="state.editMysqlConfig.dbname" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="ssh" :label-width="80">
-        <el-select v-model="state.editMysqlConfig.ssh_id" placeholder="选择分组" style="width: 140px">
-          <el-option v-for="item in state.sshList" :key="item.id" :label="item.name" :value="item.id"/>
-        </el-select>
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button @click="state.dialogEditMysql = false">取消</el-button>
-        <el-button type="primary" @click="EditMysql">
-          保存
-        </el-button>
+  <div class="set-config-page">
+    <div class="set-config-header">
+      <h3 class="set-config-title">MySQL 配置管理</h3>
+      <p class="set-config-desc">管理数据库连接配置与 SSH 隧道映射</p>
+      <div class="set-config-actions">
+        <el-button type="primary" @click="ShowAddMysql">添加 MySQL</el-button>
       </div>
-    </template>
-  </el-dialog>
+    </div>
+    <div class="set-config-table-card">
+      <el-table :data="state.mysqlList" class="set-config-table">
+        <el-table-column prop="id" label="#id" width="80" />
+        <el-table-column prop="name" label="名称" min-width="140" />
+        <el-table-column prop="ssh_name" label="SSH" width="140" />
+        <el-table-column prop="host" label="Host" min-width="180" />
+        <el-table-column prop="port" label="Port" width="90" />
+        <el-table-column prop="username" label="用户名" min-width="120" />
+        <el-table-column prop="dbname" label="数据库" min-width="140" />
+        <el-table-column label="操作" width="200">
+          <template #default="scope">
+            <div class="set-op-group">
+              <el-button type="primary" link @click="ShowEditMysql(scope.row , true)">复制新增</el-button>
+              <el-button type="primary" link @click="ShowEditMysql(scope.row , false)">编辑</el-button>
+              <el-button link type="danger" @click="DeleteMysql(scope.row)">删除</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
+    <el-dialog v-model="state.dialogEditMysql" title="编辑MySQL配置" width="520">
+      <el-form :model="state.starForm" label-width="90px">
+        <el-form-item label="名称">
+          <el-input v-model="state.editMysqlConfig.name" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="Host">
+          <el-input v-model="state.editMysqlConfig.host" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="Port">
+          <el-input v-model="state.editMysqlConfig.port" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="用户名">
+          <el-input v-model="state.editMysqlConfig.username" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="密码">
+          <el-input v-model="state.editMysqlConfig.password" type="password" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="数据库">
+          <el-input v-model="state.editMysqlConfig.dbname" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="SSH">
+          <el-select v-model="state.editMysqlConfig.ssh_id" placeholder="选择SSH" style="width: 140px">
+            <el-option v-for="item in state.sshList" :key="item.id" :label="item.name" :value="item.id"/>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="state.dialogEditMysql = false">取消</el-button>
+          <el-button type="primary" @click="EditMysql">保存</el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </div>
 </template>
 <script>
 import {defineExpose, defineComponent, inject, defineEmits, getCurrentInstance, reactive, onActivated} from 'vue';
@@ -151,5 +160,5 @@ export default defineComponent({
 </script>
 
 <style scoped>
-
+@import "@/css/set_module_unified.css";
 </style>

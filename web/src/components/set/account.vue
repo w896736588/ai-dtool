@@ -1,49 +1,61 @@
 <template>
-  配置account
-  <el-button type="primary" link @click="ShowAddAccount">添加</el-button>
-  <el-button type="primary" link @click="ShowAccountGroup">Account分组</el-button>
-  <el-table :data="state.accountList" style="width: 100%">
-    <el-table-column prop="id" label="#id" width="80" />
-    <el-table-column prop="username" label="username"  />
-    <el-table-column prop="password" label="password" />
-    <el-table-column prop="account_group_name" label="account分组"  width="180"/>
-    <el-table-column label="操作" >
-      <template #default="scope">
-        <el-button type="primary" link @click="ShowEditAccount(scope.row , true)">复制新增</el-button>
-        <el-button type="primary" link @click="ShowEditAccount(scope.row , false)">编辑</el-button>
-        <el-button link type="danger" @click="DeleteAccount(scope.row)">删除</el-button>
-      </template>
-    </el-table-column>
-  </el-table>
-
-  <el-dialog v-model="state.dialogEditAccount" title="编辑" width="500">
-    <el-form>
-      <el-form-item label="username" :label-width="80">
-        <el-input v-model="state.editAccountConfig.username" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="password" :label-width="80">
-        <el-input v-model="state.editAccountConfig.password" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="分组" :label-width="80">
-        <el-select v-model="state.editAccountConfig.account_group_id" placeholder="选择分组" style="width: 140px">
-          <el-option v-for="item in state.accountGroupList" :key="item.id" :label="item.name" :value="item.id"/>
-        </el-select>
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button @click="state.dialogEditAccount = false">取消</el-button>
-        <el-button type="primary" @click="EditAccount">
-          保存
-        </el-button>
+  <div class="set-config-page">
+    <div class="set-config-header">
+      <h3 class="set-config-title">账号配置管理</h3>
+      <p class="set-config-desc">管理账号信息及账号分组</p>
+      <div class="set-config-actions">
+        <el-button type="primary" @click="ShowAddAccount">添加账号</el-button>
+        <el-button @click="ShowAccountGroup">Account分组</el-button>
       </div>
-    </template>
-  </el-dialog>
+    </div>
+    <div class="set-config-table-card">
+      <el-table :data="state.accountList" class="set-config-table">
+        <el-table-column prop="id" label="#id" width="80" />
+        <el-table-column prop="username" label="用户名" min-width="160" />
+        <el-table-column prop="password" label="密码" min-width="140">
+          <template #default>
+            <span>******</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="account_group_name" label="Account分组" min-width="180"/>
+        <el-table-column label="操作" min-width="180">
+          <template #default="scope">
+            <div class="set-op-group">
+              <el-button type="primary" link @click="ShowEditAccount(scope.row , true)">复制新增</el-button>
+              <el-button type="primary" link @click="ShowEditAccount(scope.row , false)">编辑</el-button>
+              <el-button link type="danger" @click="DeleteAccount(scope.row)">删除</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
-  <el-dialog v-model="state.dialogAccountGroup" title="Account分组" width="1000">
-    <account_group v-if="state.dialogAccountGroup" @update-group="UpdateGroup" ref="account_group"></account_group>
-  </el-dialog>
+    <el-dialog v-model="state.dialogEditAccount" title="编辑账号" width="500">
+      <el-form label-width="90px">
+        <el-form-item label="用户名">
+          <el-input v-model="state.editAccountConfig.username" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="密码">
+          <el-input v-model="state.editAccountConfig.password" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="分组">
+          <el-select v-model="state.editAccountConfig.account_group_id" placeholder="选择分组" style="width: 140px">
+            <el-option v-for="item in state.accountGroupList" :key="item.id" :label="item.name" :value="item.id"/>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="state.dialogEditAccount = false">取消</el-button>
+          <el-button type="primary" @click="EditAccount">保存</el-button>
+        </div>
+      </template>
+    </el-dialog>
 
+    <el-dialog v-model="state.dialogAccountGroup" title="Account分组" width="1000">
+      <account_group v-if="state.dialogAccountGroup" @update-group="UpdateGroup" ref="account_group"></account_group>
+    </el-dialog>
+  </div>
 </template>
 <script>
 import {defineExpose , defineComponent , inject , defineEmits , getCurrentInstance , reactive} from 'vue';
@@ -153,5 +165,5 @@ export default defineComponent({
 </script>
 
 <style scoped>
-
+@import "@/css/set_module_unified.css";
 </style>

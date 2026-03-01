@@ -1,42 +1,53 @@
 <template>
-  gitlab token
-  <el-button type="primary" link @click="ShowAddGit">添加</el-button>
-  <el-table :data="state.gitList" style="width: 100%">
-    <el-table-column prop="id" label="#id" width="80" />
-    <el-table-column prop="name" label="name"  width="120"/>
-    <el-table-column prop="url" label="url" />
-    <el-table-column prop="access_token" label="access_token"  />
-    <el-table-column label="操作" width="200">
-      <template #default="scope">
-        <el-button type="primary" link @click="ShowEditGit(scope.row , true)">复制新增</el-button>
-        <el-button type="primary" link @click="ShowEditGit(scope.row , false)">编辑</el-button>
-        <el-button link type="danger" @click="DeleteGit(scope.row)">删除</el-button>
-      </template>
-    </el-table-column>
-  </el-table>
-
-  <el-dialog v-model="state.dialogEditGit" title="编辑" width="500">
-    <el-form>
-      <el-form-item label="name" :label-width="80">
-        <el-input v-model="state.editGitConfig.name" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="url" :label-width="80">
-        <el-input v-model="state.editGitConfig.url" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="access_token" :label-width="80">
-        <el-input v-model="state.editGitConfig.access_token" autocomplete="off" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button @click="state.dialogEditGit = false">取消</el-button>
-        <el-button type="primary" @click="EditGit">
-          保存
-        </el-button>
+  <div class="set-config-page">
+    <div class="set-config-header">
+      <h3 class="set-config-title">GitLab Token 管理</h3>
+      <div class="set-config-actions">
+        <el-button type="primary" @click="ShowAddGit">添加 Token</el-button>
       </div>
-    </template>
-  </el-dialog>
+    </div>
+    <div class="set-config-table-card">
+      <el-table :data="state.gitList" class="set-config-table">
+        <el-table-column prop="id" label="#id" width="80" />
+        <el-table-column prop="name" label="名称" min-width="120"/>
+        <el-table-column prop="url" label="URL" min-width="240" />
+        <el-table-column prop="access_token" label="Access Token" min-width="160">
+          <template #default>
+            <span>******</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="200">
+          <template #default="scope">
+            <div class="set-op-group">
+              <el-button type="primary" link @click="ShowEditGit(scope.row , true)">复制新增</el-button>
+              <el-button type="primary" link @click="ShowEditGit(scope.row , false)">编辑</el-button>
+              <el-button link type="danger" @click="DeleteGit(scope.row)">删除</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
+    <el-dialog v-model="state.dialogEditGit" title="编辑GitLab Token" width="500">
+      <el-form label-width="100px">
+        <el-form-item label="名称">
+          <el-input v-model="state.editGitConfig.name" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="URL">
+          <el-input v-model="state.editGitConfig.url" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="Access Token">
+          <el-input v-model="state.editGitConfig.access_token" autocomplete="off" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="state.dialogEditGit = false">取消</el-button>
+          <el-button type="primary" @click="EditGit">保存</el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </div>
 </template>
 <script>
 import {defineExpose , defineComponent , inject , defineEmits , getCurrentInstance , reactive} from 'vue';
@@ -138,5 +149,5 @@ export default defineComponent({
 </script>
 
 <style scoped>
-
+@import "@/css/set_module_unified.css";
 </style>

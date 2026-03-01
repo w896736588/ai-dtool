@@ -1,79 +1,92 @@
 <template>
-  配置ssh <el-button type="primary" link @click="ShowAddSsh">添加</el-button>
-  <el-table :data="state.sshList" style="width: 100%">
-    <el-table-column prop="id" label="#id" width="50" />
-    <el-table-column prop="name" label="name" width="180" />
-    <el-table-column prop="host" label="Host" width="180" />
-    <el-table-column prop="port" label="port" />
-    <el-table-column prop="username" label="username" />
-    <el-table-column prop="home" label="家目录" />
-    <el-table-column prop="status" label="连接状态" />
-    <el-table-column label="当前连接数">
-      <template #default="scope">
-        <el-button type="primary" link @click="ShowConnections(scope.row)">{{ GetConnectionCount(scope.row.id) }}</el-button>
-      </template>
-    </el-table-column>
-    <el-table-column label="操作" >
-      <template #default="scope">
-        <el-button type="primary" link @click="ShowEditSsh(scope.row , true)">复制新增</el-button>
-        <el-button type="primary" link @click="ShowEditSsh(scope.row , false)">编辑</el-button>
-        <el-button link type="danger" @click="DeleteSsh(scope.row)">删除</el-button>
-      </template>
-    </el-table-column>
-  </el-table>
-
-  <el-dialog v-model="state.dialogEditSsh" title="编辑" width="500">
-    <el-form :model="state.starForm">
-      <el-form-item label="name" :label-width="80">
-        <el-input v-model="state.editSshConfig.name" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="host" :label-width="80">
-        <el-input v-model="state.editSshConfig.host" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="port" :label-width="80">
-        <el-input v-model="state.editSshConfig.port" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="username" :label-width="80">
-        <el-input v-model="state.editSshConfig.username" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="password" :label-width="80">
-        <el-input v-model="state.editSshConfig.password" type="password"  autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="家目录" :label-width="80">
-        <el-input v-model="state.editSshConfig.home" type="text"  autocomplete="off" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button @click="state.dialogEditSsh = false">取消</el-button>
-        <el-button type="primary" @click="EditSsh">
-          保存
-        </el-button>
+  <div class="set-config-page">
+    <div class="set-config-header">
+      <h3 class="set-config-title">SSH 配置管理</h3>
+      <p class="set-config-desc">管理远程连接与当前连接状态</p>
+      <div class="set-config-actions">
+        <el-button type="primary" @click="ShowAddSsh">添加 SSH</el-button>
       </div>
-    </template>
-  </el-dialog>
+    </div>
+    <div class="set-config-table-card">
+      <el-table :data="state.sshList" class="set-config-table">
+        <el-table-column prop="id" label="#id" width="60" />
+        <el-table-column prop="name" label="名称" min-width="140" />
+        <el-table-column prop="host" label="Host" min-width="180" />
+        <el-table-column prop="port" label="Port" width="90" />
+        <el-table-column prop="username" label="用户名" min-width="120" />
+        <el-table-column prop="home" label="家目录" min-width="180">
+          <template #default="scope">
+            <code class="set-mono">{{ scope.row.home || "-" }}</code>
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" label="连接状态" width="100" />
+        <el-table-column label="当前连接数" width="120" align="center">
+          <template #default="scope">
+            <el-button type="primary" link @click="ShowConnections(scope.row)">{{ GetConnectionCount(scope.row.id) }}</el-button>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="180">
+          <template #default="scope">
+            <div class="set-op-group">
+              <el-button type="primary" link @click="ShowEditSsh(scope.row , true)">复制新增</el-button>
+              <el-button type="primary" link @click="ShowEditSsh(scope.row , false)">编辑</el-button>
+              <el-button link type="danger" @click="DeleteSsh(scope.row)">删除</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
-  <el-dialog v-model="state.dialogConnections" title="连接详情" width="80%">
-    <el-table :data="state.connections" style="width: 100%">
-      <el-table-column prop="shell_client_id" label="客户端ID" />
-      <el-table-column prop="current_command" label="当前命令" />
-      <el-table-column prop="status" label="状态" />
-      <el-table-column prop="connect_time" label="连接开始时间" width="180" />
-      <el-table-column prop="connect_seconds" label="连接时长(秒)" width="120" />
-      <el-table-column prop="type" label="类型" />
-      <el-table-column label="操作">
-        <template #default="scope">
-          <el-button type="primary" link @click="Reconnect(scope.row)">重连</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button type="primary" @click="state.dialogConnections = false">关闭</el-button>
-      </div>
-    </template>
-  </el-dialog>
+    <el-dialog v-model="state.dialogEditSsh" title="编辑SSH配置" width="520">
+      <el-form :model="state.starForm" label-width="90px">
+        <el-form-item label="名称">
+          <el-input v-model="state.editSshConfig.name" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="Host">
+          <el-input v-model="state.editSshConfig.host" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="Port">
+          <el-input v-model="state.editSshConfig.port" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="用户名">
+          <el-input v-model="state.editSshConfig.username" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="密码">
+          <el-input v-model="state.editSshConfig.password" type="password" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="家目录">
+          <el-input v-model="state.editSshConfig.home" type="text" autocomplete="off" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="state.dialogEditSsh = false">取消</el-button>
+          <el-button type="primary" @click="EditSsh">保存</el-button>
+        </div>
+      </template>
+    </el-dialog>
 
+    <el-dialog v-model="state.dialogConnections" title="连接详情" width="80%">
+      <el-table :data="state.connections" class="set-config-table">
+        <el-table-column prop="shell_client_id" label="客户端ID" min-width="180" />
+        <el-table-column prop="current_command" label="当前命令" min-width="220" />
+        <el-table-column prop="status" label="状态" width="90" />
+        <el-table-column prop="connect_time" label="连接开始时间" width="180" />
+        <el-table-column prop="connect_seconds" label="连接时长(秒)" width="120" />
+        <el-table-column prop="type" label="类型" width="90" />
+        <el-table-column label="操作" width="90">
+          <template #default="scope">
+            <el-button type="primary" link @click="Reconnect(scope.row)">重连</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button type="primary" @click="state.dialogConnections = false">关闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </div>
 </template>
 <script>
 import {defineExpose , defineComponent , inject , defineEmits , getCurrentInstance , reactive , onMounted , onBeforeUnmount} from 'vue';
@@ -258,5 +271,5 @@ export default defineComponent({
 </script>
 
 <style scoped>
-
+@import "@/css/set_module_unified.css";
 </style>

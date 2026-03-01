@@ -1,0 +1,100 @@
+.set-config-page {
+  padding: 0;
+  width: 100%;
+  color: #4a4a4a;
+}
+
+.set-config-header {
+  background: #fff;
+  border: 1px solid #e8e8e0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+
+.set-config-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #4a4a4a;
+  margin: 0;
+}
+
+.set-config-desc {
+  margin: 8px 0 0;
+  color: #7a7a6a;
+  font-size: 13px;
+}
+
+.set-config-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.set-config-actions .el-button {
+  border-radius: 8px;
+}
+
+.set-config-table-card {
+  background: #fff;
+  border: 1px solid #e8e8e0;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.set-config-table {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.set-config-table :deep(.el-table__header th) {
+  background: #f7f7f2;
+  color: #606050;
+  font-weight: 600;
+}
+
+.set-config-table :deep(.el-table__row:hover > td) {
+  background-color: #f3f7ef !important;
+}
+
+.set-config-page :deep(.el-input__wrapper),
+.set-config-page :deep(.el-select .el-input__wrapper),
+.set-config-page :deep(.el-textarea__inner) {
+  border-radius: 8px;
+}
+
+.set-config-page :deep(.el-dialog) {
+  border-radius: 12px;
+}
+
+.set-op-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.set-mono {
+  font-family: Consolas, Monaco, monospace;
+  font-size: 13px;
+  color: #4f804f;
+  background: #f3f8ef;
+  padding: 2px 8px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+@media (max-width: 768px) {
+  .set-config-page {
+    padding: 0;
+  }
+
+  .set-config-header {
+    padding: 12px;
+  }
+
+  .set-config-table-card {
+    padding: 10px;
+  }
+}

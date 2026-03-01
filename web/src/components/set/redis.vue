@@ -236,8 +236,10 @@ export default defineComponent({
 </script>
 
 <style scoped>
+@import "@/css/set_module_unified.css";
+
 .redis-config-page {
-  padding: 16px;
+  padding: 0;
 }
 
 .page-header {

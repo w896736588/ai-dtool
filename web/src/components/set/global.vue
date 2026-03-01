@@ -1,51 +1,59 @@
 <template>
-  全局设置
-  <el-button type="primary" link @click="ShowAddGit">添加</el-button>
-  <el-table :data="state.gitList" style="width: 100%">
-    <el-table-column prop="id" label="#id" width="80" />
-    <el-table-column prop="name" label="name"  width="120"/>
-    <el-table-column prop="key" label="key" />
-    <el-table-column prop="value" label="value"  >
-      <template #default="scope">
-        <span v-if="scope.row.key.includes('token') || scope.row.key.includes('password')">******</span>
-        <span v-else>{{scope.row.value}}</span>
-      </template>
-    </el-table-column>
-    <el-table-column prop="desc" label="备注"  />
-    <el-table-column label="操作" width="200">
-      <template #default="scope">
-        <el-button type="primary" link @click="ShowEditGit(scope.row , true)">复制新增</el-button>
-        <el-button type="primary" link @click="ShowEditGit(scope.row , false)">编辑</el-button>
-        <el-button link type="danger" @click="DeleteGit(scope.row)">删除</el-button>
-      </template>
-    </el-table-column>
-  </el-table>
-
-  <el-dialog v-model="state.dialogEditGit" title="编辑" width="500">
-    <el-form>
-      <el-form-item label="name" :label-width="80">
-        <el-input v-model="state.editGitConfig.name" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="key" :label-width="80">
-        <el-input v-model="state.editGitConfig.key" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="value" :label-width="80">
-        <el-input v-model="state.editGitConfig.value" autocomplete="off" />
-      </el-form-item>
-      <el-form-item label="desc" :label-width="80">
-        <el-input v-model="state.editGitConfig.desc" autocomplete="off" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button @click="state.dialogEditGit = false">取消</el-button>
-        <el-button type="primary" @click="EditGit">
-          保存
-        </el-button>
+  <div class="set-config-page">
+    <div class="set-config-header">
+      <h3 class="set-config-title">全局配置</h3>
+      <p class="set-config-desc">管理全局参数（密钥字段自动脱敏显示）</p>
+      <div class="set-config-actions">
+        <el-button type="primary" @click="ShowAddGit">添加</el-button>
       </div>
-    </template>
-  </el-dialog>
+    </div>
+    <div class="set-config-table-card">
+      <el-table :data="state.gitList" class="set-config-table">
+        <el-table-column prop="id" label="#id" width="80" />
+        <el-table-column prop="name" label="名称" min-width="120" />
+        <el-table-column prop="key" label="Key" min-width="180" />
+        <el-table-column prop="value" label="Value" min-width="180">
+          <template #default="scope">
+            <span v-if="scope.row.key.includes('token') || scope.row.key.includes('password')">******</span>
+            <span v-else>{{scope.row.value}}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="desc" label="备注" min-width="160" />
+        <el-table-column label="操作" width="200">
+          <template #default="scope">
+            <div class="set-op-group">
+              <el-button type="primary" link @click="ShowEditGit(scope.row , true)">复制新增</el-button>
+              <el-button type="primary" link @click="ShowEditGit(scope.row , false)">编辑</el-button>
+              <el-button link type="danger" @click="DeleteGit(scope.row)">删除</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
+    <el-dialog v-model="state.dialogEditGit" title="编辑全局配置" width="500">
+      <el-form label-width="90px">
+        <el-form-item label="名称">
+          <el-input v-model="state.editGitConfig.name" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="Key">
+          <el-input v-model="state.editGitConfig.key" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="Value">
+          <el-input v-model="state.editGitConfig.value" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="state.editGitConfig.desc" autocomplete="off" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="state.dialogEditGit = false">取消</el-button>
+          <el-button type="primary" @click="EditGit">保存</el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </div>
 </template>
 <script>
 import {defineExpose , defineComponent , inject , defineEmits , getCurrentInstance , reactive} from 'vue';
@@ -147,5 +155,5 @@ export default defineComponent({
 </script>
 
 <style scoped>
-
+@import "@/css/set_module_unified.css";
 </style>
