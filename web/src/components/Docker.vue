@@ -64,20 +64,20 @@
             <div class="operation-block">
               <span class="operation-title">常用操作：</span>
               <div class="operation-buttons">
-                <el-button class="button" size="small" @click="dialogServices(scope.row)">服务列表</el-button>
-                <el-button class="button" size="small" @click="status(scope.row)">运行状态</el-button>
-                <el-button class="button" size="small" @click="start(scope.row)">启动（up -d）</el-button>
-                <el-button class="button" size="small" @click="restart(scope.row)">重启（restart）</el-button>
-                <el-button class="button" size="small" type="danger" @click="stop(scope.row)">停止(stop)</el-button>
-                <el-button class="button" size="small" @click="configShow(scope.row)">查看compose.yml</el-button>
-                <el-button class="button" size="small" @click="envShow(scope.row)">查看env</el-button>
+                <el-button class="operation-btn" size="small" plain @click="dialogServices(scope.row)">服务列表</el-button>
+                <el-button class="operation-btn" size="small" plain @click="status(scope.row)">运行状态</el-button>
+                <el-button class="operation-btn" size="small" plain @click="start(scope.row)">启动（up -d）</el-button>
+                <el-button class="operation-btn" size="small" plain @click="restart(scope.row)">重启（restart）</el-button>
+                <el-button class="operation-btn operation-btn-danger" size="small" plain @click="stop(scope.row)">停止(stop)</el-button>
+                <el-button class="operation-btn" size="small" plain @click="configShow(scope.row)">查看compose.yml</el-button>
+                <el-button class="operation-btn" size="small" plain @click="envShow(scope.row)">查看env</el-button>
               </div>
             </div>
             <div class="operation-block">
               <span class="operation-title">快速重启：</span>
               <div class="quick-actions">
                 <template v-for="item in scope.row.default_service_list" :key="`restart_${scope.row.id}_${item}`">
-                  <el-button link type="primary" @click="restart(scope.row , item)">{{ item }}</el-button>
+                  <el-button class="quick-action-btn quick-action-restart" size="small" plain @click="restart(scope.row , item)">{{ item }}</el-button>
                 </template>
               </div>
             </div>
@@ -85,7 +85,7 @@
               <span class="operation-title">快速停止：</span>
               <div class="quick-actions">
                 <template v-for="item in scope.row.default_service_list" :key="`stop_${scope.row.id}_${item}`">
-                  <el-button link type="warning" @click="stop(scope.row , item)">{{ item }}</el-button>
+                  <el-button class="quick-action-btn quick-action-stop" size="small" plain @click="stop(scope.row , item)">{{ item }}</el-button>
                 </template>
               </div>
             </div>
@@ -712,6 +712,10 @@ export default {
 
 .operation-block {
   margin-top: 8px;
+  padding: 7px 8px;
+  border: 1px solid #e8eee4;
+  border-radius: 10px;
+  background: #fbfdf9;
 }
 
 .operation-block:first-child {
@@ -731,11 +735,66 @@ export default {
   flex-wrap: wrap;
 }
 
+.operation-btn {
+  border-radius: 999px;
+  border-color: #c8d9c3;
+  color: #3f6f3f;
+  background: #f3f9f0;
+}
+
+.operation-btn:hover {
+  border-color: #a9c3a4;
+  color: #2f5c2f;
+  background: #e9f4e5;
+}
+
+.operation-btn.operation-btn-danger {
+  border-color: #e6c4be;
+  color: #a54434;
+  background: #fdf2f0;
+}
+
+.operation-btn.operation-btn-danger:hover {
+  border-color: #dca79e;
+  color: #913a2d;
+  background: #fbe8e4;
+}
+
 .quick-actions {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
   flex-wrap: wrap;
+}
+
+.quick-action-btn {
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 3px 10px;
+}
+
+.quick-action-restart {
+  border-color: #b7d7b2;
+  color: #2f6e37;
+  background: #eff8ec;
+}
+
+.quick-action-restart:hover {
+  border-color: #93be8d;
+  color: #285e30;
+  background: #e3f2df;
+}
+
+.quick-action-stop {
+  border-color: #e8ccb9;
+  color: #965139;
+  background: #fff5ef;
+}
+
+.quick-action-stop:hover {
+  border-color: #deaf94;
+  color: #844530;
+  background: #feede3;
 }
 
 .el-table .warning-row {

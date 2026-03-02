@@ -15,6 +15,18 @@
  */
 
 const commandConfig = [
+  // 历史命令
+  {
+    command: 'history',
+    name: '历史命令',
+    icon: '🕘',
+    desc: '查看历史命令并回填输入框',
+    aliases: ['his', 'h', '历史', '历史记录'],
+    module: null,
+    needTarget: true,
+    dynamicChildren: 'historyList'
+  },
+
   // Docker 命令
   {
     command: 'docker',

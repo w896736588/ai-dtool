@@ -114,12 +114,41 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="sshConnectionsDialogVisible" title="当前SSH连接列表" width="80%">
-    <el-table v-loading="sshConnectionsLoading" :data="sshConnections" style="width: 100%">
+  <el-dialog
+    v-model="sshConnectionsDialogVisible"
+    title="当前SSH连接列表"
+    width="82%"
+    top="6vh"
+    class="ssh-connections-dialog"
+  >
+    <div class="ssh-dialog-toolbar">
+      <el-tag type="success" effect="light">连接数 {{ sshConnectionCount }}</el-tag>
+      <el-button size="small" type="primary" plain @click="refreshSshConnections(true)">刷新列表</el-button>
+    </div>
+    <el-table
+      v-loading="sshConnectionsLoading"
+      :data="sshConnections"
+      stripe
+      border
+      style="width: 100%"
+      class="ssh-connections-table"
+      max-height="62vh"
+      empty-text="暂无活跃SSH连接"
+    >
       <el-table-column prop="ssh_name" label="SSH" width="180" />
       <el-table-column prop="shell_client_id" label="客户端ID" width="220" />
-      <el-table-column prop="current_command" label="当前命令" min-width="260" />
-      <el-table-column prop="status" label="状态" width="120" />
+      <el-table-column prop="current_command" label="当前命令" min-width="320" show-overflow-tooltip />
+      <el-table-column prop="status" label="状态" width="120">
+        <template #default="scope">
+          <el-tag
+            size="small"
+            effect="light"
+            :type="scope.row.status === 'busy' ? 'warning' : 'success'"
+          >
+            {{ scope.row.status || '-' }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="connect_time" label="连接开始时间" width="180" />
       <el-table-column prop="connect_seconds" label="连接时长(秒)" width="120" />
       <el-table-column prop="type" label="类型" width="120" />
@@ -461,5 +490,35 @@ export default {
 .sidebar-menu .el-menu-item span {
   font-size: 13px;
   font-weight: 500;
+}
+
+.ssh-dialog-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e8eee4;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #f6fbf4 0%, #ffffff 100%);
+}
+
+.ssh-connections-table :deep(.el-table__header-wrapper th) {
+  background: #f5faf4;
+  color: #44584a;
+  font-weight: 600;
+}
+
+.ssh-connections-table :deep(.el-table__row td) {
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+
+@media (max-width: 900px) {
+  .ssh-dialog-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

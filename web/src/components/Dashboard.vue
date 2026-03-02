@@ -131,6 +131,11 @@ export default {
     const dynamicDataCache = ref({}) // 动态数据缓存
     const isLoadingDynamic = ref(false) // 是否正在加载动态数据
     const currentInputValue = ref('')
+    const commandHistory = ref([]) // 命令历史记录
+    const commandHistoryIndex = ref(0) // 命令历史游标（指向“下一条”位置）
+    const commandUsageMap = ref({}) // 命令使用次数统计（key=命令文本，value=次数）
+    const commandHistoryCacheKey = 'dashboard_command_history_v1'
+    const commandUsageCacheKey = 'dashboard_command_usage_v1'
     
     // SSE 相关状态
     const sseDistributeId = ref('') // SSE 分发 ID
@@ -747,6 +752,7 @@ export default {
         type !== 'linkEnvList' &&
         type !== 'linkAccountList' &&
         type !== 'variableOptionList' &&
+        type !== 'historyList' &&
         dynamicDataCache.value[type]
       ) {
         currentChildren.value = dynamicDataCache.value[type]
@@ -795,6 +801,9 @@ export default {
           break
         case 'variableOptionList':
           loadVariableOptionList()
+          break
+        case 'historyList':
+          loadHistoryList()
           break
         default:
           isLoadingDynamic.value = false
@@ -1217,8 +1226,38 @@ export default {
       isLoadingDynamic.value = false
     }
 
+    // 加载历史命令列表（按使用次数升序，使用最多的在最下面）
+    const loadHistoryList = () => {
+      const usageMap = commandUsageMap.value || {}
+      const list = Object.keys(usageMap)
+        .map((commandText, index) => {
+          const count = Number(usageMap[commandText]) || 0
+          return {
+            command: commandText,
+            name: commandText,
+            desc: `使用 ${count} 次`,
+            id: `history_${index}`,
+            insertOnly: true,
+            insertText: commandText,
+            count
+          }
+        })
+        .sort((a, b) => {
+          if (a.count !== b.count) {
+            return a.count - b.count
+          }
+          return String(a.command).localeCompare(String(b.command), 'zh-Hans-CN')
+        })
+      dynamicDataCache.value['historyList'] = list
+      currentChildren.value = list
+      isLoadingDynamic.value = false
+      refreshCommandDropdownVisibility()
+    }
+
     // 处理输入
     const handleInput = () => {
+      // 输入变化后重置历史游标，保证再次按上键从最新历史开始
+      commandHistoryIndex.value = commandHistory.value.length
       if (isCommandModeByText(inputText.value)) {
         parseInput()
         activeCommandIndex.value = 0
@@ -1235,6 +1274,100 @@ export default {
       if (isCommandModeByText(inputText.value)) {
         parseInput()
       }
+    }
+
+    // 记录历史命令（去重连续重复项，最多保留 100 条）
+    const pushCommandHistory = (rawCommand) => {
+      const command = normalizeCommandPart(rawCommand)
+      if (!command) return
+      const last = commandHistory.value.length > 0
+        ? commandHistory.value[commandHistory.value.length - 1]
+        : ''
+      if (last !== command) {
+        commandHistory.value.push(command)
+      }
+      commandUsageMap.value[command] = (Number(commandUsageMap.value[command]) || 0) + 1
+      if (commandHistory.value.length > 100) {
+        commandHistory.value.splice(0, commandHistory.value.length - 100)
+      }
+      commandHistoryIndex.value = commandHistory.value.length
+      persistCommandHistoryCache()
+    }
+
+    // persistCommandHistoryCache 持久化首页命令历史与使用次数到本地缓存
+    const persistCommandHistoryCache = () => {
+      store.setStore(commandHistoryCacheKey, JSON.stringify(commandHistory.value || []))
+      store.setStore(commandUsageCacheKey, JSON.stringify(commandUsageMap.value || {}))
+    }
+
+    // loadCommandHistoryCache 从本地缓存恢复首页命令历史与使用次数
+    const loadCommandHistoryCache = () => {
+      let historyList = []
+      let usageMap = {}
+      try {
+        const historyRaw = store.getStore(commandHistoryCacheKey)
+        const usageRaw = store.getStore(commandUsageCacheKey)
+        const parsedHistory = historyRaw ? JSON.parse(historyRaw) : []
+        const parsedUsage = usageRaw ? JSON.parse(usageRaw) : {}
+        if (Array.isArray(parsedHistory)) {
+          historyList = parsedHistory
+            .map(item => normalizeCommandPart(item))
+            .filter(Boolean)
+            .slice(-100)
+        }
+        if (parsedUsage && typeof parsedUsage === 'object' && !Array.isArray(parsedUsage)) {
+          Object.keys(parsedUsage).forEach((key) => {
+            const normalizedKey = normalizeCommandPart(key)
+            const count = Number(parsedUsage[key]) || 0
+            if (normalizedKey && count > 0) {
+              usageMap[normalizedKey] = count
+            }
+          })
+        }
+      } catch (e) {
+        historyList = []
+        usageMap = {}
+      }
+      commandHistory.value = historyList
+      commandUsageMap.value = usageMap
+      commandHistoryIndex.value = historyList.length
+    }
+
+    // 在输入框为空时，使用上下方向键切换历史命令
+    const browseCommandHistory = (direction) => {
+      if (commandHistory.value.length === 0) return
+      const maxIndex = commandHistory.value.length
+      // 到达边界继续按方向键时，清空输入框并退出历史浏览状态
+      if (direction < 0 && commandHistoryIndex.value <= 0) {
+        commandHistoryIndex.value = maxIndex
+        inputText.value = ''
+        showCommands.value = false
+        commandStack.value = []
+        currentChildren.value = []
+        currentInputValue.value = ''
+        return
+      }
+      if (direction > 0 && commandHistoryIndex.value >= maxIndex) {
+        inputText.value = ''
+        showCommands.value = false
+        commandStack.value = []
+        currentChildren.value = []
+        currentInputValue.value = ''
+        return
+      }
+      const nextIndex = Math.max(0, Math.min(maxIndex, commandHistoryIndex.value + direction))
+      commandHistoryIndex.value = nextIndex
+      if (nextIndex >= maxIndex) {
+        inputText.value = ''
+        showCommands.value = false
+        commandStack.value = []
+        currentChildren.value = []
+        currentInputValue.value = ''
+        return
+      }
+      inputText.value = commandHistory.value[nextIndex]
+      parseInput()
+      activeCommandIndex.value = 0
     }
 
     // 固定一级命令面板点击：快速填充并进入下一层候选
@@ -1262,6 +1395,18 @@ export default {
       if (e.key === 'Enter' && !canExecuteCommand.value) {
         e.preventDefault()
         return
+      }
+
+      // 历史浏览：输入框为空可进入；进入后可继续用上下键切换，按下到末尾会清空输入框
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        const normalizedInput = normalizeCommandPart(inputText.value)
+        const canBrowseFromEmpty = normalizedInput === ''
+        const isBrowsingHistory = commandHistoryIndex.value < commandHistory.value.length
+        if (canBrowseFromEmpty || isBrowsingHistory) {
+          e.preventDefault()
+          browseCommandHistory(e.key === 'ArrowUp' ? -1 : 1)
+          return
+        }
       }
 
       if (!showCommands.value) {
@@ -1345,6 +1490,18 @@ export default {
 
     // 选择命令
     const selectCommand = (cmd) => {
+      // history 选择项：仅回填输入框，不改变命令栈
+      if (cmd && cmd.insertOnly) {
+        inputText.value = normalizeCommandPart(cmd.insertText || cmd.command || cmd.name)
+        showCommands.value = false
+        parseInput()
+        activeCommandIndex.value = 0
+        nextTick(() => {
+          inputRef.value?.focus()
+        })
+        return
+      }
+
       // 构建新的输入文本
       const parts = inputText.value.split(' ')
       parts[parts.length - 1] = cmd.command || cmd.name
@@ -1517,6 +1674,7 @@ export default {
       
       // 创建输出消息
       const displayCommandText = normalizeCommandPart(options.rawCommand) || cmd.name
+      pushCommandHistory(displayCommandText)
       const outputMsg = {
         type: 'system',
         commandText: `执行命令: ${displayCommandText}`,
@@ -2517,6 +2675,7 @@ export default {
     }
 
     onMounted(() => {
+      loadCommandHistoryCache()
       inputRef.value?.focus()
       initSseConnection()
     })
