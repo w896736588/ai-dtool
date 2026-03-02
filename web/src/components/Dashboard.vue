@@ -4,7 +4,23 @@
       <!-- 消息列表区域 -->
       <div ref="messageList" class="message-list">
         <div class="welcome-message">
-          <h2>开发者工具平台</h2>
+          <h2>命令快捷操作</h2>
+          <div class="fixed-command-panel">
+            <div class="fixed-command-title">支持的一级命令</div>
+            <div class="fixed-command-list">
+              <button
+                v-for="(cmd, index) in availableCommands"
+                :key="getCommandKey(cmd, index)"
+                type="button"
+                class="fixed-command-item"
+                @click="quickSelectTopCommand(cmd)"
+              >
+                <span class="fixed-command-icon">{{ cmd.icon }}</span>
+                <span class="fixed-command-name">{{ cmd.command }}</span>
+                <span class="fixed-command-desc">{{ cmd.desc }}</span>
+              </button>
+            </div>
+          </div>
           <p class="hint">输入 <kbd>/</kbd> 或直接输入命令（如 <kbd>g</kbd>），<kbd>Tab</kbd> 补全，<kbd>Space</kbd> 继续</p>
         </div>
         <div
@@ -87,6 +103,7 @@ import compose from '@/utils/base/compose'
 import supervisor from '@/utils/base/supervisor'
 import shell from '@/utils/base/shell'
 import shellOut from '@/utils/base/shell_out'
+import smartLinkSet from '@/utils/base/smart_link_set'
 import group from '@/utils/base/group'
 import store from '@/utils/base/store'
 import sseDistribute from '@/utils/base/sse_distribute'
@@ -171,6 +188,83 @@ export default {
       return `idx:${index}`
     }
 
+    // 获取 link run 命令在命令栈中的三级选择（链接配置/环境/账号）
+    const getLinkRunSelection = (stack) => {
+      const sourceStack = Array.isArray(stack) ? stack : []
+      const actionIndex = sourceStack.findIndex(item => item?.action === 'linkRun')
+      if (actionIndex < 0) {
+        return {
+          configCmd: null,
+          envCmd: null,
+          accountCmd: null
+        }
+      }
+      const tailStack = sourceStack.slice(actionIndex + 1)
+      return {
+        configCmd: tailStack.find(item => item?.data?.__linkType === 'config') || null,
+        envCmd: tailStack.find(item => item?.data?.__linkType === 'env') || null,
+        accountCmd: tailStack.find(item => item?.data?.__linkType === 'account') || null
+      }
+    }
+
+    // 判断动作命令是否已满足执行条件（含多级目标校验）
+    const isActionReady = (actionCmd, stack, inputValue) => {
+      if (!actionCmd) return false
+      const sourceStack = Array.isArray(stack) ? stack : []
+      const actionIndex = sourceStack.findIndex(item => item?.action === actionCmd.action)
+      const targetCmd = actionCmd.needTarget ? sourceStack[actionIndex + 1] : null
+      const targetReady = !actionCmd.needTarget || !!(targetCmd && targetCmd.data)
+      const inputReady = !actionCmd.needInput || !!normalizeCommandPart(inputValue)
+      if (!targetReady || !inputReady) {
+        return false
+      }
+      if (actionCmd.action === 'linkRun') {
+        const selection = getLinkRunSelection(sourceStack)
+        return !!(selection.configCmd && selection.envCmd && selection.accountCmd)
+      }
+      if (actionCmd.action === 'supervisorRestart' || actionCmd.action === 'supervisorStop' || actionCmd.action === 'supervisorConfig') {
+        const actionIndex = sourceStack.findIndex(item => item?.action === actionCmd.action)
+        const processCmd = actionIndex >= 0 ? sourceStack[actionIndex + 2] : null
+        return !!(processCmd && processCmd.data)
+      }
+      return true
+    }
+
+    // 获取动作命令未完成时的提示语
+    const getActionIncompleteMessage = (actionCmd, stack, inputValue) => {
+      if (!actionCmd) {
+        return '命令未完成'
+      }
+      const sourceStack = Array.isArray(stack) ? stack : []
+      const actionIndex = sourceStack.findIndex(item => item?.action === actionCmd.action)
+      const targetCmd = actionCmd.needTarget ? sourceStack[actionIndex + 1] : null
+      if (actionCmd.needTarget && !(targetCmd && targetCmd.data)) {
+        return '命令未完成：请先选择项目/环境'
+      }
+      if (actionCmd.needInput && !normalizeCommandPart(inputValue)) {
+        return `命令未完成：${actionCmd.inputPlaceholder || '请输入参数'}`
+      }
+      if (actionCmd.action === 'linkRun') {
+        const selection = getLinkRunSelection(sourceStack)
+        if (!selection.configCmd) {
+          return '命令未完成：请先选择自定义链接'
+        }
+        if (!selection.envCmd) {
+          return '命令未完成：请选择要打开的环境'
+        }
+        if (!selection.accountCmd) {
+          return '命令未完成：请选择账号'
+        }
+      }
+      if (actionCmd.action === 'supervisorRestart' || actionCmd.action === 'supervisorStop' || actionCmd.action === 'supervisorConfig') {
+        const processCmd = actionIndex >= 0 ? sourceStack[actionIndex + 2] : null
+        if (!(processCmd && processCmd.data)) {
+          return '命令未完成：请选择服务'
+        }
+      }
+      return '命令未完成'
+    }
+
     const isSameCommandItem = (a, b) => {
       if (!a || !b) return false
       const aId = normalizeCommandPart(a.id)
@@ -231,7 +325,7 @@ export default {
     const appendOutputResult = (text) => {
       if (!currentOutputMessage.value) return
       const current = String(currentOutputMessage.value.resultText || '')
-      const merged = current + String(text || '')
+      const merged = current + sanitizeCommandOutput(String(text || ''))
       currentOutputMessage.value.resultText = merged.length > 50000 ? merged.slice(-50000) : merged
       scrollToBottom()
     }
@@ -239,9 +333,23 @@ export default {
     const appendOutputProcess = (text) => {
       if (!currentOutputMessage.value) return
       const current = String(currentOutputMessage.value.processText || '')
-      const merged = current + String(text || '')
+      const merged = current + sanitizeCommandOutput(String(text || ''))
       currentOutputMessage.value.processText = merged.length > 50000 ? merged.slice(-50000) : merged
       scrollToBottom()
+    }
+
+    // 清理终端输出中的收尾标记与回显噪音
+    const sanitizeCommandOutput = (rawText) => {
+      let text = String(rawText || '')
+      // 去掉尾包标记：__GS_CMD_DONE_xxx__:0
+      text = text.replace(/__GS_CMD_DONE_\d+__:\d+\s*/g, '')
+      // 去掉尾包标记：GS_CMD_DONE_xxx:0
+      text = text.replace(/GS_CMD_DONE_\d+:\d+\s*/g, '')
+      // 去掉命令中用于打印尾包标记的 printf 片段
+      text = text.replace(/;?\s*printf\s+'__GS_CMD_DONE_[^']*'\s+"\$\\?"\s*/g, '')
+      // 去掉命令中用于打印尾包标记的 printf 片段（无双下划线版本）
+      text = text.replace(/;?\s*printf\s+'GS_CMD_DONE_[^']*'\s+"\$\\?"\s*/g, '')
+      return text
     }
 
     // 根据模块配置过滤可用命令
@@ -265,6 +373,19 @@ export default {
       }
       const lastCmd = commandStack.value[commandStack.value.length - 1]
       const actionCmd = commandStack.value.find(item => item.action)
+      if (actionCmd && actionCmd.action === 'linkRun') {
+        const selection = getLinkRunSelection(commandStack.value)
+        if (!selection.configCmd) {
+          return '请选择自定义链接...'
+        }
+        if (!selection.envCmd) {
+          return '请选择要打开的环境...'
+        }
+        if (!selection.accountCmd) {
+          return '请选择账号...'
+        }
+        return '按 Enter 执行命令'
+      }
       if (actionCmd && actionCmd.needInput) {
         const actionIndex = commandStack.value.findIndex(item => item.action)
         const targetReady = !actionCmd.needTarget || !!(commandStack.value[actionIndex + 1] && commandStack.value[actionIndex + 1].data)
@@ -418,7 +539,7 @@ export default {
       const inputReady = !actionCmd.needInput || !!normalizeCommandPart(currentInputValue.value)
 
       return {
-        canExecute: targetReady && inputReady,
+        canExecute: targetReady && inputReady && isActionReady(actionCmd, commandStack.value, currentInputValue.value),
         highlightedTokens
       }
     })
@@ -529,8 +650,26 @@ export default {
                     if (serviceFound) {
                       commandStack.value.push(serviceFound)
                       i += 1
-                      currentChildren.value = []
-                      showCommands.value = false
+                      // 支持继续向下解析第三级目标（如 link run <配置> <环境> <账号>）
+                      if (serviceFound.dynamicChildren) {
+                        loadDynamicChildren(serviceFound.dynamicChildren)
+                        const thirdDynamicList = dynamicDataCache.value[serviceFound.dynamicChildren] || []
+                        currentChildren.value = thirdDynamicList
+                        showCommands.value = true
+                        const thirdToken = normalizeCommandPart(parts[i + 1]).toLowerCase()
+                        if (thirdToken) {
+                          const thirdFound = findCommandByToken(thirdDynamicList, thirdToken)
+                          if (thirdFound) {
+                            commandStack.value.push(thirdFound)
+                            i += 1
+                            currentChildren.value = []
+                            showCommands.value = false
+                          }
+                        }
+                      } else {
+                        currentChildren.value = []
+                        showCommands.value = false
+                      }
                     }
                   }
                 } else {
@@ -589,7 +728,14 @@ export default {
 
     // 加载动态子命令
     const loadDynamicChildren = (type) => {
-      if (type !== 'gitProjectList' && type !== 'gitGroupList' && dynamicDataCache.value[type]) {
+      if (
+        type !== 'gitProjectList' &&
+        type !== 'gitGroupList' &&
+        type !== 'supervisorProcessList' &&
+        type !== 'linkEnvList' &&
+        type !== 'linkAccountList' &&
+        dynamicDataCache.value[type]
+      ) {
         currentChildren.value = dynamicDataCache.value[type]
         refreshCommandDropdownVisibility()
         return
@@ -621,6 +767,15 @@ export default {
           break
         case 'dockerServiceList':
           loadDockerServiceList()
+          break
+        case 'linkConfigList':
+          loadLinkConfigList()
+          break
+        case 'linkEnvList':
+          loadLinkEnvList()
+          break
+        case 'linkAccountList':
+          loadLinkAccountList()
           break
         default:
           isLoadingDynamic.value = false
@@ -804,13 +959,66 @@ export default {
 
     // 加载 Supervisor 进程列表
     const loadSupervisorProcessList = () => {
-      const supervisorId = store.getStore('chooseSupervisorId')
-      if (!supervisorId) {
+      const actionCmd = [...commandStack.value].reverse().find(item => {
+        const actionName = String(item?.action || '')
+        return actionName === 'supervisorRestart' || actionName === 'supervisorStop' || actionName === 'supervisorConfig'
+      })
+      if (!actionCmd) {
+        dynamicDataCache.value['supervisorProcessList'] = []
+        currentChildren.value = []
+        isLoadingDynamic.value = false
+        refreshCommandDropdownVisibility()
+        return
+      }
+      const actionIndex = commandStack.value.findIndex(item => item === actionCmd)
+      const envCmd = actionIndex >= 0 ? commandStack.value[actionIndex + 1] : null
+      if (!(envCmd && envCmd.data && envCmd.data.ssh_id)) {
         loadSupervisorEnvList()
         return
       }
-      // 这里需要根据环境获取进程列表，简化处理
-      loadSupervisorEnvList()
+      const supervisorConfig = {
+        ...envCmd.data,
+        sse_distribute_id: sseDistributeId.value
+      }
+      supervisor.SupervisorConfList(supervisorConfig, (response) => {
+        isLoadingDynamic.value = false
+        if (!(response && response.ErrCode === 0)) {
+          dynamicDataCache.value['supervisorProcessList'] = []
+          currentChildren.value = []
+          refreshCommandDropdownVisibility()
+          return
+        }
+        const lines = String(response.Data || '')
+          .split('\n')
+          .map(line => normalizeCommandPart(line))
+          .filter(Boolean)
+        const list = lines.map((line, index) => {
+          const [configNameRaw, supervisorNameRaw] = line.split('---')
+          const configName = normalizeCommandPart(configNameRaw)
+          let supervisorName = normalizeCommandPart(supervisorNameRaw)
+            .replaceAll('[', '')
+            .replaceAll(']', '')
+            .replaceAll('program:', '')
+          supervisorName = normalizeCommandPart(supervisorName)
+          const configDir = normalizeCommandPart(envCmd.data.config_dir)
+          const configPath = configDir && configName ? `${configDir}/${configName}` : configName
+          const displayName = supervisorName || configName || `进程${index + 1}`
+          return {
+            command: displayName,
+            name: displayName,
+            aliases: [configName].filter(Boolean),
+            desc: configName || '进程配置',
+            id: `${envCmd.id || 'env'}_${index}`,
+            data: {
+              supervisor_name: supervisorName,
+              supervisor_config: configPath
+            }
+          }
+        })
+        dynamicDataCache.value['supervisorProcessList'] = list
+        currentChildren.value = list
+        refreshCommandDropdownVisibility()
+      })
     }
 
     // 加载终端输出列表
@@ -829,6 +1037,99 @@ export default {
           currentChildren.value = list
         }
       })
+    }
+
+    // 加载自定义链接配置列表
+    const loadLinkConfigList = () => {
+      smartLinkSet.SmartLinkList((response) => {
+        isLoadingDynamic.value = false
+        if (!(response && response.ErrCode === 0)) {
+          dynamicDataCache.value['linkConfigList'] = []
+          currentChildren.value = []
+          refreshCommandDropdownVisibility()
+          return
+        }
+        const smartLinkList = Array.isArray(response.Data?.smart_link_list) ? response.Data.smart_link_list : []
+        const list = smartLinkList.map(item => {
+          let linkList = []
+          try {
+            linkList = Array.isArray(item.links) ? item.links : JSON.parse(item.links || '[]')
+          } catch (err) {
+            linkList = []
+          }
+          return {
+            command: item.name,
+            name: item.name,
+            aliases: [String(item.id || '')].filter(Boolean),
+            desc: `ID:${item.id || '-'} | 链接数:${linkList.length}`,
+            id: item.id,
+            data: {
+              ...item,
+              __linkType: 'config',
+              linkList
+            }
+          }
+        })
+        dynamicDataCache.value['linkConfigList'] = list
+        currentChildren.value = list
+        refreshCommandDropdownVisibility()
+      })
+    }
+
+    // 加载已选链接配置下的环境列表
+    const loadLinkEnvList = () => {
+      const { configCmd } = getLinkRunSelection(commandStack.value)
+      const linkList = Array.isArray(configCmd?.data?.linkList) ? configCmd.data.linkList : []
+      const list = linkList.map((item, index) => {
+        const envName = normalizeCommandPart(item?.label) || `环境${index + 1}`
+        return {
+          command: envName,
+          name: envName,
+          desc: normalizeCommandPart(item?.link) || '未配置链接地址',
+          id: `${configCmd?.id || 'cfg'}_${index}`,
+          dynamicChildren: 'linkAccountList',
+          data: {
+            __linkType: 'env',
+            env: item || {},
+            config: configCmd?.data || {}
+          }
+        }
+      })
+      dynamicDataCache.value['linkEnvList'] = list
+      currentChildren.value = list
+      isLoadingDynamic.value = false
+      refreshCommandDropdownVisibility()
+    }
+
+    // 加载已选环境下的账号列表
+    const loadLinkAccountList = () => {
+      const { configCmd, envCmd } = getLinkRunSelection(commandStack.value)
+      const userListRaw = Array.isArray(envCmd?.data?.env?.userList) ? envCmd.data.env.userList : []
+      const userList = userListRaw.length > 0
+        ? userListRaw
+        : [{ user_name: '默认账号(空)', password: '' }]
+      const list = userList.map((item, index) => {
+        const userName = normalizeCommandPart(item?.user_name) || `账号${index + 1}`
+        return {
+          command: userName,
+          name: userName,
+          desc: userListRaw.length > 0 ? '账号' : '该环境未配置账号，使用空账号执行',
+          id: `${envCmd?.id || 'env'}_${index}`,
+          data: {
+            __linkType: 'account',
+            account: {
+              user_name: normalizeCommandPart(item?.user_name),
+              password: normalizeCommandPart(item?.password)
+            },
+            env: envCmd?.data?.env || {},
+            config: configCmd?.data || {}
+          }
+        }
+      })
+      dynamicDataCache.value['linkAccountList'] = list
+      currentChildren.value = list
+      isLoadingDynamic.value = false
+      refreshCommandDropdownVisibility()
     }
 
     // 加载 Redis 环境列表
@@ -857,6 +1158,19 @@ export default {
       if (isCommandModeByText(inputText.value)) {
         parseInput()
       }
+    }
+
+    // 固定一级命令面板点击：快速填充并进入下一层候选
+    const quickSelectTopCommand = (cmd) => {
+      const commandText = normalizeCommandPart(cmd?.command)
+      if (!commandText) return
+      inputText.value = `/${commandText} `
+      parseInput()
+      showCommands.value = true
+      activeCommandIndex.value = 0
+      nextTick(() => {
+        inputRef.value?.focus()
+      })
     }
 
     // 处理失焦
@@ -1061,26 +1375,13 @@ export default {
       if (commandStack.value.length > 0) {
         const actionCmd = commandStack.value.find(item => item.action)
         if (actionCmd) {
-          const actionIndex = commandStack.value.findIndex(item => item.action)
-          const targetCmd = actionCmd.needTarget ? commandStack.value[actionIndex + 1] : null
-          if (actionCmd.needTarget && !(targetCmd && targetCmd.data)) {
+          if (!isActionReady(actionCmd, commandStack.value, currentInputValue.value)) {
             messages.value.push({
               type: 'system',
-              content: '命令未完成：请先选择项目/环境\n'
+              content: `${getActionIncompleteMessage(actionCmd, commandStack.value, currentInputValue.value)}\n`
             })
             scrollToBottom()
             return
-          }
-          if (actionCmd.needInput) {
-            const branchName = normalizeCommandPart(currentInputValue.value)
-            if (!branchName) {
-              messages.value.push({
-                type: 'system',
-                content: `命令未完成：${actionCmd.inputPlaceholder || '请输入参数'}\n`
-              })
-              scrollToBottom()
-              return
-            }
           }
           executeAction(actionCmd, {
             inputValue: currentInputValue.value,
@@ -1187,6 +1488,21 @@ export default {
         case 'dockerQuickStop':
           executeDockerAction('quickStop', currentStack)
           break
+        case 'supervisorStatus':
+          executeSupervisorAction('status', currentStack)
+          break
+        case 'supervisorRestartAll':
+          executeSupervisorAction('restartAll', currentStack)
+          break
+        case 'supervisorRestart':
+          executeSupervisorAction('restart', currentStack)
+          break
+        case 'supervisorStop':
+          executeSupervisorAction('stop', currentStack)
+          break
+        case 'supervisorConfig':
+          executeSupervisorAction('config', currentStack)
+          break
         case 'gitPull':
           executeGitAction('pull', currentStack, options.inputValue || '')
           break
@@ -1222,6 +1538,9 @@ export default {
           break
         case 'shellRun':
           executeShellAction('run', currentStack, options.inputValue || '')
+          break
+        case 'linkRun':
+          executeLinkAction(currentStack)
           break
         case 'gitViewConfig':
           appendOutputResult('已禁用页面跳转，请仅使用命令快捷操作。\n')
@@ -1417,6 +1736,83 @@ export default {
             finishExecution()
         }
       })
+    }
+
+    // 执行 Supervisor 相关操作
+    const executeSupervisorAction = (action, stack) => {
+      const actionCmd = stack.find(item => item.action && String(item.action).startsWith('supervisor'))
+      const actionIndex = stack.findIndex(item => item.action && String(item.action).startsWith('supervisor'))
+      const envCmd = actionIndex >= 0 ? stack[actionIndex + 1] : null
+      const processCmd = actionIndex >= 0 ? stack[actionIndex + 2] : null
+
+      if (!(envCmd && envCmd.data)) {
+        appendOutputResult('错误：请先选择 Supervisor 环境\n')
+        finishExecution()
+        return
+      }
+
+      const supervisorConfig = {
+        ...envCmd.data,
+        sse_distribute_id: sseDistributeId.value
+      }
+
+      const done = (response, successText) => {
+        if (!(response && response.ErrCode === 0)) {
+          appendOutputResult(`错误: ${normalizeCommandPart(response?.ErrMsg) || '未知错误'}\n`)
+          setTimeout(() => {
+            finishExecution()
+          }, 1500)
+        } else {
+          if (successText) {
+            appendOutputResult(`${successText}\n`)
+          }
+          // 结果详情统一在“执行过程(SSE)”里查看，上方只保留成功提示
+          setTimeout(() => {
+            finishExecution()
+          }, 1500)
+        }
+      }
+
+      switch (action) {
+        case 'status':
+          appendOutputResult(`正在查看环境 [${envCmd.name}] 的进程状态...\n\n`)
+          supervisor.SupervisorStatusList({ ...supervisorConfig }, (response) => done(response, '执行成功'))
+          break
+        case 'restartAll':
+          appendOutputResult(`正在重启环境 [${envCmd.name}] 的全部进程...\n\n`)
+          supervisor.SupervisorRestartAll({ ...supervisorConfig }, (response) => done(response, '执行成功'))
+          break
+        case 'restart':
+          if (!(processCmd && processCmd.data && processCmd.data.supervisor_name)) {
+            appendOutputResult('错误：请先选择要重启的服务\n')
+            finishExecution()
+            return
+          }
+          appendOutputResult(`正在重启服务 [${processCmd.name}]...\n\n`)
+          supervisor.SupervisorRestart({ ...supervisorConfig }, processCmd.data.supervisor_name, (response) => done(response, '执行成功'))
+          break
+        case 'stop':
+          if (!(processCmd && processCmd.data && processCmd.data.supervisor_name)) {
+            appendOutputResult('错误：请先选择要停止的服务\n')
+            finishExecution()
+            return
+          }
+          appendOutputResult(`正在停止服务 [${processCmd.name}]...\n\n`)
+          supervisor.SupervisorStop({ ...supervisorConfig }, processCmd.data.supervisor_name, (response) => done(response, '执行成功'))
+          break
+        case 'config':
+          if (!(processCmd && processCmd.data && processCmd.data.supervisor_config)) {
+            appendOutputResult('错误：请先选择要查看配置的服务\n')
+            finishExecution()
+            return
+          }
+          appendOutputResult(`正在查看服务 [${processCmd.name}] 配置...\n\n`)
+          supervisor.SupervisorConfigShow({ ...supervisorConfig }, processCmd.data.supervisor_config, (response) => done(response, '执行成功'))
+          break
+        default:
+          appendOutputResult('该 Supervisor 操作暂未实现\n')
+          finishExecution()
+      }
     }
 
     const executeGitGroupBranchAction = (stack) => {
@@ -1734,6 +2130,45 @@ export default {
       appendOutputResult('该终端输出操作暂未实现\n')
       finishExecution()
     }
+
+    // 执行 link run：根据“链接配置 -> 环境 -> 账号”三级选择启动自定义链接
+    const executeLinkAction = (stack) => {
+      const selection = getLinkRunSelection(stack)
+      if (!selection.configCmd || !selection.envCmd || !selection.accountCmd) {
+        appendOutputResult('错误：请完整选择自定义链接、环境和账号\n')
+        finishExecution()
+        return
+      }
+
+      const configData = selection.configCmd.data || {}
+      const envData = selection.envCmd.data?.env || {}
+      const accountData = selection.accountCmd.data?.account || {}
+
+      const payload = {
+        id: configData.id,
+        label: normalizeCommandPart(envData.label),
+        user_name: normalizeCommandPart(accountData.user_name),
+        password: normalizeCommandPart(accountData.password),
+        open_num: normalizeCommandPart(configData.open_num),
+        open_type: normalizeCommandPart(configData.open_type),
+        sse_distribute_id: sseDistributeId.value
+      }
+
+      if (!payload.id || !payload.label) {
+        appendOutputResult('错误：链接配置不完整，无法执行\n')
+        finishExecution()
+        return
+      }
+
+      smartLinkSet.SmartLinkRun(payload, (response) => {
+        if (response && response.ErrCode === 0) {
+          appendOutputResult('执行成功\n')
+        } else {
+          appendOutputResult(`执行失败: ${normalizeCommandPart(response?.ErrMsg) || '未知错误'}\n`)
+        }
+        finishExecution()
+      })
+    }
     
     // 完成执行
     const finishExecution = () => {
@@ -1812,10 +2247,12 @@ export default {
       inputPlaceholder,
       canExecuteCommand,
       highlightedInputHtml,
+      availableCommands,
       handleInput,
       handleKeydown,
       handleFocus,
       handleBlur,
+      quickSelectTopCommand,
       selectCommand,
       executeCommand,
       getCommandKey,
@@ -1839,7 +2276,7 @@ export default {
 
 .chat-container {
   width: 100%;
-  height: 70vh;
+  height: 78vh;
   background: #fff;
   border-radius: 12px;
   display: flex;
@@ -1882,6 +2319,62 @@ export default {
   border: 1px solid #d8d8c8;
   font-family: monospace;
   color: #5a8a5a;
+}
+
+.fixed-command-panel {
+  margin: 0 auto 16px;
+  max-width: 980px;
+  text-align: left;
+}
+
+.fixed-command-title {
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #6e7d6e;
+}
+
+.fixed-command-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+}
+
+.fixed-command-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #e0e7da;
+  background: #f8fbf5;
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  text-align: left;
+  color: #4f5f4f;
+}
+
+.fixed-command-item:hover {
+  border-color: #bfd1bf;
+  background: #eef5ea;
+}
+
+.fixed-command-icon {
+  flex-shrink: 0;
+}
+
+.fixed-command-name {
+  font-weight: 600;
+  color: #3f533f;
+}
+
+.fixed-command-desc {
+  margin-left: auto;
+  font-size: 12px;
+  color: #7f8c7f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .message {
@@ -2014,6 +2507,14 @@ export default {
 }
 
 @media (max-width: 768px) {
+  .fixed-command-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fixed-command-desc {
+    display: none;
+  }
+
   .message {
     max-width: 100%;
   }

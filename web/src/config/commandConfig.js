@@ -258,7 +258,8 @@ const commandConfig = [
         desc: '重启指定进程',
         action: 'supervisorRestart',
         needTarget: true,
-        dynamicChildren: 'supervisorProcessList'
+        dynamicChildren: 'supervisorEnvList',
+        nextDynamicChildren: 'supervisorProcessList'
       },
       {
         command: 'stop',
@@ -266,7 +267,8 @@ const commandConfig = [
         desc: '停止指定进程',
         action: 'supervisorStop',
         needTarget: true,
-        dynamicChildren: 'supervisorProcessList'
+        dynamicChildren: 'supervisorEnvList',
+        nextDynamicChildren: 'supervisorProcessList'
       },
       {
         command: 'config',
@@ -274,7 +276,8 @@ const commandConfig = [
         desc: '查看进程配置',
         action: 'supervisorConfig',
         needTarget: true,
-        dynamicChildren: 'supervisorProcessList'
+        dynamicChildren: 'supervisorEnvList',
+        nextDynamicChildren: 'supervisorProcessList'
       }
     ]
   },
@@ -366,7 +369,19 @@ const commandConfig = [
     icon: '🔗',
     desc: '自定义网页链接',
     module: 'login',
-    path: '/Link'
+    path: '/Link',
+    children: [
+      {
+        command: 'run',
+        name: '执行',
+        desc: '执行自定义链接（需选择链接、环境、账号）',
+        aliases: ['exec', 'open', '运行', '执行'],
+        action: 'linkRun',
+        needTarget: true,
+        dynamicChildren: 'linkConfigList',
+        nextDynamicChildren: 'linkEnvList'
+      }
+    ]
   },
   {
     command: 'variable',
