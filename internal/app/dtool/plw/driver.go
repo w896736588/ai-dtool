@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -29,6 +31,8 @@ type TPlaywright struct {
 }
 
 var PlaywrightClient *TPlaywright
+var lookPathFunc = exec.LookPath
+var statFunc = os.Stat
 
 func NewTPlaywright() *TPlaywright {
 	gsLog := gstool.NewSlog2(component.EnvClient.LogPath, `playwright`)
@@ -42,8 +46,73 @@ func NewTPlaywright() *TPlaywright {
 func (h *TPlaywright) SetWebkitPath() {
 	// 设置自定义浏览器安装路径
 	_ = os.Setenv("PLAYWRIGHT_BROWSERS_PATH", component.EnvClient.WebkitDriverPath)
-	_ = os.Setenv("PLAYWRIGHT_DRIVER_PATH", component.EnvClient.NodePath)
+	// PLAYWRIGHT_DRIVER_PATH 是驱动目录，不是 node.exe 路径
+	_ = os.Unsetenv("PLAYWRIGHT_DRIVER_PATH")
+	_ = os.Setenv("PLAYWRIGHT_NODEJS_PATH", component.EnvClient.NodePath)
 	_ = os.Setenv("GOPROXY", "https://goproxy.cn,direct")
+}
+
+// EnsureNodeRuntime 确保 Node.js 可用并写回最终路径
+func (h *TPlaywright) EnsureNodeRuntime() bool {
+	nodePath := resolveNodePath(component.EnvClient.NodePath)
+	if nodePath == `` {
+		return false
+	}
+	component.EnvClient.NodePath = nodePath
+	h.SetWebkitPath()
+	return true
+}
+
+// resolveNodePath 解析 Node.js 可执行路径
+func resolveNodePath(configNodePath string) string {
+	return resolveNodePathWithDeps(configNodePath, lookPathFunc, statFunc)
+}
+
+// resolveNodePathWithDeps 通过依赖注入解析路径，便于单测
+func resolveNodePathWithDeps(configNodePath string, lookPath func(file string) (string, error), stat func(name string) (os.FileInfo, error)) string {
+	configNodePath = strings.TrimSpace(configNodePath)
+	tryByStat := func(path string) string {
+		if path == `` {
+			return ``
+		}
+		info, err := stat(path)
+		if err != nil || info == nil {
+			return ``
+		}
+		if info.IsDir() {
+			nodeExe := filepath.Join(path, "node.exe")
+			nodeInfo, nodeErr := stat(nodeExe)
+			if nodeErr == nil && nodeInfo != nil && !nodeInfo.IsDir() {
+				return nodeExe
+			}
+			return ``
+		}
+		return path
+	}
+	tryByLookPath := func(binName string) string {
+		if binName == `` {
+			return ``
+		}
+		binPath, err := lookPath(binName)
+		if err != nil {
+			return ``
+		}
+		return binPath
+	}
+	// 优先使用配置值（完整路径、目录、可执行名均支持）
+	if configNodePath != `` {
+		if path := tryByStat(configNodePath); path != `` {
+			return path
+		}
+		if path := tryByLookPath(configNodePath); path != `` {
+			return path
+		}
+	}
+	// 回退系统 PATH
+	if path := tryByLookPath("node"); path != `` {
+		return path
+	}
+	return ``
 }
 
 func (h *TPlaywright) WaitForLoadState(page *playwright.Page, timeout float64) {

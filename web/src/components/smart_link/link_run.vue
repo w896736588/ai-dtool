@@ -1,5 +1,18 @@
-<template>
+﻿<template>
   <el-alert v-if="is_install === 1" :closable="false" show-icon title="正在安装中，看网速大约5-20分钟" type="warning"/>
+  <el-alert
+      v-if="node_install_tip.show"
+      :closable="false"
+      show-icon
+      type="error"
+      style="margin-bottom: 8px;"
+  >
+    <template #title>未检测到 Node.js，当前无法使用自定义网页</template>
+    <div>{{ node_install_tip.install_tip }}</div>
+    <el-link :href="node_install_tip.install_url" target="_blank" type="primary" style="margin-top: 4px;">
+      前往下载 Node.js
+    </el-link>
+  </el-alert>
   <div class="link-run-page">
     <div class="link-run-toolbar">
       <el-text class="mx-1">已打开Page({{ openPageNum }})</el-text>&nbsp;
@@ -357,6 +370,12 @@ export default {
       openPageNum: 0,
       //是否在安装中
       is_install: 0,
+      // Node.js 安装提示
+      node_install_tip: {
+        show: false,
+        install_url: 'https://nodejs.org/zh-cn/download',
+        install_tip: '请先安装 Node.js（建议 LTS 版本），安装完成后刷新当前页面。',
+      },
     }
   },
   mounted: function () {
@@ -412,14 +431,29 @@ export default {
       _that.smartLinkConfig.linksNew = newData
 
     },
+    // applyNodeInstallTip 解析并展示 Node.js 安装提示
+    applyNodeInstallTip: function (response) {
+      let _that = this
+      let data = response && response.Data ? response.Data : {}
+      let needInstall = data.need_install_node === 1
+      _that.node_install_tip.show = needInstall
+      if (needInstall) {
+        _that.node_install_tip.install_url = data.install_url || 'https://nodejs.org/zh-cn/download'
+        _that.node_install_tip.install_tip = data.install_tip || '请先安装 Node.js（建议 LTS 版本），安装完成后刷新当前页面。'
+      }
+      return needInstall
+    },
     SmartLinkChromeVersion: function () {
       let _that = this
       smart_link_set.SmartLinkChromeVersion(_that.sse_distribute_id , function (response) {
         if (response.ErrCode === 0) {
           _that.versionInfo = response.Data.version
           _that.is_install = response.Data.is_install
+          _that.applyNodeInstallTip(response)
         } else {
-          _that.$helperNotify.error('失败')
+          if (!_that.applyNodeInstallTip(response)) {
+            _that.$helperNotify.error('失败')
+          }
         }
       })
     },
@@ -456,6 +490,12 @@ export default {
         sse_distribute_id : _that.sse_distribute_id,
       }
       smart_link_set.SmartLinkRun(runParams, function (response) {
+        if (response.ErrCode !== 0) {
+          if (!_that.applyNodeInstallTip(response)) {
+            _that.$helperNotify.error(response.ErrMsg || '执行失败')
+          }
+          return
+        }
         ticker_step.Active(_that.tickerKey)
       });
     },
@@ -490,6 +530,10 @@ export default {
     runList: function () {
       let _that = this
       smart_link_set.SmartLinkRunList(_that.sse_distribute_id , function (response) {
+        if (response.ErrCode !== 0) {
+          _that.applyNodeInstallTip(response)
+          return
+        }
         let runList = response.Data
         _that.openPageNum = 0
         _that.smartLinkRunList = {};
@@ -610,7 +654,9 @@ export default {
       smart_link_set.SmartLinkDownloadPath(_that.sse_distribute_id , function (response) {
         if (response.ErrCode === 0) {
         } else {
-          _that.$helperNotify.error('失败')
+          if (!_that.applyNodeInstallTip(response)) {
+            _that.$helperNotify.error('失败')
+          }
         }
       })
     },
@@ -621,7 +667,9 @@ export default {
           _that.GetConfigList()
           _that.runList()
         } else {
-          _that.$helperNotify.error('失败')
+          if (!_that.applyNodeInstallTip(response)) {
+            _that.$helperNotify.error('失败')
+          }
         }
       })
     },
@@ -632,7 +680,9 @@ export default {
           _that.GetConfigList()
           _that.runList()
         } else {
-          _that.$helperNotify.error('失败')
+          if (!_that.applyNodeInstallTip(response)) {
+            _that.$helperNotify.error('失败')
+          }
         }
       })
     },
@@ -742,3 +792,4 @@ export default {
   margin-bottom: 10px;
 }
 </style>
+

@@ -63,10 +63,10 @@ set GOARCH=amd64
 go build -tags production -ldflags "-s -w" -o "%PKG_DIR%\dtool_wails.exe" ./cmd/dtool_wails || goto :error
 
 echo [4/6] Copy runtime resources
+copy /Y "%ROOT_DIR%\go.mod" "%PKG_DIR%\go.mod" >nul || goto :error
 xcopy "%ROOT_DIR%\config\dtool" "%PKG_DIR%\config\dtool" /E /I /Y >nul || goto :error
 xcopy "%ROOT_DIR%\web\dist" "%PKG_DIR%\web\dist" /E /I /Y >nul || goto :error
 xcopy "%ROOT_DIR%\internal\pkg\p_js" "%PKG_DIR%\internal\pkg\p_js" /E /I /Y >nul || goto :error
-xcopy "%ROOT_DIR%\internal\pkg\p_node" "%PKG_DIR%\internal\pkg\p_node" /E /I /Y >nul || goto :error
 xcopy "%ROOT_DIR%\internal\app\dtool\database" "%PKG_DIR%\internal\app\dtool\database" /E /I /Y >nul || goto :error
 
 echo [5/6] Generate release note

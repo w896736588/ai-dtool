@@ -102,14 +102,12 @@ go build -tags production -ldflags "-s -w" -o build/dtool_wails.exe ./cmd/dtool_
 
 ### `[path]`
 
-1. `webkit_node_path`：内置 node 目录，支持占位符 `{PKG_PATH}`。
-2. `webkit_driver_path`：webkit 驱动目录，支持占位符 `{DRIVE}`。
-3. `webkit_data_path`：webkit 用户数据目录，支持占位符 `{DRIVE}`。
-4. `webkit_download_path`：webkit 下载目录，支持占位符 `{DRIVE}`。
+1. `webkit_driver_path`：webkit 驱动目录，支持占位符 `{DRIVE}`。
+2. `webkit_data_path`：webkit 用户数据目录，支持占位符 `{DRIVE}`。
+3. `webkit_download_path`：webkit 下载目录，支持占位符 `{DRIVE}`。
 
 占位符说明：
-1. `{PKG_PATH}`：运行时替换为 `internal/pkg` 的绝对路径。
-2. `{DRIVE}`：优先 `D:`，若不存在则回退到 `C:`。
+1. `{DRIVE}`：优先 `D:`，若不存在则回退到 `C:`。
 
 ### `[base]`
 
@@ -132,7 +130,7 @@ script\build.bat
 脚本会自动执行：
 1. 构建 `web/dist`。
 2. 构建 `dtool.exe`（Web 模式）和 `dtool_wails.exe`（桌面模式）。
-3. 复制运行所需目录（`config/dtool`、`web/dist`、`internal/pkg/p_js`、`internal/pkg/p_node`、数据库升级 SQL）。
+3. 复制运行所需目录（`config/dtool`、`web/dist`、`internal/pkg/p_js`、数据库升级 SQL）。
 4. 输出 `build/dtool_release_时间戳.zip`。
 
 ## 相关约定

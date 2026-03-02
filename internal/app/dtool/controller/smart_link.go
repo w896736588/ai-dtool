@@ -29,6 +29,9 @@ func SmartLinkUpWebkit(c *gin.Context) {
 		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
 		SseDistributeId: sseDistributeId,
 	}
+	if !ensureSmartLinkNodeInstalled(c, sse) {
+		return
+	}
 	go plw.PlaywrightClient.Install(sse, pw.Version)
 	gsgin.GinResponseSuccess(c, `更新浏览器核心中`, ``)
 	return
@@ -41,6 +44,9 @@ func SmartLinkRecycle(c *gin.Context) {
 	sse := &p_sse.SseShell{
 		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
 		SseDistributeId: sseDistributeId,
+	}
+	if !ensureSmartLinkNodeInstalled(c, sse) {
+		return
 	}
 	sse.Send(`开始释放实例` + "\n")
 	p := plw.NewPlaywright(nil, plw.PlaywrightClient.Log)
@@ -56,6 +62,9 @@ func SmartLinkRecycle(c *gin.Context) {
 }
 
 func SmartLinkDownloadPath(c *gin.Context) {
+	if !ensureSmartLinkNodeInstalled(c, nil) {
+		return
+	}
 	err := plw.PlaywrightClient.SmartLinkDownloadPath()
 	if err != nil {
 		gsgin.GinResponseError(c, fmt.Sprintf(`释放失败 %s`, err.Error()), nil)
@@ -241,6 +250,9 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
 		SseDistributeId: cast.ToString(dataMap[`sse_distribute_id`]),
 	}
+	if !ensureSmartLinkNodeInstalled(c, sse) {
+		return
+	}
 	userName := cast.ToString(dataMap[`user_name`])
 	password := cast.ToString(dataMap[`password`])
 	openNum := max(1, cast.ToInt(dataMap[`open_num`]))
@@ -281,6 +293,9 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 func SmartLinkRunPlaywrightList(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
+	if !ensureSmartLinkNodeInstalled(c, nil) {
+		return
+	}
 	contextPageList := plw.NewContextList(plw.PlaywrightClient.Log)
 	runList := contextPageList.GetPlaywrightRunList()
 	gsgin.GinResponseSuccess(c, ``, runList)
@@ -292,6 +307,9 @@ func SmartLinkPlaywrightVersion(c *gin.Context) {
 	sse := &p_sse.SseShell{
 		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
 		SseDistributeId: cast.ToString(dataMap[`sse_distribute_id`]),
+	}
+	if !ensureSmartLinkNodeInstalled(c, sse) {
+		return
 	}
 	sse.Send(`获取核心版本` + "\n")
 	pw, pwErr := plw.PlaywrightClient.SmartLinkPlaywrightVersion()
