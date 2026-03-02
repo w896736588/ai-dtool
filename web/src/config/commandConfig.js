@@ -317,52 +317,6 @@ const commandConfig = [
       }
     ]
   },
-
-  // Redis 命令
-  {
-    command: 'redis',
-    name: 'Redis',
-    icon: '🗃️',
-    desc: 'Redis管理',
-    module: 'redis',
-    path: '/Redis',
-    children: [
-      {
-        command: 'info',
-        name: '信息',
-        desc: '查看Redis信息',
-        action: 'redisInfo',
-        needTarget: true,
-        dynamicChildren: 'redisEnvList'
-      },
-      {
-        command: 'keys',
-        name: '键列表',
-        desc: '查看键列表',
-        action: 'redisKeys',
-        needTarget: true,
-        dynamicChildren: 'redisEnvList'
-      }
-    ]
-  },
-
-  // 其他快捷命令
-  {
-    command: 'api',
-    name: '接口开发',
-    icon: '🔌',
-    desc: 'API接口开发',
-    module: 'api',
-    path: '/Api'
-  },
-  {
-    command: 'set',
-    name: '配置',
-    icon: '🔧',
-    desc: '系统配置',
-    module: null,
-    path: '/Set'
-  },
   {
     command: 'link',
     name: '自定义网页',
