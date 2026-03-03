@@ -52,11 +52,15 @@
                 :expand-on-click-node="false"
                 :highlight-current="true"
                 :props="treeProps"
+                :draggable="true"
+                :allow-drop="allowTreeNodeDrop"
+                :allow-drag="allowTreeNodeDrag"
                 node-key="uniqueid"
                 tabindex="0" @keyup="handleKeyUp"
                 @node-click="handleNodeClick"
                 @node-expand="handleNodeExpand"
                 @node-collapse="handleNodeCollapse"
+                @node-drop="handleTreeNodeDrop"
             >
               <template #default="{ node, data }">
                 <div class="tree-node">
@@ -370,7 +374,7 @@ import FolderDetail from './api/FolderDetail'
 import ApiDetail from './api/ApiDetail'
 import Markdown from '@/components/Markdown.vue'
 import Api from '@/utils/base/api'
-import Array from '@/utils/base/array'
+import ArrayUtil from '@/utils/base/array'
 import KeyDebounceDetector from "@/utils/base/keyup"
 import store from "@/utils/base/store";
 
@@ -574,6 +578,8 @@ export default {
       Api.Collections({}, function (res) {
         if (res.ErrCode === 0) {
           _that.treeData = res.Data.list
+          // 加载集合树后按本地缓存恢复排序
+          _that.applyTreeSortCache()
           _that.initTreeExpansion()
         } else {
           _that.$message.error(res.ErrMsg)
@@ -586,7 +592,7 @@ export default {
       let _that = this
       // 仅恢复集合/文件夹展开状态，使用稳定的 type:id 作为缓存键
       const expandedState = _that.getExpandedStateCache()
-      if (!globalThis.Array.isArray(expandedState) || expandedState.length === 0) {
+      if (!Array.isArray(expandedState) || expandedState.length === 0) {
         _that.expandAllNodes()
         return
       }
@@ -629,7 +635,7 @@ export default {
       }
       try {
         const cacheData = JSON.parse(cacheText)
-        return globalThis.Array.isArray(cacheData) ? cacheData : []
+        return Array.isArray(cacheData) ? cacheData : []
       } catch (e) {
         return []
       }
@@ -680,7 +686,7 @@ export default {
             collectionNode.expand()
           }
         }
-        if (!globalThis.Array.isArray(collection.children)) {
+        if (!Array.isArray(collection.children)) {
           return
         }
         collection.children.forEach(folder => {
@@ -709,7 +715,7 @@ export default {
       } else {
         expandedState = expandedState.filter(key => key !== nodeKey)
         // 收起集合时，清理其下文件夹展开缓存，确保刷新后状态一致
-        if (data.type === 'collection' && globalThis.Array.isArray(data.children)) {
+        if (data.type === 'collection' && Array.isArray(data.children)) {
           data.children.forEach(folder => {
             const folderKey = _that.buildExpandStateKey(folder)
             expandedState = expandedState.filter(key => key !== folderKey)
@@ -743,6 +749,149 @@ export default {
     // 切换归档列表
     toggleArchive() {
       this.archiveExpanded = !this.archiveExpanded
+    },
+    // 允许拖拽的节点类型（集合/文件夹/接口）
+    allowTreeNodeDrag(draggingNode) {
+      const dragData = draggingNode && draggingNode.data ? draggingNode.data : {}
+      return dragData.type === 'collection' || dragData.type === 'folder' || dragData.type === 'api'
+    },
+    // 控制可放置位置：仅支持同类型、同层级排序，不支持 inner
+    allowTreeNodeDrop(draggingNode, dropNode, dropType) {
+      const dragData = draggingNode && draggingNode.data ? draggingNode.data : {}
+      const dropData = dropNode && dropNode.data ? dropNode.data : {}
+      if (dropType === 'inner') {
+        return false
+      }
+      if (dragData.type !== dropData.type) {
+        return false
+      }
+      if (dragData.type === 'collection') {
+        return true
+      }
+      if (dragData.type === 'folder') {
+        return parseInt(dragData.collection_id) === parseInt(dropData.collection_id)
+      }
+      if (dragData.type === 'api') {
+        return parseInt(dragData.folder_id) === parseInt(dropData.folder_id)
+      }
+      return false
+    },
+    // 节点拖拽后同步保存排序缓存
+    handleTreeNodeDrop() {
+      let _that = this
+      _that.syncTreeSortCacheFromTree()
+      _that.$message.success('排序已保存')
+    },
+    // 获取树排序缓存
+    getTreeSortCache() {
+      const cacheText = store.getStore('collection_tree_sort_state')
+      if (!cacheText) {
+        return {
+          collections: [],
+          folders: {},
+          apis: {},
+        }
+      }
+      try {
+        const cacheData = JSON.parse(cacheText)
+        return {
+          collections: Array.isArray(cacheData.collections) ? cacheData.collections : [],
+          folders: cacheData.folders && typeof cacheData.folders === 'object' ? cacheData.folders : {},
+          apis: cacheData.apis && typeof cacheData.apis === 'object' ? cacheData.apis : {},
+        }
+      } catch (e) {
+        return {
+          collections: [],
+          folders: {},
+          apis: {},
+        }
+      }
+    },
+    // 写入树排序缓存
+    setTreeSortCache(cacheData) {
+      store.setStore('collection_tree_sort_state', JSON.stringify(cacheData))
+    },
+    // 按 id 顺序缓存对列表排序（未命中缓存项会排在后面）
+    sortListByIdOrder(list, idOrder) {
+      if (!Array.isArray(list) || !Array.isArray(idOrder) || idOrder.length === 0) {
+        return
+      }
+      const orderMap = {}
+      idOrder.forEach((id, index) => {
+        orderMap[String(id)] = index
+      })
+      list.sort((a, b) => {
+        const aKey = String(a && a.id)
+        const bKey = String(b && b.id)
+        const aOrder = orderMap[aKey]
+        const bOrder = orderMap[bKey]
+        const aMiss = aOrder === undefined
+        const bMiss = bOrder === undefined
+        if (aMiss && bMiss) {
+          return parseInt(a.id) - parseInt(b.id)
+        }
+        if (aMiss) {
+          return 1
+        }
+        if (bMiss) {
+          return -1
+        }
+        return aOrder - bOrder
+      })
+    },
+    // 应用本地缓存排序到集合树
+    applyTreeSortCache() {
+      let _that = this
+      const sortCache = _that.getTreeSortCache()
+      _that.sortListByIdOrder(_that.treeData, sortCache.collections)
+      _that.treeData.forEach(collection => {
+        if (!Array.isArray(collection.children)) {
+          return
+        }
+        _that.sortListByIdOrder(collection.children, sortCache.folders[String(collection.id)] || [])
+        collection.children.forEach(folder => {
+          if (!Array.isArray(folder.children)) {
+            return
+          }
+          _that.sortListByIdOrder(folder.children, sortCache.apis[String(folder.id)] || [])
+        })
+      })
+    },
+    // 将当前树结构同步到本地排序缓存
+    syncTreeSortCacheFromTree() {
+      let _that = this
+      const sortCache = {
+        collections: [],
+        folders: {},
+        apis: {},
+      }
+      _that.treeData.forEach(collection => {
+        sortCache.collections.push(collection.id)
+        const folderList = Array.isArray(collection.children) ? collection.children : []
+        sortCache.folders[String(collection.id)] = folderList.map(folder => folder.id)
+        folderList.forEach(folder => {
+          const apiList = Array.isArray(folder.children) ? folder.children : []
+          sortCache.apis[String(folder.id)] = apiList.map(api => api.id)
+        })
+      })
+      _that.setTreeSortCache(sortCache)
+    },
+    // 对单个文件夹接口列表应用排序缓存
+    applyFolderApiSort(collectionId, folderId) {
+      let _that = this
+      const sortCache = _that.getTreeSortCache()
+      for (let i in _that.treeData) {
+        if (parseInt(collectionId) !== parseInt(_that.treeData[i].id)) {
+          continue
+        }
+        for (let j in _that.treeData[i].children) {
+          if (parseInt(folderId) !== parseInt(_that.treeData[i].children[j].id)) {
+            continue
+          }
+          const apiList = _that.treeData[i].children[j].children
+          _that.sortListByIdOrder(apiList, sortCache.apis[String(folderId)] || [])
+        }
+      }
     },
     handleKeyUp: function (event) {
       let _that = this
@@ -808,6 +957,8 @@ export default {
             }
           }
         }
+        // 拉取接口后按缓存顺序恢复
+        _that.applyFolderApiSort(collection_id, dir_id)
       })
     },
     // 处理归档项点击
@@ -857,7 +1008,7 @@ export default {
     },
     // 列表去重追加，防止重复节点渲染
     pushUniqueByKey(list, item, key) {
-      if (!globalThis.Array.isArray(list) || !item) {
+      if (!Array.isArray(list) || !item) {
         return
       }
       const uniqueKey = key || 'uniqueid'
@@ -915,6 +1066,7 @@ export default {
           let newCollection = res.Data
           newCollection.children = []
           _that.pushUniqueByKey(_that.treeData, newCollection, 'uniqueid')
+          _that.syncTreeSortCacheFromTree()
         } else {
           _that.$message.error(res.ErrMsg)
         }
@@ -949,6 +1101,7 @@ export default {
               _that.pushUniqueByKey(_that.treeData[i].children, newDir, 'uniqueid')
             }
           }
+          _that.syncTreeSortCacheFromTree()
         } else {
           _that.$message.error(res.ErrMsg)
         }
@@ -995,13 +1148,14 @@ export default {
       }).then(() => {
         Api.DeleteCollection(collection, function (res) {
           if (res.ErrCode === 0) {
-            _that.treeData = Array.DeleteValueByStringKey(_that.treeData, 'uniqueid', collection.uniqueid)
+            _that.treeData = ArrayUtil.DeleteValueByStringKey(_that.treeData, 'uniqueid', collection.uniqueid)
             //如果是删除的集合
             if (_that.selectedItem && _that.selectedItem.type === 'collection') {
               if (_that.selectedItem.id === collection.id) {
                 _that.selectedItem = {}
               }
             }
+            _that.syncTreeSortCacheFromTree()
             _that.$message.success('删除成功')
           } else {
             _that.$message.error(res.ErrMsg)
@@ -1055,7 +1209,7 @@ export default {
               if (parseInt(folder.collection_id) !== parseInt(_that.treeData[i].id)) {
                 continue
               }
-              _that.treeData[i].children = Array.DeleteValueByStringKey(_that.treeData[i].children, 'uniqueid', folder.uniqueid)
+              _that.treeData[i].children = ArrayUtil.DeleteValueByStringKey(_that.treeData[i].children, 'uniqueid', folder.uniqueid)
             }
 
             //如果是删除的集合
@@ -1070,6 +1224,7 @@ export default {
                 }
               }
             }
+            _that.syncTreeSortCacheFromTree()
             _that.$message.success('删除成功')
           } else {
             _that.$message.error(res.ErrMsg)
@@ -1110,6 +1265,7 @@ export default {
             _that.pushUniqueByKey(_that.treeData[i].children[j].children, newApi, 'uniqueid')
           }
         }
+        _that.syncTreeSortCacheFromTree()
         _that.selectedItem = newApi
         _that.$nextTick(function () {
           _that.$refs.refApiDetail.InitApiDetail(newApi)
@@ -1189,12 +1345,13 @@ export default {
                   if (parseInt(data.folder_id) !== parseInt(folderInfo.id)) {
                     continue
                   }
-                  _that.treeData[i].children[j].children = Array.DeleteValueByStringKey(folderInfo.children, 'uniqueid', data.uniqueid)
+                  _that.treeData[i].children[j].children = ArrayUtil.DeleteValueByStringKey(folderInfo.children, 'uniqueid', data.uniqueid)
                 }
               }
               if (_that.selectedItem.uniqueid === data.uniqueid) {//如果当前删除的api是选中的api 那么置空当前选项
                 _that.selectedItem = {}
               }
+              _that.syncTreeSortCacheFromTree()
               _that.$message.success('删除成功')
             } else {
               _that.$message.error(res.ErrMsg)
@@ -1294,6 +1451,7 @@ export default {
             _that.pushUniqueByKey(_that.treeData[i].children[j].children, newApi, 'uniqueid')
           }
         }
+        _that.syncTreeSortCacheFromTree()
         _that.selectedItem = newApi
         _that.$nextTick(() => {
           _that.$refs.collectionTreeRef.setCurrentKey(newApi.uniqueid)
