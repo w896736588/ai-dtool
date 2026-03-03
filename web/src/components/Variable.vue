@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div id="mainCard" ref="mainCard" class="box-card variable-page">
     <div class="variable-toolbar">
       <el-button class="toolbar-btn" type="primary" plain @click="createVariableDirectory">
@@ -86,7 +86,7 @@
                         </el-popconfirm>
                       </el-form-item>
                     </el-form>
-                    <div class="demo-collapse" style="height:100%;font-size:14px;">
+                    <div class="demo-collapse" style="font-size:14px;">
                       <div class="flex flex-wrap gap-4">
                         <el-card v-for="(variable_cmd,key) in chooseVariable.variable_cmd_list" :key="key" shadow="hover" class="variable-cmd-card">
                           <el-tag type="primary">{{ typeNameMap['type' + variable_cmd.type] }}</el-tag>&nbsp;
@@ -201,6 +201,23 @@
               <el-option :label="value.label" :value="value.label"/>
             </template>
           </el-select>
+        </el-form-item>
+        <el-form-item v-if="variable_cmd.type === `21`" label="选择模型">
+          <el-select
+              v-model="variable_cmd.smart_link_label"
+              placeholder="选择模型"
+              filterable
+              allow-create
+              default-first-option
+              @change="changeLlmModel"
+          >
+            <template v-for="(value,key) in llmModelList" :key="key">
+              <el-option :label="value.label" :value="value.value"/>
+            </template>
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="variable_cmd.type === `21`" label="提示词">
+          <el-input v-model="variable_cmd.bash" class="text-bash" rows="10" type="textarea"></el-input>
         </el-form-item>
         <el-form-item v-if="variable_cmd && variable_cmd.type === '8'" label="脚本">
           <el-alert :closable="false" show-icon title="定义ssh [id=xx] 换行" type="info"/>
@@ -358,6 +375,8 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 6px;
+  padding-bottom: 12px;
+  box-sizing: border-box;
 }
 
 .variable-page :deep(.demo-tabs1 .el-tab-pane) {
@@ -367,8 +386,10 @@
 /* 单项选择选项过多时，限制单个选项组高度并启用滚动 */
 .variable-page :deep(.variable-radio-group) {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-start;
   max-height: min(40vh, 320px);
   overflow-y: auto;
   overflow-x: hidden;
@@ -377,12 +398,8 @@
 }
 
 .variable-page :deep(.variable-radio-group .el-radio) {
-  margin-right: 0;
+  margin-right: 16px;
   margin-bottom: 8px;
-}
-
-.variable-page :deep(.variable-radio-group .el-radio:last-child) {
-  margin-bottom: 0;
 }
 
 .variable-cmd-card {
@@ -409,6 +426,7 @@
   background: #f9faf6;
   border: 1px solid #ecefe3;
   border-radius: 10px;
+  padding-bottom:36px;
 }
 
 .variable-page :deep(.el-alert) {
@@ -461,6 +479,7 @@ import "codemirror/mode/javascript/javascript.js"
 import Codemirror from "codemirror-editor-vue3"
 import 'codemirror/lib/codemirror.css';
 import smartLink from "@/utils/base/smart_link_set"
+import aiSet from "@/utils/base/ai_set"
 import sse from "@/utils/base/sse";
 import a from "@/utils/base/array"
 import t from "@/utils/base/type";
@@ -514,6 +533,7 @@ export default {
         type18: 'linux命令',
         type19: 'Bat',
         type20: '上传文件',
+        type21: '请求大模型',
       },
       typeList: [
         {"label": "Mysql执行", "value": "1"},
@@ -528,7 +548,9 @@ export default {
         {"label": "linux命令", "value": "18"},
         {"label": "Bat", "value": "19"},
         {"label": "上传文件", "value": "20"},
+        {"label": "请求大模型", "value": "21"},
       ],
+      llmModelList: [],
       runTypeList: [
         {"label": "输出表单", "value": "form"},
         {"label": "中间层", "value": "middle"},
@@ -628,6 +650,7 @@ export default {
   mounted: function () {
     let _that = this
     _that.GetConfigList(true)
+    _that.LoadLlmModelList()
     smartLink.SmartLinkList(function (response) {
       _that.smartLinkList = response.Data.smart_link_list
       _that.changeVariableCmdSmartLink()
@@ -701,6 +724,49 @@ export default {
       let _that = this
       _that.windowChange()
       _that.variable_cmd.options_new = newData
+    },
+    // LoadLlmModelList 拉取大模型配置列表
+    LoadLlmModelList: function () {
+      let _that = this
+      aiSet.AiModelList({}, function (response) {
+        if (response.ErrCode === 0) {
+          _that.llmModelList = (response.Data || []).map(function (item) {
+            return {
+              label: `${item.provider_name} / ${item.name} (${item.model})`,
+              value: item.model,
+              provider: item.request_format || item.provider_type || 'openai',
+              base_url: item.base_url || '',
+              api_key: item.api_key || '',
+            }
+          })
+        }
+      })
+    },
+    // changeLlmModel 选择模型后自动写入 options
+    changeLlmModel: function (modelValue) {
+      let _that = this
+      const matched = (_that.llmModelList || []).find(function (item) {
+        return item.value === modelValue
+      })
+      let llmOptions = {}
+      if (_that.variable_cmd.options_new && t.IsObject(_that.variable_cmd.options_new)) {
+        llmOptions = _that.variable_cmd.options_new
+      } else if (_that.variable_cmd.options) {
+        try {
+          llmOptions = JSON.parse(_that.variable_cmd.options)
+        } catch (e) {
+          llmOptions = {}
+        }
+      }
+      llmOptions.provider = matched?.provider || 'openai'
+      llmOptions.model = modelValue
+      llmOptions.base_url = matched?.base_url || llmOptions.base_url || ''
+      llmOptions.api_key = matched?.api_key || llmOptions.api_key || ''
+      if (llmOptions.temperature === undefined) {
+        llmOptions.temperature = 0.2
+      }
+      _that.variable_cmd.options_new = llmOptions
+      _that.variable_cmd.options = JSON.stringify(llmOptions)
     },
     bashChange: function (newData) {
       let _that = this
@@ -857,6 +923,7 @@ export default {
       let _that = this
       _that.dialogVariableCmd = true
       _that.variable_cmd = editValue
+      _that.LoadLlmModelList()
       _that.changeVariableCmdType(_that.variable_cmd)
       _that.changeVariableCmdSmartLink()
     },
@@ -872,6 +939,24 @@ export default {
         } else {
           _that.variable_cmd.options = _that.variable_cmd.options_new
         }
+      }
+      if (_that.variable_cmd.type === '21') {
+        let llmOptions = {}
+        if (t.IsObject(_that.variable_cmd.options_new)) {
+          llmOptions = _that.variable_cmd.options_new
+        } else if (_that.variable_cmd.options !== '') {
+          try {
+            llmOptions = JSON.parse(_that.variable_cmd.options)
+          } catch (e) {
+            llmOptions = {}
+          }
+        }
+        llmOptions.provider = llmOptions.provider || 'openai'
+        llmOptions.model = _that.variable_cmd.smart_link_label
+        if (llmOptions.temperature === undefined) {
+          llmOptions.temperature = 0.2
+        }
+        _that.variable_cmd.options = JSON.stringify(llmOptions)
       }
       variable.VariableCmdAdd(_that.variable_cmd, function (response) {
         if (response.ErrCode === 0) {
@@ -903,6 +988,28 @@ export default {
         smartLink.SmartLinkList(function (response) {
           _that.smartLinkList = response.Data.smart_link_list
         })
+      }
+      if (variable_cmd.type === '21') {
+        _that.LoadLlmModelList()
+        if (!_that.variable_cmd.run_type || _that.variable_cmd.run_type === 0) {
+          _that.variable_cmd.run_type = 'middle'
+        }
+        if (_that.variable_cmd.options === '' || _that.variable_cmd.options === undefined) {
+          _that.variable_cmd.options = JSON.stringify({
+            provider: 'openai',
+            model: '',
+            temperature: 0.2,
+          })
+        }
+        try {
+          const llmOptions = JSON.parse(_that.variable_cmd.options)
+          if (_that.variable_cmd.smart_link_label === '' && llmOptions.model) {
+            _that.variable_cmd.smart_link_label = llmOptions.model
+          }
+          if (_that.variable_cmd.smart_link_label !== '') {
+            _that.changeLlmModel(_that.variable_cmd.smart_link_label)
+          }
+        } catch (e) {}
       }
     },
     changeVariableCmdSmartLink: function () {

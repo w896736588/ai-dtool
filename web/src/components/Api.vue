@@ -234,10 +234,10 @@
     </div>
   </div>
 
-  <el-dialog v-model="dialogShow.createCollection" title="创建集合" width="500">
-    <el-form>
+  <el-dialog v-model="dialogShow.createCollection" title="创建集合" width="500" @keydown.enter.prevent="handleDialogEnter('createCollection', $event)">
+    <el-form @submit.prevent>
       <el-form-item :label-width="80" label="集合名称">
-        <el-input v-model="dialogData.createCollection.name" autocomplete="off" @keydown="keydownCreateNewCollection"/>
+        <el-input v-model="dialogData.createCollection.name" autocomplete="off"/>
       </el-form-item>
     </el-form>
     <template #footer>
@@ -248,10 +248,10 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="dialogShow.createDir" title="创建文件夹" width="500" tabindex="0" @keydown="keydownNewDir">
-    <el-form>
+  <el-dialog v-model="dialogShow.createDir" title="创建文件夹" width="500" tabindex="0" @keydown.enter.prevent="handleDialogEnter('createDir', $event)">
+    <el-form @submit.prevent>
       <el-form-item :label-width="80" label="文件夹名称">
-        <el-input v-model="dialogData.createDir.name" autocomplete="off" @keydown="keydownNewDir"/>
+        <el-input v-model="dialogData.createDir.name" autocomplete="off"/>
       </el-form-item>
     </el-form>
     <template #footer>
@@ -262,8 +262,8 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="dialogShow.createApi" title="创建接口" width="700" tabindex="0" @keydown="keywodnCreateApi">
-    <el-tabs v-model="createApiType" tabindex="0" @keydown="keywodnCreateApi">
+  <el-dialog v-model="dialogShow.createApi" title="创建接口" width="700" tabindex="0" @keydown.enter.prevent="handleDialogEnter('createApi', $event)">
+    <el-tabs v-model="createApiType" tabindex="0">
       <el-tab-pane label="基础接口" name="params">
         <el-form>
           <el-form-item :label-width="80" label="接口名称">
@@ -307,10 +307,10 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="dialogShow.copyApi" title="复制接口" width="500">
-    <el-form>
+  <el-dialog v-model="dialogShow.copyApi" title="复制接口" width="500" @keydown.enter.prevent="handleDialogEnter('copyApi', $event)">
+    <el-form @submit.prevent>
       <el-form-item :label-width="80" label="接口名称">
-        <el-input v-model="dialogData.copyApi.name" autocomplete="off" placeholder="请输入新的接口名称" @keyup="copyApiKeyup"/>
+        <el-input v-model="dialogData.copyApi.name" autocomplete="off" placeholder="请输入新的接口名称"/>
       </el-form-item>
     </el-form>
     <template #footer>
@@ -321,8 +321,8 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="dialogShow.jsonImport" title="通过JSON导入" width="800">
-    <el-form :model="dialogData.jsonImport" label-width="120px">
+  <el-dialog v-model="dialogShow.jsonImport" title="通过JSON导入" width="800" @keydown.enter.prevent="handleDialogEnter('jsonImport', $event)">
+    <el-form :model="dialogData.jsonImport" label-width="120px" @submit.prevent>
       <el-form-item label="选择集合">
         <el-select v-model="dialogData.jsonImport.collection_id" placeholder="请选择集合" style="width: 100%;">
           <el-option
@@ -481,6 +481,14 @@ export default {
           json: '',
         }
       },
+      // 弹窗保存防重入，避免回车和点击导致重复提交
+      dialogSubmitting: {
+        createCollection: false,
+        createDir: false,
+        createApi: false,
+        copyApi: false,
+        jsonImport: false,
+      },
       keyup: null,
       // 左侧树面板宽度（支持拖拽与缓存）
       sidebarWidth: 280,
@@ -576,24 +584,15 @@ export default {
     // 初始化树展开状态
     initTreeExpansion() {
       let _that = this
-      let expandedKeys = store.getStore('collection_expanded_keys')
-      if (expandedKeys) {
-        try {
-          expandedKeys = JSON.parse(expandedKeys)
-          _that.$nextTick(() => {
-            expandedKeys.forEach(key => {
-              const node = _that.$refs.collectionTreeRef.getNode(key)
-              if (node) {
-                node.expand()
-              }
-            })
-          })
-        } catch (e) {
-          _that.expandAllNodes()
-        }
-      } else {
+      // 仅恢复集合/文件夹展开状态，使用稳定的 type:id 作为缓存键
+      const expandedState = _that.getExpandedStateCache()
+      if (!globalThis.Array.isArray(expandedState) || expandedState.length === 0) {
         _that.expandAllNodes()
+        return
       }
+      _that.$nextTick(() => {
+        _that.applyExpandedStateFromCache(expandedState)
+      })
     },
 
     // 展开所有节点
@@ -605,44 +604,119 @@ export default {
             node.expand()
           }
         })
+        // 首次默认展开后，立即写入缓存，保证刷新可恢复
+        _that.syncExpandedStateCacheFromTree()
       })
     },
 
     // 处理节点展开
     handleNodeExpand(data) {
       let _that = this
-      _that.updateExpandedCache(data.uniqueid, true)
+      _that.updateExpandedCache(data, true)
     },
 
     // 处理节点折叠
     handleNodeCollapse(data) {
       let _that = this
-      _that.updateExpandedCache(data.uniqueid, false)
+      _that.updateExpandedCache(data, false)
     },
 
-    // 更新展开缓存
-    updateExpandedCache(nodeKey, isExpanded) {
+    // 获取树展开缓存（仅 collection/folder）
+    getExpandedStateCache() {
+      const cacheText = store.getStore('collection_tree_expand_state')
+      if (!cacheText) {
+        return []
+      }
+      try {
+        const cacheData = JSON.parse(cacheText)
+        return globalThis.Array.isArray(cacheData) ? cacheData : []
+      } catch (e) {
+        return []
+      }
+    },
+    // 写入树展开缓存
+    setExpandedStateCache(expandedState) {
+      store.setStore('collection_tree_expand_state', JSON.stringify(expandedState))
+    },
+    // 构建稳定的缓存键（collection:1 / folder:2）
+    buildExpandStateKey(data) {
+      if (!data || !data.type) {
+        return ''
+      }
+      if (data.type !== 'collection' && data.type !== 'folder') {
+        return ''
+      }
+      return `${data.type}:${data.id}`
+    },
+    // 从树中同步当前展开状态到缓存
+    syncExpandedStateCacheFromTree() {
       let _that = this
-      let expandedKeys = store.getStore('collection_expanded_keys')
-      if (expandedKeys) {
-        try {
-          expandedKeys = JSON.parse(expandedKeys)
-        } catch (e) {
-          expandedKeys = []
-        }
-      } else {
-        expandedKeys = []
+      if (!_that.$refs.collectionTreeRef || !_that.$refs.collectionTreeRef.store) {
+        return
       }
-
+      const expandedState = []
+      _that.$refs.collectionTreeRef.store._getAllNodes().forEach(node => {
+        if (!node || !node.expanded || !node.data) {
+          return
+        }
+        const key = _that.buildExpandStateKey(node.data)
+        if (key && !expandedState.includes(key)) {
+          expandedState.push(key)
+        }
+      })
+      _that.setExpandedStateCache(expandedState)
+    },
+    // 按缓存恢复展开状态
+    applyExpandedStateFromCache(expandedState) {
+      let _that = this
+      if (!_that.$refs.collectionTreeRef) {
+        return
+      }
+      _that.treeData.forEach(collection => {
+        const collectionKey = _that.buildExpandStateKey(collection)
+        if (collectionKey && expandedState.includes(collectionKey)) {
+          const collectionNode = _that.$refs.collectionTreeRef.getNode(collection.uniqueid)
+          if (collectionNode) {
+            collectionNode.expand()
+          }
+        }
+        if (!globalThis.Array.isArray(collection.children)) {
+          return
+        }
+        collection.children.forEach(folder => {
+          const folderKey = _that.buildExpandStateKey(folder)
+          if (folderKey && expandedState.includes(folderKey)) {
+            const folderNode = _that.$refs.collectionTreeRef.getNode(folder.uniqueid)
+            if (folderNode) {
+              folderNode.expand()
+            }
+          }
+        })
+      })
+    },
+    // 更新展开缓存
+    updateExpandedCache(data, isExpanded) {
+      let _that = this
+      const nodeKey = _that.buildExpandStateKey(data)
+      if (!nodeKey) {
+        return
+      }
+      let expandedState = _that.getExpandedStateCache()
       if (isExpanded) {
-        if (!expandedKeys.includes(nodeKey)) {
-          expandedKeys.push(nodeKey)
+        if (!expandedState.includes(nodeKey)) {
+          expandedState.push(nodeKey)
         }
       } else {
-        expandedKeys = expandedKeys.filter(key => key !== nodeKey)
+        expandedState = expandedState.filter(key => key !== nodeKey)
+        // 收起集合时，清理其下文件夹展开缓存，确保刷新后状态一致
+        if (data.type === 'collection' && globalThis.Array.isArray(data.children)) {
+          data.children.forEach(folder => {
+            const folderKey = _that.buildExpandStateKey(folder)
+            expandedState = expandedState.filter(key => key !== folderKey)
+          })
+        }
       }
-
-      store.setStore('collection_expanded_keys', JSON.stringify(expandedKeys))
+      _that.setExpandedStateCache(expandedState)
     },
 
     // 加载归档项
@@ -740,9 +814,56 @@ export default {
     handleArchiveItemClick(item) {
       this.selectedItem = item
     },
-    keydownCreateNewCollection(e){
-      if(e.key === 'Enter'){
-        this.createNewCollection()
+    // 处理弹窗内回车提交（统一入口，避免重复触发）
+    handleDialogEnter(dialogType, event) {
+      if (!event || event.isComposing) {
+        return
+      }
+      const targetTag = ((event.target && event.target.tagName) || '').toUpperCase()
+      // 文本域内回车默认作为换行，不触发提交
+      if (targetTag === 'TEXTAREA') {
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      this.submitDialog(dialogType)
+    },
+    // 根据弹窗类型提交保存逻辑
+    submitDialog(dialogType) {
+      const submitMap = {
+        createCollection: () => this.createNewCollection(),
+        createDir: () => this.createNewDir(),
+        createApi: () => this.handleFolderCreateApi(),
+        copyApi: () => this.copyApi(),
+        jsonImport: () => this.apiImportJson(),
+      }
+      if (submitMap[dialogType]) {
+        submitMap[dialogType]()
+      }
+    },
+    // 开始弹窗提交，返回 true 表示已有提交在进行中
+    beginDialogSubmit(dialogType) {
+      if (this.dialogSubmitting[dialogType]) {
+        return true
+      }
+      this.dialogSubmitting[dialogType] = true
+      return false
+    },
+    // 结束弹窗提交，释放提交锁
+    endDialogSubmit(dialogType) {
+      if (this.dialogSubmitting[dialogType] !== undefined) {
+        this.dialogSubmitting[dialogType] = false
+      }
+    },
+    // 列表去重追加，防止重复节点渲染
+    pushUniqueByKey(list, item, key) {
+      if (!globalThis.Array.isArray(list) || !item) {
+        return
+      }
+      const uniqueKey = key || 'uniqueid'
+      const exists = list.some((node) => String(node && node[uniqueKey]) === String(item[uniqueKey]))
+      if (!exists) {
+        list.push(item)
       }
     },
     openCreateCollectionDialog() {
@@ -784,22 +905,20 @@ export default {
         _that.dialogShow.createCollection = true
         return
       }
+      if (_that.beginDialogSubmit('createCollection')) {
+        return
+      }
       Api.CreateCollection(_that.dialogData.createCollection, function (res) {
+        _that.endDialogSubmit('createCollection')
         if (res.ErrCode === 0) {
           _that.dialogShow.createCollection = false
           let newCollection = res.Data
           newCollection.children = []
-          _that.treeData.push(newCollection)
+          _that.pushUniqueByKey(_that.treeData, newCollection, 'uniqueid')
         } else {
           _that.$message.error(res.ErrMsg)
         }
       })
-    },
-    keydownNewDir(e){
-      console.log(e)
-      if(e.key === 'Enter'){
-        this.createNewDir()
-      }
     },
     // 创建新文件夹
     createNewDir(data, data2) {
@@ -815,15 +934,19 @@ export default {
         return
       }
       console.log('选择的', _that.selectedItem)
+      if (_that.beginDialogSubmit('createDir')) {
+        return
+      }
       _that.dialogData.createDir.collection_id = _that.selectedItem.id
       Api.CreateDir(_that.dialogData.createDir, function (res) {
+        _that.endDialogSubmit('createDir')
         if (res.ErrCode === 0) {
           _that.dialogShow.createDir = false
           let newDir = res.Data
           newDir.children = []
           for (let i in _that.treeData) {
             if (parseInt(_that.dialogData.createDir.collection_id) === parseInt(_that.treeData[i].id)) {
-              _that.treeData[i].children.push(newDir)
+              _that.pushUniqueByKey(_that.treeData[i].children, newDir, 'uniqueid')
             }
           }
         } else {
@@ -956,11 +1079,6 @@ export default {
         _that.$message.info('已取消删除')
       })
     },
-    keywodnCreateApi(e){
-      if(e.key === 'Enter'){
-        this.handleFolderCreateApi()
-      }
-    },
     handleFolderCreateApi: function () {
       let _that = this
       if (!_that.dialogShow.createApi) {
@@ -968,9 +1086,13 @@ export default {
         _that.dialogData.createApi.curlData = ''
         return
       }
+      if (_that.beginDialogSubmit('createApi')) {
+        return
+      }
       _that.dialogData.createApi.folder_id = _that.selectedItem.id
       _that.dialogData.createApi.collection_id = _that.selectedItem.collection_id
       Api.CreateApi(_that.dialogData.createApi, function (res) {
+        _that.endDialogSubmit('createApi')
         _that.dialogShow.createApi = false
         if (res.ErrCode !== 0) {
           _that.$message.error(res.ErrMsg)
@@ -985,7 +1107,7 @@ export default {
             if (parseInt(_that.dialogData.createApi.folder_id) !== parseInt(_that.treeData[i].children[j].id)) {
               continue
             }
-            _that.treeData[i].children[j].children.push(newApi)
+            _that.pushUniqueByKey(_that.treeData[i].children[j].children, newApi, 'uniqueid')
           }
         }
         _that.selectedItem = newApi
@@ -1111,11 +1233,16 @@ export default {
     // JSON导入
     apiImportJson() {
       let _that = this
+      if (_that.beginDialogSubmit('jsonImport')) {
+        return
+      }
       if (!this.dialogData.jsonImport.collection_id) {
+        _that.endDialogSubmit('jsonImport')
         _that.$message.error('请选择集合')
         return
       }
       if (!this.dialogData.jsonImport.json) {
+        _that.endDialogSubmit('jsonImport')
         _that.$message.error('请输入JSON数据')
         return
       }
@@ -1123,6 +1250,7 @@ export default {
         // Validate JSON format
         JSON.parse(this.dialogData.jsonImport.json)
       } catch (e) {
+        _that.endDialogSubmit('jsonImport')
         _that.$message.error('JSON格式错误，请检查输入')
         return
       }
@@ -1130,6 +1258,7 @@ export default {
         collection_id: this.dialogData.jsonImport.collection_id,
         json: this.dialogData.jsonImport.json
       }, function (res) {
+        _that.endDialogSubmit('jsonImport')
         if (res.ErrCode === 0) {
           _that.$message.success('导入成功')
           _that.dialogShow.jsonImport = false
@@ -1139,17 +1268,14 @@ export default {
         }
       })
     },
-    copyApiKeyup: function (event) {
-      let _that = this
-      if (event.key === 'Enter') {
-        _that.copyApi()
-        event.preventDefault()
-      }
-    },
     // 复制接口
     copyApi() {
       let _that = this
+      if (_that.beginDialogSubmit('copyApi')) {
+        return
+      }
       Api.CreateApi(_that.dialogData.copyApi, function (res) {
+        _that.endDialogSubmit('copyApi')
         _that.dialogShow.copyApi = false
         if (res.ErrCode !== 0) {
           _that.$message.error(res.ErrMsg)
@@ -1165,7 +1291,7 @@ export default {
             if (parseInt(_that.dialogData.copyApi.folder_id) !== parseInt(_that.treeData[i].children[j].id)) {
               continue
             }
-            _that.treeData[i].children[j].children.push(newApi)
+            _that.pushUniqueByKey(_that.treeData[i].children[j].children, newApi, 'uniqueid')
           }
         }
         _that.selectedItem = newApi

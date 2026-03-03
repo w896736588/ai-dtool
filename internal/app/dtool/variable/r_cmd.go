@@ -14,6 +14,7 @@ import (
 	"dev_tool/internal/pkg/p_sse"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/tidwall/gjson"
 
@@ -27,6 +28,17 @@ import (
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
 )
+
+// llmRunConfig 大模型执行配置
+type llmRunConfig struct {
+	Provider     string  `json:"provider"`      // 服务商类型，当前仅支持 openai
+	Model        string  `json:"model"`         // 模型名称
+	SystemPrompt string  `json:"system_prompt"` // 系统提示词
+	Prompt       string  `json:"prompt"`        // 用户提示词（来自 bash 字段）
+	Temperature  float64 `json:"temperature"`   // 温度参数
+	BaseURL      string  `json:"base_url"`      // 可选，覆盖全局 base_url
+	ApiKey       string  `json:"api_key"`       // 可选，覆盖全局 api_key
+}
 
 type RCmd struct {
 	cmd            map[string]any
@@ -456,6 +468,128 @@ func (h *RCmd) RunCurl() (string, error) {
 		VariableClient.AddReplace(h.replaceList, resultKey, cast.ToString(result))
 	}
 	return cast.ToString(result), err
+}
+
+// parseLlmRunConfig 解析大模型命令配置
+func parseLlmRunConfig(cmd map[string]any) (llmRunConfig, error) {
+	cfg := llmRunConfig{
+		Provider: cast.ToString(cmd[`provider`]),
+		Model:    cast.ToString(cmd[`smart_link_label`]),
+		Prompt:   cast.ToString(cmd[`bash`]),
+	}
+	options := cast.ToString(cmd[`options`])
+	if options != `` {
+		if err := gstool.JsonDecode(options, &cfg); err != nil {
+			return cfg, errors.New(`解析大模型配置失败: ` + err.Error())
+		}
+	}
+	if cfg.Provider == `` {
+		cfg.Provider = `openai`
+	}
+	if strings.TrimSpace(cfg.Model) == `` {
+		return cfg, errors.New(`模型不能为空`)
+	}
+	if strings.TrimSpace(cfg.Prompt) == `` {
+		return cfg, errors.New(`提示词不能为空`)
+	}
+	return cfg, nil
+}
+
+// RunLlm 请求大模型并将结果写入 SSE/替换变量
+func (h *RCmd) RunLlm() (string, error) {
+	cfg, err := parseLlmRunConfig(h.cmd)
+	if err != nil {
+		return ``, err
+	}
+	if strings.ToLower(cfg.Provider) != `openai` {
+		return ``, errors.New(`当前仅支持 openai 服务商`)
+	}
+	cfg.Prompt = p_common.Replace(cfg.Prompt, h.replaceList)
+	cfg.SystemPrompt = p_common.Replace(cfg.SystemPrompt, h.replaceList)
+
+	baseURL := strings.TrimSpace(cfg.BaseURL)
+	if baseURL == `` {
+		baseURLConf, qErr := h.Call.QueryGlobalConfig(map[string]any{
+			`key`: `{openai_base_url}`,
+		})
+		if qErr != nil {
+			return ``, errors.New(`查询 openai_base_url 失败: ` + qErr.Error())
+		}
+		baseURL = strings.TrimSpace(cast.ToString(baseURLConf[`value`]))
+	}
+	if baseURL == `` {
+		baseURL = `https://api.openai.com/v1/chat/completions`
+	} else if !strings.Contains(baseURL, `/chat/completions`) {
+		baseURL = strings.TrimRight(baseURL, `/`) + `/v1/chat/completions`
+	}
+
+	apiKey := strings.TrimSpace(cfg.ApiKey)
+	if apiKey == `` {
+		apiKeyConf, qErr := h.Call.QueryGlobalConfig(map[string]any{
+			`key`: `{openai_api_key}`,
+		})
+		if qErr != nil {
+			return ``, errors.New(`查询 openai_api_key 失败: ` + qErr.Error())
+		}
+		apiKey = strings.TrimSpace(cast.ToString(apiKeyConf[`value`]))
+	}
+	if apiKey == `` {
+		return ``, errors.New(`openai_api_key 不能为空，请先在全局配置中设置`)
+	}
+
+	messages := make([]map[string]string, 0, 2)
+	if strings.TrimSpace(cfg.SystemPrompt) != `` {
+		messages = append(messages, map[string]string{
+			`role`:    `system`,
+			`content`: cfg.SystemPrompt,
+		})
+	}
+	messages = append(messages, map[string]string{
+		`role`:    `user`,
+		`content`: cfg.Prompt,
+	})
+	bodyMap := map[string]any{
+		`model`:    cfg.Model,
+		`messages`: messages,
+	}
+	if cfg.Temperature > 0 {
+		bodyMap[`temperature`] = cfg.Temperature
+	}
+
+	parseConfig := _struct.CurlParseConfig{
+		Url:         baseURL,
+		Method:      http.MethodPost,
+		ContentType: define.ContentTypeJson,
+		Body:        gstool.JsonEncode(bodyMap),
+		Headers: map[string]string{
+			`Authorization`: `Bearer ` + apiKey,
+			`Content-Type`:  `application/json`,
+		},
+	}
+	h.Sse.Send(fmt.Sprintf(`%s %s`, p_common.TMarkDownClient.Bold(`run llm`), cfg.Model) + "\n")
+	pCurl := p_curl.CurlRun{
+		ParseConfig: parseConfig,
+		CurlEvents: _struct.CurlEvents{
+			NoticeCall: func(s string) {
+				h.Sse.Send(s + "\n")
+			},
+		},
+	}
+	result, runErr := pCurl.Run()
+	if runErr != nil {
+		return ``, runErr
+	}
+	content := p_common.ExtractOpenAiMessage(cast.ToString(result))
+	if content == `` {
+		content = cast.ToString(result)
+	} else {
+		h.Sse.Send(content + "\n")
+	}
+	resultKey := cast.ToString(h.cmd[`result_key`])
+	if resultKey != `` {
+		VariableClient.AddReplace(h.replaceList, resultKey, content)
+	}
+	return content, nil
 }
 
 func (h *RCmd) RunPlaywright(stopCall func() bool) (string, error) {

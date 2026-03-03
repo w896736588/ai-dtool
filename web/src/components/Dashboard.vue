@@ -43,7 +43,17 @@
           :class="['message', msg.type]"
         >
           <template v-if="hasCommandLayout(msg)">
-            <div class="message-command">{{ msg.commandText }}</div>
+            <div class="message-command">
+              <span class="message-command-text">{{ msg.commandText }}</span>
+              <span
+                v-if="msg.commandStatus"
+                :class="['command-status', `command-status-${msg.commandStatus}`]"
+              >
+                <span v-if="msg.commandStatus === 'running'" class="command-status-spinner"></span>
+                <span v-else-if="msg.commandStatus === 'success'" class="command-status-icon">✓</span>
+                <span v-else-if="msg.commandStatus === 'failed'" class="command-status-icon">✕</span>
+              </span>
+            </div>
             <div v-if="msg.resultText" class="message-content">{{ msg.resultText }}</div>
             <div v-if="msg.processText" class="process-window">
               <div class="process-title">执行过程 (SSE)</div>
@@ -353,10 +363,41 @@ export default {
       showCommands.value = isCommandModeByText(inputText.value) && currentChildren.value.length > 0
     }
 
+    // 更新当前命令状态（running/success/failed）
+    const updateCurrentCommandStatus = (status) => {
+      if (!currentOutputMessage.value || !status) return
+      currentOutputMessage.value.commandStatus = status
+    }
+
+    // 根据输出文本推断状态，并移除独立“执行成功/执行失败”行，避免重复展示
+    const parseResultTextAndStatus = (rawText) => {
+      let text = String(rawText || '')
+      let status = ''
+      const statusFromLine = []
+      text = text.replace(/(^|\n)\s*执行成功\s*(?=\n|$)/g, (match, prefix) => {
+        statusFromLine.push('success')
+        return prefix
+      })
+      text = text.replace(/(^|\n)\s*执行失败\s*(?=\n|$)/g, (match, prefix) => {
+        statusFromLine.push('failed')
+        return prefix
+      })
+      if (statusFromLine.length > 0) {
+        status = statusFromLine[statusFromLine.length - 1]
+      } else if (/执行失败|错误[:：]/.test(rawText)) {
+        status = 'failed'
+      }
+      return { text, status }
+    }
+
     const appendOutputResult = (text) => {
       if (!currentOutputMessage.value) return
+      const parsed = parseResultTextAndStatus(String(text || ''))
+      if (parsed.status) {
+        updateCurrentCommandStatus(parsed.status)
+      }
       const current = String(currentOutputMessage.value.resultText || '')
-      const merged = current + sanitizeCommandOutput(String(text || ''))
+      const merged = current + sanitizeCommandOutput(parsed.text)
       currentOutputMessage.value.resultText = merged.length > 50000 ? merged.slice(-50000) : merged
       scrollToBottom()
     }
@@ -1713,6 +1754,7 @@ export default {
       const outputMsg = {
         type: 'system',
         commandText: `执行命令: ${displayCommandText}`,
+        commandStatus: 'running',
         resultText: '',
         processText: ''
       }
@@ -2656,6 +2698,10 @@ export default {
     
     // 完成执行
     const finishExecution = () => {
+      // 若未显式写入成功/失败状态，执行结束后默认标记为成功
+      if (currentOutputMessage.value && currentOutputMessage.value.commandStatus === 'running') {
+        currentOutputMessage.value.commandStatus = 'success'
+      }
       isExecuting.value = false
       currentOutputMessage.value = null
       scrollToBottom()
@@ -2928,6 +2974,60 @@ export default {
   color: #5a8a5a;
   margin-bottom: 8px;
   padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.message-command-text {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.command-status {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.command-status-icon {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.command-status-running {
+  color: #7e8f73;
+}
+
+.command-status-success {
+  color: #2fa35f;
+}
+
+.command-status-failed {
+  color: #d84a4a;
+}
+
+.command-status-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #c9d5bf;
+  border-top-color: #6d8f5b;
+  animation: command-status-spin 0.8s linear infinite;
+}
+
+@keyframes command-status-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .message-content {

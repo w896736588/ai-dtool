@@ -207,6 +207,12 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/AccountGroupList`, controller.SetAccountGroupList)
 	tGin.GinPost(`/api/Set/AccountGroupAdd`, controller.SetAccountGroupAdd)
 	tGin.GinPost(`/api/Set/AccountGroupDelete`, controller.SetAccountGroupDelete)
+	tGin.GinPost(`/api/Set/AiProviderList`, controller.SetAiProviderList)
+	tGin.GinPost(`/api/Set/AiProviderAdd`, controller.SetAiProviderAdd)
+	tGin.GinPost(`/api/Set/AiProviderDelete`, controller.SetAiProviderDelete)
+	tGin.GinPost(`/api/Set/AiModelList`, controller.SetAiModelList)
+	tGin.GinPost(`/api/Set/AiModelAdd`, controller.SetAiModelAdd)
+	tGin.GinPost(`/api/Set/AiModelDelete`, controller.SetAiModelDelete)
 }
 
 func setStar(tGin *p_gin.Gin) {

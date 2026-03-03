@@ -110,7 +110,8 @@ func (h *Variable) Run() (_struct.VCmdResult, error) {
 			}
 		case define.VariableCmdMysql, define.VariableCmdBash, define.VariableCmdCommand,
 			define.VariableCmdRedis, define.VariableCmdCurl, define.VariableCmdPlaywright,
-			define.VariableCmdCombine, define.VariableCmdWindowCommand, define.VariableCmdUpload:
+			define.VariableCmdCombine, define.VariableCmdWindowCommand, define.VariableCmdUpload,
+			define.VariableCmdLlm:
 			runErr := h.RunCmd(cmd)
 			cmdResult.ReplaceList = h.ReplaceList
 			if runErr != nil {
@@ -167,6 +168,8 @@ func (h *Variable) RunCmd(cmd map[string]any) error {
 		_, err = rCmd.RunPlaywright(func() bool {
 			return VariableClient.IsStop(h.TaskId)
 		})
+	case define.VariableCmdLlm:
+		_, err = rCmd.RunLlm()
 	default:
 		return errors.New(`不支持的类型` + cast.ToString(cmd[`type`]))
 	}

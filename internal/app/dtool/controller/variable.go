@@ -146,6 +146,26 @@ func VariableCmdAdd(c *gin.Context) {
 			gsgin.GinResponseError(c, `cmd缺少内容`, nil)
 			return
 		}
+	case define.VariableCmdLlm:
+		// 大模型命令校验：必须包含提示词与模型
+		if strings.TrimSpace(cast.ToString(dataMap[`bash`])) == `` {
+			gsgin.GinResponseError(c, `大模型提示词不能为空`, nil)
+			return
+		}
+		optionsMap := make(map[string]any)
+		options := cast.ToString(dataMap[`options`])
+		if options == `` {
+			gsgin.GinResponseError(c, `大模型配置不能为空`, nil)
+			return
+		}
+		if err := gstool.JsonDecode(options, &optionsMap); err != nil {
+			gsgin.GinResponseError(c, `大模型配置格式错误`, nil)
+			return
+		}
+		if strings.TrimSpace(cast.ToString(optionsMap[`model`])) == `` {
+			gsgin.GinResponseError(c, `大模型model不能为空`, nil)
+			return
+		}
 	default:
 
 	}

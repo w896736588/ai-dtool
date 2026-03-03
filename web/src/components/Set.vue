@@ -34,6 +34,9 @@
       <el-tab-pane label="Global" name="Global" class="set-tab-pane">
         <global ref="global"></global>
       </el-tab-pane>
+      <el-tab-pane label="AI" name="AI" class="set-tab-pane">
+        <ai_provider ref="ai_provider"></ai_provider>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -54,6 +57,7 @@ import gitlab_token from "@/components/set/gitlab_token.vue"
 import store from "@/utils/base/store"
 import global from "@/components/set/global.vue"
 import account from "@/components/set/account.vue";
+import ai_provider from "@/components/set/ai_provider.vue";
 export default {
   props : {
     shellShowResult : {
@@ -71,6 +75,7 @@ export default {
     compose,
     gitlab_token ,
     global,
+    ai_provider,
   },
   data() {
     return {
@@ -106,6 +111,10 @@ export default {
         case 'Account':
           this.$refs.account.AccountList()
           this.$refs.account.AccountGroupList()
+          break
+        case 'AI':
+          this.$refs.ai_provider.LoadProviderList()
+          this.$refs.ai_provider.LoadModelList()
           break
       }
     },
