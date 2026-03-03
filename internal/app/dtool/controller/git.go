@@ -92,7 +92,7 @@ func GitChangeBranch(c *gin.Context) {
 	command.GitShowBranch()
 	command.Echo(`远程分支：`)
 	command.GitShowOriginBranch()
-	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), getGitOperationTimeout(gitOperationBranchChange))
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
@@ -136,7 +136,7 @@ func GitChangeBranchRemote(c *gin.Context) {
 	command.GitShowBranch()
 	command.Echo(`远程分支：`)
 	command.GitShowOriginBranch()
-	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), getGitOperationTimeout(gitOperationBranchChange))
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
@@ -176,7 +176,7 @@ func GitPullBranchOrigin(c *gin.Context) {
 	command.GitShowBranch()
 	command.Echo(`远程分支：`)
 	command.GitShowOriginBranch()
-	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), getGitOperationTimeout(gitOperationPull))
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
@@ -497,9 +497,25 @@ type GitCurrentBranchInfo struct {
 }
 
 const (
+	gitDefaultCommandTimeout    = 40 * time.Second
+	gitBranchChangeTimeout      = 5 * time.Minute
+	gitOperationBranchChange    = `branch_change`
+	gitOperationPull            = `pull`
 	gitRemoteBranchTimeout      = 10 * time.Second
 	gitRemoteBranchRetryTimeout = 3 * time.Second
 )
+
+// getGitOperationTimeout 根据Git操作类型返回对应的命令超时时间
+func getGitOperationTimeout(operation string) time.Duration {
+	switch operation {
+	case gitOperationBranchChange:
+		return gitBranchChangeTimeout
+	case gitOperationPull:
+		return gitBranchChangeTimeout
+	default:
+		return gitDefaultCommandTimeout
+	}
+}
 
 func queryCurrentBranchInfo(sshClient *gsssh.SshTerminal, codePath string, timeout time.Duration) (*GitCurrentBranchInfo, error) {
 	localCommand := p_shell.NewCommand()

@@ -87,30 +87,32 @@
 
       <!-- 输入区域 -->
       <div class="input-container">
-        <div class="input-wrapper">
-          <div class="input-overlay-box">
-            <div
-              v-if="inputText"
-              class="input-highlight-layer"
-              v-html="highlightedInputHtml"
-            ></div>
-            <input
-              ref="inputRef"
-              v-model="inputText"
-              type="text"
-              :class="['chat-input', { 'chat-input-overlay': !!inputText }]"
-              :placeholder="inputPlaceholder"
-              @input="handleInput"
-              @keydown="handleKeydown"
-              @blur="handleBlur"
-              @focus="handleFocus"
-            />
+        <div class="input-center-box" :style="{ width: inputWrapperWidth }">
+          <div class="input-wrapper">
+            <div class="input-overlay-box">
+              <div
+                v-if="inputText"
+                class="input-highlight-layer"
+                v-html="highlightedInputHtml"
+              ></div>
+              <input
+                ref="inputRef"
+                v-model="inputText"
+                type="text"
+                :class="['chat-input', { 'chat-input-overlay': !!inputText }]"
+                :placeholder="inputPlaceholder"
+                @input="handleInput"
+                @keydown="handleKeydown"
+                @blur="handleBlur"
+                @focus="handleFocus"
+              />
+            </div>
+            <button class="send-btn" :disabled="!canExecuteCommand" @click="executeCommand">
+              <span class="send-icon">→</span>
+            </button>
           </div>
-          <button class="send-btn" :disabled="!canExecuteCommand" @click="executeCommand">
-            <span class="send-icon">→</span>
-          </button>
+          <div class="next-step-tip">{{ nextStepHint }}</div>
         </div>
-        <div class="next-step-tip">{{ nextStepHint }}</div>
       </div>
     </div>
   </div>
@@ -264,6 +266,12 @@ export default {
         const selection = getLinkRunSelection(sourceStack)
         return !!(selection.configCmd && selection.envCmd && selection.accountCmd)
       }
+      // docker quick-restart/quick-stop 需要先选项目，再选服务
+      if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop') {
+        const actionIndex = sourceStack.findIndex(item => item?.action === actionCmd.action)
+        const serviceCmd = actionIndex >= 0 ? sourceStack[actionIndex + 2] : null
+        return !!(serviceCmd && serviceCmd.data)
+      }
       if (actionCmd.action === 'supervisorRestart' || actionCmd.action === 'supervisorStop' || actionCmd.action === 'supervisorConfig') {
         const actionIndex = sourceStack.findIndex(item => item?.action === actionCmd.action)
         const processCmd = actionIndex >= 0 ? sourceStack[actionIndex + 2] : null
@@ -296,6 +304,12 @@ export default {
         }
         if (!selection.accountCmd) {
           return '命令未完成：请选择账号'
+        }
+      }
+      if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop') {
+        const serviceCmd = actionIndex >= 0 ? sourceStack[actionIndex + 2] : null
+        if (!(serviceCmd && serviceCmd.data)) {
+          return '命令未完成：请选择服务'
         }
       }
       if (actionCmd.action === 'supervisorRestart' || actionCmd.action === 'supervisorStop' || actionCmd.action === 'supervisorConfig') {
@@ -339,6 +353,68 @@ export default {
         .replace(/>/g, '&gt;')
     }
 
+    // buildLinkEnvOptionsFromConfig 基于已选链接配置生成“环境”候选（高亮兜底）
+    const buildLinkEnvOptionsFromConfig = (configCmd) => {
+      const linkList = Array.isArray(configCmd?.data?.linkList) ? configCmd.data.linkList : []
+      return linkList.map((item, index) => {
+        const envName = normalizeCommandPart(item?.label) || `环境${index + 1}`
+        return {
+          command: envName,
+          name: envName,
+          dynamicChildren: 'linkAccountList',
+          data: {
+            __linkType: 'env',
+            env: item || {},
+            config: configCmd?.data || {}
+          }
+        }
+      })
+    }
+
+    // buildLinkAccountOptionsFromEnv 基于已选环境生成“账号”候选（高亮兜底）
+    const buildLinkAccountOptionsFromEnv = (envCmd) => {
+      const userListRaw = Array.isArray(envCmd?.data?.env?.userList) ? envCmd.data.env.userList : []
+      const userList = userListRaw.length > 0 ? userListRaw : [{ user_name: '默认账号(空)', password: '' }]
+      return userList.map((item, index) => {
+        const userName = normalizeCommandPart(item?.user_name) || `账号${index + 1}`
+        return {
+          command: userName,
+          name: userName,
+          data: {
+            __linkType: 'account',
+            account: {
+              user_name: normalizeCommandPart(item?.user_name),
+              password: normalizeCommandPart(item?.password)
+            }
+          }
+        }
+      })
+    }
+
+    // resolveNextTargetOptions 解析“已选目标”后的下一层候选，支持多级目标命令高亮
+    const resolveNextTargetOptions = (parentCmd, targetCmd) => {
+      if (!targetCmd) return []
+      if (targetCmd.dynamicChildren) {
+        const directOptions = dynamicDataCache.value[targetCmd.dynamicChildren] || []
+        if (Array.isArray(directOptions) && directOptions.length > 0) {
+          return directOptions
+        }
+        if (targetCmd.dynamicChildren === 'linkAccountList') {
+          return buildLinkAccountOptionsFromEnv(targetCmd)
+        }
+      }
+      if (parentCmd?.nextDynamicChildren) {
+        const nextOptions = dynamicDataCache.value[parentCmd.nextDynamicChildren] || []
+        if (Array.isArray(nextOptions) && nextOptions.length > 0) {
+          return nextOptions
+        }
+        if (parentCmd.nextDynamicChildren === 'linkEnvList') {
+          return buildLinkEnvOptionsFromConfig(targetCmd)
+        }
+      }
+      return []
+    }
+
     const renderProcessMarkdown = (text) => {
       const raw = String(text || '')
       const html = marked.parse(raw)
@@ -361,7 +437,9 @@ export default {
     }
 
     const refreshCommandDropdownVisibility = () => {
-      showCommands.value = isCommandModeByText(inputText.value) && currentChildren.value.length > 0
+      showCommands.value = isCommandModeByText(inputText.value) &&
+        currentChildren.value.length > 0 &&
+        !isCommandReadyToExecute()
     }
 
     // 更新当前命令状态（running/success/failed）
@@ -546,6 +624,7 @@ export default {
       const highlightedTokens = []
       let currentLevel = availableCommands.value
       let waitingTargetOptions = null
+      let waitingTargetParent = null
       let waitingForInput = false
 
       for (let tokenIndex = 0; tokenIndex < chunks.length; tokenIndex += 1) {
@@ -575,7 +654,14 @@ export default {
           const targetFound = findCommandByToken(waitingTargetOptions, normalized)
           if (targetFound) {
             highlightedTokens.push({ text: tokenRaw, type: 'matched' })
-            waitingTargetOptions = null
+            const nextOptions = resolveNextTargetOptions(waitingTargetParent, targetFound)
+            if (Array.isArray(nextOptions) && nextOptions.length > 0) {
+              waitingTargetOptions = nextOptions
+              waitingTargetParent = targetFound
+            } else {
+              waitingTargetOptions = null
+              waitingTargetParent = null
+            }
           } else {
             highlightedTokens.push({ text: tokenRaw, type: 'invalid' })
           }
@@ -595,6 +681,7 @@ export default {
         }
 
         if (found.needTarget) {
+          waitingTargetParent = found
           waitingTargetOptions = found.dynamicChildren
             ? (dynamicDataCache.value[found.dynamicChildren] || [])
             : (found.children || [])
@@ -642,6 +729,13 @@ export default {
         return `<span>${safe}</span>`
       }).join('')
     })
+
+    // 判断当前命令是否已满足执行条件（满足后不应再展示候选）
+    const isCommandReadyToExecute = () => {
+      const actionCmd = commandStack.value.find(item => item.action)
+      if (!actionCmd) return false
+      return isActionReady(actionCmd, commandStack.value, currentInputValue.value)
+    }
 
     // 获取 variable 会话的下一步提示语（首页多步命令）
     const getVariableSessionStepHint = () => {
@@ -710,6 +804,18 @@ export default {
         return `下一步：${lastCmd.inputPlaceholder || '请输入参数'}`
       }
       return '下一步：继续输入，完成后按 Enter 执行'
+    })
+
+    // 根据输入内容计算输入区宽度：最小 520，内容变长时扩展，最大不超过 1100 且不超过容器 92%
+    const inputWrapperWidth = computed(() => {
+      const minWidth = 520
+      const maxWidth = 1100
+      const contentLength = String(inputText.value || '').length
+      const placeholderLength = String(inputPlaceholder.value || '').length
+      const effectiveLength = Math.max(contentLength, Math.min(placeholderLength, 40))
+      const estimatedWidth = 220 + (effectiveLength * 9)
+      const targetWidth = Math.max(minWidth, Math.min(maxWidth, estimatedWidth))
+      return `min(92%, ${targetWidth}px)`
     })
 
     // 解析输入文本，获取当前命令层级
@@ -873,7 +979,7 @@ export default {
       if (commandStack.value.length === 0 && parts.length > 0) {
         currentChildren.value = availableCommands.value
       }
-      showCommands.value = currentChildren.value.length > 0
+      showCommands.value = currentChildren.value.length > 0 && !isCommandReadyToExecute()
     }
 
     // 加载动态子命令
@@ -986,6 +1092,9 @@ export default {
           }))
           dynamicDataCache.value['dockerComposeList'] = list
           currentChildren.value = list
+          // Docker 项目列表为异步加载；当用户已输入 `docker quick-restart <项目>` 时，
+          // 需要在数据到达后重新解析一次输入，才能自动进入“服务列表”层级。
+          parseInput()
           refreshCommandDropdownVisibility()
         }
       })
@@ -1581,6 +1690,11 @@ export default {
           }
           break
         case ' ':
+          // 已可执行时，空格不应触发候选选择，避免把候选误拼到命令后
+          if (isCommandReadyToExecute()) {
+            showCommands.value = false
+            return
+          }
           if (filteredCommands.value[activeCommandIndex.value]) {
             e.preventDefault()
             selectCommand(filteredCommands.value[activeCommandIndex.value])
@@ -2848,6 +2962,7 @@ export default {
       inputPlaceholder,
       canExecuteCommand,
       highlightedInputHtml,
+      inputWrapperWidth,
       nextStepHint,
       availableCommands,
       recentHistoryCommands,
@@ -3302,13 +3417,22 @@ export default {
 }
 
 .input-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
   padding: 16px 24px;
   border-top: 1px solid #e8e8e0;
   background: #fff;
   border-radius: 0 0 12px 12px;
 }
 
+.input-center-box {
+  max-width: 100%;
+  transition: width 0.18s ease;
+}
+
 .input-wrapper {
+  width: 100%;
   display: flex;
   align-items: center;
   background: #fafaf7;
@@ -3323,6 +3447,7 @@ export default {
 }
 
 .next-step-tip {
+  width: 100%;
   min-height: 18px;
   margin-top: 8px;
   padding: 0 4px;
@@ -3379,24 +3504,24 @@ export default {
   color: #a0a090;
 }
 
-.token-bg {
+:deep(.token-bg) {
   border-radius: 4px;
   padding: 0;
 }
 
-.token-bg-valid {
+:deep(.token-bg-valid) {
   background: rgba(95, 180, 95, 0.25);
   color: #246524;
 }
 
-.token-bg-invalid {
+:deep(.token-bg-invalid) {
   background: rgba(220, 80, 80, 0.22);
   color: #922f2f;
 }
 
-.token-bg-arg {
-  background: rgba(218, 165, 32, 0.24);
-  color: #7a5504;
+:deep(.token-bg-arg) {
+  background: rgba(95, 180, 95, 0.2);
+  color: #2e6b2e;
 }
 
 .send-btn {
