@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 
@@ -64,20 +64,39 @@ go build -tags production -ldflags "-s -w -H=windowsgui" -o "%PKG_DIR%\dtool_wai
 
 echo [4/6] Copy runtime resources
 copy /Y "%ROOT_DIR%\go.mod" "%PKG_DIR%\go.mod" >nul || goto :error
-xcopy "%ROOT_DIR%\config\dtool" "%PKG_DIR%\config\dtool" /E /I /Y >nul || goto :error
+if not exist "%PKG_DIR%\config\dtool" mkdir "%PKG_DIR%\config\dtool" || goto :error
+REM Copy only company.ini and rename it to config.ini
+copy /Y "%ROOT_DIR%\config\dtool\company.ini" "%PKG_DIR%\config\dtool\config.ini" >nul || goto :error
 xcopy "%ROOT_DIR%\web\dist" "%PKG_DIR%\web\dist" /E /I /Y >nul || goto :error
 xcopy "%ROOT_DIR%\internal\pkg\p_js" "%PKG_DIR%\internal\pkg\p_js" /E /I /Y >nul || goto :error
 xcopy "%ROOT_DIR%\internal\app\dtool\database" "%PKG_DIR%\internal\app\dtool\database" /E /I /Y >nul || goto :error
 
-echo [5/6] Generate release note
+echo [5/6] Generate launch scripts and release note
+for /f %%i in ('powershell -NoProfile -Command "[string]([char]32593+[char]39029+[char]29256)+'.bat'"') do set "WEB_BAT=%%i"
+for /f %%i in ('powershell -NoProfile -Command "[string]([char]26700+[char]38754+[char]29256)+'.bat'"') do set "DESKTOP_BAT=%%i"
+
+(
+  echo @echo off
+  echo chcp 65001 ^>nul
+  echo start "dtool-web" /D "%%~dp0" "%%~dp0dtool.exe" --ConfigFile=config
+  echo timeout /t 2 /nobreak ^>nul
+  echo start "" "http://localhost:17170/"
+) > "%PKG_DIR%\%WEB_BAT%"
+
+(
+  echo @echo off
+  echo chcp 65001 ^>nul
+  echo start "dtool-desktop" /D "%%~dp0" "%%~dp0dtool_wails.exe" --ConfigFile=config
+) > "%PKG_DIR%\%DESKTOP_BAT%"
+
 (
   echo dtool release package
   echo.
   echo Run web mode:
-  echo   dtool.exe --ConfigFile=company
+  echo   Double-click %WEB_BAT%
   echo.
   echo Run desktop mode:
-  echo   dtool_wails.exe --ConfigFile=company
+  echo   Double-click %DESKTOP_BAT%
   echo.
   echo Notes:
   echo 1. ConfigFile matches config\dtool\*.ini filename without extension

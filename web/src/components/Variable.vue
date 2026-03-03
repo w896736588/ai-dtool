@@ -32,8 +32,12 @@
                             确认
                           </el-button>
                         </el-form-item>
-                        <el-form-item v-if="(value.CmdType === '9' || value.CmdType === '12' || value.CmdType === '14')" :label="value.Select.Label">
-                          <el-radio-group v-model="value.Select.Value">
+                        <el-form-item
+                            v-if="(value.CmdType === '9' || value.CmdType === '12' || value.CmdType === '14')"
+                            :label="value.Select.Label"
+                            class="variable-radio-form-item"
+                        >
+                          <el-radio-group v-model="value.Select.Value" class="variable-radio-group">
                             <template v-for="(optionValue,optionKey) in value.Select.OptionList" :key="optionKey">
                               <el-radio :disabled="value.disabled" :value="optionValue.Value" @change="cmdSet(value.Id , value.Select.Value)">
                                 {{ optionValue.Label }}
@@ -341,6 +345,44 @@
 
 .variable-tabs :deep(.el-tab-pane) {
   padding: 8px 10px;
+}
+
+.variable-page :deep(.demo-tabs1) {
+  height: 100%;
+}
+
+/* 运行/编辑内容超出时允许在左侧区域滚动，避免长表单被截断 */
+.variable-page :deep(.demo-tabs1 .el-tabs__content) {
+  height: calc(100% - 42px);
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+}
+
+.variable-page :deep(.demo-tabs1 .el-tab-pane) {
+  min-height: 100%;
+}
+
+/* 单项选择选项过多时，限制单个选项组高度并启用滚动 */
+.variable-page :deep(.variable-radio-group) {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-height: min(40vh, 320px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+  padding-right: 4px;
+}
+
+.variable-page :deep(.variable-radio-group .el-radio) {
+  margin-right: 0;
+  margin-bottom: 8px;
+}
+
+.variable-page :deep(.variable-radio-group .el-radio:last-child) {
+  margin-bottom: 0;
 }
 
 .variable-cmd-card {

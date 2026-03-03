@@ -122,18 +122,11 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	component.EnvClient.WebConfig = &define.WebConfig{
 		WebPath: ``,
 	}
-	//前端目录
+	// 前端目录：未配置webPath时，默认使用当前项目根目录下的web/dist
 	if component.EnvClient.ConfigBase.WebPath == `` {
-		component.EnvClient.WebConfig.WebPath = filepath.Join(filepath.Dir(component.EnvClient.RootPath), `devtool`, `dist`)
+		component.EnvClient.WebConfig.WebPath = filepath.Join(component.EnvClient.RootPath, `web`, `dist`)
 	} else {
 		component.EnvClient.WebConfig.WebPath = component.EnvClient.ConfigBase.WebPath
-	}
-	// webPath不存在时，优先兜底到当前项目的web/dist，避免桌面端无法加载页面
-	if _, webPathErr := os.Stat(component.EnvClient.WebConfig.WebPath); webPathErr != nil {
-		fallbackWebPath := filepath.Join(component.EnvClient.RootPath, `web`, `dist`)
-		if _, fallbackErr := os.Stat(fallbackWebPath); fallbackErr == nil {
-			component.EnvClient.WebConfig.WebPath = fallbackWebPath
-		}
 	}
 	//数据库配置
 	component.EnvClient.DbConfig = &define.DbConfig{

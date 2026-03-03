@@ -115,9 +115,7 @@ go build -tags production -ldflags "-s -w -H=windowsgui" -o build/dtool_wails.ex
 2. `dbFileName`：数据库文件名；为空时默认 `dtool.db`（项目内逻辑为 `AppName.db`）。
 3. `webPath`：前端 dist 目录绝对路径。
 
-`webPath` 为空时会尝试以下顺序：
-1. 旧默认目录（历史兼容）。
-2. 当前项目 `web/dist`（存在则自动兜底）。
+`webPath` 为空时默认使用当前项目 `web/dist`。
 
 ## 一键打包
 
