@@ -4,7 +4,10 @@ import (
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_common"
 	"dev_tool/internal/pkg/p_curl"
-	"time"
+	"fmt"
+	"path/filepath"
+	"strings"
+	"sync"
 
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/playwright-community/playwright-go"
@@ -23,6 +26,7 @@ type ContextPage struct {
 	log             *gstool.GsSlog
 	ActiveTime      *PageActiveTime
 	RunParams       *PlaywrightRunParams
+	eventPages      sync.Map
 }
 
 func NewContextPage(context *playwright.BrowserContext, runParams *PlaywrightRunParams, userDataPath string,
@@ -64,18 +68,24 @@ func (h *ContextPage) CloseFirstPage() {
 }
 
 func (h *ContextPage) Init() {
-	go func() {
-		(*h.Context).OnPage(func(page playwright.Page) {
-			go h.InitEvents(&page)
-		})
-		(*h.Context).OnClose(func(context playwright.BrowserContext) {
-			h.CloseEvent()
-		})
-	}()
+	// 先注册新页面事件，避免页面创建后事件尚未绑定导致丢失。
+	(*h.Context).OnPage(func(page playwright.Page) {
+		h.InitEvents(&page)
+	})
+	// 同时补绑当前 context 已存在页面，避免复用 context 时下载事件未注册。
+	for _, page := range (*h.Context).Pages() {
+		h.InitEvents(&page)
+	}
+	(*h.Context).OnClose(func(context playwright.BrowserContext) {
+		h.CloseEvent()
+	})
 }
 
 // InitEvents 这里可能注册链接有一些问题 已经存在的context在新的链接上不会重新进行注册
 func (h *ContextPage) InitEvents(page *playwright.Page) {
+	if !h.tryMarkPageEventInited(page) {
+		return
+	}
 	(*page).On("request", func(request playwright.Request) {
 		go h.SetPageActive(page)
 		return
@@ -87,34 +97,43 @@ func (h *ContextPage) InitEvents(page *playwright.Page) {
 
 	//可以监听到 前端下载
 	(*page).On(`download`, func(download playwright.Download) {
-		h.SetPageActive(page)
-		PlaywrightClient.AddTipMsg(page, `检测到下载`+download.SuggestedFilename()+`,别急，自动打开中..`)
-		localPath := h.GetDownloadPath(download)
-		h.log.Debugf(`localPath %s`, localPath)
-		h.log.Debugf(download.String())
-		go func() {
-			//这个会一直阻塞
-			_ = download.SaveAs(localPath)
-		}()
-		go func() {
-			for {
-				time.Sleep(time.Millisecond * 100)
-				if gstool.FileIsExisted(localPath) {
-					time.Sleep(time.Millisecond * 100)
-					_ = download.Cancel()
-					PlaywrightClient.AddTipMsg(page, `开始打开`+download.SuggestedFilename())
-					openErr := p_common.TOsClient.OpenFileWindows(localPath, localPath)
-					if openErr != nil {
-						h.log.Debugf(`打开文件失败 %s %s`, localPath, openErr.Error())
-					} else {
-						h.log.Errof(`打开文件成功 %s`, localPath)
-					}
-					return
-				}
-			}
-		}()
+		go h.handleDownload(page, download)
 		return
 	})
+}
+
+// tryMarkPageEventInited 标记页面事件是否已初始化，避免重复注册。
+func (h *ContextPage) tryMarkPageEventInited(page *playwright.Page) bool {
+	key := fmt.Sprintf("%p", page)
+	_, loaded := h.eventPages.LoadOrStore(key, struct{}{})
+	return !loaded
+}
+
+// handleDownload 处理下载落盘并自动打开文件。
+func (h *ContextPage) handleDownload(page *playwright.Page, download playwright.Download) {
+	h.SetPageActive(page)
+	fileName := sanitizeWindowsFilename(download.SuggestedFilename())
+	PlaywrightClient.AddTipMsg(page, `检测到下载`+fileName+`,别急，自动打开中..`)
+	localPath := h.GetDownloadPathByFilename(fileName)
+	h.log.Debugf(`download localPath %s`, localPath)
+	if saveErr := download.SaveAs(localPath); saveErr != nil {
+		h.log.Debugf(`下载保存失败 %s %s`, localPath, saveErr.Error())
+		PlaywrightClient.AddTipMsg(page, `下载保存失败：`+fileName)
+		return
+	}
+	if !gstool.FileIsExisted(localPath) {
+		h.log.Debugf(`下载保存后文件不存在 %s`, localPath)
+		PlaywrightClient.AddTipMsg(page, `下载失败，未找到文件：`+fileName)
+		return
+	}
+	PlaywrightClient.AddTipMsg(page, `开始打开`+fileName)
+	openErr := p_common.TOsClient.OpenFileWindows(localPath, localPath)
+	if openErr != nil {
+		h.log.Debugf(`打开文件失败 %s %s`, localPath, openErr.Error())
+		PlaywrightClient.AddTipMsg(page, `自动打开失败，请到下载目录查看：`+fileName)
+		return
+	}
+	h.log.Debugf(`打开文件成功 %s`, localPath)
 }
 
 func (h *ContextPage) RegisterLinks(page playwright.Page, registerLinks map[string]*p_curl.CurlRun, filterUris []string, tipFunc func(string, string)) {
@@ -146,7 +165,37 @@ func (h *ContextPage) RegisterLinks(page playwright.Page, registerLinks map[stri
 }
 
 func (h *ContextPage) GetDownloadPath(download playwright.Download) string {
-	return PlaywrightClient.DownloadPath + `/` + p_common.TBaseClient.GetUnique(`download`) + `_` + download.SuggestedFilename()
+	return h.GetDownloadPathByFilename(download.SuggestedFilename())
+}
+
+// GetDownloadPathByFilename 生成下载文件路径并统一处理文件名。
+func (h *ContextPage) GetDownloadPathByFilename(fileName string) string {
+	return filepath.Join(PlaywrightClient.DownloadPath, p_common.TBaseClient.GetUnique(`download`)+`_`+sanitizeWindowsFilename(fileName))
+}
+
+// sanitizeWindowsFilename 清洗 Windows 不允许的文件名字符，避免下载保存失败。
+func sanitizeWindowsFilename(fileName string) string {
+	fileName = strings.TrimSpace(fileName)
+	if fileName == `` {
+		return `download.bin`
+	}
+	replacer := strings.NewReplacer(
+		`\`, `_`,
+		`/`, `_`,
+		`:`, `_`,
+		`*`, `_`,
+		`?`, `_`,
+		`"`, `_`,
+		`<`, `_`,
+		`>`, `_`,
+		`|`, `_`,
+	)
+	fileName = replacer.Replace(fileName)
+	fileName = strings.TrimRight(fileName, ` .`)
+	if fileName == `` {
+		return `download.bin`
+	}
+	return fileName
 }
 
 func (h *ContextPage) SetPageActive(page *playwright.Page) {

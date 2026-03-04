@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -204,7 +205,22 @@ func (h *Playwright) LastUserDataIndex(runParams *PlaywrightRunParams, userDataI
 			`update_time`:     time.Now().Unix(),
 		})
 		if err != nil {
-			runParams.StreamFunc(`记录历史数据目录`, `创建最后使用索引失败：`+err.Error())
+			// 针对并发创建或历史脏数据引发的唯一键冲突，回退为按唯一键更新，避免中断主流程。
+			if strings.Contains(err.Error(), `UNIQUE constraint failed: tbl_smart_link_last.domain, tbl_smart_link_last.user_data_index`) {
+				_, updateErr := call.UpdateSmartLastRecord(map[string]any{
+					`domain`:          runParams.Domain,
+					`user_data_index`: userDataIndex,
+				}, map[string]any{
+					`smart_link_id`: runParams.Id,
+					`user_name`:     runParams.LastIndexLabel,
+					`update_time`:   time.Now().Unix(),
+				})
+				if updateErr != nil {
+					runParams.StreamFunc(`记录历史数据目录`, `创建冲突后回退更新失败：`+updateErr.Error())
+				}
+			} else {
+				runParams.StreamFunc(`记录历史数据目录`, `创建最后使用索引失败：`+err.Error())
+			}
 		}
 	}
 }
