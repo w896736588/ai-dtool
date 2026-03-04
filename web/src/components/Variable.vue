@@ -126,7 +126,7 @@
               </div>
             </el-col>
             <el-col :span="12">
-              <shellResult ref="shellRef" :divHeight="shellController.divHeight" :isRunning="shellController.isRunning" :shellShowResult="shellController.sshResult" :show-model="shellController.showModel"></shellResult>
+              <shellResult ref="shellRef" :divHeight="shellController.divHeight-40" :isRunning="shellController.isRunning" :shellShowResult="shellController.sshResult" :show-model="shellController.showModel"></shellResult>
             </el-col>
           </el-row>
         </el-tab-pane>
@@ -687,12 +687,32 @@ export default {
   },
   methods: {
     updateLayoutHeight: function () {
-      let _height = parseInt(base.GetDivHeight2())
-      if (!Number.isFinite(_height)) {
-        _height = window.innerHeight - 120
+      // 使用运行区真实顶部位置计算可用高度，避免右侧输出框底部超出屏幕
+      const fallbackHeight = parseInt(base.GetDivHeight2())
+      const mainCardDom = document.getElementById('mainCard')
+      const rowDom = mainCardDom ? mainCardDom.querySelector('.variable-main-row') : null
+      let nextHeight = 0
+
+      if (
+        mainCardDom &&
+        rowDom &&
+        typeof mainCardDom.getBoundingClientRect === 'function' &&
+        typeof rowDom.getBoundingClientRect === 'function'
+      ) {
+        const mainCardRect = mainCardDom.getBoundingClientRect()
+        const rowRect = rowDom.getBoundingClientRect()
+        // 以 mainCard 容器为边界计算高度，避免超出当前页面可视区域
+        nextHeight = mainCardRect.bottom - rowRect.top - 16
+      } else if (Number.isFinite(fallbackHeight)) {
+        nextHeight = fallbackHeight - 60
+      } else {
+        nextHeight = window.innerHeight - 120
       }
-      let nextHeight = _height - 60
-      this.shellController.divHeight = Math.max(260, nextHeight)
+
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+      const maxSafeHeight = Math.max(260, viewportHeight - 120)
+      const safeHeight = Number.isFinite(nextHeight) ? parseInt(nextHeight) : 260
+      this.shellController.divHeight = Math.max(260, Math.min(safeHeight, maxSafeHeight))
     },
     bindWindowResize: function () {
       let _that = this

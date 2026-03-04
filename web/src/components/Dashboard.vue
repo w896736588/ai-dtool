@@ -119,7 +119,7 @@
 </template>
 
 <script>
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, onActivated } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import module from '@/utils/module'
@@ -2939,10 +2939,22 @@ export default {
       })
     }
 
+    // focusInputOnHome 首页输入框聚焦（首次进入与切回首页时复用）
+    const focusInputOnHome = () => {
+      nextTick(() => {
+        inputRef.value?.focus()
+      })
+    }
+
     onMounted(() => {
       loadCommandHistoryCache()
-      inputRef.value?.focus()
+      focusInputOnHome()
       initSseConnection()
+    })
+
+    // keep-alive 组件重新激活时，自动让首页输入框获得焦点
+    onActivated(() => {
+      focusInputOnHome()
     })
     
     onUnmounted(() => {
