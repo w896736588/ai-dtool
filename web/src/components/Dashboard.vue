@@ -23,15 +23,26 @@
             <div v-if="recentHistoryCommands.length > 0" class="history-command-section">
               <div class="fixed-command-title">历史操作命令</div>
               <div class="history-command-list">
-                <button
+                <div
                   v-for="(historyCmd, historyIndex) in recentHistoryCommands"
                   :key="`history_${historyIndex}_${historyCmd}`"
-                  type="button"
-                  class="history-command-item"
-                  @click="quickSelectHistoryCommand(historyCmd)"
                 >
-                  {{ historyCmd }}
-                </button>
+                  <div class="history-command-item-wrap">
+                    <button
+                      type="button"
+                      class="history-command-item"
+                      @click="quickSelectHistoryCommand(historyCmd)"
+                    >
+                      {{ historyCmd }}
+                    </button>
+                    <button
+                      type="button"
+                      class="history-command-delete"
+                      title="删除该历史命令"
+                      @click.stop="removeHistoryCommand(historyCmd)"
+                    >×</button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -87,6 +98,14 @@
           <span class="command-desc">
             {{ cmd.desc }}<template v-if="getCommandMatchHint(cmd)"> | 匹配: {{ getCommandMatchHint(cmd) }}</template>
           </span>
+          <button
+            v-if="cmd.insertOnly"
+            type="button"
+            class="command-item-delete"
+            title="删除该历史命令"
+            @mousedown.prevent="markKeepDropdownOnBlur"
+            @click.stop="removeHistoryCommand(cmd.insertText || cmd.command || cmd.name)"
+          >×</button>
           <span v-if="cmd.children || cmd.needTarget" class="command-arrow">→</span>
         </div>
       </div>
@@ -157,6 +176,7 @@ export default {
     const activeCommandIndex = ref(0)
     const inputRef = ref(null)
     const messageList = ref(null)
+    const keepDropdownOnBlur = ref(false) // 删除历史候选时，避免 input blur 关闭下拉
     
     // 多级命令状态
     const commandStack = ref([]) // 命令栈，存储已选择的命令
@@ -1864,8 +1884,22 @@ export default {
     // 处理失焦
     const handleBlur = () => {
       setTimeout(() => {
+        // 点击历史候选删除按钮触发的 blur：保留下拉并回焦输入框
+        if (keepDropdownOnBlur.value) {
+          keepDropdownOnBlur.value = false
+          refreshCommandDropdownVisibility()
+          nextTick(() => {
+            inputRef.value?.focus()
+          })
+          return
+        }
         showCommands.value = false
       }, 200)
+    }
+
+    // markKeepDropdownOnBlur 标记本次 blur 不关闭下拉（用于历史候选删除按钮）
+    const markKeepDropdownOnBlur = () => {
+      keepDropdownOnBlur.value = true
     }
 
     // 处理键盘事件
@@ -3245,6 +3279,43 @@ export default {
       })
     }
 
+    // removeHistoryCommand 删除指定历史命令（同步清理历史列表与使用次数缓存）
+    const removeHistoryCommand = (historyCommand) => {
+      const commandText = normalizeCommandPart(historyCommand)
+      if (!commandText) return
+
+      // 删除历史列表中该命令的所有记录，避免旧记录残留
+      commandHistory.value = commandHistory.value.filter(item => normalizeCommandPart(item) !== commandText)
+      // 删除使用次数统计，确保 history 动态列表也同步移除
+      if (Object.prototype.hasOwnProperty.call(commandUsageMap.value, commandText)) {
+        delete commandUsageMap.value[commandText]
+      }
+      // 同步刷新缓存中的 history 候选数据
+      if (Array.isArray(dynamicDataCache.value['historyList'])) {
+        dynamicDataCache.value['historyList'] = dynamicDataCache.value['historyList']
+          .filter(item => normalizeCommandPart(item?.command || item?.name) !== commandText)
+      }
+
+      commandHistoryIndex.value = commandHistory.value.length
+      persistCommandHistoryCache()
+
+      // 若当前输入就是被删除命令，重置输入状态，避免误执行已删除项
+      if (normalizeCommandPart(inputText.value) === commandText) {
+        inputText.value = ''
+        showCommands.value = false
+        commandStack.value = []
+        currentChildren.value = []
+        currentInputValue.value = ''
+      } else if (isHistoryPrefixSearchMode()) {
+        // history 前缀模式下删除后立即重算候选，保持界面与输入一致
+        parseInput()
+      }
+
+      nextTick(() => {
+        inputRef.value?.focus()
+      })
+    }
+
     // handleHomeAppear 首页出现时统一处理：输入框聚焦 + 输出区滚动到底部
     const handleHomeAppear = () => {
       focusInputOnHome()
@@ -3290,6 +3361,8 @@ export default {
       handleBlur,
       quickSelectTopCommand,
       quickSelectHistoryCommand,
+      removeHistoryCommand,
+      markKeepDropdownOnBlur,
       selectCommand,
       executeCommand,
       getCommandKey,
@@ -3387,12 +3460,28 @@ export default {
   gap: 8px;
 }
 
-.history-command-item {
+.history-command-item-wrap {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
   border: 1px solid #d6e3d2;
   background: #f6fbf4;
   color: #3f6f3f;
   border-radius: 999px;
-  padding: 6px 12px;
+  transition: all 0.18s ease;
+}
+
+.history-command-item-wrap:hover {
+  border-color: #a9c3a4;
+  background: #eaf4e7;
+  color: #2f5c2f;
+}
+
+.history-command-item {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 6px 8px 6px 12px;
   font-size: 12px;
   line-height: 1.2;
   cursor: pointer;
@@ -3400,12 +3489,26 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: all 0.18s ease;
 }
 
-.history-command-item:hover {
-  border-color: #a9c3a4;
-  background: #eaf4e7;
+.history-command-delete {
+  border: 0;
+  background: transparent;
+  color: #7a8f7a;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.history-command-delete:hover {
+  background: rgba(63, 111, 63, 0.12);
   color: #2f5c2f;
 }
 
@@ -3644,6 +3747,12 @@ export default {
     font-size: 11px;
   }
 
+  .history-command-delete {
+    width: 20px;
+    height: 20px;
+    margin-right: 3px;
+  }
+
   .fixed-command-desc {
     display: none;
   }
@@ -3719,6 +3828,28 @@ export default {
   color: #c0c0b8;
   font-size: 14px;
   margin-left: 8px;
+}
+
+.command-item-delete {
+  border: 0;
+  background: transparent;
+  color: #8da08d;
+  width: 22px;
+  height: 22px;
+  margin-left: 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.command-item-delete:hover {
+  background: rgba(63, 111, 63, 0.12);
+  color: #2f5c2f;
 }
 
 .command-breadcrumb {
