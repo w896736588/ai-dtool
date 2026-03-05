@@ -81,7 +81,7 @@ func GitChangeBranch(c *gin.Context) {
 	//command.Sudo()
 	command1.Cd(codePath)
 	command1.GitShowBranch()
-	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), 40*time.Second)
+	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), getGitOperationTimeout(gitOperationBranchChange))
 	gstool.FmtPrintlnLogTime(`获取当前分支为：%q`, currentBranch)
 	currentBranch = CleanBranchName(currentBranch)
 	gstool.FmtPrintlnLogTime(`当前分支 %#v`, currentBranch)
@@ -134,7 +134,7 @@ func GitChangeBranchRemote(c *gin.Context) {
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command1.Cd(codePath)
 	command1.GitShowBranch()
-	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), 40*time.Second)
+	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), getGitOperationTimeout(gitOperationBranchChange))
 	currentBranch = CleanBranchName(currentBranch)
 
 	command := p_shell.NewCommand()
@@ -178,7 +178,7 @@ func GitPullBranchOrigin(c *gin.Context) {
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command1.Cd(codePath)
 	command1.GitShowBranch()
-	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), 40*time.Second)
+	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), getGitOperationTimeout(gitOperationPull))
 	currentBranch = sshClient.FilterEndTip(currentBranch)
 	currentBranch = sshClient.FilterCommand(currentBranch)
 	currentBranch = CleanBranchName(currentBranch)

@@ -993,7 +993,28 @@ export default {
                     }
                   }
                 } else {
-                  currentChildren.value = []
+                  // 兼容 link 新流程：选择环境后继续解析账号（env.dynamicChildren = linkAccountList）
+                  if (targetFound.dynamicChildren) {
+                    loadDynamicChildren(targetFound.dynamicChildren)
+                    const childDynamicList = dynamicDataCache.value[targetFound.dynamicChildren] || []
+                    currentChildren.value = childDynamicList
+                    showCommands.value = true
+                    const childToken = normalizeCommandPart(parts[i + 1]).toLowerCase()
+                    if (childToken) {
+                      const childFound = findCommandByToken(childDynamicList, childToken)
+                      // 终端目标（如账号）在“最后一个 token 精确命中”时也视为确认，无需再手动输入空格。
+                      const childIsTerminal = !!(childFound && !childFound.dynamicChildren && !childFound.nextDynamicChildren)
+                      const childIsConfirmed = hasTrailingSpace || (parts.length > i + 2) || (parts.length === i + 2 && childIsTerminal)
+                      if (childFound && childIsConfirmed) {
+                        commandStack.value.push(childFound)
+                        i += 1
+                        currentChildren.value = []
+                        showCommands.value = false
+                      }
+                    }
+                  } else {
+                    currentChildren.value = []
+                  }
                 }
                 if (found.needInput) {
                   currentInputValue.value = parts.slice(i + 1).join(' ')
@@ -1800,7 +1821,8 @@ export default {
     const quickSelectHistoryCommand = (historyCommand) => {
       const commandText = normalizeCommandPart(historyCommand)
       if (!commandText) return
-      inputText.value = commandText
+      // 历史命令回填后补一个空格，确保 parseInput 将最后一个 token 视为“已确认”。
+      inputText.value = /\s$/.test(commandText) ? commandText : `${commandText} `
       parseInput()
       showCommands.value = isCommandModeByText(inputText.value)
       activeCommandIndex.value = 0
@@ -1923,7 +1945,9 @@ export default {
     const selectCommand = (cmd) => {
       // history 选择项：仅回填输入框，不改变命令栈
       if (cmd && cmd.insertOnly) {
-        inputText.value = normalizeCommandPart(cmd.insertText || cmd.command || cmd.name)
+        const historyText = normalizeCommandPart(cmd.insertText || cmd.command || cmd.name)
+        // history 通过 Tab 选中时也补空格，避免“还需再手动敲空格才可执行”。
+        inputText.value = /\s$/.test(historyText) ? historyText : `${historyText} `
         showCommands.value = false
         parseInput()
         activeCommandIndex.value = 0
