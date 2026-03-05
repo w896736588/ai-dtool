@@ -348,18 +348,10 @@ const commandConfig = [
     desc: '自定义网页链接',
     module: 'login',
     path: '/Link',
-    children: [
-      {
-        command: 'run',
-        name: '执行',
-        desc: '执行自定义链接（需选择链接、环境、账号）',
-        aliases: ['exec', 'open', '运行', '执行'],
-        action: 'linkRun',
-        needTarget: true,
-        dynamicChildren: 'linkConfigList',
-        nextDynamicChildren: 'linkEnvList'
-      }
-    ]
+    action: 'linkRun',
+    needTarget: true,
+    dynamicChildren: 'linkConfigList',
+    nextDynamicChildren: 'linkEnvList'
   },
   {
     command: 'variable',
