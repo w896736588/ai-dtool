@@ -252,8 +252,6 @@ export default {
     sanitizeGitSseOutput: function (msg) {
       let text = msg || ''
       text = text.replace(/__DT_(LOCAL|REMOTE)_BRANCH_(BEGIN|END)__/g, '')
-      text = text.replace(/;?\s*printf\s+'__GS_CMD_DONE_[^']*'\s+"\$\\?"\s*/g, '')
-      text = text.replace(/__GS_CMD_DONE_[^:\s]+:\d+\s*/g, '')
       text = text.replace(/\n{3,}/g, '\n\n')
       return text.trim() === '' ? '' : text
     },

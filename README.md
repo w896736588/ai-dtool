@@ -41,6 +41,11 @@
 ```bash
 go env -w GOPROXY=https://goproxy.cn,direct
 go env -w GOPRIVATE=gitee.com
+
+# gs扩展安装
+go env -w GOPRIVATE=gitee.com
+# 更新到最新tag
+go get -u gitee.com/Sxiaobai/gs/v2@latest
 ```
 
 首次使用建议安装 Wails CLI（用于桌面端调试/构建）：

@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.4
 
 require (
-	gitee.com/Sxiaobai/gs/v2 v2.0.50
+	gitee.com/Sxiaobai/gs/v2 v2.0.55
 	github.com/gin-gonic/gin v1.9.1
 	github.com/pion/stun v0.6.1
 	github.com/playwright-community/playwright-go v0.4901.0

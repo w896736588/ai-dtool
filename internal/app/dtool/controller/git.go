@@ -449,7 +449,7 @@ func GitGroupBranchList(c *gin.Context) {
 
 	resultChan := make(chan gitItemResult, len(gitList))
 	var wg sync.WaitGroup
-	semaphore := make(chan struct{}, 8)
+	semaphore := make(chan struct{}, 20)
 	totalCount := int32(len(gitList))
 	var doneCount int32
 
@@ -662,45 +662,56 @@ func getGitOperationTimeout(operation string) time.Duration {
 	}
 }
 
+// queryCurrentBranchInfo 合并本地+远程分支查询为单次SSH命令，减少网络往返
 func queryCurrentBranchInfo(sshClient *gsssh.SshTerminal, codePath string, timeout time.Duration) (*GitCurrentBranchInfo, error) {
-	localCommand := p_shell.NewCommand()
-	localCommand.Cd(codePath)
-	localCommand.Echo(`当前分支：`)
-	localCommand.GitShowBranch()
-	localOutput, localErr := sshClient.RunCommandWait(localCommand.GetCommand().ToStr(), timeout)
-	if localErr != nil {
-		return nil, localErr
-	}
-	localBranch, _ := parseBranchFromCurrentBranchOutput(localOutput)
-	if localBranch == `` {
-		localBranch = `N/A`
+	const branchSep = `__DT_BRANCH_SEP__`
+	combinedCmd := p_shell.NewCommand()
+	combinedCmd.Cd(codePath)
+	combinedCmd.GitShowBranch()
+	combinedCmd.SetCommand(`echo ` + branchSep)
+	combinedCmd.GitShowOriginBranch()
+
+	combinedOutput, err := sshClient.RunCommandWait(combinedCmd.GetCommand().ToStr(), timeout)
+	if err != nil {
+		return nil, err
 	}
 
-	remoteBranch := `N/A`
-	remoteOutput, remoteErr := runRemoteBranchQuery(sshClient, codePath, gitRemoteBranchTimeout)
-	if remoteErr != nil {
-		retryOutput, retryErr := runRemoteBranchQuery(sshClient, codePath, gitRemoteBranchRetryTimeout)
-		if retryErr == nil {
-			_, parsedRemote := parseBranchFromCurrentBranchOutput(retryOutput)
-			if parsedRemote != `` {
-				remoteBranch = normalizeRemoteBranchDisplay(parsedRemote)
-			}
-		}
-	} else {
-		_, parsedRemote := parseBranchFromCurrentBranchOutput(remoteOutput)
-		if parsedRemote != `` {
-			remoteBranch = normalizeRemoteBranchDisplay(parsedRemote)
+	lines := strings.Split(combinedOutput, "\n")
+	gstool.FmtPrintlnLogTime(`合并查询结果：%s`, gstool.JsonEncode(lines))
+
+	// 定位分隔符行（跳过首行命令回显）
+	sepIdx := -1
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(p_common.TBaseClient.FilterTerminalChars(lines[i])) == branchSep {
+			sepIdx = i
+			break
 		}
 	}
-	if remoteBranch == `` {
-		remoteBranch = `N/A`
+
+	// 解析本地分支：命令回显之后、分隔符之前的第一行
+	localBranch := ``
+	if sepIdx > 1 {
+		localBranch = p_common.TBaseClient.FilterTerminalChars(lines[1])
+	} else if len(lines) > 1 {
+		localBranch = p_common.TBaseClient.FilterTerminalChars(lines[1])
+	}
+
+	// 解析远程分支：分隔符之后第一个非空行
+	remoteBranch := ``
+	if sepIdx >= 0 {
+		for i := sepIdx + 1; i < len(lines); i++ {
+			cleaned := strings.TrimSpace(p_common.TBaseClient.FilterTerminalChars(lines[i]))
+			if cleaned != `` {
+				remoteBranch = cleaned
+				break
+			}
+		}
 	}
 
 	return &GitCurrentBranchInfo{
 		LocalBranch:  localBranch,
 		RemoteBranch: remoteBranch,
-		// 返回给前端时使用展示文本，避免暴露内部解析分隔标记
-		RawOutput: buildCurrentBranchDisplayOutput(localBranch, remoteBranch),
+		RawOutput:    buildCurrentBranchDisplayOutput(localBranch, remoteBranch),
 	}, nil
 }
 
@@ -788,9 +799,6 @@ func isBranchParseNoise(line string) bool {
 		return true
 	}
 	if strings.Contains(line, `%d\n`) || strings.Contains(line, `%d\\n`) || strings.Contains(line, `"$?"`) || strings.Contains(line, `$?"`) {
-		return true
-	}
-	if strings.Contains(line, `__GS_CMD_DONE_`) {
 		return true
 	}
 	if strings.HasPrefix(line, `cd `) {
@@ -1083,7 +1091,7 @@ func GitSaveCredentials(c *gin.Context) {
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
-	command.Cat(`.git/config`)
+	command.SetCommand(`grep -i -E '^\[credential\]|^[[:space:]]*helper[[:space:]]*=[[:space:]]*store' .git/config`)
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 4*time.Second)
 	if strings.Contains(result, `store`) && strings.Contains(result, `credential`) {
 		sse.Send(`已存在设置，不再新增` + "\n")
@@ -1100,6 +1108,7 @@ func GitSaveCredentials(c *gin.Context) {
 
 // prepareGitOperationEnv 统一执行 Git 的 SSH 前置环境处理。
 // 先设置 safe.directory，再确保 .git/config 存在 credential.store，避免操作进入交互认证。
+// prepareGitOperationEnv 设置safe.directory并确保credential store已配置（合并为单次SSH命令）
 func prepareGitOperationEnv(sshClient *gsssh.SshTerminal, codePath string) error {
 	if sshClient == nil {
 		return errors.New(`ssh client 为空`)
@@ -1108,27 +1117,11 @@ func prepareGitOperationEnv(sshClient *gsssh.SshTerminal, codePath string) error
 		return errors.New(`git未配置目录`)
 	}
 
-	setSafeCmd := p_shell.NewCommand()
-	setSafeCmd.Cd(codePath)
-	setSafeCmd.GitSetSafe(codePath)
-	if _, err := sshClient.RunCommandWait(setSafeCmd.GetCommand().ToStr(), 4*time.Second); err != nil {
-		return err
-	}
-
-	checkCmd := p_shell.NewCommand()
-	checkCmd.Cd(codePath)
-	checkCmd.Cat(`.git/config`)
-	configRet, err := sshClient.RunCommandWait(checkCmd.GetCommand().ToStr(), 4*time.Second)
-	if err != nil {
-		return err
-	}
-	if strings.Contains(configRet, `store`) && strings.Contains(configRet, `credential`) {
-		return nil
-	}
-
-	appendCmd := p_shell.NewCommand()
-	appendCmd.Cd(codePath)
-	appendCmd.Append(`.git/config`, "[credential]\nhelper = store\n")
-	_, err = sshClient.RunCommandWait(appendCmd.GetCommand().ToStr(), 4*time.Second)
+	// 合并为单次SSH命令：设置safe.directory + 检查credential store，不存在则追加
+	cmd := p_shell.NewCommand()
+	cmd.Cd(codePath)
+	cmd.GitSetSafe(codePath)
+	cmd.SetCommand(`grep -qi '\[credential\]' .git/config 2>/dev/null && grep -qi 'helper.*=.*store' .git/config 2>/dev/null || printf '[credential]\nhelper = store\n' >> .git/config`)
+	_, err := sshClient.RunCommandWait(cmd.GetCommand().ToStr(), 6*time.Second)
 	return err
 }

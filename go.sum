@@ -44,6 +44,16 @@ cloud.google.com/go/storage v1.10.0/go.mod h1:FLPqc6j+Ki4BU591ie1oL6qBQGu2Bl/tZ9
 dmitri.shuralyov.com/gpu/mtl v0.0.0-20190408044501-666a987793e9/go.mod h1:H6x//7gZCb22OMCxBHrMx7a5I7Hp++hsVxbQ4BYO7hU=
 gitee.com/Sxiaobai/gs/v2 v2.0.50 h1:GbpDgk2q0wNnQs5XPUQGH+YjID7yNs0pzmdXnzZJx80=
 gitee.com/Sxiaobai/gs/v2 v2.0.50/go.mod h1:6gJxcOBdlRg5DpWYWVLkVqd0uTAHkb7jL2ruqXEndYE=
+gitee.com/Sxiaobai/gs/v2 v2.0.51 h1:OgQD+M6y4IDqwsY8XEeWi6Alv6lxIJ5r0/qwsB8tmJc=
+gitee.com/Sxiaobai/gs/v2 v2.0.51/go.mod h1:6gJxcOBdlRg5DpWYWVLkVqd0uTAHkb7jL2ruqXEndYE=
+gitee.com/Sxiaobai/gs/v2 v2.0.52 h1:S7rJIpaExI2i5lN9x7APjt4QPysfCregh0dUm8pfeSI=
+gitee.com/Sxiaobai/gs/v2 v2.0.52/go.mod h1:6gJxcOBdlRg5DpWYWVLkVqd0uTAHkb7jL2ruqXEndYE=
+gitee.com/Sxiaobai/gs/v2 v2.0.53 h1:S9/bczS/V3tYo0nubdJNBCLe1LH2ftuEWRwX6zuOulc=
+gitee.com/Sxiaobai/gs/v2 v2.0.53/go.mod h1:6gJxcOBdlRg5DpWYWVLkVqd0uTAHkb7jL2ruqXEndYE=
+gitee.com/Sxiaobai/gs/v2 v2.0.54 h1:N4mN36tZMMSa3Ao3H5z5soMz/zCE1kGwQTReGBFV8Y0=
+gitee.com/Sxiaobai/gs/v2 v2.0.54/go.mod h1:6gJxcOBdlRg5DpWYWVLkVqd0uTAHkb7jL2ruqXEndYE=
+gitee.com/Sxiaobai/gs/v2 v2.0.55 h1:x+FdW7C4feOUg0gNHHJAghormE5r9XHEBsCRPmCRVog=
+gitee.com/Sxiaobai/gs/v2 v2.0.55/go.mod h1:6gJxcOBdlRg5DpWYWVLkVqd0uTAHkb7jL2ruqXEndYE=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=

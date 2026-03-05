@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="dashboard-container">
     <div class="chat-container">
       <!-- 消息列表区域 -->
@@ -521,7 +521,6 @@ export default {
         updateCurrentCommandStatus(parsed.status)
       }
       const current = String(currentOutputMessage.value.resultText || '')
-      // 先拼接再整体清洗，避免 GS_CMD_DONE 片段被 SSE 分段后漏过滤。
       const merged = sanitizeCommandOutput(current + parsed.text)
       currentOutputMessage.value.resultText = merged.length > 50000 ? merged.slice(-50000) : merged
       scrollToBottom()
@@ -530,13 +529,11 @@ export default {
     const appendOutputProcess = (text) => {
       if (!currentOutputMessage.value) return
       const current = String(currentOutputMessage.value.processText || '')
-      // 先拼接再整体清洗，避免 GS_CMD_DONE 片段被 SSE 分段后漏过滤。
       const merged = sanitizeCommandOutput(current + String(text || ''))
       currentOutputMessage.value.processText = merged.length > 50000 ? merged.slice(-50000) : merged
       scrollToBottom()
     }
 
-    // 清理终端输出：GS_CMD_DONE 等内部标记已在后端统一过滤，这里仅做字符串兜底。
     const sanitizeCommandOutput = (rawText) => {
       return String(rawText || '')
     }

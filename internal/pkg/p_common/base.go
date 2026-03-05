@@ -161,22 +161,7 @@ func (h *TBase) FilterTerminalChars(msg string) string {
 	multiNewlineRegex := regexp.MustCompile(`\n{3,}`)
 	msg = multiNewlineRegex.ReplaceAllString(msg, "\n")
 
-	// 5. 过滤内部命令收尾标记（GS_CMD_DONE），避免前端看到调试尾包。
-	// 兼容形态：
-	// - __GS_CMD_DONE_123__:0
-	// - GS_CMD_DONE_123:0
-	gsDoneRegex := regexp.MustCompile(`(?:__)?GS_CMD_DONE_\d+(?:__)?:\d+\s*`)
-	msg = gsDoneRegex.ReplaceAllString(msg, "")
-
-	// 6. 过滤用于打印尾包的 printf 片段，兼容跨行断裂（例如 "%\nd\n"）。
-	// 示例：printf 'GS_CMD_DONE_xxx:%d\n' "$?"
-	// 示例：printf '__GS_CMD_DONE_xxx__:%d\n' "$?"
-	printfDoneRegex1 := regexp.MustCompile(`(?s);?\s*printf\s+'__GS_CMD_DONE_[^']*'\s+"?\$\?"?\s*`)
-	msg = printfDoneRegex1.ReplaceAllString(msg, "")
-	printfDoneRegex2 := regexp.MustCompile(`(?s);?\s*printf\s+'GS_CMD_DONE_[^']*'\s+"?\$\?"?\s*`)
-	msg = printfDoneRegex2.ReplaceAllString(msg, "")
-
-	// 可选：清理首尾多余的换行（如果需要）
+	// 5. 可选：清理首尾多余的换行（如果需要）
 	// msg = strings.Trim(msg, "\n")
 
 	return msg
