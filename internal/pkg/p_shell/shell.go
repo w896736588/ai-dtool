@@ -200,7 +200,8 @@ func (h *Shell) cleanupIdleClients() {
 				continue
 			}
 			// 正在执行命令的连接不清理，避免误断开长任务。
-			if getTerminalCurrentCommand(client) != "" {
+			// 注意：command 字段不会可靠清空，需用互斥锁状态判断是否忙碌。
+			if terminalBusyInspector(client) {
 				newPool = append(newPool, client)
 				continue
 			}
@@ -234,7 +235,8 @@ func (h *Shell) cleanupIdleClients() {
 			continue
 		}
 		// 正在执行命令的连接不清理，避免误断开长任务。
-		if getTerminalCurrentCommand(client) != "" {
+		// 注意：command 字段不会可靠清空，需用互斥锁状态判断是否忙碌。
+		if terminalBusyInspector(client) {
 			continue
 		}
 		lastUsed := h.ShellClientLastUsed[client]
