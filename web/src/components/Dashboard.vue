@@ -162,6 +162,7 @@ export default {
     const commandStack = ref([]) // 命令栈，存储已选择的命令
     const currentChildren = ref([]) // 当前可选的子命令
     const dynamicDataCache = ref({}) // 动态数据缓存
+    const activeDynamicType = ref('') // 当前激活的动态列表类型（避免异步回调串台覆盖）
     const isLoadingDynamic = ref(false) // 是否正在加载动态数据
     const currentInputValue = ref('')
     const commandHistory = ref([]) // 命令历史记录
@@ -238,7 +239,7 @@ export default {
       return `idx:${index}`
     }
 
-    // 获取 link run 命令在命令栈中的三级选择（链接配置/环境/账号）
+    // 获取 link run 命令在命令栈中的选择（环境(含配置)/账号）
     const getLinkRunSelection = (stack) => {
       const sourceStack = Array.isArray(stack) ? stack : []
       const actionIndex = sourceStack.findIndex(item => item?.action === 'linkRun')
@@ -250,9 +251,11 @@ export default {
         }
       }
       const tailStack = sourceStack.slice(actionIndex + 1)
+      const envCmd = tailStack.find(item => item?.data?.__linkType === 'env') || null
       return {
-        configCmd: tailStack.find(item => item?.data?.__linkType === 'config') || null,
-        envCmd: tailStack.find(item => item?.data?.__linkType === 'env') || null,
+        // 兼容旧结构：如存在 configCmd 则使用；否则从 envCmd.data.config 反推出配置对象。
+        configCmd: tailStack.find(item => item?.data?.__linkType === 'config') || (envCmd?.data?.config ? { data: envCmd.data.config } : null),
+        envCmd,
         accountCmd: tailStack.find(item => item?.data?.__linkType === 'account') || null
       }
     }
@@ -288,7 +291,7 @@ export default {
       }
       if (actionCmd.action === 'linkRun') {
         const selection = getLinkRunSelection(sourceStack)
-        return !!(selection.configCmd && selection.envCmd && selection.accountCmd)
+        return !!(selection.envCmd && selection.accountCmd)
       }
       // docker quick-restart/quick-stop 需要先选项目，再选服务
       if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop') {
@@ -317,24 +320,36 @@ export default {
       }
       const sourceStack = Array.isArray(stack) ? stack : []
       const actionIndex = sourceStack.findIndex(item => item?.action === actionCmd.action)
-      const targetCmd = actionCmd.needTarget ? sourceStack[actionIndex + 1] : null
-      if (actionCmd.needTarget && !(targetCmd && targetCmd.data)) {
-        return '命令未完成：请先选择项目/环境'
-      }
-      if (actionCmd.needInput && !normalizeCommandPart(inputValue)) {
-        return `命令未完成：${actionCmd.inputPlaceholder || '请输入参数'}`
-      }
       if (actionCmd.action === 'linkRun') {
         const selection = getLinkRunSelection(sourceStack)
-        if (!selection.configCmd) {
-          return '命令未完成：请先选择自定义链接'
-        }
         if (!selection.envCmd) {
-          return '命令未完成：请选择要打开的环境'
+          return '命令未完成：请选择要执行的环境'
         }
         if (!selection.accountCmd) {
           return '命令未完成：请选择账号'
         }
+      }
+      const targetCmd = actionCmd.needTarget ? sourceStack[actionIndex + 1] : null
+      if (actionCmd.needTarget && !(targetCmd && targetCmd.data)) {
+        return '命令未完成：请先选择项目/环境'
+      }
+      if (actionCmd.action === 'gitQuickCreateBranch') {
+        const selection = getGitQuickCreateSelection(sourceStack)
+        if (!(selection.projectCmd && selection.projectCmd.data)) {
+          return '命令未完成：请先选择仓库'
+        }
+        if (!(selection.baseBranchCmd && selection.baseBranchCmd.data)) {
+          return '命令未完成：请选择基于哪个分支创建'
+        }
+        if (!(selection.branchTypeCmd && selection.branchTypeCmd.data)) {
+          return '命令未完成：请选择分支类型'
+        }
+        if (!/^[A-Za-z0-9_]+$/.test(normalizeCommandPart(inputValue))) {
+          return '命令未完成：业务英文仅支持英文、数字、下划线'
+        }
+      }
+      if (actionCmd.needInput && !normalizeCommandPart(inputValue)) {
+        return `命令未完成：${actionCmd.inputPlaceholder || '请输入参数'}`
       }
       if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop') {
         const serviceCmd = actionIndex >= 0 ? sourceStack[actionIndex + 2] : null
@@ -346,21 +361,6 @@ export default {
         const processCmd = actionIndex >= 0 ? sourceStack[actionIndex + 2] : null
         if (!(processCmd && processCmd.data)) {
           return '命令未完成：请选择服务'
-        }
-      }
-      if (actionCmd.action === 'gitQuickCreateBranch') {
-        const selection = getGitQuickCreateSelection(sourceStack)
-        if (!(selection.projectCmd && selection.projectCmd.data)) {
-          return '命令未完成：请先选择仓库'
-        }
-        if (!(selection.baseBranchCmd && selection.baseBranchCmd.data)) {
-          return '命令未完成：请选择基于分支'
-        }
-        if (!(selection.branchTypeCmd && selection.branchTypeCmd.data)) {
-          return '命令未完成：请选择分支类型'
-        }
-        if (!/^[A-Za-z0-9_]+$/.test(normalizeCommandPart(inputValue))) {
-          return '命令未完成：业务英文仅支持英文、数字、下划线'
         }
       }
       return '命令未完成'
@@ -572,11 +572,8 @@ export default {
       const actionCmd = commandStack.value.find(item => item.action)
       if (actionCmd && actionCmd.action === 'linkRun') {
         const selection = getLinkRunSelection(commandStack.value)
-        if (!selection.configCmd) {
-          return '请选择自定义链接...'
-        }
         if (!selection.envCmd) {
-          return '请选择要打开的环境...'
+          return '请选择要执行的环境...'
         }
         if (!selection.accountCmd) {
           return '请选择账号...'
@@ -835,6 +832,16 @@ export default {
 
       const actionCmd = commandStack.value.find(item => item.action)
       if (actionCmd) {
+        if (actionCmd.action === 'gitQuickCreateBranch') {
+          if (isActionReady(actionCmd, commandStack.value, currentInputValue.value)) {
+            return '当前步骤：参数已完整，按 Enter 执行命令'
+          }
+          const quickCreateMessage = normalizeCommandPart(getActionIncompleteMessage(actionCmd, commandStack.value, currentInputValue.value))
+          if (quickCreateMessage) {
+            return `当前步骤：${quickCreateMessage.replace(/^命令未完成[:：]?/, '').trim()}`
+          }
+          return '当前步骤：继续补全快捷建分支命令'
+        }
         if (isActionReady(actionCmd, commandStack.value, currentInputValue.value)) {
           return '下一步：按 Enter 执行命令'
         }
@@ -961,9 +968,11 @@ export default {
                       commandStack.value.push(serviceFound)
                       i += 1
                       // 支持继续向下解析第三级目标（如 link run <配置> <环境> <账号>）
-                      if (serviceFound.dynamicChildren) {
-                        loadDynamicChildren(serviceFound.dynamicChildren)
-                        const thirdDynamicList = dynamicDataCache.value[serviceFound.dynamicChildren] || []
+                      // 同时兼容“二级目标选中后，通过 nextDynamicChildren 进入下一级”的场景（如 git quick-create-branch）。
+                      const thirdDynamicKey = serviceFound.nextDynamicChildren || serviceFound.dynamicChildren
+                      if (thirdDynamicKey) {
+                        loadDynamicChildren(thirdDynamicKey)
+                        const thirdDynamicList = dynamicDataCache.value[thirdDynamicKey] || []
                         currentChildren.value = thirdDynamicList
                         showCommands.value = true
                         const thirdToken = normalizeCommandPart(parts[i + 1]).toLowerCase()
@@ -1040,6 +1049,7 @@ export default {
 
     // 加载动态子命令
     const loadDynamicChildren = (type) => {
+      activeDynamicType.value = String(type || '')
       if (
         type !== 'gitProjectList' &&
         type !== 'gitGroupList' &&
@@ -1250,8 +1260,11 @@ export default {
             })
           })
           dynamicDataCache.value['gitProjectList'] = list
-          currentChildren.value = list
-          refreshCommandDropdownVisibility()
+          // 仅当当前仍在该动态列表上下文时，才刷新候选，避免覆盖到“下一步”列表。
+          if (activeDynamicType.value === 'gitProjectList') {
+            currentChildren.value = list
+            refreshCommandDropdownVisibility()
+          }
         }
       })
     }
@@ -1300,8 +1313,10 @@ export default {
         isLoadingDynamic.value = false
         if (!(response && response.ErrCode === 0)) {
           dynamicDataCache.value['gitRemoteBranchList'] = []
-          currentChildren.value = []
-          refreshCommandDropdownVisibility()
+          if (activeDynamicType.value === 'gitRemoteBranchList') {
+            currentChildren.value = []
+            refreshCommandDropdownVisibility()
+          }
           return
         }
         const branchList = Array.isArray(response.Data?.list) ? response.Data.list : []
@@ -1314,8 +1329,11 @@ export default {
           nextDynamicChildren: 'gitQuickBranchTypeList'
         }))
         dynamicDataCache.value['gitRemoteBranchList'] = list
-        currentChildren.value = list
-        refreshCommandDropdownVisibility()
+        // 仅当当前仍在该动态列表上下文时，才刷新候选，避免异步请求把列表切回上一步。
+        if (activeDynamicType.value === 'gitRemoteBranchList') {
+          currentChildren.value = list
+          refreshCommandDropdownVisibility()
+        }
       })
     }
 
@@ -1478,29 +1496,50 @@ export default {
       })
     }
 
-    // 加载已选链接配置下的环境列表
+    // 加载“可执行环境”列表（将链接配置分组与环境合并为一层）
     const loadLinkEnvList = () => {
-      const { configCmd } = getLinkRunSelection(commandStack.value)
-      const linkList = Array.isArray(configCmd?.data?.linkList) ? configCmd.data.linkList : []
-      const list = linkList.map((item, index) => {
-        const envName = normalizeCommandPart(item?.label) || `环境${index + 1}`
-        return {
-          command: envName,
-          name: envName,
-          desc: normalizeCommandPart(item?.link) || '未配置链接地址',
-          id: `${configCmd?.id || 'cfg'}_${index}`,
-          dynamicChildren: 'linkAccountList',
-          data: {
-            __linkType: 'env',
-            env: item || {},
-            config: configCmd?.data || {}
-          }
+      smartLinkSet.SmartLinkList((response) => {
+        isLoadingDynamic.value = false
+        if (!(response && response.ErrCode === 0)) {
+          dynamicDataCache.value['linkEnvList'] = []
+          currentChildren.value = []
+          refreshCommandDropdownVisibility()
+          return
         }
+        const smartLinkList = Array.isArray(response.Data?.smart_link_list) ? response.Data.smart_link_list : []
+        const list = []
+        smartLinkList.forEach((configItem) => {
+          let linkList = []
+          try {
+            linkList = Array.isArray(configItem.links) ? configItem.links : JSON.parse(configItem.links || '[]')
+          } catch (err) {
+            linkList = []
+          }
+          linkList.forEach((envItem, envIndex) => {
+            const envName = normalizeCommandPart(envItem?.label) || `环境${envIndex + 1}`
+            const configName = normalizeCommandPart(configItem?.name) || `配置${configItem?.id || ''}`
+            list.push({
+              command: envName,
+              name: envName,
+              aliases: [configName, `${configName}/${envName}`].filter(Boolean),
+              desc: `${configName} | ${normalizeCommandPart(envItem?.link) || '未配置链接地址'}`,
+              id: `${configItem?.id || 'cfg'}_${envIndex}`,
+              dynamicChildren: 'linkAccountList',
+              data: {
+                __linkType: 'env',
+                env: envItem || {},
+                config: {
+                  ...configItem,
+                  linkList
+                }
+              }
+            })
+          })
+        })
+        dynamicDataCache.value['linkEnvList'] = list
+        currentChildren.value = list
+        refreshCommandDropdownVisibility()
       })
-      dynamicDataCache.value['linkEnvList'] = list
-      currentChildren.value = list
-      isLoadingDynamic.value = false
-      refreshCommandDropdownVisibility()
     }
 
     // 加载已选环境下的账号列表
@@ -1915,9 +1954,18 @@ export default {
       const tokenInfo = parseTokens(inputText.value)
       const prefix = tokenInfo.useSlash ? '/' : ''
       inputText.value = prefix + commandStack.value.map(c => c.command || c.name).join(' ') + ' '
+      // 清空上一步残留输入，避免在“选择目标步骤”被误判为已输入业务参数。
+      currentInputValue.value = ''
       
       // 检查父命令是否有 nextDynamicChildren（用于快速重启/停止等二级选择）
       if (parentCmd && parentCmd.nextDynamicChildren) {
+        // quick-create-branch 选中分支类型（feature/hotfix）后，下一步应进入业务英文输入，不应继续弹分支类型列表。
+        if (cmd?.data?.branch_type) {
+          showCommands.value = false
+          currentChildren.value = []
+          activeCommandIndex.value = 0
+          return
+        }
         // 加载下一级动态数据
         loadDynamicChildren(parentCmd.nextDynamicChildren)
         activeCommandIndex.value = 0
@@ -1935,6 +1983,13 @@ export default {
       if (cmd.dynamicChildren) {
         // 需要加载动态数据
         loadDynamicChildren(cmd.dynamicChildren)
+        activeCommandIndex.value = 0
+        return
+      }
+
+      // 支持“当前选择项自身声明了 nextDynamicChildren”的场景（如 git quick-create-branch 选择基线分支后切到分支类型）。
+      if (cmd.nextDynamicChildren) {
+        loadDynamicChildren(cmd.nextDynamicChildren)
         activeCommandIndex.value = 0
         return
       }
@@ -2534,13 +2589,39 @@ export default {
         ...projectCmd.data,
         sse_distribute_id: newSseDistributeId
       }
+
+      const gitActionLabelMap = {
+        pull: '拉取代码',
+        status: '查询仓库状态',
+        branch: '查询当前分支',
+        log: '查询提交日志',
+        checkout: '切换分支',
+        checkoutRemote: '关联远程分支切换',
+        quickCreateBranch: '快捷创建分支',
+        saveCredentials: '保存账号密码配置',
+        setSafe: '设置目录安全'
+      }
+
+      const gitActionDoneLabelMap = {
+        pull: '拉取完成',
+        status: '状态查询完成',
+        branch: '分支查询完成',
+        log: '日志查询完成',
+        checkout: '分支切换完成',
+        checkoutRemote: '远程分支切换完成',
+        quickCreateBranch: '快捷建分支完成',
+        saveCredentials: '保存账号密码配置完成',
+        setSafe: '设置目录安全完成'
+      }
+
+      appendOutputResult(`正在${gitActionLabelMap[action] || '执行 Git 操作'}...\n\n`)
       
       // 处理 HTTP 响应的回调
       const callback = (response) => {
         if (response.ErrCode !== 0) {
           appendOutputResult('执行失败\n')
         } else {
-          appendOutputResult('执行成功\n')
+          appendOutputResult(`${gitActionDoneLabelMap[action] || '执行成功'}\n`)
         }
         setTimeout(() => {
           // 给 SSE 尾包一点时间，避免过程/结果末尾被截断
@@ -2804,16 +2885,16 @@ export default {
       finishExecution()
     }
 
-    // 执行 link run：根据“链接配置 -> 环境 -> 账号”三级选择启动自定义链接
+    // 执行 link run：根据“环境(含配置) -> 账号”选择启动自定义链接
     const executeLinkAction = (stack) => {
       const selection = getLinkRunSelection(stack)
-      if (!selection.configCmd || !selection.envCmd || !selection.accountCmd) {
-        appendOutputResult('错误：请完整选择自定义链接、环境和账号\n')
+      if (!selection.envCmd || !selection.accountCmd) {
+        appendOutputResult('错误：请完整选择环境和账号\n')
         finishExecution()
         return
       }
 
-      const configData = selection.configCmd.data || {}
+      const configData = (selection.configCmd?.data || selection.envCmd?.data?.config || {})
       const envData = selection.envCmd.data?.env || {}
       const accountData = selection.accountCmd.data?.account || {}
 
@@ -2833,9 +2914,10 @@ export default {
         return
       }
 
+      appendOutputResult(`正在执行环境 [${payload.label}] 的自定义网页任务...\n\n`)
       smartLinkSet.SmartLinkRun(payload, (response) => {
         if (response && response.ErrCode === 0) {
-          appendOutputResult('执行成功\n')
+          appendOutputResult('执行完成\n')
         } else {
           appendOutputResult(`执行失败: ${normalizeCommandPart(response?.ErrMsg) || '未知错误'}\n`)
         }

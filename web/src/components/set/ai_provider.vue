@@ -5,7 +5,7 @@
       <p class="set-config-desc">模型属于服务商子项，当前请求格式仅支持 openai</p>
     </div>
 
-    <el-tabs v-model="state.activeTab" class="set-config-inner-tabs">
+    <el-tabs v-model="state.activeTab" class="set-config-inner-tabs" @tab-change="HandleInnerTabChange">
       <el-tab-pane label="服务商配置" name="provider">
         <div class="set-config-actions" style="margin-bottom: 10px;">
           <el-button type="primary" @click="ShowAddProvider">新增服务商</el-button>
@@ -212,6 +212,13 @@ export default defineComponent({
       LoadModelList()
     }
 
+    // HandleInnerTabChange 处理内层标签切换，进入模型页时自动加载列表
+    const HandleInnerTabChange = function (tabName){
+      if(String(tabName) === 'model'){
+        LoadModelList()
+      }
+    }
+
     // ShowAddProvider 打开新增服务商弹窗
     const ShowAddProvider = function (){
       state.editProvider = {
@@ -319,6 +326,7 @@ export default defineComponent({
       LoadProviderList,
       LoadModelList,
       SwitchToModelTab,
+      HandleInnerTabChange,
       ShowAddProvider,
       ShowEditProvider,
       SaveProvider,

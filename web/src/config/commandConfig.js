@@ -350,8 +350,7 @@ const commandConfig = [
     path: '/Link',
     action: 'linkRun',
     needTarget: true,
-    dynamicChildren: 'linkConfigList',
-    nextDynamicChildren: 'linkEnvList'
+    dynamicChildren: 'linkEnvList'
   },
   {
     command: 'variable',

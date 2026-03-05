@@ -41,6 +41,11 @@ func GitCurrentBranch(c *gin.Context) {
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
 		return
 	}
+	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+		gsgin.GinResponseError(c, prepareErr.Error(), nil)
+		return
+	}
 	result, runErr := queryCurrentBranchInfo(sshClient, codePath, 40*time.Second)
 	if runErr != nil {
 		gsgin.GinResponseError(c, runErr.Error(), nil)
@@ -64,6 +69,11 @@ func GitChangeBranch(c *gin.Context) {
 	}
 	if branchName == `` {
 		gsgin.GinResponseError(c, `切换的分支不能为空`, nil)
+		return
+	}
+	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
 	command1 := p_shell.NewCommand()
@@ -114,6 +124,11 @@ func GitChangeBranchRemote(c *gin.Context) {
 		gsgin.GinResponseError(c, `切换的分支不能为空`, nil)
 		return
 	}
+	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+		gsgin.GinResponseError(c, prepareErr.Error(), nil)
+		return
+	}
 	command1 := p_shell.NewCommand()
 	command1.Init()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
@@ -151,6 +166,11 @@ func GitPullBranchOrigin(c *gin.Context) {
 	codePath := cast.ToString(reqMap[`code_path`])
 	if codePath == `` {
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
+		return
+	}
+	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
 	command1 := p_shell.NewCommand()
@@ -194,8 +214,8 @@ func GitRemoteBranchList(c *gin.Context) {
 		return
 	}
 
-	// 复用“目录安全 + 记住密码”预处理，减少交互输入中断。
-	if prepareErr := prepareGitBranchQueryEnv(sshClient, codePath); prepareErr != nil {
+	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
@@ -246,15 +266,21 @@ func GitQuickCreateBranch(c *gin.Context) {
 		gsgin.GinResponseError(c, `业务英文仅允许英文、数字、下划线`, nil)
 		return
 	}
+	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+		gsgin.GinResponseError(c, prepareErr.Error(), nil)
+		return
+	}
 
 	globalMap, mapErr := common.DbMain.AllGlobalMap()
 	if mapErr != nil {
 		gsgin.GinResponseError(c, mapErr.Error(), nil)
 		return
 	}
-	userName := normalizeBranchNamePart(cast.ToString(globalMap[`global_user_name`]))
+	// 兼容两种全局变量写法：{global_user_name}
+	userName := cast.ToString(globalMap[`{global_user_name}`])
 	if userName == `` {
-		gsgin.GinResponseError(c, `全局变量 global_user_name 为空或不合法`, nil)
+		gsgin.GinResponseError(c, `全局变量 {global_user_name}为空或不合法`, nil)
 		return
 	}
 
@@ -303,6 +329,11 @@ func QueryStatus(c *gin.Context) {
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
 		return
 	}
+	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+		gsgin.GinResponseError(c, prepareErr.Error(), nil)
+		return
+	}
 
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
@@ -323,6 +354,11 @@ func GitCommitLog(c *gin.Context) {
 	codePath := cast.ToString(reqMap[`code_path`])
 	if codePath == `` {
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
+		return
+	}
+	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
 	command := p_shell.NewCommand()
@@ -513,8 +549,8 @@ func GitGroupBranchList(c *gin.Context) {
 				}
 				return
 			}
-			// 复用“设置目录安全 + 保存账号密码配置”的逻辑，避免分组查询单独实现认证方案。
-			if prepareErr := prepareGitBranchQueryEnv(sshClient, itemPath); prepareErr != nil {
+			// 复用统一预处理，避免分组查询单独实现认证方案。
+			if prepareErr := prepareGitOperationEnv(sshClient, itemPath); prepareErr != nil {
 				itemResult[`error`] = prepareErr.Error()
 				resultChan <- gitItemResult{
 					Index: i,
@@ -847,15 +883,15 @@ func isSafeGitBranchInput(value string) bool {
 	return ok
 }
 
-// normalizeBranchNamePart 统一处理分支名中的人员字段，仅保留英文数字下划线
+// normalizeBranchNamePart 统一处理分支名中的人员字段，保留字母/数字（含中文）/下划线/中划线
 func normalizeBranchNamePart(value string) string {
 	v := strings.TrimSpace(value)
 	if v == `` {
 		return ``
 	}
-	re := regexp.MustCompile(`[^A-Za-z0-9_]+`)
+	re := regexp.MustCompile(`[^\p{L}\p{N}_-]+`)
 	v = re.ReplaceAllString(v, `_`)
-	v = strings.Trim(v, `_`)
+	v = strings.Trim(v, `_-`)
 	return v
 }
 
@@ -916,6 +952,11 @@ func CreateMerge(c *gin.Context) {
 	codePath := cast.ToString(reqMap[`code_path`])
 	if codePath == `` {
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
+		return
+	}
+	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
 	command := p_shell.NewCommand()
@@ -1057,9 +1098,9 @@ func GitSaveCredentials(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
-// prepareGitBranchQueryEnv 复用 GitSetSafeLog + GitSaveCredentials 的命令逻辑。
-// 先设置 safe.directory，再确保 .git/config 存在 credential.store，避免并发查询时进入交互认证。
-func prepareGitBranchQueryEnv(sshClient *gsssh.SshTerminal, codePath string) error {
+// prepareGitOperationEnv 统一执行 Git 的 SSH 前置环境处理。
+// 先设置 safe.directory，再确保 .git/config 存在 credential.store，避免操作进入交互认证。
+func prepareGitOperationEnv(sshClient *gsssh.SshTerminal, codePath string) error {
 	if sshClient == nil {
 		return errors.New(`ssh client 为空`)
 	}
