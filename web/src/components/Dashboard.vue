@@ -481,6 +481,16 @@ export default {
       })
     }
 
+    // isHistoryPrefixSearchMode 判断当前是否处于“history 前缀搜索历史命令”模式。
+    // 该模式下空格仅用于继续筛选，不应自动确认候选。
+    const isHistoryPrefixSearchMode = () => {
+      if (!Array.isArray(commandStack.value) || commandStack.value.length === 0) {
+        return false
+      }
+      const firstCmd = commandStack.value[0]
+      return !!(firstCmd && firstCmd.dynamicChildren === 'historyList')
+    }
+
     const refreshCommandDropdownVisibility = () => {
       showCommands.value = isCommandModeByText(inputText.value) &&
         (currentChildren.value.length > 0 || isLoadingDynamic.value) &&
@@ -636,6 +646,21 @@ export default {
       }
       
       const sortedCommands = [...commands].sort(compareCommandByNaturalAsc)
+
+      // history 前缀模式：使用“history 后整段输入”做历史命令搜索，支持空格短语筛选。
+      if (isHistoryPrefixSearchMode()) {
+        const historyQuery = normalizeCommandPart(parts.slice(1).join(' ')).toLowerCase()
+        if (!historyQuery) {
+          return sortedCommands
+        }
+        const queryTokens = historyQuery.split(/\s+/).filter(Boolean)
+        return sortedCommands.filter(cmd => {
+          const candidate = normalizeCommandPart(cmd?.command || cmd?.name).toLowerCase()
+          if (!candidate) return false
+          if (candidate.includes(historyQuery)) return true
+          return queryTokens.every(token => candidate.includes(token))
+        })
+      }
 
       if (!searchText) {
         return sortedCommands
@@ -827,6 +852,10 @@ export default {
         return '下一步：输入 / 进入命令模式'
       }
 
+      if (isHistoryPrefixSearchMode()) {
+        return '下一步：继续输入筛选历史命令，按 Tab 选中后再执行'
+      }
+
       const actionCmd = commandStack.value.find(item => item.action)
       if (actionCmd) {
         if (actionCmd.action === 'gitQuickCreateBranch') {
@@ -940,6 +969,10 @@ export default {
             loadDynamicChildren(found.dynamicChildren)
             const dynamicList = dynamicDataCache.value[found.dynamicChildren] || []
             currentChildren.value = dynamicList
+            // history 命令只做筛选，不做“空格自动确认目标”；必须通过 Tab 才选中历史项。
+            if (found.dynamicChildren === 'historyList') {
+              break
+            }
             const targetToken = parts[i + 1]
             if (targetToken) {
               const targetFound = findCommandByToken(dynamicList, targetToken)
@@ -1880,6 +1913,10 @@ export default {
           }
           break
         case ' ':
+          // history 前缀模式下，空格仅作为筛选关键字的一部分，不自动选择候选。
+          if (isHistoryPrefixSearchMode()) {
+            return
+          }
           // 已可执行时，空格不应触发候选选择，避免把候选误拼到命令后
           if (isCommandReadyToExecute()) {
             showCommands.value = false
