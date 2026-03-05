@@ -3208,15 +3208,21 @@ export default {
       })
     }
 
+    // handleHomeAppear 首页出现时统一处理：输入框聚焦 + 输出区滚动到底部
+    const handleHomeAppear = () => {
+      focusInputOnHome()
+      scrollToBottom()
+    }
+
     onMounted(() => {
       loadCommandHistoryCache()
-      focusInputOnHome()
+      handleHomeAppear()
       initSseConnection()
     })
 
     // keep-alive 组件重新激活时，自动让首页输入框获得焦点
     onActivated(() => {
-      focusInputOnHome()
+      handleHomeAppear()
     })
     
     onUnmounted(() => {
