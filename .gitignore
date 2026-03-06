@@ -16,3 +16,4 @@ build/
 web/dist/
 web/node_modules/
 .tmp-taskfile.yml
+.worktrees/
