@@ -30,6 +30,7 @@ func InitRouter(tGin *p_gin.Gin) {
 	setGroupRouter(tGin)
 	setStar(tGin)
 	setMarkdown(tGin)
+	setMemoryFragment(tGin)
 	shellOut(tGin)
 	variableRouter(tGin)
 	smartLink(tGin)
@@ -230,6 +231,16 @@ func setMarkdown(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/MarkdownDel`, controller.MarkdownDel)
 	tGin.GinPost(`/api/MarkdownHistoryDel`, controller.MarkdownHistoryDel)
 	tGin.GinPost(`/api/MarkdownSort`, controller.MarkdownSort)
+}
+
+func setMemoryFragment(tGin *p_gin.Gin) {
+	tGin.GinPost(`/api/MemoryFragmentList`, controller.MemoryFragmentList)
+	tGin.GinPost(`/api/MemoryFragmentInfo`, controller.MemoryFragmentInfo)
+	tGin.GinPost(`/api/MemoryFragmentSave`, controller.MemoryFragmentSave)
+	tGin.GinPost(`/api/MemoryFragmentDelete`, controller.MemoryFragmentDelete)
+	tGin.GinPost(`/api/MemoryFragmentHistoryList`, controller.MemoryFragmentHistoryList)
+	tGin.GinPost(`/api/MemoryFragmentTagList`, controller.MemoryFragmentTagList)
+	tGin.GinPost(`/api/MemoryFragmentSearch`, controller.MemoryFragmentSearch)
 }
 
 func shellOut(tGin *p_gin.Gin) {

@@ -92,6 +92,14 @@ export default createRouter({
                     meta: {keepAlive: true},
                 },
                 {
+                    path: '/MemoryFragment',
+                    name: 'MemoryFragment',
+                    components: {
+                        home: () => import('../components/MemoryFragment'),
+                    },
+                    meta: {keepAlive: true},
+                },
+                {
                     path: '/shellout',
                     name: 'shellout',
                     components: {

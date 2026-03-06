@@ -40,6 +40,10 @@
           <el-icon><Document /></el-icon>
           <span>自定义脚本</span>
         </el-menu-item>
+        <el-menu-item v-if="checkModuleOpen('memory_fragment')" index="/MemoryFragment">
+          <el-icon><Memo /></el-icon>
+          <span>记忆片段</span>
+        </el-menu-item>
         <el-menu-item v-if="checkModuleOpen('docker')" index="/Docker">
           <el-icon><Box /></el-icon>
           <span>Docker</span>
@@ -176,6 +180,7 @@ import {
   Folder,
   Link,
   Document,
+  Memo,
   Box,
   Connection,
   Monitor,
@@ -366,6 +371,7 @@ export default {
     Folder,
     Link,
     Document,
+    Memo,
     Box,
     Connection,
     Monitor,
