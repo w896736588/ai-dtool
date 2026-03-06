@@ -4,12 +4,16 @@
 
 <style scoped>
 #showShellResult{
+  display: block;
+  width: 100%;
+  min-width: 0;
   height: 100%;
   background: #eef3ea;
   color: #435244;
   border-radius: 8px;
   border-left: 3px solid #8fae92;
   box-shadow: 0 1px 6px rgba(62, 86, 62, 0.08);
+  box-sizing: border-box;
 }
 
 ::deep(.el-scrollbar__thumb) {

@@ -6,7 +6,18 @@ tasks:
     cmds:
       - go run cmd/dtool/main.go --ConfigFile=company
   
-  run-web:
+  run-web-dev:
     desc: 启动 dtool（web）
     cmds:
-      - cd web && npm run dev
+      - cd web && npm install && npm run dev
+
+  run-web-build:
+    desc: 启动 dtool（web）
+    cmds:
+      - cd web && npm install && npm run prod
+  
+  run-build:
+    desc: 发布版本
+    cmds:
+      - .\\script\\build.bat
+

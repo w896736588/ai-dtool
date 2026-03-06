@@ -167,10 +167,13 @@ export default {
 <style scoped>
 
 .markdown-container {
+  width: 100%;
+  min-width: 0;
   height: 560px;
   overflow-y: auto;
   border: 1px solid #ddd;
   padding: 10px;
+  box-sizing: border-box;
   font-family: 'Consolas', monospace;
   font-size: 14px;
   line-height: 1.7;

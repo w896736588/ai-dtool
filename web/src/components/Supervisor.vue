@@ -711,7 +711,7 @@ export default {
   --el-table-tr-bg-color: #fbeeee;
 }
 
-.row-hide {
+.process-table :deep(.row-hide) {
   display: none;
 }
 

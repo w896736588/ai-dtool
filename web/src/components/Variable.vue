@@ -12,8 +12,8 @@
       <template v-for="(variableVal, key) in variableList" :key="key" class="scrollbar-demo-item">
         <el-tab-pane :label="variableVal.name" :name="variableVal.id">
           <el-row class="variable-main-row">
-            <el-col :span="12">
-              <div class="grid-content bg-purple">
+            <el-col :span="12" class="variable-panel-col">
+              <div class="grid-content bg-purple variable-left-panel">
                 <el-tabs v-model="chooseVariable.activeCmdTab" class="demo-tabs1" :style="{ height: shellController.divHeight - 10 + 'px' }" >
                   <el-tab-pane label="执行" name="run">
                     <el-alert :closable="false" show-icon :title="variableVal.desc" type="info" v-if="variableVal.desc !== ''"/>
@@ -125,8 +125,10 @@
                 </el-tabs>
               </div>
             </el-col>
-            <el-col :span="12">
-              <shellResult ref="shellRef" :divHeight="shellController.divHeight-40" :isRunning="shellController.isRunning" :shellShowResult="shellController.sshResult" :show-model="shellController.showModel"></shellResult>
+            <el-col :span="12" class="variable-panel-col">
+              <div class="variable-right-panel">
+                <shellResult class="variable-shell-result" ref="shellRef" :divHeight="shellController.divHeight-40" :isRunning="shellController.isRunning" :shellShowResult="shellController.sshResult" :show-model="shellController.showModel"></shellResult>
+              </div>
             </el-col>
           </el-row>
         </el-tab-pane>
@@ -312,6 +314,7 @@
   min-height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   padding: 10px;
   background: #fafaf7;
   border: 1px solid #e6e8de;
@@ -329,12 +332,16 @@
 }
 
 .variable-main-row {
+  height: 100%;
+  min-height: 0;
   padding: 2px;
 }
 
 .variable-tabs {
+  display: flex;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
   background: #fff;
   border: 1px solid #e6e8de;
   border-radius: 10px;
@@ -342,11 +349,16 @@
 }
 
 .variable-tabs :deep(.el-tabs__content) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 .variable-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
   background: #f7f8f2;
   border-radius: 8px;
   padding: 6px 4px;
@@ -361,16 +373,56 @@
 }
 
 .variable-tabs :deep(.el-tab-pane) {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 8px 10px;
 }
 
+.variable-panel-col {
+  display: flex;
+  min-height: 0;
+}
+
+.variable-left-panel,
+.variable-right-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.variable-right-panel {
+  box-sizing: border-box;
+}
+
+.variable-page :deep(.variable-shell-result) {
+  display: block;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+
 .variable-page :deep(.demo-tabs1) {
+  display: flex;
+  flex: 1;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.variable-page :deep(.demo-tabs1 .el-tabs__header) {
+  margin-bottom: 0;
 }
 
 /* 运行/编辑内容超出时允许在左侧区域滚动，避免长表单被截断 */
 .variable-page :deep(.demo-tabs1 .el-tabs__content) {
-  height: calc(100% - 42px);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
@@ -380,6 +432,7 @@
 }
 
 .variable-page :deep(.demo-tabs1 .el-tab-pane) {
+  display: block;
   min-height: 100%;
 }
 
@@ -686,8 +739,9 @@ export default {
     }
   },
   methods: {
+    // 根据页面当前可视区域计算脚本执行区高度，避免底部内容超出屏幕。
     updateLayoutHeight: function () {
-      // 使用运行区真实顶部位置计算可用高度，避免右侧输出框底部超出屏幕
+      // 使用运行区真实顶部位置计算可用高度，避免右侧输出框底部超出屏幕。
       const fallbackHeight = parseInt(base.GetDivHeight2())
       const mainCardDom = document.getElementById('mainCard')
       const rowDom = mainCardDom ? mainCardDom.querySelector('.variable-main-row') : null
@@ -699,10 +753,10 @@ export default {
         typeof mainCardDom.getBoundingClientRect === 'function' &&
         typeof rowDom.getBoundingClientRect === 'function'
       ) {
-        const mainCardRect = mainCardDom.getBoundingClientRect()
         const rowRect = rowDom.getBoundingClientRect()
-        // 以 mainCard 容器为边界计算高度，避免超出当前页面可视区域
-        nextHeight = mainCardRect.bottom - rowRect.top - 16
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+        // 直接按视口剩余高度计算，并预留底部安全间距，避免底部内容落到屏幕外。
+        nextHeight = viewportHeight - rowRect.top - 28
       } else if (Number.isFinite(fallbackHeight)) {
         nextHeight = fallbackHeight - 60
       } else {
@@ -710,7 +764,7 @@ export default {
       }
 
       const viewportHeight = window.innerHeight || document.documentElement.clientHeight
-      const maxSafeHeight = Math.max(260, viewportHeight - 120)
+      const maxSafeHeight = Math.max(260, viewportHeight - 140)
       const safeHeight = Number.isFinite(nextHeight) ? parseInt(nextHeight) : 260
       this.shellController.divHeight = Math.max(260, Math.min(safeHeight, maxSafeHeight))
     },
