@@ -802,12 +802,13 @@ export default {
     // LoadLlmModelList 拉取大模型配置列表
     LoadLlmModelList: function () {
       let _that = this
-      aiSet.AiModelList({}, function (response) {
+      aiSet.AiModelList({model_type: 'llm'}, function (response) {
         if (response.ErrCode === 0) {
           _that.llmModelList = (response.Data || []).map(function (item) {
             return {
               label: `${item.provider_name} / ${item.name} (${item.model})`,
               value: item.model,
+              model_type: item.model_type || 'llm',
               provider: item.request_format || item.provider_type || 'openai',
               base_url: item.base_url || '',
               api_key: item.api_key || '',
