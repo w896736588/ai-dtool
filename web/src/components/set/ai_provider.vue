@@ -2,7 +2,7 @@
   <div class="set-config-page">
     <div class="set-config-header">
       <h3 class="set-config-title">AI 服务商与模型配置</h3>
-      <p class="set-config-desc">模型属于服务商子项，支持区分 LLM 与 Embedding，当前请求格式仅支持 openai</p>
+      <p class="set-config-desc">模型属于服务商子项，当前请求格式仅支持 openai</p>
     </div>
 
     <el-tabs v-model="state.activeTab" class="set-config-inner-tabs" @tab-change="HandleInnerTabChange">
@@ -58,13 +58,6 @@
           <el-table :data="state.modelList" class="set-config-table" row-key="id">
             <el-table-column prop="id" label="#id" width="70"/>
             <el-table-column prop="provider_name" label="所属服务商" min-width="150"/>
-            <el-table-column label="模型类型" width="130">
-              <template #default="scope">
-                <el-tag size="small" :type="scope.row.model_type === 'embedding' ? 'warning' : 'success'">
-                  {{ GetModelTypeLabel(scope.row.model_type) }}
-                </el-tag>
-              </template>
-            </el-table-column>
             <el-table-column prop="name" label="展示名" min-width="170"/>
             <el-table-column prop="model" label="模型标识" min-width="220"/>
             <el-table-column label="操作" width="200">
@@ -118,13 +111,6 @@
         <el-form-item label="展示名称">
           <el-input v-model="state.editModel.name" autocomplete="off"/>
         </el-form-item>
-        <el-form-item label="模型类型">
-          <el-select v-model="state.editModel.model_type" style="width: 100%;">
-            <template v-for="(item, idx) in modelTypeOptions" :key="idx">
-              <el-option :label="item.label" :value="item.value"/>
-            </template>
-          </el-select>
-        </el-form-item>
         <el-form-item label="模型标识">
           <el-input v-model="state.editModel.model" autocomplete="off" placeholder="例如: gpt-4o-mini"/>
         </el-form-item>
@@ -149,11 +135,6 @@ export default defineComponent({
     const proxy = getCurrentInstance().proxy
     const instance = getCurrentInstance().appContext.config.globalProperties
 
-    const modelTypeOptions = [
-      {label: 'LLM 模型', value: 'llm'},
-      {label: 'Embedding 模型', value: 'embedding'},
-    ]
-
     // state 页面状态容器
     const state = reactive({
       activeTab: 'provider',
@@ -165,16 +146,6 @@ export default defineComponent({
       editProvider: {},
       editModel: {},
     })
-
-    // NormalizeModelType 统一模型类型字段，空值默认回退到 llm。
-    const NormalizeModelType = function (modelType){
-      return modelType === 'embedding' ? 'embedding' : 'llm'
-    }
-
-    // GetModelTypeLabel 返回模型类型中文名称。
-    const GetModelTypeLabel = function (modelType){
-      return NormalizeModelType(modelType) === 'embedding' ? 'Embedding' : 'LLM'
-    }
 
     // MaskKey 隐藏敏感 Key 文本
     const MaskKey = function (key){
@@ -227,12 +198,7 @@ export default defineComponent({
       }
       aiSet.AiModelList({provider_id: state.currentProviderId}, function (response){
         if(response.ErrCode === 0){
-          state.modelList = (response.Data || []).map(function (item){
-            return {
-              ...item,
-              model_type: NormalizeModelType(item.model_type),
-            }
-          })
+          state.modelList = response.Data || []
         }else{
           instance.$helperNotify.error(response.ErrMsg)
         }
@@ -311,7 +277,6 @@ export default defineComponent({
       }
       state.editModel = {
         provider_id: state.currentProviderId,
-        model_type: 'llm',
       }
       state.dialogModel = true
     }
@@ -320,7 +285,6 @@ export default defineComponent({
     const ShowEditModel = function (row, isCopy){
       state.editModel = {
         ...row,
-        model_type: NormalizeModelType(row.model_type),
       }
       if(isCopy){
         state.editModel.id = 0
@@ -330,11 +294,7 @@ export default defineComponent({
 
     // SaveModel 保存模型配置
     const SaveModel = function (){
-      const submitData = {
-        ...state.editModel,
-        model_type: NormalizeModelType(state.editModel.model_type),
-      }
-      aiSet.AiModelAdd(submitData, function (response){
+      aiSet.AiModelAdd(state.editModel, function (response){
         if(response.ErrCode === 0){
           state.dialogModel = false
           LoadModelList()
@@ -362,8 +322,6 @@ export default defineComponent({
 
     return {
       state,
-      modelTypeOptions,
-      GetModelTypeLabel,
       MaskKey,
       LoadProviderList,
       LoadModelList,
