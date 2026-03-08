@@ -2552,15 +2552,29 @@ export default {
         sse_distribute_id: sseDistributeId.value
       }
 
-      const done = (response, successText) => {
+      // renderSupervisorResult 将接口返回的状态/配置内容与操作完成提示统一写入结果区。
+      const renderSupervisorResult = (response, successText) => {
+        const outputText = normalizeCommandPart(response?.Data)
+        if (outputText) {
+          appendOutputResult(`${outputText}\n`)
+        }
+        if (successText) {
+          appendOutputResult(`${successText}\n`)
+        }
+      }
+
+      // done 统一处理 Supervisor 操作完成后的状态与收尾逻辑。
+      const done = (response, renderer) => {
         if (!(response && response.ErrCode === 0)) {
           appendOutputResult(`错误: ${normalizeCommandPart(response?.ErrMsg) || '未知错误'}\n`)
           setTimeout(() => {
             finishExecution()
           }, 1500)
         } else {
-          if (successText) {
-            appendOutputResult(`${successText}\n`)
+          if (typeof renderer === 'function') {
+            renderer(response)
+          } else if (renderer) {
+            appendOutputResult(`${renderer}\n`)
           }
           // 结果详情统一在“执行过程(SSE)”里查看，上方只保留成功提示
           setTimeout(() => {
@@ -2572,11 +2586,11 @@ export default {
       switch (action) {
         case 'status':
           appendOutputResult(`正在查看环境 [${envCmd.name}] 的进程状态...\n\n`)
-          supervisor.SupervisorStatusList({ ...supervisorConfig }, (response) => done(response, '执行成功'))
+          supervisor.SupervisorStatusList({ ...supervisorConfig }, (response) => done(response, (res) => renderSupervisorResult(res, '查询完成')))
           break
         case 'restartAll':
           appendOutputResult(`正在重启环境 [${envCmd.name}] 的全部进程...\n\n`)
-          supervisor.SupervisorRestartAll({ ...supervisorConfig }, (response) => done(response, '执行成功'))
+          supervisor.SupervisorRestartAll({ ...supervisorConfig }, (response) => done(response, (res) => renderSupervisorResult(res, '重启完成')))
           break
         case 'restart':
           if (!(processCmd && processCmd.data && processCmd.data.supervisor_name)) {
@@ -2588,7 +2602,7 @@ export default {
           supervisor.SupervisorRestart(
             { ...supervisorConfig },
             processCmd.data.supervisor_name,
-            (response) => done(response, '执行成功'),
+            (response) => done(response, (res) => renderSupervisorResult(res, '重启完成')),
             { only_current_status: true }
           )
           break
@@ -2599,7 +2613,11 @@ export default {
             return
           }
           appendOutputResult(`正在停止服务 [${processCmd.name}]...\n\n`)
-          supervisor.SupervisorStop({ ...supervisorConfig }, processCmd.data.supervisor_name, (response) => done(response, '执行成功'))
+          supervisor.SupervisorStop(
+            { ...supervisorConfig },
+            processCmd.data.supervisor_name,
+            (response) => done(response, (res) => renderSupervisorResult(res, '停止完成'))
+          )
           break
         case 'config':
           if (!(processCmd && processCmd.data && processCmd.data.supervisor_config)) {
@@ -2608,7 +2626,11 @@ export default {
             return
           }
           appendOutputResult(`正在查看服务 [${processCmd.name}] 配置...\n\n`)
-          supervisor.SupervisorConfigShow({ ...supervisorConfig }, processCmd.data.supervisor_config, (response) => done(response, '执行成功'))
+          supervisor.SupervisorConfigShow(
+            { ...supervisorConfig },
+            processCmd.data.supervisor_config,
+            (response) => done(response, (res) => renderSupervisorResult(res, '查看完成'))
+          )
           break
         default:
           appendOutputResult('该 Supervisor 操作暂未实现\n')
