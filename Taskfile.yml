@@ -1,23 +1,91 @@
 version: "3"
 
 tasks:
-  run-company:
-    desc: 启动 dtool（ConfigFile=company）
+  run-server-company:
+    desc: 启动 Web 模式后端（ConfigFile=company）
     cmds:
-      - go run cmd/dtool/main.go --ConfigFile=company
-  
+      - go run ./cmd/dtool/main.go --ConfigFile=company
+
   run-web-dev:
-    desc: 启动 dtool（web）
+    desc: 启动前端开发服务
+    dir: web
     cmds:
-      - cd web && npm install && npm run dev
+      - npm install
+      - npm run dev
 
-  run-web-build:
-    desc: 启动 dtool（web）
+  run-wails:
+    desc: 启动桌面端（Wails，本机运行）
     cmds:
-      - cd web && npm install && npm run prod
-  
-  run-build:
-    desc: 发布版本
-    cmds:
-      - .\\script\\build.bat
+      - go run -tags production ./cmd/dtool_wails --ConfigFile=company
 
+  build-frontend:
+    desc: 构建前端 dist
+    dir: web
+    cmds:
+      - npm install
+      - npm run prod
+
+  build-web-windows:
+    desc: 构建 Windows Web 模式后端
+    cmds:
+      - go build -ldflags "-s -w" -o build/dtool.exe ./cmd/dtool
+
+  build-web-linux:
+    desc: 构建 Linux Web 模式后端
+    cmds:
+      - go build -ldflags "-s -w" -o build/dtool ./cmd/dtool
+
+  build-web-macos:
+    desc: 构建 macOS Web 模式后端
+    cmds:
+      - go build -ldflags "-s -w" -o build/dtool ./cmd/dtool
+
+  build-wails-windows:
+    desc: 构建 Windows 桌面端
+    cmds:
+      - go build -tags production -ldflags "-s -w -H=windowsgui" -o build/dtool_wails.exe ./cmd/dtool_wails
+
+  build-wails-linux:
+    desc: 构建 Linux 桌面端
+    cmds:
+      - go build -tags production -ldflags "-s -w" -o build/dtool_wails ./cmd/dtool_wails
+
+  build-wails-macos:
+    desc: 构建 macOS 桌面端
+    cmds:
+      - go build -tags production -ldflags "-s -w" -o build/dtool_wails ./cmd/dtool_wails
+
+  clean-build:
+    desc: 清理所有 build 产物
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; if (Test-Path './build') { Remove-Item './build' -Recurse -Force }; New-Item -ItemType Directory -Path './build' | Out-Null"
+
+  package-windows:
+    desc: Windows 一键打包
+    platforms: [windows]
+    deps:
+      - build-frontend
+      - build-web-windows
+      - build-wails-windows
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ./script/package_windows.ps1
+
+  package-linux:
+    desc: Linux 一键打包
+    platforms: [linux]
+    deps:
+      - build-frontend
+      - build-web-linux
+      - build-wails-linux
+    cmds:
+      - bash ./script/package_unix.sh linux
+
+  package-macos:
+    desc: macOS 一键打包
+    platforms: [darwin]
+    deps:
+      - build-frontend
+      - build-web-macos
+      - build-wails-macos
+    cmds:
+      - bash ./script/package_unix.sh macos

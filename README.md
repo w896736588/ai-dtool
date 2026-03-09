@@ -52,7 +52,7 @@ go install github.com/go-task/task/v3/cmd/task@latest
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 ```
 
-## 启动命令（go run）
+## 启动命令（task）
 
 
 ### Web 端（浏览器模式）
@@ -62,7 +62,7 @@ go install github.com/wailsapp/wails/v2/cmd/wails@latest
 # 后端
 task run-company
 # 前端
-task run-web
+task run-web-dev
 ```
 正式运行时
 默认访问地址：`http://localhost:17170/`（以配置中的 `run.ports` 为准）。
@@ -70,7 +70,7 @@ task run-web
 ### 桌面端（Wails）
 
 ```bash
-go run -tags production ./cmd/dtool_wails --ConfigFile=company
+task run-wails
 ```
 
 说明：
@@ -82,21 +82,19 @@ go run -tags production ./cmd/dtool_wails --ConfigFile=company
 ### 构建前端 dist
 
 ```bash
-cd web
-npm ci
-npm run prod
+task run-web-dist
 ```
 
 ### 构建 Web 模式后端 exe
 
 ```bash
-go build -ldflags "-s -w" -o build/dtool.exe ./cmd/dtool
+task build-web
 ```
 
 ### 构建桌面端 exe
 
 ```bash
-go build -tags production -ldflags "-s -w -H=windowsgui" -o build/dtool_wails.exe ./cmd/dtool_wails
+task build-wails
 ```
 
 ## 配置项说明（`config/dtool/*.ini`）
@@ -127,8 +125,8 @@ go build -tags production -ldflags "-s -w -H=windowsgui" -o build/dtool_wails.ex
 
 在 `Windows PowerShell` 或 `CMD` 中，先切到项目根目录再执行：
 
-```bat
-script\build.bat
+```bash
+task run-build
 ```
 
 脚本会自动执行：
