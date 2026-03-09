@@ -302,6 +302,14 @@ const commandConfig = [
         needTarget: true,
         dynamicChildren: 'supervisorEnvList',
         nextDynamicChildren: 'supervisorProcessList'
+      },
+      {
+        command: 'refresh-cache',
+        name: '刷新缓存',
+        desc: '刷新重启服务列表缓存',
+        action: 'supervisorRefreshProcessCache',
+        needTarget: true,
+        dynamicChildren: 'supervisorEnvList'
       }
     ]
   },

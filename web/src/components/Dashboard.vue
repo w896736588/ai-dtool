@@ -190,6 +190,8 @@ export default {
     const commandUsageMap = ref({}) // 命令使用次数统计（key=命令文本，value=次数）
     const commandHistoryCacheKey = 'dashboard_command_history_v1'
     const commandUsageCacheKey = 'dashboard_command_usage_v1'
+    const supervisorProcessCacheKeyPrefix = 'dashboard_supervisor_process_cache_v1'
+    const supervisorProcessCacheExpireMs = 60 * 60 * 1000
     // 历史命令自动执行状态：选中历史项后，等待动态列表补齐并自动触发执行
     const pendingHistoryExecution = ref({
       active: false,
@@ -212,6 +214,7 @@ export default {
       isFinish: 0,
       currentForm: null,
     })
+    const browserNotificationPermissionRequested = ref(false)
 
     // 开放的模块列表
     const openModules = module.GetOpenModuleList()
@@ -229,6 +232,126 @@ export default {
         normalizeCommandPart(cmd?.desc).toLowerCase(),
         ...aliases.map(alias => normalizeCommandPart(alias).toLowerCase())
       ].filter(Boolean)
+    }
+
+    // getSupervisorProcessCacheKey 按环境生成首页 Supervisor 服务列表缓存 key，避免不同环境串缓存。
+    const getSupervisorProcessCacheKey = (envData) => {
+      const id = normalizeCommandPart(envData?.id)
+      const sshId = normalizeCommandPart(envData?.ssh_id)
+      const dockerName = normalizeCommandPart(envData?.docker_name)
+      const configDir = normalizeCommandPart(envData?.config_dir)
+      const name = normalizeCommandPart(envData?.name)
+      const suffix = [id, sshId, dockerName, configDir, name].filter(Boolean).join('__')
+      return `${supervisorProcessCacheKeyPrefix}_${suffix || 'default'}`
+    }
+
+    // readSupervisorProcessCache 读取 Supervisor 服务列表缓存，仅返回 1 小时内的有效数据。
+    const readSupervisorProcessCache = (envData) => {
+      const cacheRaw = store.getStore(getSupervisorProcessCacheKey(envData))
+      if (!cacheRaw) {
+        return []
+      }
+      try {
+        const cacheData = JSON.parse(cacheRaw)
+        const cachedAt = Number(cacheData?.cachedAt || 0)
+        const list = Array.isArray(cacheData?.list) ? cacheData.list : []
+        if (!cachedAt || (Date.now() - cachedAt) > supervisorProcessCacheExpireMs) {
+          store.removeStore(getSupervisorProcessCacheKey(envData))
+          return []
+        }
+        return list
+      } catch (error) {
+        store.removeStore(getSupervisorProcessCacheKey(envData))
+        return []
+      }
+    }
+
+    // writeSupervisorProcessCache 写入 Supervisor 服务列表缓存，供首页重启/停止/查看配置命令复用。
+    const writeSupervisorProcessCache = (envData, list) => {
+      store.setStore(getSupervisorProcessCacheKey(envData), JSON.stringify({
+        cachedAt: Date.now(),
+        list: Array.isArray(list) ? list : []
+      }))
+    }
+
+    // clearSupervisorProcessCache 清理指定环境的 Supervisor 服务列表缓存。
+    const clearSupervisorProcessCache = (envData) => {
+      store.removeStore(getSupervisorProcessCacheKey(envData))
+    }
+
+    // buildSupervisorProcessCommandList 把 SupervisorConfList 返回内容转换为首页可选命令列表。
+    const buildSupervisorProcessCommandList = (envCmd, responseData) => {
+      const lines = String(responseData || '')
+        .split('\n')
+        .map(line => normalizeCommandPart(line))
+        .filter(Boolean)
+      return lines.map((line, index) => {
+        const [configNameRaw, supervisorNameRaw] = line.split('---')
+        const configName = normalizeCommandPart(configNameRaw)
+        let supervisorName = normalizeCommandPart(supervisorNameRaw)
+          .replaceAll('[', '')
+          .replaceAll(']', '')
+          .replaceAll('program:', '')
+        supervisorName = normalizeCommandPart(supervisorName)
+        const configDir = normalizeCommandPart(envCmd?.data?.config_dir)
+        const configPath = configDir && configName ? `${configDir}/${configName}` : configName
+        const displayName = supervisorName || configName || `进程${index + 1}`
+        return {
+          command: displayName,
+          name: displayName,
+          aliases: [configName].filter(Boolean),
+          desc: configName || '进程配置',
+          id: `${envCmd?.id || envCmd?.data?.id || 'env'}_${index}`,
+          data: {
+            supervisor_name: supervisorName,
+            supervisor_config: configPath
+          }
+        }
+      })
+    }
+
+    // applySupervisorProcessListResult 把 Supervisor 服务列表同步到当前候选区与动态缓存。
+    const applySupervisorProcessListResult = (list) => {
+      dynamicDataCache.value['supervisorProcessList'] = list
+      currentChildren.value = list
+      reparseForPendingHistoryExecution('supervisorProcessList')
+      refreshCommandDropdownVisibility()
+    }
+
+    // fetchSupervisorProcessList 拉取指定环境的 Supervisor 服务列表，支持强制刷新缓存。
+    const fetchSupervisorProcessList = (envCmd, options = {}) => {
+      const { forceRefresh = false, onSuccess, onError } = options
+      if (!(envCmd && envCmd.data && envCmd.data.ssh_id)) {
+        if (typeof onError === 'function') {
+          onError()
+        }
+        return
+      }
+      if (!forceRefresh) {
+        const cachedList = readSupervisorProcessCache(envCmd.data)
+        if (cachedList.length > 0) {
+          if (typeof onSuccess === 'function') {
+            onSuccess(cachedList, true)
+          }
+          return
+        }
+      }
+      const supervisorConfig = {
+        ...envCmd.data
+      }
+      supervisor.SupervisorConfList(supervisorConfig, (response) => {
+        if (!(response && response.ErrCode === 0)) {
+          if (typeof onError === 'function') {
+            onError(response)
+          }
+          return
+        }
+        const list = buildSupervisorProcessCommandList(envCmd, response.Data)
+        writeSupervisorProcessCache(envCmd.data, list)
+        if (typeof onSuccess === 'function') {
+          onSuccess(list, false)
+        }
+      })
     }
 
     const getCommandMatchHint = (cmd) => {
@@ -1557,49 +1680,21 @@ export default {
         loadSupervisorEnvList()
         return
       }
-      const supervisorConfig = {
-        ...envCmd.data
-      }
       // 这里只是加载候选进程列表，不需要把终端回显串到首页命令执行流。
-      supervisor.SupervisorConfList(supervisorConfig, (response) => {
-        isLoadingDynamic.value = false
-        if (!(response && response.ErrCode === 0)) {
-          dynamicDataCache.value['supervisorProcessList'] = []
-          currentChildren.value = []
-          refreshCommandDropdownVisibility()
-          return
-        }
-        const lines = String(response.Data || '')
-          .split('\n')
-          .map(line => normalizeCommandPart(line))
-          .filter(Boolean)
-        const list = lines.map((line, index) => {
-          const [configNameRaw, supervisorNameRaw] = line.split('---')
-          const configName = normalizeCommandPart(configNameRaw)
-          let supervisorName = normalizeCommandPart(supervisorNameRaw)
-            .replaceAll('[', '')
-            .replaceAll(']', '')
-            .replaceAll('program:', '')
-          supervisorName = normalizeCommandPart(supervisorName)
-          const configDir = normalizeCommandPart(envCmd.data.config_dir)
-          const configPath = configDir && configName ? `${configDir}/${configName}` : configName
-          const displayName = supervisorName || configName || `进程${index + 1}`
-          return {
-            command: displayName,
-            name: displayName,
-            aliases: [configName].filter(Boolean),
-            desc: configName || '进程配置',
-            id: `${envCmd.id || 'env'}_${index}`,
-            data: {
-              supervisor_name: supervisorName,
-              supervisor_config: configPath
-            }
+      fetchSupervisorProcessList(envCmd, {
+        forceRefresh: false,
+        onSuccess: (list) => {
+          isLoadingDynamic.value = false
+          applySupervisorProcessListResult(list)
+        },
+        onError: (response) => {
+          isLoadingDynamic.value = false
+          if (!(response && response.ErrCode === 0)) {
+            dynamicDataCache.value['supervisorProcessList'] = []
+            currentChildren.value = []
+            refreshCommandDropdownVisibility()
           }
-        })
-        dynamicDataCache.value['supervisorProcessList'] = list
-        currentChildren.value = list
-        reparseForPendingHistoryExecution('supervisorProcessList')
-        refreshCommandDropdownVisibility()
+        }
       })
     }
 
@@ -2365,6 +2460,9 @@ export default {
         case 'supervisorConfig':
           executeSupervisorAction('config', currentStack)
           break
+        case 'supervisorRefreshProcessCache':
+          executeSupervisorAction('refreshCache', currentStack)
+          break
         case 'gitPull':
           executeGitAction('pull', currentStack, options.inputValue || '')
           break
@@ -2714,6 +2812,18 @@ export default {
             processCmd.data.supervisor_config,
             (response) => done(response, (res) => renderSupervisorResult(res, '查看完成'))
           )
+          break
+        case 'refreshCache':
+          appendOutputResult(`正在刷新环境 [${envCmd.name}] 的服务列表缓存...\n\n`)
+          clearSupervisorProcessCache(envCmd.data)
+          fetchSupervisorProcessList(envCmd, {
+            forceRefresh: true,
+            onSuccess: (list) => {
+              dynamicDataCache.value['supervisorProcessList'] = list
+              done({ ErrCode: 0 }, (res) => renderSupervisorResult(res, `刷新完成，共 ${list.length} 项`))
+            },
+            onError: (response) => done(response)
+          })
           break
         default:
           appendOutputResult('该 Supervisor 操作暂未实现\n')
@@ -3317,15 +3427,77 @@ export default {
       appendOutputResult('未知 variable 操作\n')
       finishExecution()
     }
+
+    // 生成首页命令执行完成后的浏览器通知内容。
+    const buildBrowserNotificationPayload = (message) => {
+      const status = normalizeCommandPart(message?.commandStatus) || 'success'
+      const commandText = normalizeCommandPart(message?.commandText) || '首页命令'
+      const resultText = normalizeCommandPart(message?.resultText)
+      const title = status === 'failed' ? '命令执行失败' : '命令执行完成'
+      const body = resultText
+        ? `${commandText}\n${resultText}`.slice(0, 180)
+        : `${commandText}\n请返回页面查看详情`
+      return {
+        title,
+        body,
+      }
+    }
+
+    // 按需申请浏览器通知权限，避免首页初次加载时直接弹权限框。
+    const ensureBrowserNotificationPermission = async () => {
+      if (typeof window === 'undefined' || typeof Notification === 'undefined') {
+        return 'unsupported'
+      }
+      if (Notification.permission === 'granted') {
+        return 'granted'
+      }
+      if (Notification.permission === 'denied') {
+        return 'denied'
+      }
+      if (browserNotificationPermissionRequested.value) {
+        return Notification.permission
+      }
+      browserNotificationPermissionRequested.value = true
+      try {
+        return await Notification.requestPermission()
+      } catch (error) {
+        return 'default'
+      }
+    }
+
+    // 首页命令执行结束后发送浏览器通知，便于切出页面时感知结果。
+    const notifyCommandFinished = async (message) => {
+      if (!message) {
+        return
+      }
+      const permission = await ensureBrowserNotificationPermission()
+      if (permission !== 'granted') {
+        return
+      }
+      const payload = buildBrowserNotificationPayload(message)
+      const notification = new Notification(payload.title, {
+        body: payload.body,
+        tag: 'dashboard-command-finished',
+      })
+      notification.onclick = () => {
+        window.focus()
+        notification.close()
+      }
+      setTimeout(() => {
+        notification.close()
+      }, 5000)
+    }
     
     // 完成执行
     const finishExecution = () => {
+      const finishedMessage = currentOutputMessage.value
       // 若未显式写入成功/失败状态，执行结束后默认标记为成功
-      if (currentOutputMessage.value && currentOutputMessage.value.commandStatus === 'running') {
-        currentOutputMessage.value.commandStatus = 'success'
+      if (finishedMessage && finishedMessage.commandStatus === 'running') {
+        finishedMessage.commandStatus = 'success'
       }
       isExecuting.value = false
       currentOutputMessage.value = null
+      notifyCommandFinished(finishedMessage)
       scrollToBottom()
     }
 
