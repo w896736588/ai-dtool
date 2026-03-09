@@ -63,7 +63,7 @@
                 @node-drop="handleTreeNodeDrop"
             >
               <template #default="{ node, data }">
-                <div class="tree-node">
+                <div class="tree-node" @dblclick.stop="handleNodeDoubleClick(data)">
                   <span class="node-icon">
                     <el-icon v-if="data.type === 'collection'"><Files/></el-icon>
                     <el-icon v-else-if="data.type === 'folder'"><Folder/></el-icon>
@@ -591,13 +591,13 @@ export default {
     initTreeExpansion() {
       let _that = this
       // 仅恢复集合/文件夹展开状态，使用稳定的 type:id 作为缓存键
-      const expandedState = _that.getExpandedStateCache()
-      if (!Array.isArray(expandedState) || expandedState.length === 0) {
+      const expandedStateCache = _that.getExpandedStateCache()
+      if (!expandedStateCache.initialized) {
         _that.expandAllNodes()
         return
       }
       _that.$nextTick(() => {
-        _that.applyExpandedStateFromCache(expandedState)
+        _that.applyExpandedStateFromCache(expandedStateCache.expandedKeys)
       })
     },
 
@@ -631,18 +631,43 @@ export default {
     getExpandedStateCache() {
       const cacheText = store.getStore('collection_tree_expand_state')
       if (!cacheText) {
-        return []
+        return {
+          initialized: false,
+          expandedKeys: []
+        }
       }
       try {
         const cacheData = JSON.parse(cacheText)
-        return Array.isArray(cacheData) ? cacheData : []
+        // 兼容旧版本：历史上直接存的是数组
+        if (Array.isArray(cacheData)) {
+          return {
+            initialized: true,
+            expandedKeys: cacheData
+          }
+        }
+        if (cacheData && typeof cacheData === 'object') {
+          return {
+            initialized: cacheData.initialized === true,
+            expandedKeys: Array.isArray(cacheData.expandedKeys) ? cacheData.expandedKeys : []
+          }
+        }
+        return {
+          initialized: false,
+          expandedKeys: []
+        }
       } catch (e) {
-        return []
+        return {
+          initialized: false,
+          expandedKeys: []
+        }
       }
     },
     // 写入树展开缓存
     setExpandedStateCache(expandedState) {
-      store.setStore('collection_tree_expand_state', JSON.stringify(expandedState))
+      store.setStore('collection_tree_expand_state', JSON.stringify({
+        initialized: true,
+        expandedKeys: Array.isArray(expandedState) ? expandedState : []
+      }))
     },
     // 构建稳定的缓存键（collection:1 / folder:2）
     buildExpandStateKey(data) {
@@ -708,6 +733,7 @@ export default {
         return
       }
       let expandedState = _that.getExpandedStateCache()
+      expandedState = Array.isArray(expandedState.expandedKeys) ? expandedState.expandedKeys : []
       if (isExpanded) {
         if (!expandedState.includes(nodeKey)) {
           expandedState.push(nodeKey)
@@ -917,26 +943,41 @@ export default {
         }
       }, 500)
     },
-    // 处理节点点击
+    // 处理节点点击：单击仅负责选中节点，不再自动展开/收起
     handleNodeClick(data) {
       let _that = this
-      if (data.type && data.type !== "api") {
-        const node = this.$refs.collectionTreeRef.getNode(data.uniqueid)
-        if (node) {
-          if (!node.expanded) {
-            node.expand()
-          }
-          if (data.type === 'folder') {
-            _that.fillCollectionApis(data.collection_id, data.id)
-          }
-        }
-
-      } else if (data.type && data.type === 'api') {
+      if (data.type && data.type === 'api') {
         _that.$nextTick(() => {
           _that.$refs.refApiDetail.InitApiDetail(data);
         });
       }
       _that.selectedItem = data
+    },
+    // 处理节点双击：集合和文件夹双击时切换展开/收起
+    handleNodeDoubleClick(data) {
+      if (!data || (data.type !== 'collection' && data.type !== 'folder')) {
+        return
+      }
+      const treeRef = this.$refs.collectionTreeRef
+      if (!treeRef) {
+        return
+      }
+      const node = treeRef.getNode(data.uniqueid)
+      if (!node) {
+        return
+      }
+      if (node.expanded) {
+        node.collapse()
+        // 双击收起时主动同步本地展开缓存，避免刷新后状态残留
+        this.updateExpandedCache(data, false)
+        return
+      }
+      if (data.type === 'folder') {
+        this.fillCollectionApis(data.collection_id, data.id)
+      }
+      node.expand()
+      // 双击展开时主动同步本地展开缓存，避免依赖树事件遗漏
+      this.updateExpandedCache(data, true)
     },
     fillCollectionApis: function (collection_id, dir_id) {
       let _that = this
@@ -1469,6 +1510,7 @@ export default {
   display: flex;
   height: 100%;
   min-height: 100%;
+  min-width: 0;
   background-color: transparent;
   width: 100%;
   box-sizing: border-box;
@@ -1481,6 +1523,8 @@ export default {
 }
 
 .left-sidebar {
+  display: flex;
+  min-height: 0;
   background: #fff;
   border: 1px solid #e8e8e0;
   border-radius: 12px;
@@ -1491,6 +1535,13 @@ export default {
   flex-shrink: 0;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(54, 74, 54, 0.05);
+}
+
+.collection-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .panel-resizer {
@@ -1601,6 +1652,7 @@ export default {
   flex: 1;
   overflow-y: auto;
   overflow-x: auto;
+  min-height: 0;
   padding: 8px;
   padding-bottom: 0;
 }
