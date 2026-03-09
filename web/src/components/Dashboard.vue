@@ -2552,12 +2552,8 @@ export default {
         sse_distribute_id: sseDistributeId.value
       }
 
-      // renderSupervisorResult 将接口返回的状态/配置内容与操作完成提示统一写入结果区。
+      // renderSupervisorResult 仅写入操作完成提示，不展示接口返回详情。
       const renderSupervisorResult = (response, successText) => {
-        const outputText = normalizeCommandPart(response?.Data)
-        if (outputText) {
-          appendOutputResult(`${outputText}\n`)
-        }
         if (successText) {
           appendOutputResult(`${successText}\n`)
         }
