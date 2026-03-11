@@ -17,6 +17,100 @@ import (
 	"github.com/spf13/cast"
 )
 
+// parseApiIDs 解析接口 ID，兼容数组和逗号分隔字符串。
+func parseApiIDs(raw any) []int {
+	result := make([]int, 0)
+	exists := make(map[int]struct{})
+	appendID := func(id int) {
+		if id <= 0 {
+			return
+		}
+		if _, ok := exists[id]; ok {
+			return
+		}
+		exists[id] = struct{}{}
+		result = append(result, id)
+	}
+	switch value := raw.(type) {
+	case []any:
+		for _, item := range value {
+			appendID(cast.ToInt(item))
+		}
+	case []int:
+		for _, item := range value {
+			appendID(item)
+		}
+	case []string:
+		for _, item := range value {
+			appendID(cast.ToInt(strings.TrimSpace(item)))
+		}
+	case string:
+		for _, item := range strings.Split(value, ",") {
+			appendID(cast.ToInt(strings.TrimSpace(item)))
+		}
+	}
+	return result
+}
+
+// buildCollectionBasicInfo 构建集合基础信息。
+func buildCollectionBasicInfo(item map[string]any) map[string]any {
+	return map[string]any{
+		`id`:          item[`id`],
+		`name`:        item[`name`],
+		`create_time`: item[`create_time`],
+		`update_time`: item[`update_time`],
+		`type`:        define.ApiTypeCollection,
+		`uniqueid`:    fmt.Sprintf(`collection%d`, cast.ToInt(item[`id`])),
+	}
+}
+
+// buildFolderBasicInfo 构建文件夹基础信息。
+func buildFolderBasicInfo(item map[string]any) map[string]any {
+	return map[string]any{
+		`id`:            item[`id`],
+		`collection_id`: item[`collection_id`],
+		`name`:          item[`name`],
+		`create_time`:   item[`create_time`],
+		`update_time`:   item[`update_time`],
+		`type`:          define.ApiTypeFolder,
+		`uniqueid`:      fmt.Sprintf(`folder%d`, cast.ToInt(item[`id`])),
+	}
+}
+
+// buildApiBasicInfo 构建接口基础信息，不返回请求明细字段。
+func buildApiBasicInfo(item map[string]any) map[string]any {
+	return map[string]any{
+		`id`:            item[`id`],
+		`folder_id`:     item[`folder_id`],
+		`collection_id`: item[`collection_id`],
+		`name`:          item[`name`],
+		`method`:        item[`method`],
+		`url`:           item[`url`],
+		`desc`:          item[`desc`],
+		`env_id`:        item[`env_id`],
+		`weight`:        item[`weight`],
+		`create_time`:   item[`create_time`],
+		`update_time`:   item[`update_time`],
+		`type`:          define.ApiTypeApi,
+		`uniqueid`:      fmt.Sprintf(`api%d`, cast.ToInt(item[`id`])),
+	}
+}
+
+// sortAPIListByIDs 按传入 ID 顺序重排接口列表。
+func sortAPIListByIDs(list []map[string]any, ids []int) []map[string]any {
+	itemMap := make(map[int]map[string]any, len(list))
+	for _, item := range list {
+		itemMap[cast.ToInt(item[`id`])] = item
+	}
+	result := make([]map[string]any, 0, len(ids))
+	for _, id := range ids {
+		if item, ok := itemMap[id]; ok {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
 func ApiCreateCollection(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
@@ -146,6 +240,83 @@ func ApiCollections(c *gin.Context) {
 		item[`uniqueid`] = fmt.Sprintf(`collection%d`, item[`id`])
 		item[`children`] = dirs
 	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: list,
+	})
+}
+
+// ApiCollectionListBasic 查询所有集合基础信息。
+func ApiCollectionListBasic(c *gin.Context) {
+	list, _ := common.DbMain.Client.QueryBySql(`select id,name,create_time,update_time from tbl_api_collection order by id asc`).All()
+	result := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		result = append(result, buildCollectionBasicInfo(item))
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: result,
+	})
+}
+
+// ApiCollectionFoldersBasic 按集合查询文件夹基础信息。
+func ApiCollectionFoldersBasic(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	collectionId := cast.ToInt(dataMap[`collection_id`])
+	if collectionId <= 0 {
+		gsgin.GinResponseError(c, `请选择集合`, nil)
+		return
+	}
+	list, _ := common.DbMain.Client.QueryBySql(`select id,collection_id,name,create_time,update_time from tbl_api_dir where collection_id = ? order by id asc`, collectionId).All()
+	result := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		result = append(result, buildFolderBasicInfo(item))
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: result,
+	})
+}
+
+// ApiFolderApisBasic 按文件夹查询接口基础信息。
+func ApiFolderApisBasic(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	folderId := cast.ToInt(dataMap[`folder_id`])
+	if folderId <= 0 {
+		gsgin.GinResponseError(c, `请选择文件夹`, nil)
+		return
+	}
+	list, _ := common.DbMain.Client.QueryBySql(`select id,folder_id,collection_id,name,method,url,desc,env_id,weight,create_time,update_time from tbl_api where folder_id = ? order by weight,id asc`, folderId).All()
+	result := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		result = append(result, buildApiBasicInfo(item))
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: result,
+	})
+}
+
+// ApiApisDetailByIds 按若干接口 ID 查询接口明细。
+func ApiApisDetailByIds(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	ids := parseApiIDs(dataMap[`ids`])
+	if len(ids) == 0 {
+		gsgin.GinResponseError(c, `请选择接口`, nil)
+		return
+	}
+	placeholders := make([]string, 0, len(ids))
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		placeholders = append(placeholders, `?`)
+		args = append(args, id)
+	}
+	sql := `select * from tbl_api where id in (` + strings.Join(placeholders, `,`) + `)`
+	list, _ := common.DbMain.Client.QueryBySql(sql, args...).All()
+	for _, item := range list {
+		item[`type`] = define.ApiTypeApi
+		item[`uniqueid`] = fmt.Sprintf(`api%d`, cast.ToInt(item[`id`]))
+	}
+	list = sortAPIListByIDs(list, ids)
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`list`: list,
 	})

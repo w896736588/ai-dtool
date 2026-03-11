@@ -166,11 +166,13 @@
           </div>
         </div>
 
-        <div v-if="runSubmitting || runLiveLog" class="editor-card run-live-card">
+        <div v-if="runSubmitting || runWatching || runLiveLog" class="editor-card run-live-card">
           <div class="card-head">
             <div>
               <div class="card-title">执行过程</div>
               <div class="page-desc">{{ runLiveStatus }}</div>
+              <div class="run-feedback-meta">{{ runFeedbackPhaseText }}</div>
+              <div v-if="runFeedbackHint" class="run-feedback-hint">{{ runFeedbackHint }}</div>
             </div>
             <el-button text @click="clearRunLiveLog">清空</el-button>
           </div>
@@ -327,6 +329,12 @@ export default {
       runLiveLog: '',
       runLiveStatus: '未开始执行',
       runSseDistributeId: '',
+      runFeedbackPhase: 'idle',
+      runFeedbackPhaseText: '未开始执行',
+      runFeedbackHint: '',
+      runFeedbackLastLogAt: 0,
+      runFeedbackPhaseStartAt: 0,
+      runFeedbackTicker: null,
     }
   },
   mounted() {
@@ -335,6 +343,7 @@ export default {
   },
   beforeUnmount() {
     this.stopRunWatch()
+    this.stopRunFeedbackTicker()
     this.unregisterRunSse()
   },
   methods: {
@@ -411,7 +420,112 @@ export default {
       this.stopRunWatch()
       this.runLiveLog = ''
       this.runLiveStatus = '未开始执行'
+      this.resetRunFeedback()
       this.unregisterRunSse()
+    },
+    // resetRunFeedback 重置执行反馈状态。
+    resetRunFeedback() {
+      this.runFeedbackPhase = 'idle'
+      this.runFeedbackPhaseText = '未开始执行'
+      this.runFeedbackHint = ''
+      this.runFeedbackLastLogAt = 0
+      this.runFeedbackPhaseStartAt = 0
+      this.stopRunFeedbackTicker()
+    },
+    // setRunFeedbackPhase 设置当前执行阶段。
+    setRunFeedbackPhase(phase, phaseText) {
+      const now = Date.now()
+      if (this.runFeedbackPhase !== phase || !this.runFeedbackPhaseStartAt) {
+        this.runFeedbackPhaseStartAt = now
+      }
+      this.runFeedbackPhase = phase
+      this.runFeedbackPhaseText = phaseText
+      if (!this.runFeedbackLastLogAt) {
+        this.runFeedbackLastLogAt = now
+      }
+      this.refreshRunFeedbackHint()
+    },
+    // touchRunFeedback 记录最近一次日志时间。
+    touchRunFeedback() {
+      this.runFeedbackLastLogAt = Date.now()
+      if (!this.runFeedbackPhaseStartAt) {
+        this.runFeedbackPhaseStartAt = this.runFeedbackLastLogAt
+      }
+      this.refreshRunFeedbackHint()
+    },
+    // startRunFeedbackTicker 启动执行反馈刷新定时器。
+    startRunFeedbackTicker() {
+      this.stopRunFeedbackTicker()
+      this.refreshRunFeedbackHint()
+      this.runFeedbackTicker = window.setInterval(() => {
+        this.refreshRunFeedbackHint()
+      }, 1000)
+    },
+    // stopRunFeedbackTicker 停止执行反馈刷新定时器。
+    stopRunFeedbackTicker() {
+      if (this.runFeedbackTicker) {
+        window.clearInterval(this.runFeedbackTicker)
+        this.runFeedbackTicker = null
+      }
+    },
+    // formatRunFeedbackSeconds 将秒数转换成中文时长。
+    formatRunFeedbackSeconds(seconds) {
+      if (seconds < 60) {
+        return `${seconds} 秒`
+      }
+      const minute = Math.floor(seconds / 60)
+      const remainSecond = seconds % 60
+      if (remainSecond === 0) {
+        return `${minute} 分钟`
+      }
+      return `${minute} 分 ${remainSecond} 秒`
+    },
+    // refreshRunFeedbackHint 刷新执行提示文案。
+    refreshRunFeedbackHint() {
+      if (!this.runFeedbackPhaseStartAt || this.runFeedbackPhase === 'idle') {
+        this.runFeedbackHint = ''
+        return
+      }
+      const now = Date.now()
+      const phaseSeconds = Math.max(1, Math.floor((now - this.runFeedbackPhaseStartAt) / 1000))
+      const lastLogSeconds = this.runFeedbackLastLogAt
+        ? Math.max(0, Math.floor((now - this.runFeedbackLastLogAt) / 1000))
+        : 0
+      const durationText = `本阶段已持续 ${this.formatRunFeedbackSeconds(phaseSeconds)}`
+      const lastLogText = this.runFeedbackLastLogAt
+        ? `最近更新于 ${this.formatRunFeedbackSeconds(lastLogSeconds)}前`
+        : '等待首条执行日志'
+      if (this.runFeedbackPhase === 'planning' && lastLogSeconds >= 6) {
+        this.runFeedbackHint = `${durationText}，${lastLogText}，规划处理中，暂未返回新日志，任务仍在后台执行`
+        return
+      }
+      if (this.runFeedbackPhase === 'finished' || this.runFeedbackPhase === 'failed') {
+        this.runFeedbackHint = durationText
+        return
+      }
+      this.runFeedbackHint = `${durationText}，${lastLogText}`
+    },
+    // updateRunFeedbackByLog 根据日志前缀切换执行阶段。
+    updateRunFeedbackByLog(msg, msgType) {
+      if (msgType === 'error' && msg.includes('[任务]')) {
+        this.setRunFeedbackPhase('failed', '任务执行失败')
+        return
+      }
+      if (msg.includes('[规划] 正在生成抓取计划')) {
+        this.setRunFeedbackPhase('planning', '正在生成抓取计划，请稍候')
+        return
+      }
+      if (msg.includes('[规划] 计划生成完成') || msg.includes('[执行]')) {
+        this.setRunFeedbackPhase('crawling', '抓取计划已生成，正在按网页执行')
+        return
+      }
+      if (msg.includes('[汇总] 正在生成总结')) {
+        this.setRunFeedbackPhase('summarizing', '网页抓取完成，正在生成总结')
+        return
+      }
+      if (msg.includes('[任务] 执行完成')) {
+        this.setRunFeedbackPhase('finished', '任务执行完成')
+      }
     },
     // normalizePage 统一网页对象结构。
     normalizePage(page) {
@@ -590,7 +704,10 @@ export default {
       this.unregisterRunSse()
       this.runSseDistributeId = sseDistributeId
       this.runLiveLog = ''
-      this.runLiveStatus = '准备执行任务...'
+      this.runLiveStatus = '准备提交任务...'
+      this.resetRunFeedback()
+      this.setRunFeedbackPhase('submitting', '正在提交任务')
+      this.startRunFeedbackTicker()
       this.registerRunSse(sseDistributeId)
       this.runSubmitting = true
       InfoCrawlApi.InfoCrawlTaskRun({
@@ -600,12 +717,15 @@ export default {
         this.runSubmitting = false
         if (!(response && response.ErrCode === 0 && response.Data)) {
           this.runLiveStatus = '任务提交失败'
+          this.setRunFeedbackPhase('failed', '任务提交失败')
+          this.stopRunFeedbackTicker()
           this.unregisterRunSse()
           return
         }
         this.runningRunId = response.Data.run_id || 0
         this.runWatching = true
-        this.runLiveStatus = '任务已提交，后台执行中...'
+        this.runLiveStatus = '任务已提交，正在等待抓取计划'
+        this.setRunFeedbackPhase('planning', '正在生成抓取计划，请稍候')
         this.refreshRunList()
         this.startRunWatch()
         this.$helperNotify.success('任务已提交，正在后台执行')
@@ -630,6 +750,7 @@ export default {
       }
       this.runWatching = false
       this.runningRunId = 0
+      this.stopRunFeedbackTicker()
     },
     // fetchRunStatus 查询当前执行任务状态。
     fetchRunStatus() {
@@ -647,10 +768,18 @@ export default {
         }
         if (runInfo.status === 'running') {
           this.runWatching = true
-          this.runLiveStatus = '任务后台执行中...'
+          this.runLiveStatus = '任务仍在后台执行'
+          if (this.runFeedbackPhase === 'submitting' || this.runFeedbackPhase === 'idle') {
+            this.setRunFeedbackPhase('planning', '正在生成抓取计划，请稍候')
+          }
           return
         }
         this.runLiveStatus = `任务执行完成，状态：${runInfo.status || '-'}`
+        if (runInfo.status === 'success' || runInfo.status === 'partial_failed') {
+          this.setRunFeedbackPhase('finished', `任务执行完成，状态：${runInfo.status || '-'}`)
+        } else {
+          this.setRunFeedbackPhase('failed', `任务执行结束，状态：${runInfo.status || '-'}`)
+        }
         this.stopRunWatch()
         this.unregisterRunSse()
         this.refreshRunList()
@@ -666,7 +795,9 @@ export default {
         if (typeof msg !== 'string' || msg.trim() === '') {
           return
         }
-        this.runLiveStatus = '任务执行中...'
+        this.touchRunFeedback()
+        this.updateRunFeedbackByLog(msg, msgType)
+        this.runLiveStatus = '任务执行中'
         const prefix = msgType === 'error' ? '[错误] ' : ''
         this.runLiveLog += `${prefix}${msg}`.replace(/\r/g, '')
       })
@@ -684,6 +815,7 @@ export default {
       this.runLiveLog = ''
       if (!this.runSubmitting && !this.runWatching) {
         this.runLiveStatus = '未开始执行'
+        this.resetRunFeedback()
       }
     },
     // refreshRunList 刷新执行历史。
@@ -979,6 +1111,20 @@ export default {
 .live-pre {
   max-height: 260px;
   overflow: auto;
+}
+
+.run-feedback-meta {
+  margin-top: 6px;
+  color: #4f6250;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.run-feedback-hint {
+  margin-top: 6px;
+  color: #7a866f;
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .detail-pre.small {
