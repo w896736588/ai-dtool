@@ -245,14 +245,11 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 }
 
 func infoCrawl(tGin *p_gin.Gin) {
+	tGin.GinPost(`/api/InfoCrawlCrawl4AIStatus`, controller.InfoCrawlCrawl4AIStatus)
 	tGin.GinPost(`/api/InfoCrawlTaskList`, controller.InfoCrawlTaskList)
 	tGin.GinPost(`/api/InfoCrawlTaskInfo`, controller.InfoCrawlTaskInfo)
 	tGin.GinPost(`/api/InfoCrawlTaskSave`, controller.InfoCrawlTaskSave)
 	tGin.GinPost(`/api/InfoCrawlTaskDelete`, controller.InfoCrawlTaskDelete)
-	tGin.GinPost(`/api/InfoCrawlTaskPageSave`, controller.InfoCrawlTaskPageSave)
-	tGin.GinPost(`/api/InfoCrawlTaskPageDelete`, controller.InfoCrawlTaskPageDelete)
-	tGin.GinPost(`/api/InfoCrawlTaskPageOpenLogin`, controller.InfoCrawlTaskPageOpenLogin)
-	tGin.GinPost(`/api/InfoCrawlTaskPageCheckLogin`, controller.InfoCrawlTaskPageCheckLogin)
 	tGin.GinPost(`/api/InfoCrawlTaskRun`, controller.InfoCrawlTaskRun)
 	tGin.GinPost(`/api/InfoCrawlRunList`, controller.InfoCrawlRunList)
 	tGin.GinPost(`/api/InfoCrawlRunInfo`, controller.InfoCrawlRunInfo)

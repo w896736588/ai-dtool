@@ -4,6 +4,7 @@ import (
 	"dev_tool/internal/app/dtool/business"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
+	"dev_tool/internal/app/dtool/crawl4ai"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/plw"
 	"dev_tool/internal/app/dtool/variable"
@@ -154,6 +155,9 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	component.EnvClient.WebkitDriverPath = viper.GetString(`path.webkit_driver_path`)
 	component.EnvClient.WebkitDataPath = viper.GetString(`path.webkit_data_path`)
 	component.EnvClient.WebkitDownloadPath = viper.GetString(`path.webkit_download_path`)
+	component.EnvClient.Crawl4AIHost = viper.GetString(`crawl4ai.host`)
+	component.EnvClient.Crawl4AIPort = viper.GetString(`crawl4ai.port`)
+	component.EnvClient.Crawl4AIDataPath = viper.GetString(`crawl4ai.data_path`)
 	component.EnvClient.WebkitDataPath = gstool.SReplaces(component.EnvClient.WebkitDataPath, map[string]string{
 		`{DRIVE}`: drive,
 	})
@@ -163,14 +167,26 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	component.EnvClient.WebkitDriverPath = gstool.SReplaces(component.EnvClient.WebkitDriverPath, map[string]string{
 		`{DRIVE}`: drive,
 	})
+	if component.EnvClient.Crawl4AIHost == `` {
+		component.EnvClient.Crawl4AIHost = `127.0.0.1`
+	}
+	if component.EnvClient.Crawl4AIPort == `` {
+		component.EnvClient.Crawl4AIPort = `11235`
+	}
+	if component.EnvClient.Crawl4AIDataPath == `` {
+		component.EnvClient.Crawl4AIDataPath = filepath.Join(component.EnvClient.RootPath, `upload`, `crawl4ai`)
+	}
+	component.EnvClient.Crawl4AIBaseURL = fmt.Sprintf(`http://%s:%s`, component.EnvClient.Crawl4AIHost, component.EnvClient.Crawl4AIPort)
+	component.EnvClient.Crawl4AIScriptPath = filepath.Join(component.EnvClient.RootPath, `script`, `crawl4ai_service.py`)
 	//创建目录
 	_ = gstool.DirCreatePath(component.EnvClient.LogPath)
 	_ = gstool.DirCreatePath(component.EnvClient.DbConfig.DbPath)
 	_ = gstool.DirCreatePath(component.EnvClient.WebkitDataPath)
 	_ = gstool.DirCreatePath(component.EnvClient.WebkitDriverPath)
 	_ = gstool.DirCreatePath(component.EnvClient.WebkitDownloadPath)
+	_ = gstool.DirCreatePath(component.EnvClient.Crawl4AIDataPath)
 	gstool.FmtPrintlnLogTime(`输出配置：`)
-	gstool.FmtPrintlnLogTime(gstool.JsonFormat(component.EnvClient))
+	gstool.FmtPrintlnLogTime(`%s`, gstool.JsonFormat(component.EnvClient))
 }
 
 func initPlaywright() {
@@ -241,6 +257,8 @@ func initOther() {
 	}
 	p_common.TJasClient.Load()
 	variable.VariableClient = variable.NewVariableClient()
+	component.Crawl4AIClient = crawl4ai.NewService(component.EnvClient, component.GsLog)
+	component.Crawl4AIClient.EnsureReadyAsync()
 }
 
 func InitComponent() {
@@ -275,6 +293,9 @@ func Stop() {
 		})
 	}
 	task.RunAll()
+	if component.Crawl4AIClient != nil {
+		component.Crawl4AIClient.Stop()
+	}
 	_ = plw.PlaywrightClient.Log.Close()
 	_ = variable.VariableClient.Log.Close()
 	_ = component.GsLog.Close()

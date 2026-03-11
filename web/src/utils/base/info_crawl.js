@@ -1,5 +1,10 @@
 import base from '../base'
 
+// InfoCrawlCrawl4AIStatus 查询 Crawl4AI 状态。
+function InfoCrawlCrawl4AIStatus(callBack) {
+  base.BasePost('/api/InfoCrawlCrawl4AIStatus', {}, callBack)
+}
+
 // InfoCrawlTaskList 查询任务列表。
 function InfoCrawlTaskList(callBack) {
   base.BasePost('/api/InfoCrawlTaskList', {}, callBack)
@@ -20,26 +25,6 @@ function InfoCrawlTaskDelete(id, callBack) {
   base.BasePost('/api/InfoCrawlTaskDelete', { id: id }, callBack)
 }
 
-// InfoCrawlTaskPageSave 保存网页配置。
-function InfoCrawlTaskPageSave(data, callBack) {
-  base.BasePost('/api/InfoCrawlTaskPageSave', data, callBack)
-}
-
-// InfoCrawlTaskPageDelete 删除网页配置。
-function InfoCrawlTaskPageDelete(id, callBack) {
-  base.BasePost('/api/InfoCrawlTaskPageDelete', { id: id }, callBack)
-}
-
-// InfoCrawlTaskPageOpenLogin 打开网页登录页。
-function InfoCrawlTaskPageOpenLogin(taskPageId, callBack) {
-  base.BasePost('/api/InfoCrawlTaskPageOpenLogin', { task_page_id: taskPageId }, callBack)
-}
-
-// InfoCrawlTaskPageCheckLogin 检查网页登录状态。
-function InfoCrawlTaskPageCheckLogin(taskPageId, callBack) {
-  base.BasePost('/api/InfoCrawlTaskPageCheckLogin', { task_page_id: taskPageId }, callBack)
-}
-
 // InfoCrawlTaskRun 执行任务。
 function InfoCrawlTaskRun(data, callBack) {
   base.BasePost('/api/InfoCrawlTaskRun', data, callBack)
@@ -56,14 +41,11 @@ function InfoCrawlRunInfo(id, callBack) {
 }
 
 export default {
+  InfoCrawlCrawl4AIStatus,
   InfoCrawlTaskList,
   InfoCrawlTaskInfo,
   InfoCrawlTaskSave,
   InfoCrawlTaskDelete,
-  InfoCrawlTaskPageSave,
-  InfoCrawlTaskPageDelete,
-  InfoCrawlTaskPageOpenLogin,
-  InfoCrawlTaskPageCheckLogin,
   InfoCrawlTaskRun,
   InfoCrawlRunList,
   InfoCrawlRunInfo,
