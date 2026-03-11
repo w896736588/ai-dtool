@@ -1,35 +1,110 @@
-﻿# dtool 接口开发模块 API 说明
+# dtool 接口开发模块 API 说明
 
-## 基础信息
+## 使用前置要求
 
-- 默认服务地址：`http://localhost:17170`
-- 请求方式：除 `ApiBatchImport` 外，均为 `POST + application/json`
-- 路由前缀：`/api`
+1. 默认服务地址：`http://localhost:17170`
+2. 路由前缀：`/api`
+3. 除 `ApiBatchImport` 外，均为 `POST + application/json`
+4. AI 在调用这些接口时，必须使用 UTF-8 编码处理请求与响应，尤其是 `name`、`desc`、错误信息、目录名、集合名等中文字段。
+5. 使用 PowerShell 或其他终端前，必须先切换 UTF-8 编码：
 
-## 1. 查询集合与文件夹树：`/api/Collections`
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+```
 
-### 请求
+6. 如果通过脚本、终端或手工请求这些接口，默认都要按 UTF-8 发送请求体，并按 UTF-8 解读接口返回内容。
 
-```http
-POST /api/Collections
-Content-Type: application/json
+## 一、集合相关
 
+### 1. 查询所有集合树：`/api/Collections`
+
+用途：
+
+- 返回集合 -> 文件夹 -> 接口的完整树
+
+请求：
+
+```json
 {}
 ```
 
-### 关键返回字段（data.list）
+关键返回：
 
-- `id`: 集合 ID
-- `name`: 集合名称
-- `type`: `collection`
-- `children`: 文件夹数组
-  - `children[i].id`: 文件夹 ID
-  - `children[i].name`: 文件夹名称
-  - `children[i].type`: `folder`
+- `data.list[]`
+- 集合节点：`id`、`name`、`type=collection`、`children`
+- 文件夹节点：`id`、`name`、`type=folder`、`children`
+- 接口节点：`id`、`name`、`method`、`url`、`type=api`
 
-## 2. 新建/更新文件夹：`/api/CreateDir`
+### 2. 查询所有集合基础信息：`/api/CollectionListBasic`
 
-### 创建文件夹（不传 id）
+用途：
+
+- 仅用于集合选择，不返回文件夹和接口
+
+请求：
+
+```json
+{}
+```
+
+关键返回：
+
+- `data.list[]`
+- 每项字段：`id`、`name`、`create_time`、`update_time`、`type`、`uniqueid`
+
+### 3. 新建或更新集合：`/api/CreateCollection`
+
+创建：
+
+```json
+{
+  "name": "用户中心"
+}
+```
+
+更新：
+
+```json
+{
+  "id": 1,
+  "name": "用户中心-新版"
+}
+```
+
+### 4. 删除集合：`/api/DeleteCollection`
+
+请求：
+
+```json
+{
+  "id": 1
+}
+```
+
+## 二、文件夹相关
+
+### 1. 按集合查询文件夹基础信息：`/api/CollectionFoldersBasic`
+
+用途：
+
+- 仅用于文件夹选择
+
+请求：
+
+```json
+{
+  "collection_id": 1
+}
+```
+
+关键返回：
+
+- `data.list[]`
+- 每项字段：`id`、`collection_id`、`name`、`create_time`、`update_time`、`type`、`uniqueid`
+
+### 2. 新建或更新文件夹：`/api/CreateDir`
+
+创建：
 
 ```json
 {
@@ -38,7 +113,7 @@ Content-Type: application/json
 }
 ```
 
-### 更新文件夹（传 id）
+更新：
 
 ```json
 {
@@ -48,9 +123,23 @@ Content-Type: application/json
 }
 ```
 
-## 3. 查询文件夹详情（含接口列表）：`/api/FolderDetail`
+### 3. 删除文件夹：`/api/DeleteDir`
 
-### 请求
+请求：
+
+```json
+{
+  "id": 12
+}
+```
+
+### 4. 查询文件夹详情：`/api/FolderDetail`
+
+用途：
+
+- 查询目录完整信息及目录下接口详情
+
+请求：
 
 ```json
 {
@@ -58,63 +147,96 @@ Content-Type: application/json
 }
 ```
 
-### 关键返回字段（data.dir.children）
+关键返回：
 
-- `id`: 接口 ID
-- `name`: 接口名称
-- `url`: 接口 URI
-- `method`: 请求方法
+- `data.dir`
+- `data.dir.children[]` 为接口列表
 
-## 4. 新建/更新接口：`/api/CreateApi`
+## 三、接口列表与详情相关
 
-接口逻辑：
-- `id` 不存在或为 0 => 新建接口
-- `id` 存在 => 更新接口
+### 1. 按集合和文件夹查询接口：`/api/Apis`
 
-### 常用参数（JSON）
-
-- `id`：可选，更新时必填
-- `folder_id`：必填，文件夹 ID
-- `collection_id`：必填，集合 ID
-- `name`：接口名称
-- `method`：GET/POST/PUT/DELETE...
-- `url`：接口 URI
-- `protocol`：`http` 或 `https`
-- `desc`：描述
-- `headers`：对象，例如 `{ "Content-Type": "application/json" }`
-- `query_params`：数组，每项至少建议包含 `field`、`type`、`value`、`description`
-- `content_type`：如 `application/json`、`multipart/form-data`
-- `body_form`：数组，form-data 参数
-- `body_json`：JSON 字符串
-- `env_id`：可选，环境 ID
-- `response_take`、`take_result`、`take_result_desc`：可选
-
-### 创建示例（按 method + content_type）
-
-#### A. GET（常见查询接口）
+请求：
 
 ```json
 {
-  "folder_id": 12,
   "collection_id": 1,
-  "name": "用户列表",
-  "method": "GET",
-  "url": "$Url$/v1/users",
-  "protocol": "https",
-  "desc": "分页查询用户",
-  "headers": {"Accept": "application/json"},
-  "query_params": [
-    {"field": "page", "type": "int", "value": "1", "description": "页码"},
-    {"field": "size", "type": "int", "value": "20", "description": "每页数量"},
-    {"field": "keyword", "type": "string", "value": "", "description": "关键词"}
-  ],
-  "content_type": "application/json",
-  "body_form": [],
-  "body_json": ""
+  "dir_id": 12
 }
 ```
 
-#### B. POST + application/json
+关键返回：
+
+- `data.list[]`
+
+### 2. 按文件夹查询接口基础信息：`/api/FolderApisBasic`
+
+用途：
+
+- 仅返回基础信息，不返回请求和响应明细字段
+
+请求：
+
+```json
+{
+  "folder_id": 12
+}
+```
+
+关键返回：
+
+- `data.list[]`
+- 每项字段：`id`、`folder_id`、`collection_id`、`name`、`method`、`url`、`desc`、`env_id`、`weight`、`create_time`、`update_time`、`type`、`uniqueid`
+
+### 3. 按若干接口 ID 查询接口明细：`/api/ApisDetailByIds`
+
+请求支持两种格式：
+
+```json
+{
+  "ids": [101, 102, 103]
+}
+```
+
+```json
+{
+  "ids": "101,102,103"
+}
+```
+
+关键返回：
+
+- `data.list[]`
+- 返回 `tbl_api` 的完整字段，并附带 `type`、`uniqueid`
+
+### 4. 新建或更新接口：`/api/CreateApi`
+
+逻辑：
+
+- `id` 不存在或为 0：创建
+- `id` 存在：更新
+
+常用参数：
+
+- `id`
+- `folder_id`
+- `collection_id`
+- `name`
+- `method`
+- `url`
+- `protocol`
+- `desc`
+- `headers`
+- `query_params`
+- `content_type`
+- `body_form`
+- `body_json`
+- `env_id`
+- `response_take`
+- `take_result`
+- `take_result_desc`
+
+创建示例：
 
 ```json
 {
@@ -125,7 +247,9 @@ Content-Type: application/json
   "url": "$Url$/v1/login",
   "protocol": "https",
   "desc": "登录接口",
-  "headers": {"Content-Type": "application/json"},
+  "headers": {
+    "Content-Type": "application/json"
+  },
   "query_params": [],
   "content_type": "application/json",
   "body_form": [],
@@ -133,77 +257,7 @@ Content-Type: application/json
 }
 ```
 
-#### C. POST + application/x-www-form-urlencoded
-
-```json
-{
-  "folder_id": 12,
-  "collection_id": 1,
-  "name": "短信验证码登录",
-  "method": "POST",
-  "url": "$Url$/v1/login/sms",
-  "protocol": "https",
-  "desc": "表单编码提交",
-  "headers": {"Content-Type": "application/x-www-form-urlencoded"},
-  "query_params": [],
-  "content_type": "application/x-www-form-urlencoded",
-  "body_form": [
-    {"field": "mobile", "type": "string", "value": "13800000000", "description": "手机号"},
-    {"field": "code", "type": "string", "value": "123456", "description": "验证码"}
-  ],
-  "body_json": ""
-}
-```
-
-#### D. POST + multipart/form-data（含文件）
-
-```json
-{
-  "folder_id": 12,
-  "collection_id": 1,
-  "name": "上传头像",
-  "method": "POST",
-  "url": "$Url$/v1/user/avatar",
-  "protocol": "https",
-  "desc": "文件上传",
-  "headers": {"Content-Type": "multipart/form-data"},
-  "query_params": [],
-  "content_type": "multipart/form-data",
-  "body_form": [
-    {"field": "file", "type": "file", "value": "C:/tmp/avatar.png", "description": "头像文件"},
-    {"field": "user_id", "type": "int", "value": "1001", "description": "用户ID"}
-  ],
-  "body_json": ""
-}
-```
-
-### 更新示例（含 id，按 method + content_type）
-
-#### A. 更新 GET 接口（只要传 id 即为更新）
-
-```json
-{
-  "id": 301,
-  "folder_id": 12,
-  "collection_id": 1,
-  "name": "用户列表-更新",
-  "method": "GET",
-  "url": "$Url$/v1/users",
-  "protocol": "https",
-  "desc": "增加状态筛选",
-  "headers": {"Accept": "application/json"},
-  "query_params": [
-    {"field": "page", "type": "int", "value": "1", "description": "页码"},
-    {"field": "size", "type": "int", "value": "20", "description": "每页数量"},
-    {"field": "status", "type": "string", "value": "enabled", "description": "状态"}
-  ],
-  "content_type": "application/json",
-  "body_form": [],
-  "body_json": ""
-}
-```
-
-#### B. 更新 POST + application/json
+更新示例：
 
 ```json
 {
@@ -215,7 +269,9 @@ Content-Type: application/json
   "url": "$Url$/v1/login",
   "protocol": "https",
   "desc": "登录接口-更新",
-  "headers": {"Content-Type": "application/json"},
+  "headers": {
+    "Content-Type": "application/json"
+  },
   "query_params": [],
   "content_type": "application/json",
   "body_form": [],
@@ -223,61 +279,166 @@ Content-Type: application/json
 }
 ```
 
-#### C. 更新 POST + application/x-www-form-urlencoded
+### 5. 删除接口：`/api/DeleteApi`
+
+请求：
 
 ```json
 {
-  "id": 202,
-  "folder_id": 12,
-  "collection_id": 1,
-  "name": "短信验证码登录",
-  "method": "POST",
-  "url": "$Url$/v1/login/sms",
-  "protocol": "https",
-  "desc": "增加渠道参数",
-  "headers": {"Content-Type": "application/x-www-form-urlencoded"},
-  "query_params": [],
-  "content_type": "application/x-www-form-urlencoded",
-  "body_form": [
-    {"field": "mobile", "type": "string", "value": "13800000000", "description": "手机号"},
-    {"field": "code", "type": "string", "value": "123456", "description": "验证码"},
-    {"field": "channel", "type": "string", "value": "app", "description": "来源渠道"}
-  ],
-  "body_json": ""
+  "id": 201
 }
 ```
 
-#### D. 更新 POST + multipart/form-data
+### 6. 移动接口到其他文件夹：`/api/ApiMove`
+
+请求：
 
 ```json
 {
-  "id": 203,
-  "folder_id": 12,
-  "collection_id": 1,
-  "name": "上传头像",
-  "method": "POST",
-  "url": "$Url$/v1/user/avatar",
-  "protocol": "https",
-  "desc": "上传头像并附带裁剪参数",
-  "headers": {"Content-Type": "multipart/form-data"},
-  "query_params": [],
-  "content_type": "multipart/form-data",
-  "body_form": [
-    {"field": "file", "type": "file", "value": "C:/tmp/avatar.png", "description": "头像文件"},
-    {"field": "user_id", "type": "int", "value": "1001", "description": "用户ID"},
-    {"field": "crop", "type": "string", "value": "{\"x\":0,\"y\":0,\"w\":256,\"h\":256}", "description": "裁剪参数"}
-  ],
-  "body_json": ""
+  "api_id": 201,
+  "folder_id": 20
 }
 ```
 
-## 5. 批量导入接口：`/api/ApiBatchImport`
+说明：
 
-请求方式：`POST + multipart/form-data`
+- 目标文件夹必须存在
+- 目标文件夹必须与接口属于同一个集合
+
+## 四、环境相关
+
+### 1. 查询集合环境列表：`/api/CollectionEnvs`
+
+请求：
+
+```json
+{
+  "collection_id": 1
+}
+```
+
+关键返回：
+
+- `data.list[]`
+- 每个环境下会附带 `variables`
+
+### 2. 新建或更新环境：`/api/CreateCollectionEnv`
+
+创建：
+
+```json
+{
+  "name": "测试环境",
+  "collection_id": 1,
+  "desc": "测试"
+}
+```
+
+更新：
+
+```json
+{
+  "id": 5,
+  "name": "测试环境-新版",
+  "collection_id": 1,
+  "desc": "测试"
+}
+```
+
+### 3. 查询环境变量列表：`/api/CollectionEnvItems`
+
+请求：
+
+```json
+{
+  "collection_id": 1,
+  "env_id": 5
+}
+```
+
+### 4. 新建或更新环境变量：`/api/CreateCollectionEnvItem`
+
+创建：
+
+```json
+{
+  "name": "域名",
+  "collection_id": 1,
+  "env_id": 5,
+  "desc": "网关地址",
+  "key": "Url",
+  "value": "https://example.com"
+}
+```
+
+更新：
+
+```json
+{
+  "id": 21,
+  "name": "域名",
+  "collection_id": 1,
+  "env_id": 5,
+  "desc": "网关地址",
+  "key": "Url",
+  "value": "https://example.com"
+}
+```
+
+## 五、运行、调试与辅助能力
+
+### 1. 运行接口：`/api/ApiRun`
+
+请求：
+
+```json
+{
+  "id": 201
+}
+```
+
+### 2. 生成代码：`/api/ApiCode`
+
+请求：
+
+```json
+{
+  "id": 201,
+  "code_type": "curl bash(chrome)"
+}
+```
+
+### 3. 下移接口权重：`/api/ApiWeightDown`
+
+请求：
+
+```json
+{
+  "id": 201
+}
+```
+
+### 4. 提取 JSON 响应路径：`/api/ApiTakeJsonResult`
+
+请求：
+
+```json
+{
+  "id": 201,
+  "json": "{\"code\":0,\"data\":{\"token\":\"abc\"}}"
+}
+```
+
+### 5. 批量导入接口：`/api/ApiBatchImport`
+
+请求方式：
+
+- `POST + multipart/form-data`
 
 表单字段：
-- `collection_id`: 集合 ID（可与 JSON 内字段二选一，但建议显式传）
-- `json`: 导入 JSON 字符串
+
+- `collection_id`
+- `json`
 
 JSON 结构：
 
@@ -288,7 +449,6 @@ JSON 结构：
     {
       "type": "folder",
       "name": "用户中心",
-      "desc": "用户接口",
       "children": [
         {
           "type": "api",
@@ -297,7 +457,9 @@ JSON 结构：
           "url": "$Url$/v1/login",
           "protocol": "https",
           "desc": "登录",
-          "headers": {"Content-Type": "application/json"},
+          "headers": {
+            "Content-Type": "application/json"
+          },
           "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}"
         }
       ]
@@ -307,30 +469,63 @@ JSON 结构：
 ```
 
 注意：
-- 根节点只允许 `folder`。
-- `folder.children` 只允许 `api`。
-- 同名 folder 导入时会清空该 folder 下旧接口再写入新接口。
 
-## 6. URI 决策流程（导入或更新）
+- 根节点只允许 `folder`
+- `folder.children` 只允许 `api`
+- 同名 folder 导入时，会先清空该 folder 下旧接口再导入
 
-1. 调 `/api/FolderDetail` 获取目标文件夹已有接口。
-2. 对待处理接口做 URI 规范化比较。
-3. 若命中现有接口：
-   - 使用命中接口 `id` 调 `/api/CreateApi` 执行更新。
-4. 若未命中：
-   - 不传 `id` 调 `/api/CreateApi` 执行导入。
+## 六、导入或更新的决策建议
 
-## 7. cURL 调用示例
+### 1. 按 URI 决定更新还是创建
 
-### 获取集合
+推荐流程：
+
+1. 调 `/api/CollectionListBasic` 选集合
+2. 调 `/api/CollectionFoldersBasic` 选文件夹
+3. 调 `/api/FolderApisBasic` 获取已有接口基础信息
+4. 规范化 URI 后比对
+5. 命中则走 `/api/CreateApi` 更新
+6. 未命中则走 `/api/CreateApi` 创建
+
+### 2. 何时用批量导入
+
+当用户给的是“整文件夹 + 多个接口”的结构，且接受覆盖更新风险时，优先考虑 `/api/ApiBatchImport`。
+
+## 七、cURL 示例
+
+### 1. 查询所有集合基础信息
 
 ```bash
-curl -X POST "http://localhost:17170/api/Collections" \
+curl -X POST "http://localhost:17170/api/CollectionListBasic" \
   -H "Content-Type: application/json" \
   -d "{}"
 ```
 
-### 新建文件夹
+### 2. 按集合查询文件夹基础信息
+
+```bash
+curl -X POST "http://localhost:17170/api/CollectionFoldersBasic" \
+  -H "Content-Type: application/json" \
+  -d "{\"collection_id\":1}"
+```
+
+### 3. 按文件夹查询接口基础信息
+
+```bash
+curl -X POST "http://localhost:17170/api/FolderApisBasic" \
+  -H "Content-Type: application/json" \
+  -d "{\"folder_id\":12}"
+```
+
+### 4. 按多个接口 ID 查询接口详情
+
+```bash
+curl -X POST "http://localhost:17170/api/ApisDetailByIds" \
+  -H "Content-Type: application/json" \
+  -d "{\"ids\":[101,102,103]}"
+```
+
+### 5. 新建文件夹
 
 ```bash
 curl -X POST "http://localhost:17170/api/CreateDir" \
@@ -338,7 +533,7 @@ curl -X POST "http://localhost:17170/api/CreateDir" \
   -d "{\"name\":\"用户中心\",\"collection_id\":1}"
 ```
 
-### 创建接口
+### 6. 创建接口
 
 ```bash
 curl -X POST "http://localhost:17170/api/CreateApi" \
@@ -346,7 +541,7 @@ curl -X POST "http://localhost:17170/api/CreateApi" \
   -d "{\"folder_id\":12,\"collection_id\":1,\"name\":\"用户登录\",\"method\":\"POST\",\"url\":\"$Url$/v1/login\",\"protocol\":\"https\"}"
 ```
 
-### 批量导入
+### 7. 批量导入
 
 ```bash
 curl -X POST "http://localhost:17170/api/ApiBatchImport" \
