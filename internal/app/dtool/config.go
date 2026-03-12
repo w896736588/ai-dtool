@@ -258,7 +258,6 @@ func initOther() {
 	p_common.TJasClient.Load()
 	variable.VariableClient = variable.NewVariableClient()
 	component.Crawl4AIClient = crawl4ai.NewService(component.EnvClient, component.GsLog)
-	component.Crawl4AIClient.EnsureReadyAsync()
 }
 
 func InitComponent() {

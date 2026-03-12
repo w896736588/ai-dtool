@@ -23,6 +23,7 @@ func InfoCrawlCrawl4AIStatus(c *gin.Context) {
 		gsgin.GinResponseError(c, `Crawl4AI 服务未初始化`, nil)
 		return
 	}
+	_ = component.Crawl4AIClient.EnsureReady()
 	gsgin.GinResponseSuccess(c, ``, component.Crawl4AIClient.Status())
 }
 
@@ -99,7 +100,7 @@ func InfoCrawlTaskRun(c *gin.Context) {
 			gsgin.GinResponseError(c, cast.ToString(crawlStatus[`error_message`]), crawlStatus)
 			return
 		}
-		component.Crawl4AIClient.EnsureReadyAsync()
+		_ = component.Crawl4AIClient.EnsureReady()
 		gsgin.GinResponseError(c, `Crawl4AI 正在初始化，请稍后重试`, component.Crawl4AIClient.Status())
 		return
 	}

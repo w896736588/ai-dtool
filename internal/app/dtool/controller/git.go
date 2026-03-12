@@ -588,14 +588,18 @@ func queryCurrentBranchInfo(sshClient *gsssh.SshTerminal, codePath string, timeo
 	const branchSep = `__DT_BRANCH_SEP__`
 	combinedCmd := p_shell.NewCommand()
 	combinedCmd.Cd(codePath)
+	combinedCmd.Echo(`__DT_LOCAL_BRANCH_BEGIN__`)
 	combinedCmd.GitShowBranch()
-	combinedCmd.SetCommand(`echo ` + branchSep)
+	combinedCmd.Echo(`__DT_LOCAL_BRANCH_END__`)
+	combinedCmd.Echo(`__DT_REMOTE_BRANCH_BEGIN__`)
 	combinedCmd.GitShowOriginBranch()
+	combinedCmd.Echo(`__DT_REMOTE_BRANCH_END__`)
 
 	combinedOutput, err := sshClient.RunCommandWait(combinedCmd.GetCommand().ToStr(), timeout)
 	if err != nil {
 		return nil, err
 	}
+	return parseCurrentBranchInfoFromCombinedOutput(combinedOutput), nil
 
 	lines := strings.Split(combinedOutput, "\n")
 	gstool.FmtPrintlnLogTime(`合并查询结果：%s`, gstool.JsonEncode(lines))
@@ -647,6 +651,17 @@ func queryCurrentBranchInfo(sshClient *gsssh.SshTerminal, codePath string, timeo
 		RemoteBranch: remoteBranch,
 		RawOutput:    buildCurrentBranchDisplayOutput(localBranch, remoteBranch),
 	}, nil
+}
+
+// parseCurrentBranchInfoFromCombinedOutput 解析组内批量查询使用的合并命令输出。
+// 这里统一复用带 begin/end 标记的分支解析逻辑，避免依赖脆弱的固定行号。
+func parseCurrentBranchInfoFromCombinedOutput(output string) *GitCurrentBranchInfo {
+	localBranch, remoteBranch := parseBranchFromCurrentBranchOutput(output)
+	return &GitCurrentBranchInfo{
+		LocalBranch:  localBranch,
+		RemoteBranch: remoteBranch,
+		RawOutput:    buildCurrentBranchDisplayOutput(localBranch, remoteBranch),
+	}
 }
 
 func runRemoteBranchQuery(sshClient *gsssh.SshTerminal, codePath string, timeout time.Duration) (string, error) {
