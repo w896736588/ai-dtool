@@ -46,7 +46,7 @@
               </div>
             </div>
           </div>
-          <p class="hint">输入 <kbd>/</kbd> 或直接输入命令（如 <kbd>g</kbd>），<kbd>Tab</kbd> 补全，<kbd>Space</kbd> 继续</p>
+          <p class="hint">输入 <kbd>/</kbd> 或直接输入命令（如 <kbd>git</kbd>），<kbd>Tab</kbd> 补全，<kbd>Space</kbd> 继续</p>
         </div>
         <div
           v-for="(msg, index) in messages"
@@ -798,7 +798,7 @@ export default {
     // 输入框提示
     const inputPlaceholder = computed(() => {
       if (commandStack.value.length === 0) {
-        return '输入 / 或直接输入命令（如 g），Tab 补全，Space 继续...'
+        return '输入 / 或直接输入命令（如 git），Tab 补全，Space 继续...'
       }
       const lastCmd = commandStack.value[commandStack.value.length - 1]
       const actionCmd = commandStack.value.find(item => item.action)
