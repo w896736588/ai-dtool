@@ -17,3 +17,8 @@ web/dist/
 web/node_modules/
 .tmp-taskfile.yml
 .worktrees/
+.gitnexus
+./AGENTS.md
+CLAUDE.md
+/.claude
+AGENTS.md
