@@ -35,7 +35,7 @@
         <div class="page-toolbar">
           <div class="toolbar-title-wrap">
             <div class="page-title">任务配置</div>
-            <div class="page-desc">配置 AI 模型与提示词，提示词中请附带待采集网址，运行时实时查看输出</div>
+            <div class="page-desc">配置 AI 模型与提示词，并在提示词中附带待采集的网址</div>
             <div
               v-if="crawl4aiStatus.status !== 'ready'"
               class="crawl4ai-status-banner"
@@ -48,6 +48,10 @@
             </div>
           </div>
           <div class="toolbar-actions">
+            <el-button plain @click="openCrawl4AIInstallDialog(false)">
+              <el-icon><Tools /></el-icon>
+              安装指引
+            </el-button>
             <el-button :disabled="!currentTaskId" @click="openHistoryDrawer">
               <el-icon><Clock /></el-icon>
               执行历史
@@ -169,14 +173,84 @@
         </div>
       </div>
     </el-dialog>
+
+    <el-dialog
+      v-model="crawl4aiInstallDialogVisible"
+      :title="crawl4aiInstallGuide.title || 'Crawl4AI Docker 安装指引'"
+      width="820px"
+      class="crawl4ai-install-dialog"
+    >
+      <div class="crawl4ai-install-dialog-body">
+        <div class="crawl4ai-install-tip">
+          {{ crawl4aiInstallGuide.tip || '建议通过 Docker 启动 Crawl4AI 服务，Windows 建议使用 WSL。' }}
+        </div>
+
+        <div class="crawl4ai-install-tip highlight">
+          {{ crawl4aiInstallGuide.use_wsl_tip || 'Windows 环境建议使用 WSL 运行 Docker 命令。' }}
+        </div>
+
+        <div class="crawl4ai-install-section">
+          <div class="detail-title">安装步骤</div>
+          <div class="crawl4ai-install-step">1. 先确保本机已安装 Docker，Windows 建议在 WSL 中执行下面命令。</div>
+          <div class="crawl4ai-install-step">2. 先执行镜像拉取命令。</div>
+          <div class="crawl4ai-install-step">3. 再执行容器启动命令，服务会监听 `11235` 端口并设置开机自启。</div>
+          <div class="crawl4ai-install-step">4. 启动后访问下方地址确认服务正常，再刷新当前页面。</div>
+        </div>
+
+        <div class="crawl4ai-install-section">
+          <div class="crawl4ai-install-command-head">
+            <div class="detail-title">1. 拉取镜像</div>
+            <el-button size="small" type="primary" plain @click="copyText(crawl4aiInstallGuide.pull_command, '拉取命令已复制')">
+              复制命令
+            </el-button>
+          </div>
+          <pre class="detail-pre crawl4ai-install-command">{{ crawl4aiInstallGuide.pull_command }}</pre>
+        </div>
+
+        <div class="crawl4ai-install-section">
+          <div class="crawl4ai-install-command-head">
+            <div class="detail-title">2. 启动并设置开机自启</div>
+            <el-button size="small" type="primary" plain @click="copyText(crawl4aiInstallGuide.run_command, '启动命令已复制')">
+              复制命令
+            </el-button>
+          </div>
+          <pre class="detail-pre crawl4ai-install-command">{{ crawl4aiInstallGuide.run_command }}</pre>
+        </div>
+
+        <div class="crawl4ai-install-section">
+          <div class="crawl4ai-install-command-head">
+            <div class="detail-title">3. 访问服务</div>
+            <el-button size="small" type="success" plain @click="copyText(crawl4aiInstallGuide.docs_url, '访问地址已复制')">
+              复制地址
+            </el-button>
+          </div>
+          <pre class="detail-pre crawl4ai-install-command">{{ crawl4aiInstallGuide.docs_url }}</pre>
+          <el-link :href="crawl4aiInstallGuide.docs_url" target="_blank" type="primary">
+            打开 Playground
+          </el-link>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { Check, Clock, Delete, Plus, Refresh, VideoPlay } from '@element-plus/icons-vue'
+import { Check, Clock, Delete, Plus, Refresh, Tools, VideoPlay } from '@element-plus/icons-vue'
 import AiSetApi from '@/utils/base/ai_set'
 import InfoCrawlApi from '@/utils/base/info_crawl'
 import sseDistribute from '@/utils/base/sse_distribute'
+
+// defaultInstallGuide 返回默认 Docker 安装指引。
+function defaultInstallGuide() {
+  return {
+    title: 'Crawl4AI Docker 安装指引',
+    tip: '建议通过 Docker 启动 Crawl4AI 服务，Windows 建议使用 WSL。',
+    use_wsl_tip: 'Windows 环境建议使用 WSL 运行 Docker 命令。',
+    pull_command: 'docker pull unclecode/crawl4ai:latest',
+    run_command: 'docker run -d --name crawl4ai -p 11235:11235 --shm-size=2g --restart always unclecode/crawl4ai:latest',
+    docs_url: 'http://localhost:11235/playground/',
+  }
+}
 
 export default {
   name: 'InfoCrawl',
@@ -186,6 +260,7 @@ export default {
     Delete,
     Plus,
     Refresh,
+    Tools,
     VideoPlay,
   },
   data() {
@@ -215,11 +290,16 @@ export default {
       crawl4aiStatusTimer: null,
       crawl4aiStatus: {
         status: 'idle',
-        status_text: '等待初始化',
+        status_text: '等待连接 Crawl4AI 服务',
         error_message: '',
         is_ready: false,
         is_installing: false,
+        need_install: false,
+        install_guide: {},
       },
+      crawl4aiInstallDialogVisible: false,
+      crawl4aiInstallDialogAutoOpened: false,
+      crawl4aiInstallGuide: defaultInstallGuide(),
       runLiveLog: '',
       runLiveStatus: '未开始执行',
       runSseDistributeId: '',
@@ -234,12 +314,19 @@ export default {
     isCrawl4AIReady() {
       return !!this.crawl4aiStatus.is_ready
     },
-    // crawl4aiBannerText 返回 Crawl4AI 顶部提示文案。
+    // crawl4aiNeedInstall 判断是否需要提示用户先部署服务。
+    crawl4aiNeedInstall() {
+      return !!this.crawl4aiStatus.need_install
+    },
+    // crawl4aiBannerText 返回顶部提示文案。
     crawl4aiBannerText() {
-      if (this.crawl4aiStatus.status === 'failed') {
-        return this.crawl4aiStatus.error_message || 'Crawl4AI 初始化失败'
+      if (this.crawl4aiNeedInstall) {
+        return this.crawl4aiStatus.error_message || '未检测到 Crawl4AI 服务，请先按 Docker 指引完成启动后重试'
       }
-      return this.crawl4aiStatus.status_text || 'Crawl4AI 正在初始化'
+      if (this.crawl4aiStatus.status === 'failed') {
+        return this.crawl4aiStatus.error_message || 'Crawl4AI 服务连接失败'
+      }
+      return this.crawl4aiStatus.status_text || '正在检查 Crawl4AI 服务'
     },
   },
   mounted() {
@@ -254,24 +341,52 @@ export default {
     this.unregisterRunSse()
   },
   methods: {
+    // normalizeCrawl4AIInstallGuide 规范化后端返回的安装指引。
+    normalizeCrawl4AIInstallGuide(installGuide) {
+      return {
+        ...defaultInstallGuide(),
+        ...(installGuide || {}),
+      }
+    },
+    // applyCrawl4AIStatus 应用 Crawl4AI 状态并处理弹窗。
+    applyCrawl4AIStatus(statusData) {
+      this.crawl4aiInstallGuide = this.normalizeCrawl4AIInstallGuide(statusData?.install_guide)
+      this.crawl4aiStatus = {
+        status: statusData?.status || 'idle',
+        status_text: statusData?.status_text || '等待连接 Crawl4AI 服务',
+        error_message: statusData?.error_message || '',
+        is_ready: !!statusData?.is_ready,
+        is_installing: !!statusData?.is_installing,
+        need_install: !!statusData?.need_install,
+        install_guide: statusData?.install_guide || {},
+      }
+      if (!this.runSubmitting && !this.runWatching && this.crawl4aiStatus.is_installing) {
+        this.runLiveStatus = this.crawl4aiStatus.status_text || '正在检查 Crawl4AI 服务'
+        this.runLiveLog = this.crawl4aiStatus.error_message || '正在检查 Crawl4AI 服务，请稍候...'
+      }
+      if (this.crawl4aiNeedInstall && !this.crawl4aiInstallDialogAutoOpened) {
+        this.openCrawl4AIInstallDialog(true)
+        this.crawl4aiInstallDialogAutoOpened = true
+      }
+      if (!this.crawl4aiNeedInstall) {
+        this.crawl4aiInstallDialogAutoOpened = false
+      }
+    },
     // fetchCrawl4AIStatus 查询 Crawl4AI 当前状态。
     fetchCrawl4AIStatus() {
       InfoCrawlApi.InfoCrawlCrawl4AIStatus((response) => {
         if (!(response && response.ErrCode === 0 && response.Data)) {
           return
         }
-        this.crawl4aiStatus = {
-          status: response.Data.status || 'idle',
-          status_text: response.Data.status_text || '等待初始化',
-          error_message: response.Data.error_message || '',
-          is_ready: !!response.Data.is_ready,
-          is_installing: !!response.Data.is_installing,
-        }
-        if (!this.runSubmitting && !this.runWatching && this.crawl4aiStatus.is_installing) {
-          this.runLiveStatus = this.crawl4aiStatus.status_text || 'Crawl4AI 安装中'
-          this.runLiveLog = this.crawl4aiStatus.error_message || 'Crawl4AI 安装中，请稍候...'
-        }
+        this.applyCrawl4AIStatus(response.Data)
       })
+    },
+    // openCrawl4AIInstallDialog 打开安装指引弹窗。
+    openCrawl4AIInstallDialog(isAutoOpen) {
+      this.crawl4aiInstallDialogVisible = true
+      if (!isAutoOpen) {
+        this.crawl4aiInstallDialogAutoOpened = true
+      }
     },
     // startCrawl4AIStatusWatch 轮询 Crawl4AI 状态。
     startCrawl4AIStatusWatch() {
@@ -410,7 +525,7 @@ export default {
         })
       }).catch(() => {})
     },
-    // openHistoryDrawer 打开历史抽屉。
+    // openHistoryDrawer 打开执行历史抽屉。
     openHistoryDrawer() {
       if (!this.currentTaskId) {
         return
@@ -451,8 +566,11 @@ export default {
       }
       if (!this.isCrawl4AIReady) {
         this.fetchCrawl4AIStatus()
-        this.runLiveStatus = this.crawl4aiStatus.status_text || 'Crawl4AI 正在初始化'
-        this.runLiveLog = this.crawl4aiStatus.error_message || 'Crawl4AI 安装中，请稍候...'
+        this.runLiveStatus = this.crawl4aiStatus.status_text || '正在检查 Crawl4AI 服务'
+        this.runLiveLog = this.crawl4aiStatus.error_message || 'Crawl4AI 尚未就绪，请稍后重试'
+        if (this.crawl4aiNeedInstall) {
+          this.openCrawl4AIInstallDialog(false)
+        }
         this.$helperNotify.error(this.crawl4aiBannerText)
         return
       }
@@ -479,6 +597,9 @@ export default {
             this.runLiveStatus = response.Data.status_text
           } else {
             this.runLiveStatus = '任务提交失败'
+          }
+          if (response?.Data?.need_install) {
+            this.openCrawl4AIInstallDialog(false)
           }
           this.unregisterRunSse()
           return
@@ -575,12 +696,40 @@ export default {
     clearRunLiveLog() {
       this.runLiveLog = ''
       if (this.crawl4aiStatus.is_installing) {
-        this.runLiveStatus = this.crawl4aiStatus.status_text || 'Crawl4AI 安装中'
-        this.runLiveLog = this.crawl4aiStatus.error_message || 'Crawl4AI 安装中，请稍候...'
+        this.runLiveStatus = this.crawl4aiStatus.status_text || '正在检查 Crawl4AI 服务'
+        this.runLiveLog = this.crawl4aiStatus.error_message || '正在检查 Crawl4AI 服务，请稍候...'
         return
       }
       if (!this.runSubmitting && !this.runWatching) {
         this.runLiveStatus = this.currentTaskId ? '未开始执行' : '请先创建或选择任务'
+      }
+    },
+    // copyText 复制文本到剪贴板。
+    copyText(text, successMsg) {
+      const val = (text || '').trim()
+      if (!val) {
+        this.$message.error('无可复制内容')
+        return
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(val).then(() => {
+          this.$message.success(successMsg || '复制成功')
+        }).catch(() => {
+          this.$message.error('复制失败，请手动复制')
+        })
+        return
+      }
+      const input = document.createElement('textarea')
+      input.value = val
+      document.body.appendChild(input)
+      input.select()
+      try {
+        document.execCommand('copy')
+        this.$message.success(successMsg || '复制成功')
+      } catch (e) {
+        this.$message.error('复制失败，请手动复制')
+      } finally {
+        document.body.removeChild(input)
       }
     },
   },
@@ -739,7 +888,8 @@ export default {
 .card-head,
 .history-item-head,
 .detail-meta,
-.drawer-toolbar {
+.drawer-toolbar,
+.crawl4ai-install-command-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -776,10 +926,27 @@ export default {
   color: #4b5563;
 }
 
-.run-detail {
+.run-detail,
+.crawl4ai-install-dialog-body,
+.crawl4ai-install-section {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.crawl4ai-install-tip,
+.crawl4ai-install-step {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4b5563;
+}
+
+.crawl4ai-install-tip.highlight {
+  color: #92400e;
+}
+
+.crawl4ai-install-command {
+  min-height: 88px;
 }
 
 @media (max-width: 1200px) {

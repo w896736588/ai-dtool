@@ -418,8 +418,8 @@ export default {
       // 文档drawer
       drawerVisibleMarkdown: false,
       markdownType: 'api',
-      skillInstallZipUrl: 'https://gitee.com/Sxiaobai/skills/raw/master/dtool-api-import-update.zip',
-      skillInstallPrompt: '请安装这个 skills zip： https://gitee.com/Sxiaobai/skills/raw/master/dtool-api-import-update.zip',
+      skillInstallZipUrl: 'https://gitee.com/Sxiaobai/skills/blob/master/dtool-api.zip',
+      skillInstallPrompt: '请安装这个 skills zip： https://gitee.com/Sxiaobai/skills/blob/master/dtool-api.zip',
 
       // 环境相关
       currentEnvironment: 'dev',

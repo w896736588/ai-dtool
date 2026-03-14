@@ -380,6 +380,7 @@ func GitConfigList(c *gin.Context) {
 		gitGroupList[k][`id`] = cast.ToString(v[`id`])
 	}
 	gitList, _ := common.DbMain.Client.QuickQuery(`tbl_git`, `*`, nil).All()
+	gitList = filterGitListByExistingGroups(gitGroupList, gitList)
 	//id转为字符串
 	for k, v := range gitList {
 		gitList[k][`id`] = cast.ToString(v[`id`])
@@ -389,6 +390,31 @@ func GitConfigList(c *gin.Context) {
 		`git_group_list`: gitGroupList,
 		`git_list`:       gitList,
 	})
+}
+
+// filterGitListByExistingGroups 仅保留仍然绑定到有效 Git 分组的仓库配置。
+func filterGitListByExistingGroups(gitGroupList, gitList []map[string]any) []map[string]any {
+	validGroupMap := make(map[string]struct{}, len(gitGroupList))
+	for _, gitGroup := range gitGroupList {
+		groupID := strings.TrimSpace(cast.ToString(gitGroup[`id`]))
+		if groupID == `` {
+			continue
+		}
+		validGroupMap[groupID] = struct{}{}
+	}
+
+	filteredList := make([]map[string]any, 0, len(gitList))
+	for _, gitItem := range gitList {
+		groupID := strings.TrimSpace(cast.ToString(gitItem[`git_group_id`]))
+		if groupID == `` {
+			continue
+		}
+		if _, ok := validGroupMap[groupID]; !ok {
+			continue
+		}
+		filteredList = append(filteredList, gitItem)
+	}
+	return filteredList
 }
 
 func GitGroupBranchList(c *gin.Context) {
@@ -588,14 +614,18 @@ func queryCurrentBranchInfo(sshClient *gsssh.SshTerminal, codePath string, timeo
 	const branchSep = `__DT_BRANCH_SEP__`
 	combinedCmd := p_shell.NewCommand()
 	combinedCmd.Cd(codePath)
+	combinedCmd.Echo(`__DT_LOCAL_BRANCH_BEGIN__`)
 	combinedCmd.GitShowBranch()
-	combinedCmd.SetCommand(`echo ` + branchSep)
+	combinedCmd.Echo(`__DT_LOCAL_BRANCH_END__`)
+	combinedCmd.Echo(`__DT_REMOTE_BRANCH_BEGIN__`)
 	combinedCmd.GitShowOriginBranch()
+	combinedCmd.Echo(`__DT_REMOTE_BRANCH_END__`)
 
 	combinedOutput, err := sshClient.RunCommandWait(combinedCmd.GetCommand().ToStr(), timeout)
 	if err != nil {
 		return nil, err
 	}
+	return parseCurrentBranchInfoFromCombinedOutput(combinedOutput), nil
 
 	lines := strings.Split(combinedOutput, "\n")
 	gstool.FmtPrintlnLogTime(`合并查询结果：%s`, gstool.JsonEncode(lines))
@@ -647,6 +677,17 @@ func queryCurrentBranchInfo(sshClient *gsssh.SshTerminal, codePath string, timeo
 		RemoteBranch: remoteBranch,
 		RawOutput:    buildCurrentBranchDisplayOutput(localBranch, remoteBranch),
 	}, nil
+}
+
+// parseCurrentBranchInfoFromCombinedOutput 解析组内批量查询使用的合并命令输出。
+// 这里统一复用带 begin/end 标记的分支解析逻辑，避免依赖脆弱的固定行号。
+func parseCurrentBranchInfoFromCombinedOutput(output string) *GitCurrentBranchInfo {
+	localBranch, remoteBranch := parseBranchFromCurrentBranchOutput(output)
+	return &GitCurrentBranchInfo{
+		LocalBranch:  localBranch,
+		RemoteBranch: remoteBranch,
+		RawOutput:    buildCurrentBranchDisplayOutput(localBranch, remoteBranch),
+	}
 }
 
 func runRemoteBranchQuery(sshClient *gsssh.SshTerminal, codePath string, timeout time.Duration) (string, error) {
