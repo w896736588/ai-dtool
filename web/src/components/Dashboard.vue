@@ -161,10 +161,20 @@ import group from '@/utils/base/group'
 import store from '@/utils/base/store'
 import sseDistribute from '@/utils/base/sse_distribute'
 import { Throttle_string } from '@/utils/base/throttle_string'
+import * as linkRunSelection from '@/utils/link_run_selection.cjs'
 
 export default {
   name: 'DashboardPage',
   setup() {
+    const {
+      buildLinkAccountOptionsFromEnv,
+      buildLinkEnvOptionsFromConfig,
+      buildLinkRunPayload,
+      getLinkRunSelection,
+      hasConfiguredLinkAccounts,
+      isLinkRunSelectionComplete,
+    } = linkRunSelection
+
     marked.setOptions({
       gfm: true,
       breaks: true
@@ -388,27 +398,6 @@ export default {
       return `idx:${index}`
     }
 
-    // 获取 link run 命令在命令栈中的选择（环境(含配置)/账号）
-    const getLinkRunSelection = (stack) => {
-      const sourceStack = Array.isArray(stack) ? stack : []
-      const actionIndex = sourceStack.findIndex(item => item?.action === 'linkRun')
-      if (actionIndex < 0) {
-        return {
-          configCmd: null,
-          envCmd: null,
-          accountCmd: null
-        }
-      }
-      const tailStack = sourceStack.slice(actionIndex + 1)
-      const envCmd = tailStack.find(item => item?.data?.__linkType === 'env') || null
-      return {
-        // 兼容旧结构：如存在 configCmd 则使用；否则从 envCmd.data.config 反推出配置对象。
-        configCmd: tailStack.find(item => item?.data?.__linkType === 'config') || (envCmd?.data?.config ? { data: envCmd.data.config } : null),
-        envCmd,
-        accountCmd: tailStack.find(item => item?.data?.__linkType === 'account') || null
-      }
-    }
-
     // getGitQuickCreateSelection 获取 git quick-create-branch 选择项（仓库/基线分支/分支类型）
     const getGitQuickCreateSelection = (stack) => {
       const sourceStack = Array.isArray(stack) ? stack : []
@@ -440,7 +429,7 @@ export default {
       }
       if (actionCmd.action === 'linkRun') {
         const selection = getLinkRunSelection(sourceStack)
-        return !!(selection.envCmd && selection.accountCmd)
+        return isLinkRunSelectionComplete(selection)
       }
       // docker quick-restart/quick-stop 需要先选项目，再选服务
       if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop') {
@@ -474,7 +463,7 @@ export default {
         if (!selection.envCmd) {
           return '命令未完成：请选择要执行的环境'
         }
-        if (!selection.accountCmd) {
+        if (hasConfiguredLinkAccounts(selection.envCmd) && !selection.accountCmd) {
           return '命令未完成：请选择账号'
         }
       }
@@ -527,6 +516,11 @@ export default {
       const aPath = normalizeCommandPart(a.path).toLowerCase()
       const bPath = normalizeCommandPart(b.path).toLowerCase()
       return aCmd !== '' && aCmd === bCmd && aPath === bPath
+    }
+
+    const getCommandInputToken = (cmd) => {
+      if (!cmd) return ''
+      return normalizeCommandPart(cmd.__selectedInputToken || cmd.insertText || cmd.command || cmd.name)
     }
 
     const parseTokens = (rawText) => {
@@ -621,44 +615,6 @@ export default {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-    }
-
-    // buildLinkEnvOptionsFromConfig 基于已选链接配置生成“环境”候选（高亮兜底）
-    const buildLinkEnvOptionsFromConfig = (configCmd) => {
-      const linkList = Array.isArray(configCmd?.data?.linkList) ? configCmd.data.linkList : []
-      return linkList.map((item, index) => {
-        const envName = normalizeCommandPart(item?.label) || `环境${index + 1}`
-        return {
-          command: envName,
-          name: envName,
-          dynamicChildren: 'linkAccountList',
-          data: {
-            __linkType: 'env',
-            env: item || {},
-            config: configCmd?.data || {}
-          }
-        }
-      })
-    }
-
-    // buildLinkAccountOptionsFromEnv 基于已选环境生成“账号”候选（高亮兜底）
-    const buildLinkAccountOptionsFromEnv = (envCmd) => {
-      const userListRaw = Array.isArray(envCmd?.data?.env?.userList) ? envCmd.data.env.userList : []
-      const userList = userListRaw.length > 0 ? userListRaw : [{ user_name: '默认账号(空)', password: '' }]
-      return userList.map((item, index) => {
-        const userName = normalizeCommandPart(item?.user_name) || `账号${index + 1}`
-        return {
-          command: userName,
-          name: userName,
-          data: {
-            __linkType: 'account',
-            account: {
-              user_name: normalizeCommandPart(item?.user_name),
-              password: normalizeCommandPart(item?.password)
-            }
-          }
-        }
-      })
     }
 
     // resolveNextTargetOptions 解析“已选目标”后的下一层候选，支持多级目标命令高亮
@@ -807,7 +763,7 @@ export default {
         if (!selection.envCmd) {
           return '请选择要执行的环境...'
         }
-        if (!selection.accountCmd) {
+        if (hasConfiguredLinkAccounts(selection.envCmd) && !selection.accountCmd) {
           return '请选择账号...'
         }
         return '按 Enter 执行命令'
@@ -1778,10 +1734,11 @@ export default {
             list.push({
               command: envName,
               name: envName,
+              insertText: `${configName}/${envName}`,
               aliases: [configName, `${configName}/${envName}`].filter(Boolean),
               desc: `${configName} | ${normalizeCommandPart(envItem?.link) || '未配置链接地址'}`,
               id: `${configItem?.id || 'cfg'}_${envIndex}`,
-              dynamicChildren: 'linkAccountList',
+              dynamicChildren: hasConfiguredLinkAccounts(envItem) ? 'linkAccountList' : undefined,
               data: {
                 __linkType: 'env',
                 env: envItem || {},
@@ -1802,29 +1759,17 @@ export default {
 
     // 加载已选环境下的账号列表
     const loadLinkAccountList = () => {
-      const { configCmd, envCmd } = getLinkRunSelection(commandStack.value)
-      const userListRaw = Array.isArray(envCmd?.data?.env?.userList) ? envCmd.data.env.userList : []
-      const userList = userListRaw.length > 0
-        ? userListRaw
-        : [{ user_name: '默认账号(空)', password: '' }]
-      const list = userList.map((item, index) => {
-        const userName = normalizeCommandPart(item?.user_name) || `账号${index + 1}`
-        return {
-          command: userName,
-          name: userName,
-          desc: userListRaw.length > 0 ? '账号' : '该环境未配置账号，使用空账号执行',
-          id: `${envCmd?.id || 'env'}_${index}`,
-          data: {
-            __linkType: 'account',
-            account: {
-              user_name: normalizeCommandPart(item?.user_name),
-              password: normalizeCommandPart(item?.password)
-            },
-            env: envCmd?.data?.env || {},
-            config: configCmd?.data || {}
-          }
+      const { envCmd } = getLinkRunSelection(commandStack.value)
+      const list = buildLinkAccountOptionsFromEnv(envCmd).map((item, index) => ({
+        ...item,
+        desc: '账号',
+        id: `${envCmd?.id || 'env'}_${index}`,
+        data: {
+          ...(item.data || {}),
+          env: envCmd?.data?.env || {},
+          config: envCmd?.data?.config || {}
         }
-      })
+      }))
       dynamicDataCache.value['linkAccountList'] = list
       currentChildren.value = list
       isLoadingDynamic.value = false
@@ -2186,7 +2131,7 @@ export default {
       // 重新构建输入文本
       const tokenInfo = parseTokens(inputText.value)
       const prefix = tokenInfo.useSlash ? '/' : ''
-      const commandText = commandStack.value.map(c => c.command).join(' ')
+      const commandText = commandStack.value.map(getCommandInputToken).join(' ')
       if (commandText.length > 0) {
         inputText.value = prefix + commandText + ' '
       } else {
@@ -2219,14 +2164,18 @@ export default {
       const stackLast = commandStack.value.length > 0
         ? commandStack.value[commandStack.value.length - 1]
         : null
+      const selectedCmd = {
+        ...cmd,
+        __selectedInputToken: normalizeCommandPart(cmd.insertText || cmd.command || cmd.name)
+      }
       if (!isSameCommandItem(stackLast, cmd)) {
-        commandStack.value.push(cmd)
+        commandStack.value.push(selectedCmd)
       }
       
       // 更新输入文本
       const tokenInfo = parseTokens(inputText.value)
       const prefix = tokenInfo.useSlash ? '/' : ''
-      inputText.value = prefix + commandStack.value.map(c => c.command || c.name).join(' ') + ' '
+      inputText.value = prefix + commandStack.value.map(getCommandInputToken).join(' ') + ' '
       // 清空上一步残留输入，避免在“选择目标步骤”被误判为已输入业务参数。
       currentInputValue.value = ''
       
@@ -3195,25 +3144,12 @@ export default {
     // 执行 link run：根据“环境(含配置) -> 账号”选择启动自定义链接
     const executeLinkAction = (stack) => {
       const selection = getLinkRunSelection(stack)
-      if (!selection.envCmd || !selection.accountCmd) {
-        appendOutputResult('错误：请完整选择环境和账号\n')
+      if (!isLinkRunSelectionComplete(selection)) {
+        appendOutputResult(`${getActionIncompleteMessage({ action: 'linkRun' }, stack, '')}\n`)
         finishExecution()
         return
       }
-
-      const configData = (selection.configCmd?.data || selection.envCmd?.data?.config || {})
-      const envData = selection.envCmd.data?.env || {}
-      const accountData = selection.accountCmd.data?.account || {}
-
-      const payload = {
-        id: configData.id,
-        label: normalizeCommandPart(envData.label),
-        user_name: normalizeCommandPart(accountData.user_name),
-        password: normalizeCommandPart(accountData.password),
-        open_num: normalizeCommandPart(configData.open_num),
-        open_type: normalizeCommandPart(configData.open_type),
-        sse_distribute_id: sseDistributeId.value
-      }
+      const payload = buildLinkRunPayload(selection, sseDistributeId.value, normalizeCommandPart)
 
       if (!payload.id || !payload.label) {
         appendOutputResult('错误：链接配置不完整，无法执行\n')
