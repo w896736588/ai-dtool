@@ -4008,9 +4008,13 @@ export default {
   border-bottom: none;
 }
 
-.command-item:hover,
+.command-item:hover {
+  background: #fafcf8;
+}
+
 .command-item.active {
-  background: #f5f8f5;
+  background: #eef6ee;
+  box-shadow: inset 3px 0 0 #7aa874;
 }
 
 .command-icon {
