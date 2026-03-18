@@ -322,32 +322,9 @@ const commandConfig = [
     desc: '终端输出查看',
     module: 'shellout',
     path: '/shellout',
-    children: [
-      {
-        command: 'create',
-        name: '创建',
-        desc: '创建新的终端输出任务',
-        action: 'shellCreate',
-        needInput: true,
-        inputPlaceholder: '请输入: 任务名 | SSH(名称或ID) | 命令'
-      },
-      {
-        command: 'list',
-        name: '任务列表',
-        desc: '查看所有任务',
-        action: 'shellList',
-        needTarget: true,
-        dynamicChildren: 'shellOutList'
-      },
-      {
-        command: 'run',
-        name: '运行任务',
-        desc: '运行指定任务',
-        action: 'shellRun',
-        needTarget: true,
-        dynamicChildren: 'shellOutList'
-      }
-    ]
+    action: 'shell',
+    needTarget: true,
+    dynamicChildren: 'shellOutList'
   },
   {
     command: 'link',

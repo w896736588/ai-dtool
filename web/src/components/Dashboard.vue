@@ -54,18 +54,30 @@
           :class="['message', msg.type]"
         >
           <template v-if="hasCommandLayout(msg)">
-            <div class="message-command">
-              <span class="message-command-text">{{ msg.commandText }}</span>
-              <span
-                v-if="msg.commandStatus"
-                :class="['command-status', `command-status-${msg.commandStatus}`]"
-              >
-                <span v-if="msg.commandStatus === 'running'" class="command-status-spinner"></span>
-                <span v-else-if="msg.commandStatus === 'success'" class="command-status-icon">✓</span>
-                <span v-else-if="msg.commandStatus === 'failed'" class="command-status-icon">✕</span>
-              </span>
+            <div v-if="msg.resultText" class="message-content command-result-content">
+              <div class="message-result-command">{{ msg.commandText }}</div>
+              <div class="message-result-body">
+                <div
+                  v-for="(line, lineIndex) in getResultLines(msg.resultText)"
+                  :key="`${index}_result_${lineIndex}`"
+                  :class="['result-line', `result-line-${getResultLineState(line, lineIndex, getResultLines(msg.resultText))}`]"
+                >
+                  <span class="result-line-text">{{ line }}</span>
+                  <span
+                    v-if="getResultLineState(line, lineIndex, getResultLines(msg.resultText)) === 'running'"
+                    class="result-line-dots"
+                    aria-hidden="true"
+                  >
+                    <span></span><span></span><span></span>
+                  </span>
+                  <span
+                    v-else-if="getResultLineState(line, lineIndex, getResultLines(msg.resultText)) === 'success'"
+                    class="result-line-check"
+                    aria-hidden="true"
+                  >✓</span>
+                </div>
+              </div>
             </div>
-            <div v-if="msg.resultText" class="message-content">{{ msg.resultText }}</div>
             <div v-if="msg.processText" class="process-window">
               <div class="process-title">执行过程 (SSE)</div>
               <div class="process-text markdown-body" v-html="renderProcessMarkdown(msg.processText)"></div>
@@ -153,11 +165,9 @@ import ssh from '@/utils/base/ssh_set'
 import git from '@/utils/base/git'
 import compose from '@/utils/base/compose'
 import supervisor from '@/utils/base/supervisor'
-import shell from '@/utils/base/shell'
 import shellOut from '@/utils/base/shell_out'
 import smartLinkSet from '@/utils/base/smart_link_set'
 import variableSet from '@/utils/base/variable_set'
-import group from '@/utils/base/group'
 import store from '@/utils/base/store'
 import sseDistribute from '@/utils/base/sse_distribute'
 import { Throttle_string } from '@/utils/base/throttle_string'
@@ -187,6 +197,7 @@ export default {
     const inputRef = ref(null)
     const messageList = ref(null)
     const keepDropdownOnBlur = ref(false) // 删除历史候选时，避免 input blur 关闭下拉
+    const suppressDropdownOnNextFocus = ref(false) // 历史命令回填后回焦输入框时，避免重新弹出候选
     
     // 多级命令状态
     const commandStack = ref([]) // 命令栈，存储已选择的命令
@@ -206,7 +217,8 @@ export default {
     const pendingHistoryExecution = ref({
       active: false,
       commandText: '',
-      reparsedTypeMap: {}
+      reparsedTypeMap: {},
+      autoExecute: false
     })
     
     // SSE 相关状态
@@ -544,16 +556,18 @@ export default {
       pendingHistoryExecution.value = {
         active: false,
         commandText: '',
-        reparsedTypeMap: {}
+        reparsedTypeMap: {},
+        autoExecute: false
       }
     }
 
     // 历史命令选中后进入“待自动执行”状态。
-    const markPendingHistoryExecution = (rawCommandText) => {
+    const markPendingHistoryExecution = (rawCommandText, options = {}) => {
       pendingHistoryExecution.value = {
         active: true,
         commandText: normalizeHistoryCommandText(rawCommandText),
-        reparsedTypeMap: {}
+        reparsedTypeMap: {},
+        autoExecute: options.autoExecute === true
       }
     }
 
@@ -570,8 +584,13 @@ export default {
       if (!canExecuteCommand.value) {
         return false
       }
+      const shouldAutoExecute = pendingHistoryExecution.value.autoExecute
       clearPendingHistoryExecution()
-      executeCommand()
+      if (shouldAutoExecute) {
+        executeCommand()
+      } else {
+        showCommands.value = false
+      }
       return true
     }
 
@@ -594,20 +613,27 @@ export default {
       tryAutoExecutePendingHistory()
     }
 
-    // startHistoryCommandExecution 统一处理“选中历史命令后直接执行”流程。
-    const startHistoryCommandExecution = (historyCommand) => {
+    // loadHistoryCommandForExecution 统一加载历史命令，可选择仅进入可执行态或自动执行。
+    const loadHistoryCommandForExecution = (historyCommand, options = {}) => {
       const commandText = normalizeHistoryCommandText(historyCommand)
       if (!commandText) return
-      markPendingHistoryExecution(commandText)
+      const autoExecute = options.autoExecute === true
+      markPendingHistoryExecution(commandText, { autoExecute })
       // 补一个空格，确保 parseInput 将最后一个 token 视为已确认输入。
       inputText.value = /\s$/.test(commandText) ? commandText : `${commandText} `
       parseInput()
-      showCommands.value = isCommandModeByText(inputText.value) && !isCommandReadyToExecute()
+      showCommands.value = false
       activeCommandIndex.value = 0
+      suppressDropdownOnNextFocus.value = true
       nextTick(() => {
         inputRef.value?.focus()
       })
       tryAutoExecutePendingHistory()
+    }
+
+    // startHistoryCommandExecution 统一处理“选中历史命令后直接执行”流程。
+    const startHistoryCommandExecution = (historyCommand) => {
+      loadHistoryCommandForExecution(historyCommand, { autoExecute: true })
     }
 
     const escapeHtml = (value) => {
@@ -717,12 +743,54 @@ export default {
       scrollToBottom()
     }
 
+    const appendOutputSummary = (text) => {
+      if (!currentOutputMessage.value) return
+      const parsed = parseResultTextAndStatus(String(text || ''))
+      if (parsed.status) {
+        updateCurrentCommandStatus(parsed.status)
+      }
+      const summary = sanitizeCommandOutput(parsed.text).trim()
+      if (!summary) return
+      const current = String(currentOutputMessage.value.resultText || '')
+      const nextText = current && !current.endsWith('\n') ? `${current}\n${summary}` : `${current}${summary}`
+      const merged = sanitizeCommandOutput(nextText)
+      currentOutputMessage.value.resultText = merged.length > 50000 ? merged.slice(-50000) : merged
+      scrollToBottom()
+    }
+
     const appendOutputProcess = (text) => {
       if (!currentOutputMessage.value) return
       const current = String(currentOutputMessage.value.processText || '')
       const merged = sanitizeCommandOutput(current + String(text || ''))
       currentOutputMessage.value.processText = merged.length > 50000 ? merged.slice(-50000) : merged
       scrollToBottom()
+    }
+
+    const getResultLines = (text) => {
+      return String(text || '')
+        .split('\n')
+        .map(line => String(line))
+        .filter(line => line.trim() !== '')
+    }
+
+    const getResultLineState = (line, lineIndex = 0, lines = []) => {
+      const text = normalizeCommandPart(line)
+      if (!text) return 'default'
+      const sourceLines = Array.isArray(lines) ? lines : []
+      const hasTerminalLineAfter = sourceLines.slice(lineIndex + 1).some(item => {
+        const nextText = normalizeCommandPart(item)
+        return /完成$/.test(nextText) || /成功$/.test(nextText) || /失败$/.test(nextText) || /已打开/.test(nextText)
+      })
+      if (/^正在/.test(text)) {
+        if (hasTerminalLineAfter) {
+          return 'default'
+        }
+        return 'running'
+      }
+      if (/完成$/.test(text) || /成功$/.test(text) || /已打开/.test(text)) {
+        return 'success'
+      }
+      return 'default'
     }
 
     const sanitizeCommandOutput = (rawText) => {
@@ -1521,6 +1589,7 @@ export default {
           }))
           dynamicDataCache.value['gitGroupList'] = list
           currentChildren.value = list
+          reparseForPendingHistoryExecution('gitGroupList')
           refreshCommandDropdownVisibility()
         }
       })
@@ -1897,6 +1966,10 @@ export default {
 
     // 处理焦点
     const handleFocus = () => {
+      if (suppressDropdownOnNextFocus.value) {
+        suppressDropdownOnNextFocus.value = false
+        return
+      }
       if (isCommandModeByText(inputText.value)) {
         parseInput()
       }
@@ -1966,6 +2039,7 @@ export default {
       // 到达边界继续按方向键时，清空输入框并退出历史浏览状态
       if (direction < 0 && commandHistoryIndex.value <= 0) {
         commandHistoryIndex.value = maxIndex
+        clearPendingHistoryExecution()
         inputText.value = ''
         showCommands.value = false
         commandStack.value = []
@@ -1974,6 +2048,7 @@ export default {
         return
       }
       if (direction > 0 && commandHistoryIndex.value >= maxIndex) {
+        clearPendingHistoryExecution()
         inputText.value = ''
         showCommands.value = false
         commandStack.value = []
@@ -1984,6 +2059,7 @@ export default {
       const nextIndex = Math.max(0, Math.min(maxIndex, commandHistoryIndex.value + direction))
       commandHistoryIndex.value = nextIndex
       if (nextIndex >= maxIndex) {
+        clearPendingHistoryExecution()
         inputText.value = ''
         showCommands.value = false
         commandStack.value = []
@@ -1991,9 +2067,7 @@ export default {
         currentInputValue.value = ''
         return
       }
-      inputText.value = commandHistory.value[nextIndex]
-      parseInput()
-      activeCommandIndex.value = 0
+      loadHistoryCommandForExecution(commandHistory.value[nextIndex])
     }
 
     // 固定一级命令面板点击：快速填充并进入下一层候选
@@ -2349,6 +2423,7 @@ export default {
         type: 'system',
         commandText: `执行命令: ${displayCommandText}`,
         commandStatus: 'running',
+        summaryText: '',
         resultText: '',
         processText: ''
       }
@@ -2442,13 +2517,7 @@ export default {
         case 'gitSetSafe':
           executeGitAction('setSafe', currentStack, options.inputValue || '')
           break
-        case 'shellCreate':
-          executeShellAction('create', currentStack, options.inputValue || '')
-          break
-        case 'shellList':
-          executeShellAction('list', currentStack, options.inputValue || '')
-          break
-        case 'shellRun':
+        case 'shell':
           executeShellAction('run', currentStack, options.inputValue || '')
           break
         case 'linkRun':
@@ -2875,9 +2944,9 @@ export default {
       // 处理 HTTP 响应的回调
       const callback = (response) => {
         if (response.ErrCode !== 0) {
-          appendOutputResult('执行失败\n')
+          appendOutputSummary('执行失败')
         } else {
-          appendOutputResult(`${gitActionDoneLabelMap[action] || '执行成功'}\n`)
+          appendOutputSummary(gitActionDoneLabelMap[action] || '执行成功')
         }
         setTimeout(() => {
           // 给 SSE 尾包一点时间，避免过程/结果末尾被截断
@@ -2953,76 +3022,13 @@ export default {
       }
     }
 
-    // 解析 shell create 输入参数：任务名 | SSH(名称或ID) | 命令
-    const parseShellCreateInput = (inputValue) => {
-      const text = String(inputValue || '')
-      const parts = text.split('|').map(item => String(item || '').trim()).filter(Boolean)
-      if (parts.length < 3) {
-        return {
-          ok: false,
-          err: '参数格式错误，请使用: 任务名 | SSH(名称或ID) | 命令'
-        }
-      }
-      const [name, sshKey, ...commandParts] = parts
-      const command = commandParts.join(' | ').trim()
-      if (!name || !sshKey || !command) {
-        return {
-          ok: false,
-          err: '参数不完整，请使用: 任务名 | SSH(名称或ID) | 命令'
-        }
-      }
-      return {
-        ok: true,
-        data: { name, sshKey, command }
-      }
-    }
-
-    // 解析 SSH 标识：支持 SSH id 或 SSH 名称
-    const resolveShellSshId = (sshKey, callback) => {
-      const target = normalizeCommandPart(sshKey)
-      if (!target) {
-        callback('')
-        return
-      }
-      ssh.SshList((response) => {
-        if (!(response && response.ErrCode === 0 && Array.isArray(response.Data))) {
-          callback('')
-          return
-        }
-        const list = response.Data || []
-        const exactId = list.find(item => String(item.id) === target)
-        if (exactId) {
-          callback(String(exactId.id))
-          return
-        }
-        const lower = target.toLowerCase()
-        const exactName = list.find(item => String(item.name || '').toLowerCase() === lower)
-        if (exactName) {
-          callback(String(exactName.id))
-          return
-        }
-        const fuzzyName = list.find(item => String(item.name || '').toLowerCase().includes(lower))
-        callback(fuzzyName ? String(fuzzyName.id) : '')
-      })
-    }
-
-    // 获取 shell_out 分组 ID（与 ShellOut 页面保持一致：groupType=6）
-    const resolveShellGroupId = (callback) => {
-      group.GroupList({ type: '6' }, (response) => {
-        if (!(response && response.ErrCode === 0 && Array.isArray(response.Data) && response.Data.length > 0)) {
-          callback('')
-          return
-        }
-        callback(String(response.Data[0].id || ''))
-      })
-    }
-
-    // 执行终端输出相关动作：create/list/run
+    // 执行终端输出相关动作：复用“新窗口”按钮行为
     const executeShellAction = (action, stack, inputValue) => {
-      if (action === 'list') {
-        const actionIndex = stack.findIndex(item => item.action === 'shellList')
+      if (action === 'run') {
+        const actionIndex = stack.findIndex(item => item.action === 'shell')
         const targetCmd = actionIndex >= 0 ? stack[actionIndex + 1] : null
         if (!targetCmd || !targetCmd.data) {
+          appendOutputSummary('打开失败')
           appendOutputResult('错误：请先选择要打开的终端输出任务\n')
           finishExecution()
           return
@@ -3033,110 +3039,20 @@ export default {
         const id = normalizeCommandPart(target.id)
         const title = encodeURIComponent(String(target.name || id || 'shellout'))
         if (!id) {
+          appendOutputSummary('打开失败')
           appendOutputResult('错误：任务ID为空，无法打开新窗口\n')
           finishExecution()
           return
         }
+        appendOutputResult(`正在打开终端输出任务 [${target.name || target.id}]...\n`)
         const url = `${window.location.origin}/#/fullpage?group_id=${groupId}&id=${id}&title=${title}`
         window.open(url, '_blank')
-        appendOutputResult('执行成功\n')
+        appendOutputSummary(`已打开终端输出任务 [${target.name || target.id}]`)
         finishExecution()
         return
       }
 
-      if (action === 'run') {
-        const actionIndex = stack.findIndex(item => item.action === 'shellRun')
-        const targetCmd = actionIndex >= 0 ? stack[actionIndex + 1] : null
-        if (!targetCmd || !targetCmd.data) {
-          appendOutputResult('错误：请先选择要运行的终端输出任务\n')
-          finishExecution()
-          return
-        }
-        const target = targetCmd.data
-        const groupId = Number(target.group_id || 0)
-        if (!groupId) {
-          appendOutputResult('错误：任务缺少 group_id，无法启动\n')
-          finishExecution()
-          return
-        }
-
-        const newSseDistributeId = sseDistribute.GetSseDistributeId('dashboard_shell_' + Date.now())
-        const throttleStringFunc = new Throttle_string(50, (text) => {
-          if (currentOutputMessage.value) {
-            appendOutputProcess(text)
-          }
-        })
-        sseDistribute.RegisterReceive(newSseDistributeId, (msg) => {
-          throttleStringFunc.update(msg)
-        })
-
-        appendOutputResult(`正在运行任务 [${target.name || target.id}]...\n\n`)
-        shell.ShellOutSetSeeId({
-          sse_distribute_id: newSseDistributeId,
-          shell_client_id: target.shell_client_id,
-          ssh_id: target.ssh_id,
-          command: target.command,
-          id: target.id,
-          group_id: target.group_id,
-          is_run: 1,
-        }, (response) => {
-          if (response.ErrCode !== 0) {
-            appendOutputResult('执行失败\n')
-          } else {
-            appendOutputResult('执行成功\n')
-          }
-          setTimeout(() => {
-            sseDistribute.UnRegisterReceive(newSseDistributeId)
-            finishExecution()
-          }, 1200)
-        })
-        return
-      }
-
-      if (action === 'create') {
-        const parsed = parseShellCreateInput(inputValue)
-        if (!parsed.ok) {
-          appendOutputResult(`${parsed.err}\n`)
-          appendOutputResult('示例: shell create 发布日志 | 1 | tail -f /var/log/app.log\n')
-          finishExecution()
-          return
-        }
-        const payload = parsed.data
-        resolveShellSshId(payload.sshKey, (sshId) => {
-          if (!sshId) {
-            appendOutputResult(`错误：未找到 SSH "${payload.sshKey}"\n`)
-            finishExecution()
-            return
-          }
-          resolveShellGroupId((groupId) => {
-            if (!groupId) {
-              appendOutputResult('错误：未找到 shell_out 分组，请先在“终端输出”页面创建分组\n')
-              finishExecution()
-              return
-            }
-            // 复用 shellOut 页面创建逻辑的接口
-            shell.ShellOutStart({
-              id: '',
-              command: payload.command,
-              sse_distribute_id: '',
-              shell_client_id: '',
-              ssh_id: sshId,
-              name: payload.name,
-              is_run: 1,
-              group_id: groupId,
-            }, (response) => {
-              if (response.ErrCode !== 0) {
-                appendOutputResult('执行失败\n')
-              } else {
-                appendOutputResult('执行成功\n')
-              }
-              finishExecution()
-            })
-          })
-        })
-        return
-      }
-
+      appendOutputSummary('执行失败')
       appendOutputResult('该终端输出操作暂未实现\n')
       finishExecution()
     }
@@ -3580,6 +3496,8 @@ export default {
       executeCommand,
       getCommandKey,
       getCommandMatchHint,
+      getResultLineState,
+      getResultLines,
       renderProcessMarkdown,
       hasCommandLayout,
     }
@@ -3790,9 +3708,10 @@ export default {
 }
 
 .message-command {
-  font-size: 12px;
-  color: #5a8a5a;
-  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #456545;
+  margin-bottom: 10px;
   padding: 0 4px;
   display: flex;
   align-items: center;
@@ -3856,6 +3775,80 @@ export default {
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.command-result-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message-result-command {
+  font-size: 13px;
+  font-weight: 600;
+  color: #486048;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #d8e3d2;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-result-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.result-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.result-line-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.result-line-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.result-line-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #6f8d70;
+  animation: resultDotsPulse 1.2s infinite ease-in-out;
+}
+
+.result-line-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.result-line-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.result-line-check {
+  color: #4f7d5f;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+@keyframes resultDotsPulse {
+  0%, 80%, 100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .process-window {
