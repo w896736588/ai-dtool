@@ -69,11 +69,11 @@
                     <el-icon v-else-if="data.type === 'folder'"><Folder/></el-icon>
                     <!--                    <el-icon v-else><Document /></el-icon>-->
                   </span>
-                  <span v-if="data.type === 'folder'" :title="node.label + '(' + (data.children ? data.children.length : 0) + ')'" class="node-label" style="font-weight: 500;">{{
-                      node.label + '(' + (data.children ? data.children.length : 0) + ')'
+                  <span v-if="data.type === 'folder'" :title="node.label + '(' + getNodeChildCount(data) + ')'" class="node-label" style="font-weight: 500;">{{
+                      node.label + '(' + getNodeChildCount(data) + ')'
                     }}</span>
-                  <span v-if="data.type === 'collection'" :title="node.label + '(' + (data.children ? data.children.length : 0) + ')'" class="node-label" style="font-weight: 800;">{{
-                      node.label + '(' + (data.children ? data.children.length : 0) + ')'
+                  <span v-if="data.type === 'collection'" :title="node.label + '(' + getNodeChildCount(data) + ')'" class="node-label" style="font-weight: 800;">{{
+                      node.label + '(' + getNodeChildCount(data) + ')'
                     }}</span>
                   <span v-if="data.type === 'api'" :title="node.label" class="node-label">
                     <el-tag v-if="data.method === 'GET'" size="small" type="success">G</el-tag>
@@ -222,7 +222,9 @@
 
         <!-- 接口设置 -->
         <div v-else-if="selectedItem && selectedItem.type === 'api'" class="api-settings">
+          <el-skeleton v-if="apiDetailLoading" :rows="12" animated />
           <api-detail
+              v-else
               ref="refApiDetail"
               :environment="currentEnvironment"
               @execute="executeApi"
@@ -366,10 +368,9 @@
 </template>
 
 <script>
-import {FolderOpened, Folder, Document, ArrowDown, ArrowUp, More, Plus, QuestionFilled, Tools} from '@element-plus/icons-vue'
+import {FolderOpened, Folder, Document, More, Plus, QuestionFilled, Tools} from '@element-plus/icons-vue'
 import CollectionBasicInfo from './api/CollectionBasicInfo'
 import CollectionEnvironment from './api/CollectionEnvironment'
-import CollectionPermission from './api/CollectionPermission'
 import FolderDetail from './api/FolderDetail'
 import ApiDetail from './api/ApiDetail'
 import Markdown from '@/components/Markdown.vue'
@@ -384,15 +385,12 @@ export default {
     FolderOpened,
     Folder,
     Document,
-    ArrowDown,
-    ArrowUp,
     More,
     Plus,
     QuestionFilled,
     Tools,
     CollectionBasicInfo,
     CollectionEnvironment,
-    CollectionPermission,
     FolderDetail,
     ApiDetail,
     Markdown
@@ -414,6 +412,7 @@ export default {
 
       // 选中项
       selectedItem: null,
+      apiDetailLoading: false,
 
       // 文档drawer
       drawerVisibleMarkdown: false,
@@ -572,12 +571,242 @@ export default {
     },
 
 
+    normalizeCollectionNode(collection) {
+      return {
+        ...collection,
+        type: 'collection',
+        children: [],
+        loaded: false,
+        loading: false,
+      }
+    },
+    getNodeChildCount(node) {
+      if (!node) {
+        return 0
+      }
+      if (typeof node.child_count === 'number') {
+        return node.child_count
+      }
+      if (Array.isArray(node.children)) {
+        return node.children.length
+      }
+      return 0
+    },
+    normalizeFolderNode(folder, collectionId) {
+      return {
+        ...folder,
+        collection_id: folder.collection_id || collectionId,
+        type: 'folder',
+        children: [],
+        loaded: false,
+        loading: false,
+      }
+    },
+    normalizeApiNode(api, folderId, collectionId) {
+      return {
+        ...api,
+        folder_id: api.folder_id || folderId,
+        collection_id: api.collection_id || collectionId,
+        type: 'api',
+        children: [],
+        loaded: true,
+        loading: false,
+      }
+    },
+    requestApi(methodName, params) {
+      return new Promise((resolve, reject) => {
+        Api[methodName](params || {}, function (res) {
+          if (res.ErrCode === 0) {
+            resolve(res.Data || {})
+            return
+          }
+          reject(new Error(res.ErrMsg || '请求失败'))
+        })
+      })
+    },
+    findCollectionNode(collectionId) {
+      return this.treeData.find((collection) => parseInt(collection.id) === parseInt(collectionId)) || null
+    },
+    findFolderNode(collectionId, folderId) {
+      const collection = this.findCollectionNode(collectionId)
+      if (!collection || !Array.isArray(collection.children)) {
+        return null
+      }
+      return collection.children.find((folder) => parseInt(folder.id) === parseInt(folderId)) || null
+    },
+    findApiNode(collectionId, folderId, apiId) {
+      const folder = this.findFolderNode(collectionId, folderId)
+      if (!folder || !Array.isArray(folder.children)) {
+        return null
+      }
+      return folder.children.find((api) => parseInt(api.id) === parseInt(apiId)) || null
+    },
+    syncCollectionNodeFields(target, source) {
+      if (!target || !source) {
+        return
+      }
+      Object.assign(target, {
+        name: source.name,
+        create_time: source.create_time,
+        update_time: source.update_time,
+      })
+    },
+    syncFolderNodeFields(target, source) {
+      if (!target || !source) {
+        return
+      }
+      Object.assign(target, {
+        name: source.name,
+        desc: source.desc,
+        collection_id: source.collection_id,
+        create_time: source.create_time,
+        update_time: source.update_time,
+      })
+    },
+    syncApiNodeFields(target, source) {
+      if (!target || !source) {
+        return
+      }
+      Object.assign(target, {
+        name: source.name,
+        method: source.method,
+        url: source.url,
+        desc: source.desc,
+        env_id: source.env_id,
+        weight: source.weight,
+        update_time: source.update_time,
+      })
+    },
+    async loadCollectionFolders(collectionNode, force = false) {
+      if (!collectionNode) {
+        return []
+      }
+      if (collectionNode.loading) {
+        return collectionNode.children || []
+      }
+      if (!force && collectionNode.loaded) {
+        return collectionNode.children || []
+      }
+      collectionNode.loading = true
+      try {
+        const data = await this.requestApi('CollectionFoldersBasic', {
+          collection_id: collectionNode.id,
+        })
+        collectionNode.children = (data.list || []).map((folder) => this.normalizeFolderNode(folder, collectionNode.id))
+        collectionNode.loaded = true
+        this.sortListByIdOrder(collectionNode.children, this.getTreeSortCache().folders[String(collectionNode.id)] || [])
+        return collectionNode.children
+      } finally {
+        collectionNode.loading = false
+      }
+    },
+    async loadFolderApis(folderNode, force = false) {
+      if (!folderNode) {
+        return []
+      }
+      if (folderNode.loading) {
+        return folderNode.children || []
+      }
+      if (!force && folderNode.loaded) {
+        return folderNode.children || []
+      }
+      folderNode.loading = true
+      try {
+        const data = await this.requestApi('FolderApisBasic', {
+          folder_id: folderNode.id,
+        })
+        folderNode.children = (data.list || []).map((api) => this.normalizeApiNode(api, folderNode.id, folderNode.collection_id))
+        folderNode.loaded = true
+        this.applyFolderApiSort(folderNode.collection_id, folderNode.id)
+        return folderNode.children
+      } finally {
+        folderNode.loading = false
+      }
+    },
+    async ensureCollectionFoldersLoaded(collectionNode) {
+      if (!collectionNode) {
+        return []
+      }
+      try {
+        return await this.loadCollectionFolders(collectionNode, false)
+      } catch (error) {
+        this.$message.error(error.message || '加载集合文件夹失败')
+        return []
+      }
+    },
+    async ensureFolderApisLoaded(folderNode) {
+      if (!folderNode) {
+        return []
+      }
+      try {
+        return await this.loadFolderApis(folderNode, false)
+      } catch (error) {
+        this.$message.error(error.message || '加载文件夹接口失败')
+        return []
+      }
+    },
+    async refreshCollectionFolders(collectionId) {
+      const collectionNode = this.findCollectionNode(collectionId)
+      if (!collectionNode) {
+        return []
+      }
+      try {
+        return await this.loadCollectionFolders(collectionNode, true)
+      } catch (error) {
+        this.$message.error(error.message || '刷新集合文件夹失败')
+        return []
+      }
+    },
+    async refreshFolderApis(collectionId, folderId) {
+      const folderNode = this.findFolderNode(collectionId, folderId)
+      if (!folderNode) {
+        return []
+      }
+      try {
+        return await this.loadFolderApis(folderNode, true)
+      } catch (error) {
+        this.$message.error(error.message || '刷新文件夹接口失败')
+        return []
+      }
+    },
+    async loadApiDetail(apiNode) {
+      if (!apiNode || !apiNode.id) {
+        return null
+      }
+      this.apiDetailLoading = true
+      try {
+        const data = await this.requestApi('ApisDetailByIds', {
+          ids: [apiNode.id],
+        })
+        const detail = Array.isArray(data.list) ? data.list[0] : null
+        if (!detail) {
+          throw new Error('未获取到接口详情')
+        }
+        const treeApiNode = this.findApiNode(apiNode.collection_id, apiNode.folder_id, apiNode.id)
+        if (treeApiNode) {
+          this.syncApiNodeFields(treeApiNode, detail)
+        }
+        this.selectedItem = detail
+        this.apiDetailLoading = false
+        await this.$nextTick()
+        if (this.$refs.refApiDetail) {
+          this.$refs.refApiDetail.InitApiDetail(detail)
+        }
+        return detail
+      } catch (error) {
+        this.selectedItem = null
+        this.$message.error(error.message || '加载接口详情失败')
+        return null
+      } finally {
+        this.apiDetailLoading = false
+      }
+    },
     // 加载集合数据
     loadCollectionData() {
       let _that = this
-      Api.Collections({}, function (res) {
+      Api.CollectionListBasic({}, function (res) {
         if (res.ErrCode === 0) {
-          _that.treeData = res.Data.list
+          _that.treeData = (res.Data.list || []).map((collection) => _that.normalizeCollectionNode(collection))
           // 加载集合树后按本地缓存恢复排序
           _that.applyTreeSortCache()
           _that.initTreeExpansion()
@@ -593,31 +822,22 @@ export default {
       // 仅恢复集合/文件夹展开状态，使用稳定的 type:id 作为缓存键
       const expandedStateCache = _that.getExpandedStateCache()
       if (!expandedStateCache.initialized) {
-        _that.expandAllNodes()
+        _that.setExpandedStateCache([])
         return
       }
       _that.$nextTick(() => {
-        _that.applyExpandedStateFromCache(expandedStateCache.expandedKeys)
-      })
-    },
-
-    // 展开所有节点
-    expandAllNodes() {
-      let _that = this
-      _that.$nextTick(() => {
-        _that.$refs.collectionTreeRef.store._getAllNodes().forEach(node => {
-          if (node.level > 0) {
-            node.expand()
-          }
-        })
-        // 首次默认展开后，立即写入缓存，保证刷新可恢复
-        _that.syncExpandedStateCacheFromTree()
+        _that.restoreExpandedNodes(expandedStateCache.expandedKeys)
       })
     },
 
     // 处理节点展开
     handleNodeExpand(data) {
       let _that = this
+      if (data.type === 'collection') {
+        _that.ensureCollectionFoldersLoaded(data)
+      } else if (data.type === 'folder') {
+        _that.ensureFolderApisLoaded(data)
+      }
       _that.updateExpandedCache(data, true)
     },
 
@@ -698,32 +918,37 @@ export default {
       _that.setExpandedStateCache(expandedState)
     },
     // 按缓存恢复展开状态
-    applyExpandedStateFromCache(expandedState) {
+    async restoreExpandedNodes(expandedState) {
       let _that = this
       if (!_that.$refs.collectionTreeRef) {
         return
       }
-      _that.treeData.forEach(collection => {
+      const expandedKeys = Array.isArray(expandedState) ? expandedState : []
+      for (const collection of _that.treeData) {
         const collectionKey = _that.buildExpandStateKey(collection)
-        if (collectionKey && expandedState.includes(collectionKey)) {
+        if (collectionKey && expandedKeys.includes(collectionKey)) {
+          await _that.ensureCollectionFoldersLoaded(collection)
           const collectionNode = _that.$refs.collectionTreeRef.getNode(collection.uniqueid)
           if (collectionNode) {
             collectionNode.expand()
           }
         }
+      }
+      for (const collection of _that.treeData) {
         if (!Array.isArray(collection.children)) {
-          return
+          continue
         }
-        collection.children.forEach(folder => {
+        for (const folder of collection.children) {
           const folderKey = _that.buildExpandStateKey(folder)
-          if (folderKey && expandedState.includes(folderKey)) {
+          if (folderKey && expandedKeys.includes(folderKey)) {
+            await _that.ensureFolderApisLoaded(folder)
             const folderNode = _that.$refs.collectionTreeRef.getNode(folder.uniqueid)
             if (folderNode) {
               folderNode.expand()
             }
           }
-        })
-      })
+        }
+      }
     },
     // 更新展开缓存
     updateExpandedCache(data, isExpanded) {
@@ -932,7 +1157,7 @@ export default {
       }
       _that.keyup = new KeyDebounceDetector(function (key1, key2) {
         if ((key1 === 'Control' && key2 === 's') || (key1 === 's' && key2 === 'Control')) {
-
+          return
         } else if ((key1 === 'Control' && key2 === 'Enter') || (key1 === 'Enter' && key2 === 'Control')) {
           if (_that.selectedItem.type === 'api') {
             _that.$nextTick(() => {
@@ -944,14 +1169,24 @@ export default {
       }, 500)
     },
     // 处理节点点击：单击仅负责选中节点，不再自动展开/收起
-    handleNodeClick(data) {
+    async handleNodeClick(data) {
       let _that = this
-      if (data.type && data.type === 'api') {
-        _that.$nextTick(() => {
-          _that.$refs.refApiDetail.InitApiDetail(data);
-        });
+      if (!data || !data.type) {
+        return
+      }
+      if (data.type === 'collection') {
+        _that.selectedItem = data
+        _that.apiDetailLoading = false
+        return
+      }
+      if (data.type === 'folder') {
+        _that.selectedItem = data
+        _that.apiDetailLoading = false
+        await _that.ensureFolderApisLoaded(data)
+        return
       }
       _that.selectedItem = data
+      await _that.loadApiDetail(data)
     },
     // 处理节点双击：集合和文件夹双击时切换展开/收起
     handleNodeDoubleClick(data) {
@@ -972,35 +1207,14 @@ export default {
         this.updateExpandedCache(data, false)
         return
       }
-      if (data.type === 'folder') {
-        this.fillCollectionApis(data.collection_id, data.id)
+      if (data.type === 'collection') {
+        this.ensureCollectionFoldersLoaded(data)
+      } else if (data.type === 'folder') {
+        this.ensureFolderApisLoaded(data)
       }
       node.expand()
       // 双击展开时主动同步本地展开缓存，避免依赖树事件遗漏
       this.updateExpandedCache(data, true)
-    },
-    fillCollectionApis: function (collection_id, dir_id) {
-      let _that = this
-      Api.Apis({
-        collection_id: collection_id,
-        dir_id: dir_id
-      }, function (res) {
-        if (res.ErrCode !== 0) {
-          _that.$message.error(res.ErrMsg)
-          return
-        }
-        for (let i in _that.treeData) {
-          if (parseInt(collection_id) === parseInt(_that.treeData[i].id)) {
-            for (let j in _that.treeData[i].children) {
-              if (parseInt(dir_id) === parseInt(_that.treeData[i].children[j].id)) {
-                _that.treeData[i].children[j].children = res.Data.list
-              }
-            }
-          }
-        }
-        // 拉取接口后按缓存顺序恢复
-        _that.applyFolderApiSort(collection_id, dir_id)
-      })
     },
     // 处理归档项点击
     handleArchiveItemClick(item) {
@@ -1104,8 +1318,7 @@ export default {
         _that.endDialogSubmit('createCollection')
         if (res.ErrCode === 0) {
           _that.dialogShow.createCollection = false
-          let newCollection = res.Data
-          newCollection.children = []
+          let newCollection = _that.normalizeCollectionNode(res.Data)
           _that.pushUniqueByKey(_that.treeData, newCollection, 'uniqueid')
           _that.syncTreeSortCacheFromTree()
         } else {
@@ -1135,14 +1348,9 @@ export default {
         _that.endDialogSubmit('createDir')
         if (res.ErrCode === 0) {
           _that.dialogShow.createDir = false
-          let newDir = res.Data
-          newDir.children = []
-          for (let i in _that.treeData) {
-            if (parseInt(_that.dialogData.createDir.collection_id) === parseInt(_that.treeData[i].id)) {
-              _that.pushUniqueByKey(_that.treeData[i].children, newDir, 'uniqueid')
-            }
-          }
-          _that.syncTreeSortCacheFromTree()
+          _that.refreshCollectionFolders(_that.dialogData.createDir.collection_id).finally(() => {
+            _that.syncTreeSortCacheFromTree()
+          })
         } else {
           _that.$message.error(res.ErrMsg)
         }
@@ -1170,8 +1378,8 @@ export default {
         if (res.ErrCode === 0) {
           for (let i in _that.treeData) {
             if (parseInt(collection.id) === parseInt(_that.treeData[i].id)) {
-              _that.treeData[i] = collection
-              _that.selectedItem = collection
+              _that.syncCollectionNodeFields(_that.treeData[i], collection)
+              _that.selectedItem = _that.treeData[i]
             }
           }
         } else {
@@ -1211,28 +1419,11 @@ export default {
     handleFolderUpdate(folder) {
       console.log('更新文件夹', folder)
       let _that = this
-      for (let i in _that.treeData) {
-        if (parseInt(folder.collection_id) !== parseInt(_that.treeData[i].id)) {
-          continue
-        }
-        for (let j in _that.treeData[i].children) {
-          if (parseInt(folder.id) !== parseInt(_that.treeData[i].children[j].id)) {
-            continue
-          }
-          // Use Object.assign to ensure reactivity
-          Object.assign(_that.treeData[i].children[j], {
-            name: folder.name,
-            desc: folder.desc
-          })
-          break
-        }
-      }
+      const folderNode = _that.findFolderNode(folder.collection_id, folder.id)
+      _that.syncFolderNodeFields(folderNode, folder)
       // Update the selected item if it's the same folder
       if (_that.selectedItem && parseInt(_that.selectedItem.id) === parseInt(folder.id)) {
-        Object.assign(_that.selectedItem, {
-          name: folder.name,
-          desc: folder.desc
-        })
+        _that.syncFolderNodeFields(_that.selectedItem, folder)
       }
     },
 
@@ -1246,13 +1437,6 @@ export default {
       }).then(() => {
         Api.DeleteDir(folder, function (res) {
           if (res.ErrCode === 0) {
-            for (let i in _that.treeData) {
-              if (parseInt(folder.collection_id) !== parseInt(_that.treeData[i].id)) {
-                continue
-              }
-              _that.treeData[i].children = ArrayUtil.DeleteValueByStringKey(_that.treeData[i].children, 'uniqueid', folder.uniqueid)
-            }
-
             //如果是删除的集合
             if(_that.selectedItem){
               if (_that.selectedItem.type === 'folder') {
@@ -1265,7 +1449,9 @@ export default {
                 }
               }
             }
-            _that.syncTreeSortCacheFromTree()
+            _that.refreshCollectionFolders(folder.collection_id).finally(() => {
+              _that.syncTreeSortCacheFromTree()
+            })
             _that.$message.success('删除成功')
           } else {
             _that.$message.error(res.ErrMsg)
@@ -1295,23 +1481,14 @@ export default {
           return
         }
         let newApi = res.Data
-        for (let i in _that.treeData) {
-          if (parseInt(_that.dialogData.createApi.collection_id) !== parseInt(_that.treeData[i].id)) {
-            continue
+        _that.refreshFolderApis(_that.dialogData.createApi.collection_id, _that.dialogData.createApi.folder_id).finally(async () => {
+          _that.syncTreeSortCacheFromTree()
+          _that.selectedItem = _that.normalizeApiNode(newApi, newApi.folder_id, newApi.collection_id)
+          await _that.$nextTick()
+          if (_that.$refs.collectionTreeRef) {
+            _that.$refs.collectionTreeRef.setCurrentKey(newApi.uniqueid)
           }
-          for (let j in _that.treeData[i].children) {
-            if (parseInt(_that.dialogData.createApi.folder_id) !== parseInt(_that.treeData[i].children[j].id)) {
-              continue
-            }
-            _that.pushUniqueByKey(_that.treeData[i].children[j].children, newApi, 'uniqueid')
-          }
-        }
-        _that.syncTreeSortCacheFromTree()
-        _that.selectedItem = newApi
-        _that.$nextTick(function () {
-          _that.$refs.refApiDetail.InitApiDetail(newApi)
-          _that.$refs.collectionTreeRef.setCurrentKey(newApi.uniqueid)
-          console.log('设置当前选中的菜单为', newApi.uniqueid)
+          await _that.loadApiDetail(_that.selectedItem)
         })
       })
     },
@@ -1343,22 +1520,8 @@ export default {
           return
         }
         let newApi = res.Data
-        for (let i in _that.treeData) {
-          if (parseInt(api.collection_id) !== parseInt(_that.treeData[i].id)) {
-            continue
-          }
-          for (let j in _that.treeData[i].children) {
-            if (parseInt(api.folder_id) !== parseInt(_that.treeData[i].children[j].id)) {
-              continue
-            }
-            for (let k in _that.treeData[i].children[j].children) {
-              if (parseInt(api.id) !== parseInt(_that.treeData[i].children[j].children[k].id)) {
-                continue
-              }
-              _that.treeData[i].children[j].children[k] = newApi
-            }
-          }
-        }
+        const currentApiNode = _that.findApiNode(api.collection_id, api.folder_id, api.id)
+        _that.syncApiNodeFields(currentApiNode, newApi)
         _that.selectedItem = newApi
       })
     },
@@ -1376,23 +1539,12 @@ export default {
         }).then(() => {
           Api.DeleteApi(data, function (res) {
             if (res.ErrCode === 0) {
-              for (let i in _that.treeData) {
-                let collectionInfo = _that.treeData[i]
-                if (parseInt(data.collection_id) !== parseInt(collectionInfo.id)) { //集合
-                  continue
-                }
-                for (let j in collectionInfo.children) { //文件夹
-                  let folderInfo = collectionInfo.children[j]
-                  if (parseInt(data.folder_id) !== parseInt(folderInfo.id)) {
-                    continue
-                  }
-                  _that.treeData[i].children[j].children = ArrayUtil.DeleteValueByStringKey(folderInfo.children, 'uniqueid', data.uniqueid)
-                }
-              }
-              if (_that.selectedItem.uniqueid === data.uniqueid) {//如果当前删除的api是选中的api 那么置空当前选项
+              if (_that.selectedItem && _that.selectedItem.uniqueid === data.uniqueid) {//如果当前删除的api是选中的api 那么置空当前选项
                 _that.selectedItem = {}
               }
-              _that.syncTreeSortCacheFromTree()
+              _that.refreshFolderApis(data.collection_id, data.folder_id).finally(() => {
+                _that.syncTreeSortCacheFromTree()
+              })
               _that.$message.success('删除成功')
             } else {
               _that.$message.error(res.ErrMsg)
@@ -1405,7 +1557,7 @@ export default {
       } else if (command === 'down_api') {
         Api.ApiWeightDown(data, function (res) {
           if (res.ErrCode === 0) {
-            _that.fillCollectionApis(data.collection_id, data.folder_id)
+            _that.refreshFolderApis(data.collection_id, data.folder_id)
             _that.$message.success('移动成功')
           } else {
             _that.$message.error(res.ErrMsg)
@@ -1480,24 +1632,15 @@ export default {
           return
         }
         let newApi = res.Data
-        // 将新接口添加到对应文件夹下
-        for (let i in _that.treeData) {
-          if (parseInt(_that.dialogData.copyApi.collection_id) !== parseInt(_that.treeData[i].id)) {
-            continue
+        _that.refreshFolderApis(_that.dialogData.copyApi.collection_id, _that.dialogData.copyApi.folder_id).finally(async () => {
+          _that.syncTreeSortCacheFromTree()
+          _that.selectedItem = _that.normalizeApiNode(newApi, newApi.folder_id, newApi.collection_id)
+          await _that.$nextTick()
+          if (_that.$refs.collectionTreeRef) {
+            _that.$refs.collectionTreeRef.setCurrentKey(newApi.uniqueid)
           }
-          for (let j in _that.treeData[i].children) {
-            if (parseInt(_that.dialogData.copyApi.folder_id) !== parseInt(_that.treeData[i].children[j].id)) {
-              continue
-            }
-            _that.pushUniqueByKey(_that.treeData[i].children[j].children, newApi, 'uniqueid')
-          }
-        }
-        _that.syncTreeSortCacheFromTree()
-        _that.selectedItem = newApi
-        _that.$nextTick(() => {
-          _that.$refs.collectionTreeRef.setCurrentKey(newApi.uniqueid)
+          await _that.loadApiDetail(_that.selectedItem)
         })
-        _that.$refs.refApiDetail.InitApiDetail(newApi);
         _that.$message.success('接口复制成功')
       })
     }

@@ -184,7 +184,7 @@
 
     <el-drawer v-model="drawerHistoryShow" direction="rtl" size="60%">
       <div v-if="apiForm.last_result_data">
-        <h5 @click="copyUrl">{{ apiForm.method }} {{ apiForm.last_result_data.url }}</h5>
+        <h5 @click="copyUrl(apiForm.last_result_data.url)">{{ apiForm.method }} {{ apiForm.last_result_data.url }}</h5>
         <div class="response-status">
           <el-button type="primary" :loading="executing" @click="handleExecute">执行</el-button>
           <div style="color:green;font-size:14px;">状态: {{ apiForm.last_result_data.status }}</div>
@@ -445,6 +445,10 @@ export default {
       this.currentEnvName = ''
     },
     copyUrl: function (url) {
+      if (typeof url !== 'string' || url.trim() === '') {
+        this.$message.error('无可复制内容')
+        return
+      }
       let index = Copy.SetCopyContent(url)
       Copy.handleCopy(index)
     },

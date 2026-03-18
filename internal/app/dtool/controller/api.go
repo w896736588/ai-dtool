@@ -57,6 +57,7 @@ func buildCollectionBasicInfo(item map[string]any) map[string]any {
 	return map[string]any{
 		`id`:          item[`id`],
 		`name`:        item[`name`],
+		`child_count`: cast.ToInt(item[`child_count`]),
 		`create_time`: item[`create_time`],
 		`update_time`: item[`update_time`],
 		`type`:        define.ApiTypeCollection,
@@ -70,6 +71,7 @@ func buildFolderBasicInfo(item map[string]any) map[string]any {
 		`id`:            item[`id`],
 		`collection_id`: item[`collection_id`],
 		`name`:          item[`name`],
+		`child_count`:   cast.ToInt(item[`child_count`]),
 		`create_time`:   item[`create_time`],
 		`update_time`:   item[`update_time`],
 		`type`:          define.ApiTypeFolder,
@@ -247,7 +249,16 @@ func ApiCollections(c *gin.Context) {
 
 // ApiCollectionListBasic 查询所有集合基础信息。
 func ApiCollectionListBasic(c *gin.Context) {
-	list, _ := common.DbMain.Client.QueryBySql(`select id,name,create_time,update_time from tbl_api_collection order by id asc`).All()
+	list, _ := common.DbMain.Client.QueryBySql(`
+select c.id,
+       c.name,
+       c.create_time,
+       c.update_time,
+       count(d.id) as child_count
+from tbl_api_collection c
+left join tbl_api_dir d on d.collection_id = c.id
+group by c.id, c.name, c.create_time, c.update_time
+order by c.id asc`).All()
 	result := make([]map[string]any, 0, len(list))
 	for _, item := range list {
 		result = append(result, buildCollectionBasicInfo(item))
@@ -266,7 +277,18 @@ func ApiCollectionFoldersBasic(c *gin.Context) {
 		gsgin.GinResponseError(c, `请选择集合`, nil)
 		return
 	}
-	list, _ := common.DbMain.Client.QueryBySql(`select id,collection_id,name,create_time,update_time from tbl_api_dir where collection_id = ? order by id asc`, collectionId).All()
+	list, _ := common.DbMain.Client.QueryBySql(`
+select d.id,
+       d.collection_id,
+       d.name,
+       d.create_time,
+       d.update_time,
+       count(a.id) as child_count
+from tbl_api_dir d
+left join tbl_api a on a.folder_id = d.id
+where d.collection_id = ?
+group by d.id, d.collection_id, d.name, d.create_time, d.update_time
+order by d.id asc`, collectionId).All()
 	result := make([]map[string]any, 0, len(list))
 	for _, item := range list {
 		result = append(result, buildFolderBasicInfo(item))

@@ -44,10 +44,10 @@
           <el-icon><Memo /></el-icon>
           <span>记忆片段（wait）</span>
         </el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('info_crawl')" index="/InfoCrawl">
+        <!-- <el-menu-item v-if="checkModuleOpen('info_crawl')" index="/InfoCrawl">
           <el-icon><Connection /></el-icon>
           <span>信息抓取</span>
-        </el-menu-item>
+        </el-menu-item> -->
         <el-menu-item v-if="checkModuleOpen('docker')" index="/Docker">
           <el-icon><Box /></el-icon>
           <span>Docker</span>

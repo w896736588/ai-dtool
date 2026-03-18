@@ -86,6 +86,55 @@ func TestBuildApiBasicInfo(t *testing.T) {
 	}
 }
 
+func TestBuildCollectionBasicInfo(t *testing.T) {
+	input := map[string]any{
+		"id":         11,
+		"name":       "用户中心",
+		"child_count": 4,
+		"create_time": 100,
+		"update_time": 200,
+	}
+
+	got := buildCollectionBasicInfo(input)
+	if got["id"] != 11 {
+		t.Fatalf("id = %v, want 11", got["id"])
+	}
+	if got["type"] != "collection" {
+		t.Fatalf("type = %v, want collection", got["type"])
+	}
+	if got["uniqueid"] != "collection11" {
+		t.Fatalf("uniqueid = %v, want collection11", got["uniqueid"])
+	}
+	if got["child_count"] != 4 {
+		t.Fatalf("child_count = %v, want 4", got["child_count"])
+	}
+}
+
+func TestBuildFolderBasicInfo(t *testing.T) {
+	input := map[string]any{
+		"id":            21,
+		"collection_id": 11,
+		"name":          "登录接口",
+		"child_count":   7,
+		"create_time":   300,
+		"update_time":   400,
+	}
+
+	got := buildFolderBasicInfo(input)
+	if got["id"] != 21 {
+		t.Fatalf("id = %v, want 21", got["id"])
+	}
+	if got["type"] != "folder" {
+		t.Fatalf("type = %v, want folder", got["type"])
+	}
+	if got["uniqueid"] != "folder21" {
+		t.Fatalf("uniqueid = %v, want folder21", got["uniqueid"])
+	}
+	if got["child_count"] != 7 {
+		t.Fatalf("child_count = %v, want 7", got["child_count"])
+	}
+}
+
 func TestSortAPIListByIDs(t *testing.T) {
 	list := []map[string]any{
 		{"id": 2, "name": "b"},
