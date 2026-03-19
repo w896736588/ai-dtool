@@ -51,6 +51,8 @@
                 :default-expand-all="false"
                 :expand-on-click-node="false"
                 :highlight-current="true"
+                :lazy="true"
+                :load="loadTreeNode"
                 :props="treeProps"
                 :draggable="true"
                 :allow-drop="allowTreeNodeDrop"
@@ -157,7 +159,34 @@
 
     <!-- 右侧展示面板 -->
     <div class="right-panel">
-      <!-- 顶部信息栏 -->
+      <!-- 工作区 Tab 条 -->
+      <div v-if="openTabs.length > 0" class="workspace-tabs">
+        <el-tabs
+            v-model="activeTabKey"
+            type="card"
+            closable
+            @tab-remove="closeWorkspaceTab"
+            @tab-change="handleWorkspaceTabChange"
+        >
+          <el-tab-pane
+              v-for="tab in openTabs"
+              :key="tab.key"
+              :label="tab.title"
+              :name="tab.key"
+          >
+            <template #label>
+              <span class="workspace-tab-label">
+                <el-icon v-if="tab.type === 'collection'" class="tab-icon"><Files /></el-icon>
+                <el-icon v-else-if="tab.type === 'folder'" class="tab-icon"><Folder /></el-icon>
+                <el-icon v-else class="tab-icon"><Document /></el-icon>
+                <span class="tab-title">{{ tab.title }}</span>
+              </span>
+            </template>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+
+      <!-- 顶部信息栏（仅集合 tab 显示） -->
       <div v-if="selectedItem && selectedItem.type === 'collection'" class="panel-header">
         <div class="header-left">
           <div v-if="selectedItem" class="selected-info">
@@ -187,7 +216,7 @@
       </div>
 
       <!-- 内容区域 -->
-      <div class="panel-content">
+      <div :class="['panel-content', { 'panel-content--flush': selectedItem && selectedItem.type === 'folder' }]">
         <!-- 集合设置 -->
         <div v-if="selectedItem && selectedItem.type === 'collection'" class="collection-settings">
           <el-tabs v-model="collectionActiveTab" type="card">
@@ -401,7 +430,8 @@ export default {
       treeData: [],
       treeProps: {
         children: 'children',
-        label: 'name'
+        label: 'name',
+        isLeaf: 'isLeaf'
       },
       createApiType: 'params',
       defaultExpandedKeys: [],
@@ -410,9 +440,15 @@ export default {
       archiveExpanded: false,
       archivedItems: [],
 
-      // 选中项
+      // 选中项（当前激活 tab 的数据镜像，用于兼容现有详情组件和旧逻辑）
       selectedItem: null,
       apiDetailLoading: false,
+
+      // 工作区 tab 状态
+      openTabs: [],
+      activeTabKey: '',
+      activeCollectionInnerTabMap: {},
+      activeFolderInnerTabMap: {},
 
       // 文档drawer
       drawerVisibleMarkdown: false,
@@ -520,6 +556,270 @@ export default {
   },
   methods: {
 
+    // ==================== 工作区 Tab 方法 ====================
+
+    // 构建稳定的 tab key（collection:1 / folder:2 / api:3）
+    buildWorkspaceTabKey(node) {
+      if (!node || !node.type || !node.id) {
+        return ''
+      }
+      return `${node.type}:${node.id}`
+    },
+
+    // 根据 tab key 获取已打开的 tab
+    getWorkspaceTabByKey(tabKey) {
+      if (!tabKey) {
+        return null
+      }
+      return this.openTabs.find(tab => tab.key === tabKey) || null
+    },
+
+    // 获取当前激活的 tab
+    getActiveWorkspaceTab() {
+      return this.getWorkspaceTabByKey(this.activeTabKey)
+    },
+
+    // 创建新的工作区 tab
+    createWorkspaceTab(node) {
+      if (!node || !node.type) {
+        return null
+      }
+      return {
+        key: this.buildWorkspaceTabKey(node),
+        type: node.type,
+        id: node.id,
+        uniqueid: node.uniqueid,
+        title: node.name || '未命名',
+        data: { ...node },
+        loaded: false,
+        loading: false
+      }
+    },
+
+    // 打开或激活工作区 tab
+    async openWorkspaceTab(node, options = {}) {
+      const { reload = true } = options
+      if (!node || !node.type) {
+        return
+      }
+      const tabKey = this.buildWorkspaceTabKey(node)
+      let tab = this.getWorkspaceTabByKey(tabKey)
+      
+      // 如果 tab 不存在，创建并添加
+      if (!tab) {
+        tab = this.createWorkspaceTab(node)
+        if (!tab) {
+          return
+        }
+        this.openTabs.push(tab)
+      }
+      
+      // 激活 tab
+      await this.activateWorkspaceTab(tabKey, { reload })
+    },
+
+    // 激活指定 tab
+    async activateWorkspaceTab(tabKey, options = {}) {
+      const { reload = false } = options
+      const tab = this.getWorkspaceTabByKey(tabKey)
+      if (!tab) {
+        return
+      }
+      
+      this.activeTabKey = tabKey
+      
+      // 同步 selectedItem
+      this.syncSelectedItemFromActiveTab()
+      
+      // 同步左侧树高亮
+      this.highlightWorkspaceTreeNode(tab)
+      
+      // 如果需要重新加载或 tab 未加载
+      if (reload || !tab.loaded) {
+        await this.reloadWorkspaceTab(tabKey)
+      }
+    },
+
+    // 从当前激活 tab 同步 selectedItem
+    syncSelectedItemFromActiveTab() {
+      const tab = this.getActiveWorkspaceTab()
+      if (!tab) {
+        this.selectedItem = null
+        return
+      }
+      this.selectedItem = { ...tab.data }
+    },
+
+    // 关闭工作区 tab
+    closeWorkspaceTab(tabKey) {
+      const index = this.openTabs.findIndex(tab => tab.key === tabKey)
+      if (index === -1) {
+        return
+      }
+      
+      // 移除 tab
+      this.openTabs.splice(index, 1)
+      
+      // 如果关闭的是当前激活的 tab，切换到相邻 tab
+      if (this.activeTabKey === tabKey) {
+        if (this.openTabs.length > 0) {
+          // 切换到相邻 tab（优先右侧，否则左侧）
+          const newIndex = Math.min(index, this.openTabs.length - 1)
+          const nextTab = this.openTabs[newIndex]
+          this.activateWorkspaceTab(nextTab.key, { reload: false })
+        } else {
+          // 没有 tab 了，清空状态
+          this.activeTabKey = ''
+          this.selectedItem = null
+        }
+      }
+    },
+
+    // 关闭指定文件夹下的所有 tab
+    closeWorkspaceTabsByFolder(folderId) {
+      const tabsToClose = this.openTabs.filter(tab => 
+        tab.type === 'folder' && parseInt(tab.id) === parseInt(folderId) ||
+        tab.type === 'api' && parseInt(tab.data.folder_id) === parseInt(folderId)
+      )
+      tabsToClose.forEach(tab => this.closeWorkspaceTab(tab.key))
+    },
+
+    // 关闭指定集合下的所有 tab
+    closeWorkspaceTabsByCollection(collectionId) {
+      const tabsToClose = this.openTabs.filter(tab =>
+        tab.type === 'collection' && parseInt(tab.id) === parseInt(collectionId) ||
+        tab.type === 'folder' && parseInt(tab.data.collection_id) === parseInt(collectionId) ||
+        tab.type === 'api' && parseInt(tab.data.collection_id) === parseInt(collectionId)
+      )
+      tabsToClose.forEach(tab => this.closeWorkspaceTab(tab.key))
+    },
+
+    // 处理 tab 切换
+    async handleWorkspaceTabChange(tabKey) {
+      const tab = this.getWorkspaceTabByKey(tabKey)
+      if (!tab) {
+        return
+      }
+      
+      // 同步 selectedItem
+      this.syncSelectedItemFromActiveTab()
+      
+      // 同步左侧树高亮
+      this.highlightWorkspaceTreeNode(tab)
+    },
+
+    // 高亮左侧树节点
+    highlightWorkspaceTreeNode(tab) {
+      if (!tab || !this.$refs.collectionTreeRef) {
+        return
+      }
+      this.$refs.collectionTreeRef.setCurrentKey(tab.uniqueid)
+    },
+
+    // 重新加载工作区 tab
+    async reloadWorkspaceTab(tabKey) {
+      const tab = this.getWorkspaceTabByKey(tabKey)
+      if (!tab) {
+        return
+      }
+      
+      if (tab.type === 'collection') {
+        await this.reloadCollectionTab(tab)
+      } else if (tab.type === 'folder') {
+        await this.reloadFolderTab(tab)
+      } else if (tab.type === 'api') {
+        await this.reloadApiTab(tab)
+      }
+    },
+
+    // 重新加载集合 tab
+    async reloadCollectionTab(tab) {
+      if (!tab || tab.loading) {
+        return
+      }
+      tab.loading = true
+      try {
+        // 集合数据已经在树节点中，直接标记为已加载
+        tab.loaded = true
+        this.syncSelectedItemFromActiveTab()
+      } finally {
+        tab.loading = false
+      }
+    },
+
+    // 重新加载文件夹 tab
+    async reloadFolderTab(tab) {
+      if (!tab || tab.loading) {
+        return
+      }
+      tab.loading = true
+      try {
+        // 确保文件夹下的接口已加载
+        const folderNode = this.findFolderNode(tab.data.collection_id, tab.id)
+        if (folderNode) {
+          await this.ensureFolderApisLoaded(folderNode)
+          tab.data = { ...folderNode }
+          this.syncSelectedItemFromActiveTab()
+        }
+        tab.loaded = true
+      } finally {
+        tab.loading = false
+      }
+    },
+
+    // 重新加载接口 tab
+    async reloadApiTab(tab) {
+      if (!tab || tab.loading) {
+        return
+      }
+      tab.loading = true
+      this.apiDetailLoading = true
+      try {
+        const data = await this.requestApi('ApisDetailByIds', {
+          ids: [tab.id],
+        })
+        const detail = Array.isArray(data.list) ? data.list[0] : null
+        if (detail) {
+          tab.data = { ...detail }
+          tab.title = detail.name || tab.title
+          this.syncSelectedItemFromActiveTab()
+          
+          // 更新 ApiDetail 组件
+          await this.$nextTick()
+          if (this.$refs.refApiDetail && this.activeTabKey === tab.key) {
+            this.$refs.refApiDetail.InitApiDetail(detail)
+          }
+        }
+        tab.loaded = true
+      } catch (error) {
+        this.$message.error(error.message || '加载接口详情失败')
+      } finally {
+        tab.loading = false
+        this.apiDetailLoading = false
+      }
+    },
+
+    // 更新或插入 tab 数据
+    upsertWorkspaceTabData(nodeLike) {
+      if (!nodeLike || !nodeLike.type || !nodeLike.id) {
+        return
+      }
+      const tabKey = this.buildWorkspaceTabKey(nodeLike)
+      const tab = this.getWorkspaceTabByKey(tabKey)
+      
+      if (tab) {
+        // 更新已有 tab
+        tab.data = { ...nodeLike }
+        tab.title = nodeLike.name || tab.title
+        // 如果是当前激活的 tab，同步 selectedItem
+        if (this.activeTabKey === tabKey) {
+          this.syncSelectedItemFromActiveTab()
+        }
+      }
+    },
+
+    // ==================== 树节点方法 ====================
+
     // 读取并应用左侧面板宽度缓存
     loadSidebarWidthCache() {
       let _that = this
@@ -576,9 +876,20 @@ export default {
         ...collection,
         type: 'collection',
         children: [],
+        isLeaf: this.resolveTreeNodeLeafState('collection', collection.child_count),
         loaded: false,
         loading: false,
       }
+    },
+    resolveTreeNodeLeafState(type, childCount) {
+      if (type === 'api') {
+        return true
+      }
+      const count = Number(childCount)
+      if (!Number.isNaN(count)) {
+        return count <= 0
+      }
+      return false
     },
     getNodeChildCount(node) {
       if (!node) {
@@ -598,6 +909,7 @@ export default {
         collection_id: folder.collection_id || collectionId,
         type: 'folder',
         children: [],
+        isLeaf: this.resolveTreeNodeLeafState('folder', folder.child_count),
         loaded: false,
         loading: false,
       }
@@ -609,6 +921,7 @@ export default {
         collection_id: api.collection_id || collectionId,
         type: 'api',
         children: [],
+        isLeaf: true,
         loaded: true,
         loading: false,
       }
@@ -640,6 +953,12 @@ export default {
         return null
       }
       return folder.children.find((api) => parseInt(api.id) === parseInt(apiId)) || null
+    },
+    syncTreeNodeChildren(nodeKey, children) {
+      if (!this.$refs.collectionTreeRef || !nodeKey) {
+        return
+      }
+      this.$refs.collectionTreeRef.updateKeyChildren(nodeKey, Array.isArray(children) ? children : [])
     },
     syncCollectionNodeFields(target, source) {
       if (!target || !source) {
@@ -693,8 +1012,11 @@ export default {
           collection_id: collectionNode.id,
         })
         collectionNode.children = (data.list || []).map((folder) => this.normalizeFolderNode(folder, collectionNode.id))
+        collectionNode.child_count = collectionNode.children.length
+        collectionNode.isLeaf = collectionNode.child_count <= 0
         collectionNode.loaded = true
         this.sortListByIdOrder(collectionNode.children, this.getTreeSortCache().folders[String(collectionNode.id)] || [])
+        this.syncTreeNodeChildren(collectionNode.uniqueid, collectionNode.children)
         return collectionNode.children
       } finally {
         collectionNode.loading = false
@@ -716,8 +1038,11 @@ export default {
           folder_id: folderNode.id,
         })
         folderNode.children = (data.list || []).map((api) => this.normalizeApiNode(api, folderNode.id, folderNode.collection_id))
+        folderNode.child_count = folderNode.children.length
+        folderNode.isLeaf = folderNode.child_count <= 0
         folderNode.loaded = true
         this.applyFolderApiSort(folderNode.collection_id, folderNode.id)
+        this.syncTreeNodeChildren(folderNode.uniqueid, folderNode.children)
         return folderNode.children
       } finally {
         folderNode.loading = false
@@ -829,15 +1154,30 @@ export default {
         _that.restoreExpandedNodes(expandedStateCache.expandedKeys)
       })
     },
+    async loadTreeNode(node, resolve) {
+      if (!node || node.level === 0) {
+        resolve(this.treeData)
+        return
+      }
+      const data = node.data
+      if (!data || !data.type) {
+        resolve([])
+        return
+      }
+      if (data.type === 'collection') {
+        resolve(await this.ensureCollectionFoldersLoaded(data))
+        return
+      }
+      if (data.type === 'folder') {
+        resolve(await this.ensureFolderApisLoaded(data))
+        return
+      }
+      resolve([])
+    },
 
     // 处理节点展开
     handleNodeExpand(data) {
       let _that = this
-      if (data.type === 'collection') {
-        _that.ensureCollectionFoldersLoaded(data)
-      } else if (data.type === 'folder') {
-        _that.ensureFolderApisLoaded(data)
-      }
       _that.updateExpandedCache(data, true)
     },
 
@@ -994,7 +1334,7 @@ export default {
         // 展开时添加key
         this.defaultExpandedKeys.push(collection.id)
       }
-      this.$refs.collectionTreeRef.updateKeyChildren(collection.id, collection.children)
+      this.$refs.collectionTreeRef.updateKeyChildren(collection.uniqueid, collection.children)
     },
 
     // 切换归档列表
@@ -1168,25 +1508,15 @@ export default {
         }
       }, 500)
     },
-    // 处理节点点击：单击仅负责选中节点，不再自动展开/收起
+    // 处理节点点击：单击打开或激活工作区 tab
     async handleNodeClick(data) {
       let _that = this
       if (!data || !data.type) {
         return
       }
-      if (data.type === 'collection') {
-        _that.selectedItem = data
-        _that.apiDetailLoading = false
-        return
-      }
-      if (data.type === 'folder') {
-        _that.selectedItem = data
-        _that.apiDetailLoading = false
-        await _that.ensureFolderApisLoaded(data)
-        return
-      }
-      _that.selectedItem = data
-      await _that.loadApiDetail(data)
+      
+      // 打开或激活工作区 tab，重复点击时会重新加载数据
+      await _that.openWorkspaceTab(data, { reload: true })
     },
     // 处理节点双击：集合和文件夹双击时切换展开/收起
     handleNodeDoubleClick(data) {
@@ -1348,8 +1678,13 @@ export default {
         _that.endDialogSubmit('createDir')
         if (res.ErrCode === 0) {
           _that.dialogShow.createDir = false
-          _that.refreshCollectionFolders(_that.dialogData.createDir.collection_id).finally(() => {
+          _that.refreshCollectionFolders(_that.dialogData.createDir.collection_id).then(async (folders) => {
             _that.syncTreeSortCacheFromTree()
+            // 新建文件夹成功后，自动打开该文件夹 tab
+            const newFolder = folders.find(f => f.name === _that.dialogData.createDir.name)
+            if (newFolder) {
+              await _that.openWorkspaceTab(newFolder, { reload: true })
+            }
           })
         } else {
           _that.$message.error(res.ErrMsg)
@@ -1379,7 +1714,8 @@ export default {
           for (let i in _that.treeData) {
             if (parseInt(collection.id) === parseInt(_that.treeData[i].id)) {
               _that.syncCollectionNodeFields(_that.treeData[i], collection)
-              _that.selectedItem = _that.treeData[i]
+              // 更新工作区 tab 数据
+              _that.upsertWorkspaceTabData(_that.treeData[i])
             }
           }
         } else {
@@ -1398,12 +1734,8 @@ export default {
         Api.DeleteCollection(collection, function (res) {
           if (res.ErrCode === 0) {
             _that.treeData = ArrayUtil.DeleteValueByStringKey(_that.treeData, 'uniqueid', collection.uniqueid)
-            //如果是删除的集合
-            if (_that.selectedItem && _that.selectedItem.type === 'collection') {
-              if (_that.selectedItem.id === collection.id) {
-                _that.selectedItem = {}
-              }
-            }
+            // 关闭该集合相关的所有 tab
+            _that.closeWorkspaceTabsByCollection(collection.id)
             _that.syncTreeSortCacheFromTree()
             _that.$message.success('删除成功')
           } else {
@@ -1421,10 +1753,8 @@ export default {
       let _that = this
       const folderNode = _that.findFolderNode(folder.collection_id, folder.id)
       _that.syncFolderNodeFields(folderNode, folder)
-      // Update the selected item if it's the same folder
-      if (_that.selectedItem && parseInt(_that.selectedItem.id) === parseInt(folder.id)) {
-        _that.syncFolderNodeFields(_that.selectedItem, folder)
-      }
+      // 更新工作区 tab 数据
+      _that.upsertWorkspaceTabData(folderNode)
     },
 
     handleFolderDelete: function (folder) {
@@ -1437,18 +1767,8 @@ export default {
       }).then(() => {
         Api.DeleteDir(folder, function (res) {
           if (res.ErrCode === 0) {
-            //如果是删除的集合
-            if(_that.selectedItem){
-              if (_that.selectedItem.type === 'folder') {
-                if (_that.selectedItem.id === folder.id) {
-                  _that.selectedItem = {}
-                }
-              } else if (_that.selectedItem.type === 'api') {
-                if (_that.selectedItem.folder_id === folder.id) {
-                  _that.selectedItem = {}
-                }
-              }
-            }
+            // 关闭该文件夹及其下所有接口的 tab
+            _that.closeWorkspaceTabsByFolder(folder.id)
             _that.refreshCollectionFolders(folder.collection_id).finally(() => {
               _that.syncTreeSortCacheFromTree()
             })
@@ -1481,14 +1801,11 @@ export default {
           return
         }
         let newApi = res.Data
-        _that.refreshFolderApis(_that.dialogData.createApi.collection_id, _that.dialogData.createApi.folder_id).finally(async () => {
+        _that.refreshFolderApis(_that.dialogData.createApi.collection_id, _that.dialogData.createApi.folder_id).then(async (apis) => {
           _that.syncTreeSortCacheFromTree()
-          _that.selectedItem = _that.normalizeApiNode(newApi, newApi.folder_id, newApi.collection_id)
-          await _that.$nextTick()
-          if (_that.$refs.collectionTreeRef) {
-            _that.$refs.collectionTreeRef.setCurrentKey(newApi.uniqueid)
-          }
-          await _that.loadApiDetail(_that.selectedItem)
+          // 新建接口成功后，自动打开新接口 tab
+          const newApiNode = _that.normalizeApiNode(newApi, newApi.folder_id, newApi.collection_id)
+          await _that.openWorkspaceTab(newApiNode, { reload: true })
         })
       })
     },
@@ -1522,7 +1839,8 @@ export default {
         let newApi = res.Data
         const currentApiNode = _that.findApiNode(api.collection_id, api.folder_id, api.id)
         _that.syncApiNodeFields(currentApiNode, newApi)
-        _that.selectedItem = newApi
+        // 更新工作区 tab 数据
+        _that.upsertWorkspaceTabData(newApi)
       })
     },
 
@@ -1539,9 +1857,9 @@ export default {
         }).then(() => {
           Api.DeleteApi(data, function (res) {
             if (res.ErrCode === 0) {
-              if (_that.selectedItem && _that.selectedItem.uniqueid === data.uniqueid) {//如果当前删除的api是选中的api 那么置空当前选项
-                _that.selectedItem = {}
-              }
+              // 关闭该接口的 tab
+              const tabKey = _that.buildWorkspaceTabKey(data)
+              _that.closeWorkspaceTab(tabKey)
               _that.refreshFolderApis(data.collection_id, data.folder_id).finally(() => {
                 _that.syncTreeSortCacheFromTree()
               })
@@ -1632,14 +1950,11 @@ export default {
           return
         }
         let newApi = res.Data
-        _that.refreshFolderApis(_that.dialogData.copyApi.collection_id, _that.dialogData.copyApi.folder_id).finally(async () => {
+        _that.refreshFolderApis(_that.dialogData.copyApi.collection_id, _that.dialogData.copyApi.folder_id).then(async (apis) => {
           _that.syncTreeSortCacheFromTree()
-          _that.selectedItem = _that.normalizeApiNode(newApi, newApi.folder_id, newApi.collection_id)
-          await _that.$nextTick()
-          if (_that.$refs.collectionTreeRef) {
-            _that.$refs.collectionTreeRef.setCurrentKey(newApi.uniqueid)
-          }
-          await _that.loadApiDetail(_that.selectedItem)
+          // 复制接口成功后，自动打开新接口 tab
+          const newApiNode = _that.normalizeApiNode(newApi, newApi.folder_id, newApi.collection_id)
+          await _that.openWorkspaceTab(newApiNode, { reload: true })
         })
         _that.$message.success('接口复制成功')
       })
@@ -1918,6 +2233,67 @@ export default {
   box-shadow: 0 4px 12px rgba(54, 74, 54, 0.05);
 }
 
+/* 工作区 Tab 样式 */
+.workspace-tabs {
+  background: #f7f7f2;
+  border-bottom: 1px solid #ecece4;
+  padding: 0 12px;
+}
+
+.workspace-tabs :deep(.el-tabs__header) {
+  margin: 0;
+  border-bottom: none;
+}
+
+.workspace-tabs :deep(.el-tabs__nav-wrap) {
+  padding: 8px 0 0 0;
+}
+
+.workspace-tabs :deep(.el-tabs__item) {
+  height: 32px;
+  line-height: 32px;
+  padding: 0 12px;
+  border-radius: 6px 6px 0 0;
+  background: #fff;
+  border: 1px solid #e8e8e0;
+  border-bottom: none;
+  margin-right: 4px;
+  color: #5e6b57;
+  font-size: 13px;
+}
+
+.workspace-tabs :deep(.el-tabs__item.is-active) {
+  color: #4f804f;
+  background: #fff;
+  border-bottom: 1px solid #fff;
+}
+
+.workspace-tabs :deep(.el-tabs__item:hover) {
+  color: #4f804f;
+}
+
+.workspace-tabs :deep(.el-tabs__nav-prev),
+.workspace-tabs :deep(.el-tabs__nav-next) {
+  line-height: 40px;
+}
+
+.workspace-tab-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace-tab-label .tab-icon {
+  font-size: 14px;
+}
+
+.workspace-tab-label .tab-title {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
@@ -1976,6 +2352,10 @@ export default {
   padding: 12px 16px;
   overflow-y: auto;
   background: #fff;
+}
+
+.panel-content--flush {
+  padding: 0;
 }
 
 .empty-state {
