@@ -12,7 +12,7 @@
     <el-divider/>
 
     <div class="folder-content">
-      <el-tabs v-model="activeTab">
+      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
         <el-tab-pane label="基本信息" name="basic">
           <folder-basic-info
               :folder="folder"
@@ -64,8 +64,6 @@
 
 <script>
 import FolderBasicInfo from './FolderBasicInfo.vue'
-import ApiList from './ApiList.vue'
-import ExecutionHistory from './ExecutionHistory.vue'
 import FolderEditForm from './FolderEditForm.vue'
 import ApiDocument from "@/components/api/ApiDocument.vue";
 import Api from "@/utils/base/api";
@@ -74,8 +72,6 @@ export default {
   name: 'FolderDetail',
   components: {
     FolderBasicInfo,
-    ApiList,
-    ExecutionHistory,
     FolderEditForm,
     ApiDocument
   },
@@ -87,11 +83,15 @@ export default {
     handleCreateApi: {  // 接收父组件传递的方法
       type: Function,
       required: true
+    },
+    activeTabName: {
+      type: String,
+      default: 'basic'
     }
   },
   data() {
     return {
-      activeTab: 'basic',
+      activeTab: this.activeTabName || 'basic',
       editDialogVisible: false,
       editForm: {}
     }
@@ -102,9 +102,18 @@ export default {
         this.editForm = {...newVal}
       },
       immediate: true
+    },
+    activeTabName: {
+      handler(newVal) {
+        this.activeTab = newVal || 'basic'
+      },
+      immediate: true
     }
   },
   methods: {
+    handleTabChange(tabName) {
+      this.$emit('tab-change', tabName)
+    },
     handleEdit() {
       this.editForm = {...this.folder}
       this.editDialogVisible = true
