@@ -88,7 +88,7 @@
       </div>
 
       <!-- 命令提示下拉框 -->
-      <div v-show="showCommands" class="command-dropdown">
+      <div ref="commandDropdown" v-show="showCommands" class="command-dropdown">
         <div class="command-breadcrumb" v-if="commandBreadcrumb">
           <span class="breadcrumb-text">{{ commandBreadcrumb }}</span>
         </div>
@@ -101,12 +101,15 @@
         <div
           v-for="(cmd, index) in filteredCommands"
           :key="getCommandKey(cmd, index)"
+          :ref="(el) => setCommandItemRef(el, index)"
           :class="['command-item', { active: activeCommandIndex === index }]"
-          @click="selectCommand(cmd)"
-          @mouseenter="activeCommandIndex = index"
         >
           <span class="command-icon">{{ cmd.icon }}</span>
           <span class="command-name">{{ cmd.name }}</span>
+          <span
+            v-if="!cmd.insertOnly && getCommandLevelUsageCount(cmd, filteredCommands) > 0"
+            class="command-usage-count"
+          >{{ getCommandLevelUsageCount(cmd, filteredCommands) }} 次</span>
           <span class="command-desc">
             {{ cmd.desc }}<template v-if="getCommandMatchHint(cmd)"> | 匹配: {{ getCommandMatchHint(cmd) }}</template>
           </span>
@@ -156,7 +159,7 @@
 </template>
 
 <script>
-import { ref, computed, nextTick, onMounted, onUnmounted, onActivated } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, onActivated, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import module from '@/utils/module'
@@ -196,6 +199,8 @@ export default {
     const activeCommandIndex = ref(0)
     const inputRef = ref(null)
     const messageList = ref(null)
+    const commandDropdown = ref(null)
+    const commandItemRefs = ref([])
     const keepDropdownOnBlur = ref(false) // 删除历史候选时，避免 input blur 关闭下拉
     const suppressDropdownOnNextFocus = ref(false) // 历史命令回填后回焦输入框时，避免重新弹出候选
     
@@ -209,8 +214,10 @@ export default {
     const commandHistory = ref([]) // 命令历史记录
     const commandHistoryIndex = ref(0) // 命令历史游标（指向“下一条”位置）
     const commandUsageMap = ref({}) // 命令使用次数统计（key=命令文本，value=次数）
+    const commandLevelUsageMap = ref({})
     const commandHistoryCacheKey = 'dashboard_command_history_v1'
     const commandUsageCacheKey = 'dashboard_command_usage_v1'
+    const commandLevelUsageCacheKey = 'dashboard_command_level_usage_v1'
     const supervisorProcessCacheKeyPrefix = 'dashboard_supervisor_process_cache_v1'
     const supervisorProcessCacheExpireMs = 60 * 60 * 1000
     // 历史命令自动执行状态：选中历史项后，等待动态列表补齐并自动触发执行
@@ -537,6 +544,30 @@ export default {
       return normalizeCommandPart(cmd.__selectedInputToken || cmd.insertText || cmd.command || cmd.name)
     }
 
+    const setCommandItemRef = (el, index) => {
+      if (!Array.isArray(commandItemRefs.value)) {
+        commandItemRefs.value = []
+      }
+      if (el) {
+        commandItemRefs.value[index] = el
+        return
+      }
+      if (index >= 0 && index < commandItemRefs.value.length) {
+        commandItemRefs.value[index] = null
+      }
+    }
+
+    const ensureActiveCommandVisible = () => {
+      if (!showCommands.value) return
+      const dropdownElement = commandDropdown.value
+      if (!dropdownElement) return
+      const activeElement = Array.isArray(commandItemRefs.value)
+        ? commandItemRefs.value[activeCommandIndex.value]
+        : null
+      if (!activeElement || typeof activeElement.scrollIntoView !== 'function') return
+      activeElement.scrollIntoView({ block: 'nearest' })
+    }
+
     const parseTokens = (rawText) => {
       const text = String(rawText || '')
       const leftTrimmed = text.trimStart()
@@ -551,6 +582,50 @@ export default {
     // 统一规范历史命令文本，避免因多空格导致的匹配误差。
     const normalizeHistoryCommandText = (rawText) => {
       return normalizeCommandPart(rawText).replace(/\s+/g, ' ')
+    }
+
+    const getCommandLevelUsageKey = (scopeTokens, token) => {
+      const normalizedScope = Array.isArray(scopeTokens)
+        ? scopeTokens.map(item => normalizeCommandPart(item)).filter(Boolean)
+        : []
+      const normalizedToken = normalizeCommandPart(token)
+      if (!normalizedToken) return ''
+      return [...normalizedScope, normalizedToken].join(' > ').toLowerCase()
+    }
+
+    const getCommandLevelScopeTokens = () => {
+      return commandStack.value
+        .map(item => getCommandInputToken(item))
+        .filter(Boolean)
+    }
+
+    const persistCommandLevelUsageCache = () => {
+      store.setStore(commandLevelUsageCacheKey, JSON.stringify(commandLevelUsageMap.value || {}))
+    }
+
+    const recordCommandLevelUsage = (stack) => {
+      const normalizedStack = Array.isArray(stack) ? stack : []
+      const scopeTokens = []
+      normalizedStack.forEach((item) => {
+        if (!item || item.insertOnly) return
+        const token = getCommandInputToken(item)
+        if (!token) return
+        const usageKey = getCommandLevelUsageKey(scopeTokens, token)
+        if (!usageKey) return
+        commandLevelUsageMap.value[usageKey] = (Number(commandLevelUsageMap.value[usageKey]) || 0) + 1
+        scopeTokens.push(token)
+      })
+      persistCommandLevelUsageCache()
+    }
+
+    const getCommandLevelUsageCount = (cmd, commandList = currentChildren.value) => {
+      if (!cmd || cmd.insertOnly) return 0
+      const token = getCommandInputToken(cmd)
+      if (!token) return 0
+      const scopeTokens = Array.isArray(commandList) ? getCommandLevelScopeTokens() : []
+      const usageKey = getCommandLevelUsageKey(scopeTokens, token)
+      if (!usageKey) return 0
+      return Number(commandLevelUsageMap.value[usageKey]) || 0
     }
 
     // 清理历史命令自动执行状态。
@@ -625,7 +700,7 @@ export default {
       inputText.value = /\s$/.test(commandText) ? commandText : `${commandText} `
       parseInput()
       showCommands.value = false
-      activeCommandIndex.value = 0
+      activeCommandIndex.value = getDefaultActiveCommandIndex()
       suppressDropdownOnNextFocus.value = true
       nextTick(() => {
         inputRef.value?.focus()
@@ -704,6 +779,24 @@ export default {
       return !!(scriptSession.value?.active && scriptSession.value?.stage && scriptSession.value.stage !== 'idle')
     }
 
+    const getDefaultActiveCommandIndex = (commandList = filteredCommands.value) => {
+      const normalizedList = Array.isArray(commandList) ? commandList : []
+      if (normalizedList.length === 0) return 0
+      if (normalizedList.every(item => item && item.insertOnly)) {
+        return Math.max(normalizedList.length - 1, 0)
+      }
+      let maxCount = -1
+      let selectedIndex = 0
+      normalizedList.forEach((item, index) => {
+        const count = getCommandLevelUsageCount(item, normalizedList)
+        if (count > maxCount) {
+          maxCount = count
+          selectedIndex = index
+        }
+      })
+      return maxCount > 0 ? selectedIndex : 0
+    }
+
     const refreshCommandDropdownVisibility = () => {
       if (isScriptSessionMode()) {
         const stage = normalizeCommandPart(scriptSession.value.stage)
@@ -711,11 +804,17 @@ export default {
           stage === 'selecting_script' ||
           stage === 'waiting_option'
         ) && (currentChildren.value.length > 0 || isLoadingDynamic.value)
+        if (showCommands.value) {
+          activeCommandIndex.value = getDefaultActiveCommandIndex()
+        }
         return
       }
       showCommands.value = isCommandModeByText(inputText.value) &&
         (currentChildren.value.length > 0 || isLoadingDynamic.value) &&
         !isCommandReadyToExecute()
+      if (showCommands.value) {
+        activeCommandIndex.value = getDefaultActiveCommandIndex()
+      }
     }
 
     // 更新当前命令状态（running/success/failed）
@@ -906,11 +1005,31 @@ export default {
       return aText.localeCompare(bText, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
     }
 
+    const sortCommandsByLevelUsage = (commandList) => {
+      const normalizedList = Array.isArray(commandList) ? commandList : []
+      if (normalizedList.every(item => item && item.insertOnly)) {
+        return [...normalizedList]
+      }
+      // usage-enriched
+      return normalizedList
+        .map((cmd) => ({
+          cmd,
+          count: getCommandLevelUsageCount(cmd, commandList)
+        }))
+        .sort((a, b) => {
+          if (a.count !== b.count) {
+            return a.count - b.count
+          }
+          return compareCommandByNaturalAsc(a.cmd, b.cmd)
+        })
+        .map(item => item.cmd)
+    }
+
     const filteredCommands = computed(() => {
       if (isScriptSessionMode()) {
         const sourceList = Array.isArray(currentChildren.value) ? currentChildren.value : []
         const searchText = normalizeCommandPart(inputText.value).toLowerCase()
-        const sortedList = [...sourceList].sort(compareCommandByNaturalAsc)
+        const sortedList = sortCommandsByLevelUsage(sourceList)
         if (!searchText) {
           return sortedList
         }
@@ -944,7 +1063,7 @@ export default {
         }
       }
       
-      const sortedCommands = [...commands].sort(compareCommandByNaturalAsc)
+      const sortedCommands = sortCommandsByLevelUsage(commands)
 
       // history 前缀模式：使用“history 后整段输入”做历史命令搜索，支持空格短语筛选。
       if (isHistoryPrefixSearchMode()) {
@@ -1222,7 +1341,7 @@ export default {
     // 解析输入文本，获取当前命令层级
     const parseInput = () => {
       if (isScriptSessionMode()) {
-        activeCommandIndex.value = 0
+        activeCommandIndex.value = getDefaultActiveCommandIndex()
         refreshCommandDropdownVisibility()
         return
       }
@@ -1416,7 +1535,7 @@ export default {
         currentChildren.value = availableCommands.value
       }
       // 动态列表加载中时也展示下拉，避免慢查询时列表框闪退。
-      showCommands.value = (currentChildren.value.length > 0 || isLoadingDynamic.value) && !isCommandReadyToExecute()
+      refreshCommandDropdownVisibility()
     }
 
     // 加载动态子命令
@@ -2028,13 +2147,11 @@ export default {
         }
       }
       if (isScriptSessionMode()) {
-        activeCommandIndex.value = 0
         refreshCommandDropdownVisibility()
         return
       }
       if (isCommandModeByText(inputText.value)) {
         parseInput()
-        activeCommandIndex.value = 0
       } else {
         showCommands.value = false
         commandStack.value = []
@@ -2086,11 +2203,14 @@ export default {
     const loadCommandHistoryCache = () => {
       let historyList = []
       let usageMap = {}
+      let levelUsageMap = {}
       try {
         const historyRaw = store.getStore(commandHistoryCacheKey)
         const usageRaw = store.getStore(commandUsageCacheKey)
+        const levelUsageRaw = store.getStore(commandLevelUsageCacheKey)
         const parsedHistory = historyRaw ? JSON.parse(historyRaw) : []
         const parsedUsage = usageRaw ? JSON.parse(usageRaw) : {}
+        const parsedLevelUsage = levelUsageRaw ? JSON.parse(levelUsageRaw) : {}
         if (Array.isArray(parsedHistory)) {
           historyList = parsedHistory
             .map(item => normalizeCommandPart(item))
@@ -2106,12 +2226,23 @@ export default {
             }
           })
         }
+        if (parsedLevelUsage && typeof parsedLevelUsage === 'object' && !Array.isArray(parsedLevelUsage)) {
+          Object.keys(parsedLevelUsage).forEach((key) => {
+            const normalizedKey = normalizeCommandPart(key).toLowerCase()
+            const count = Number(parsedLevelUsage[key]) || 0
+            if (normalizedKey && count > 0) {
+              levelUsageMap[normalizedKey] = count
+            }
+          })
+        }
       } catch (e) {
         historyList = []
         usageMap = {}
+        levelUsageMap = {}
       }
       commandHistory.value = historyList
       commandUsageMap.value = usageMap
+      commandLevelUsageMap.value = levelUsageMap
       commandHistoryIndex.value = historyList.length
     }
 
@@ -2170,7 +2301,7 @@ export default {
       inputText.value = `/${commandText} `
       parseInput()
       showCommands.value = true
-      activeCommandIndex.value = 0
+      activeCommandIndex.value = getDefaultActiveCommandIndex()
       nextTick(() => {
         inputRef.value?.focus()
       })
@@ -2393,27 +2524,27 @@ export default {
       if (cmd.children && cmd.children.length > 0) {
         // 有子命令，显示子命令列表
         currentChildren.value = cmd.children
-        activeCommandIndex.value = 0
+        activeCommandIndex.value = getDefaultActiveCommandIndex()
         return
       }
       
       if (cmd.dynamicChildren) {
         // 需要加载动态数据
         loadDynamicChildren(cmd.dynamicChildren)
-        activeCommandIndex.value = 0
+        activeCommandIndex.value = getDefaultActiveCommandIndex()
         return
       }
 
       // 支持“当前选择项自身声明了 nextDynamicChildren”的场景（如 git quick-create-branch 选择基线分支后切到分支类型）。
       if (cmd.nextDynamicChildren) {
         loadDynamicChildren(cmd.nextDynamicChildren)
-        activeCommandIndex.value = 0
+        activeCommandIndex.value = getDefaultActiveCommandIndex()
         return
       }
       
       if (cmd.needTarget) {
         // 需要选择目标，保持下拉框打开（等待动态数据加载）
-        activeCommandIndex.value = 0
+        activeCommandIndex.value = getDefaultActiveCommandIndex()
         return
       }
       
@@ -2595,6 +2726,7 @@ export default {
       const currentStack = Array.isArray(options.stackOverride)
         ? [...options.stackOverride]
         : [...commandStack.value]
+      recordCommandLevelUsage(currentStack)
       commandStack.value = []
       currentChildren.value = []
       currentInputValue.value = ''
@@ -3631,6 +3763,20 @@ export default {
       scrollToBottom()
     }
 
+    watch(filteredCommands, (commandList) => {
+      if (!showCommands.value) {
+        return
+      }
+      activeCommandIndex.value = getDefaultActiveCommandIndex(commandList)
+    })
+
+    watch([showCommands, activeCommandIndex, filteredCommands], () => {
+      commandItemRefs.value = []
+      nextTick(() => {
+        ensureActiveCommandVisible()
+      })
+    })
+
     onMounted(() => {
       loadCommandHistoryCache()
       handleHomeAppear()
@@ -3654,6 +3800,7 @@ export default {
       isLoadingDynamic,
       filteredCommands,
       activeCommandIndex,
+      commandDropdown,
       inputRef,
       messageList,
       commandBreadcrumb,
@@ -3672,8 +3819,10 @@ export default {
       quickSelectHistoryCommand,
       removeHistoryCommand,
       markKeepDropdownOnBlur,
+      setCommandItemRef,
       selectCommand,
       executeCommand,
+      getCommandLevelUsageCount,
       getCommandKey,
       getCommandMatchHint,
       getResultLineState,
@@ -4170,7 +4319,6 @@ export default {
   display: flex;
   align-items: center;
   padding: 6px 12px;
-  cursor: pointer;
   transition: background 0.15s;
   border-bottom: 1px solid #f0f0e8;
   white-space: nowrap;
@@ -4179,10 +4327,6 @@ export default {
 
 .command-item:last-child {
   border-bottom: none;
-}
-
-.command-item:hover {
-  background: #fafcf8;
 }
 
 .command-item.active {
@@ -4203,6 +4347,18 @@ export default {
   margin-right: 8px;
   min-width: 70px;
   flex-shrink: 0;
+}
+
+.command-usage-count {
+  flex: 0 0 auto;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #edf4e8;
+  color: #53714f;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
 }
 
 .command-desc {

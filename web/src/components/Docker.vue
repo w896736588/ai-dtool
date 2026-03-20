@@ -116,6 +116,20 @@
             <el-button link type="primary" @click="restart(dialogServiceConfig , scope.row.name)">restart</el-button>
             <el-button link type="primary" @click="stop(dialogServiceConfig , scope.row.name)">stop</el-button>
             <el-button link type="primary" @click="start(dialogServiceConfig , scope.row.name)">up</el-button>
+            <el-button
+              v-if="!isDefaultService(dialogServiceConfig, scope.row.name)"
+              link
+              type="primary"
+              :loading="defaultServiceLoadingMap[getDefaultServiceLoadingKey(dialogServiceConfig, scope.row.name)]"
+              @click="toggleDefaultService(dialogServiceConfig, scope.row.name, true)"
+            >加入默认服务</el-button>
+            <el-button
+              v-else
+              link
+              type="danger"
+              :loading="defaultServiceLoadingMap[getDefaultServiceLoadingKey(dialogServiceConfig, scope.row.name)]"
+              @click="toggleDefaultService(dialogServiceConfig, scope.row.name, false)"
+            >移除默认服务</el-button>
 <!--          <el-button link type="primary" @click="status(dialogServiceConfig , scope.row.name)">上传可执行文件并重启</el-button>-->
           </template>
         </el-table-column>
@@ -140,6 +154,8 @@ import shell from "@/utils/base/shell";
 import sseDistribute from "@/utils/base/sse_distribute";
 import {Throttle_string} from "@/utils/base/throttle_string";
 import type from "@/utils/base/type";
+import composeSet from "@/utils/base/compose_set";
+import dockerDefaultService from "@/utils/docker_default_service.cjs";
 
 export default {
   props: {},
@@ -186,6 +202,7 @@ export default {
       loadingStatus: {},
       sse_distribute_id: '',
       sseThrottleStringFunc: null,
+      defaultServiceLoadingMap: {},
     }
   },
   inject: ["showTerminal", "resizeTerminal"],
@@ -355,6 +372,62 @@ export default {
       // 排序列表
       _that.sortComposeList()
     },
+    getDefaultServiceList: function (defaultService) {
+      return dockerDefaultService.normalizeDockerDefaultServices(defaultService)
+    },
+    isDefaultService: function (row, serviceName) {
+      return dockerDefaultService.isDockerDefaultServiceEnabled(row?.default_service, serviceName)
+    },
+    getDefaultServiceLoadingKey: function (row, serviceName) {
+      return `${row.id}_${serviceName}`
+    },
+    buildComposeSavePayload: function (row, defaultService) {
+      return {
+        id: row.id,
+        name: row.name,
+        compose_yml_path: row.compose_yml_path,
+        env_file: row.env_file,
+        ssh_id: row.ssh_id,
+        docker_cmd: row.docker_cmd,
+        default_service: defaultService,
+        upload_exes: row.upload_exes || '',
+      }
+    },
+    syncComposeDefaultService: function (row, defaultService) {
+      let _that = this
+      let normalizedDefaultService = dockerDefaultService.stringifyDockerDefaultServices(defaultService)
+      let defaultServiceList = _that.getDefaultServiceList(normalizedDefaultService)
+      let applyRow = function (target) {
+        if (!target) {
+          return
+        }
+        target.default_service = normalizedDefaultService
+        target.default_service_list = defaultServiceList
+      }
+
+      applyRow(row)
+      applyRow(_that.dialogServiceConfig)
+      applyRow(_that.composeList.find(item => parseInt(item.id) === parseInt(row.id)))
+    },
+    toggleDefaultService: function (row, serviceName, enabled) {
+      let _that = this
+      let loadingKey = _that.getDefaultServiceLoadingKey(row, serviceName)
+      let nextDefaultService = dockerDefaultService.toggleDockerDefaultService(row.default_service, serviceName, enabled)
+      if (nextDefaultService === dockerDefaultService.stringifyDockerDefaultServices(row.default_service)) {
+        return
+      }
+
+      _that.defaultServiceLoadingMap[loadingKey] = true
+      composeSet.ComposeAdd(_that.buildComposeSavePayload(row, nextDefaultService), function (response) {
+        _that.defaultServiceLoadingMap[loadingKey] = false
+        if (response.ErrCode === 0) {
+          _that.syncComposeDefaultService(row, nextDefaultService)
+          _that.$helperNotify.success(enabled ? '已加入默认服务' : '已移除默认服务')
+          return
+        }
+        _that.$helperNotify.error(response.ErrMsg || '默认服务更新失败')
+      })
+    },
     refreshServices : function (row){
       let _that = this
       _that.prepareActionSse('services_refresh')
@@ -369,6 +442,7 @@ export default {
             _that.$helperNotify.success('成功')
             _that.shellController.isRunning = false
             _that.dialogServiceConfig.services = response.Data.services
+            _that.dialogServiceConfig.default_service_list = _that.getDefaultServiceList(_that.dialogServiceConfig.default_service)
             store.setStore(servicesKey,JSON.stringify(response.Data.services || []))
           }
       )
@@ -389,6 +463,7 @@ export default {
         _that.shellController.isRunning = false
         _that.dialogShowService = true
         _that.dialogServiceConfig.services = JSON.parse(services)
+        _that.dialogServiceConfig.default_service_list = _that.getDefaultServiceList(_that.dialogServiceConfig.default_service)
         return
       }
       _that.prepareActionSse('services_list')
@@ -397,6 +472,7 @@ export default {
             _that.shellController.isRunning = false
             _that.dialogShowService = true
             _that.dialogServiceConfig.services = response.Data.services
+            _that.dialogServiceConfig.default_service_list = _that.getDefaultServiceList(_that.dialogServiceConfig.default_service)
             store.setStore(servicesKey,JSON.stringify(response.Data.services || []))
           }
       )
@@ -558,7 +634,7 @@ export default {
               _that.composeList = response.Data.list
               for (let i in _that.composeList) {
                 _that.composeList[i].show = true
-                _that.composeList[i].default_service_list = _that.composeList[i].default_service.split(',')
+                _that.composeList[i].default_service_list = _that.getDefaultServiceList(_that.composeList[i].default_service)
               }
               // 初始化星标状态
               _that.initStarStatus()

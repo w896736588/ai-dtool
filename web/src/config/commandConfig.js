@@ -336,16 +336,6 @@ const commandConfig = [
     action: 'linkRun',
     needTarget: true,
     dynamicChildren: 'linkEnvList'
-  },
-  {
-    command: 'script',
-    name: '自定义脚本',
-    icon: '📝',
-    desc: '执行自定义脚本',
-    module: 'variable',
-    action: 'scriptRun',
-    needTarget: true,
-    dynamicChildren: 'scriptList'
   }
 ]
 
