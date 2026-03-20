@@ -28,6 +28,18 @@
             @input="searchList"
             clearable
         ></el-input>
+        <div class="header-tail-actions">
+          <el-button
+            :disabled="!chooseSshId"
+            :loading="imageListLoading"
+            class="image-list-btn"
+            type="primary"
+            plain
+            @click="openImageListDialog"
+          >
+            镜像列表
+          </el-button>
+        </div>
       </div>
     </div>
 
@@ -135,6 +147,52 @@
         </el-table-column>
       </el-table>
     </el-dialog>
+
+    <el-dialog v-model="dialogImageList" :append-to-body="true" title="镜像列表" width="82%">
+      <div class="dialog-toolbar">
+        <div class="dialog-toolbar-text">当前环境下的全部 Docker 镜像</div>
+        <el-button type="primary" link :loading="imageListLoading" @click="fetchImageList">刷新镜像列表</el-button>
+      </div>
+      <el-table :data="imageList" style="width: 100%">
+        <el-table-column label="镜像名" min-width="220">
+          <template #default="scope">
+            <div class="image-name-cell">{{ getImageDisplayName(scope.row) }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="镜像 ID" prop="image_id" min-width="180"/>
+        <el-table-column label="创建时间" prop="created" min-width="140"/>
+        <el-table-column label="大小" prop="size" width="120"/>
+        <el-table-column label="操作" min-width="220">
+          <template #default="scope">
+            <div class="operation-buttons">
+              <el-button class="operation-btn" size="small" plain @click="showImageContainers(scope.row)">查看容器</el-button>
+              <el-button class="operation-btn operation-btn-danger" size="small" plain @click="confirmRemoveImage(scope.row)">移除镜像</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
+    <el-dialog v-model="dialogImageContainers" :append-to-body="true" :title="imageContainerDialogTitle" width="82%">
+      <div class="dialog-toolbar">
+        <div class="dialog-toolbar-text">该镜像下的全部容器</div>
+        <el-button type="primary" link :loading="imageContainerLoading" @click="fetchImageContainers">刷新容器列表</el-button>
+      </div>
+      <el-table :data="imageContainerList" style="width: 100%">
+        <el-table-column label="容器名" prop="container_name" min-width="180"/>
+        <el-table-column label="容器 ID" prop="container_id" min-width="160"/>
+        <el-table-column label="镜像" prop="image" min-width="180"/>
+        <el-table-column label="状态" prop="status" min-width="180"/>
+        <el-table-column label="操作" min-width="220">
+          <template #default="scope">
+            <div class="operation-buttons">
+              <el-button class="operation-btn operation-btn-danger" size="small" plain @click="confirmStopContainer(scope.row)">停止</el-button>
+              <el-button class="operation-btn operation-btn-danger" size="small" plain @click="confirmRemoveContainer(scope.row)">移除</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
   </div>
 </template>
 <script>
@@ -175,6 +233,13 @@ export default {
       dialogStatusData: [],
       dialogShowService: false,
       dialogServiceConfig: {},
+      dialogImageList: false,
+      imageList: [],
+      imageListLoading: false,
+      dialogImageContainers: false,
+      imageContainerList: [],
+      imageContainerLoading: false,
+      currentImageRow: {},
       //选中的环境
       chooseSshId: '',
       chooseComposeeConfig: {},
@@ -658,6 +723,133 @@ export default {
       _that.searchNum = ret[0]
       _that.composeList = ret[1]
     },
+    getImageDisplayName: function (row) {
+      if (!row) {
+        return ''
+      }
+      if (row.repository && row.repository !== '<none>' && row.tag && row.tag !== '<none>') {
+        return `${row.repository}:${row.tag}`
+      }
+      return row.image_id || row.image_ref || '未命名镜像'
+    },
+    openImageListDialog: function () {
+      this.dialogImageList = true
+      this.fetchImageList()
+    },
+    fetchImageList: function () {
+      let _that = this
+      if (!_that.chooseSshId) {
+        return
+      }
+      _that.imageListLoading = true
+      compose.DockerImageList({ssh_id: _that.chooseSshId}, function (response) {
+        _that.imageListLoading = false
+        if (response.ErrCode === 0) {
+          _that.imageList = response.Data.list || []
+          return
+        }
+        _that.$helperNotify.error(response.ErrMsg || '镜像列表加载失败')
+      })
+    },
+    showImageContainers: function (row) {
+      this.currentImageRow = row || {}
+      this.dialogImageContainers = true
+      this.fetchImageContainers()
+    },
+    fetchImageContainers: function () {
+      let _that = this
+      if (!_that.chooseSshId || !_that.currentImageRow.image_ref) {
+        return
+      }
+      _that.imageContainerLoading = true
+      compose.DockerImageContainers({
+        ssh_id: _that.chooseSshId,
+        image_ref: _that.currentImageRow.image_ref,
+      }, function (response) {
+        _that.imageContainerLoading = false
+        if (response.ErrCode === 0) {
+          _that.imageContainerList = response.Data.list || []
+          return
+        }
+        _that.$helperNotify.error(response.ErrMsg || '镜像容器列表加载失败')
+      })
+    },
+    confirmRemoveImage: function (row) {
+      let _that = this
+      _that.$confirm(`确定移除镜像“${_that.getImageDisplayName(row)}”吗？`, '确认移除镜像', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }).then(function () {
+        compose.DockerImageRemove({
+          ssh_id: _that.chooseSshId,
+          image_ref: row.image_ref,
+        }, function (response) {
+          if (response.ErrCode === 0) {
+            _that.$helperNotify.success('镜像已移除')
+            _that.fetchImageList()
+            return
+          }
+          _that.$helperNotify.error(response.ErrMsg || '镜像移除失败')
+        })
+      }).catch(function () {
+        return false
+      })
+    },
+    confirmStopContainer: function (row) {
+      let _that = this
+      _that.$confirm(`确定停止容器“${row.container_name}”吗？`, '确认停止容器', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }).then(function () {
+        compose.DockerContainerStop({
+          ssh_id: _that.chooseSshId,
+          container_id: row.container_id,
+        }, function (response) {
+          if (response.ErrCode === 0) {
+            _that.$helperNotify.success('容器已停止')
+            _that.fetchImageContainers()
+            return
+          }
+          _that.$helperNotify.error(response.ErrMsg || '容器停止失败')
+        })
+      }).catch(function () {
+        return false
+      })
+    },
+    confirmRemoveContainer: function (row) {
+      let _that = this
+      _that.$confirm(`确定移除容器“${row.container_name}”吗？`, '确认移除容器', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }).then(function () {
+        compose.DockerContainerRemove({
+          ssh_id: _that.chooseSshId,
+          container_id: row.container_id,
+        }, function (response) {
+          if (response.ErrCode === 0) {
+            _that.$helperNotify.success('容器已移除')
+            _that.fetchImageContainers()
+            _that.fetchImageList()
+            return
+          }
+          _that.$helperNotify.error(response.ErrMsg || '容器移除失败')
+        })
+      }).catch(function () {
+        return false
+      })
+    },
+  },
+  computed: {
+    imageContainerDialogTitle: function () {
+      let title = this.getImageDisplayName(this.currentImageRow)
+      if (!title) {
+        return '镜像容器'
+      }
+      return `镜像容器 - ${title}`
+    },
   },
 }
 </script>
@@ -739,6 +931,16 @@ export default {
   flex: 1;
   max-width: 420px;
   min-width: 220px;
+}
+
+.header-tail-actions {
+  margin-left: auto;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.image-list-btn {
+  border-radius: 8px;
 }
 
 .compose-table-card {
@@ -875,6 +1077,24 @@ export default {
   background: #feede3;
 }
 
+.dialog-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dialog-toolbar-text {
+  color: #606050;
+  font-size: 13px;
+}
+
+.image-name-cell {
+  line-height: 1.4;
+  word-break: break-all;
+}
+
 .el-table .warning-row {
   --el-table-tr-bg-color: #fdf6e6;
 }
@@ -918,6 +1138,11 @@ export default {
 
   .search-input {
     max-width: 100%;
+  }
+
+  .header-tail-actions {
+    margin-left: 0;
+    justify-content: flex-start;
   }
 }
 </style>

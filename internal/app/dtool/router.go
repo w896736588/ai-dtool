@@ -315,6 +315,11 @@ func docker(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/DockerComposeStop`, controller.DockerComposeStop)
 	tGin.GinPost(`/api/DockerComposeConfigShow`, controller.DockerComposeConfigShow)
 	tGin.GinPost(`/api/DockerComposeStart`, controller.DockerComposeStart)
+	tGin.GinPost(`/api/DockerImageList`, controller.DockerImageList)
+	tGin.GinPost(`/api/DockerImageContainers`, controller.DockerImageContainers)
+	tGin.GinPost(`/api/DockerImageRemove`, controller.DockerImageRemove)
+	tGin.GinPost(`/api/DockerContainerStop`, controller.DockerContainerStop)
+	tGin.GinPost(`/api/DockerContainerRemove`, controller.DockerContainerRemove)
 }
 
 func api(tGin *p_gin.Gin) {

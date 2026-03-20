@@ -23,6 +23,21 @@ function DockerComposeServices(data , callBack){
 function DockerComposeConfigShow(data , callBack){
     base.BasePost('/api/DockerComposeConfigShow', data, callBack)
 }
+function DockerImageList(data , callBack){
+    base.BasePost('/api/DockerImageList', data, callBack)
+}
+function DockerImageContainers(data , callBack){
+    base.BasePost('/api/DockerImageContainers', data, callBack)
+}
+function DockerImageRemove(data , callBack){
+    base.BasePost('/api/DockerImageRemove', data, callBack)
+}
+function DockerContainerStop(data , callBack){
+    base.BasePost('/api/DockerContainerStop', data, callBack)
+}
+function DockerContainerRemove(data , callBack){
+    base.BasePost('/api/DockerContainerRemove', data, callBack)
+}
 export default {
     DockerComposeList,
     DockerComposeRestart,
@@ -31,4 +46,9 @@ export default {
     DockerComposeStart,
     DockerComposeStatus,
     DockerComposeServices,
+    DockerImageList,
+    DockerImageContainers,
+    DockerImageRemove,
+    DockerContainerStop,
+    DockerContainerRemove,
 }

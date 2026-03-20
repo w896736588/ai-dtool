@@ -276,6 +276,148 @@ func DockerComposeStart(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 }
 
+func DockerImageList(c *gin.Context) {
+	_, sshClient, err := getDockerComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.DockerImageList()
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: parseDockerImageRows(result),
+	})
+}
+
+func DockerImageContainers(c *gin.Context) {
+	data, sshClient, err := getDockerComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	imageRef := cast.ToString(data[`image_ref`])
+	if imageRef == `` {
+		gsgin.GinResponseError(c, `image_ref is empty`, nil)
+		return
+	}
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.DockerImageContainers(imageRef)
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: parseDockerContainerRows(result),
+	})
+}
+
+func DockerImageRemove(c *gin.Context) {
+	data, sshClient, err := getDockerComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	imageRef := cast.ToString(data[`image_ref`])
+	if imageRef == `` {
+		gsgin.GinResponseError(c, `image_ref is empty`, nil)
+		return
+	}
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.DockerImageRemove(imageRef)
+	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+}
+
+func DockerContainerStop(c *gin.Context) {
+	data, sshClient, err := getDockerComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	containerId := cast.ToString(data[`container_id`])
+	if containerId == `` {
+		gsgin.GinResponseError(c, `container_id is empty`, nil)
+		return
+	}
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.DockerContainerStop(containerId)
+	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+}
+
+func DockerContainerRemove(c *gin.Context) {
+	data, sshClient, err := getDockerComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	containerId := cast.ToString(data[`container_id`])
+	if containerId == `` {
+		gsgin.GinResponseError(c, `container_id is empty`, nil)
+		return
+	}
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.DockerContainerRemove(containerId)
+	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+}
+
+func parseDockerImageRows(raw string) []map[string]string {
+	rows := parseDockerRows(raw, 5)
+	list := make([]map[string]string, 0, len(rows))
+	for _, fields := range rows {
+		imageRef := fields[2]
+		if fields[0] != `<none>` && fields[1] != `<none>` {
+			imageRef = fields[0] + `:` + fields[1]
+		}
+		list = append(list, map[string]string{
+			`repository`: fields[0],
+			`tag`:        fields[1],
+			`image_id`:   fields[2],
+			`created`:    fields[3],
+			`size`:       fields[4],
+			`image_ref`:  imageRef,
+		})
+	}
+	return list
+}
+
+func parseDockerContainerRows(raw string) []map[string]string {
+	rows := parseDockerRows(raw, 5)
+	list := make([]map[string]string, 0, len(rows))
+	for _, fields := range rows {
+		list = append(list, map[string]string{
+			`container_id`:   fields[0],
+			`container_name`: fields[1],
+			`image`:          fields[2],
+			`state`:          fields[3],
+			`status`:         fields[4],
+		})
+	}
+	return list
+}
+
+func parseDockerRows(raw string, fieldCount int) [][]string {
+	lines := strings.Split(raw, "\n")
+	list := make([][]string, 0, len(lines))
+	for _, line := range lines {
+		clean := ansi.ReplaceAllString(line, "")
+		clean = strings.TrimSpace(strings.ReplaceAll(clean, "\r", ""))
+		if clean == "" {
+			continue
+		}
+		fields := strings.Split(clean, "\t")
+		if len(fields) != fieldCount {
+			continue
+		}
+		list = append(list, fields)
+	}
+	return list
+}
+
 func getDockerComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal, error) {
 	dataMap := make(map[string]interface{})
 	err := gsgin.GinPostBody(c, &dataMap)
