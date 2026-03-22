@@ -58,6 +58,16 @@ function MemoryFragmentSearch(query, mode, selectedTags, limit, callBack) {
   }, callBack)
 }
 
+// MemoryFragmentOrganize 使用 AI 整理当前知识片段内容。
+function MemoryFragmentOrganize(id, title, content, tags, callBack) {
+  base.BasePost('/api/MemoryFragmentOrganize', {
+    id: id,
+    title: title,
+    content: content,
+    tags: tags,
+  }, callBack)
+}
+
 export default {
   MemoryFragmentStatus,
   MemoryFragmentList,
@@ -67,4 +77,5 @@ export default {
   MemoryFragmentHistoryList,
   MemoryFragmentTagList,
   MemoryFragmentSearch,
+  MemoryFragmentOrganize,
 }

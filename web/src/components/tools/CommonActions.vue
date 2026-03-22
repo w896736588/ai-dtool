@@ -2,11 +2,102 @@
   <div class="common-actions">
     <div class="common-actions__header">
       <div class="common-actions__title">常用操作</div>
-      <div class="common-actions__desc">可扩展动作面板，当前提供端口占用查询与结束进程。</div>
+      <div class="common-actions__desc">可扩展动作面板，当前提供通用命令托管与端口占用查询。</div>
     </div>
 
     <el-row :gutter="16">
       <el-col :xs="24" :lg="16">
+        <el-card shadow="hover" class="action-card action-card--primary">
+          <template #header>
+            <div class="action-card__header">
+              <div class="action-card__title">命令托管</div>
+              <div class="action-card__subtitle">默认托管 cc-connect，可改成任意长期运行命令；进入页面会自动确保运行。</div>
+            </div>
+          </template>
+
+          <el-form label-position="top" @submit.prevent>
+            <el-row :gutter="12">
+              <el-col :xs="24" :md="12">
+                <el-form-item label="显示名称">
+                  <el-input
+                    v-model.trim="managedForm.name"
+                    placeholder="例如 cc-connect"
+                    @change="handleManagedConfigChange"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :xs="24" :md="12">
+                <el-form-item label="唯一标识">
+                  <el-input
+                    v-model.trim="managedForm.key"
+                    placeholder="例如 cc-connect"
+                    @change="handleManagedConfigChange"
+                  />
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <el-form-item label="启动命令">
+              <el-input
+                v-model.trim="managedForm.command_line"
+                placeholder='例如 cc-connect --config C:\Users\94804\.cc-connect\config.toml'
+                @change="handleManagedConfigChange"
+              />
+            </el-form-item>
+
+            <el-form-item label="工作目录">
+              <el-input
+                v-model.trim="managedForm.workdir"
+                clearable
+                placeholder="可选，不填则使用后端当前目录"
+                @change="handleManagedConfigChange"
+              />
+            </el-form-item>
+          </el-form>
+
+          <el-alert
+            :title="managedStatusBanner"
+            type="info"
+            :closable="false"
+            show-icon
+            class="action-card__alert"
+          />
+
+          <div class="managed-meta">
+            <div class="managed-meta__item">
+              <span class="managed-meta__label">状态</span>
+              <el-tag :type="managedProcess.running ? 'success' : 'info'">
+                {{ managedProcess.status_text || (managedProcess.running ? '运行中' : '未运行') }}
+              </el-tag>
+            </div>
+            <div class="managed-meta__item">
+              <span class="managed-meta__label">PID</span>
+              <span>{{ managedProcess.pid || '-' }}</span>
+            </div>
+            <div class="managed-meta__item">
+              <span class="managed-meta__label">日志文件</span>
+              <span class="managed-meta__value">{{ managedProcess.log_file || '-' }}</span>
+            </div>
+          </div>
+
+          <div class="action-card__buttons action-card__buttons--wrap">
+            <el-button type="primary" :loading="managedLoading.ensure || managedLoading.start" @click="startManagedProcess">
+              启动
+            </el-button>
+            <el-button :loading="managedLoading.stop" @click="stopManagedProcess">关闭</el-button>
+            <el-button :loading="managedLoading.restart" @click="restartManagedProcess">重启</el-button>
+            <el-button :loading="managedLoading.status" @click="refreshManagedState">刷新状态</el-button>
+          </div>
+
+          <div class="managed-log">
+            <div class="managed-log__header">
+              <div class="action-card__title action-card__title--small">实时日志</div>
+              <div class="managed-log__hint">轮询最新 {{ managedLogMaxBytes / 1024 }}KB</div>
+            </div>
+            <div ref="managedLogContent" class="managed-log__content">{{ managedLogContent || '暂无日志输出' }}</div>
+          </div>
+        </el-card>
+
         <el-card shadow="hover" class="action-card">
           <template #header>
             <div class="action-card__header">
@@ -82,6 +173,7 @@
             <div class="action-card__title">后续可扩展</div>
           </template>
           <div class="placeholder-list">
+            <div class="placeholder-item">通用命令托管</div>
             <div class="placeholder-item">按端口查占用</div>
             <div class="placeholder-item">结束指定 PID</div>
             <div class="placeholder-item">打开常用目录</div>
@@ -94,8 +186,17 @@
 </template>
 
 <script>
+import { nextTick } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import toolsApi from '@/utils/base/tools'
+
+const managedProcessStorageKey = 'tools.common_actions.managed_process'
+const defaultManagedProcessForm = Object.freeze({
+  name: 'cc-connect',
+  key: 'cc-connect',
+  command_line: 'cc-connect --config C:\\Users\\94804\\.cc-connect\\config.toml',
+  workdir: '',
+})
 
 export default {
   name: 'CommonActions',
@@ -107,9 +208,204 @@ export default {
       killingPid: 0,
       hasSearched: false,
       lastQueryPort: 0,
+      managedForm: {
+        ...defaultManagedProcessForm,
+      },
+      managedProcess: {
+        running: false,
+        pid: 0,
+        log_file: '',
+        status_text: '未运行',
+      },
+      managedLogContent: '',
+      managedLogMaxBytes: 32 * 1024,
+      managedLoading: {
+        ensure: false,
+        status: false,
+        start: false,
+        stop: false,
+        restart: false,
+        log: false,
+      },
+      managedPollingTimer: null,
+      managedInitialized: false,
+      suppressManagedConfigChange: true,
     }
   },
+  computed: {
+    managedStatusBanner() {
+      const commandLine = this.managedForm.command_line || '未配置命令'
+      const workdirText = this.managedForm.workdir || '后端当前目录'
+      return `当前命令：${commandLine}；工作目录：${workdirText}。配置项变更后会自动重启。`
+    },
+  },
+  mounted() {
+    this.initManagedProcessCard()
+  },
+  beforeUnmount() {
+    this.clearManagedPolling()
+  },
   methods: {
+    initManagedProcessCard() {
+      this.loadManagedForm()
+      this.$nextTick(() => {
+        this.suppressManagedConfigChange = false
+      })
+      this.ensureManagedProcessRunning()
+      this.startManagedPolling()
+    },
+    loadManagedForm() {
+      const stored = window.localStorage.getItem(managedProcessStorageKey)
+      if (!stored) {
+        return
+      }
+      try {
+        const parsed = JSON.parse(stored)
+        this.managedForm = {
+          ...defaultManagedProcessForm,
+          ...parsed,
+        }
+      } catch (error) {
+        this.managedForm = {
+          ...defaultManagedProcessForm,
+        }
+      }
+    },
+    saveManagedForm() {
+      window.localStorage.setItem(managedProcessStorageKey, JSON.stringify(this.managedForm))
+    },
+    getManagedPayload(extra = {}) {
+      return {
+        key: (this.managedForm.key || '').trim(),
+        name: (this.managedForm.name || '').trim(),
+        command_line: (this.managedForm.command_line || '').trim(),
+        workdir: (this.managedForm.workdir || '').trim(),
+        ...extra,
+      }
+    },
+    updateManagedState(response) {
+      if (!(response && response.ErrCode === 0 && response.Data)) {
+        return false
+      }
+      this.managedProcess = {
+        running: !!response.Data.running,
+        pid: Number(response.Data.pid || 0),
+        log_file: response.Data.log_file || '',
+        status_text: response.Data.status_text || (response.Data.running ? '运行中' : '未运行'),
+      }
+      this.managedInitialized = true
+      return true
+    },
+    ensureManagedProcessRunning(showSuccess) {
+      if (!this.getManagedPayload().command_line) {
+        this.$helperNotify.error('请先填写启动命令')
+        return
+      }
+      this.managedLoading.ensure = true
+      toolsApi.ToolManagedProcessEnsureRunning(this.getManagedPayload(), (response) => {
+        this.managedLoading.ensure = false
+        if (!this.updateManagedState(response)) {
+          return
+        }
+        if (showSuccess) {
+          this.$helperNotify.success(this.managedProcess.running ? '命令已启动' : '命令未运行')
+        }
+        this.refreshManagedLog()
+      })
+    },
+    refreshManagedState() {
+      this.managedLoading.status = true
+      toolsApi.ToolManagedProcessStatus(this.getManagedPayload(), (response) => {
+        this.managedLoading.status = false
+        if (!this.updateManagedState(response)) {
+          return
+        }
+        this.refreshManagedLog()
+      })
+    },
+    startManagedProcess() {
+      this.managedLoading.start = true
+      toolsApi.ToolManagedProcessStart(this.getManagedPayload(), (response) => {
+        this.managedLoading.start = false
+        if (!this.updateManagedState(response)) {
+          return
+        }
+        this.$helperNotify.success('命令已启动')
+        this.refreshManagedLog()
+      })
+    },
+    stopManagedProcess() {
+      this.managedLoading.stop = true
+      toolsApi.ToolManagedProcessStop(this.getManagedPayload(), (response) => {
+        this.managedLoading.stop = false
+        if (!this.updateManagedState(response)) {
+          return
+        }
+        this.managedLogContent = ''
+        this.$helperNotify.success('命令已关闭')
+      })
+    },
+    restartManagedProcess(showSuccess = true) {
+      this.managedLoading.restart = true
+      toolsApi.ToolManagedProcessRestart(this.getManagedPayload(), (response) => {
+        this.managedLoading.restart = false
+        if (!this.updateManagedState(response)) {
+          return
+        }
+        if (showSuccess) {
+          this.$helperNotify.success('命令已重启')
+        }
+        this.refreshManagedLog()
+      })
+    },
+    handleManagedConfigChange() {
+      if (this.suppressManagedConfigChange) {
+        return
+      }
+      this.saveManagedForm()
+      if (!this.getManagedPayload().command_line) {
+        return
+      }
+      this.restartManagedProcess(false)
+    },
+    refreshManagedLog() {
+      this.managedLoading.log = true
+      toolsApi.ToolManagedProcessLogTail({
+        ...this.getManagedPayload(),
+        max_bytes: this.managedLogMaxBytes,
+      }, (response) => {
+        this.managedLoading.log = false
+        if (!(response && response.ErrCode === 0 && response.Data)) {
+          return
+        }
+        this.managedLogContent = response.Data.content || ''
+        if (response.Data.log_file) {
+          this.managedProcess.log_file = response.Data.log_file
+        }
+        this.scrollManagedLogToBottom()
+      })
+    },
+    scrollManagedLogToBottom() {
+      nextTick(() => {
+        const el = this.$refs.managedLogContent
+        if (!el) {
+          return
+        }
+        el.scrollTop = el.scrollHeight
+      })
+    },
+    startManagedPolling() {
+      this.clearManagedPolling()
+      this.managedPollingTimer = window.setInterval(() => {
+        this.refreshManagedState()
+      }, 3000)
+    },
+    clearManagedPolling() {
+      if (this.managedPollingTimer) {
+        window.clearInterval(this.managedPollingTimer)
+        this.managedPollingTimer = null
+      }
+    },
     parsePortValue() {
       const port = Number(this.portInput)
       if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -198,6 +494,12 @@ export default {
 
 .action-card {
   border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.action-card--primary {
+  border: 1px solid #d8e8d8;
+  background: linear-gradient(180deg, #f8fcf6 0%, #f2f8ef 100%);
 }
 
 .action-card--muted {
@@ -221,10 +523,19 @@ export default {
   font-size: 12px;
 }
 
+.action-card__title--small {
+  font-size: 14px;
+}
+
 .action-card__buttons {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.action-card__buttons--wrap {
+  flex-wrap: wrap;
+  margin-bottom: 16px;
 }
 
 .action-card__alert {
@@ -233,6 +544,63 @@ export default {
 
 .action-card__table {
   margin-top: 8px;
+}
+
+.managed-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.managed-meta__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #48604c;
+  font-size: 13px;
+}
+
+.managed-meta__label {
+  min-width: 64px;
+  color: #6a7a6c;
+}
+
+.managed-meta__value {
+  word-break: break-all;
+}
+
+.managed-log {
+  border: 1px solid #dbe7d9;
+  border-radius: 10px;
+  background: #1d281f;
+  overflow: hidden;
+}
+
+.managed-log__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #dbe7d9;
+}
+
+.managed-log__hint {
+  font-size: 12px;
+  color: #b7cab8;
+}
+
+.managed-log__content {
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #e7f4e8;
 }
 
 .placeholder-list {

@@ -3,10 +3,15 @@
     <aside v-if="memoryConfigured" class="memory-sidebar">
       <div class="sidebar-header">
         <div class="sidebar-title">片段列表</div>
-        <el-button type="primary" plain @click="createFragment">
-          <el-icon><Plus /></el-icon>
-          新建片段
-        </el-button>
+        <div class="sidebar-header-actions">
+          <el-button type="primary" plain @click="createFragment">
+            <el-icon><Plus /></el-icon>
+            新建片段
+          </el-button>
+          <el-button plain @click="openSettingsTab">
+            设置
+          </el-button>
+        </div>
       </div>
 
       <div class="search-card sidebar-search-card">
@@ -112,6 +117,13 @@
               @clear-filter="clearFilter"
               @go-memory-setting="goMemorySetting"
             />
+          </el-tab-pane>
+
+          <el-tab-pane name="settings" :closable="false">
+            <template #label>
+              <span class="tab-label">设置</span>
+            </template>
+            <MemorySettingPage ref="memorySettingPage" />
           </el-tab-pane>
 
           <el-tab-pane
@@ -226,6 +238,7 @@ import MemoryFragmentApi from '@/utils/base/memory_fragment'
 import MemoryWelcome from '@/components/memory/MemoryWelcome.vue'
 import MemoryEditor from '@/components/memory/MemoryEditor.vue'
 import MemoryHistoryDialog from '@/components/memory/MemoryHistoryDialog.vue'
+import MemorySettingPage from '@/components/set/memory.vue'
 
 export default {
   name: 'MemoryFragment',
@@ -235,6 +248,7 @@ export default {
     MemoryWelcome,
     MemoryEditor,
     MemoryHistoryDialog,
+    MemorySettingPage,
   },
   data() {
     return {
@@ -590,6 +604,14 @@ export default {
         this.upsertFragmentTab(response.Data, true)
       })
     },
+    openSettingsTab() {
+      this.activeTab = 'settings'
+      this.$nextTick(() => {
+        if (this.$refs.memorySettingPage && this.$refs.memorySettingPage.loadConfig) {
+          this.$refs.memorySettingPage.loadConfig()
+        }
+      })
+    },
     // openFragment 打开指定片段 tab。
     openFragment(fragmentId) {
       if (!this.memoryConfigured) {
@@ -740,6 +762,14 @@ export default {
   padding: 16px;
   border-bottom: 1px solid #ecece4;
   background: #f7f7f2;
+}
+
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .sidebar-title {

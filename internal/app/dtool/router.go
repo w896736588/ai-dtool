@@ -90,6 +90,12 @@ func InitRouter(tGin *p_gin.Gin) {
 func toolRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/ToolPortProcessList`, controller.ToolPortProcessList)
 	tGin.GinPost(`/api/ToolPortProcessKill`, controller.ToolPortProcessKill)
+	tGin.GinPost(`/api/ToolManagedProcessStatus`, controller.ToolManagedProcessStatus)
+	tGin.GinPost(`/api/ToolManagedProcessEnsureRunning`, controller.ToolManagedProcessEnsureRunning)
+	tGin.GinPost(`/api/ToolManagedProcessStart`, controller.ToolManagedProcessStart)
+	tGin.GinPost(`/api/ToolManagedProcessStop`, controller.ToolManagedProcessStop)
+	tGin.GinPost(`/api/ToolManagedProcessRestart`, controller.ToolManagedProcessRestart)
+	tGin.GinPost(`/api/ToolManagedProcessLogTail`, controller.ToolManagedProcessLogTail)
 }
 
 // 基础接口
@@ -252,6 +258,7 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/MemoryFragmentHistoryList`, controller.MemoryFragmentHistoryList)
 	tGin.GinPost(`/api/MemoryFragmentTagList`, controller.MemoryFragmentTagList)
 	tGin.GinPost(`/api/MemoryFragmentSearch`, controller.MemoryFragmentSearch)
+	tGin.GinPost(`/api/MemoryFragmentOrganize`, controller.MemoryFragmentOrganize)
 }
 
 func infoCrawl(tGin *p_gin.Gin) {

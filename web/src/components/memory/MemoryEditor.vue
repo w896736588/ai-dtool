@@ -66,30 +66,109 @@
     </div>
 
     <div class="editor-body">
-      <MdEditor
-        v-model="draftFragment.content"
-        :preview-theme="'github'"
-        :toolbars="toolbars"
-        @onChange="handleFormChange"
-        @onBlur="handleFormChange"
-      />
+      <div class="editor-body-toolbar">
+        <div class="editor-body-title">内容</div>
+        <div class="editor-body-actions">
+          <el-button
+            :type="!contentEditMode ? 'primary' : 'default'"
+            plain
+            @click="setContentEditMode(false)"
+          >
+            查看
+          </el-button>
+          <el-button
+            :type="contentEditMode ? 'primary' : 'default'"
+            plain
+            @click="setContentEditMode(true)"
+          >
+            编辑
+          </el-button>
+          <el-button
+            type="primary"
+            plain
+            :loading="organizing"
+            @click="handleOrganize"
+          >
+            <el-icon><MagicStick /></el-icon>
+            AI整理
+          </el-button>
+        </div>
+      </div>
+
+      <div v-if="contentEditMode" class="editor-body-content">
+        <MdEditor
+          v-model="draftFragment.content"
+          :preview-theme="'github'"
+          :toolbars="toolbars"
+          @onChange="handleFormChange"
+          @onBlur="handleFormChange"
+        />
+      </div>
+      <div v-else class="preview-body">
+        <MdPreview
+          :model-value="draftFragment.content"
+          :preview-theme="'github'"
+        />
+      </div>
     </div>
+
+    <el-dialog
+      v-model="organizeDialogVisible"
+      title="AI整理结果对比"
+      width="84%"
+      top="5vh"
+      class="memory-organize-dialog"
+    >
+      <div class="organize-dialog-layout">
+        <div class="organize-dialog-summary">
+          <div class="summary-item">
+            <span class="summary-label">整理模型</span>
+            <span class="summary-value">{{ organizeResult.model || '-' }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">整理提示词</span>
+            <span class="summary-value">{{ organizeResult.prompt || '-' }}</span>
+          </div>
+        </div>
+        <diff-markdown
+          :old-text="draftFragment.content || ''"
+          :new-text="organizeResult.content || ''"
+          title="正文差异"
+        />
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="organizeDialogVisible = false">取消</el-button>
+          <el-button
+            type="primary"
+            :loading="applyingOrganizeResult"
+            @click="applyOrganizeResult"
+          >
+            确认写入
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { MdEditor } from 'md-editor-v3'
+import { MdEditor, MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
-import { Check, Clock, Delete } from '@element-plus/icons-vue'
+import { Check, Clock, Delete, MagicStick } from '@element-plus/icons-vue'
+import DiffMarkdown from '@/components/base/diff_markwodn.vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
 
 export default {
   name: 'MemoryEditor',
   components: {
     MdEditor,
+    MdPreview,
     Check,
     Clock,
     Delete,
+    MagicStick,
+    DiffMarkdown,
   },
   props: {
     fragment: {
@@ -105,6 +184,15 @@ export default {
   data() {
     return {
       saving: false,
+      organizing: false,
+      applyingOrganizeResult: false,
+      contentEditMode: false,
+      organizeDialogVisible: false,
+      organizeResult: {
+        content: '',
+        model: '',
+        prompt: '',
+      },
       tagInput: '',
       draftFragment: {
         id: 0,
@@ -166,6 +254,13 @@ export default {
     },
     // resetDraft 根据当前 props 重置本地草稿。
     resetDraft() {
+      this.contentEditMode = false
+      this.organizeDialogVisible = false
+      this.organizeResult = {
+        content: '',
+        model: '',
+        prompt: '',
+      }
       this.draftFragment = {
         id: this.fragment.id,
         title: this.fragment.title || '',
@@ -180,6 +275,10 @@ export default {
     // handleFormChange 在编辑后向父组件同步状态。
     handleFormChange() {
       this.$emit('change', JSON.parse(JSON.stringify(this.draftFragment)))
+    },
+    // setContentEditMode 切换正文查看/编辑模式。
+    setContentEditMode(editMode) {
+      this.contentEditMode = !!editMode
     },
     // appendTag 将输入框内容转换为标签。
     appendTag() {
@@ -233,6 +332,62 @@ export default {
             return
           }
           this.$emit('saved', response.Data)
+        }
+      )
+    },
+    // handleOrganize 调用 AI 对当前最新内容执行整理。
+    handleOrganize() {
+      this.appendTag()
+      if (!this.draftFragment.content || this.draftFragment.content.trim() === '') {
+        this.$helperNotify.error('当前片段内容不能为空')
+        return
+      }
+      this.organizing = true
+      MemoryFragmentApi.MemoryFragmentOrganize(
+        this.draftFragment.id,
+        this.draftFragment.title,
+        this.draftFragment.content,
+        this.draftFragment.tags || [],
+        (response) => {
+          this.organizing = false
+          if (response.ErrCode !== 0 || !response.Data) {
+            if (response.ErrMsg) {
+              this.$helperNotify.error(response.ErrMsg)
+            }
+            return
+          }
+          this.organizeResult = {
+            content: response.Data.content || '',
+            model: response.Data.model || '',
+            prompt: response.Data.prompt || '',
+          }
+          this.organizeDialogVisible = true
+        }
+      )
+    },
+    // applyOrganizeResult 确认后把整理结果写回当前片段并持久化保存。
+    applyOrganizeResult() {
+      if (!this.organizeResult.content || this.organizeResult.content.trim() === '') {
+        this.$helperNotify.error('整理结果为空，无法写入')
+        return
+      }
+      this.applyingOrganizeResult = true
+      MemoryFragmentApi.MemoryFragmentSave(
+        this.draftFragment.id,
+        this.draftFragment.title,
+        this.organizeResult.content,
+        this.draftFragment.tags || [],
+        (response) => {
+          this.applyingOrganizeResult = false
+          if (response.ErrCode !== 0 || !response.Data) {
+            if (response.ErrMsg) {
+              this.$helperNotify.error(response.ErrMsg)
+            }
+            return
+          }
+          this.organizeDialogVisible = false
+          this.$emit('saved', response.Data)
+          this.$helperNotify.success('AI整理结果已写入')
         }
       )
     },
@@ -332,6 +487,8 @@ export default {
 .editor-body {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   border: 1px solid #e8e8e0;
   border-radius: 14px;
   overflow: hidden;
@@ -339,8 +496,85 @@ export default {
   box-shadow: 0 4px 12px rgba(54, 74, 54, 0.05);
 }
 
-.editor-body :deep(.md-editor) {
+.editor-body-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #ecece4;
+  background: #f8faf5;
+}
+
+.editor-body-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #455640;
+}
+
+.editor-body-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.editor-body-content {
+  flex: 1;
+  min-height: 0;
+}
+
+.editor-body-content :deep(.md-editor) {
   height: calc(100vh - 295px);
+}
+
+.preview-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 22px;
+  background: #fff;
+}
+
+ .preview-body :deep(.md-editor-preview) {
+  font-size: 14px;
+  color: #33422f;
+}
+
+.organize-dialog-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 70vh;
+}
+
+.organize-dialog-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid #e8e8e0;
+  border-radius: 12px;
+  background: #fafbf7;
+}
+
+.summary-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.summary-label {
+  width: 72px;
+  flex-shrink: 0;
+  color: #677560;
+  font-size: 13px;
+}
+
+.summary-value {
+  color: #34412f;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @media (max-width: 1080px) {
@@ -354,7 +588,21 @@ export default {
     width: 100%;
   }
 
-  .editor-body :deep(.md-editor) {
+  .editor-body-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .editor-body-actions {
+    justify-content: flex-end;
+  }
+
+  .summary-item {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .editor-body-content :deep(.md-editor) {
     height: 60vh;
   }
 }

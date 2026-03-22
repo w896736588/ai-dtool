@@ -2,6 +2,8 @@ package controller
 
 import (
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/define"
+	"strings"
 	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
@@ -164,6 +166,39 @@ func MemoryFragmentSearch(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, list)
 }
 
+// MemoryFragmentOrganize 调用 AI 对当前片段内容进行整理。
+func MemoryFragmentOrganize(c *gin.Context) {
+	_, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	content := cast.ToString(dataMap[`content`])
+	if strings.TrimSpace(content) == `` {
+		gsgin.GinResponseError(c, `片段内容不能为空`, nil)
+		return
+	}
+	modelID, prompt, err := memoryArrangeConfig()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	title := strings.TrimSpace(cast.ToString(dataMap[`title`]))
+	userPrompt := buildMemoryArrangeUserPrompt(prompt, title, content)
+	result, modelInfo, err := common.DbMain.InfoCrawlChatByModel(modelID, memoryArrangeSystemPrompt(), userPrompt)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`content`:  stripMarkdownCodeFence(result),
+		`prompt`:   prompt,
+		`model`:    cast.ToString(modelInfo[`model`]),
+		`model_id`: modelID,
+	})
+}
+
 func memoryDBOrResponse(c *gin.Context) (*common.CSqlite, bool) {
 	if err := common.MemoryRuntime.EnsureConfigured(); err != nil {
 		gsgin.GinResponseError(c, err.Error(), map[string]any{
@@ -193,4 +228,71 @@ func memoryFragmentParseTags(raw any) []string {
 	default:
 		return []string{}
 	}
+}
+
+func defaultMemoryArrangePrompt() string {
+	return `帮我把当前markdown进行整理格式，让它看起来更顺畅清晰，注意禁止修改内容`
+}
+
+func memoryArrangeSystemPrompt() string {
+	return "你是一个 Markdown 整理助手。\n" +
+		"你的任务仅限于整理格式、结构、段落、标题层级、列表、标点和可读性。\n" +
+		"禁止新增事实、删除事实、改写原意、补充未提供的信息。\n" +
+		"输出必须只包含整理后的 Markdown 正文，不要解释，不要加额外说明。"
+}
+
+func memoryArrangeConfig() (int, string, error) {
+	modelIDText, err := common.DbMain.GlobalValue(define.GlobalMemoryArrangeModelID)
+	if err != nil && !memoryConfigValueMissing(err) {
+		return 0, ``, err
+	}
+	modelID := cast.ToInt(modelIDText)
+	if modelID <= 0 {
+		return 0, ``, gstool.Error(`请先在记忆设置中配置 AI 整理模型`)
+	}
+	modelInfo, err := common.DbMain.InfoCrawlAiModelInfo(modelID)
+	if err != nil {
+		return 0, ``, gstool.Error(`当前记忆整理模型不可用`)
+	}
+	if strings.ToLower(cast.ToString(modelInfo[`model_type`])) != `llm` {
+		return 0, ``, gstool.Error(`记忆整理仅支持 LLM 模型`)
+	}
+	prompt, err := common.DbMain.GlobalValue(define.GlobalMemoryArrangePrompt)
+	if err != nil && !memoryConfigValueMissing(err) {
+		return 0, ``, err
+	}
+	prompt = strings.TrimSpace(prompt)
+	if prompt == `` {
+		prompt = defaultMemoryArrangePrompt()
+	}
+	return modelID, prompt, nil
+}
+
+func buildMemoryArrangeUserPrompt(prompt, title, content string) string {
+	builder := strings.Builder{}
+	builder.WriteString("整理要求：\n")
+	builder.WriteString(strings.TrimSpace(prompt))
+	if strings.TrimSpace(title) != `` {
+		builder.WriteString("\n\n片段标题：\n")
+		builder.WriteString(strings.TrimSpace(title))
+	}
+	builder.WriteString("\n\n当前 Markdown 内容如下，请直接输出整理后的完整 Markdown：\n```markdown\n")
+	builder.WriteString(content)
+	builder.WriteString("\n```")
+	return builder.String()
+}
+
+func stripMarkdownCodeFence(content string) string {
+	content = strings.TrimSpace(content)
+	if !strings.HasPrefix(content, "```") {
+		return content
+	}
+	lineList := strings.Split(content, "\n")
+	if len(lineList) < 2 {
+		return content
+	}
+	if strings.HasPrefix(strings.TrimSpace(lineList[0]), "```") && strings.TrimSpace(lineList[len(lineList)-1]) == "```" {
+		return strings.TrimSpace(strings.Join(lineList[1:len(lineList)-1], "\n"))
+	}
+	return content
 }
