@@ -16,97 +16,150 @@
           <template #header>
             <div class="action-card__header">
               <div class="action-card__title">命令托管</div>
-              <div class="action-card__subtitle">默认托管 cc-connect，可改成任意长期运行命令；进入页面会自动确保运行。</div>
+              <div class="action-card__subtitle">支持托管多个长期运行命令；进入页面后会自动逐个确保运行。</div>
             </div>
           </template>
 
-          <el-form label-position="top" @submit.prevent>
-            <el-row :gutter="12">
-              <el-col :xs="24" :md="12">
-                <el-form-item label="显示名称">
-                  <el-input
-                    v-model.trim="managedForm.name"
-                    placeholder="例如 cc-connect"
-                    @change="handleManagedConfigChange"
+          <div class="managed-layout">
+            <div class="managed-sidebar">
+              <div class="managed-sidebar__header">
+                <div class="action-card__title action-card__title--small">命令列表</div>
+                <el-button type="primary" plain size="small" @click="addManagedProcessItem">新增命令</el-button>
+              </div>
+
+              <div class="managed-sidebar__list">
+                <div
+                  v-for="item in managedProcessItems"
+                  :key="item.id"
+                  :class="['managed-sidebar__item', { 'is-active': item.id === activeManagedProcessId }]"
+                  @click="selectManagedProcessItem(item.id)"
+                >
+                  <div class="managed-sidebar__item-main">
+                    <div class="managed-sidebar__item-name">{{ item.name || item.key || '未命名命令' }}</div>
+                    <div class="managed-sidebar__item-command">{{ item.command_line || '未配置启动命令' }}</div>
+                  </div>
+                  <div class="managed-sidebar__item-extra">
+                    <el-tag size="small" :type="getManagedState(item.id).running ? 'success' : 'info'">
+                      {{ getManagedState(item.id).status_text || (getManagedState(item.id).running ? '运行中' : '未运行') }}
+                    </el-tag>
+                    <el-button
+                      class="managed-sidebar__delete"
+                      text
+                      type="danger"
+                      size="small"
+                      @click.stop="removeManagedProcessItem(item.id)"
+                    >
+                      删除
+                    </el-button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="managed-panel">
+              <template v-if="activeManagedProcessItem">
+                <el-form label-position="top" @submit.prevent>
+                  <el-row :gutter="12">
+                    <el-col :xs="24" :md="12">
+                      <el-form-item label="显示名称">
+                        <el-input
+                          v-model.trim="activeManagedProcessItem.name"
+                          placeholder="例如 cc-connect"
+                          @change="handleManagedConfigChange"
+                        />
+                      </el-form-item>
+                    </el-col>
+                    <el-col :xs="24" :md="12">
+                      <el-form-item label="唯一标识">
+                        <el-input
+                          v-model.trim="activeManagedProcessItem.key"
+                          placeholder="例如 cc-connect"
+                          @change="handleManagedConfigChange"
+                        />
+                      </el-form-item>
+                    </el-col>
+                  </el-row>
+
+                  <el-form-item label="启动命令">
+                    <el-input
+                      v-model.trim="activeManagedProcessItem.command_line"
+                      placeholder="例如 cc-connect --config C:\\Users\\94804\\.cc-connect\\config.toml"
+                      @change="handleManagedConfigChange"
+                    />
+                  </el-form-item>
+
+                  <el-form-item label="工作目录">
+                    <el-input
+                      v-model.trim="activeManagedProcessItem.workdir"
+                      clearable
+                      placeholder="可选，不填则使用后端当前目录"
+                      @change="handleManagedConfigChange"
+                    />
+                  </el-form-item>
+                </el-form>
+
+                <el-alert
+                  :title="managedStatusBanner"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                  class="action-card__alert"
+                />
+
+                <div class="managed-meta">
+                  <div class="managed-meta__item">
+                    <span class="managed-meta__label">状态</span>
+                    <el-tag :type="activeManagedProcessState.running ? 'success' : 'info'">
+                      {{ activeManagedProcessState.status_text || (activeManagedProcessState.running ? '运行中' : '未运行') }}
+                    </el-tag>
+                  </div>
+                  <div class="managed-meta__item">
+                    <span class="managed-meta__label">PID</span>
+                    <span>{{ activeManagedProcessState.pid || '-' }}</span>
+                  </div>
+                  <div class="managed-meta__item">
+                    <span class="managed-meta__label">日志文件</span>
+                    <span class="managed-meta__value">{{ activeManagedProcessState.log_file || '-' }}</span>
+                  </div>
+                </div>
+
+                <div class="action-card__buttons action-card__buttons--wrap">
+                  <el-button
+                    type="primary"
+                    :loading="getManagedLoading(activeManagedProcessId).ensure || getManagedLoading(activeManagedProcessId).start"
+                    @click="startManagedProcess"
+                  >
+                    启动
+                  </el-button>
+                  <el-button :loading="getManagedLoading(activeManagedProcessId).stop" @click="stopManagedProcess">
+                    关闭
+                  </el-button>
+                  <el-button :loading="getManagedLoading(activeManagedProcessId).restart" @click="restartManagedProcess()">
+                    重启
+                  </el-button>
+                  <el-button :loading="getManagedLoading(activeManagedProcessId).status" @click="refreshManagedState()">
+                    刷新状态
+                  </el-button>
+                </div>
+
+                <div class="managed-log">
+                  <div class="managed-log__header">
+                    <div class="action-card__title action-card__title--small">实时日志</div>
+                    <div class="managed-log__hint">轮询最新 {{ managedLogMaxBytes / 1024 }}KB</div>
+                  </div>
+                  <el-alert
+                    v-if="activeManagedLogNotice"
+                    :title="activeManagedLogNotice"
+                    type="warning"
+                    :closable="false"
+                    class="managed-log__notice"
                   />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="24" :md="12">
-                <el-form-item label="唯一标识">
-                  <el-input
-                    v-model.trim="managedForm.key"
-                    placeholder="例如 cc-connect"
-                    @change="handleManagedConfigChange"
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-
-            <el-form-item label="启动命令">
-              <el-input
-                v-model.trim="managedForm.command_line"
-                placeholder="例如 cc-connect --config C:\\Users\\94804\\.cc-connect\\config.toml"
-                @change="handleManagedConfigChange"
-              />
-            </el-form-item>
-
-            <el-form-item label="工作目录">
-              <el-input
-                v-model.trim="managedForm.workdir"
-                clearable
-                placeholder="可选，不填则使用后端当前目录"
-                @change="handleManagedConfigChange"
-              />
-            </el-form-item>
-          </el-form>
-
-          <el-alert
-            :title="managedStatusBanner"
-            type="info"
-            :closable="false"
-            show-icon
-            class="action-card__alert"
-          />
-
-          <div class="managed-meta">
-            <div class="managed-meta__item">
-              <span class="managed-meta__label">状态</span>
-              <el-tag :type="managedProcess.running ? 'success' : 'info'">
-                {{ managedProcess.status_text || (managedProcess.running ? '运行中' : '未运行') }}
-              </el-tag>
+                  <div ref="managedLogContent" class="managed-log__content">
+                    {{ activeManagedLogContent || '暂无日志输出' }}
+                  </div>
+                </div>
+              </template>
             </div>
-            <div class="managed-meta__item">
-              <span class="managed-meta__label">PID</span>
-              <span>{{ managedProcess.pid || '-' }}</span>
-            </div>
-            <div class="managed-meta__item">
-              <span class="managed-meta__label">日志文件</span>
-              <span class="managed-meta__value">{{ managedProcess.log_file || '-' }}</span>
-            </div>
-          </div>
-
-          <div class="action-card__buttons action-card__buttons--wrap">
-            <el-button type="primary" :loading="managedLoading.ensure || managedLoading.start" @click="startManagedProcess">
-              启动
-            </el-button>
-            <el-button :loading="managedLoading.stop" @click="stopManagedProcess">关闭</el-button>
-            <el-button :loading="managedLoading.restart" @click="restartManagedProcess">重启</el-button>
-            <el-button :loading="managedLoading.status" @click="refreshManagedState">刷新状态</el-button>
-          </div>
-
-          <div class="managed-log">
-            <div class="managed-log__header">
-              <div class="action-card__title action-card__title--small">实时日志</div>
-              <div class="managed-log__hint">轮询最新 {{ managedLogMaxBytes / 1024 }}KB</div>
-            </div>
-            <el-alert
-              v-if="managedLogNotice"
-              :title="managedLogNotice"
-              type="warning"
-              :closable="false"
-              class="managed-log__notice"
-            />
-            <div ref="managedLogContent" class="managed-log__content">{{ managedLogContent || '暂无日志输出' }}</div>
           </div>
         </el-card>
       </el-tab-pane>
@@ -189,7 +242,8 @@ import { nextTick } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import toolsApi from '@/utils/base/tools'
 
-const managedProcessStorageKey = 'tools.common_actions.managed_process'
+const legacyManagedProcessStorageKey = 'tools.common_actions.managed_process'
+const managedProcessStorageKey = 'tools.common_actions.managed_process.v2'
 const defaultActionTab = 'managed'
 const defaultManagedProcessForm = Object.freeze({
   name: 'cc-connect',
@@ -197,6 +251,47 @@ const defaultManagedProcessForm = Object.freeze({
   command_line: 'cc-connect --config C:\\Users\\94804\\.cc-connect\\config.toml',
   workdir: '',
 })
+
+// 默认状态 / Default status for each managed command card.
+function createDefaultManagedProcessState() {
+  return {
+    running: false,
+    pid: 0,
+    log_file: '',
+    status_text: '未运行',
+    is_managed: false,
+  }
+}
+
+// 默认加载态 / Default loading flags for each managed command card.
+function createDefaultManagedLoading() {
+  return {
+    ensure: false,
+    status: false,
+    start: false,
+    stop: false,
+    restart: false,
+    log: false,
+  }
+}
+
+// 默认命令项 / Default managed command entry.
+function createDefaultManagedProcessItem(index = 1) {
+  if (index === 1) {
+    return {
+      id: `managed-${Date.now()}`,
+      ...defaultManagedProcessForm,
+    }
+  }
+
+  return {
+    id: `managed-${Date.now()}-${index}`,
+    name: `命令 ${index}`,
+    key: `command-${index}`,
+    command_line: '',
+    workdir: '',
+  }
+}
 
 export default {
   name: 'CommonActions',
@@ -209,37 +304,40 @@ export default {
       killingPid: 0,
       hasSearched: false,
       lastQueryPort: 0,
-      managedForm: {
-        ...defaultManagedProcessForm,
-      },
-      managedProcess: {
-        running: false,
-        pid: 0,
-        log_file: '',
-        status_text: '未运行',
-      },
-      managedLogContent: '',
-      managedLogNotice: '',
+      managedProcessItems: [],
+      activeManagedProcessId: '',
+      managedProcessStateMap: {},
+      managedLogContentMap: {},
+      managedLogNoticeMap: {},
+      managedLoadingMap: {},
+      // 上次成功应用的运行配置 / Last applied runtime config for safe restart on key changes.
+      managedRuntimeConfigMap: {},
       managedLogMaxBytes: 32 * 1024,
-      managedLoading: {
-        ensure: false,
-        status: false,
-        start: false,
-        stop: false,
-        restart: false,
-        log: false,
-      },
       managedStatusPollingTimer: null,
       managedLogPollingTimer: null,
-      managedInitialized: false,
       suppressManagedConfigChange: true,
     }
   },
   computed: {
+    activeManagedProcessItem() {
+      return this.managedProcessItems.find((item) => item.id === this.activeManagedProcessId) || null
+    },
+    activeManagedProcessState() {
+      return this.getManagedState(this.activeManagedProcessId)
+    },
+    activeManagedLogContent() {
+      return this.managedLogContentMap[this.activeManagedProcessId] || ''
+    },
+    activeManagedLogNotice() {
+      return this.managedLogNoticeMap[this.activeManagedProcessId] || ''
+    },
     managedStatusBanner() {
-      const commandLine = this.managedForm.command_line || '未配置命令'
-      const workdirText = this.managedForm.workdir || '后端当前目录'
-      return `当前命令：${commandLine}；工作目录：${workdirText}。配置项变更后会自动重启。`
+      if (!this.activeManagedProcessItem) {
+        return '请选择一个命令项。'
+      }
+      const commandLine = this.activeManagedProcessItem.command_line || '未配置命令'
+      const workdirText = this.activeManagedProcessItem.workdir || '后端当前目录'
+      return `当前命令：${commandLine}；工作目录：${workdirText}。配置变更后会自动重启。`
     },
   },
   mounted() {
@@ -250,116 +348,307 @@ export default {
   },
   methods: {
     initManagedProcessCard() {
-      this.loadManagedForm()
+      this.loadManagedProcessItems()
       this.$nextTick(() => {
         this.suppressManagedConfigChange = false
       })
-      this.ensureManagedProcessRunning()
+      this.ensureAllManagedProcessesRunning()
       this.startManagedPolling()
     },
-    loadManagedForm() {
+    loadManagedProcessItems() {
       const stored = window.localStorage.getItem(managedProcessStorageKey)
-      if (!stored) {
+      const legacyStored = window.localStorage.getItem(legacyManagedProcessStorageKey)
+      let items = []
+      let activeId = ''
+
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored)
+          items = Array.isArray(parsed?.items) ? parsed.items : []
+          activeId = parsed?.activeId || ''
+        } catch (error) {
+          items = []
+          activeId = ''
+        }
+      } else if (legacyStored) {
+        try {
+          const parsed = JSON.parse(legacyStored)
+          items = [{
+            id: createDefaultManagedProcessItem().id,
+            name: parsed?.name || defaultManagedProcessForm.name,
+            key: parsed?.key || defaultManagedProcessForm.key,
+            command_line: parsed?.command_line || defaultManagedProcessForm.command_line,
+            workdir: parsed?.workdir || '',
+          }]
+        } catch (error) {
+          items = []
+        }
+      }
+
+      if (items.length === 0) {
+        items = [createDefaultManagedProcessItem()]
+      }
+
+      this.managedProcessItems = items.map((item, index) => this.normalizeManagedProcessItem(item, index))
+      this.activeManagedProcessId = this.managedProcessItems.some((item) => item.id === activeId)
+        ? activeId
+        : this.managedProcessItems[0].id
+      this.saveManagedProcessItems()
+    },
+    normalizeManagedProcessItem(item, index) {
+      const fallback = createDefaultManagedProcessItem(index + 1)
+      return {
+        id: item?.id || fallback.id,
+        name: item?.name || fallback.name,
+        key: item?.key || fallback.key,
+        command_line: item?.command_line || fallback.command_line,
+        workdir: item?.workdir || '',
+      }
+    },
+    saveManagedProcessItems() {
+      window.localStorage.setItem(managedProcessStorageKey, JSON.stringify({
+        items: this.managedProcessItems,
+        activeId: this.activeManagedProcessId,
+      }))
+    },
+    getManagedState(id) {
+      if (!id) {
+        return createDefaultManagedProcessState()
+      }
+      if (!this.managedProcessStateMap[id]) {
+        this.managedProcessStateMap[id] = createDefaultManagedProcessState()
+      }
+      return this.managedProcessStateMap[id]
+    },
+    getManagedLoading(id) {
+      if (!id) {
+        return createDefaultManagedLoading()
+      }
+      if (!this.managedLoadingMap[id]) {
+        this.managedLoadingMap[id] = createDefaultManagedLoading()
+      }
+      return this.managedLoadingMap[id]
+    },
+    setManagedLoading(id, field, value) {
+      if (!id) {
         return
       }
-      try {
-        const parsed = JSON.parse(stored)
-        this.managedForm = {
-          ...defaultManagedProcessForm,
-          ...parsed,
-        }
-      } catch (error) {
-        this.managedForm = {
-          ...defaultManagedProcessForm,
-        }
-      }
+      const loading = this.getManagedLoading(id)
+      loading[field] = value
     },
-    saveManagedForm() {
-      window.localStorage.setItem(managedProcessStorageKey, JSON.stringify(this.managedForm))
-    },
-    getManagedPayload(extra = {}) {
+    buildManagedPayload(item) {
       return {
-        key: (this.managedForm.key || '').trim(),
-        name: (this.managedForm.name || '').trim(),
-        command_line: (this.managedForm.command_line || '').trim(),
-        workdir: (this.managedForm.workdir || '').trim(),
-        ...extra,
+        key: (item?.key || '').trim(),
+        name: (item?.name || '').trim(),
+        command_line: (item?.command_line || '').trim(),
+        workdir: (item?.workdir || '').trim(),
       }
     },
-    updateManagedState(response) {
+    getActiveManagedPayload() {
+      return this.buildManagedPayload(this.activeManagedProcessItem)
+    },
+    updateManagedStateByResponse(id, response) {
       if (!(response && response.ErrCode === 0 && response.Data)) {
         return false
       }
-      this.managedProcess = {
+
+      this.managedProcessStateMap[id] = {
         running: !!response.Data.running,
         pid: Number(response.Data.pid || 0),
         log_file: response.Data.log_file || '',
         status_text: response.Data.status_text || (response.Data.running ? '运行中' : '未运行'),
+        is_managed: !!response.Data.is_managed,
       }
-      // 外部进程没有可信日志文件，避免继续展示旧日志 / External processes do not have a trustworthy log file, so clear stale log state.
+
+      // 外部进程没有可信日志文件 / External processes do not expose trusted log files here.
       if (!response.Data.is_managed) {
-        this.managedProcess.log_file = ''
+        this.managedProcessStateMap[id].log_file = ''
       }
-      this.managedInitialized = true
       return true
     },
-    ensureManagedProcessRunning(showSuccess) {
-      if (!this.getManagedPayload().command_line) {
-        this.$helperNotify.error('请先填写启动命令')
-        return
-      }
-      this.managedLoading.ensure = true
-      toolsApi.ToolManagedProcessEnsureRunning(this.getManagedPayload(), (response) => {
-        this.managedLoading.ensure = false
-        if (!this.updateManagedState(response)) {
-          return
-        }
-        if (showSuccess) {
-          this.$helperNotify.success(this.managedProcess.running ? '命令已启动' : '命令未运行')
-        }
-        this.refreshManagedLog()
+    selectManagedProcessItem(id) {
+      this.activeManagedProcessId = id
+      this.saveManagedProcessItems()
+      this.refreshManagedState()
+      this.refreshManagedLog()
+    },
+    addManagedProcessItem() {
+      const nextIndex = this.managedProcessItems.length + 1
+      const newItem = createDefaultManagedProcessItem(nextIndex)
+      this.managedProcessItems.push(newItem)
+      this.activeManagedProcessId = newItem.id
+      this.saveManagedProcessItems()
+      this.$nextTick(() => {
+        this.refreshManagedState()
       })
     },
-    refreshManagedState() {
-      this.managedLoading.status = true
-      toolsApi.ToolManagedProcessStatus(this.getManagedPayload(), (response) => {
-        this.managedLoading.status = false
-        if (!this.updateManagedState(response)) {
+    async removeManagedProcessItem(id) {
+      const item = this.managedProcessItems.find((one) => one.id === id)
+      if (!item) {
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          `确认删除命令配置“${item.name || item.key || '未命名命令'}”吗？删除配置不会自动关闭已运行进程。`,
+          '删除命令配置',
+          {
+            type: 'warning',
+            confirmButtonText: '确认删除',
+            cancelButtonText: '取消',
+          }
+        )
+      } catch (error) {
+        return
+      }
+
+      this.managedProcessItems = this.managedProcessItems.filter((one) => one.id !== id)
+      delete this.managedProcessStateMap[id]
+      delete this.managedLogContentMap[id]
+      delete this.managedLogNoticeMap[id]
+      delete this.managedLoadingMap[id]
+      delete this.managedRuntimeConfigMap[id]
+
+      if (this.managedProcessItems.length === 0) {
+        const fallback = createDefaultManagedProcessItem()
+        this.managedProcessItems = [fallback]
+      }
+
+      if (!this.managedProcessItems.some((one) => one.id === this.activeManagedProcessId)) {
+        this.activeManagedProcessId = this.managedProcessItems[0].id
+      }
+
+      this.saveManagedProcessItems()
+      this.$helperNotify.success('命令配置已删除')
+    },
+    ensureAllManagedProcessesRunning() {
+      // 顺序执行，避免同屏初始化时并发请求过多 / Run sequentially to avoid burst requests on mount.
+      this.managedProcessItems.forEach((item, index) => {
+        window.setTimeout(() => {
+          this.ensureManagedProcessRunning(item.id, false)
+        }, index * 120)
+      })
+    },
+    ensureManagedProcessRunning(id = this.activeManagedProcessId, showSuccess = false) {
+      const item = this.managedProcessItems.find((one) => one.id === id)
+      if (!item) {
+        return
+      }
+
+      const payload = this.buildManagedPayload(item)
+      if (!payload.command_line) {
+        return
+      }
+
+      this.setManagedLoading(id, 'ensure', true)
+      toolsApi.ToolManagedProcessEnsureRunning(payload, (response) => {
+        this.setManagedLoading(id, 'ensure', false)
+        if (!this.updateManagedStateByResponse(id, response)) {
           return
         }
-        this.refreshManagedLog()
+        this.managedRuntimeConfigMap[id] = { ...payload }
+        if (showSuccess) {
+          this.$helperNotify.success(this.getManagedState(id).running ? '命令已启动' : '命令未运行')
+        }
+        if (id === this.activeManagedProcessId) {
+          this.refreshManagedLog()
+        }
+      })
+    },
+    refreshManagedState(id = this.activeManagedProcessId) {
+      const item = this.managedProcessItems.find((one) => one.id === id)
+      if (!item) {
+        return
+      }
+
+      const payload = this.buildManagedPayload(item)
+      if (!payload.command_line) {
+        this.managedProcessStateMap[id] = createDefaultManagedProcessState()
+        return
+      }
+
+      this.setManagedLoading(id, 'status', true)
+      toolsApi.ToolManagedProcessStatus(payload, (response) => {
+        this.setManagedLoading(id, 'status', false)
+        if (!this.updateManagedStateByResponse(id, response)) {
+          return
+        }
+        if (id === this.activeManagedProcessId) {
+          this.refreshManagedLog()
+        }
+      })
+    },
+    refreshAllManagedStatuses() {
+      this.managedProcessItems.forEach((item) => {
+        this.refreshManagedState(item.id)
       })
     },
     startManagedProcess() {
-      this.managedLoading.start = true
-      toolsApi.ToolManagedProcessStart(this.getManagedPayload(), (response) => {
-        this.managedLoading.start = false
-        if (!this.updateManagedState(response)) {
+      const id = this.activeManagedProcessId
+      const payload = this.getActiveManagedPayload()
+      if (!payload.command_line) {
+        this.$helperNotify.error('请先填写启动命令')
+        return
+      }
+
+      this.setManagedLoading(id, 'start', true)
+      toolsApi.ToolManagedProcessStart(payload, (response) => {
+        this.setManagedLoading(id, 'start', false)
+        if (!this.updateManagedStateByResponse(id, response)) {
           return
         }
+        this.managedRuntimeConfigMap[id] = { ...payload }
         this.$helperNotify.success('命令已启动')
         this.refreshManagedLog()
       })
     },
-    stopManagedProcess() {
-      this.managedLoading.stop = true
-      toolsApi.ToolManagedProcessStop(this.getManagedPayload(), (response) => {
-        this.managedLoading.stop = false
-        if (!this.updateManagedState(response)) {
+    stopManagedProcess(options = {}) {
+      const id = options.id || this.activeManagedProcessId
+      const item = this.managedProcessItems.find((one) => one.id === id)
+      if (!item) {
+        return
+      }
+
+      const payload = options.payload || this.buildManagedPayload(item)
+      if (!payload.command_line) {
+        this.managedProcessStateMap[id] = createDefaultManagedProcessState()
+        return
+      }
+
+      this.setManagedLoading(id, 'stop', true)
+      toolsApi.ToolManagedProcessStop(payload, (response) => {
+        this.setManagedLoading(id, 'stop', false)
+        if (!this.updateManagedStateByResponse(id, response)) {
           return
         }
-        this.managedLogContent = ''
-        this.managedLogNotice = ''
-        this.$helperNotify.success('命令已关闭')
+        this.managedLogContentMap[id] = ''
+        this.managedLogNoticeMap[id] = ''
+        if (options.clearRuntimeConfig !== false) {
+          delete this.managedRuntimeConfigMap[id]
+        }
+        if (options.showSuccess !== false) {
+          this.$helperNotify.success('命令已关闭')
+        }
+        if (typeof options.onSuccess === 'function') {
+          options.onSuccess()
+        }
       })
     },
     restartManagedProcess(showSuccess = true) {
-      this.managedLoading.restart = true
-      toolsApi.ToolManagedProcessRestart(this.getManagedPayload(), (response) => {
-        this.managedLoading.restart = false
-        if (!this.updateManagedState(response)) {
+      const id = this.activeManagedProcessId
+      const payload = this.getActiveManagedPayload()
+      if (!payload.command_line) {
+        this.$helperNotify.error('请先填写启动命令')
+        return
+      }
+
+      this.setManagedLoading(id, 'restart', true)
+      toolsApi.ToolManagedProcessRestart(payload, (response) => {
+        this.setManagedLoading(id, 'restart', false)
+        if (!this.updateManagedStateByResponse(id, response)) {
           return
         }
+        this.managedRuntimeConfigMap[id] = { ...payload }
         if (showSuccess) {
           this.$helperNotify.success('命令已重启')
         }
@@ -367,42 +656,90 @@ export default {
       })
     },
     handleManagedConfigChange() {
-      if (this.suppressManagedConfigChange) {
+      if (this.suppressManagedConfigChange || !this.activeManagedProcessItem) {
         return
       }
-      this.saveManagedForm()
-      if (!this.getManagedPayload().command_line) {
+
+      const id = this.activeManagedProcessId
+      const currentPayload = this.getActiveManagedPayload()
+      const previousPayload = this.managedRuntimeConfigMap[id] || null
+
+      this.saveManagedProcessItems()
+
+      // 只有运行参数变更才自动重启 / Auto restart only when runtime fields changed.
+      const runtimeChanged = !previousPayload ||
+        previousPayload.key !== currentPayload.key ||
+        previousPayload.command_line !== currentPayload.command_line ||
+        previousPayload.workdir !== currentPayload.workdir
+
+      if (!runtimeChanged) {
         return
       }
+
+      if (!currentPayload.command_line) {
+        this.managedProcessStateMap[id] = createDefaultManagedProcessState()
+        this.managedLogContentMap[id] = ''
+        this.managedLogNoticeMap[id] = ''
+        delete this.managedRuntimeConfigMap[id]
+        return
+      }
+
+      // key 变更时先按旧配置关闭，再按新配置启动 / Stop old config first when key changed, then start new config.
+      if (previousPayload && previousPayload.key && previousPayload.key !== currentPayload.key) {
+        this.stopManagedProcess({
+          id,
+          payload: previousPayload,
+          showSuccess: false,
+          clearRuntimeConfig: false,
+          onSuccess: () => {
+            this.startManagedProcess()
+          },
+        })
+        return
+      }
+
+      if (!previousPayload || !previousPayload.command_line) {
+        this.startManagedProcess()
+        return
+      }
+
       this.restartManagedProcess(false)
     },
-    refreshManagedLog() {
-      // 没有启动命令时不请求日志 / Skip log requests when the command is empty.
-      if (!this.getManagedPayload().command_line) {
-        this.managedLogContent = ''
-        this.managedLogNotice = ''
+    refreshManagedLog(id = this.activeManagedProcessId) {
+      const item = this.managedProcessItems.find((one) => one.id === id)
+      if (!item) {
         return
       }
-      // 避免日志轮询重叠请求 / Avoid overlapping polling requests for log tail.
-      if (this.managedLoading.log) {
+
+      const payload = this.buildManagedPayload(item)
+      if (!payload.command_line) {
+        this.managedLogContentMap[id] = ''
+        this.managedLogNoticeMap[id] = ''
         return
       }
-      this.managedLoading.log = true
+
+      if (this.getManagedLoading(id).log) {
+        return
+      }
+
+      this.setManagedLoading(id, 'log', true)
       toolsApi.ToolManagedProcessLogTail({
-        ...this.getManagedPayload(),
+        ...payload,
         max_bytes: this.managedLogMaxBytes,
       }, (response) => {
-        this.managedLoading.log = false
+        this.setManagedLoading(id, 'log', false)
         if (!(response && response.ErrCode === 0 && response.Data)) {
-          this.managedLogNotice = ''
+          this.managedLogNoticeMap[id] = ''
           return
         }
-        this.managedLogNotice = response.Data.message || ''
-        this.managedLogContent = response.Data.content || ''
-        if (response.Data.log_file) {
-          this.managedProcess.log_file = response.Data.log_file
+        this.managedLogNoticeMap[id] = response.Data.message || ''
+        this.managedLogContentMap[id] = response.Data.content || ''
+        if (response.Data.log_file && this.managedProcessStateMap[id]) {
+          this.managedProcessStateMap[id].log_file = response.Data.log_file
         }
-        this.scrollManagedLogToBottom()
+        if (id === this.activeManagedProcessId) {
+          this.scrollManagedLogToBottom()
+        }
       })
     },
     scrollManagedLogToBottom() {
@@ -415,10 +752,10 @@ export default {
       })
     },
     startManagedPolling() {
+      // 状态轮询覆盖全部命令，日志仅轮询当前选中项 / Poll all statuses, but only tail logs for active entry.
       this.clearManagedPolling()
-      // 状态轮询和日志轮询分开，避免日志刷新完全依赖状态接口 / Separate status polling from log polling so logs do not depend on status refresh.
       this.managedStatusPollingTimer = window.setInterval(() => {
-        this.refreshManagedState()
+        this.refreshAllManagedStatuses()
       }, 3000)
       this.managedLogPollingTimer = window.setInterval(() => {
         this.refreshManagedLog()
@@ -501,11 +838,12 @@ export default {
 
 <style scoped>
 .common-actions {
-  padding: 4px 6px 18px;
+  height: 100%;
+  padding: 0;
 }
 
 .common-actions__header {
-  margin-bottom: 14px;
+  display: none;
 }
 
 .common-actions__title {
@@ -521,18 +859,27 @@ export default {
 }
 
 .common-actions-tabs {
+  height: 100%;
   min-height: 640px;
 }
 
 .common-actions-tabs :deep(.el-tabs__content) {
-  padding-right: 16px;
+  height: 100%;
+  min-width: 0;
+  padding-right: 184px;
 }
 
 .common-actions-tabs :deep(.el-tabs__header.is-right) {
   margin-left: 0;
+  width: 168px;
+}
+
+.common-actions-tabs :deep(.el-tabs__nav-scroll) {
+  width: 100%;
 }
 
 .common-actions-tabs :deep(.el-tabs__nav-wrap.is-right) {
+  width: 168px;
   padding: 8px 0;
 }
 
@@ -555,6 +902,7 @@ export default {
 }
 
 .action-card {
+  width: 100%;
   border-radius: 12px;
 }
 
@@ -601,6 +949,98 @@ export default {
 
 .action-card__table {
   margin-top: 8px;
+}
+
+.managed-layout {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  gap: 20px;
+}
+
+.managed-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 0 0 240px;
+  min-width: 0;
+}
+
+.managed-sidebar__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.managed-sidebar__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.managed-sidebar__item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d8e8d8;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.managed-sidebar__item:hover {
+  border-color: #93b397;
+  transform: translateY(-1px);
+}
+
+.managed-sidebar__item.is-active {
+  border-color: #5a875f;
+  box-shadow: 0 10px 24px rgba(62, 95, 67, 0.12);
+  background: linear-gradient(180deg, #ffffff 0%, #eef7ea 100%);
+}
+
+.managed-sidebar__item-main {
+  min-width: 0;
+}
+
+.managed-sidebar__item-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #35553a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.managed-sidebar__item-command {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6a7a6c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.managed-sidebar__item-extra {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.managed-sidebar__delete {
+  padding: 0;
+}
+
+.managed-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .managed-meta {
@@ -662,6 +1102,29 @@ export default {
   font-size: 12px;
   line-height: 1.55;
   color: #e7f4e8;
+}
+
+@media (max-width: 960px) {
+  .common-actions-tabs :deep(.el-tabs__content) {
+    padding-right: 16px;
+  }
+
+  .common-actions-tabs :deep(.el-tabs__header.is-right) {
+    width: auto;
+  }
+
+  .common-actions-tabs :deep(.el-tabs__nav-wrap.is-right) {
+    width: auto;
+  }
+
+  .managed-layout {
+    flex-direction: column;
+  }
+
+  .managed-sidebar {
+    flex-basis: auto;
+    width: 100%;
+  }
 }
 
 @media (max-width: 768px) {

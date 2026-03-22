@@ -129,8 +129,8 @@
     </div>
   </div>
   <!--新增弹窗-->
-  <el-dialog v-model="dialogSmartLink" title="创建/编辑链接" width="90%">
-    <el-form label-width="auto" style="max-width: 90%">
+  <el-dialog v-model="dialogSmartLink" title="创建/编辑链接" width="90%" class="smart-link-dialog">
+    <el-form label-width="auto" class="smart-link-dialog__form">
       <el-form-item label="名称">
         <el-input v-model="smartLinkConfig.name"/>
       </el-form-item>
@@ -169,12 +169,6 @@
       <!--        <el-alert title="哪些请求路由会被定义为下载，英文逗号分割" type="info" show-icon :closable="false"/>-->
       <!--        <el-input v-model="smartLinkConfig.download_finds" type="textarea" :rows="5"/>-->
       <!--      </el-form-item>-->
-      <el-form-item label="信息提取">
-        <el-input v-model="smartLinkConfig.show_cookies" :rows="5" type="textarea"/>
-      </el-form-item>
-      <el-form-item label="请求拦截（半匹配）">
-        <el-input v-model="smartLinkConfig.filter_uris" :rows="5" type="textarea"/>
-      </el-form-item>
       <el-form-item label="执行逻辑">
         <el-alert :closable="false" show-icon title="打开链接后执行的流程，切换到编辑执行逻辑页面，可查看执行逻辑" type="info"/>
         <el-select v-model="smartLinkConfig.process_id" placeholder="选择执行逻辑">
@@ -183,16 +177,8 @@
           </template>
         </el-select>
       </el-form-item>
-      <el-form-item v-if="dialogSmartLink" label="链接配置">
-        <el-alert :closable="false" :title="linksTip" show-icon type="info"/>
-        <JsonEditCombine
-            v-if="dialogSmartLink"
-            :value="smartLinkConfig.links"
-            default-show-type="form"
-            mode="tree"
-            style="width: 100%;"
-            @change="linksChange"
-        />
+      <el-form-item v-if="dialogSmartLink" label="链接配置" class="smart-link-dialog__link-config">
+        <LinkConfigEditor v-model="smartLinkConfig" />
       </el-form-item>
       <el-form-item label="排序值">
         <el-input v-model="smartLinkConfig.weight" type="text"/>
@@ -261,7 +247,6 @@
 import smart_link_set from "@/utils/base/smart_link_set"
 import base from "@/utils/base";
 import ticker_step from "@/utils/base/ticker_step"
-import JsonEditCombine from "@/components/base/json_edit_combine.vue";
 import t from "@/utils/base/type"
 import Markdown from "@/components/Markdown.vue";
 import Init from "@/utils/base/set_init";
@@ -269,7 +254,7 @@ import Process from '@/utils/base/smart_link_proces'
 import shellResult from "@/components/shell/result_button.vue";
 import sse from "@/utils/base/sse";
 import sseDistribute from "@/utils/base/sse_distribute";
-import shell from "@/utils/base/shell"
+import LinkConfigEditor from "@/components/smart_link/LinkConfigEditor.vue";
 import { Plus, Tools, Refresh, Download, QuestionFilled, EditPen, Share, Setting, Notebook, Delete } from '@element-plus/icons-vue'
 
 export default {
@@ -281,7 +266,6 @@ export default {
   components: {
     shellResult,
     Markdown,
-    JsonEditCombine,
     Plus,
     Tools,
     Refresh,
@@ -292,6 +276,7 @@ export default {
     Setting,
     Notebook,
     Delete,
+    LinkConfigEditor,
   },
   data() {
     return {
@@ -309,8 +294,6 @@ export default {
       dialogSsePushLog: false,
       showUserPassList: [],
       dialogSmartLink: false,
-      linksTip: '[{"link":"","label":"","userList":[{"user_name":"","password":""}],"browser_auth_username":"","browser_auth_password":""}]',
-      // processTip : '[{"type":"","not_exist_Locator":"","Locator":"","uri":"","tip":"","value":""}]',
       openTypeList: [
         {label: '通过js直接打开', value: 1},
         {label: '静默打开(内置核心打开)', value: 2},
@@ -421,15 +404,6 @@ export default {
         _that.shellController.divHeight = parseInt(_height) - 60
         _that.windowChange()
       }, 1000)
-    },
-    processChange: function (newData) {
-      let _that = this
-      _that.smartLinkConfig.processNew = newData
-    },
-    linksChange: function (newData) {
-      let _that = this
-      _that.smartLinkConfig.linksNew = newData
-
     },
     // applyNodeInstallTip 解析并展示 Node.js 安装提示
     applyNodeInstallTip: function (response) {
@@ -560,13 +534,7 @@ export default {
     },
     saveSmartLink: function () {
       let _that = this
-      console.log(_that.smartLinkConfig)
-      if (_that.smartLinkConfig.linksNew && _that.smartLinkConfig.linksNew !== '') {
-        _that.smartLinkConfig.links = _that.smartLinkConfig.linksNew
-        _that.smartLinkConfig.linkList = JSON.parse(_that.smartLinkConfig.links)
-      } else {
-        _that.smartLinkConfig.linkList = JSON.parse(_that.smartLinkConfig.links)
-      }
+      _that.smartLinkConfig.linkList = JSON.parse(_that.smartLinkConfig.links || '[]')
       smart_link_set.SmartLinkAdd(_that.smartLinkConfig, function (response) {
         if (response.ErrCode === 0) {
           _that.dialogSmartLink = false
@@ -585,11 +553,9 @@ export default {
     showEditDialog: function (smartLink) {
       let _that = this
       if (smartLink !== undefined) {
-        _that.smartLinkConfig = smartLink
+        _that.smartLinkConfig = JSON.parse(JSON.stringify(smartLink))
       }
       _that.dialogSmartLink = true
-      _that.smartLinkConfig.linksNew = ''
-      _that.smartLinkConfig.processNew = ''
     },
     showUserPasswordList: function (smartLink) {
       let linkList = smartLink.linkList
@@ -652,8 +618,7 @@ export default {
     downloadPath: function () {
       let _that = this
       smart_link_set.SmartLinkDownloadPath(_that.sse_distribute_id , function (response) {
-        if (response.ErrCode === 0) {
-        } else {
+        if (response.ErrCode !== 0) {
           if (!_that.applyNodeInstallTip(response)) {
             _that.$helperNotify.error('失败')
           }
@@ -688,7 +653,7 @@ export default {
     },
     showCreateDialog: function () {
       let _that = this
-      _that.smartLinkConfig = _that.defaultSmartLinkConfig
+      _that.smartLinkConfig = JSON.parse(JSON.stringify(_that.defaultSmartLinkConfig))
       _that.dialogSmartLink = true
     },
     GetConfigList: function () {
@@ -790,6 +755,23 @@ export default {
 .link-run-links-row {
   margin-top: 15px;
   margin-bottom: 10px;
+}
+
+.smart-link-dialog :deep(.el-dialog__body) {
+  padding-top: 18px;
+}
+
+.smart-link-dialog__form {
+  width: 100%;
+}
+
+.smart-link-dialog__link-config {
+  width: 100%;
+}
+
+.smart-link-dialog__link-config :deep(.el-form-item__content) {
+  width: 100%;
+  display: block;
 }
 </style>
 

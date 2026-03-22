@@ -32,6 +32,10 @@
           <el-icon><Folder /></el-icon>
           <span>Git</span>
         </el-menu-item>
+        <el-menu-item v-if="checkModuleOpen('tools')" index="/CommonActions" class="menu-item-common-actions">
+          <el-icon><ToolsIcon /></el-icon>
+          <span>常用操作</span>
+        </el-menu-item>
         <el-menu-item v-if="checkModuleOpen('login')" index="/Link">
           <el-icon><Link /></el-icon>
           <span>自定义网页</span>
@@ -60,8 +64,8 @@
           <el-icon><Monitor /></el-icon>
           <span>终端输出</span>
         </el-menu-item>
-        <el-menu-item index="/Set">
-          <el-icon><Tools /></el-icon>
+        <el-menu-item index="/Set" class="menu-item-settings">
+          <el-icon><Setting /></el-icon>
           <span>配置</span>
         </el-menu-item>
       </el-menu>
@@ -474,6 +478,7 @@ export default {
 }
 
 .sidebar-menu .el-menu-item {
+  position: relative;
   height: 40px;
   line-height: 40px;
   margin: 2px 6px;
@@ -495,6 +500,36 @@ export default {
 .sidebar-menu .el-menu-item .el-icon {
   margin-right: 8px;
   font-size: 16px;
+}
+
+.sidebar-menu .el-menu-item.menu-item-common-actions .el-icon {
+  color: #4f8a5b;
+  filter: drop-shadow(0 2px 4px rgba(92, 143, 101, 0.24));
+}
+
+.sidebar-menu .el-menu-item.menu-item-settings .el-icon {
+  color: #de8a2a;
+  transform-origin: center;
+  transition: transform 0.25s ease, color 0.25s ease, filter 0.25s ease;
+  filter: drop-shadow(0 2px 6px rgba(222, 138, 42, 0.28));
+}
+
+.sidebar-menu .el-menu-item.menu-item-settings:hover .el-icon,
+.sidebar-menu .el-menu-item.menu-item-settings.is-active .el-icon {
+  color: #f29f38;
+  transform: rotate(24deg) scale(1.08);
+}
+
+.sidebar-menu .el-menu-item.menu-item-settings.is-active::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 10px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: radial-gradient(circle, #ffd66b 0%, #f29f38 70%, rgba(242, 159, 56, 0) 100%);
+  box-shadow: 0 0 10px rgba(255, 214, 107, 0.7);
 }
 
 .sidebar-menu .el-menu-item span {

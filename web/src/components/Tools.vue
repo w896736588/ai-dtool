@@ -1,9 +1,6 @@
 <template>
   <div class="tools-container">
     <el-tabs tab-position="left" class="demo-tabs">
-      <el-tab-pane label="常用操作">
-        <CommonActions />
-      </el-tab-pane>
       <el-tab-pane label="时间转换">
         <TimeTransfer />
       </el-tab-pane>
@@ -25,12 +22,10 @@ import QrCode from '@/components/tools/QrCode'
 import TimeTransfer from '@/components/tools/timeTransfer'
 import Decode from '@/components/tools/Decode.vue'
 import Markdown from '@/components/Markdown.vue'
-import CommonActions from '@/components/tools/CommonActions.vue'
 
 export default {
   name: 'tools',
   components: {
-    CommonActions,
     Markdown,
     Decode,
     QrCode,

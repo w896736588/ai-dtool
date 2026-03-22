@@ -171,79 +171,7 @@
 
     <!-- 编辑执行逻辑子项对话框 -->
     <el-dialog v-model="state.dialogProcessItem" :title="state.editingItem.id ? '编辑执行逻辑子项' : '新增执行逻辑子项'" width="70%">
-      <el-form :model="state.editingItem" label-width="220px">
-        <el-form-item label="名称(name)">
-          <el-input v-model="state.editingItem.name"/>
-        </el-form-item>
-        <el-form-item label="类型(type)">
-          <el-select v-model="state.editingItem.type" placeholder="请选择类型">
-            <el-option label="提取元素内容 text_content" value="text_content"/>
-            <el-option label="跳转 redirect_uri" value="redirect_uri"/>
-            <el-option label="等待接口完成 wait_url" value="wait_url"/>
-            <el-option label="等待毫秒 wait" value="wait"/>
-            <el-option label="判断输出 bool_result" value="bool_result"/>
-            <el-option label="判断存在 bool_exist" value="bool_exist"/>
-            <el-option label="点击元素 click" value="click"/>
-            <el-option label="输入信息 input" value="input"/>
-            <el-option label="结束本次打开的网页 close" value="close"/>
-            <el-option label="存在时等待 no_exist_wait" value="no_exist_wait"/>
-            <el-option label="提取canvas图片 canvas_image" value="canvas_image"/>
-            <el-option label="输入账号密码 login_username_password" value="login_username_password"/>
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="
-            state.editingItem.type !=='wait' &&
-            state.editingItem.type !=='close' &&
-            state.editingItem.type !=='redirect_uri'" label="元素定位(locator)">
-          <el-input v-model="state.editingItem.locator"/>
-          <el-button link style="margin:3px;color:#409eff;" @click="">复制html，通过AI生成定位</el-button>
-        </el-form-item>
-        <el-form-item label="前端执行提示(tip)">
-          <el-input v-model="state.editingItem.tip"/>
-        </el-form-item>
-        <el-form-item label="值(value)" v-if="state.editingItem.type !== 'wait'">
-          <el-input v-model="state.editingItem.value"/>
-        </el-form-item>
-        <el-form-item label="输出键(out_key)">
-          <el-input v-model="state.editingItem.out_key"/>
-        </el-form-item>
-        <el-form-item label="判断键(check_key)">
-          <el-input v-model="state.editingItem.check_key"/>
-        </el-form-item>
-        <el-form-item label="权重(weight)">
-          <el-input-number v-model="state.editingItem.weight" :min="0"/>
-        </el-form-item>
-        <el-form-item label="等待时长(wait_mills)">
-          <el-input-number v-model="state.editingItem.wait_mills" :min="1"/>
-        </el-form-item>
-        <el-form-item label="域名限制(domain_limit)">
-          <el-input v-model="state.editingItem.domain_limit"/>
-        </el-form-item>
-        <el-form-item label="输出是否添加到替换列表" v-if="state.editingItem.type !== 'click'">
-          <el-select v-model="state.editingItem.append_to_replace" placeholder="输出是否添加到替换列表">
-            <el-option label="添加" value="1"/>
-            <el-option label="不添加" value="0"/>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="同步还是异步执行">
-          <el-select v-model="state.editingItem.is_error_continue" placeholder="同步还是异步执行">
-            <el-option label="异步" value="1"/>
-            <el-option label="同步" value="0"/>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="执行错误后是否继续数">
-          <el-select v-model="state.editingItem.is_async" placeholder="执行错误后是否继续数">
-            <el-option label="继续" value="1"/>
-            <el-option label="中断" value="0"/>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="下一个节点ID(多个用逗号分隔)">
-          <el-input v-model="state.editingItem.next_ids" placeholder="例如: 2,3,4"/>
-          <div style="margin-top: 5px; color: #666; font-size: 12px;">
-            保存后，系统将根据此字段自动创建连接线
-          </div>
-        </el-form-item>
-      </el-form>
+      <ProcessItemEditor v-model="state.editingItem" />
       <template #footer>
         <el-button @click="state.dialogProcessItem = false">取消</el-button>
         <el-button type="primary" @click="saveProcessItem">保存</el-button>
@@ -262,13 +190,15 @@ import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 import { ElMessageBox } from 'element-plus'
 import API from '@/utils/base/smart_link_proces'
+import ProcessItemEditor from '@/components/smart_link/ProcessItemEditor.vue'
 
 export default {
   components: {
     VueFlow,
     Background,
     Controls,
-    Handle
+    Handle,
+    ProcessItemEditor,
   },
   setup(props, { emit }) {
     const state = reactive({
