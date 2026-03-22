@@ -149,6 +149,23 @@ func ToolManagedProcessLogTail(c *gin.Context) {
 		return
 	}
 
+	// 外部进程没有接入当前日志写入器，不能伪造日志内容 / External processes are not wired to this log writer, so do not fabricate log output.
+	status, err := toolManagedProcessClient.Status(dataMap, time.Now())
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if status != nil && status.Running && !status.IsManaged {
+		gsgin.GinResponseSuccess(c, ``, map[string]any{
+			`key`:       config.Key,
+			`log_file`:  ``,
+			`content`:   ``,
+			`available`: false,
+			`message`:   `当前是外部已存在进程，无法读取其真实实时日志`,
+		})
+		return
+	}
+
 	maxBytes := cast.ToInt(dataMap[`max_bytes`])
 	if maxBytes <= 0 {
 		maxBytes = defaultManagedProcessTailBytes
@@ -162,9 +179,11 @@ func ToolManagedProcessLogTail(c *gin.Context) {
 	}
 
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`key`:      config.Key,
-		`log_file`: logFile,
-		`content`:  content,
+		`key`:       config.Key,
+		`log_file`:  logFile,
+		`content`:   content,
+		`available`: true,
+		`message`:   ``,
 	})
 }
 
@@ -198,11 +217,12 @@ func (m *managedProcessManager) Status(raw map[string]any, now time.Time) (*mana
 	entry := m.processMap[config.Key]
 	if entry != nil {
 		entry.Config = config
-		if entry.Process != nil && entry.Process.PID > 0 {
+		if entry.Process != nil && entry.Process.PID > 0 && isManagedProcessSnapshotAlive(config, entry.Process) {
 			status := buildManagedProcessStatus(entry.Config, entry.Process)
 			m.mu.Unlock()
 			return status, nil
 		}
+		entry.Process = nil
 	}
 	m.mu.Unlock()
 
@@ -220,7 +240,6 @@ func (m *managedProcessManager) Status(raw map[string]any, now time.Time) (*mana
 		}, nil
 	}
 
-	found.LogFile = buildManagedProcessLogFile(m.logDir, config.Key, now)
 	found.StatusText = `运行中（外部进程）`
 	m.setEntry(config, found)
 	return buildManagedProcessStatus(config, found), nil
@@ -236,11 +255,12 @@ func (m *managedProcessManager) EnsureRunning(raw map[string]any, now time.Time)
 	entry := m.processMap[config.Key]
 	if entry != nil {
 		entry.Config = config
-		if entry.Process != nil && entry.Process.PID > 0 {
+		if entry.Process != nil && entry.Process.PID > 0 && isManagedProcessSnapshotAlive(config, entry.Process) {
 			status := buildManagedProcessStatus(entry.Config, entry.Process)
 			m.mu.Unlock()
 			return status, nil
 		}
+		entry.Process = nil
 	}
 	m.mu.Unlock()
 
@@ -249,7 +269,6 @@ func (m *managedProcessManager) EnsureRunning(raw map[string]any, now time.Time)
 		return nil, err
 	}
 	if found != nil && found.PID > 0 {
-		found.LogFile = buildManagedProcessLogFile(m.logDir, config.Key, now)
 		found.StatusText = `运行中（外部进程）`
 		m.setEntry(config, found)
 		return buildManagedProcessStatus(config, found), nil
@@ -370,6 +389,11 @@ func (m *managedProcessManager) setEntry(config managedProcessConfig, snapshot *
 }
 
 func buildManagedProcessStatus(config managedProcessConfig, snapshot *managedProcessSnapshot) *managedProcessStatus {
+	logFile := ``
+	// 只有托管器亲自启动的进程才暴露日志文件 / Only processes started by the manager should expose a log file.
+	if snapshot != nil && snapshot.IsManaged {
+		logFile = snapshot.LogFile
+	}
 	return &managedProcessStatus{
 		Key:         config.Key,
 		Name:        config.Name,
@@ -377,7 +401,7 @@ func buildManagedProcessStatus(config managedProcessConfig, snapshot *managedPro
 		Workdir:     config.Workdir,
 		Running:     snapshot != nil && snapshot.PID > 0,
 		PID:         snapshot.PID,
-		LogFile:     snapshot.LogFile,
+		LogFile:     logFile,
 		StartedAt:   snapshot.StartedAt,
 		IsManaged:   snapshot.IsManaged,
 		StatusText:  snapshot.StatusText,
@@ -567,7 +591,14 @@ func (r *systemManagedProcessRunner) Start(config managedProcessConfig, logFile 
 		return nil, err
 	}
 
-	cmd := exec.Command(config.Executable, config.Args...)
+	// 启动前尽量解析到真实可执行文件，避免 Windows 下命中 .cmd shim / Resolve the real executable before start to avoid .cmd shims on Windows.
+	resolvedConfig, err := resolveManagedProcessStartConfig(config)
+	if err != nil {
+		_ = writer.Close()
+		return nil, err
+	}
+
+	cmd := exec.Command(resolvedConfig.Executable, resolvedConfig.Args...)
 	if config.Workdir != `` {
 		cmd.Dir = config.Workdir
 	}
@@ -592,6 +623,21 @@ func (r *systemManagedProcessRunner) Start(config managedProcessConfig, logFile 
 		StartedAt: time.Now().Unix(),
 		IsManaged: true,
 	}, nil
+}
+
+func isManagedProcessSnapshotAlive(config managedProcessConfig, snapshot *managedProcessSnapshot) bool {
+	if snapshot == nil || snapshot.PID <= 0 {
+		return false
+	}
+	proc, err := process.NewProcess(snapshot.PID)
+	if err != nil {
+		return false
+	}
+	cmdline, err := proc.Cmdline()
+	if err != nil {
+		return false
+	}
+	return isManagedProcessMatch(config, cmdline)
 }
 
 func (r *systemManagedProcessRunner) Kill(pid int32) error {

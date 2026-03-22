@@ -89,6 +89,12 @@ func TestToolManagedProcessEnsureRunningDoesNotDuplicateStart(t *testing.T) {
 	if status.PID != 8899 {
 		t.Fatalf("pid = %d, want 8899", status.PID)
 	}
+	if status.LogFile != `` {
+		t.Fatalf("log file = %q, want empty for external process", status.LogFile)
+	}
+	if status.IsManaged {
+		t.Fatal("expected external process to not be managed")
+	}
 	if len(runner.startCalls) != 0 {
 		t.Fatalf("startCalls = %d, want 0", len(runner.startCalls))
 	}
@@ -158,5 +164,23 @@ func TestToolManagedProcessReadLogTail(t *testing.T) {
 	}
 	if empty != `` {
 		t.Fatalf("missing tail = %q, want empty", empty)
+	}
+}
+
+func TestBuildManagedProcessStatusKeepsExternalProcessLogEmpty(t *testing.T) {
+	// 外部进程不受当前托管器控制 / External processes should not expose fabricated log files.
+	status := buildManagedProcessStatus(managedProcessConfig{
+		Key:         `cc-connect`,
+		Name:        `cc-connect`,
+		CommandLine: `cc-connect --config C:\Users\94804\.cc-connect\config.toml`,
+	}, &managedProcessSnapshot{
+		PID:        7788,
+		IsManaged:  false,
+		LogFile:    filepath.Clean(`C:\work\frog\dev_tool_master\logs\cc-connect-2026-03-22.log`),
+		StatusText: `运行中（外部进程）`,
+	})
+
+	if status.LogFile != `` {
+		t.Fatalf("log file = %q, want empty for external process status", status.LogFile)
 	}
 }

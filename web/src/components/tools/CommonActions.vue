@@ -99,6 +99,13 @@
               <div class="action-card__title action-card__title--small">实时日志</div>
               <div class="managed-log__hint">轮询最新 {{ managedLogMaxBytes / 1024 }}KB</div>
             </div>
+            <el-alert
+              v-if="managedLogNotice"
+              :title="managedLogNotice"
+              type="warning"
+              :closable="false"
+              class="managed-log__notice"
+            />
             <div ref="managedLogContent" class="managed-log__content">{{ managedLogContent || '暂无日志输出' }}</div>
           </div>
         </el-card>
@@ -212,6 +219,7 @@ export default {
         status_text: '未运行',
       },
       managedLogContent: '',
+      managedLogNotice: '',
       managedLogMaxBytes: 32 * 1024,
       managedLoading: {
         ensure: false,
@@ -221,7 +229,8 @@ export default {
         restart: false,
         log: false,
       },
-      managedPollingTimer: null,
+      managedStatusPollingTimer: null,
+      managedLogPollingTimer: null,
       managedInitialized: false,
       suppressManagedConfigChange: true,
     }
@@ -287,6 +296,10 @@ export default {
         log_file: response.Data.log_file || '',
         status_text: response.Data.status_text || (response.Data.running ? '运行中' : '未运行'),
       }
+      // 外部进程没有可信日志文件，避免继续展示旧日志 / External processes do not have a trustworthy log file, so clear stale log state.
+      if (!response.Data.is_managed) {
+        this.managedProcess.log_file = ''
+      }
       this.managedInitialized = true
       return true
     },
@@ -336,6 +349,7 @@ export default {
           return
         }
         this.managedLogContent = ''
+        this.managedLogNotice = ''
         this.$helperNotify.success('命令已关闭')
       })
     },
@@ -363,6 +377,16 @@ export default {
       this.restartManagedProcess(false)
     },
     refreshManagedLog() {
+      // 没有启动命令时不请求日志 / Skip log requests when the command is empty.
+      if (!this.getManagedPayload().command_line) {
+        this.managedLogContent = ''
+        this.managedLogNotice = ''
+        return
+      }
+      // 避免日志轮询重叠请求 / Avoid overlapping polling requests for log tail.
+      if (this.managedLoading.log) {
+        return
+      }
       this.managedLoading.log = true
       toolsApi.ToolManagedProcessLogTail({
         ...this.getManagedPayload(),
@@ -370,8 +394,10 @@ export default {
       }, (response) => {
         this.managedLoading.log = false
         if (!(response && response.ErrCode === 0 && response.Data)) {
+          this.managedLogNotice = ''
           return
         }
+        this.managedLogNotice = response.Data.message || ''
         this.managedLogContent = response.Data.content || ''
         if (response.Data.log_file) {
           this.managedProcess.log_file = response.Data.log_file
@@ -390,14 +416,22 @@ export default {
     },
     startManagedPolling() {
       this.clearManagedPolling()
-      this.managedPollingTimer = window.setInterval(() => {
+      // 状态轮询和日志轮询分开，避免日志刷新完全依赖状态接口 / Separate status polling from log polling so logs do not depend on status refresh.
+      this.managedStatusPollingTimer = window.setInterval(() => {
         this.refreshManagedState()
       }, 3000)
+      this.managedLogPollingTimer = window.setInterval(() => {
+        this.refreshManagedLog()
+      }, 1500)
     },
     clearManagedPolling() {
-      if (this.managedPollingTimer) {
-        window.clearInterval(this.managedPollingTimer)
-        this.managedPollingTimer = null
+      if (this.managedStatusPollingTimer) {
+        window.clearInterval(this.managedStatusPollingTimer)
+        this.managedStatusPollingTimer = null
+      }
+      if (this.managedLogPollingTimer) {
+        window.clearInterval(this.managedLogPollingTimer)
+        this.managedLogPollingTimer = null
       }
     },
     parsePortValue() {
@@ -612,6 +646,10 @@ export default {
 .managed-log__hint {
   font-size: 12px;
   color: #b7cab8;
+}
+
+.managed-log__notice {
+  margin: 12px 12px 0;
 }
 
 .managed-log__content {
