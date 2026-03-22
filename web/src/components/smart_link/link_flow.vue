@@ -10,7 +10,7 @@
         />
       </div>
       <div class="add-btn">
-        <el-button type="primary" @click="createNewProcess">新增执行逻辑</el-button>&nbsp;
+        <el-button class="process-action-btn process-action-btn--primary" @click="createNewProcess">新增执行逻辑</el-button>&nbsp;
         <el-link type="primary" @click="changeToLinks">切换到执行</el-link>
       </div>
       <div class="process-list">
@@ -29,8 +29,7 @@
             >
               <template #reference>
                 <el-button
-                    class="process-delete-btn"
-                    type="text"
+                    class="process-action-btn process-action-btn--danger process-action-btn--compact"
                     @click.stop
                 >删除
                 </el-button>
@@ -46,8 +45,8 @@
         <div class="canvas-header">
           <h2>{{ state.activeProcess.name }}</h2>
           <div class="header-actions">
-            <el-button type="text" @click="editProcessName">编辑</el-button>
-            <el-button type="primary" @click="addNewItem">新增执行逻辑子项</el-button>
+            <el-button class="process-action-btn process-action-btn--ghost" @click="editProcessName">编辑</el-button>
+            <el-button class="process-action-btn process-action-btn--primary" @click="addNewItem">新增执行逻辑子项</el-button>
             <el-button @click="resetView">重置视图</el-button>
             <el-button @click="fitView">适应画布</el-button>
             <el-button @click="zoomIn">放大</el-button>
@@ -84,7 +83,7 @@
                   </div>
                   <div class="node-actions">
                     <el-button
-                        type="text"
+                        class="process-action-btn process-action-btn--ghost process-action-btn--compact"
                         size="small"
                         @click.stop="editItem(nodeProps.data.item)"
                     >
@@ -96,7 +95,7 @@
                     >
                       <template #reference>
                         <el-button
-                            type="text"
+                            class="process-action-btn process-action-btn--danger process-action-btn--compact"
                             size="small"
                             @click.stop
                         >删除
@@ -171,7 +170,7 @@
 
     <!-- 编辑执行逻辑子项对话框 -->
     <el-dialog v-model="state.dialogProcessItem" :title="state.editingItem.id ? '编辑执行逻辑子项' : '新增执行逻辑子项'" width="70%">
-      <ProcessItemEditor v-model="state.editingItem" />
+      <ProcessItemEditor v-model="state.editingItem" :process-item-options="state.processItems" />
       <template #footer>
         <el-button @click="state.dialogProcessItem = false">取消</el-button>
         <el-button type="primary" @click="saveProcessItem">保存</el-button>
@@ -577,8 +576,50 @@ export default {
   background-color: #e6f7ff;
 }
 
-.process-delete-btn {
-  color: #f56c6c;
+.process-action-btn {
+  border-radius: 999px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.process-action-btn--compact {
+  padding: 6px 12px;
+}
+
+.process-action-btn--primary {
+  color: #2f6b45;
+  border-color: #b8d7c1;
+  background: linear-gradient(180deg, #f4fbf6 0%, #e8f5ec 100%);
+}
+
+.process-action-btn--primary:hover {
+  color: #255639;
+  border-color: #97c2a5;
+  background: linear-gradient(180deg, #edf8f0 0%, #dceee2 100%);
+}
+
+.process-action-btn--ghost {
+  color: #315f8d;
+  border-color: #c9d9eb;
+  background: #f3f8fd;
+}
+
+.process-action-btn--ghost:hover {
+  color: #274c72;
+  border-color: #adc6df;
+  background: #e8f1fb;
+}
+
+.process-action-btn--danger {
+  color: #b44343;
+  border-color: #efc4c4;
+  background: #fff4f4;
+}
+
+.process-action-btn--danger:hover {
+  color: #963737;
+  border-color: #e5a7a7;
+  background: #feeaea;
 }
 
 .right-content {
