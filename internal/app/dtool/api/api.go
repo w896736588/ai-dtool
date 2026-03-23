@@ -56,9 +56,24 @@ type Api struct {
 	Result
 }
 
+// mergeHeadersWithFolderDefaults 合并文件夹默认请求头与接口请求头，接口同名键优先。
+func mergeHeadersWithFolderDefaults(folderHeaders, apiHeaders map[string]string) map[string]string {
+	result := make(map[string]string)
+	for key, value := range folderHeaders {
+		result[key] = value
+	}
+	for key, value := range apiHeaders {
+		result[key] = value
+	}
+	return result
+}
+
 func NewApi(apiInfo map[string]any) *Api {
 	headers := make(map[string]string)
 	_ = gstool.JsonDecode(cast.ToString(apiInfo[`headers`]), &headers)
+	folderHeaders := make(map[string]string)
+	_ = gstool.JsonDecode(cast.ToString(apiInfo[`folder_headers`]), &folderHeaders)
+	headers = mergeHeadersWithFolderDefaults(folderHeaders, headers)
 	urlParams := make([]map[string]any, 0)
 	_ = gstool.JsonDecode(cast.ToString(apiInfo[`query_params`]), &urlParams)
 	urlValues := url2.Values{}

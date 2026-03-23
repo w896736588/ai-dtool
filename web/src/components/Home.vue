@@ -92,11 +92,197 @@
 
     <!-- 主内容区域 -->
     <main class="main-content">
-      <router-view v-slot="{ Component, route }" name="home">
-        <keep-alive>
-          <component :is="Component" ref="currentRef"/>
-        </keep-alive>
-      </router-view>
+      <div class="main-content__body">
+        <div
+          v-if="isDashboardRoute"
+          class="home-dashboard-stage"
+          @wheel="handleDashboardWheel"
+        >
+          <div
+            class="home-dashboard-track"
+            :class="{ 'home-dashboard-track--animating': homeDashboardAnimating }"
+            :style="homeDashboardTrackStyle"
+          >
+            <section class="home-dashboard-screen home-dashboard-screen--command">
+              <div class="main-content__view main-content__view--dashboard">
+                <router-view v-slot="{ Component, route }" name="home">
+                  <keep-alive>
+                    <component :is="Component" ref="currentRef"/>
+                  </keep-alive>
+                </router-view>
+              </div>
+            </section>
+
+            <section class="home-dashboard-screen home-dashboard-screen--task">
+              <div ref="homeTaskPanelScroll" class="home-task-panel-scroll">
+                <section class="home-task-panel">
+                  <div class="home-task-panel__header">
+                    <div>
+                      <div class="home-task-panel__title">任务清单</div>
+                      <div class="home-task-panel__desc">首页底部展示活跃任务与归档任务，便于随时记录与切换状态</div>
+                    </div>
+                  </div>
+
+                  <div class="home-task-toolbar">
+                    <div class="home-task-toolbar__text">
+                      <div class="home-task-toolbar__title">任务管理</div>
+                      <div class="home-task-toolbar__desc">支持备注直出，列表操作统一收口到右侧状态变更按钮</div>
+                    </div>
+                    <div class="home-task-toolbar__actions">
+                      <GitActionButton compact @click="openCreateHomeTaskDialog">
+                        新增任务
+                      </GitActionButton>
+                    </div>
+                  </div>
+
+                  <el-tabs v-model="homeTaskActiveTab" class="home-task-tabs" @tab-change="handleHomeTaskTabChange">
+                    <el-tab-pane label="活跃中" :name="HOME_TASK_TAB_ACTIVE">
+                      <div v-loading="homeTaskLoadingActive" class="home-task-list">
+                        <div v-if="homeTaskActiveList.length === 0" class="home-task-empty">
+                          当前没有未归档任务
+                        </div>
+                        <div
+                          v-for="task in homeTaskActiveList"
+                          :key="task.id"
+                          class="home-task-card"
+                        >
+                          <div class="home-task-card__header">
+                            <div>
+                              <div class="home-task-card__title">{{ task.name }}</div>
+                              <div class="home-task-card__meta">
+                                <span>开始时间：{{ task.start_time_desc || '-' }}</span>
+                                <span>最后操作：{{ task.last_operated_at_desc || '-' }}</span>
+                              </div>
+                            </div>
+                            <el-tag size="small" effect="light" :type="getHomeTaskStatusTagType(task.task_status)">
+                              {{ task.task_status }}
+                            </el-tag>
+                          </div>
+                          <div v-if="task.remark" class="home-task-card__remark">
+                            {{ task.remark }}
+                          </div>
+                          <div class="home-task-card__actions home-task-card__actions--single">
+                            <el-dropdown
+                              trigger="click"
+                              :disabled="homeTaskOperatingId === task.id"
+                              @command="handleHomeTaskActionCommand(task, $event)"
+                            >
+                              <GitActionButton
+                                compact
+                                :loading="homeTaskOperatingId === task.id"
+                                :variant="getHomeTaskActionButtonVariant(task.task_status)"
+                              >
+                                状态变更
+                              </GitActionButton>
+                              <template #dropdown>
+                                <el-dropdown-menu>
+                                  <el-dropdown-item
+                                    v-for="status in homeTaskStatusOptions"
+                                    :key="status"
+                                    :command="buildHomeTaskStatusCommand(status)"
+                                    :disabled="task.task_status === status"
+                                  >
+                                    {{ status }}
+                                  </el-dropdown-item>
+                                  <el-dropdown-item divided :command="HOME_TASK_ACTION_COMMAND_EDIT">
+                                    编辑任务
+                                  </el-dropdown-item>
+                                  <el-dropdown-item :command="HOME_TASK_ACTION_COMMAND_ARCHIVE">
+                                    归档任务
+                                  </el-dropdown-item>
+                                </el-dropdown-menu>
+                              </template>
+                            </el-dropdown>
+                          </div>
+                        </div>
+                      </div>
+                    </el-tab-pane>
+                    <el-tab-pane label="归档" :name="HOME_TASK_TAB_ARCHIVED">
+                      <div v-loading="homeTaskLoadingArchived" class="home-task-list">
+                        <div v-if="homeTaskArchivedList.length === 0" class="home-task-empty">
+                          当前没有归档任务
+                        </div>
+                        <div
+                          v-for="task in homeTaskArchivedList"
+                          :key="task.id"
+                          class="home-task-card home-task-card--archived"
+                        >
+                          <div class="home-task-card__header">
+                            <div>
+                              <div class="home-task-card__title">{{ task.name }}</div>
+                              <div class="home-task-card__meta">
+                                <span>开始时间：{{ task.start_time_desc || '-' }}</span>
+                                <span>最后操作：{{ task.last_operated_at_desc || '-' }}</span>
+                              </div>
+                            </div>
+                            <el-tag size="small" effect="light" :type="getHomeTaskStatusTagType(task.task_status)">
+                              {{ task.task_status }}
+                            </el-tag>
+                          </div>
+                          <div v-if="task.remark" class="home-task-card__remark">
+                            {{ task.remark }}
+                          </div>
+                          <div class="home-task-card__actions home-task-card__actions--single">
+                            <el-dropdown
+                              trigger="click"
+                              :disabled="homeTaskOperatingId === task.id"
+                              @command="handleHomeTaskActionCommand(task, $event)"
+                            >
+                              <GitActionButton compact :loading="homeTaskOperatingId === task.id" variant="info">
+                                状态变更
+                              </GitActionButton>
+                              <template #dropdown>
+                                <el-dropdown-menu>
+                                  <el-dropdown-item
+                                    v-for="status in homeTaskStatusOptions"
+                                    :key="status"
+                                    :command="buildHomeTaskStatusCommand(status)"
+                                    :disabled="task.task_status === status"
+                                  >
+                                    {{ status }}
+                                  </el-dropdown-item>
+                                  <el-dropdown-item divided :command="HOME_TASK_ACTION_COMMAND_EDIT">
+                                    编辑任务
+                                  </el-dropdown-item>
+                                  <el-dropdown-item :command="HOME_TASK_ACTION_COMMAND_UNARCHIVE">
+                                    取消归档
+                                  </el-dropdown-item>
+                                </el-dropdown-menu>
+                              </template>
+                            </el-dropdown>
+                          </div>
+                        </div>
+                      </div>
+                    </el-tab-pane>
+                  </el-tabs>
+                </section>
+              </div>
+            </section>
+          </div>
+
+          <div class="home-dashboard-pager">
+            <button
+              type="button"
+              class="home-dashboard-pager__dot"
+              :class="{ 'home-dashboard-pager__dot--active': homeDashboardPageIndex === 0 }"
+              @click="switchHomeDashboardPage(0)"
+            />
+            <button
+              type="button"
+              class="home-dashboard-pager__dot"
+              :class="{ 'home-dashboard-pager__dot--active': homeDashboardPageIndex === 1 }"
+              @click="switchHomeDashboardPage(1)"
+            />
+          </div>
+        </div>
+        <div v-else class="main-content__view">
+          <router-view v-slot="{ Component, route }" name="home">
+            <keep-alive>
+              <component :is="Component" ref="currentRef"/>
+            </keep-alive>
+          </router-view>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -166,6 +352,76 @@
       <el-table-column prop="type" label="类型" width="120" />
     </el-table>
   </el-dialog>
+
+  <el-dialog
+    v-model="homeTaskDialogVisible"
+    :title="homeTaskDialogTitle"
+    width="720px"
+    destroy-on-close
+  >
+    <el-form label-width="88px" class="home-task-form" @submit.prevent>
+      <el-row :gutter="12">
+        <el-col :xs="24" :sm="24" :md="10">
+          <el-form-item label="任务名称">
+            <el-input
+              v-model="homeTaskForm.name"
+              maxlength="80"
+              show-word-limit
+              placeholder="例如：整理缓存淘汰策略"
+              @keyup.enter="saveHomeTask"
+            />
+          </el-form-item>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="7">
+          <el-form-item label="任务状态">
+            <el-select v-model="homeTaskForm.task_status" style="width: 100%">
+              <el-option
+                v-for="status in homeTaskStatusOptions"
+                :key="status"
+                :label="status"
+                :value="status"
+              />
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="7">
+          <el-form-item label="开始日期">
+            <el-date-picker
+              v-model="homeTaskForm.start_date"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="选择开始日期"
+              style="width: 100%"
+            />
+          </el-form-item>
+        </el-col>
+      </el-row>
+      <el-row :gutter="12">
+        <el-col :span="24">
+          <el-form-item label="任务备注">
+            <el-input
+              v-model="homeTaskForm.remark"
+              type="textarea"
+              :rows="4"
+              maxlength="300"
+              show-word-limit
+              placeholder="补充当前任务背景、阻塞点或上线说明"
+            />
+          </el-form-item>
+        </el-col>
+      </el-row>
+    </el-form>
+    <template #footer>
+      <div class="home-task-dialog__footer">
+        <GitActionButton compact variant="info" @click="closeHomeTaskDialog">
+          取消
+        </GitActionButton>
+        <GitActionButton compact :loading="homeTaskSaving" @click="saveHomeTask">
+          {{ homeTaskForm.id > 0 ? '保存修改' : '添加任务' }}
+        </GitActionButton>
+      </div>
+    </template>
+  </el-dialog>
 </template>
 
 <script>
@@ -179,8 +435,10 @@ import copy from "@/utils/base/copy"
 import module from "@/utils/module"
 import baseApi from '@/utils/base/base_api'
 import sshSet from '@/utils/base/ssh_set'
+import homeTaskApi from '@/utils/base/home_task'
 import Tools from "@/components/Tools.vue";
 import Markdown from '@/components/Markdown.vue'
+import GitActionButton from "@/components/base/GitActionButton.vue";
 import { 
   HomeFilled,
   Coin,
@@ -194,6 +452,66 @@ import {
   Monitor,
   Tools as ToolsIcon
 } from "@element-plus/icons-vue";
+
+// SSH_CONNECTION_REFRESH_INTERVAL_MS 统一控制 SSH 连接轮询周期。
+const SSH_CONNECTION_REFRESH_INTERVAL_MS = 5000
+// HOME_TASK_TAB_* 用于区分任务弹窗内的标签页。
+const HOME_TASK_TAB_ACTIVE = 'active'
+const HOME_TASK_TAB_ARCHIVED = 'archived'
+// HOME_ROUTE_DASHBOARD 标识首页路由路径。
+const HOME_ROUTE_DASHBOARD = '/Dashboard'
+// HOME_TASK_ARCHIVED_* 对应后端归档状态常量。
+const HOME_TASK_ARCHIVED_NO = 0
+const HOME_TASK_ARCHIVED_YES = 1
+// HOME_TASK_STATUS_* 与后端状态常量保持一致。
+const HOME_TASK_STATUS_TODO = '待开始'
+const HOME_TASK_STATUS_DEVELOPING = '开发中'
+const HOME_TASK_STATUS_SELF_TESTING = '自测中'
+const HOME_TASK_STATUS_INTEGRATING = '对接中'
+const HOME_TASK_STATUS_TESTING = '测试中'
+const HOME_TASK_STATUS_RELEASING = '上线中'
+const HOME_TASK_STATUS_ONLINE = '已上线'
+// HOME_TASK_OPERATE_* 标识当前任务操作类型，便于按钮精确展示 loading。
+const HOME_TASK_OPERATE_SAVE = 'save'
+const HOME_TASK_OPERATE_STATUS = 'status'
+const HOME_TASK_OPERATE_ARCHIVE = 'archive'
+// HOME_TASK_ACTION_COMMAND_* 用于统一处理任务卡片下拉操作。
+const HOME_TASK_ACTION_COMMAND_EDIT = 'edit'
+const HOME_TASK_ACTION_COMMAND_ARCHIVE = 'archive'
+const HOME_TASK_ACTION_COMMAND_UNARCHIVE = 'unarchive'
+// HOME_TASK_ACTION_COMMAND_STATUS_PREFIX 标识状态切换指令前缀。
+const HOME_TASK_ACTION_COMMAND_STATUS_PREFIX = 'status:'
+// HOME_DASHBOARD_PAGE_* 标识首页双屏结构中的页索引。
+const HOME_DASHBOARD_PAGE_COMMAND = 0
+const HOME_DASHBOARD_PAGE_TASK = 1
+// HOME_DASHBOARD_PAGE_TOTAL 表示首页双屏总页数。
+const HOME_DASHBOARD_PAGE_TOTAL = 2
+// HOME_DASHBOARD_WHEEL_SWITCH_THRESHOLD 控制翻屏触发的滚轮阈值，避免轻微触控板抖动误切屏。
+const HOME_DASHBOARD_WHEEL_SWITCH_THRESHOLD = 24
+// HOME_DASHBOARD_ANIMATION_DURATION_MS 与 CSS 动画时长保持一致。
+const HOME_DASHBOARD_ANIMATION_DURATION_MS = 560
+// HOME_TASK_EMPTY_START_DATE 表示未设置开始日期。
+const HOME_TASK_EMPTY_START_DATE = ''
+// HOME_TASK_EMPTY_REMARK 表示未填写备注。
+const HOME_TASK_EMPTY_REMARK = ''
+// HOME_TASK_DEFAULT_FORM 定义任务表单的初始值。
+const HOME_TASK_DEFAULT_FORM = {
+  id: 0,
+  name: '',
+  task_status: HOME_TASK_STATUS_TODO,
+  remark: HOME_TASK_EMPTY_REMARK,
+  start_date: HOME_TASK_EMPTY_START_DATE,
+}
+// HOME_TASK_STATUS_OPTIONS 用于渲染状态选择和快捷状态按钮。
+const HOME_TASK_STATUS_OPTIONS = [
+  HOME_TASK_STATUS_TODO,
+  HOME_TASK_STATUS_DEVELOPING,
+  HOME_TASK_STATUS_SELF_TESTING,
+  HOME_TASK_STATUS_INTEGRATING,
+  HOME_TASK_STATUS_TESTING,
+  HOME_TASK_STATUS_RELEASING,
+  HOME_TASK_STATUS_ONLINE,
+]
 
 export default {
   data() {
@@ -228,7 +546,58 @@ export default {
       sshConnectionsDialogVisible: false,
       sshConnectionsLoading: false,
       sshConnectionTimer: null,
+      HOME_TASK_TAB_ACTIVE,
+      HOME_TASK_TAB_ARCHIVED,
+      HOME_TASK_ARCHIVED_NO,
+      HOME_TASK_ARCHIVED_YES,
+      HOME_TASK_OPERATE_ARCHIVE,
+      HOME_TASK_ACTION_COMMAND_EDIT,
+      HOME_TASK_ACTION_COMMAND_ARCHIVE,
+      HOME_TASK_ACTION_COMMAND_UNARCHIVE,
+      homeTaskActiveTab: HOME_TASK_TAB_ACTIVE,
+      homeTaskDialogVisible: false,
+      homeDashboardPageIndex: HOME_DASHBOARD_PAGE_COMMAND,
+      homeDashboardAnimating: false,
+      homeTaskLoadingActive: false,
+      homeTaskLoadingArchived: false,
+      homeTaskSaving: false,
+      homeTaskOperatingId: 0,
+      homeTaskOperatingType: '',
+      homeTaskActiveList: [],
+      homeTaskArchivedList: [],
+      homeTaskStatusOptions: HOME_TASK_STATUS_OPTIONS,
+      homeTaskForm: {
+        ...HOME_TASK_DEFAULT_FORM,
+      },
     }
+  },
+  computed: {
+    // isDashboardRoute 控制任务清单只在首页底部展示。
+    isDashboardRoute() {
+      return this.$route.path === HOME_ROUTE_DASHBOARD
+    },
+    // homeDashboardTrackStyle 控制首页双屏容器的整体位移。
+    homeDashboardTrackStyle() {
+      return {
+        transform: `translate3d(0, -${this.homeDashboardPageIndex * 50}%, 0)`,
+      }
+    },
+    // homeTaskDialogTitle 统一控制新增和编辑弹窗标题。
+    homeTaskDialogTitle() {
+      return this.homeTaskForm.id > 0 ? '编辑任务' : '新增任务'
+    },
+  },
+  watch: {
+    // 当用户切回首页时主动刷新任务，避免跨页面停留后数据过期。
+    '$route.path'(newPath) {
+      if (newPath !== HOME_ROUTE_DASHBOARD) {
+        this.homeDashboardPageIndex = HOME_DASHBOARD_PAGE_COMMAND
+        return
+      }
+      this.homeDashboardPageIndex = HOME_DASHBOARD_PAGE_COMMAND
+      this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
+      this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
+    },
   },
   created() {
     window.handleCopy = copy.handleCopy;
@@ -247,7 +616,9 @@ export default {
     this.refreshSshConnections(false)
     this.sshConnectionTimer = setInterval(() => {
       this.refreshSshConnections(false)
-    }, 5000)
+    }, SSH_CONNECTION_REFRESH_INTERVAL_MS)
+    this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
+    this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
     this.menuName = this.$helperStore.getStore(this.menuKeyStore)
     if (this.$route.path !== this.menuName && this.menuName != null) {
       this.$router.push(this.menuName)
@@ -319,6 +690,234 @@ export default {
       this.sshConnectionsDialogVisible = true
       this.refreshSshConnections(true)
     },
+    handleHomeTaskTabChange(tabName) {
+      if (tabName === HOME_TASK_TAB_ACTIVE) {
+        this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
+        return
+      }
+      this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
+    },
+    // handleDashboardWheel 只在首页双屏区域接管滚轮，实现整屏切换。
+    handleDashboardWheel(event) {
+      if (!this.isDashboardRoute || this.homeDashboardAnimating) {
+        return
+      }
+      const deltaY = Number(event.deltaY || 0)
+      if (Math.abs(deltaY) < HOME_DASHBOARD_WHEEL_SWITCH_THRESHOLD) {
+        return
+      }
+      if (this.homeDashboardPageIndex === HOME_DASHBOARD_PAGE_COMMAND) {
+        if (deltaY > 0) {
+          event.preventDefault()
+          this.switchHomeDashboardPage(HOME_DASHBOARD_PAGE_TASK)
+        }
+        return
+      }
+      const panelScroll = this.$refs.homeTaskPanelScroll
+      if (!(panelScroll instanceof HTMLElement)) {
+        return
+      }
+      const scrollTop = panelScroll.scrollTop
+      const maxScrollTop = Math.max(panelScroll.scrollHeight - panelScroll.clientHeight, 0)
+      if (deltaY < 0 && scrollTop <= 0) {
+        event.preventDefault()
+        this.switchHomeDashboardPage(HOME_DASHBOARD_PAGE_COMMAND)
+        return
+      }
+      if (deltaY > 0 && scrollTop >= maxScrollTop) {
+        event.preventDefault()
+      }
+    },
+    // switchHomeDashboardPage 切换首页双屏页码，并锁定动画期间的重复操作。
+    switchHomeDashboardPage(pageIndex) {
+      const nextPageIndex = Math.min(Math.max(pageIndex, HOME_DASHBOARD_PAGE_COMMAND), HOME_DASHBOARD_PAGE_TOTAL - 1)
+      if (nextPageIndex === this.homeDashboardPageIndex) {
+        return
+      }
+      this.homeDashboardAnimating = true
+      this.homeDashboardPageIndex = nextPageIndex
+      window.setTimeout(() => {
+        this.homeDashboardAnimating = false
+      }, HOME_DASHBOARD_ANIMATION_DURATION_MS)
+    },
+    // loadHomeTaskList 按归档状态刷新任务列表，避免前端本地状态和后端脱节。
+    loadHomeTaskList(isArchived) {
+      if (isArchived === HOME_TASK_ARCHIVED_YES) {
+        this.homeTaskLoadingArchived = true
+      } else {
+        this.homeTaskLoadingActive = true
+      }
+      homeTaskApi.HomeTaskList(isArchived, (response) => {
+        if (isArchived === HOME_TASK_ARCHIVED_YES) {
+          this.homeTaskLoadingArchived = false
+        } else {
+          this.homeTaskLoadingActive = false
+        }
+        if (!(response && response.ErrCode === 0)) {
+          this.$helperNotify.error(response?.ErrMsg || '任务列表加载失败')
+          return
+        }
+        const taskList = Array.isArray(response.Data?.task_list) ? response.Data.task_list : []
+        if (isArchived === HOME_TASK_ARCHIVED_YES) {
+          this.homeTaskArchivedList = taskList
+        } else {
+          this.homeTaskActiveList = taskList
+        }
+      })
+    },
+    resetHomeTaskForm() {
+      this.homeTaskForm = {
+        ...HOME_TASK_DEFAULT_FORM,
+      }
+    },
+    // openCreateHomeTaskDialog 打开新增任务弹窗，并重置为默认表单。
+    openCreateHomeTaskDialog() {
+      this.resetHomeTaskForm()
+      this.homeTaskDialogVisible = true
+    },
+    // closeHomeTaskDialog 关闭任务弹窗，并清空临时表单内容。
+    closeHomeTaskDialog() {
+      this.homeTaskDialogVisible = false
+      this.resetHomeTaskForm()
+    },
+    editHomeTask(task) {
+      this.homeTaskForm = {
+        id: Number(task.id || 0),
+        name: task.name || '',
+        task_status: task.task_status || HOME_TASK_STATUS_TODO,
+        remark: task.remark || HOME_TASK_EMPTY_REMARK,
+        start_date: task.start_time_desc || HOME_TASK_EMPTY_START_DATE,
+      }
+      this.homeTaskDialogVisible = true
+    },
+    // saveHomeTask 保存表单任务，新增和编辑共用同一个入口。
+    saveHomeTask() {
+      if (this.homeTaskSaving) {
+        return
+      }
+      const taskName = String(this.homeTaskForm.name || '').trim()
+      if (!taskName) {
+        this.$helperNotify.error('任务名称不能为空')
+        return
+      }
+      this.homeTaskSaving = true
+      this.homeTaskOperatingType = HOME_TASK_OPERATE_SAVE
+      homeTaskApi.HomeTaskSave({
+        id: Number(this.homeTaskForm.id || 0),
+        name: taskName,
+        task_status: this.homeTaskForm.task_status,
+        remark: String(this.homeTaskForm.remark || '').trim(),
+        start_time: this.convertHomeTaskDateToUnix(this.homeTaskForm.start_date),
+      }, (response) => {
+        this.homeTaskSaving = false
+        this.homeTaskOperatingType = ''
+        if (!(response && response.ErrCode === 0)) {
+          this.$helperNotify.error(response?.ErrMsg || '任务保存失败')
+          return
+        }
+        this.$helperNotify.success(this.homeTaskForm.id > 0 ? '任务已更新' : '任务已创建')
+        this.closeHomeTaskDialog()
+        this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
+        this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
+      })
+    },
+    quickUpdateHomeTaskStatus(task, taskStatus) {
+      if (this.homeTaskOperatingId > 0) {
+        return
+      }
+      this.homeTaskOperatingId = Number(task.id || 0)
+      this.homeTaskOperatingType = HOME_TASK_OPERATE_STATUS
+      homeTaskApi.HomeTaskStatusQuickUpdate(this.homeTaskOperatingId, taskStatus, (response) => {
+        this.homeTaskOperatingId = 0
+        this.homeTaskOperatingType = ''
+        if (!(response && response.ErrCode === 0)) {
+          this.$helperNotify.error(response?.ErrMsg || '状态切换失败')
+          return
+        }
+        this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
+        this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
+      })
+    },
+    // buildHomeTaskStatusCommand 生成状态切换菜单命令，避免状态值和其它动作混淆。
+    buildHomeTaskStatusCommand(taskStatus) {
+      return `${HOME_TASK_ACTION_COMMAND_STATUS_PREFIX}${taskStatus}`
+    },
+    // handleHomeTaskActionCommand 统一处理任务卡片上的下拉操作。
+    handleHomeTaskActionCommand(task, command) {
+      if (typeof command !== 'string') {
+        return
+      }
+      if (command === HOME_TASK_ACTION_COMMAND_EDIT) {
+        this.editHomeTask(task)
+        return
+      }
+      if (command === HOME_TASK_ACTION_COMMAND_ARCHIVE) {
+        this.toggleHomeTaskArchive(task, HOME_TASK_ARCHIVED_YES)
+        return
+      }
+      if (command === HOME_TASK_ACTION_COMMAND_UNARCHIVE) {
+        this.toggleHomeTaskArchive(task, HOME_TASK_ARCHIVED_NO)
+        return
+      }
+      if (!command.startsWith(HOME_TASK_ACTION_COMMAND_STATUS_PREFIX)) {
+        return
+      }
+      this.quickUpdateHomeTaskStatus(task, command.slice(HOME_TASK_ACTION_COMMAND_STATUS_PREFIX.length))
+    },
+    toggleHomeTaskArchive(task, isArchived) {
+      if (this.homeTaskOperatingId > 0) {
+        return
+      }
+      this.homeTaskOperatingId = Number(task.id || 0)
+      this.homeTaskOperatingType = HOME_TASK_OPERATE_ARCHIVE
+      homeTaskApi.HomeTaskArchiveToggle(this.homeTaskOperatingId, isArchived, (response) => {
+        this.homeTaskOperatingId = 0
+        this.homeTaskOperatingType = ''
+        if (!(response && response.ErrCode === 0)) {
+          this.$helperNotify.error(response?.ErrMsg || '归档状态更新失败')
+          return
+        }
+        this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
+        this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
+      })
+    },
+    convertHomeTaskDateToUnix(dateText) {
+      if (!dateText) {
+        return 0
+      }
+      return Math.floor(new Date(`${dateText}T00:00:00`).getTime() / 1000)
+    },
+    getHomeTaskStatusTagType(taskStatus) {
+      if (taskStatus === HOME_TASK_STATUS_DEVELOPING) {
+        return 'success'
+      }
+      if (taskStatus === HOME_TASK_STATUS_SELF_TESTING || taskStatus === HOME_TASK_STATUS_TESTING) {
+        return 'warning'
+      }
+      if (taskStatus === HOME_TASK_STATUS_INTEGRATING || taskStatus === HOME_TASK_STATUS_RELEASING) {
+        return 'primary'
+      }
+      if (taskStatus === HOME_TASK_STATUS_ONLINE) {
+        return 'info'
+      }
+      return ''
+    },
+    // getHomeTaskActionButtonVariant 根据当前任务状态返回操作按钮视觉类型。
+    getHomeTaskActionButtonVariant(taskStatus) {
+      if (taskStatus === HOME_TASK_STATUS_DEVELOPING) {
+        return 'primary'
+      }
+      if (taskStatus === HOME_TASK_STATUS_SELF_TESTING || taskStatus === HOME_TASK_STATUS_TESTING) {
+        return 'warning'
+      }
+      if (taskStatus === HOME_TASK_STATUS_INTEGRATING || taskStatus === HOME_TASK_STATUS_RELEASING) {
+        return 'info'
+      }
+      if (taskStatus === HOME_TASK_STATUS_ONLINE) {
+        return 'info'
+      }
+      return ''
+    },
     refreshSshConnections(showLoading) {
       if (showLoading) {
         this.sshConnectionsLoading = true
@@ -384,6 +983,7 @@ export default {
     Connection,
     Monitor,
     ToolsIcon,
+    GitActionButton,
     Markdown,
     Tools,
     Clipboard,
@@ -445,22 +1045,17 @@ export default {
   align-items: stretch;
 }
 
-.footer-buttons {
+.footer-button-bar {
   display: flex;
   flex-direction: column;
   width: 100%;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
-.footer-buttons .el-tag {
+.footer-button-bar :deep(.git-action-button) {
   width: 100%;
-  box-sizing: border-box;
   justify-content: center;
-  white-space: normal;
-  text-align: center;
-  line-height: 1.2;
-  padding: 4px 6px;
 }
 
 .main-content {
@@ -470,6 +1065,113 @@ export default {
   height: 100%;
   padding: 20px;
   box-sizing: border-box;
+}
+
+.main-content__body {
+  min-height: 100%;
+}
+
+.main-content__view {
+  min-height: 0;
+}
+
+.main-content__view--dashboard {
+  height: 100%;
+  overflow: auto;
+}
+
+.home-dashboard-stage {
+  position: relative;
+  height: calc(100vh - 40px);
+  overflow: hidden;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(168, 194, 149, 0.18), transparent 32%),
+    linear-gradient(180deg, #fdfdf9 0%, #f5f7f1 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.home-dashboard-track {
+  height: 200%;
+  will-change: transform;
+}
+
+.home-dashboard-track--animating {
+  transition: transform 0.56s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.home-dashboard-screen {
+  height: 50%;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.home-dashboard-screen--command {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-dashboard-screen--task {
+  position: relative;
+}
+
+.home-dashboard-pager {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transform: translateY(-50%);
+}
+
+.home-dashboard-pager__dot {
+  width: 10px;
+  height: 34px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(104, 123, 96, 0.2);
+  cursor: pointer;
+  transition: transform 0.25s ease, background-color 0.25s ease;
+}
+
+.home-dashboard-pager__dot--active {
+  background: linear-gradient(180deg, #6f8e67 0%, #89a27c 100%);
+  transform: scale(1.05);
+}
+
+.home-task-panel-scroll {
+  height: 100%;
+  overflow-y: auto;
+  padding-right: 12px;
+}
+
+.home-task-panel {
+  padding: 16px 18px 18px;
+  border: 1px solid #e3eadb;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fcfdf9 0%, #f7f9f3 100%);
+  box-shadow: 0 12px 32px rgba(138, 154, 126, 0.08);
+}
+
+.home-task-panel__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.home-task-panel__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #3f4f3e;
+}
+
+.home-task-panel__desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #72816f;
 }
 
 /* 覆盖 Element Plus 菜单样式 */
@@ -560,10 +1262,155 @@ export default {
   padding-bottom: 9px;
 }
 
+.home-task-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid #e7ece1;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f7fbf2 0%, #fffdf8 100%);
+}
+
+.home-task-toolbar__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #465742;
+}
+
+.home-task-toolbar__desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6c7d68;
+}
+
+.home-task-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-task-form {
+  margin-bottom: 0;
+}
+
+.home-task-tabs :deep(.el-tabs__header) {
+  margin-bottom: 12px;
+}
+
+.home-task-list {
+  min-height: 360px;
+}
+
+.home-task-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  border: 1px dashed #d9e3d2;
+  border-radius: 12px;
+  color: #73806d;
+  background: #fafcf8;
+}
+
+.home-task-card {
+  padding: 14px 16px;
+  border: 1px solid #e2eadc;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcf9 100%);
+  box-shadow: 0 8px 20px rgba(144, 160, 132, 0.08);
+}
+
+.home-task-card + .home-task-card {
+  margin-top: 12px;
+}
+
+.home-task-card--archived {
+  opacity: 0.94;
+}
+
+.home-task-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.home-task-card__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #39463a;
+}
+
+.home-task-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #70806b;
+}
+
+.home-task-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.home-task-card__actions--single {
+  justify-content: flex-end;
+}
+
+.home-task-card__remark {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f5f8ef;
+  color: #536251;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.home-task-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 @media (max-width: 900px) {
+  .home-dashboard-stage {
+    height: calc(100vh - 40px);
+    border-radius: 18px;
+  }
+
+  .home-dashboard-pager {
+    right: 10px;
+  }
+
   .ssh-dialog-toolbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .home-task-toolbar {
+    flex-direction: column;
+  }
+
+  .home-task-toolbar__actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .home-task-card__header {
+    flex-direction: column;
+  }
+
+  .home-task-panel {
+    padding: 14px;
   }
 }
 </style>

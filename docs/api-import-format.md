@@ -35,6 +35,9 @@
   "type": "folder",                    // 必填，固定值"folder"
   "name": "文件夹名称",                // 必填，文件夹名称
   "desc": "文件夹描述",                // 可选，文件夹描述
+  "headers": {                         // 可选，文件夹默认请求头
+    "Authorization": "Bearer xxx"
+  },
   "children": [                        // 必填，子项列表（只能是api类型）
     // ... api结构，见下文
   ]
@@ -44,6 +47,7 @@
 **说明**:
 - folder只能出现在items根级别（集合的直接子项）
 - folder的children中只能包含api，不能再嵌套folder
+- 文件夹 `headers` 作为默认请求头，运行接口时会先加载，再由接口自身 `headers` 覆盖同名项
 - 如果是POST，那么Content-Type设置为multipart/form-data，并且以此格式生成json
 - 生成完json后，你需要调用http://localhost:17170/api/ApiBatchImport接口，以multipart/form-data的请求方式，传递json字段，将前面生成的json encode后传入,这样我就可以直接去看接口管理了
 ## 字段类型说明

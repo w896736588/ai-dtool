@@ -29,6 +29,15 @@ const BUTTON_VARIANT_LIST = [
   BUTTON_VARIANT_WARNING,
   BUTTON_VARIANT_DANGER,
 ]
+// BUTTON_SIZE_DEFAULT 表示默认按钮尺寸。
+const BUTTON_SIZE_DEFAULT = 'default'
+// BUTTON_SIZE_COMPACT_SMALL 用于侧边栏等空间更紧凑的场景。
+const BUTTON_SIZE_COMPACT_SMALL = 'compact-small'
+// BUTTON_SIZE_LIST 控制允许传入的共享尺寸选项。
+const BUTTON_SIZE_LIST = [
+  BUTTON_SIZE_DEFAULT,
+  BUTTON_SIZE_COMPACT_SMALL,
+]
 
 export default {
   name: 'GitActionButton',
@@ -45,6 +54,13 @@ export default {
         return BUTTON_VARIANT_LIST.includes(value)
       },
     },
+    sizeMode: {
+      type: String,
+      default: BUTTON_SIZE_DEFAULT,
+      validator(value) {
+        return BUTTON_SIZE_LIST.includes(value)
+      },
+    },
   },
   data() {
     return {
@@ -56,6 +72,7 @@ export default {
     buttonClassList() {
       return {
         'git-action-button--compact': this.compact,
+        'git-action-button--compact-small': this.compact && this.sizeMode === BUTTON_SIZE_COMPACT_SMALL,
         [`git-action-button--${this.variant}`]: true,
       }
     },
@@ -66,11 +83,19 @@ export default {
 <style scoped>
 .git-action-button {
   /* Shared Git page button tokens for reuse across feature modules. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   border-radius: 8px;
   box-shadow: none !important;
-  min-height: 34px;
+  height: 34px;
   padding: 7px 14px;
   font-size: 13px;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
@@ -128,9 +153,27 @@ export default {
   color: var(--git-button-hover-text-color) !important;
 }
 
+.git-action-button :deep(span) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  line-height: 1;
+}
+
 .git-action-button--compact {
-  min-height: 30px;
+  height: 30px;
   padding: 5px 10px;
   font-size: 12px;
+  line-height: 1;
+}
+
+.git-action-button--compact-small {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 1;
+  border-radius: 7px;
 }
 </style>

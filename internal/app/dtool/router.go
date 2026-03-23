@@ -32,6 +32,7 @@ func InitRouter(tGin *p_gin.Gin) {
 	setStar(tGin)
 	setMarkdown(tGin)
 	setMemoryFragment(tGin)
+	homeTask(tGin)
 	infoCrawl(tGin)
 	shellOut(tGin)
 	variableRouter(tGin)
@@ -259,6 +260,13 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/MemoryFragmentTagList`, controller.MemoryFragmentTagList)
 	tGin.GinPost(`/api/MemoryFragmentSearch`, controller.MemoryFragmentSearch)
 	tGin.GinPost(`/api/MemoryFragmentOrganize`, controller.MemoryFragmentOrganize)
+}
+
+func homeTask(tGin *p_gin.Gin) {
+	tGin.GinPost(`/api/HomeTaskList`, controller.HomeTaskList)
+	tGin.GinPost(`/api/HomeTaskSave`, controller.HomeTaskSave)
+	tGin.GinPost(`/api/HomeTaskArchiveToggle`, controller.HomeTaskArchiveToggle)
+	tGin.GinPost(`/api/HomeTaskStatusQuickUpdate`, controller.HomeTaskStatusQuickUpdate)
 }
 
 func infoCrawl(tGin *p_gin.Gin) {

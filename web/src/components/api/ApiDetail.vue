@@ -1,9 +1,9 @@
 <template>
   <div class="api-detail" tabindex="0" @keydown="handleKeyDown" @keyup="handleKeyUp">
     <div class="api-header">
-      <el-input v-model="apiForm.name" placeholder="输入接口名称" style="width: 300px;margin-right:5px;" type="text" @blur="handleSave"></el-input>
+      <el-input v-model="apiForm.name" placeholder="输入接口名称" style="width: 300px;margin-right:5px;" type="text" @blur="handleBlurSave"></el-input>
       <div class="api-title-section">
-        <el-input v-model="apiForm.url" placeholder="输入请求URL" @blur="handleSave">
+        <el-input v-model="apiForm.url" placeholder="输入请求URL" @blur="handleBlurSave">
           <template #prepend>
             <el-select v-model="apiForm.method" style="width: 80px">
               <el-option label="GET" value="GET"/>
@@ -32,7 +32,7 @@
 
     <el-tabs v-model="configActiveTab" class="detail-tabs" style="min-height: 500px;" @tab-change="responseTabChange">
       <el-tab-pane label="备注" name="desc">
-        <MdEditor  v-model="apiForm.desc" @blur="handleSave" :onSave="handleSave" />
+        <MdEditor  v-model="apiForm.desc" @blur="handleBlurSave" :onSave="handleSave" />
       </el-tab-pane>
       <el-tab-pane :label="'请求头(' + (isObject(apiForm.header_list) ? Object.keys(apiForm.header_list).length : 0) + ')'" name="headers">
         <headers-value-editor
@@ -56,7 +56,7 @@
           </el-radio-group>
 
           <div v-if="apiForm.content_type === 'application/json'" class="body-editor">
-            <json-editor-vue v-model="apiForm.body_json_data" class="json-box" @blur="handleSave"/>
+            <json-editor-vue v-model="apiForm.body_json_data" class="json-box" @blur="handleBlurSave"/>
           </div>
           <div v-else-if="['application/x-www-form-urlencoded', 'multipart/form-data'].includes(apiForm.content_type)" class="body-editor">
             <key-value-editor @update="handleSaveBodyFormData" :list="apiForm.body_form_data"/>
@@ -67,7 +67,7 @@
                 :rows="Number(6)"
                 placeholder="输入原始数据"
                 type="textarea"
-                @blur="handleSave"
+                @blur="handleBlurSave"
             />
           </div>
         </div>
@@ -115,7 +115,7 @@
               <el-input
                   v-model="row.key"
                   placeholder=""
-                  @blur="handleSave"
+                  @blur="handleBlurSave"
               />
             </template>
           </el-table-column>
@@ -135,7 +135,7 @@
               <el-input
                   v-model="row.desc"
                   placeholder=""
-                  @blur="handleSave"
+                  @blur="handleBlurSave"
               />
             </template>
           </el-table-column>
@@ -278,7 +278,7 @@ export default {
 
   },
   data() {
-    return {
+      return {
       Link,
       mainActiveTab: 'config', // 默认显示请求配置
       executing: false,
@@ -301,9 +301,10 @@ export default {
       showEnvDialog: false,
       envVariables: [],
       currentEnvName: '',
-      keyup: null,
-      drawerHistoryShow: false,
-      takeResultActiveTabName : 'take_result_data',
+        keyup: null,
+        isTabNavigating: false,
+        drawerHistoryShow: false,
+        takeResultActiveTabName : 'take_result_data',
     }
   },
   computed: {
@@ -342,17 +343,23 @@ export default {
     },
     handleSaveBodyFormData(bodyFormData){
       this.apiForm.body_form_data = bodyFormData
-      this.handleSave()
+      this.handleBlurSave()
     },
 
     handleKeyUp: function (event) {
       let _that = this
       _that.initKeyUp()
+      if (event.key === 'Tab') {
+        _that.isTabNavigating = false
+      }
       _that.keyup.keyUp(event.key)
     },
     handleKeyDown: function (event) {
       let _that = this
       _that.initKeyUp()
+      if (event.key === 'Tab') {
+        _that.isTabNavigating = true
+      }
       _that.keyup.keyDown(event.key)
     },
     InitApiDetail: function (apiInfo) {
@@ -382,7 +389,7 @@ export default {
     updateResponseTake: function (responseTakeData) {
       let _that = this
       _that.apiForm.response_take_data = responseTakeData
-      _that.handleSave()
+      _that.handleBlurSave()
     },
     responseTabChange: function (key) {
       let _that = this
@@ -529,13 +536,20 @@ export default {
       })
       this.$message.success('保存成功')
     },
+    // handleBlurSave 只处理失焦引发的自动保存，按 Tab 切换字段时跳过一次，避免焦点被刷新打断。
+    handleBlurSave() {
+      if (this.isTabNavigating) {
+        return
+      }
+      this.handleSave()
+    },
     handleSaveHeaders : function (result){
       this.apiForm.header_list = result
-      this.handleSave()
+      this.handleBlurSave()
     },
     handleSaveUrls : function (result){
       this.apiForm.query_params_data = result
-      this.handleSave()
+      this.handleBlurSave()
     },
 
     // 检查响应体是否为JSON格式
@@ -572,6 +586,10 @@ export default {
         return body;
       }
     },
+  }
+  ,
+  beforeUnmount() {
+    this.isTabNavigating = false
   }
 }
 </script>

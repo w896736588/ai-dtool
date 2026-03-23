@@ -27,6 +27,14 @@
         />
       </el-form-item>
 
+      <el-form-item label="默认请求头">
+        <headers-value-editor
+            v-model="form.headers"
+            :keys="headerSuggestions"
+            @update="handleHeadersUpdate"
+        />
+      </el-form-item>
+
       <el-form-item label="接口数量">
         <el-tag type="info">{{ form.apiCount || 0 }} 个接口</el-tag>
       </el-form-item>
@@ -41,8 +49,39 @@
 </template>
 
 <script>
+import HeadersValueEditor from './HeadersValueEditor.vue'
+
+// 中文注释：复用接口详情页中常见的请求头候选项。
+const HEADER_SUGGESTIONS = [
+  'Content-Type',
+  'Authorization',
+  'User-Agent',
+  'Accept',
+  'Cookie',
+  'Token',
+]
+
+// 中文注释：统一解析文件夹上保存的请求头，兼容字符串和对象两种入参。
+function parseFolderHeaders(headersValue) {
+  if (!headersValue) {
+    return {}
+  }
+  if (typeof headersValue === 'object') {
+    return { ...headersValue }
+  }
+  try {
+    const parsedHeaders = JSON.parse(headersValue)
+    return parsedHeaders && typeof parsedHeaders === 'object' ? parsedHeaders : {}
+  } catch (error) {
+    return {}
+  }
+}
+
 export default {
   name: 'FolderBasicInfo',
+  components: {
+    HeadersValueEditor,
+  },
   props: {
     folder: {
       type: Object,
@@ -51,7 +90,8 @@ export default {
   },
   data() {
     return {
-      form: {}
+      form: {},
+      headerSuggestions: HEADER_SUGGESTIONS,
     }
   },
   watch: {
@@ -68,6 +108,7 @@ export default {
       this.form = {
         name: folder.name || '',
         desc: folder.desc || '',
+        headers: parseFolderHeaders(folder.headers),
         apiCount: folder.apiCount || 0,
       }
     },
@@ -88,6 +129,9 @@ export default {
         ...this.form,
         updateTime: new Date().toISOString()
       })
+    },
+    handleHeadersUpdate(headers) {
+      this.form.headers = headers || {}
     },
 
     handleReset() {

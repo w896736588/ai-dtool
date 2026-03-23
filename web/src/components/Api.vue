@@ -485,6 +485,7 @@ export default {
           name: '',
           parent_id: '',
           parent_type: '',
+          headers: '{}',
         },
         createApi: {
           uniqueid: '',
@@ -1022,6 +1023,7 @@ export default {
       return {
         ...folder,
         collection_id: folder.collection_id || collectionId,
+        headers: folder.headers || '{}',
         type: 'folder',
         children: [],
         isLeaf: this.resolveTreeNodeLeafState('folder', folder.child_count),
@@ -1092,6 +1094,7 @@ export default {
       Object.assign(target, {
         name: source.name,
         desc: source.desc,
+        headers: source.headers || '{}',
         collection_id: source.collection_id,
         create_time: source.create_time,
         update_time: source.update_time,

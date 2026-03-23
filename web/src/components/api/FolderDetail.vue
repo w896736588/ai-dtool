@@ -31,7 +31,7 @@
 
         <el-tab-pane label="接口文档" name="api_document">
           <api-document
-              :apis="folder.children"
+              :apis="documentApis"
               :folder-name="folder.name"
               :folder-id="folder.id"
           />
@@ -93,13 +93,19 @@ export default {
     return {
       activeTab: this.activeTabName || 'basic',
       editDialogVisible: false,
-      editForm: {}
+      editForm: {},
+      documentApis: []
     }
   },
   watch: {
     folder: {
       handler(newVal) {
         this.editForm = {...newVal}
+        if (this.activeTab === 'api_document') {
+          this.loadDocumentApis()
+          return
+        }
+        this.documentApis = Array.isArray(newVal.children) ? [...newVal.children] : []
       },
       immediate: true
     },
@@ -112,7 +118,28 @@ export default {
   },
   methods: {
     handleTabChange(tabName) {
+      if (tabName === 'api_document') {
+        this.loadDocumentApis()
+      }
       this.$emit('tab-change', tabName)
+    },
+    // 中文注释：文档页需要完整接口详情，不能复用树节点里的基础字段列表。
+    loadDocumentApis() {
+      const _that = this
+      if (!_that.folder || !_that.folder.id) {
+        _that.documentApis = []
+        return
+      }
+      Api.FolderDetail({
+        dir_id: _that.folder.id,
+      }, function (res) {
+        if (res.ErrCode !== 0) {
+          _that.$message.error(res.ErrMsg || '加载接口文档失败')
+          return
+        }
+        const folderDetail = res.Data && res.Data.dir ? res.Data.dir : {}
+        _that.documentApis = Array.isArray(folderDetail.children) ? folderDetail.children : []
+      })
     },
     handleEdit() {
       this.editForm = {...this.folder}
@@ -143,7 +170,8 @@ export default {
         id: updatedFolder.id,
         name: updatedFolder.name,
         desc: updatedFolder.desc || '',
-        collection_id: updatedFolder.collection_id
+        collection_id: updatedFolder.collection_id,
+        headers: updatedFolder.headers || {}
       }
       Api.CreateDir(updateData, function (res) {
         if (res.ErrCode === 0) {
@@ -151,7 +179,8 @@ export default {
           // Emit the updated folder with all fields to the parent
           _that.$emit('update', {
             ...updatedFolder,
-            ...updateData
+            ...res.Data,
+            headers: res.Data && res.Data.headers ? res.Data.headers : JSON.stringify(updateData.headers || {})
           })
         } else {
           _that.$message.error(res.ErrMsg || '更新失败')

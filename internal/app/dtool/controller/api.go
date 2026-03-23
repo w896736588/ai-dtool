@@ -71,6 +71,7 @@ func buildFolderBasicInfo(item map[string]any) map[string]any {
 		`id`:            item[`id`],
 		`collection_id`: item[`collection_id`],
 		`name`:          item[`name`],
+		`headers`:       cast.ToString(item[`headers`]),
 		`child_count`:   cast.ToInt(item[`child_count`]),
 		`create_time`:   item[`create_time`],
 		`update_time`:   item[`update_time`],
@@ -281,13 +282,14 @@ func ApiCollectionFoldersBasic(c *gin.Context) {
 select d.id,
        d.collection_id,
        d.name,
+       d.headers,
        d.create_time,
        d.update_time,
        count(a.id) as child_count
 from tbl_api_dir d
 left join tbl_api a on a.folder_id = d.id
 where d.collection_id = ?
-group by d.id, d.collection_id, d.name, d.create_time, d.update_time
+group by d.id, d.collection_id, d.name, d.headers, d.create_time, d.update_time
 order by d.id asc`, collectionId).All()
 	result := make([]map[string]any, 0, len(list))
 	for _, item := range list {
@@ -445,7 +447,22 @@ func ApiCreateDir(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `collection_id`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `collection_id`, `headers`})
+	var err error
+	for key, value := range updateData {
+		if gstool.ArrayExistValue(&[]string{reflect.Array.String(), reflect.Map.String(), reflect.Slice.String()}, gstool.ReflectGetType(value).String()) {
+			updateData[key] = gstool.JsonEncode(value)
+		}
+	}
+	if cast.ToString(updateData[`headers`]) == `` {
+		updateData[`headers`] = `{}`
+	}
+	// 中文注释：统一清理并校验文件夹默认请求头，避免保存非法 JSON。
+	updateData[`headers`], err = filterEmptyMap(cast.ToString(updateData[`headers`]), `headers格式错误`, 500)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), ``)
+		return
+	}
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
@@ -601,6 +618,13 @@ func ApiRun(c *gin.Context) {
 	if len(apiInfo) == 0 {
 		gsgin.GinResponseError(c, `api不存在`, nil)
 		return
+	}
+	// 中文注释：运行前加载所属目录默认请求头，用于与接口请求头做覆盖合并。
+	folderInfo, _ := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `headers`, map[string]any{
+		`id`: apiInfo[`folder_id`],
+	}).One()
+	if len(folderInfo) > 0 {
+		apiInfo[`folder_headers`] = folderInfo[`headers`]
 	}
 	apiCli := api.NewApi(apiInfo)
 	err := apiCli.Run()
@@ -763,6 +787,15 @@ func ApiBatchImport(c *gin.Context) {
 
 func processFolderItem(c *gin.Context, collectionId int, folderData map[string]any, importResult map[string]any) error {
 	folderName := cast.ToString(folderData[`name`])
+	folderHeaders := cast.ToString(folderData[`headers`])
+	if folderHeaders == `` {
+		folderHeaders = `{}`
+	}
+	// 中文注释：导入时沿用目录默认请求头清洗规则，保证与单个保存入口行为一致。
+	filteredFolderHeaders, err := filterEmptyMap(folderHeaders, `headers格式错误`, 500)
+	if err != nil {
+		return err
+	}
 
 	// 检查同名文件夹是否已存在
 	existingFolder, _ := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `id`, map[string]any{
@@ -774,6 +807,12 @@ func processFolderItem(c *gin.Context, collectionId int, folderData map[string]a
 	if len(existingFolder) > 0 {
 		// 文件夹已存在，删除该文件夹下的所有接口（覆盖式更新）
 		folderId = cast.ToInt(existingFolder[`id`])
+		_, _ = common.DbMain.Client.QuickUpdate(`tbl_api_dir`, map[string]any{
+			`id`: folderId,
+		}, map[string]any{
+			`headers`:     filteredFolderHeaders,
+			`update_time`: time.Now().Unix(),
+		}).Exec()
 		_, _ = common.DbMain.Client.QuickDelete(`tbl_api`, map[string]any{
 			`folder_id`: folderId,
 		}).Exec()
@@ -783,12 +822,13 @@ func processFolderItem(c *gin.Context, collectionId int, folderData map[string]a
 		updateData := map[string]any{
 			`name`:          folderName,
 			`collection_id`: collectionId,
+			`headers`:       filteredFolderHeaders,
 			`create_time`:   time.Now().Unix(),
 			`update_time`:   time.Now().Unix(),
 		}
-		newId, err := common.DbMain.Client.QuickCreate(`tbl_api_dir`, updateData).Exec()
-		if err != nil {
-			return err
+		newId, createErr := common.DbMain.Client.QuickCreate(`tbl_api_dir`, updateData).Exec()
+		if createErr != nil {
+			return createErr
 		}
 		folderId = cast.ToInt(newId)
 		importResult[`folders_created`] = importResult[`folders_created`].(int) + 1

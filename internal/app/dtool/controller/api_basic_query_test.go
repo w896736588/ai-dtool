@@ -88,8 +88,8 @@ func TestBuildApiBasicInfo(t *testing.T) {
 
 func TestBuildCollectionBasicInfo(t *testing.T) {
 	input := map[string]any{
-		"id":         11,
-		"name":       "用户中心",
+		"id":          11,
+		"name":        "用户中心",
 		"child_count": 4,
 		"create_time": 100,
 		"update_time": 200,
@@ -115,6 +115,7 @@ func TestBuildFolderBasicInfo(t *testing.T) {
 		"id":            21,
 		"collection_id": 11,
 		"name":          "登录接口",
+		"headers":       `{"X-Trace":"folder"}`,
 		"child_count":   7,
 		"create_time":   300,
 		"update_time":   400,
@@ -132,6 +133,9 @@ func TestBuildFolderBasicInfo(t *testing.T) {
 	}
 	if got["child_count"] != 7 {
 		t.Fatalf("child_count = %v, want 7", got["child_count"])
+	}
+	if got["headers"] != `{"X-Trace":"folder"}` {
+		t.Fatalf("headers = %v, want folder headers", got["headers"])
 	}
 }
 
