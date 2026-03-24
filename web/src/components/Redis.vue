@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="redis-page-container">
     <!-- 顶部搜索区域 -->
     <div class="redis-header-card" v-loading="load.redisList">
@@ -26,18 +26,18 @@
           <el-option v-for="(value,key) in redisList" :key="value.name" :label="value.name" :value="value.id">
           </el-option>
         </el-select>
-        <el-button v-loading="load.keysSearch" type="primary" class="search-btn" @click="keysSearch">
+        <pl-button v-loading="load.keysSearch" type="primary" class="search-btn" @click="keysSearch">
           <el-icon><Search /></el-icon>
           搜索
-        </el-button>
-        <el-button v-if="keys !== ''" class="action-btn star-btn" @click="setCacheHistory({ cacheKey : keys})">
+        </pl-button>
+        <pl-button v-if="keys !== ''" class="action-btn star-btn" @click="setCacheHistory({ cacheKey : keys})">
           <el-icon><Star /></el-icon>
           收藏
-        </el-button>
-        <el-button class="action-btn list-btn" @click="$refs.redisStarRecord.showStarList();">
+        </pl-button>
+        <pl-button class="action-btn list-btn" @click="$refs.redisStarRecord.showStarList();">
           <el-icon><Collection /></el-icon>
           收藏列表
-        </el-button>
+        </pl-button>
       </div>
       <!-- 搜索历史 -->
       <div v-if="searchHistory.length > 0" class="search-history-container">
@@ -66,15 +66,15 @@
               </span>
             </div>
             <div class="header-right">
-              <el-button v-if="keysResult && keysResult.length > 0" size="small" type="danger" plain @click="delAll">
+              <pl-button v-if="keysResult && keysResult.length > 0" size="small" type="danger" plain @click="delAll">
                 <el-icon><Delete /></el-icon>
                 删除所有
-              </el-button>
-              <el-button v-if="keysResult && keysResult.length > 0" size="small" type="primary" plain @click="boolSimpleShow = !boolSimpleShow;changeSimpleShow(boolSimpleShow);">
+              </pl-button>
+              <pl-button v-if="keysResult && keysResult.length > 0" size="small" type="primary" plain @click="boolSimpleShow = !boolSimpleShow;changeSimpleShow(boolSimpleShow);">
                 <el-icon v-if="boolSimpleShow"><View /></el-icon>
                 <el-icon v-else><Hide /></el-icon>
                 {{ boolSimpleShow ? '取消优化' : '优化显示' }}
-              </el-button>
+              </pl-button>
             </div>
           </div>
           <div class="key-list-content">
@@ -1048,3 +1048,4 @@ export default {
   },
 }
 </script>
+

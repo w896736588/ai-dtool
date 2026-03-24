@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="redis-config-page">
     <div class="page-header">
       <div class="header-content">
@@ -10,10 +10,10 @@
           </svg>
           <h3>Redis 配置管理</h3>
         </div>
-        <el-button type="primary" @click="ShowAddRedis">
+        <pl-button type="primary" @click="ShowAddRedis">
           <el-icon><Plus /></el-icon>
           添加Redis实例
-        </el-button>
+        </pl-button>
       </div>
       <p class="header-desc">管理Redis服务器连接配置，支持直连和SSH隧道</p>
     </div>
@@ -61,15 +61,15 @@
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="scope">
             <div class="action-buttons">
-              <el-button type="primary" link size="small" @click="ShowEditRedis(scope.row , true)">
+              <pl-button type="primary" link size="small" @click="ShowEditRedis(scope.row , true)">
                 <el-icon><CopyDocument /></el-icon>复制新增
-              </el-button>
-              <el-button type="primary" link size="small" @click="ShowEditRedis(scope.row , false)">
+              </pl-button>
+              <pl-button type="primary" link size="small" @click="ShowEditRedis(scope.row , false)">
                 <el-icon><Edit /></el-icon>编辑
-              </el-button>
-              <el-button type="danger" link size="small" @click="DeleteRedis(scope.row)">
+              </pl-button>
+              <pl-button type="danger" link size="small" @click="DeleteRedis(scope.row)">
                 <el-icon><Delete /></el-icon>删除
-              </el-button>
+              </pl-button>
             </div>
           </template>
         </el-table-column>
@@ -122,10 +122,10 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="state.dialogEditRedis = false">取消</el-button>
-        <el-button type="primary" @click="EditRedis">
+        <pl-button @click="state.dialogEditRedis = false">取消</pl-button>
+        <pl-button type="primary" @click="EditRedis">
           <el-icon><Check /></el-icon>保存
-        </el-button>
+        </pl-button>
       </div>
     </template>
   </el-dialog>
@@ -341,3 +341,4 @@ export default defineComponent({
   border-radius: 8px;
 }
 </style>
+

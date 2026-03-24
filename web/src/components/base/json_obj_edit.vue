@@ -1,4 +1,4 @@
-<template>
+﻿<template>
     <el-form :model="state.form" label-width="auto" style="max-width: 600px">
       <!--      这里为示例对象 里面的元素一定是对象-->
       <template v-for="[tKey , column] in Object.entries(state.templateObj)" :key="key">
@@ -7,7 +7,7 @@
             <el-input v-model="state.form[tKey]"></el-input>
           </template>
           <template v-if="IsArray(state.form[tKey])">
-            <el-button size="small" type="primary" @click="AddColumn(tKey)">新增</el-button>
+            <pl-button size="small" type="primary" @click="AddColumn(tKey)">新增</pl-button>
             <el-table :data="state.form[tKey]" style="width: 100%;font-size:13px;">
               <template v-for="[key, column] in Object.entries(state.templateObj[tKey][0])">
                 <el-table-column :label="key" class-name="ellipsis-column">
@@ -39,17 +39,17 @@
                       @confirm="DeleteColumn(tKey , scope.$index)"
                   >
                     <template #reference>
-                      <el-button link size="small" type="danger" >
+                      <pl-button link size="small" type="danger" >
                         删除
-                      </el-button>
+                      </pl-button>
                     </template>
                   </el-popconfirm>
 
-                  <el-button link size="small" type="primary" @click="EditColumn(tKey,scope.$index)">编辑
-                  </el-button>
-                  <el-button link size="small" type="primary" @click="UpMove(tKey,scope.$index)">
+                  <pl-button link size="small" type="primary" @click="EditColumn(tKey,scope.$index)">编辑
+                  </pl-button>
+                  <pl-button link size="small" type="primary" @click="UpMove(tKey,scope.$index)">
                     <el-icon><ArrowUp /></el-icon>
-                  </el-button>
+                  </pl-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -58,8 +58,8 @@
       </template>
 
       <el-form-item>
-        <el-button type="primary" @click="Save">保存</el-button>
-        <el-button @click="Cancel">取消</el-button>
+        <pl-button type="primary" @click="Save">保存</pl-button>
+        <pl-button @click="Cancel">取消</pl-button>
       </el-form-item>
     </el-form>
 
@@ -181,6 +181,7 @@ export default {
 }
 </script>
 
-<el-button>
+<pl-button>
 <slot/>
-</el-button>
+</pl-button>
+

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <template v-if="state.mainForm.cacheKey !== ''">
     <!-- Key信息头部 -->
     <div class="key-info-header">
@@ -13,8 +13,8 @@
         <el-tag v-if="state.mainForm.startEditTTL === true" class="ttl-edit-tag">
           TTL:
           <input v-model="state.mainForm.ttl" class="ttl-input" type="text"/>
-          <el-button size="small" type="primary" @click="saveTTL">保存</el-button>
-          <el-button size="small" @click="editTTL">取消</el-button>
+          <pl-button size="small" type="primary" @click="saveTTL">保存</pl-button>
+          <pl-button size="small" @click="editTTL">取消</pl-button>
         </el-tag>
         <el-tag class="key-name-tag" @click="copyResult(state.mainForm.cacheKey)">
           <el-icon><DocumentCopy /></el-icon>
@@ -27,28 +27,28 @@
     <!-- 操作按钮栏 -->
     <div class="action-toolbar">
       <div class="action-left">
-        <el-button type="primary" size="small" plain @click="CallRefresh">
+        <pl-button type="primary" size="small" plain @click="CallRefresh">
           <el-icon><Refresh /></el-icon>刷新
-        </el-button>
-        <el-button v-if="state.mainForm.cacheType !== 'string'" size="small" type="success" plain @click="createSubCache">
+        </pl-button>
+        <pl-button v-if="state.mainForm.cacheType !== 'string'" size="small" type="success" plain @click="createSubCache">
           <el-icon><Plus /></el-icon>添加子项
-        </el-button>
-        <el-button size="small" type="warning" plain @click="Star">
+        </pl-button>
+        <pl-button size="small" type="warning" plain @click="Star">
           <el-icon><Star /></el-icon>收藏
-        </el-button>
-        <el-button size="small" type="danger" plain @click="delCache">
+        </pl-button>
+        <pl-button size="small" type="danger" plain @click="delCache">
           <el-icon><Delete /></el-icon>删除
-        </el-button>
+        </pl-button>
         <el-divider direction="vertical" v-if="state.mainForm.cacheType === 'string'" />
-        <el-button v-if="state.mainForm.cacheType === 'string'" size="small" plain @click="state.editForm.strHasSerialize = !state.editForm.strHasSerialize;editSubUnserialize();">
+        <pl-button v-if="state.mainForm.cacheType === 'string'" size="small" plain @click="state.editForm.strHasSerialize = !state.editForm.strHasSerialize;editSubUnserialize();">
           <el-icon><Connection /></el-icon>序列化
-        </el-button>
-        <el-button v-if="state.mainForm.cacheType === 'string'" size="small" plain @click="state.editForm.strHasJson = !state.editForm.strHasJson;editSubJson();">
+        </pl-button>
+        <pl-button v-if="state.mainForm.cacheType === 'string'" size="small" plain @click="state.editForm.strHasJson = !state.editForm.strHasJson;editSubJson();">
           <el-icon><Document /></el-icon>Json
-        </el-button>
-        <el-button v-if="state.mainForm.cacheType === 'string'" size="small" plain @click="deepParse();">
+        </pl-button>
+        <pl-button v-if="state.mainForm.cacheType === 'string'" size="small" plain @click="deepParse();">
           <el-icon><DataAnalysis /></el-icon>深度解析
-        </el-button>
+        </pl-button>
       </div>
       <div class="action-right">
         <el-input v-if="ArrayExist(state.mainForm.cacheType , ['hash' , 'set'])" v-model="state.search" size="small" placeholder="搜索..." class="search-input" clearable>
@@ -56,13 +56,13 @@
             <el-icon><Search /></el-icon>
           </template>
         </el-input>
-        <el-button v-if="ArrayExist(state.mainForm.cacheType , ['hash' , 'set'])" size="small" type="primary" @click="CallSearchList">搜索</el-button>
-        <el-button v-if="state.isMore === 1" size="small" type="primary" plain @click="CallMoreList">
+        <pl-button v-if="ArrayExist(state.mainForm.cacheType , ['hash' , 'set'])" size="small" type="primary" @click="CallSearchList">搜索</pl-button>
+        <pl-button v-if="state.isMore === 1" size="small" type="primary" plain @click="CallMoreList">
           <el-icon><Download /></el-icon>加载更多
-        </el-button>
-        <el-button v-if="state.mainForm.cacheType ==='string'" size="small" type="primary" @click="SaveString">
+        </pl-button>
+        <pl-button v-if="state.mainForm.cacheType ==='string'" size="small" type="primary" @click="SaveString">
           <el-icon><Check /></el-icon>保存
-        </el-button>
+        </pl-button>
       </div>
     </div>
 
@@ -109,15 +109,15 @@
       </el-table-column>
       <el-table-column label="操作" width="80" fixed="right">
         <template #default="scope">
-          <el-button v-if="state.mainForm.cacheType === 'hash'" link type="danger" @click="delSub(scope.row.field)">
+          <pl-button v-if="state.mainForm.cacheType === 'hash'" link type="danger" @click="delSub(scope.row.field)">
             删除
-          </el-button>
-          <el-button v-if="state.mainForm.cacheType === 'zset'" link type="danger" @click="delSub(scope.row.member)">
+          </pl-button>
+          <pl-button v-if="state.mainForm.cacheType === 'zset'" link type="danger" @click="delSub(scope.row.member)">
             删除
-          </el-button>
-          <el-button v-if="state.mainForm.cacheType === 'list' || state.mainForm.cacheType === 'set'" link type="danger" @click="delSub(scope.row.value)">
+          </pl-button>
+          <pl-button v-if="state.mainForm.cacheType === 'list' || state.mainForm.cacheType === 'set'" link type="danger" @click="delSub(scope.row.value)">
             删除
-          </el-button>
+          </pl-button>
         </template>
       </el-table-column>
     </el-table>
@@ -128,9 +128,9 @@
     <el-input v-if="state.editForm.strShowType === 1" v-model="state.editForm.value" rows="20" type="textarea" :style="{ height: state.scrollHeight + 'px' }" class="string-textarea"></el-input>
     <el-input v-if="state.editForm.strShowType === 2" v-model="state.editForm.searchResult" readonly rows="20" type="textarea" :style="{ height: state.scrollHeight + 'px' }" class="string-textarea readonly"></el-input>
     <div class="json-viewer" v-if="state.editForm.strShowType === 3">
-      <button class="copy-btn" @click="CopyJson(state.editForm.searchResult)">
+      <pl-button class="copy-btn" link @click="CopyJson(state.editForm.searchResult)">
         <el-icon><DocumentCopy /></el-icon> 复制
-      </button>
+      </pl-button>
       <pre class="json-content" ref="jsonPre">{{ state.editForm.searchResult }}</pre>
     </div>
   </el-form>
@@ -139,15 +139,15 @@
   <el-dialog v-model="state.dialogShow" :append-to-body="true" title="编辑缓存" width="600px" class="edit-dialog">
     <el-form label-width="80px">
       <el-form-item label="操作">
-        <el-button link type="primary" @click="state.editForm.strHasSerialize = !state.editForm.strHasSerialize;editSubUnserialize();">
+        <pl-button link type="primary" @click="state.editForm.strHasSerialize = !state.editForm.strHasSerialize;editSubUnserialize();">
           序列化
-        </el-button>
-        <el-button link type="primary" @click="state.editForm.strHasJson = !state.editForm.strHasJson;editSubJson();">
+        </pl-button>
+        <pl-button link type="primary" @click="state.editForm.strHasJson = !state.editForm.strHasJson;editSubJson();">
           Json
-        </el-button>
-        <el-button link type="primary" @click="deepParse();">
+        </pl-button>
+        <pl-button link type="primary" @click="deepParse();">
           深度解析
-        </el-button>
+        </pl-button>
       </el-form-item>
       <el-form-item label="field">
         <el-input v-model="state.editForm.field" autocomplete="off" readonly></el-input>
@@ -156,16 +156,16 @@
         <el-input v-if="state.editForm.strShowType === 1" v-model="state.editForm.value" rows="20" type="textarea"></el-input>
         <el-input v-if="state.editForm.strShowType === 2" v-model="state.editForm.searchResult" readonly rows="20" type="textarea"></el-input>
         <div class="json-viewer" v-if="state.editForm.strShowType === 3">
-          <button class="copy-btn" @click="CopyJson(state.editForm.searchResult)">
+          <pl-button class="copy-btn" link @click="CopyJson(state.editForm.searchResult)">
             <el-icon><DocumentCopy /></el-icon> 复制
-          </button>
+          </pl-button>
           <pre class="json-content" ref="jsonPre">{{ state.editForm.searchResult }}</pre>
         </div>
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="state.dialogShow = false">取 消</el-button>
-      <el-button type="primary" @click="funcEditSubCache">确 定</el-button>
+      <pl-button @click="state.dialogShow = false">取 消</pl-button>
+      <pl-button type="primary" @click="funcEditSubCache">确 定</pl-button>
     </template>
   </el-dialog>
 
@@ -207,8 +207,8 @@
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="state.addCacheClass = false">取 消</el-button>
-      <el-button type="primary" @click="createCache">确 定</el-button>
+      <pl-button @click="state.addCacheClass = false">取 消</pl-button>
+      <pl-button type="primary" @click="createCache">确 定</pl-button>
     </template>
   </el-dialog>
 
@@ -796,3 +796,4 @@ export default defineComponent({
 }
 
 </style>
+

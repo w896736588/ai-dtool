@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <el-drawer v-model="state.drawerHistoryShow" direction="rtl" size="50%" class="star-drawer">
     <template #header>
       <div class="drawer-header">
@@ -33,18 +33,18 @@
           </el-table-column>
           <el-table-column label="Key" min-width="300">
             <template #default="scope">
-              <el-button link type="primary" size="small" @click="CallStarListSearch(scope.row)" class="key-link">
+              <pl-button link type="primary" size="small" @click="CallStarListSearch(scope.row)" class="key-link">
                 <el-icon><Key /></el-icon>
                 {{ scope.row.key }}
-              </el-button>
+              </pl-button>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="180" fixed="right">
             <template #default="scope">
               <div class="action-cell">
-                <el-button link type="primary" size="small" @click="copyKey(scope.row.key)">
+                <pl-button link type="primary" size="small" @click="copyKey(scope.row.key)">
                   <el-icon><DocumentCopy /></el-icon>复制
-                </el-button>
+                </pl-button>
                 <el-popconfirm
                   cancel-button-text="取消"
                   confirm-button-text="删除"
@@ -53,14 +53,14 @@
                   @confirm="starDelete(scope.row)"
                 >
                   <template #reference>
-                    <el-button link type="danger" size="small">
+                    <pl-button link type="danger" size="small">
                       <el-icon><Delete /></el-icon>删除
-                    </el-button>
+                    </pl-button>
                   </template>
                 </el-popconfirm>
-                <el-button link type="primary" size="small" @click="starEdit(scope.row)">
+                <pl-button link type="primary" size="small" @click="starEdit(scope.row)">
                   <el-icon><Edit /></el-icon>编辑
-                </el-button>
+                </pl-button>
               </div>
             </template>
           </el-table-column>
@@ -93,10 +93,10 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="state.dialogStarCache = false">取消</el-button>
-        <el-button type="primary" @click="starSave">
+        <pl-button @click="state.dialogStarCache = false">取消</pl-button>
+        <pl-button type="primary" @click="starSave">
           <el-icon><Check /></el-icon>保存
-        </el-button>
+        </pl-button>
       </div>
     </template>
   </el-dialog>
@@ -317,3 +317,4 @@ export default defineComponent({
   border-radius: 8px;
 }
 </style>
+

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="api-detail" tabindex="0" @keydown="handleKeyDown" @keyup="handleKeyUp">
     <div class="api-header">
       <el-input v-model="apiForm.name" placeholder="输入接口名称" style="width: 300px;margin-right:5px;" type="text" @blur="handleBlurSave"></el-input>
@@ -22,11 +22,11 @@
               :value="env.id"
           />
         </el-select>
-        <el-button :loading="executing" type="primary" @click="handleExecute">
+        <pl-button :loading="executing" type="primary" @click="handleExecute">
           执行接口
-        </el-button>
-        <el-button @click="handleSave">保存</el-button>
-        <el-button type="info" @click="showResult">结果</el-button>
+        </pl-button>
+        <pl-button @click="handleSave">保存</pl-button>
+        <pl-button type="info" @click="showResult">结果</pl-button>
       </div>
     </div>
 
@@ -92,12 +92,17 @@
       <el-tab-pane label="代码" lazy name="code">
         <div style="width: 100%">
           <el-radio-group v-model="apiForm.code_type" class="detail-segmented" size="small" @change="handleCodeTypeChange">
-            <el-radio-button value="curl bash(chrome)">curl bash(chrome)</el-radio-button>
-            <el-radio-button value="curl shell(apifox)">curl shell(apifox)</el-radio-button>
+            <el-radio-button
+                v-for="codeType in codeTypeOptions"
+                :key="codeType"
+                :value="codeType"
+            >
+              {{ codeType }}
+            </el-radio-button>
           </el-radio-group>
 
           <div class="response-body-container" style="margin-top:5px;">
-            <button class="copy-btn" link @click="copyTextToClipboard(apiForm.code)">复制</button>
+            <pl-button class="copy-btn" link @click="copyTextToClipboard(apiForm.code)">复制</pl-button>
             <pre class="response-body json-body">{{
                 apiForm.code
               }}
@@ -141,7 +146,7 @@
           </el-table-column>
           <el-table-column label="操作" width="200" align="center" fixed="right">
             <template #default="{ row }">
-              <el-button link type="danger" @click="removeTakeResult(row.key)">删除</el-button>
+              <pl-button link type="danger" @click="removeTakeResult(row.key)">删除</pl-button>
             </template>
           </el-table-column>
         </el-table>
@@ -177,7 +182,7 @@
       </div>
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="closeEnvDialog">关闭</el-button>
+          <pl-button @click="closeEnvDialog">关闭</pl-button>
         </span>
       </template>
     </el-dialog>
@@ -186,7 +191,7 @@
       <div v-if="apiForm.last_result_data">
         <h5 @click="copyUrl(apiForm.last_result_data.url)">{{ apiForm.method }} {{ apiForm.last_result_data.url }}</h5>
         <div class="response-status">
-          <el-button type="primary" :loading="executing" @click="handleExecute">执行</el-button>
+          <pl-button type="primary" :loading="executing" @click="handleExecute">执行</pl-button>
           <div style="color:green;font-size:14px;">状态: {{ apiForm.last_result_data.status }}</div>
           <div v-if="apiForm.last_result_data.errmsg" style="color:red;font-size:14px;">执行错误:
             {{ apiForm.last_result_data.errmsg }}
@@ -198,10 +203,10 @@
         <el-tabs v-model="responseActiveTab" class="detail-tabs" @tab-change="handleSave">
           <el-tab-pane label="返回结果" name="body">
             <div class="response-body-container">
-              <button class="copy-btn" link style="margin-right:120px;" @click="copyTextToClipboard(apiForm.last_result_data.result)">
+              <pl-button class="copy-btn" link style="margin-right:120px;" @click="copyTextToClipboard(apiForm.last_result_data.result)">
                 复制
-              </button>
-              <button v-if="isJsonResponse(apiForm.last_result_data.result)" class="copy-btn" link @click="takeToResult(apiForm.id , apiForm.last_result_data.result)">提取Json到文档</button>
+              </pl-button>
+              <pl-button v-if="isJsonResponse(apiForm.last_result_data.result)" class="copy-btn" link @click="takeToResult(apiForm.id , apiForm.last_result_data.result)">提取Json到文档</pl-button>
               <pre v-if="isJsonResponse(apiForm.last_result_data.result)" class="response-body json-body">{{
                   formatJson(apiForm.last_result_data.result)
                 }}
@@ -296,6 +301,16 @@ export default {
         'Token',
       ],
       envs: [],
+      codeTypeOptions: [
+        'curl bash(chrome)',
+        'curl shell(apifox)',
+        'JavaScript fetch',
+        'JavaScript axios',
+        'Python requests',
+        'PHP cURL',
+        'Golang net/http',
+        'Postman collection',
+      ],
       envItems: [],
       currentEnvId: '0',
       showEnvDialog: false,
@@ -323,8 +338,23 @@ export default {
       this.apiForm.take_result_data = this.apiForm.take_result_data.filter((value, index) => value.key !== key);
       this.handleSave()
     },
+    // ensureCodeType 中文：确保代码 tab 总有一个可用类型。 English: Ensure the code tab always has a valid snippet type.
+    ensureCodeType() {
+      if (!this.codeTypeOptions.includes(this.apiForm.code_type)) {
+        this.apiForm.code_type = this.codeTypeOptions[0]
+      }
+    },
+    // ensureCodeSnippetLoaded 中文：仅在代码 tab 激活时拉取代码片段。 English: Load snippets only when the code tab is active.
+    ensureCodeSnippetLoaded() {
+      this.ensureCodeType()
+      if (!this.apiForm.id || this.configActiveTab !== 'code') {
+        return
+      }
+      this.handleCodeTypeChange()
+    },
     handleCodeTypeChange: function () {
       let _that = this
+      _that.ensureCodeType()
       Api.ApiCode({
         code_type: this.apiForm.code_type,
         id: _that.apiForm.id,
@@ -372,6 +402,9 @@ export default {
       if(_that.configActiveTab === '' || _that.configActiveTab === undefined || _that.configActiveTab === null){
         _that.configActiveTab = 'body'
       }
+      _that.$nextTick(function () {
+        _that.ensureCodeSnippetLoaded()
+      })
     },
     initKeyUp: function () {
       let _that = this
@@ -397,8 +430,7 @@ export default {
       if (_that.configActiveTab === 'env_items') {
         _that.loadEnvItems(_that.apiForm.env_id)
       } else if (_that.configActiveTab === 'code') {
-        _that.apiForm.code_type = 'curl bash(chrome)';
-        _that.handleCodeTypeChange()
+        _that.ensureCodeSnippetLoaded()
       }
     },
     changeEnv: function (env_id) {
@@ -484,6 +516,7 @@ export default {
       }
       //body_raw处理
       _that.apiForm.body_raw_data = _that.apiForm.body_raw || ''
+      _that.ensureCodeType()
       //结果提取配置处理
       _that.apiForm.response_take_data = JSON.parse(_that.apiForm.response_take)
       if (!typ.IsArray(_that.apiForm.response_take_data)) {
@@ -924,6 +957,7 @@ export default {
   }
 }
 </style>
+
 
 
 

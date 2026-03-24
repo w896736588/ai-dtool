@@ -14,118 +14,130 @@
     </el-link>
   </el-alert>
   <div class="link-run-page">
-    <div class="link-run-toolbar">
-      <el-text class="mx-1">已打开Page({{ openPageNum }})</el-text>&nbsp;
-      <GitActionButton @click="showCreateDialog">
-        <el-icon><Plus /></el-icon>创建
-      </GitActionButton>
-      <GitActionButton @click="install">
-        <el-icon><Tools /></el-icon>安装核心
-      </GitActionButton>
-      <GitActionButton variant="warning" @click="recycle">
-        <el-icon><Refresh /></el-icon>释放内存
-      </GitActionButton>
-      <GitActionButton variant="info" @click="downloadPath">
-        <el-icon><Download /></el-icon>下载目录
-      </GitActionButton>
-      <GitActionButton variant="info" @click="drawerVisibleMarkdown = true">
-        <el-icon><QuestionFilled /></el-icon>帮助文档
-      </GitActionButton>
-<!--      <el-button type="primary" @click="showDialogRunLog">运行日志({{shellController.sshResult.length}})</el-button>&nbsp;-->
-      &nbsp;<GitActionButton variant="info" @click="changeToProcess"><el-icon><EditPen /></el-icon>切换到编辑执行逻辑</GitActionButton>&nbsp;
-      <GitActionButton variant="info" @click="changeToFlow"><el-icon><Share /></el-icon>切换到流程图</GitActionButton>&nbsp;
-      <!--      <el-link type="primary" @click="showMarkdown">使用说明</el-link>-->
+    <div class="link-run-header-card">
+      <div class="link-run-header-title">
+        <div class="link-run-header-title__main">自定义网页</div>
+        <div class="link-run-header-title__desc">集中管理页面入口、运行方式和流程跳转，顶部操作区独立展示更利于快速切换。</div>
+      </div>
+      <div class="link-run-toolbar">
+        <el-tag size="small" type="info" effect="light">已打开 Page {{ openPageNum }}</el-tag>
+        <GitActionButton @click="showCreateDialog">
+          <el-icon><Plus /></el-icon>创建
+        </GitActionButton>
+        <GitActionButton @click="install">
+          <el-icon><Tools /></el-icon>安装核心
+        </GitActionButton>
+        <GitActionButton variant="warning" @click="recycle">
+          <el-icon><Refresh /></el-icon>释放内存
+        </GitActionButton>
+        <GitActionButton variant="info" @click="downloadPath">
+          <el-icon><Download /></el-icon>下载目录
+        </GitActionButton>
+        <GitActionButton variant="info" @click="drawerVisibleMarkdown = true">
+          <el-icon><QuestionFilled /></el-icon>帮助文档
+        </GitActionButton>
+        <GitActionButton variant="info" @click="changeToProcess">
+          <el-icon><EditPen /></el-icon>切换到编辑执行逻辑
+        </GitActionButton>
+        <GitActionButton variant="info" @click="changeToFlow">
+          <el-icon><Share /></el-icon>切换到流程图
+        </GitActionButton>
+      </div>
     </div>
-    <div v-for="(smartValue, smartLinkIndex) in smartList" :key="smartLinkIndex" class="link-run-card">
-      <a style="display: inline-block;text-decoration: underline;cursor:pointer;font-size:17px;font-weight: bold;" @click="showEditDialog(smartValue)">
-        {{ smartValue.id + " " + smartValue.name }}
-      </a>
-      <el-tooltip content="编辑" placement="top">
-        <el-icon size="small" style="margin-left:20px;" @click="showEditDialog(smartValue)">
-          <Setting/>
-        </el-icon>
-      </el-tooltip>
-      <el-tooltip content="展示账号密码" placement="top">
-        <el-icon size="small" style="margin: 10px;" @click="showUserPasswordList(smartValue)">
-          <Notebook/>
-        </el-icon>
-      </el-tooltip>
-      <el-tooltip content="删除" placement="top">
-        <el-popconfirm
-            cancel-button-text="取消"
-            confirm-button-text="删除"
-            icon-color="#626AEF"
-            title="确定删除吗?"
-            @confirm="deleteSmartLink(smartValue)"
-        >
-          <template #reference>
-            <el-icon size="small">
-              <Delete/>
-            </el-icon>
-          </template>
-        </el-popconfirm>
-      </el-tooltip>
-      <el-row :gutter="20" class="link-run-links-row">
-        <el-col v-for="(linkValue, linkIndex) in smartValue.linkList" :key="linkIndex" :span="4">
-          <div class="grid-content bg-purple">
-            <!--            选择后内置核心打开-->
-            <template v-if="(linkValue.userList && linkValue.userList.length > 0) || parseInt(smartValue.open_num) > 0">
-              <!--              供选择的环境列表-->
-              <el-radio v-model="smartValue.chooseSmartLinkIndex" :label="linkValue.label"
-                        @change="changeChooseLink(smartLinkIndex , linkIndex)">
-                {{ linkValue.label }}
+    <div class="link-run-content">
+      <!--      <pl-button type="primary" @click="showDialogRunLog">运行日志({{shellController.sshResult.length}})</pl-button>&nbsp;-->
+      <!--      <el-link type="primary" @click="showMarkdown">使用说明</el-link>-->
+      <div v-for="(smartValue, smartLinkIndex) in smartList" :key="smartLinkIndex" class="link-run-card">
+        <a style="display: inline-block;text-decoration: underline;cursor:pointer;font-size:17px;font-weight: bold;" @click="showEditDialog(smartValue)">
+          {{ smartValue.id + " " + smartValue.name }}
+        </a>
+        <el-tooltip content="编辑" placement="top">
+          <el-icon size="small" style="margin-left:20px;" @click="showEditDialog(smartValue)">
+            <Setting/>
+          </el-icon>
+        </el-tooltip>
+        <el-tooltip content="展示账号密码" placement="top">
+          <el-icon size="small" style="margin: 10px;" @click="showUserPasswordList(smartValue)">
+            <Notebook/>
+          </el-icon>
+        </el-tooltip>
+        <el-tooltip content="删除" placement="top">
+          <el-popconfirm
+              cancel-button-text="取消"
+              confirm-button-text="删除"
+              icon-color="#626AEF"
+              title="确定删除吗?"
+              @confirm="deleteSmartLink(smartValue)"
+          >
+            <template #reference>
+              <el-icon size="small">
+                <Delete/>
+              </el-icon>
+            </template>
+          </el-popconfirm>
+        </el-tooltip>
+        <el-row :gutter="20" class="link-run-links-row">
+          <el-col v-for="(linkValue, linkIndex) in smartValue.linkList" :key="linkIndex" :span="4">
+            <div class="grid-content bg-purple">
+              <!--            选择后内置核心打开-->
+              <template v-if="(linkValue.userList && linkValue.userList.length > 0) || parseInt(smartValue.open_num) > 0">
+                <!--              供选择的环境列表-->
+                <el-radio v-model="smartValue.chooseSmartLinkIndex" :label="linkValue.label"
+                          @change="changeChooseLink(smartLinkIndex , linkIndex)">
+                  {{ linkValue.label }}
 
-                <span v-if="linkValue.runNum" style="font-size: 12px;color:green;">({{ linkValue.runNum }})</span>
-              </el-radio>
-            </template>
+                  <span v-if="linkValue.runNum" style="font-size: 12px;color:green;">({{ linkValue.runNum }})</span>
+                </el-radio>
+              </template>
 
-            <!--            直接打开-->
-            <template v-if="!linkValue.userList && parseInt(smartValue.open_type) === 1 && parseInt(smartValue.open_num) === 0">
-              <el-link style="padding: 10px;" type="primary" @click="redirectLink(linkValue)">
-                {{ linkValue.label }}
-              </el-link>
-            </template>
+              <!--            直接打开-->
+              <template v-if="!linkValue.userList && parseInt(smartValue.open_type) === 1 && parseInt(smartValue.open_num) === 0">
+                <el-link style="padding: 10px;" type="primary" @click="redirectLink(linkValue)">
+                  {{ linkValue.label }}
+                </el-link>
+              </template>
 
-            <!--            内置核心打开-->
-            <template v-if="(!linkValue.userList || linkValue.userList.length === 0) && (parseInt(smartValue.open_type) === 2 || parseInt(smartValue.open_type) === 3) && parseInt(smartValue.open_num) === 0">
-              <el-link style="padding: 10px;" type="primary" @click="smartLinkRun(smartLinkIndex,linkIndex)">
-                {{ linkValue.label }}
-                <span v-if="linkValue.runNum" style="font-size: 12px;color:green;">
-                  ({{ linkValue.runNum }})
-                </span>
-              </el-link>
-            </template>
+              <!--            内置核心打开-->
+              <template v-if="(!linkValue.userList || linkValue.userList.length === 0) && (parseInt(smartValue.open_type) === 2 || parseInt(smartValue.open_type) === 3) && parseInt(smartValue.open_num) === 0">
+                <el-link style="padding: 10px;" type="primary" @click="smartLinkRun(smartLinkIndex,linkIndex)">
+                  {{ linkValue.label }}
+                  <span v-if="linkValue.runNum" style="font-size: 12px;color:green;">
+                    ({{ linkValue.runNum }})
+                  </span>
+                </el-link>
+              </template>
 
-          </div>
-        </el-col>
-      </el-row>
-      <!--      账号列表-->
-      <el-form v-if="smartValue.linkList[smartValue.chooseLinkIndex] &&
-        (smartValue.linkList[smartValue.chooseLinkIndex].userList || smartValue.open_num > 0 )" :inline="true" class="demo-form-inline"
-               label-width="auto" style="margin: 0 auto;">
-        <el-form-item v-if="smartValue.linkList[smartValue.chooseLinkIndex].userList && smartValue.linkList[smartValue.chooseLinkIndex].userList.length > 0" label="账号列表">
-          <el-select v-model="smartValue.linkList[smartValue.chooseLinkIndex].chooseUserName" placeholder="选择账号">
-            <template v-for="(user,userkey) in smartValue.linkList[smartValue.chooseLinkIndex].userList" :key="userkey">
-              <el-option :label="user.user_name" :value="user.user_name"/>
-            </template>
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="smartValue.open_type === 2" label="打开方式">
-          <el-select v-model="smartValue.open_type_new" placeholder="选择类型">
-            <template v-for="(value,key) in openTypeList" :key="key">
-              <el-option :label="value.label" :value="value.value"/>
-            </template>
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="smartValue.open_num > 0" label="打开数">
-          <el-input v-model="smartValue.open_num_new" placeholder="Please input" style="width: 240px"/>
-        </el-form-item>
-        <el-form-item>
-          <GitActionButton v-if="smartValue.linkList[smartValue.chooseLinkIndex].chooseUserName || smartValue.open_num > 0" @click="smartLinkRun(smartLinkIndex,null)">
-            执行
-          </GitActionButton>
-        </el-form-item>
-      </el-form>
+            </div>
+          </el-col>
+        </el-row>
+        <!--      账号列表-->
+        <el-form v-if="smartValue.linkList[smartValue.chooseLinkIndex] &&
+          (smartValue.linkList[smartValue.chooseLinkIndex].userList || smartValue.open_num > 0 )" :inline="true" class="demo-form-inline"
+                 label-width="auto" style="margin: 0 auto;">
+          <el-form-item v-if="smartValue.linkList[smartValue.chooseLinkIndex].userList && smartValue.linkList[smartValue.chooseLinkIndex].userList.length > 0" label="账号列表">
+            <el-select v-model="smartValue.linkList[smartValue.chooseLinkIndex].chooseUserName" placeholder="选择账号">
+              <template v-for="(user,userkey) in smartValue.linkList[smartValue.chooseLinkIndex].userList" :key="userkey">
+                <el-option :label="user.user_name" :value="user.user_name"/>
+              </template>
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="smartValue.open_type === 2" label="打开方式">
+            <el-select v-model="smartValue.open_type_new" placeholder="选择类型">
+              <template v-for="(value,key) in openTypeList" :key="key">
+                <el-option :label="value.label" :value="value.value"/>
+              </template>
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="smartValue.open_num > 0" label="打开数">
+            <el-input v-model="smartValue.open_num_new" placeholder="Please input" style="width: 240px"/>
+          </el-form-item>
+          <el-form-item>
+            <GitActionButton v-if="smartValue.linkList[smartValue.chooseLinkIndex].chooseUserName || smartValue.open_num > 0" @click="smartLinkRun(smartLinkIndex,null)">
+              执行
+            </GitActionButton>
+          </el-form-item>
+        </el-form>
+      </div>
     </div>
   </div>
   <!--新增弹窗-->
@@ -719,13 +731,41 @@ export default {
 
 <style scoped>
 .link-run-page {
-  padding: 6px 4px 2px;
+  min-height: calc(100vh - 110px);
+  color: #4a4a4a;
+}
+
+.link-run-header-card {
+  background: #fff;
+  border: 1px solid #e8e8e0;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+
+.link-run-header-title {
+  margin-bottom: 12px;
+}
+
+.link-run-header-title__main {
+  color: #4a4a4a;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.link-run-header-title__desc {
+  margin-top: 6px;
+  color: #74806f;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.link-run-content {
+  padding: 0 2px 2px;
 }
 
 .link-run-toolbar {
-  margin-bottom: 12px;
   display: flex;
-  justify-content: center;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
@@ -763,4 +803,5 @@ export default {
   display: block;
 }
 </style>
+
 

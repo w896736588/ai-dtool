@@ -1,10 +1,10 @@
-<template>
+﻿<template>
   <div class="set-config-page">
     <div class="set-config-header">
       <h3 class="set-config-title">SSH 配置管理</h3>
       <p class="set-config-desc">管理远程连接与当前连接状态</p>
       <div class="set-config-actions">
-        <el-button type="primary" @click="ShowAddSsh">添加 SSH</el-button>
+        <pl-button type="primary" @click="ShowAddSsh">添加 SSH</pl-button>
       </div>
     </div>
     <div class="set-config-table-card">
@@ -22,15 +22,15 @@
         <el-table-column prop="status" label="连接状态" width="100" />
         <el-table-column label="当前连接数" width="120" align="center">
           <template #default="scope">
-            <el-button type="primary" link @click="ShowConnections(scope.row)">{{ GetConnectionCount(scope.row.id) }}</el-button>
+            <pl-button type="primary" link @click="ShowConnections(scope.row)">{{ GetConnectionCount(scope.row.id) }}</pl-button>
           </template>
         </el-table-column>
         <el-table-column label="操作" min-width="180">
           <template #default="scope">
             <div class="set-op-group">
-              <el-button type="primary" link @click="ShowEditSsh(scope.row , true)">复制新增</el-button>
-              <el-button type="primary" link @click="ShowEditSsh(scope.row , false)">编辑</el-button>
-              <el-button link type="danger" @click="DeleteSsh(scope.row)">删除</el-button>
+              <pl-button type="primary" link @click="ShowEditSsh(scope.row , true)">复制新增</pl-button>
+              <pl-button type="primary" link @click="ShowEditSsh(scope.row , false)">编辑</pl-button>
+              <pl-button link type="danger" @click="DeleteSsh(scope.row)">删除</pl-button>
             </div>
           </template>
         </el-table-column>
@@ -60,8 +60,8 @@
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="state.dialogEditSsh = false">取消</el-button>
-          <el-button type="primary" @click="EditSsh">保存</el-button>
+          <pl-button @click="state.dialogEditSsh = false">取消</pl-button>
+          <pl-button type="primary" @click="EditSsh">保存</pl-button>
         </div>
       </template>
     </el-dialog>
@@ -76,13 +76,13 @@
         <el-table-column prop="type" label="类型" width="90" />
         <el-table-column label="操作" width="90">
           <template #default="scope">
-            <el-button type="primary" link @click="Reconnect(scope.row)">重连</el-button>
+            <pl-button type="primary" link @click="Reconnect(scope.row)">重连</pl-button>
           </template>
         </el-table-column>
       </el-table>
       <template #footer>
         <div class="dialog-footer">
-          <el-button type="primary" @click="state.dialogConnections = false">关闭</el-button>
+          <pl-button type="primary" @click="state.dialogConnections = false">关闭</pl-button>
         </div>
       </template>
     </el-dialog>
@@ -273,3 +273,4 @@ export default defineComponent({
 <style scoped>
 @import "@/css/set_module_unified.css";
 </style>
+

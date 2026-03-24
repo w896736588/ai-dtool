@@ -35,6 +35,7 @@ type CurlStruct struct {
 	QueryParams []KeyValue        `json:"query_params"` //url的请求参数
 	BodyForm    []KeyValue        `json:"body_form"`    // 请求数据 当content-type为application/x-www-form-urlencoded或者multipart/form-data
 	BodyJson    string            `json:"body_json"`    // 请求数据当content-type为application/json或raw时
+	BodyRaw     string            `json:"body_raw"`     // 请求数据当content-type为text/plain或raw时
 }
 
 type ParseCurl struct {

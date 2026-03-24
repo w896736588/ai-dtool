@@ -1,11 +1,11 @@
-<template>
+﻿<template>
   <!--  数组-->
   <template v-if="showSource" style="height:50px;">
     模板：<span v-if="state.templateErr !== ''" style="color: red;">
           {{ state.templateErr }}
           </span>
     <span v-else style="color:green">正确</span>&nbsp;
-    <el-button size="small" type="primary" @click="WitchTemplate">解析JSON</el-button>
+    <pl-button size="small" type="primary" @click="WitchTemplate">解析JSON</pl-button>
     <el-input v-model="state.template" rows="2" style="margin-bottom:0px;" type="textarea"></el-input>
   </template>
   <template v-if="IsArray(state.configData) && IsObject(state.templateObj)">
@@ -14,7 +14,7 @@
         <el-input v-model="state.tableSearch" placeholder="搜索，多条件空格分割" type="text" @input="tableFilter"></el-input>
       </el-col>
       <el-col :span="3" style="text-align: center;">
-        <el-button size="small" type="primary" @click="AddColumn">新增</el-button>
+        <pl-button size="small" type="primary" @click="AddColumn">新增</pl-button>
       </el-col>
     </el-row>
     <table class="json_list_edit" style="width: 100%;margin-top: 3px;">
@@ -61,18 +61,18 @@
                 @confirm="DeleteColumn(index)"
             >
               <template #reference>
-                <el-button link size="small" type="danger">
+                <pl-button link size="small" type="danger">
                   删除
-                </el-button>
+                </pl-button>
               </template>
             </el-popconfirm>
 
-            <el-button link size="small" type="primary" @click="EditForm(index,row)">编辑</el-button>
-            <el-button link size="small" type="primary" @click="UpMove(index)">
+            <pl-button link size="small" type="primary" @click="EditForm(index,row)">编辑</pl-button>
+            <pl-button link size="small" type="primary" @click="UpMove(index)">
               <el-icon>
                 <ArrowUp/>
               </el-icon>
-            </el-button>
+            </pl-button>
           </td>
         </tr>
       </template>
@@ -371,6 +371,7 @@ export default {
 }
 </script>
 
-<el-button>
+<pl-button>
 <slot/>
-</el-button>
+</pl-button>
+

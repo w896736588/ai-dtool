@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="box-card" ref="mainCard" id="mainCard" >
     <el-row :gutter="24">
       <el-col :span="12">
@@ -67,8 +67,8 @@
             <el-input type="text" v-model="form.actionPrefix"></el-input>
           </el-form-item>
           <el-form-item>
-            <el-button v-loading="loading.run" type="primary" @click="aiRun">执行</el-button>
-            <el-button>Cancel</el-button>
+            <pl-button v-loading="loading.run" type="primary" @click="aiRun">执行</pl-button>
+            <pl-button>Cancel</pl-button>
           </el-form-item>
         </el-form>
       </el-col>

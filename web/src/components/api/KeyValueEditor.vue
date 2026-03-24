@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="kv-table">
     <table class="kv-table-inner">
       <thead>
@@ -44,7 +44,7 @@
                 :accept="item.accept || '*'"
                 @blur="handleDataChange"
             >
-              <el-button size="small" type="primary">选择文件</el-button>
+              <pl-button size="small" type="primary">选择文件</pl-button>
             </el-upload>
             <span style="display: inline-block;font-size:13px;">{{item.value}}</span>
             <span style="word-break: break-all;" v-if="item.file" class="file-name">{{ item.file.name }}</span>
@@ -97,15 +97,15 @@
           <el-input type="textarea" :rows="Number(2)" v-model="item.description" placeholder="描述" @blur="handleDataChange"/>
         </td>
         <td class="col-actions">
-          <el-button plain size="small" type="danger" class="delete-rule-btn" @click="removeItem(idx)">删除</el-button>
+          <pl-button plain size="small" type="danger" class="delete-rule-btn" @click="removeItem(idx)">删除</pl-button>
         </td>
       </tr>
       </tbody>
     </table>
 
     <div class="footer" style="margin: 10px;">
-      <el-button type="primary" plain size="small" class="add-rule-btn" @click="addItem">+ 添加参数</el-button>
-<!--      <el-button link @click="handleBulkEdit">批量编辑</el-button>-->
+      <pl-button type="primary" plain size="small" class="add-rule-btn" @click="addItem">+ 添加参数</pl-button>
+<!--      <pl-button link @click="handleBulkEdit">批量编辑</pl-button>-->
     </div>
   </div>
 </template>
@@ -256,6 +256,7 @@ export default {
   border-radius: 8px;
 }
 </style>
+
 
 
 

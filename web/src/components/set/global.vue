@@ -1,10 +1,10 @@
-<template>
+﻿<template>
   <div class="set-config-page">
     <div class="set-config-header">
       <h3 class="set-config-title">全局配置</h3>
       <p class="set-config-desc">管理全局参数（密钥字段自动脱敏显示）</p>
       <div class="set-config-actions">
-        <el-button type="primary" @click="ShowAddGit">添加</el-button>
+        <pl-button type="primary" @click="ShowAddGit">添加</pl-button>
       </div>
     </div>
     <div class="set-config-table-card">
@@ -22,9 +22,9 @@
         <el-table-column label="操作" width="200">
           <template #default="scope">
             <div class="set-op-group">
-              <el-button type="primary" link @click="ShowEditGit(scope.row , true)">复制新增</el-button>
-              <el-button type="primary" link @click="ShowEditGit(scope.row , false)">编辑</el-button>
-              <el-button link type="danger" @click="DeleteGit(scope.row)">删除</el-button>
+              <pl-button type="primary" link @click="ShowEditGit(scope.row , true)">复制新增</pl-button>
+              <pl-button type="primary" link @click="ShowEditGit(scope.row , false)">编辑</pl-button>
+              <pl-button link type="danger" @click="DeleteGit(scope.row)">删除</pl-button>
             </div>
           </template>
         </el-table-column>
@@ -48,8 +48,8 @@
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="state.dialogEditGit = false">取消</el-button>
-          <el-button type="primary" @click="EditGit">保存</el-button>
+          <pl-button @click="state.dialogEditGit = false">取消</pl-button>
+          <pl-button type="primary" @click="EditGit">保存</pl-button>
         </div>
       </template>
     </el-dialog>
@@ -157,3 +157,4 @@ export default defineComponent({
 <style scoped>
 @import "@/css/set_module_unified.css";
 </style>
+

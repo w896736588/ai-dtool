@@ -1,8 +1,8 @@
-<template>
+﻿<template>
   <div class="collection-permission">
     <div class="permission-header">
-      <el-button type="primary" @click="handleAddPermission">添加成员</el-button>
-      <el-button @click="handlePermissionTemplate">权限模板</el-button>
+      <pl-button type="primary" @click="handleAddPermission">添加成员</pl-button>
+      <pl-button @click="handlePermissionTemplate">权限模板</pl-button>
     </div>
 
     <el-table :data="permissionList" style="width: 100%" v-loading="loading">
@@ -51,13 +51,13 @@
 
       <el-table-column label="操作" width="120" align="center">
         <template #default="{ row }">
-          <el-button
+          <pl-button
               type="danger"
               link
               @click="handleRemovePermission(row)"
           >
             移除
-          </el-button>
+          </pl-button>
         </template>
       </el-table-column>
     </el-table>
@@ -100,8 +100,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="addMemberDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleConfirmAddMember">确认添加</el-button>
+        <pl-button @click="addMemberDialogVisible = false">取消</pl-button>
+        <pl-button type="primary" @click="handleConfirmAddMember">确认添加</pl-button>
       </template>
     </el-dialog>
   </div>
@@ -314,3 +314,4 @@ export default {
   color: #909399;
 }
 </style>
+

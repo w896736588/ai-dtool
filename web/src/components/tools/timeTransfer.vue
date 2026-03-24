@@ -1,22 +1,22 @@
-<template>
+﻿<template>
   <div ref="mainCard" style="text-align: center;">
     <div class="flex gap-4 mb-4 items-center timeTransferDiv">
       <el-input v-model="currentTime.sourceTime" class="timeInput" placeholder="当前时间戳"/>
       &nbsp;
-      <el-button disabled round size="small" type="primary">反转</el-button>
+      <pl-button disabled round size="small" type="primary">反转</pl-button>
       &nbsp;
       <el-input v-model="currentTime.transferResult" class="timeInput" placeholder="转换结果"/>
     </div>
     <div v-for="(value, key) in timeTransferList" :key="key" class="flex gap-4 mb-4 items-center timeTransferDiv">
       <el-input v-model="value.sourceTime" class="timeInput" placeholder="任意时间戳或字符串时间"/>
       &nbsp;
-      <el-button round size="small" type="primary" @click="revert(value)">反转</el-button>
-      <el-button round size="small" type="primary" @click="to235959(key ,value)">23.59.59</el-button>
-      <el-button round size="small" type="primary" @click="to000000(key , value)">00.00.00</el-button>
+      <pl-button round size="small" type="primary" @click="revert(value)">反转</pl-button>
+      <pl-button round size="small" type="primary" @click="to235959(key ,value)">23.59.59</pl-button>
+      <pl-button round size="small" type="primary" @click="to000000(key , value)">00.00.00</pl-button>
 <!--      <el-dropdown trigger="click">-->
-<!--        <el-button type="primary" round size="small">-->
+<!--        <pl-button type="primary" round size="small">-->
 <!--          选项<el-icon class="el-icon&#45;&#45;right"><arrow-down /></el-icon>-->
-<!--        </el-button>-->
+<!--        </pl-button>-->
 <!--        <template #dropdown>-->
 <!--          <el-dropdown-menu>-->
 <!--            <el-dropdown-item @click="revert(value)">反转</el-dropdown-item>-->
@@ -28,7 +28,7 @@
       &nbsp;
       <el-input v-model="value.transferResult" class="timeInput" placeholder="转换结果"/>
     </div>
-    <el-button @click="reset" type="primary">重 置</el-button>
+    <pl-button @click="reset" type="primary">重 置</pl-button>
   </div>
 </template>
 
@@ -282,3 +282,4 @@ export default {
   align-items: center;
 }
 </style>
+

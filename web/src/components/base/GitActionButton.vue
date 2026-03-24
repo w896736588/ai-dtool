@@ -1,5 +1,5 @@
-<template>
-  <el-button
+﻿<template>
+  <pl-button
     class="git-action-button"
     :class="buttonClassList"
     :type="buttonType"
@@ -10,7 +10,7 @@
       <slot name="icon" />
     </template>
     <slot />
-  </el-button>
+  </pl-button>
 </template>
 
 <script>
@@ -177,3 +177,4 @@ export default {
   border-radius: 7px;
 }
 </style>
+

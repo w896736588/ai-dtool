@@ -1,7 +1,7 @@
-<template>
+﻿<template>
   <!-- 按钮模式 -->
   <div class="shellContainer">
-    <el-button
+    <pl-button
         v-loading="isRunning"
         class="shellButton"
         round
@@ -9,7 +9,7 @@
         @click="openDrawer"
     >
       {{ btnText }}
-    </el-button>
+    </pl-button>
   </div>
 
   <!-- 抽屉 -->
@@ -29,9 +29,9 @@
     <template #header>
       <div class="drawer-header">
         <span>{{btnName}}</span>
-        <el-button circle size="small" type="danger" @click="drawerClose">
+        <pl-button circle size="small" type="danger" @click="drawerClose">
           <el-icon><Close /></el-icon>
-        </el-button>
+        </pl-button>
       </div>
     </template>
 
@@ -185,3 +185,4 @@ export default defineComponent({
   padding: 0 10px;
 }
 </style>
+

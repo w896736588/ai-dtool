@@ -1,15 +1,15 @@
-<template>
+﻿<template>
   <div class="api-documentation">
     <!-- 左侧导航菜单 -->
     <div class="sidebar">
       <div class="sidebar-header">
         <h3>接口列表</h3>
-        <el-button size="small" type="primary" @click="copyAllApisAsMarkdown">
+        <pl-button size="small" type="primary" @click="copyAllApisAsMarkdown">
           复制所有接口(Markdown)
-        </el-button>
-        <el-button v-if="folderId" size="small" @click="openDocumentPage">
+        </pl-button>
+        <pl-button v-if="folderId" size="small" @click="openDocumentPage">
           在新窗口查看完整文档
-        </el-button>
+        </pl-button>
       </div>
       <div class="sidebar-content">
         <ul class="api-menu">
@@ -688,3 +688,4 @@ export default {
 .sidebar::-webkit-scrollbar-thumb:hover, .api-content::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 } </style>
+

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="folder-basic-info">
     <el-form
         ref="formRef"
@@ -40,8 +40,8 @@
       </el-form-item>
 
       <el-form-item>
-        <el-button type="primary" @click="handleSave">保存更改</el-button>
-        <el-button type="danger" @click="handleDelete" v-if="folder.id">删除文件夹</el-button>
+        <pl-button type="primary" @click="handleSave">保存更改</pl-button>
+        <pl-button type="danger" @click="handleDelete" v-if="folder.id">删除文件夹</pl-button>
       </el-form-item>
     </el-form>
 
@@ -197,3 +197,4 @@ export default {
   color: #909399;
 }
 </style>
+

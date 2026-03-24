@@ -38,9 +38,6 @@ function DockerContainerStop(data , callBack){
 function DockerContainerRemove(data , callBack){
     base.BasePost('/api/DockerContainerRemove', data, callBack)
 }
-function DockerSpaceAnalysis(data , callBack){
-    base.BasePost('/api/DockerSpaceAnalysis', data, callBack)
-}
 function DockerContainerLogTruncate(data , callBack){
     base.BasePost('/api/DockerContainerLogTruncate', data, callBack)
 }
@@ -57,7 +54,6 @@ export default {
     DockerImageRemove,
     DockerContainerStop,
     DockerContainerRemove,
-    DockerSpaceAnalysis,
     DockerContainerLogTruncate,
 }
 

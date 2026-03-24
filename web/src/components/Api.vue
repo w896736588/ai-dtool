@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="collection-container" :class="{ resizing: sidebarResizing }">
     <!-- 左侧集合列表 -->
     <div class="left-sidebar" :style="{ width: sidebarWidth + 'px' }">
@@ -7,17 +7,17 @@
         <div class="section-header">
           <span class="section-header-title">集合列表</span>
           <div class="section-header-actions">
-            <el-button class="toolbar-btn toolbar-btn-small" size="small" type="primary" plain @click="openCreateCollectionDialog">
+            <pl-button class="toolbar-btn toolbar-btn-small" size="small" type="primary" plain @click="openCreateCollectionDialog">
               <el-icon><Plus /></el-icon>新建集合
-            </el-button>
-            <el-button class="toolbar-btn toolbar-btn-small" size="small" type="primary" plain @click="drawerVisibleMarkdown = true">
+            </pl-button>
+            <pl-button class="toolbar-btn toolbar-btn-small" size="small" type="primary" plain @click="drawerVisibleMarkdown = true">
               <el-icon><QuestionFilled /></el-icon>文档
-            </el-button>
+            </pl-button>
             <el-popover placement="bottom-end" :width="360" trigger="click">
               <template #reference>
-                <el-button class="toolbar-btn toolbar-btn-mini" size="small" type="info" plain>
+                <pl-button class="toolbar-btn toolbar-btn-mini" size="small" type="info" plain>
                   <el-icon><Tools /></el-icon>Skills安装
-                </el-button>
+                </pl-button>
               </template>
               <div class="skill-install-popover">
                 <div class="skill-install-title">dtool-api-import-update 安装</div>
@@ -27,8 +27,8 @@
                 </div>
                 <el-input :model-value="skillInstallZipUrl" readonly class="skill-install-url" />
                 <div class="skill-install-actions">
-                  <el-button size="small" type="primary" plain @click="copyText(skillInstallZipUrl, 'ZIP 地址已复制')">复制 ZIP 地址</el-button>
-                  <el-button size="small" type="primary" plain @click="copyText(skillInstallPrompt, 'AI 安装提示已复制')">复制安装提示</el-button>
+                  <pl-button size="small" type="primary" plain @click="copyText(skillInstallZipUrl, 'ZIP 地址已复制')">复制 ZIP 地址</pl-button>
+                  <pl-button size="small" type="primary" plain @click="copyText(skillInstallPrompt, 'AI 安装提示已复制')">复制安装提示</pl-button>
                   <el-link :href="skillInstallZipUrl" target="_blank" type="primary">打开链接</el-link>
                 </div>
                 <el-input
@@ -83,11 +83,11 @@
                     {{ node.label }}
                   </span>
                   <span v-if="data.type === 'collection'" class="node-actions">
-                    <el-button link type="primary" @click.stop="toggleCollection(data)">
+                    <pl-button link type="primary" @click.stop="toggleCollection(data)">
                       <el-dropdown>
-                      <el-button link type="primary" @click.stop>
+                      <pl-button link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
-                      </el-button>
+                      </pl-button>
                       <template #dropdown>
                         <el-dropdown-menu>
                           <el-dropdown-item command="copy_api" icon="CopyDocument" @click="createNewDir(data)">创建文件夹</el-dropdown-item>
@@ -96,13 +96,13 @@
                         </el-dropdown-menu>
                       </template>
                       </el-dropdown>
-                    </el-button>
+                    </pl-button>
                   </span>
                   <span v-else-if="data.type === 'api'" class="node-actions">
                     <el-dropdown>
-                      <el-button link type="primary" @click.stop>
+                      <pl-button link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
-                      </el-button>
+                      </pl-button>
                       <template #dropdown>
                         <el-dropdown-menu>
                           <el-dropdown-item command="copy_api" icon="CopyDocument" @click="handleApiAction('copy_api' , data)">复制接口</el-dropdown-item>
@@ -114,9 +114,9 @@
                   </span>
                   <span v-else-if="data.type === 'folder'" class="node-actions">
                     <el-dropdown>
-                      <el-button link type="primary" @click.stop>
+                      <pl-button link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
-                      </el-button>
+                      </pl-button>
                       <template #dropdown>
                         <el-dropdown-menu>
                           <el-dropdown-item command="copy_api" icon="CopyDocument" @click="handleFolderCreateApi()">创建接口</el-dropdown-item>
@@ -208,10 +208,10 @@
         </div>
 
         <div v-if="selectedItem" class="header-right">
-          <el-button v-if="selectedItem.type === 'collection'" type="primary" @click="createNewDir(selectedItem)">创建文件夹
-          </el-button>
-          <el-button type="primary" @click="executeAll">运行全部</el-button>
-          <el-button @click="exportCollection">导出</el-button>
+          <pl-button v-if="selectedItem.type === 'collection'" type="primary" @click="createNewDir(selectedItem)">创建文件夹
+          </pl-button>
+          <pl-button type="primary" @click="executeAll">运行全部</pl-button>
+          <pl-button @click="exportCollection">导出</pl-button>
         </div>
       </div>
 
@@ -279,8 +279,8 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="dialogShow.createCollection = false">取消</el-button>
-        <el-button type="primary" @click="createNewCollection">保存</el-button>
+        <pl-button @click="dialogShow.createCollection = false">取消</pl-button>
+        <pl-button type="primary" @click="createNewCollection">保存</pl-button>
       </div>
     </template>
   </el-dialog>
@@ -293,8 +293,8 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="dialogShow.createDir = false">取消</el-button>
-        <el-button type="primary" @click="createNewDir">保存</el-button>
+        <pl-button @click="dialogShow.createDir = false">取消</pl-button>
+        <pl-button type="primary" @click="createNewDir">保存</pl-button>
       </div>
     </template>
   </el-dialog>
@@ -338,8 +338,8 @@
     </el-tabs>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="dialogShow.createApi = false">取消</el-button>
-        <el-button type="primary" @click="handleFolderCreateApi">保存</el-button>
+        <pl-button @click="dialogShow.createApi = false">取消</pl-button>
+        <pl-button type="primary" @click="handleFolderCreateApi">保存</pl-button>
       </div>
     </template>
   </el-dialog>
@@ -352,8 +352,8 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="dialogShow.copyApi = false">取消</el-button>
-        <el-button type="primary" @click="copyApi">保存</el-button>
+        <pl-button @click="dialogShow.copyApi = false">取消</pl-button>
+        <pl-button type="primary" @click="copyApi">保存</pl-button>
       </div>
     </template>
   </el-dialog>
@@ -381,8 +381,8 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="dialogShow.jsonImport = false">取消</el-button>
-        <el-button type="primary" @click="apiImportJson">导入</el-button>
+        <pl-button @click="dialogShow.jsonImport = false">取消</pl-button>
+        <pl-button type="primary" @click="apiImportJson">导入</pl-button>
       </div>
     </template>
   </el-dialog>
@@ -2570,6 +2570,7 @@ export default {
 }
 
 </style>
+
 
 
 

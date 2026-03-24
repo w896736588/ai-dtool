@@ -1,11 +1,11 @@
-<template>
+﻿<template>
   <div class="folder-detail">
     <div class="folder-header">
       <h2 class="folder-title">{{ folder.name }}</h2>
       <div class="folder-actions">
-<!--        <el-button type="primary" @click="handleEdit">编辑文件夹</el-button>-->
-        <el-button @click="createApi">新建接口</el-button>
-<!--        <el-button @click="handleCreateSubfolder">新建子文件夹</el-button>-->
+<!--        <pl-button type="primary" @click="handleEdit">编辑文件夹</pl-button>-->
+        <pl-button @click="createApi">新建接口</pl-button>
+<!--        <pl-button @click="handleCreateSubfolder">新建子文件夹</pl-button>-->
       </div>
     </div>
 
@@ -241,3 +241,4 @@ export default {
   margin-top: 20px;
 }
 </style>
+

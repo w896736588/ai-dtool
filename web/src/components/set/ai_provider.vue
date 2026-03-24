@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="set-config-page">
     <div class="set-config-header">
       <h3 class="set-config-title">AI 服务商与模型配置</h3>
@@ -8,7 +8,7 @@
     <el-tabs v-model="state.activeTab" class="set-config-inner-tabs" @tab-change="HandleInnerTabChange">
       <el-tab-pane label="服务商配置" name="provider">
         <div class="set-config-actions" style="margin-bottom: 10px;">
-          <el-button type="primary" @click="ShowAddProvider">新增服务商</el-button>
+          <pl-button type="primary" @click="ShowAddProvider">新增服务商</pl-button>
         </div>
         <div class="set-config-table-card">
           <el-table :data="state.providerList" class="set-config-table" row-key="id">
@@ -24,10 +24,10 @@
             <el-table-column label="操作" width="220">
               <template #default="scope">
                 <div class="set-op-group">
-                  <el-button type="primary" link @click="ShowEditProvider(scope.row, false)">编辑</el-button>
-                  <el-button type="primary" link @click="ShowEditProvider(scope.row, true)">复制新增</el-button>
-                  <el-button type="primary" link @click="SwitchToModelTab(scope.row)">管理模型</el-button>
-                  <el-button link type="danger" @click="DeleteProvider(scope.row)">删除</el-button>
+                  <pl-button type="primary" link @click="ShowEditProvider(scope.row, false)">编辑</pl-button>
+                  <pl-button type="primary" link @click="ShowEditProvider(scope.row, true)">复制新增</pl-button>
+                  <pl-button type="primary" link @click="SwitchToModelTab(scope.row)">管理模型</pl-button>
+                  <pl-button link type="danger" @click="DeleteProvider(scope.row)">删除</pl-button>
                 </div>
               </template>
             </el-table-column>
@@ -47,7 +47,7 @@
               <el-option :label="provider.name + ' (' + provider.request_format + ')'" :value="provider.id"/>
             </template>
           </el-select>
-          <el-button type="primary" :disabled="!state.currentProviderId" @click="ShowAddModel">新增模型</el-button>
+          <pl-button type="primary" :disabled="!state.currentProviderId" @click="ShowAddModel">新增模型</pl-button>
         </div>
 
         <div class="set-config-table-card">
@@ -70,17 +70,17 @@
             <el-table-column label="操作" width="250">
               <template #default="scope">
                 <div class="set-op-group">
-                  <el-button type="primary" link @click="ShowEditModel(scope.row, false)">编辑</el-button>
-                  <el-button type="primary" link @click="ShowEditModel(scope.row, true)">复制新增</el-button>
-                  <el-button
+                  <pl-button type="primary" link @click="ShowEditModel(scope.row, false)">编辑</pl-button>
+                  <pl-button type="primary" link @click="ShowEditModel(scope.row, true)">复制新增</pl-button>
+                  <pl-button
                     type="primary"
                     link
                     :loading="Number(state.testingModelId) === Number(scope.row.id)"
                     @click="TestModel(scope.row)"
                   >
                     测试
-                  </el-button>
-                  <el-button link type="danger" @click="DeleteModel(scope.row)">删除</el-button>
+                  </pl-button>
+                  <pl-button link type="danger" @click="DeleteModel(scope.row)">删除</pl-button>
                 </div>
               </template>
             </el-table-column>
@@ -112,8 +112,8 @@
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="state.dialogProvider = false">取消</el-button>
-          <el-button type="primary" @click="SaveProvider">保存</el-button>
+          <pl-button @click="state.dialogProvider = false">取消</pl-button>
+          <pl-button type="primary" @click="SaveProvider">保存</pl-button>
         </div>
       </template>
     </el-dialog>
@@ -148,8 +148,8 @@
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="state.dialogModel = false">取消</el-button>
-          <el-button type="primary" @click="SaveModel">保存</el-button>
+          <pl-button @click="state.dialogModel = false">取消</pl-button>
+          <pl-button type="primary" @click="SaveModel">保存</pl-button>
         </div>
       </template>
     </el-dialog>
@@ -464,3 +464,4 @@ export default defineComponent({
   color: #3f6f3f !important;
 }
 </style>
+

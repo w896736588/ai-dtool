@@ -654,10 +654,7 @@ func ApiCode(c *gin.Context) {
 	}
 	codeType := dataMap[`code_type`]
 	apiCli := api.NewApi(apiInfo)
-	code := ``
-	if codeType == `curl bash(chrome)` {
-		code = apiCli.ToChromeCurlBash()
-	}
+	code := apiCli.GenerateCode(cast.ToString(codeType))
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`code`: code,
 	})

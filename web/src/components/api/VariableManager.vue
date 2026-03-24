@@ -1,18 +1,18 @@
-<template>
+﻿<template>
   <div class="variable-manager">
     <div class="manager-header">
-      <el-button type="primary" @click="addVariable">
+      <pl-button type="primary" @click="addVariable">
         <el-icon><Plus /></el-icon>
         添加变量
-      </el-button>
-      <el-button @click="importVariables">
+      </pl-button>
+      <pl-button @click="importVariables">
         <el-icon><Upload /></el-icon>
         导入
-      </el-button>
-      <el-button @click="exportVariables">
+      </pl-button>
+      <pl-button @click="exportVariables">
         <el-icon><Download /></el-icon>
         导出
-      </el-button>
+      </pl-button>
     </div>
 
     <el-table
@@ -51,7 +51,7 @@
               :hide-after="0"
           >
             <span class="variable-value truncated">{{ row.value }}</span>
-            <el-button @click="copyVal(row.value)" link >Copy</el-button>
+            <pl-button @click="copyVal(row.value)" link >Copy</pl-button>
           </el-tooltip>
         </template>
       </el-table-column>
@@ -80,12 +80,12 @@
       <el-table-column label="操作" width="150" align="center">
         <template #default="{ row, $index }">
           <div v-if="row.editing">
-            <el-button type="primary" link @click="saveVariable(row)">保存</el-button>
-            <el-button link @click="cancelEdit(row, $index)">取消</el-button>
+            <pl-button type="primary" link @click="saveVariable(row)">保存</pl-button>
+            <pl-button link @click="cancelEdit(row, $index)">取消</pl-button>
           </div>
           <div v-else>
-            <el-button type="primary" link @click="editVariable(row)">编辑</el-button>
-            <el-button type="danger" link @click="deleteVariable(row, $index)">删除</el-button>
+            <pl-button type="primary" link @click="editVariable(row)">编辑</pl-button>
+            <pl-button type="danger" link @click="deleteVariable(row, $index)">删除</pl-button>
           </div>
         </template>
       </el-table-column>
@@ -111,8 +111,8 @@
           class="import-textarea"
       />
       <template #footer>
-        <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleImport">导入</el-button>
+        <pl-button @click="importDialogVisible = false">取消</pl-button>
+        <pl-button type="primary" @click="handleImport">导入</pl-button>
       </template>
     </el-dialog>
   </div>
@@ -384,6 +384,7 @@ export default {
   overflow: hidden;
 }
 </style>
+
 
 
 

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="common-actions">
     <div class="common-actions__header">
       <div class="common-actions__title">常用操作</div>
@@ -24,7 +24,7 @@
             <div class="managed-sidebar">
               <div class="managed-sidebar__header">
                 <div class="action-card__title action-card__title--small">命令列表</div>
-                <el-button type="primary" plain size="small" @click="addManagedProcessItem">新增命令</el-button>
+                <pl-button type="primary" plain size="small" @click="addManagedProcessItem">新增命令</pl-button>
               </div>
 
               <div class="managed-sidebar__list">
@@ -42,7 +42,7 @@
                     <el-tag size="small" :type="getManagedState(item.id).running ? 'success' : 'info'">
                       {{ getManagedState(item.id).status_text || (getManagedState(item.id).running ? '运行中' : '未运行') }}
                     </el-tag>
-                    <el-button
+                    <pl-button
                       class="managed-sidebar__delete"
                       text
                       type="danger"
@@ -50,7 +50,7 @@
                       @click.stop="removeManagedProcessItem(item.id)"
                     >
                       删除
-                    </el-button>
+                    </pl-button>
                   </div>
                 </div>
               </div>
@@ -124,22 +124,22 @@
                 </div>
 
                 <div class="action-card__buttons action-card__buttons--wrap">
-                  <el-button
+                  <pl-button
                     type="primary"
                     :loading="getManagedLoading(activeManagedProcessId).ensure || getManagedLoading(activeManagedProcessId).start"
                     @click="startManagedProcess"
                   >
                     启动
-                  </el-button>
-                  <el-button :loading="getManagedLoading(activeManagedProcessId).stop" @click="stopManagedProcess">
+                  </pl-button>
+                  <pl-button :loading="getManagedLoading(activeManagedProcessId).stop" @click="stopManagedProcess">
                     关闭
-                  </el-button>
-                  <el-button :loading="getManagedLoading(activeManagedProcessId).restart" @click="restartManagedProcess()">
+                  </pl-button>
+                  <pl-button :loading="getManagedLoading(activeManagedProcessId).restart" @click="restartManagedProcess()">
                     重启
-                  </el-button>
-                  <el-button :loading="getManagedLoading(activeManagedProcessId).status" @click="refreshManagedState()">
+                  </pl-button>
+                  <pl-button :loading="getManagedLoading(activeManagedProcessId).status" @click="refreshManagedState()">
                     刷新状态
-                  </el-button>
+                  </pl-button>
                 </div>
 
                 <div class="managed-log">
@@ -186,8 +186,8 @@
                 </el-form-item>
               </el-col>
               <el-col :xs="24" :sm="10" :md="12" class="action-card__buttons">
-                <el-button type="primary" :loading="queryLoading" @click="queryProcesses">查询占用进程</el-button>
-                <el-button :disabled="!lastQueryPort || queryLoading" @click="refreshProcesses">刷新</el-button>
+                <pl-button type="primary" :loading="queryLoading" @click="queryProcesses">查询占用进程</pl-button>
+                <pl-button :disabled="!lastQueryPort || queryLoading" @click="refreshProcesses">刷新</pl-button>
               </el-col>
             </el-row>
           </el-form>
@@ -219,7 +219,7 @@
             <el-table-column prop="address" label="监听地址" min-width="220" />
             <el-table-column label="操作" width="160" fixed="right">
               <template #default="scope">
-                <el-button
+                <pl-button
                   type="danger"
                   plain
                   size="small"
@@ -227,7 +227,7 @@
                   @click="confirmKill(scope.row)"
                 >
                   结束进程
-                </el-button>
+                </pl-button>
               </template>
             </el-table-column>
           </el-table>
@@ -1147,3 +1147,4 @@ export default {
   }
 }
 </style>
+

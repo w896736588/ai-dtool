@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="supervisor-page-container">
     <!-- 顶部操作区域 -->
     <div class="supervisor-header-card">
@@ -17,16 +17,16 @@
           </el-option>
         </el-select>
         <div class="action-buttons">
-          <el-button :loading="loadingStatus['supervisor_restart_all']" type="warning" plain @click="restartSupervisorAll">
+          <pl-button :loading="loadingStatus['supervisor_restart_all']" type="warning" plain @click="restartSupervisorAll">
             <el-icon><RefreshRight /></el-icon>重启所有
-          </el-button>
-          <el-button :loading="loadingStatus['supervisor_status_list']" type="primary" plain @click="supervisorStatusList">
+          </pl-button>
+          <pl-button :loading="loadingStatus['supervisor_status_list']" type="primary" plain @click="supervisorStatusList">
             <el-icon><View /></el-icon>查看状态
-          </el-button>
+          </pl-button>
           <el-tooltip content="停止选中的进程，可降低内存占用" placement="top">
-            <el-button :loading="loadingStatus['stopListConsumer']" type="danger" plain @click="stopListSupervisor">
+            <pl-button :loading="loadingStatus['stopListConsumer']" type="danger" plain @click="stopListSupervisor">
               <el-icon><VideoPause /></el-icon>停止选中 ({{ searchNum }})
-            </el-button>
+            </pl-button>
           </el-tooltip>
         </div>
         <el-input
@@ -77,15 +77,15 @@
         <el-table-column fixed="right" label="操作" width="280">
           <template #default="scope">
             <div class="action-cell">
-              <el-button size="small" type="success" plain @click="restart(scope.row)">
+              <pl-button size="small" type="success" plain @click="restart(scope.row)">
                 <el-icon><RefreshRight /></el-icon>重启
-              </el-button>
-              <el-button size="small" type="warning" plain @click="stop(scope.row)">
+              </pl-button>
+              <pl-button size="small" type="warning" plain @click="stop(scope.row)">
                 <el-icon><VideoPause /></el-icon>停止
-              </el-button>
-              <el-button size="small" type="primary" plain @click="configShow(scope.row)">
+              </pl-button>
+              <pl-button size="small" type="primary" plain @click="configShow(scope.row)">
                 <el-icon><Document /></el-icon>配置
-              </el-button>
+              </pl-button>
             </div>
           </template>
         </el-table-column>
@@ -100,8 +100,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogShowEditName = false">取消</el-button>
-        <el-button type="primary" @click="dialogShowEditName = false; editNameValueFunc()">确定</el-button>
+        <pl-button @click="dialogShowEditName = false">取消</pl-button>
+        <pl-button type="primary" @click="dialogShowEditName = false; editNameValueFunc()">确定</pl-button>
       </template>
     </el-dialog>
 
@@ -726,3 +726,4 @@ export default {
   }
 }
 </style>
+

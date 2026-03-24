@@ -20,11 +20,11 @@
                 <span class="fixed-command-desc">{{ cmd.desc }}</span>
               </button>
             </div>
-            <div v-if="recentHistoryCommands.length > 0" class="history-command-section">
-              <div class="fixed-command-title">历史操作命令</div>
+            <div v-if="topHistoryCommands.length > 0" class="history-command-section">
+              <div class="fixed-command-title">高频历史命令 TOP 10</div>
               <div class="history-command-list">
                 <div
-                  v-for="(historyCmd, historyIndex) in recentHistoryCommands"
+                  v-for="(historyCmd, historyIndex) in topHistoryCommands"
                   :key="`history_${historyIndex}_${historyCmd}`"
                 >
                   <div class="history-command-item-wrap">
@@ -118,14 +118,14 @@
           <span class="command-desc">
             {{ cmd.desc }}<template v-if="getCommandMatchHint(cmd)"> | 匹配: {{ getCommandMatchHint(cmd) }}</template>
           </span>
-          <button
+          <pl-button
             v-if="cmd.insertOnly"
-            type="button"
             class="command-item-delete"
+            link
             title="删除该历史命令"
             @mousedown.prevent="markKeepDropdownOnBlur"
             @click.stop="removeHistoryCommand(cmd.insertText || cmd.command || cmd.name)"
-          >×</button>
+          >×</pl-button>
           <span v-if="cmd.children || cmd.needTarget" class="command-arrow">→</span>
         </div>
       </div>
@@ -154,9 +154,9 @@
                 @focus="handleFocus"
               />
             </div>
-            <button class="send-btn" :disabled="!canSubmitCommand" @click="executeCommand">
+            <pl-button class="send-btn" type="primary" :disabled="!canSubmitCommand" @click="executeCommand">
               <span class="send-icon">→</span>
-            </button>
+            </pl-button>
               </div>
               <div class="next-step-tip">{{ nextStepHint }}</div>
             </div>
@@ -172,11 +172,11 @@
                   class="pending-command-item"
                 >
                   <span class="pending-command-text" :title="item.rawCommand">{{ item.rawCommand }}</span>
-                  <button
-                    type="button"
+                  <pl-button
                     class="pending-command-delete"
+                    link
                     @click="removePendingCommand(item.id)"
-                  >移除</button>
+                  >移除</pl-button>
                 </div>
               </div>
             </div>
@@ -206,6 +206,7 @@ import sseDistribute from '@/utils/base/sse_distribute'
 import { Throttle_string } from '@/utils/base/throttle_string'
 import * as linkRunSelection from '@/utils/link_run_selection.cjs'
 import pendingCommandQueueUtils from '@/utils/dashboard_command_queue.cjs'
+import dashboardHistoryRankUtils from '@/utils/dashboard_history_rank.cjs'
 
 export default {
   name: 'DashboardPage',
@@ -225,6 +226,10 @@ export default {
       removePendingCommandById,
       consumeNextPendingCommand,
     } = pendingCommandQueueUtils
+    const {
+      buildTopHistoryCommands,
+      normalizeHistoryCommandText,
+    } = dashboardHistoryRankUtils
 
     marked.setOptions({
       gfm: true,
@@ -643,11 +648,6 @@ export default {
         ? withoutSlash.trim().split(/\s+/)
         : []
       return { useSlash, parts }
-    }
-
-    // 统一规范历史命令文本，避免因多空格导致的匹配误差。
-    const normalizeHistoryCommandText = (rawText) => {
-      return normalizeCommandPart(rawText).replace(/\s+/g, ' ')
     }
 
     const getCommandLevelUsageKey = (scopeTokens, token) => {
@@ -1081,12 +1081,14 @@ export default {
       })
     })
 
-    // recentHistoryCommands 首页展示最近使用的历史命令（倒序）
-    const recentHistoryCommands = computed(() => {
-      if (!Array.isArray(commandHistory.value) || commandHistory.value.length === 0) {
-        return []
-      }
-      return commandHistory.value.slice(-12).reverse()
+    // topHistoryCommands 首页仅展示使用率最高的 10 个历史命令。
+    // topHistoryCommands shows only the top 10 most frequently used history commands on the home panel.
+    const topHistoryCommands = computed(() => {
+      return buildTopHistoryCommands({
+        historyList: commandHistory.value,
+        usageMap: commandUsageMap.value,
+        limit: 10,
+      })
     })
 
     // 命令面包屑导航
@@ -4011,7 +4013,7 @@ export default {
       pendingCommandTitle,
       hasPendingCommandQueue,
       availableCommands,
-      recentHistoryCommands,
+      topHistoryCommands,
       handleInput,
       handleKeydown,
       handleFocus,

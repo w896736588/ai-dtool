@@ -56,14 +56,14 @@
         <div class="tag-panel">
           <div class="tag-panel-head">
             <span class="tag-panel-label">{{ tagLabelText }}</span>
-            <button
+            <pl-button
               v-if="showTagListToggle"
               class="tag-panel-toggle"
-              type="button"
+              link
               @click="toggleTagListExpanded"
             >
               {{ tagListToggleText }}
-            </button>
+            </pl-button>
           </div>
           <div
             class="tag-list"

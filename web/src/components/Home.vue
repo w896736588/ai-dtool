@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="layout-container">
     <!-- 左侧菜单 -->
     <aside class="sidebar">
@@ -86,7 +86,7 @@
             当前SSH连接数 {{ sshConnectionCount }}
           </el-tag>
         </div>
-        <el-button v-if="loginInfo.dialog" size="small" @click="loginInfo.dialog = true">登录</el-button>
+        <pl-button v-if="loginInfo.dialog" size="small" @click="loginInfo.dialog = true">登录</pl-button>
       </div>
     </aside>
 
@@ -342,8 +342,8 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="loginInfo.dialog = false">取消</el-button>
-        <el-button type="primary" @click="login">保存</el-button>
+        <pl-button @click="loginInfo.dialog = false">取消</pl-button>
+        <pl-button type="primary" @click="login">保存</pl-button>
       </div>
     </template>
   </el-dialog>
@@ -357,7 +357,7 @@
   >
     <div class="ssh-dialog-toolbar">
       <el-tag type="success" effect="light">连接数 {{ sshConnectionCount }}</el-tag>
-      <el-button size="small" type="primary" plain @click="refreshSshConnections(true)">刷新列表</el-button>
+      <pl-button size="small" type="primary" plain @click="refreshSshConnections(true)">刷新列表</pl-button>
     </div>
     <el-table
       v-loading="sshConnectionsLoading"
@@ -1185,6 +1185,9 @@ export default {
 .main-content {
   flex: 1;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background-color: #fafaf7;
   height: 100%;
   padding: 20px;
@@ -1192,10 +1195,26 @@ export default {
 }
 
 .main-content__body {
-  min-height: 100%;
+  /* 让路由页面拿到稳定的可用高度，避免子页面 100% 高度失效。
+     Keep a continuous height chain for routed views so child pages can truly fill the viewport. */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .main-content__view {
+  /* 非首页路由也需要继承剩余高度，接口开发页才不会在底部露白。
+     Non-dashboard routes must stretch to the remaining height to avoid bottom whitespace. */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.main-content__view > * {
+  flex: 1;
   min-height: 0;
 }
 
@@ -1237,6 +1256,8 @@ export default {
 
 .home-dashboard-screen--task {
   position: relative;
+  display: flex;
+  min-height: 0;
 }
 
 .home-dashboard-pager {
@@ -1267,11 +1288,20 @@ export default {
 
 .home-task-panel-scroll {
   height: 100%;
-  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   padding-right: 12px;
 }
 
 .home-task-panel {
+  /* 任务清单卡片限制在当前一屏内，避免整块内容继续向下滚动。
+     Keep the task card within one screen so the whole panel does not scroll vertically. */
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   padding: 20px 22px 22px;
   border: 1px solid #e5ebde;
   border-radius: 20px;
@@ -1440,6 +1470,24 @@ export default {
   margin-bottom: 16px;
 }
 
+.home-task-tabs {
+  /* Tabs 容器占满剩余空间，把滚动交给列表区域而不是整张卡片。
+     Let tabs consume the remaining space and delegate scrolling to the list area only. */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-task-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  min-height: 0;
+}
+
+.home-task-tabs :deep(.el-tab-pane) {
+  height: 100%;
+}
+
 .home-task-tabs :deep(.el-tabs__item) {
   color: #6f7d6d;
 }
@@ -1449,7 +1497,10 @@ export default {
 }
 
 .home-task-list {
-  min-height: 360px;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .home-task-empty {
@@ -1562,3 +1613,4 @@ export default {
   }
 }
 </style>
+

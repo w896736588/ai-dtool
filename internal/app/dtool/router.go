@@ -1,4 +1,4 @@
-﻿package dtool
+package dtool
 
 import (
 	"dev_tool/internal/app/dtool/controller"
@@ -346,9 +346,8 @@ func docker(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/DockerImageContainers`, controller.DockerImageContainers)
 	tGin.GinPost(`/api/DockerImageRemove`, controller.DockerImageRemove)
 	tGin.GinPost(`/api/DockerContainerStop`, controller.DockerContainerStop)
-    tGin.GinPost(`/api/DockerContainerRemove`, controller.DockerContainerRemove)
-    tGin.GinPost(`/api/DockerSpaceAnalysis`, controller.DockerSpaceAnalysis)
-    tGin.GinPost(`/api/DockerContainerLogTruncate`, controller.DockerContainerLogTruncate)
+	tGin.GinPost(`/api/DockerContainerRemove`, controller.DockerContainerRemove)
+	tGin.GinPost(`/api/DockerContainerLogTruncate`, controller.DockerContainerLogTruncate)
 }
 
 func api(tGin *p_gin.Gin) {
@@ -424,7 +423,3 @@ func apiUse(tGin *p_gin.Gin) {
 	}
 	tGin.SseRoute(`/sse`, openFunc, closeFunc)
 }
-
-
-
-

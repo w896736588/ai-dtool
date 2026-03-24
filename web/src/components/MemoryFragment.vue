@@ -1,16 +1,16 @@
-<template>
+﻿<template>
   <div class="memory-page">
     <aside v-if="memoryConfigured" class="memory-sidebar">
       <div class="sidebar-header">
         <div class="sidebar-title">片段列表</div>
         <div class="sidebar-header-actions">
-          <el-button type="primary" plain @click="createFragment">
+          <pl-button type="primary" plain @click="createFragment">
             <el-icon><Plus /></el-icon>
             新建片段
-          </el-button>
-          <el-button plain @click="openSettingsTab">
+          </pl-button>
+          <pl-button plain @click="openSettingsTab">
             设置
-          </el-button>
+          </pl-button>
         </div>
       </div>
 
@@ -31,14 +31,14 @@
         <div class="tag-filter-row">
           <div class="tag-filter-head">
             <span class="tag-filter-label">标签筛选</span>
-            <button
+            <pl-button
               v-if="showTagFilterToggle"
               class="tag-filter-toggle"
-              type="button"
+              link
               @click="toggleTagFilterExpanded"
             >
               {{ tagFilterToggleText }}
-            </button>
+            </pl-button>
           </div>
           <div
             class="tag-filter-list"
@@ -58,11 +58,11 @@
           </div>
         </div>
         <div class="search-actions">
-          <el-button type="primary" @click="submitSearch">
+          <pl-button type="primary" @click="submitSearch">
             <el-icon><Search /></el-icon>
             搜索
-          </el-button>
-          <el-button plain @click="clearFilter">清空条件</el-button>
+          </pl-button>
+          <pl-button plain @click="clearFilter">清空条件</pl-button>
         </div>
       </div>
 
@@ -1211,3 +1211,4 @@ export default {
   }
 }
 </style>
+

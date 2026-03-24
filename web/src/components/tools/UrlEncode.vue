@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <template>
     <el-row>
       <br />
@@ -40,9 +40,9 @@
             ></el-input>
           </div>
           <br />
-          <el-button type="primary" @click="urlEncode">urlencode编码</el-button>
-          <el-button type="primary" @click="urlDecode">urlencode解码</el-button>
-          <el-button type="primary" @click="md5">md5</el-button>
+          <pl-button type="primary" @click="urlEncode">urlencode编码</pl-button>
+          <pl-button type="primary" @click="urlDecode">urlencode解码</pl-button>
+          <pl-button type="primary" @click="md5">md5</pl-button>
           <br />
           <br />
           <div class="grid-content bg-purple">
@@ -55,7 +55,7 @@
             ></el-input>
           </div>
           <br />
-          <el-button @click="copyResult('copyResult')" type="primary"
+          <pl-button @click="copyResult('copyResult')" type="primary"
             >复制</el-button
           >
         </el-card>
@@ -181,3 +181,4 @@ export default {
 </script>
 
 <style scoped></style>
+

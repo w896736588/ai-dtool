@@ -1,10 +1,10 @@
-<template>
+﻿<template>
   <div class="set-config-page">
     <div class="set-config-header">
       <h3 class="set-config-title">记忆配置</h3>
       <p class="set-config-desc">配置记忆专属仓库目录与 sqlite 文件名。保存后重启应用生效。</p>
       <div class="set-config-actions">
-        <el-button type="primary" @click="saveConfig">保存</el-button>
+        <pl-button type="primary" @click="saveConfig">保存</pl-button>
       </div>
     </div>
 
@@ -148,3 +148,4 @@ export default {
   margin-bottom: 16px;
 }
 </style>
+

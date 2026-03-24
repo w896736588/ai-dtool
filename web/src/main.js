@@ -29,6 +29,7 @@ import helperLoad from './utils/load'
 app.config.globalProperties.$helperLoad = helperLoad
 import ElButtonCustom from './components/base/button'
 app.component('el-button-custom', ElButtonCustom)
+app.component('pl-button', ElButtonCustom)
 
 //各个页面初始化的定义 用来解决每次初始化就调用所有接口问题
 app.config.globalProperties.$pageInit = {}

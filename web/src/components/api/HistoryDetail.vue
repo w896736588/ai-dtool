@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="history-detail">
     <el-tabs v-model="activeTab" class="detail-tabs">
       <!-- 请求信息标签页 -->
@@ -91,14 +91,14 @@
               </el-radio-group>
 
               <div class="toolbar-actions">
-                <el-button type="primary" link @click="copyResponseBody">
+                <pl-button type="primary" link @click="copyResponseBody">
                   <el-icon><DocumentCopy /></el-icon>
                   复制
-                </el-button>
-                <el-button link @click="downloadResponseBody" v-if="isDownloadable">
+                </pl-button>
+                <pl-button link @click="downloadResponseBody" v-if="isDownloadable">
                   <el-icon><Download /></el-icon>
                   下载
-                </el-button>
+                </pl-button>
               </div>
             </div>
 
@@ -162,22 +162,22 @@
     </el-tabs>
 
     <div class="detail-actions">
-      <el-button type="primary" @click="rerunTest">
+      <pl-button type="primary" @click="rerunTest">
         <el-icon><Refresh /></el-icon>
         重新执行
-      </el-button>
-      <el-button @click="exportResult">
+      </pl-button>
+      <pl-button @click="exportResult">
         <el-icon><Download /></el-icon>
         导出结果
-      </el-button>
-      <el-button @click="createTestCase" v-if="history.status === 'success'">
+      </pl-button>
+      <pl-button @click="createTestCase" v-if="history.status === 'success'">
         <el-icon><Plus /></el-icon>
         创建测试用例
-      </el-button>
-      <el-button type="danger" @click="deleteHistory">
+      </pl-button>
+      <pl-button type="danger" @click="deleteHistory">
         <el-icon><Delete /></el-icon>
         删除记录
-      </el-button>
+      </pl-button>
     </div>
   </div>
 </template>
@@ -605,3 +605,4 @@ export default {
   background: #a8a8a8;
 }
 </style>
+

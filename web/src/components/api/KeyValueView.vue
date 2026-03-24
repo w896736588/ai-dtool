@@ -1,11 +1,11 @@
-<template>
+﻿<template>
   <div class="key-value-view">
     <div class="view-header">
       <div class="header-actions">
-        <el-button type="primary" link @click="copyToClipboard">
+        <pl-button type="primary" link @click="copyToClipboard">
           <el-icon><DocumentCopy /></el-icon>
           复制全部
-        </el-button>
+        </pl-button>
       </div>
     </div>
 
@@ -256,6 +256,7 @@ export default {
   background: #a8a8a8;
 }
 </style>
+
 
 
 

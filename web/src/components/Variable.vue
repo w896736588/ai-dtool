@@ -1,12 +1,12 @@
 ﻿<template>
   <div id="mainCard" ref="mainCard" class="box-card variable-page">
     <div class="variable-toolbar">
-      <el-button class="toolbar-btn" type="primary" plain @click="createVariableDirectory">
+      <pl-button class="toolbar-btn" type="primary" plain @click="createVariableDirectory">
         <el-icon><Plus /></el-icon>创建脚本
-      </el-button>
-      <el-button class="toolbar-btn" type="primary" plain @click="drawerVisibleMarkdown = true">
+      </pl-button>
+      <pl-button class="toolbar-btn" type="primary" plain @click="drawerVisibleMarkdown = true">
         <el-icon><QuestionFilled /></el-icon>帮助文档
-      </el-button>&nbsp;
+      </pl-button>&nbsp;
     </div>
     <el-tabs v-model="chooseVariableId" class="demo-tabs variable-tabs" tab-position="left" @tabChange="changeVariableTab">
       <template v-for="(variableVal, key) in variableList" :key="key" class="scrollbar-demo-item">
@@ -22,15 +22,15 @@
                       <template v-for="(value,key1) in run_form_list" :key="key1">
                         <el-form-item v-if="value.CmdType === '3'" :label="value.Input.Label">
                           <el-input v-model="value.Input.Value" :disabled="value.disabled" style="width:80%;margin-right: 5px;"/>
-                          <el-button v-if="!value.disabled" type="primary" @click="cmdSet(value.Id , value.Input.Value)">
+                          <pl-button v-if="!value.disabled" type="primary" @click="cmdSet(value.Id , value.Input.Value)">
                             确认
-                          </el-button>
+                          </pl-button>
                         </el-form-item>
                         <el-form-item v-if="value.CmdType === '17'" :label="value.Input.Label">
                           <el-input v-model="value.Input.Value" :disabled="value.disabled" :rows="5" style="width:80%;margin-right: 5px;" type="textarea"/>
-                          <el-button v-if="!value.disabled" type="primary" @click="cmdSet(value.Id , value.Input.Value)">
+                          <pl-button v-if="!value.disabled" type="primary" @click="cmdSet(value.Id , value.Input.Value)">
                             确认
-                          </el-button>
+                          </pl-button>
                         </el-form-item>
                         <el-form-item
                             v-if="(value.CmdType === '9' || value.CmdType === '12' || value.CmdType === '14')"
@@ -48,12 +48,12 @@
                         <!--                        </template>-->
                       </template>
                       <div class="button-container">
-                        <el-button class="toolbar-btn" v-loading="chooseVariable.isRunning" :disabled="is_run === 0 || is_finish === 1" type="primary" plain @click="cmdRun">
+                        <pl-button class="toolbar-btn" v-loading="chooseVariable.isRunning" :disabled="is_run === 0 || is_finish === 1" type="primary" plain @click="cmdRun">
                           <el-icon><VideoPlay /></el-icon>执 行
-                        </el-button>
-                        <el-button class="toolbar-btn" type="primary" plain @click="refreshRun">
+                        </pl-button>
+                        <pl-button class="toolbar-btn" type="primary" plain @click="refreshRun">
                           <el-icon><RefreshRight /></el-icon>重 置
-                        </el-button>
+                        </pl-button>
                       </div>
                     </el-form>
 
@@ -68,10 +68,10 @@
                         <el-input type="textarea" v-model="chooseVariable.desc" rows="3"/>
                       </el-form-item>
                       <el-form-item>
-                        <el-button size="small" type="primary" @click="VariableAdd">保存</el-button>
-                        <el-button size="small" type="primary" @click="showAddVariableCmd(default_variable_cmd)">
+                        <pl-button size="small" type="primary" @click="VariableAdd">保存</pl-button>
+                        <pl-button size="small" type="primary" @click="showAddVariableCmd(default_variable_cmd)">
                           创建命令
-                        </el-button>
+                        </pl-button>
 
                         <el-popconfirm
                             cancel-button-text="取消"
@@ -81,7 +81,7 @@
                             @confirm="VariableDelete"
                         >
                           <template #reference>
-                            <el-button size="small" type="danger">删除</el-button>
+                            <pl-button size="small" type="danger">删除</pl-button>
                           </template>
                         </el-popconfirm>
                       </el-form-item>
@@ -103,8 +103,8 @@
                             }}</a>
                           <div style="display: inline-block;float: right;" class="weight-input">
                             <el-input link type="text" v-model="variable_cmd.weight" @blur="VariableCmdAdd(variable_cmd)" style="display: inline;width:20px;"></el-input>
-                            <el-button link type="primary" @click="showAddVariableCmd(variable_cmd)">编辑
-                            </el-button>
+                            <pl-button link type="primary" @click="showAddVariableCmd(variable_cmd)">编辑
+                            </pl-button>
                             <el-popconfirm
                                 cancel-button-text="取消"
                                 confirm-button-text="删除"
@@ -113,7 +113,7 @@
                                 @confirm="VariableCmdDel(variable_cmd)"
                             >
                               <template #reference>
-                                <el-button link type="danger">删除</el-button>
+                                <pl-button link type="danger">删除</pl-button>
                               </template>
                             </el-popconfirm>
                           </div>
@@ -265,8 +265,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVariableCmd = false">取 消</el-button>
-        <el-button type="primary" @click="VariableCmdAdd">确 定</el-button>
+        <pl-button @click="dialogVariableCmd = false">取 消</pl-button>
+        <pl-button type="primary" @click="VariableCmdAdd">确 定</pl-button>
       </template>
     </el-dialog>
 
@@ -278,8 +278,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVariable = false">取 消</el-button>
-        <el-button type="primary" @click="VariableCreate">确 定</el-button>
+        <pl-button @click="dialogVariable = false">取 消</pl-button>
+        <pl-button type="primary" @click="VariableCreate">确 定</pl-button>
       </template>
     </el-dialog>
 
@@ -294,8 +294,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogLoginUserName = false">取 消</el-button>
-        <el-button type="primary" @click="VariableSetLogin">确 定</el-button>
+        <pl-button @click="dialogLoginUserName = false">取 消</pl-button>
+        <pl-button type="primary" @click="VariableSetLogin">确 定</pl-button>
       </template>
     </el-dialog>
   </div>
@@ -1211,3 +1211,4 @@ export default {
 
 
 </style>
+

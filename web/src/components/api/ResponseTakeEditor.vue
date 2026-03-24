@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="kv-table">
     <table class="kv-table-inner">
       <thead>
@@ -36,14 +36,14 @@
           <el-input v-model="item.description" placeholder="描述" @blur="handleDataChange" />
         </td>
         <td class="col-actions">
-          <el-button plain size="small" type="danger" class="delete-rule-btn" @click="removeItem(idx)">删除</el-button>
+          <pl-button plain size="small" type="danger" class="delete-rule-btn" @click="removeItem(idx)">删除</pl-button>
         </td>
       </tr>
       </tbody>
     </table>
 
     <div class="footer" style="margin: 5px;">
-      <el-button type="primary" plain size="small" class="add-rule-btn" @click="addItem">+ 添加提取规则</el-button>
+      <pl-button type="primary" plain size="small" class="add-rule-btn" @click="addItem">+ 添加提取规则</pl-button>
     </div>
   </div>
 </template>
@@ -167,6 +167,7 @@ export default {
   border-radius: 8px;
 }
 </style>
+
 
 
 

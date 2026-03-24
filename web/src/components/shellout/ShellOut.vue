@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="shell-console">
     <div id="mainCard" ref="mainCard" v-if="parseInt(urlParams.id) !== 0 && getExecutionInfo(urlParams.id)" class="execution-info" style="display: flex; align-items: center; gap: 8px;">
       <h4>{{urlParams.title}}</h4>
@@ -9,7 +9,7 @@
       >
         <!-- 触发按钮 -->
         <template #reference>
-          <el-button plain size="small" type="primary">查看命令</el-button>
+          <pl-button plain size="small" type="primary">查看命令</pl-button>
         </template>
 
         <!-- 气泡内容 -->
@@ -17,77 +17,77 @@
           <h4>完整命令</h4>
           <pre class="full-command">{{ getExecutionInfo(urlParams.id).command }}</pre>
           <div class="command-actions">
-            <el-button
+            <pl-button
                 size="small"
                 type="primary"
                 @click="copyCommand(getExecutionInfo(urlParams.id).command)"
             >
               复制命令
-            </el-button>
+            </pl-button>
           </div>
         </div>
       </el-popover>
-      <el-button
+      <pl-button
           :disabled="getErrorCount(urlParams.id) === 0"
           size="small"
           type="danger"
           @click="showErrorDialog(urlParams.id)"
       >
         {{ getErrorCount(urlParams.id) }} 个错误
-      </el-button>
-      <el-button
+      </pl-button>
+      <pl-button
           size="small"
           type="info"
           @click="showFilterDialog(urlParams.id)"
       >
         {{ getFilterCount(urlParams.id) }} 个过滤
-      </el-button>
-      <el-button
+      </pl-button>
+      <pl-button
           :disabled="getErrorCount(urlParams.id) === 0"
           size="small"
           @click="clearErrors(urlParams.id)"
       >
         清空错误
-      </el-button>
-<!--      <el-button-->
+      </pl-button>
+<!--      <pl-button-->
 <!--          size="small"-->
 <!--          @click="removeTab(urlParams.id)"-->
 <!--      >-->
 <!--        删除-->
-<!--      </el-button>-->
-      <el-button
+<!--      </pl-button>-->
+      <pl-button
           size="small"
           type="primary"
           @click="restartTab(urlParams.id)"
       >
         重启
-      </el-button>
-<!--      <el-button-->
+      </pl-button>
+<!--      <pl-button-->
 <!--          size="small" @click="startByTabId(urlParams.id)"-->
 <!--      >-->
 <!--        启动-->
-<!--      </el-button>-->
-<!--      <el-button-->
+<!--      </pl-button>-->
+<!--      <pl-button-->
 <!---->
 <!--          size="small" @click="stopByTabId(urlParams.id)"-->
 <!--      >-->
 <!--        停止-->
-<!--      </el-button>-->
-<!--      <el-button-->
+<!--      </pl-button>-->
+<!--      <pl-button-->
 <!--          size="small" @click="restartByTabId(urlParams.id)"-->
 <!--      >-->
 <!--        重启-->
-<!--      </el-button>-->
-      <el-button
+<!--      </pl-button>-->
+      <pl-button
           size="small" @click="cleanLog(urlParams.id)"
       >
         清除日志
-      </el-button>
-      <el-button
+      </pl-button>
+      <pl-button
           size="small" @click="up()"
       >
         {{isReceive ? '暂停接收' : '开始接收'}}
-      </el-button>
+      </pl-button>
       <!--            <el-tag style="margin: 5px;">链接：{{ getSshName(tab.ssh_id) }}</el-tag>-->
       <el-tag style="margin: 5px;">内容长度：{{ getContentLength(activeTabId) }}</el-tag>
       <el-input
@@ -96,7 +96,7 @@
           size="small"
           style="width: auto; min-width: 200px;"
       />
-      <el-button size="small" @click="searchByContent">搜索</el-button>
+      <pl-button size="small" @click="searchByContent">搜索</pl-button>
     </div>
     <!-- 输出区 -->
     <shellResult ref="shellRef" :divHeight="shellController.divHeight" :isRunning="shellController.isRunning"
@@ -123,7 +123,7 @@
             <span style="line-height:1.6" v-html="highlightErrors(error.error_line)"></span>
           </div>
           <div class="error-actions">
-            <el-button
+            <pl-button
                 type="primary"
                 link
                 size="small"
@@ -132,7 +132,7 @@
             >
               <span class="btn-icon">📋</span>
               查看上下文
-            </el-button>
+            </pl-button>
           </div>
         </div>
         <div v-if="activeTabId > 0 && errorMapList[activeTabId].length === 0" class="no-errors">
@@ -141,14 +141,14 @@
         </div>
       </div>
       <template #footer>
-        <el-button @click="errorDialogVisible = false">关闭</el-button>
-        <el-button
+        <pl-button @click="errorDialogVisible = false">关闭</pl-button>
+        <pl-button
             :disabled="errorMapList[activeTabId].length === 0"
             type="danger"
             @click="clearErrors(activeTabId)"
         >
           清空错误
-        </el-button>
+        </pl-button>
       </template>
     </el-dialog>
 
@@ -183,7 +183,7 @@
         </div>
       </div>
       <template #footer>
-        <el-button @click="errorDialogContextVisible = false">关闭</el-button>
+        <pl-button @click="errorDialogContextVisible = false">关闭</pl-button>
       </template>
     </el-dialog>
 
@@ -206,7 +206,7 @@
             <span style="line-height:1.6" v-html="highlightErrors(search.Content , searchContent.split('##'))"></span>
           </div>
           <div class="search-actions">
-            <el-button 
+            <pl-button 
                 type="primary" 
                 link 
                 size="small"
@@ -215,7 +215,7 @@
             >
               <span class="btn-icon">📋</span>
               查看上下文
-            </el-button>
+            </pl-button>
           </div>
         </div>
         <div v-if="!searchContents || searchContents.length === 0" class="no-errors">
@@ -224,7 +224,7 @@
         </div>
       </div>
       <template #footer>
-        <el-button @click="searchDialogVisible = false">关闭</el-button>
+        <pl-button @click="searchDialogVisible = false">关闭</pl-button>
       </template>
     </el-dialog>
 
@@ -1461,3 +1461,4 @@ pre {
   box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
 }
 </style>
+

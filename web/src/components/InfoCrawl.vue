@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="info-crawl-page">
     <aside class="info-crawl-sidebar">
       <div class="sidebar-header">
@@ -6,10 +6,10 @@
           <div class="sidebar-title">信息抓取</div>
           <div class="sidebar-desc">模型、提示词与实时输出</div>
         </div>
-        <el-button type="primary" plain @click="createTask">
+        <pl-button type="primary" plain @click="createTask">
           <el-icon><Plus /></el-icon>
           新建任务
-        </el-button>
+        </pl-button>
       </div>
 
       <el-scrollbar class="sidebar-scroll">
@@ -48,23 +48,23 @@
             </div>
           </div>
           <div class="toolbar-actions">
-            <el-button plain @click="openCrawl4AIInstallDialog(false)">
+            <pl-button plain @click="openCrawl4AIInstallDialog(false)">
               <el-icon><Tools /></el-icon>
               安装指引
-            </el-button>
-            <el-button :disabled="!currentTaskId" @click="openHistoryDrawer">
+            </pl-button>
+            <pl-button :disabled="!currentTaskId" @click="openHistoryDrawer">
               <el-icon><Clock /></el-icon>
               执行历史
-            </el-button>
-            <el-button type="danger" plain :disabled="!currentTaskId" @click="deleteTask">
+            </pl-button>
+            <pl-button type="danger" plain :disabled="!currentTaskId" @click="deleteTask">
               <el-icon><Delete /></el-icon>
               删除任务
-            </el-button>
-            <el-button type="primary" :loading="taskSaving" @click="saveTask">
+            </pl-button>
+            <pl-button type="primary" :loading="taskSaving" @click="saveTask">
               <el-icon><Check /></el-icon>
               保存任务
-            </el-button>
-            <el-button
+            </pl-button>
+            <pl-button
               type="success"
               :loading="runSubmitting || runWatching"
               :disabled="!currentTaskId || !isCrawl4AIReady"
@@ -72,7 +72,7 @@
             >
               <el-icon><VideoPlay /></el-icon>
               执行任务
-            </el-button>
+            </pl-button>
           </div>
         </div>
 
@@ -107,10 +107,10 @@
           <div class="editor-card run-live-card">
             <div class="card-head">
               <div class="card-title">实时输出</div>
-              <el-button plain @click="clearRunLiveLog">
+              <pl-button plain @click="clearRunLiveLog">
                 <el-icon><Refresh /></el-icon>
                 清空输出
-              </el-button>
+              </pl-button>
             </div>
             <div class="run-live-status">{{ runLiveStatus }}</div>
             <pre class="detail-pre live-pre">{{ runLiveLog || '等待执行输出...' }}</pre>
@@ -121,7 +121,7 @@
 
     <el-drawer v-model="historyDrawerVisible" title="执行历史" size="42%">
       <div class="drawer-toolbar">
-        <el-button type="primary" plain @click="refreshRunList">刷新</el-button>
+        <pl-button type="primary" plain @click="refreshRunList">刷新</pl-button>
       </div>
       <el-empty v-if="runList.length === 0" description="暂无执行历史" />
       <div v-else class="history-list">
@@ -200,9 +200,9 @@
         <div class="crawl4ai-install-section">
           <div class="crawl4ai-install-command-head">
             <div class="detail-title">1. 拉取镜像</div>
-            <el-button size="small" type="primary" plain @click="copyText(crawl4aiInstallGuide.pull_command, '拉取命令已复制')">
+            <pl-button size="small" type="primary" plain @click="copyText(crawl4aiInstallGuide.pull_command, '拉取命令已复制')">
               复制命令
-            </el-button>
+            </pl-button>
           </div>
           <pre class="detail-pre crawl4ai-install-command">{{ crawl4aiInstallGuide.pull_command }}</pre>
         </div>
@@ -210,9 +210,9 @@
         <div class="crawl4ai-install-section">
           <div class="crawl4ai-install-command-head">
             <div class="detail-title">2. 启动并设置开机自启</div>
-            <el-button size="small" type="primary" plain @click="copyText(crawl4aiInstallGuide.run_command, '启动命令已复制')">
+            <pl-button size="small" type="primary" plain @click="copyText(crawl4aiInstallGuide.run_command, '启动命令已复制')">
               复制命令
-            </el-button>
+            </pl-button>
           </div>
           <pre class="detail-pre crawl4ai-install-command">{{ crawl4aiInstallGuide.run_command }}</pre>
         </div>
@@ -220,9 +220,9 @@
         <div class="crawl4ai-install-section">
           <div class="crawl4ai-install-command-head">
             <div class="detail-title">3. 访问服务</div>
-            <el-button size="small" type="success" plain @click="copyText(crawl4aiInstallGuide.docs_url, '访问地址已复制')">
+            <pl-button size="small" type="success" plain @click="copyText(crawl4aiInstallGuide.docs_url, '访问地址已复制')">
               复制地址
-            </el-button>
+            </pl-button>
           </div>
           <pre class="detail-pre crawl4ai-install-command">{{ crawl4aiInstallGuide.docs_url }}</pre>
           <el-link :href="crawl4aiInstallGuide.docs_url" target="_blank" type="primary">
@@ -973,3 +973,4 @@ export default {
   }
 }
 </style>
+

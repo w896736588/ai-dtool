@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="folder-edit-form">
     <el-form
         ref="formRef"
@@ -70,8 +70,8 @@
       </el-form-item>
 
       <el-form-item>
-        <el-button type="primary" @click="handleSubmit">保存</el-button>
-        <el-button @click="handleCancel">取消</el-button>
+        <pl-button type="primary" @click="handleSubmit">保存</pl-button>
+        <pl-button @click="handleCancel">取消</pl-button>
       </el-form-item>
     </el-form>
   </div>
@@ -185,3 +185,4 @@ export default {
   flex-wrap: wrap;
 }
 </style>
+

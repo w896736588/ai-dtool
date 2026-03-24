@@ -346,12 +346,6 @@ func (h *Command) DockerContainerRemove(containerID string) *Command {
 	return h
 }
 
-// DockerSpaceAnalysis 输出全部容器的空间分析明细，统一使用制表符分隔字段，便于后端解析。
-func (h *Command) DockerSpaceAnalysis() *Command {
-	h.SetCommand(fmt.Sprintf(`%ssh -c 'container_ids="$(%sdocker ps -aq)"; if [ -z "$container_ids" ]; then exit 0; fi; for container_id in $container_ids; do %sdocker inspect --size --format "{{.Id}}\t{{.Name}}\t{{.Config.Image}}\t{{.State.Status}}\t{{.LogPath}}\t{{.SizeRw}}\t{{.SizeRootFs}}" "$container_id"; done | while IFS="$(printf "\t")" read -r containerId containerName imageName containerStatus logPath rwBytes rootFsBytes; do logBytes=0; if [ -n "$logPath" ] && [ -f "$logPath" ]; then logBytes=$(%sstat -c %%s "$logPath" 2>/dev/null || echo 0); fi; printf "%%s\t%%s\t%%s\t%%s\t%%s\t%%s\t%%s\t%%s\n" "$containerId" "$containerName" "$imageName" "$containerStatus" "$logPath" "$logBytes" "$rwBytes" "$rootFsBytes"; done'`, h.sudo, h.sudo, h.sudo, h.sudo))
-	return h
-}
-
 // DockerContainerLogTruncate 清空 Docker json 日志文件。
 func (h *Command) DockerContainerLogTruncate() *Command {
 	h.SetCommand(fmt.Sprintf(`%sbash -lc 'shopt -s nullglob; logs=(/var/lib/docker/containers/*/*-json.log); if [ ${#logs[@]} -eq 0 ]; then exit 0; fi; truncate -s 0 /var/lib/docker/containers/*/*-json.log'`, h.sudo))
