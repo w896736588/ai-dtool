@@ -1,9 +1,9 @@
-<template>
+﻿<template>
   <div class="api-detail" tabindex="0" @keydown="handleKeyDown" @keyup="handleKeyUp">
     <div class="api-header">
-      <el-input v-model="apiForm.name" placeholder="输入接口名称" style="width: 300px;margin-right:5px;" type="text" @blur="handleSave"></el-input>
+      <el-input v-model="apiForm.name" placeholder="输入接口名称" style="width: 300px;margin-right:5px;" type="text" @blur="handleBlurSave"></el-input>
       <div class="api-title-section">
-        <el-input v-model="apiForm.url" placeholder="输入请求URL" @blur="handleSave">
+        <el-input v-model="apiForm.url" placeholder="输入请求URL" @blur="handleBlurSave">
           <template #prepend>
             <el-select v-model="apiForm.method" style="width: 80px">
               <el-option label="GET" value="GET"/>
@@ -22,17 +22,17 @@
               :value="env.id"
           />
         </el-select>
-        <el-button :loading="executing" type="primary" @click="handleExecute">
+        <pl-button :loading="executing" type="primary" @click="handleExecute">
           执行接口
-        </el-button>
-        <el-button @click="handleSave">保存</el-button>
-        <el-button type="info" @click="showResult">结果</el-button>
+        </pl-button>
+        <pl-button @click="handleSave">保存</pl-button>
+        <pl-button type="info" @click="showResult">结果</pl-button>
       </div>
     </div>
 
     <el-tabs v-model="configActiveTab" class="detail-tabs" style="min-height: 500px;" @tab-change="responseTabChange">
       <el-tab-pane label="备注" name="desc">
-        <MdEditor  v-model="apiForm.desc" @blur="handleSave" :onSave="handleSave" />
+        <MdEditor  v-model="apiForm.desc" @blur="handleBlurSave" :onSave="handleSave" />
       </el-tab-pane>
       <el-tab-pane :label="'请求头(' + (isObject(apiForm.header_list) ? Object.keys(apiForm.header_list).length : 0) + ')'" name="headers">
         <headers-value-editor
@@ -55,8 +55,8 @@
             <el-radio-button value="raw">Raw</el-radio-button>
           </el-radio-group>
 
-          <div v-if="apiForm.content_type === 'application/json'" class="body-editor">
-            <json-editor-vue v-model="apiForm.body_json_data" class="json-box" @blur="handleSave"/>
+          <div v-if="apiForm.content_type === 'application/json'" class="body-editor body-editor-json">
+            <json-editor-vue v-model="apiForm.body_json_data" class="json-box" @blur="handleBlurSave"/>
           </div>
           <div v-else-if="['application/x-www-form-urlencoded', 'multipart/form-data'].includes(apiForm.content_type)" class="body-editor">
             <key-value-editor @update="handleSaveBodyFormData" :list="apiForm.body_form_data"/>
@@ -67,7 +67,7 @@
                 :rows="Number(6)"
                 placeholder="输入原始数据"
                 type="textarea"
-                @blur="handleSave"
+                @blur="handleBlurSave"
             />
           </div>
         </div>
@@ -92,12 +92,17 @@
       <el-tab-pane label="代码" lazy name="code">
         <div style="width: 100%">
           <el-radio-group v-model="apiForm.code_type" class="detail-segmented" size="small" @change="handleCodeTypeChange">
-            <el-radio-button value="curl bash(chrome)">curl bash(chrome)</el-radio-button>
-            <el-radio-button value="curl shell(apifox)">curl shell(apifox)</el-radio-button>
+            <el-radio-button
+                v-for="codeType in codeTypeOptions"
+                :key="codeType"
+                :value="codeType"
+            >
+              {{ codeType }}
+            </el-radio-button>
           </el-radio-group>
 
           <div class="response-body-container" style="margin-top:5px;">
-            <button class="copy-btn" link @click="copyTextToClipboard(apiForm.code)">复制</button>
+            <pl-button class="copy-btn" link @click="copyTextToClipboard(apiForm.code)">复制</pl-button>
             <pre class="response-body json-body">{{
                 apiForm.code
               }}
@@ -115,7 +120,7 @@
               <el-input
                   v-model="row.key"
                   placeholder=""
-                  @blur="handleSave"
+                  @blur="handleBlurSave"
               />
             </template>
           </el-table-column>
@@ -135,13 +140,13 @@
               <el-input
                   v-model="row.desc"
                   placeholder=""
-                  @blur="handleSave"
+                  @blur="handleBlurSave"
               />
             </template>
           </el-table-column>
           <el-table-column label="操作" width="200" align="center" fixed="right">
             <template #default="{ row }">
-              <el-button link type="danger" @click="removeTakeResult(row.key)">删除</el-button>
+              <pl-button link type="danger" @click="removeTakeResult(row.key)">删除</pl-button>
             </template>
           </el-table-column>
         </el-table>
@@ -177,16 +182,16 @@
       </div>
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="closeEnvDialog">关闭</el-button>
+          <pl-button @click="closeEnvDialog">关闭</pl-button>
         </span>
       </template>
     </el-dialog>
 
     <el-drawer v-model="drawerHistoryShow" direction="rtl" size="60%">
       <div v-if="apiForm.last_result_data">
-        <h5 @click="copyUrl">{{ apiForm.method }} {{ apiForm.last_result_data.url }}</h5>
+        <h5 @click="copyUrl(apiForm.last_result_data.url)">{{ apiForm.method }} {{ apiForm.last_result_data.url }}</h5>
         <div class="response-status">
-          <el-button type="primary" :loading="executing" @click="handleExecute">执行</el-button>
+          <pl-button type="primary" :loading="executing" @click="handleExecute">执行</pl-button>
           <div style="color:green;font-size:14px;">状态: {{ apiForm.last_result_data.status }}</div>
           <div v-if="apiForm.last_result_data.errmsg" style="color:red;font-size:14px;">执行错误:
             {{ apiForm.last_result_data.errmsg }}
@@ -198,10 +203,10 @@
         <el-tabs v-model="responseActiveTab" class="detail-tabs" @tab-change="handleSave">
           <el-tab-pane label="返回结果" name="body">
             <div class="response-body-container">
-              <button class="copy-btn" link style="margin-right:120px;" @click="copyTextToClipboard(apiForm.last_result_data.result)">
+              <pl-button class="copy-btn" link style="margin-right:120px;" @click="copyTextToClipboard(apiForm.last_result_data.result)">
                 复制
-              </button>
-              <button v-if="isJsonResponse(apiForm.last_result_data.result)" class="copy-btn" link @click="takeToResult(apiForm.id , apiForm.last_result_data.result)">提取Json到文档</button>
+              </pl-button>
+              <pl-button v-if="isJsonResponse(apiForm.last_result_data.result)" class="copy-btn" link @click="takeToResult(apiForm.id , apiForm.last_result_data.result)">提取Json到文档</pl-button>
               <pre v-if="isJsonResponse(apiForm.last_result_data.result)" class="response-body json-body">{{
                   formatJson(apiForm.last_result_data.result)
                 }}
@@ -278,7 +283,7 @@ export default {
 
   },
   data() {
-    return {
+      return {
       Link,
       mainActiveTab: 'config', // 默认显示请求配置
       executing: false,
@@ -296,14 +301,25 @@ export default {
         'Token',
       ],
       envs: [],
+      codeTypeOptions: [
+        'curl bash(chrome)',
+        'curl shell(apifox)',
+        'JavaScript fetch',
+        'JavaScript axios',
+        'Python requests',
+        'PHP cURL',
+        'Golang net/http',
+        'Postman collection',
+      ],
       envItems: [],
       currentEnvId: '0',
       showEnvDialog: false,
       envVariables: [],
       currentEnvName: '',
-      keyup: null,
-      drawerHistoryShow: false,
-      takeResultActiveTabName : 'take_result_data',
+        keyup: null,
+        isTabNavigating: false,
+        drawerHistoryShow: false,
+        takeResultActiveTabName : 'take_result_data',
     }
   },
   computed: {
@@ -322,8 +338,23 @@ export default {
       this.apiForm.take_result_data = this.apiForm.take_result_data.filter((value, index) => value.key !== key);
       this.handleSave()
     },
+    // ensureCodeType 中文：确保代码 tab 总有一个可用类型。 English: Ensure the code tab always has a valid snippet type.
+    ensureCodeType() {
+      if (!this.codeTypeOptions.includes(this.apiForm.code_type)) {
+        this.apiForm.code_type = this.codeTypeOptions[0]
+      }
+    },
+    // ensureCodeSnippetLoaded 中文：仅在代码 tab 激活时拉取代码片段。 English: Load snippets only when the code tab is active.
+    ensureCodeSnippetLoaded() {
+      this.ensureCodeType()
+      if (!this.apiForm.id || this.configActiveTab !== 'code') {
+        return
+      }
+      this.handleCodeTypeChange()
+    },
     handleCodeTypeChange: function () {
       let _that = this
+      _that.ensureCodeType()
       Api.ApiCode({
         code_type: this.apiForm.code_type,
         id: _that.apiForm.id,
@@ -342,17 +373,23 @@ export default {
     },
     handleSaveBodyFormData(bodyFormData){
       this.apiForm.body_form_data = bodyFormData
-      this.handleSave()
+      this.handleBlurSave()
     },
 
     handleKeyUp: function (event) {
       let _that = this
       _that.initKeyUp()
+      if (event.key === 'Tab') {
+        _that.isTabNavigating = false
+      }
       _that.keyup.keyUp(event.key)
     },
     handleKeyDown: function (event) {
       let _that = this
       _that.initKeyUp()
+      if (event.key === 'Tab') {
+        _that.isTabNavigating = true
+      }
       _that.keyup.keyDown(event.key)
     },
     InitApiDetail: function (apiInfo) {
@@ -365,6 +402,9 @@ export default {
       if(_that.configActiveTab === '' || _that.configActiveTab === undefined || _that.configActiveTab === null){
         _that.configActiveTab = 'body'
       }
+      _that.$nextTick(function () {
+        _that.ensureCodeSnippetLoaded()
+      })
     },
     initKeyUp: function () {
       let _that = this
@@ -382,7 +422,7 @@ export default {
     updateResponseTake: function (responseTakeData) {
       let _that = this
       _that.apiForm.response_take_data = responseTakeData
-      _that.handleSave()
+      _that.handleBlurSave()
     },
     responseTabChange: function (key) {
       let _that = this
@@ -390,8 +430,7 @@ export default {
       if (_that.configActiveTab === 'env_items') {
         _that.loadEnvItems(_that.apiForm.env_id)
       } else if (_that.configActiveTab === 'code') {
-        _that.apiForm.code_type = 'curl bash(chrome)';
-        _that.handleCodeTypeChange()
+        _that.ensureCodeSnippetLoaded()
       }
     },
     changeEnv: function (env_id) {
@@ -445,6 +484,10 @@ export default {
       this.currentEnvName = ''
     },
     copyUrl: function (url) {
+      if (typeof url !== 'string' || url.trim() === '') {
+        this.$message.error('无可复制内容')
+        return
+      }
       let index = Copy.SetCopyContent(url)
       Copy.handleCopy(index)
     },
@@ -473,6 +516,7 @@ export default {
       }
       //body_raw处理
       _that.apiForm.body_raw_data = _that.apiForm.body_raw || ''
+      _that.ensureCodeType()
       //结果提取配置处理
       _that.apiForm.response_take_data = JSON.parse(_that.apiForm.response_take)
       if (!typ.IsArray(_that.apiForm.response_take_data)) {
@@ -525,13 +569,20 @@ export default {
       })
       this.$message.success('保存成功')
     },
+    // handleBlurSave 只处理失焦引发的自动保存，按 Tab 切换字段时跳过一次，避免焦点被刷新打断。
+    handleBlurSave() {
+      if (this.isTabNavigating) {
+        return
+      }
+      this.handleSave()
+    },
     handleSaveHeaders : function (result){
       this.apiForm.header_list = result
-      this.handleSave()
+      this.handleBlurSave()
     },
     handleSaveUrls : function (result){
       this.apiForm.query_params_data = result
-      this.handleSave()
+      this.handleBlurSave()
     },
 
     // 检查响应体是否为JSON格式
@@ -569,6 +620,10 @@ export default {
       }
     },
   }
+  ,
+  beforeUnmount() {
+    this.isTabNavigating = false
+  }
 }
 </script>
 
@@ -585,11 +640,12 @@ export default {
 .json-box {
   width: 100%;
   height: 360px;
-  margin-top: 12px;
-  border: 1px solid #dbe7d6;
-  border-radius: 10px;
-  overflow: auto;
-  background: #fff;
+  margin-top: 0;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: transparent;
+  box-shadow: none;
 }
 
 .api-header {
@@ -676,6 +732,21 @@ export default {
   margin-top: 12px;
   width: 100%;
   overflow: hidden;
+}
+
+.body-editor-json {
+  padding: 10px;
+  border: 1px solid #e6ece0;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f8fbf6 0%, #f4f8f1 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.body-editor-json:focus-within {
+  border-color: #8db28a;
+  box-shadow: 0 0 0 3px rgba(122, 166, 118, 0.16);
+  background: linear-gradient(180deg, #fbfdf9 0%, #f6faf3 100%);
 }
 
 .empty-body {
@@ -820,6 +891,90 @@ export default {
   overflow: hidden;
 }
 
+/* JSON editor skin / JSON 编辑器浅色卡片皮肤 */
+:deep(.body-editor-json .jse-theme-light),
+:deep(.body-editor-json .jse-main),
+:deep(.body-editor-json .jse-container),
+:deep(.body-editor-json .jsoneditor) {
+  border-radius: 10px !important;
+  border: 1px solid #dbe7d6 !important;
+  background: #ffffff !important;
+  box-shadow: 0 8px 18px rgba(80, 110, 80, 0.07) !important;
+  overflow: hidden !important;
+}
+
+:deep(.body-editor-json .jse-menu),
+:deep(.body-editor-json .jsoneditor-menu),
+:deep(.body-editor-json .jse-navigation-bar),
+:deep(.body-editor-json .jsoneditor-navigation-bar),
+:deep(.body-editor-json .jse-status-bar),
+:deep(.body-editor-json .jsoneditor-statusbar) {
+  background: #f7f9f5 !important;
+  border-color: #e6ece0 !important;
+  color: #5a6755 !important;
+  box-shadow: none !important;
+}
+
+:deep(.body-editor-json .jse-menu button),
+:deep(.body-editor-json .jsoneditor-menu button),
+:deep(.body-editor-json .jse-navigation-bar button),
+:deep(.body-editor-json .jsoneditor-navigation-bar button) {
+  border-radius: 8px !important;
+  color: #5b6857 !important;
+}
+
+:deep(.body-editor-json .jse-menu button:hover),
+:deep(.body-editor-json .jsoneditor-menu button:hover),
+:deep(.body-editor-json .jse-navigation-bar button:hover),
+:deep(.body-editor-json .jsoneditor-navigation-bar button:hover) {
+  background: #edf5e9 !important;
+  color: #456e45 !important;
+}
+
+:deep(.body-editor-json .jse-contents),
+:deep(.body-editor-json .jsoneditor-outer),
+:deep(.body-editor-json .jsoneditor-tree),
+:deep(.body-editor-json .jsoneditor-text),
+:deep(.body-editor-json .cm-editor),
+:deep(.body-editor-json .cm-scroller),
+:deep(.body-editor-json .cm-content),
+:deep(.body-editor-json textarea) {
+  background: #ffffff !important;
+  color: #3f4c3b !important;
+}
+
+:deep(.body-editor-json .cm-editor) {
+  min-height: 338px;
+}
+
+:deep(.body-editor-json .cm-focused),
+:deep(.body-editor-json .jsoneditor:focus-within),
+:deep(.body-editor-json .jse-main:focus-within) {
+  outline: none !important;
+  box-shadow: inset 0 0 0 1px #7aa676 !important;
+}
+
+:deep(.body-editor-json .cm-activeLine),
+:deep(.body-editor-json .cm-activeLineGutter),
+:deep(.body-editor-json .jsoneditor tr:hover) {
+  background: #f4faf2 !important;
+}
+
+:deep(.body-editor-json .cm-selectionBackground),
+:deep(.body-editor-json .cm-focused .cm-selectionBackground),
+:deep(.body-editor-json ::selection) {
+  background: rgba(122, 166, 118, 0.20) !important;
+}
+
+:deep(.body-editor-json .cm-gutters),
+:deep(.body-editor-json .jsoneditor-tree .jsoneditor-contextmenu),
+:deep(.body-editor-json .jsoneditor-tree .jsoneditor-field),
+:deep(.body-editor-json .jsoneditor-tree .jsoneditor-value) {
+  background: #fbfdf9 !important;
+  color: #61705d !important;
+  border-color: #edf2ea !important;
+}
+
 :deep(.el-tabs__nav-wrap) {
   overflow: hidden;
 }
@@ -877,6 +1032,37 @@ export default {
   background: #888;
 }
 
+.body-editor-json::-webkit-scrollbar,
+:deep(.body-editor-json .cm-scroller::-webkit-scrollbar),
+:deep(.body-editor-json .jse-contents::-webkit-scrollbar),
+:deep(.body-editor-json .jsoneditor::-webkit-scrollbar) {
+  width: 8px;
+  height: 8px;
+}
+
+.body-editor-json::-webkit-scrollbar-track,
+:deep(.body-editor-json .cm-scroller::-webkit-scrollbar-track),
+:deep(.body-editor-json .jse-contents::-webkit-scrollbar-track),
+:deep(.body-editor-json .jsoneditor::-webkit-scrollbar-track) {
+  background: #eef4ea;
+  border-radius: 999px;
+}
+
+.body-editor-json::-webkit-scrollbar-thumb,
+:deep(.body-editor-json .cm-scroller::-webkit-scrollbar-thumb),
+:deep(.body-editor-json .jse-contents::-webkit-scrollbar-thumb),
+:deep(.body-editor-json .jsoneditor::-webkit-scrollbar-thumb) {
+  background: #bfd0b9;
+  border-radius: 999px;
+}
+
+.body-editor-json::-webkit-scrollbar-thumb:hover,
+:deep(.body-editor-json .cm-scroller::-webkit-scrollbar-thumb:hover),
+:deep(.body-editor-json .jse-contents::-webkit-scrollbar-thumb:hover),
+:deep(.body-editor-json .jsoneditor::-webkit-scrollbar-thumb:hover) {
+  background: #a9bda3;
+}
+
 .dialog-env-name {
   margin-bottom: 15px;
   padding: 10px;
@@ -902,6 +1088,7 @@ export default {
   }
 }
 </style>
+
 
 
 

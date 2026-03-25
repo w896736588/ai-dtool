@@ -291,6 +291,42 @@ func (h *CSqlite) AllGlobalMap() (map[string]any, error) {
 	return h.Client.QuickQuery(`tbl_global`, `*`, map[string]any{}).ToMap(`key`, `value`)
 }
 
+func (h *CSqlite) GlobalValue(key string) (string, error) {
+	one, err := h.Client.QuickQuery(`tbl_global`, `*`, map[string]any{
+		`key`: key,
+	}).Order(`id asc`).One()
+	if err != nil {
+		return ``, err
+	}
+	return cast.ToString(one[`value`]), nil
+}
+
+func (h *CSqlite) SetGlobalValue(name, key, value, desc string) error {
+	now := time.Now().Unix()
+	one, err := h.Client.QuickQuery(`tbl_global`, `*`, map[string]any{
+		`key`: key,
+	}).Order(`id asc`).One()
+	if err != nil {
+		return err
+	}
+	updateData := map[string]any{
+		`name`:        name,
+		`key`:         key,
+		`value`:       value,
+		`desc`:        desc,
+		`update_time`: now,
+	}
+	if cast.ToInt(one[`id`]) > 0 {
+		_, err = h.Client.QuickUpdate(`tbl_global`, map[string]any{
+			`id`: one[`id`],
+		}, updateData).Exec()
+		return err
+	}
+	updateData[`create_time`] = now
+	_, err = h.Client.QuickCreate(`tbl_global`, updateData).Exec()
+	return err
+}
+
 func (h *CSqlite) CmdList(variableId any) ([]map[string]any, error) {
 	return h.Client.QuickQuery(`tbl_variable_cmd`, `*`, map[string]any{
 		`variable_id`: variableId,
@@ -318,7 +354,7 @@ func (h *CSqlite) GetApiInfo(id int) (map[string]any, error) {
 	}).One()
 }
 
-// MemoryFragmentList 查询记忆片段列表。
+// MemoryFragmentList 查询知识片段列表。
 func (h *CSqlite) MemoryFragmentList(limit int) ([]map[string]any, error) {
 	sql := `
 select
@@ -340,7 +376,7 @@ order by f.update_time desc, f.id desc`
 	return list, nil
 }
 
-// MemoryFragmentInfo 查询单个记忆片段详情。
+// MemoryFragmentInfo 查询单个知识片段详情。
 func (h *CSqlite) MemoryFragmentInfo(id int) (map[string]any, error) {
 	one, err := h.Client.QuickQuery(`tbl_memory_fragment`, `*`, map[string]any{
 		`id`:         id,
@@ -363,7 +399,7 @@ func (h *CSqlite) MemoryFragmentInfo(id int) (map[string]any, error) {
 	return one, nil
 }
 
-// MemoryFragmentSave 保存记忆片段。
+// MemoryFragmentSave 保存知识片段。
 func (h *CSqlite) MemoryFragmentSave(id int, title, content string, tags []string) (map[string]any, error) {
 	now := time.Now().Unix()
 	title = strings.TrimSpace(title)
@@ -469,7 +505,7 @@ func (h *CSqlite) MemoryFragmentSave(id int, title, content string, tags []strin
 	return h.MemoryFragmentInfo(id)
 }
 
-// MemoryFragmentSoftDelete 软删除记忆片段。
+// MemoryFragmentSoftDelete 软删除知识片段。
 func (h *CSqlite) MemoryFragmentSoftDelete(id int) (int64, error) {
 	now := time.Now().Unix()
 	_, _ = h.Client.ExecBySql(`delete from tbl_memory_fragment_fts where fragment_id = ?`, id).Exec()
@@ -483,7 +519,7 @@ func (h *CSqlite) MemoryFragmentSoftDelete(id int) (int64, error) {
 	}).Exec()
 }
 
-// MemoryFragmentHistoryList 查询记忆片段历史记录。
+// MemoryFragmentHistoryList 查询知识片段历史记录。
 func (h *CSqlite) MemoryFragmentHistoryList(fragmentID int) ([]map[string]any, error) {
 	list, err := h.Client.QuickQuery(`tbl_memory_fragment_history`, `*`, map[string]any{
 		`fragment_id`: fragmentID,
@@ -503,7 +539,7 @@ func (h *CSqlite) MemoryFragmentHistoryList(fragmentID int) ([]map[string]any, e
 	return list, nil
 }
 
-// MemoryFragmentTagList 查询记忆片段标签列表。
+// MemoryFragmentTagList 查询知识片段标签列表。
 func (h *CSqlite) MemoryFragmentTagList() ([]map[string]any, error) {
 	sql := `
 select
@@ -517,7 +553,7 @@ order by use_count desc, t.tag_name asc`
 	return h.Client.QueryBySql(sql).All()
 }
 
-// MemoryFragmentSearch 搜索记忆片段。
+// MemoryFragmentSearch 搜索知识片段。
 func (h *CSqlite) MemoryFragmentSearch(mode, query string, selectedTags []string, limit int) ([]map[string]any, error) {
 	mode = strings.TrimSpace(strings.ToLower(mode))
 	if mode != `keyword` {
@@ -640,7 +676,7 @@ func (h *CSqlite) memoryFragmentLoadTags(fragmentID int) ([]string, error) {
 	return tags, nil
 }
 
-// memoryFragmentSyncSearchIndex 同步记忆片段搜索索引。
+// memoryFragmentSyncSearchIndex 同步知识片段搜索索引。
 func (h *CSqlite) memoryFragmentSyncSearchIndex(fragmentID int, title, contentText string, tags []string, now int64) error {
 	tagText := strings.Join(tags, ` `)
 	searchText := strings.TrimSpace(strings.ToLower(strings.Join([]string{title, contentText, tagText}, ` `)))

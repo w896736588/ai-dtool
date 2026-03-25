@@ -1,0 +1,3 @@
+﻿interface:
+  display_name: "dtool API 导入更新"
+  short_description: "按 URI 在接口开发模块中执行导入或更新"

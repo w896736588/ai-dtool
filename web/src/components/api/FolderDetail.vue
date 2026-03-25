@@ -1,18 +1,18 @@
-<template>
+﻿<template>
   <div class="folder-detail">
     <div class="folder-header">
       <h2 class="folder-title">{{ folder.name }}</h2>
       <div class="folder-actions">
-<!--        <el-button type="primary" @click="handleEdit">编辑文件夹</el-button>-->
-        <el-button @click="createApi">新建接口</el-button>
-<!--        <el-button @click="handleCreateSubfolder">新建子文件夹</el-button>-->
+<!--        <pl-button type="primary" @click="handleEdit">编辑文件夹</pl-button>-->
+        <pl-button @click="createApi">新建接口</pl-button>
+<!--        <pl-button @click="handleCreateSubfolder">新建子文件夹</pl-button>-->
       </div>
     </div>
 
     <el-divider/>
 
     <div class="folder-content">
-      <el-tabs v-model="activeTab">
+      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
         <el-tab-pane label="基本信息" name="basic">
           <folder-basic-info
               :folder="folder"
@@ -31,7 +31,7 @@
 
         <el-tab-pane label="接口文档" name="api_document">
           <api-document
-              :apis="folder.children"
+              :apis="documentApis"
               :folder-name="folder.name"
               :folder-id="folder.id"
           />
@@ -64,8 +64,6 @@
 
 <script>
 import FolderBasicInfo from './FolderBasicInfo.vue'
-import ApiList from './ApiList.vue'
-import ExecutionHistory from './ExecutionHistory.vue'
 import FolderEditForm from './FolderEditForm.vue'
 import ApiDocument from "@/components/api/ApiDocument.vue";
 import Api from "@/utils/base/api";
@@ -74,8 +72,6 @@ export default {
   name: 'FolderDetail',
   components: {
     FolderBasicInfo,
-    ApiList,
-    ExecutionHistory,
     FolderEditForm,
     ApiDocument
   },
@@ -87,24 +83,64 @@ export default {
     handleCreateApi: {  // 接收父组件传递的方法
       type: Function,
       required: true
+    },
+    activeTabName: {
+      type: String,
+      default: 'basic'
     }
   },
   data() {
     return {
-      activeTab: 'basic',
+      activeTab: this.activeTabName || 'basic',
       editDialogVisible: false,
-      editForm: {}
+      editForm: {},
+      documentApis: []
     }
   },
   watch: {
     folder: {
       handler(newVal) {
         this.editForm = {...newVal}
+        if (this.activeTab === 'api_document') {
+          this.loadDocumentApis()
+          return
+        }
+        this.documentApis = Array.isArray(newVal.children) ? [...newVal.children] : []
+      },
+      immediate: true
+    },
+    activeTabName: {
+      handler(newVal) {
+        this.activeTab = newVal || 'basic'
       },
       immediate: true
     }
   },
   methods: {
+    handleTabChange(tabName) {
+      if (tabName === 'api_document') {
+        this.loadDocumentApis()
+      }
+      this.$emit('tab-change', tabName)
+    },
+    // 中文注释：文档页需要完整接口详情，不能复用树节点里的基础字段列表。
+    loadDocumentApis() {
+      const _that = this
+      if (!_that.folder || !_that.folder.id) {
+        _that.documentApis = []
+        return
+      }
+      Api.FolderDetail({
+        dir_id: _that.folder.id,
+      }, function (res) {
+        if (res.ErrCode !== 0) {
+          _that.$message.error(res.ErrMsg || '加载接口文档失败')
+          return
+        }
+        const folderDetail = res.Data && res.Data.dir ? res.Data.dir : {}
+        _that.documentApis = Array.isArray(folderDetail.children) ? folderDetail.children : []
+      })
+    },
     handleEdit() {
       this.editForm = {...this.folder}
       this.editDialogVisible = true
@@ -134,7 +170,8 @@ export default {
         id: updatedFolder.id,
         name: updatedFolder.name,
         desc: updatedFolder.desc || '',
-        collection_id: updatedFolder.collection_id
+        collection_id: updatedFolder.collection_id,
+        headers: updatedFolder.headers || {}
       }
       Api.CreateDir(updateData, function (res) {
         if (res.ErrCode === 0) {
@@ -142,7 +179,8 @@ export default {
           // Emit the updated folder with all fields to the parent
           _that.$emit('update', {
             ...updatedFolder,
-            ...updateData
+            ...res.Data,
+            headers: res.Data && res.Data.headers ? res.Data.headers : JSON.stringify(updateData.headers || {})
           })
         } else {
           _that.$message.error(res.ErrMsg || '更新失败')
@@ -203,3 +241,4 @@ export default {
   margin-top: 20px;
 }
 </style>
+

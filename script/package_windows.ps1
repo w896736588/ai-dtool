@@ -47,6 +47,7 @@ Copy-Item (Join-Path $RootDir "config/dtool/frog.db") (Join-Path $PackageDir "co
 Copy-Item $FrontendDistDir (Join-Path $PackageDir "web/dist") -Recurse -Force
 Copy-Item (Join-Path $RootDir "internal/pkg/p_js") (Join-Path $PackageDir "internal/pkg/p_js") -Recurse -Force
 Copy-Item (Join-Path $RootDir "internal/app/dtool/database") (Join-Path $PackageDir "internal/app/dtool/database") -Recurse -Force
+Copy-Item (Join-Path $RootDir "internal/app/dtool/database_memory") (Join-Path $PackageDir "internal/app/dtool/database_memory") -Recurse -Force
 
 Write-Step "[3/4] 生成启动脚本和说明文件"
 # 显式拼接多行文本，避免 here-string 在部分 PowerShell 环境下解析异常。

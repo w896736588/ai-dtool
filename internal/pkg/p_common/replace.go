@@ -3,6 +3,7 @@ package p_common
 import (
 	"dev_tool/internal/pkg/p_sse"
 	"fmt"
+	"regexp"
 
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
@@ -12,8 +13,9 @@ import (
 func Replace(data string, replaceList map[string]string) string {
 	//处理特殊情况
 	for replaceKey, replaceVal := range replaceList {
+		// 替换键可能包含正则元字符，先转义后再参与 `%数字` 模式匹配，避免 panic。
 		//取模
-		matchSubList := gstool.RegexMatchSubString(data, replaceKey+`%(\d+)`)
+		matchSubList := gstool.RegexMatchSubString(data, regexp.QuoteMeta(replaceKey)+`%(\d+)`)
 		if len(matchSubList) >= 2 {
 			data = gstool.SReplaces(data, map[string]string{
 				matchSubList[0]: cast.ToString(cast.ToInt64(replaceVal) % cast.ToInt64(matchSubList[1])),

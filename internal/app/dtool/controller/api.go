@@ -17,6 +17,103 @@ import (
 	"github.com/spf13/cast"
 )
 
+// parseApiIDs 解析接口 ID，兼容数组和逗号分隔字符串。
+func parseApiIDs(raw any) []int {
+	result := make([]int, 0)
+	exists := make(map[int]struct{})
+	appendID := func(id int) {
+		if id <= 0 {
+			return
+		}
+		if _, ok := exists[id]; ok {
+			return
+		}
+		exists[id] = struct{}{}
+		result = append(result, id)
+	}
+	switch value := raw.(type) {
+	case []any:
+		for _, item := range value {
+			appendID(cast.ToInt(item))
+		}
+	case []int:
+		for _, item := range value {
+			appendID(item)
+		}
+	case []string:
+		for _, item := range value {
+			appendID(cast.ToInt(strings.TrimSpace(item)))
+		}
+	case string:
+		for _, item := range strings.Split(value, ",") {
+			appendID(cast.ToInt(strings.TrimSpace(item)))
+		}
+	}
+	return result
+}
+
+// buildCollectionBasicInfo 构建集合基础信息。
+func buildCollectionBasicInfo(item map[string]any) map[string]any {
+	return map[string]any{
+		`id`:          item[`id`],
+		`name`:        item[`name`],
+		`child_count`: cast.ToInt(item[`child_count`]),
+		`create_time`: item[`create_time`],
+		`update_time`: item[`update_time`],
+		`type`:        define.ApiTypeCollection,
+		`uniqueid`:    fmt.Sprintf(`collection%d`, cast.ToInt(item[`id`])),
+	}
+}
+
+// buildFolderBasicInfo 构建文件夹基础信息。
+func buildFolderBasicInfo(item map[string]any) map[string]any {
+	return map[string]any{
+		`id`:            item[`id`],
+		`collection_id`: item[`collection_id`],
+		`name`:          item[`name`],
+		`headers`:       cast.ToString(item[`headers`]),
+		`child_count`:   cast.ToInt(item[`child_count`]),
+		`create_time`:   item[`create_time`],
+		`update_time`:   item[`update_time`],
+		`type`:          define.ApiTypeFolder,
+		`uniqueid`:      fmt.Sprintf(`folder%d`, cast.ToInt(item[`id`])),
+	}
+}
+
+// buildApiBasicInfo 构建接口基础信息，不返回请求明细字段。
+func buildApiBasicInfo(item map[string]any) map[string]any {
+	return map[string]any{
+		`id`:            item[`id`],
+		`folder_id`:     item[`folder_id`],
+		`collection_id`: item[`collection_id`],
+		`name`:          item[`name`],
+		`method`:        item[`method`],
+		`url`:           item[`url`],
+		`desc`:          item[`desc`],
+		`env_id`:        item[`env_id`],
+		`weight`:        item[`weight`],
+		`create_time`:   item[`create_time`],
+		`update_time`:   item[`update_time`],
+		`type`:          define.ApiTypeApi,
+		`uniqueid`:      fmt.Sprintf(`api%d`, cast.ToInt(item[`id`])),
+	}
+}
+
+// sortAPIListByIDs 按传入 ID 顺序重排接口列表。
+func sortAPIListByIDs(list []map[string]any, ids []int) []map[string]any {
+	itemMap := make(map[int]map[string]any, len(list))
+	for _, item := range list {
+		itemMap[cast.ToInt(item[`id`])] = item
+	}
+	result := make([]map[string]any, 0, len(ids))
+	for _, id := range ids {
+		if item, ok := itemMap[id]; ok {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
 func ApiCreateCollection(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
@@ -151,6 +248,104 @@ func ApiCollections(c *gin.Context) {
 	})
 }
 
+// ApiCollectionListBasic 查询所有集合基础信息。
+func ApiCollectionListBasic(c *gin.Context) {
+	list, _ := common.DbMain.Client.QueryBySql(`
+select c.id,
+       c.name,
+       c.create_time,
+       c.update_time,
+       count(d.id) as child_count
+from tbl_api_collection c
+left join tbl_api_dir d on d.collection_id = c.id
+group by c.id, c.name, c.create_time, c.update_time
+order by c.id asc`).All()
+	result := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		result = append(result, buildCollectionBasicInfo(item))
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: result,
+	})
+}
+
+// ApiCollectionFoldersBasic 按集合查询文件夹基础信息。
+func ApiCollectionFoldersBasic(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	collectionId := cast.ToInt(dataMap[`collection_id`])
+	if collectionId <= 0 {
+		gsgin.GinResponseError(c, `请选择集合`, nil)
+		return
+	}
+	list, _ := common.DbMain.Client.QueryBySql(`
+select d.id,
+       d.collection_id,
+       d.name,
+       d.headers,
+       d.create_time,
+       d.update_time,
+       count(a.id) as child_count
+from tbl_api_dir d
+left join tbl_api a on a.folder_id = d.id
+where d.collection_id = ?
+group by d.id, d.collection_id, d.name, d.headers, d.create_time, d.update_time
+order by d.id asc`, collectionId).All()
+	result := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		result = append(result, buildFolderBasicInfo(item))
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: result,
+	})
+}
+
+// ApiFolderApisBasic 按文件夹查询接口基础信息。
+func ApiFolderApisBasic(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	folderId := cast.ToInt(dataMap[`folder_id`])
+	if folderId <= 0 {
+		gsgin.GinResponseError(c, `请选择文件夹`, nil)
+		return
+	}
+	list, _ := common.DbMain.Client.QueryBySql(`select id,folder_id,collection_id,name,method,url,desc,env_id,weight,create_time,update_time from tbl_api where folder_id = ? order by weight,id asc`, folderId).All()
+	result := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		result = append(result, buildApiBasicInfo(item))
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: result,
+	})
+}
+
+// ApiApisDetailByIds 按若干接口 ID 查询接口明细。
+func ApiApisDetailByIds(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	ids := parseApiIDs(dataMap[`ids`])
+	if len(ids) == 0 {
+		gsgin.GinResponseError(c, `请选择接口`, nil)
+		return
+	}
+	placeholders := make([]string, 0, len(ids))
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		placeholders = append(placeholders, `?`)
+		args = append(args, id)
+	}
+	sql := `select * from tbl_api where id in (` + strings.Join(placeholders, `,`) + `)`
+	list, _ := common.DbMain.Client.QueryBySql(sql, args...).All()
+	for _, item := range list {
+		item[`type`] = define.ApiTypeApi
+		item[`uniqueid`] = fmt.Sprintf(`api%d`, cast.ToInt(item[`id`]))
+	}
+	list = sortAPIListByIDs(list, ids)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: list,
+	})
+}
+
 func ApiCollectionEnvs(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
@@ -252,7 +447,22 @@ func ApiCreateDir(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `collection_id`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `collection_id`, `headers`})
+	var err error
+	for key, value := range updateData {
+		if gstool.ArrayExistValue(&[]string{reflect.Array.String(), reflect.Map.String(), reflect.Slice.String()}, gstool.ReflectGetType(value).String()) {
+			updateData[key] = gstool.JsonEncode(value)
+		}
+	}
+	if cast.ToString(updateData[`headers`]) == `` {
+		updateData[`headers`] = `{}`
+	}
+	// 中文注释：统一清理并校验文件夹默认请求头，避免保存非法 JSON。
+	updateData[`headers`], err = filterEmptyMap(cast.ToString(updateData[`headers`]), `headers格式错误`, 500)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), ``)
+		return
+	}
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
@@ -409,6 +619,13 @@ func ApiRun(c *gin.Context) {
 		gsgin.GinResponseError(c, `api不存在`, nil)
 		return
 	}
+	// 中文注释：运行前加载所属目录默认请求头，用于与接口请求头做覆盖合并。
+	folderInfo, _ := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `headers`, map[string]any{
+		`id`: apiInfo[`folder_id`],
+	}).One()
+	if len(folderInfo) > 0 {
+		apiInfo[`folder_headers`] = folderInfo[`headers`]
+	}
 	apiCli := api.NewApi(apiInfo)
 	err := apiCli.Run()
 	if err != nil {
@@ -437,10 +654,7 @@ func ApiCode(c *gin.Context) {
 	}
 	codeType := dataMap[`code_type`]
 	apiCli := api.NewApi(apiInfo)
-	code := ``
-	if codeType == `curl bash(chrome)` {
-		code = apiCli.ToChromeCurlBash()
-	}
+	code := apiCli.GenerateCode(cast.ToString(codeType))
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`code`: code,
 	})
@@ -570,6 +784,15 @@ func ApiBatchImport(c *gin.Context) {
 
 func processFolderItem(c *gin.Context, collectionId int, folderData map[string]any, importResult map[string]any) error {
 	folderName := cast.ToString(folderData[`name`])
+	folderHeaders := cast.ToString(folderData[`headers`])
+	if folderHeaders == `` {
+		folderHeaders = `{}`
+	}
+	// 中文注释：导入时沿用目录默认请求头清洗规则，保证与单个保存入口行为一致。
+	filteredFolderHeaders, err := filterEmptyMap(folderHeaders, `headers格式错误`, 500)
+	if err != nil {
+		return err
+	}
 
 	// 检查同名文件夹是否已存在
 	existingFolder, _ := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `id`, map[string]any{
@@ -581,6 +804,12 @@ func processFolderItem(c *gin.Context, collectionId int, folderData map[string]a
 	if len(existingFolder) > 0 {
 		// 文件夹已存在，删除该文件夹下的所有接口（覆盖式更新）
 		folderId = cast.ToInt(existingFolder[`id`])
+		_, _ = common.DbMain.Client.QuickUpdate(`tbl_api_dir`, map[string]any{
+			`id`: folderId,
+		}, map[string]any{
+			`headers`:     filteredFolderHeaders,
+			`update_time`: time.Now().Unix(),
+		}).Exec()
 		_, _ = common.DbMain.Client.QuickDelete(`tbl_api`, map[string]any{
 			`folder_id`: folderId,
 		}).Exec()
@@ -590,12 +819,13 @@ func processFolderItem(c *gin.Context, collectionId int, folderData map[string]a
 		updateData := map[string]any{
 			`name`:          folderName,
 			`collection_id`: collectionId,
+			`headers`:       filteredFolderHeaders,
 			`create_time`:   time.Now().Unix(),
 			`update_time`:   time.Now().Unix(),
 		}
-		newId, err := common.DbMain.Client.QuickCreate(`tbl_api_dir`, updateData).Exec()
-		if err != nil {
-			return err
+		newId, createErr := common.DbMain.Client.QuickCreate(`tbl_api_dir`, updateData).Exec()
+		if createErr != nil {
+			return createErr
 		}
 		folderId = cast.ToInt(newId)
 		importResult[`folders_created`] = importResult[`folders_created`].(int) + 1

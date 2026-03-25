@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="execution-history">
     <div class="history-header">
       <div class="filter-controls">
@@ -16,15 +16,15 @@
             value-format="YYYY-MM-DD"
         />
 
-        <el-button type="primary" @click="loadHistory">查询</el-button>
-        <el-button @click="resetFilter">重置</el-button>
+        <pl-button type="primary" @click="loadHistory">查询</pl-button>
+        <pl-button @click="resetFilter">重置</pl-button>
       </div>
 
       <div class="header-actions">
-        <el-button @click="clearHistory" type="danger">
+        <pl-button @click="clearHistory" type="danger">
           <el-icon><Delete /></el-icon>
           清空历史
-        </el-button>
+        </pl-button>
       </div>
     </div>
 
@@ -79,8 +79,8 @@
 
       <el-table-column label="操作" width="120" align="center" fixed="right">
         <template #default="{ row }">
-          <el-button type="primary" link @click="viewDetail(row)">详情</el-button>
-          <el-button type="primary" link @click="rerunTest(row)">重试</el-button>
+          <pl-button type="primary" link @click="viewDetail(row)">详情</pl-button>
+          <pl-button type="primary" link @click="rerunTest(row)">重试</pl-button>
         </template>
       </el-table-column>
     </el-table>
@@ -334,3 +334,4 @@ export default {
   overflow: hidden;
 }
 </style>
+

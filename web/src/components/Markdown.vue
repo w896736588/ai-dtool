@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="markdown-container">
     <!-- 左侧文档列表 -->
     <el-container class="full-height">
@@ -12,7 +12,7 @@
               @input="searchList"
           >
             <template #append>
-              <el-button type="primary" @click="createNewDoc">新增</el-button>
+              <pl-button type="primary" @click="createNewDoc">新增</pl-button>
             </template>
           </el-input>
         </div>
@@ -38,11 +38,11 @@
                     @confirm="deleteDoc(element.id)"
                 >
                   <template #reference>
-                    <el-button
+                    <pl-button
                         class="doc-delete-btn"
                         type="text"
                         @click.stop
-                    >删除</el-button>
+                    >删除</pl-button>
                   </template>
                 </el-popconfirm>
               </div>
@@ -66,14 +66,14 @@
               <span v-else style="color: green;">已保存</span>
             </el-tag>
             &nbsp;
-            <el-button
+            <pl-button
                 class="save-btn"
                 type="primary"
                 @click="saveDoc"
             >
               保存
-            </el-button>
-            <el-button @click="ShowHistoryList">变更记录</el-button>
+            </pl-button>
+            <pl-button @click="ShowHistoryList">变更记录</pl-button>
           </div>
           <MdEditor v-model="state.activeDoc.content" @blur="changeContent" :onSave="changeContent" />
         </div>
@@ -91,7 +91,7 @@
         <el-table-column prop="change_desc" label="变更简要" />
         <el-table-column label="操作" width="200">
           <template #default="scope">
-            <el-button type="primary" link @click="ShowDiff(scope.row)">查看变更</el-button>
+            <pl-button type="primary" link @click="ShowDiff(scope.row)">查看变更</pl-button>
             <el-tooltip content="删除" placement="top">
               <el-popconfirm
                   cancel-button-text="取消"
@@ -101,7 +101,7 @@
                   @confirm="DeleteHistory(scope.row)"
               >
                 <template #reference>
-                  <el-button link type="danger" >删除记录</el-button>
+                  <pl-button link type="danger" >删除记录</pl-button>
                 </template>
               </el-popconfirm>
             </el-tooltip>
@@ -112,10 +112,10 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="state.dialogMarkdownHistory = false">取消</el-button>
-        <el-button type="primary" @click="starSave">
+        <pl-button @click="state.dialogMarkdownHistory = false">取消</pl-button>
+        <pl-button type="primary" @click="starSave">
           保存
-        </el-button>
+        </pl-button>
       </div>
     </template>
   </el-dialog>

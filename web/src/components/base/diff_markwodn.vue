@@ -3,18 +3,20 @@
     <div class="diff-header">
       <div class="file-title">{{ title }}</div>
       <div class="view-toggle">
-        <button
+        <pl-button
             :class="{ active: viewMode === 'diff' }"
+            link
             @click="viewMode = 'diff'"
         >
           差异对比
-        </button>
-        <button
+        </pl-button>
+        <pl-button
             :class="{ active: viewMode === 'rendered' }"
+            link
             @click="viewMode = 'rendered'"
         >
           完整渲染
-        </button>
+        </pl-button>
       </div>
     </div>
     <div v-show="viewMode === 'diff'" ref="diffContainer" class="diff-content"></div>

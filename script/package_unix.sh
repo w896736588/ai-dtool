@@ -76,6 +76,7 @@ cp -R "${ROOT_DIR}/web/dist" "${PACKAGE_DIR}/web"
 mkdir -p "${PACKAGE_DIR}/internal/pkg" "${PACKAGE_DIR}/internal/app/dtool"
 cp -R "${ROOT_DIR}/internal/pkg/p_js" "${PACKAGE_DIR}/internal/pkg/p_js"
 cp -R "${ROOT_DIR}/internal/app/dtool/database" "${PACKAGE_DIR}/internal/app/dtool/database"
+cp -R "${ROOT_DIR}/internal/app/dtool/database_memory" "${PACKAGE_DIR}/internal/app/dtool/database_memory"
 
 write_step "[5/6] 生成启动脚本和说明文件"
 cat > "${PACKAGE_DIR}/${WEB_LAUNCHER}" <<'EOF'

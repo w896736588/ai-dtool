@@ -18,6 +18,12 @@ tasks:
     cmds:
       - go run -tags production ./cmd/dtool_wails --ConfigFile=company
 
+  run-dev-company:
+    desc: 启动company库，开发环境
+    deps:
+      - run-web-dev
+      - run-server-company
+
   build-frontend:
     desc: 构建前端 dist
     dir: web

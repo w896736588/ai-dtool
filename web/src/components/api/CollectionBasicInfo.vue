@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="collection-basic-info">
     <el-form
         ref="formRef"
@@ -28,9 +28,9 @@
       </el-form-item>
 
       <el-form-item>
-        <el-button type="primary" @click="handleSave">保存更改</el-button>
-<!--        <el-button @click="handleReset">重置</el-button>-->
-        <el-button type="danger" @click="handleDelete" v-if="collection.id">删除集合</el-button>
+        <pl-button type="primary" @click="handleSave">保存更改</pl-button>
+<!--        <pl-button @click="handleReset">重置</pl-button>-->
+        <pl-button type="danger" @click="handleDelete" v-if="collection.id">删除集合</pl-button>
       </el-form-item>
     </el-form>
   </div>
@@ -152,3 +152,4 @@ export default {
   gap: 10px;
 }
 </style>
+

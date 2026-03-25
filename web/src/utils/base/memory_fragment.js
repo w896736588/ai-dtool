@@ -1,20 +1,25 @@
 import base from '../base'
 
-// MemoryFragmentList 查询记忆片段列表。
+// MemoryFragmentList 查询知识片段列表。
+function MemoryFragmentStatus(callBack) {
+  base.BasePost('/api/MemoryFragmentStatus', {}, callBack)
+}
+
+// MemoryFragmentList 查询知识片段列表。
 function MemoryFragmentList(limit, callBack) {
   base.BasePost('/api/MemoryFragmentList', {
     limit: limit,
   }, callBack)
 }
 
-// MemoryFragmentInfo 查询记忆片段详情。
+// MemoryFragmentInfo 查询知识片段详情。
 function MemoryFragmentInfo(id, callBack) {
   base.BasePost('/api/MemoryFragmentInfo', {
     id: id,
   }, callBack)
 }
 
-// MemoryFragmentSave 保存记忆片段。
+// MemoryFragmentSave 保存知识片段。
 function MemoryFragmentSave(id, title, content, tags, callBack) {
   base.BasePost('/api/MemoryFragmentSave', {
     id: id,
@@ -24,7 +29,7 @@ function MemoryFragmentSave(id, title, content, tags, callBack) {
   }, callBack)
 }
 
-// MemoryFragmentDelete 删除记忆片段。
+// MemoryFragmentDelete 删除知识片段。
 function MemoryFragmentDelete(id, callBack) {
   base.BasePost('/api/MemoryFragmentDelete', {
     id: id,
@@ -43,7 +48,7 @@ function MemoryFragmentTagList(callBack) {
   base.BasePost('/api/MemoryFragmentTagList', {}, callBack)
 }
 
-// MemoryFragmentSearch 搜索记忆片段。
+// MemoryFragmentSearch 搜索知识片段。
 function MemoryFragmentSearch(query, mode, selectedTags, limit, callBack) {
   base.BasePost('/api/MemoryFragmentSearch', {
     query: query,
@@ -53,7 +58,18 @@ function MemoryFragmentSearch(query, mode, selectedTags, limit, callBack) {
   }, callBack)
 }
 
+// MemoryFragmentOrganize 使用 AI 整理当前知识片段内容。
+function MemoryFragmentOrganize(id, title, content, tags, callBack) {
+  base.BasePost('/api/MemoryFragmentOrganize', {
+    id: id,
+    title: title,
+    content: content,
+    tags: tags,
+  }, callBack)
+}
+
 export default {
+  MemoryFragmentStatus,
   MemoryFragmentList,
   MemoryFragmentInfo,
   MemoryFragmentSave,
@@ -61,4 +77,5 @@ export default {
   MemoryFragmentHistoryList,
   MemoryFragmentTagList,
   MemoryFragmentSearch,
+  MemoryFragmentOrganize,
 }

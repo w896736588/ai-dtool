@@ -1,14 +1,10 @@
 package api
 
 import (
-	"bytes"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
-	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_curl"
 	"errors"
-	"fmt"
-	"mime/multipart"
 	"net/http"
 	url2 "net/url"
 	"strings"
@@ -56,9 +52,24 @@ type Api struct {
 	Result
 }
 
+// mergeHeadersWithFolderDefaults 合并文件夹默认请求头与接口请求头，接口同名键优先。
+func mergeHeadersWithFolderDefaults(folderHeaders, apiHeaders map[string]string) map[string]string {
+	result := make(map[string]string)
+	for key, value := range folderHeaders {
+		result[key] = value
+	}
+	for key, value := range apiHeaders {
+		result[key] = value
+	}
+	return result
+}
+
 func NewApi(apiInfo map[string]any) *Api {
 	headers := make(map[string]string)
 	_ = gstool.JsonDecode(cast.ToString(apiInfo[`headers`]), &headers)
+	folderHeaders := make(map[string]string)
+	_ = gstool.JsonDecode(cast.ToString(apiInfo[`folder_headers`]), &folderHeaders)
+	headers = mergeHeadersWithFolderDefaults(folderHeaders, headers)
 	urlParams := make([]map[string]any, 0)
 	_ = gstool.JsonDecode(cast.ToString(apiInfo[`query_params`]), &urlParams)
 	urlValues := url2.Values{}
@@ -102,6 +113,7 @@ func NewApi(apiInfo map[string]any) *Api {
 			Headers:     headers,
 			BodyForm:    bodyFormData,
 			BodyJson:    cast.ToString(apiInfo[`body_json`]),
+			BodyRaw:     cast.ToString(apiInfo[`body_raw`]),
 		},
 		Result: Result{
 			ResponseTake: responseTake,
@@ -123,6 +135,8 @@ func (h *Api) ReplaceEnv() {
 	}
 	//body json替换
 	h.CurlStruct.BodyJson = gstool.SReplaces(h.CurlStruct.BodyJson, h.BaseInfo.EnvItems)
+	//body raw替换 / body raw replacement
+	h.CurlStruct.BodyRaw = gstool.SReplaces(h.CurlStruct.BodyRaw, h.BaseInfo.EnvItems)
 }
 
 func (h *Api) Run() error {
@@ -294,51 +308,4 @@ func (h *Api) ResponseTake() {
 			}).Exec()
 		}
 	}
-}
-
-func (h *Api) ToChromeCurlBash() string {
-	h.ReplaceEnv()
-	curlBash := make([]string, 0)
-	if h.CurlStruct.Method == http.MethodGet {
-		//url
-		curlBash = append(curlBash, `curl '`+h.CurlStruct.Url+`' \`)
-		//header
-		for k, v := range h.CurlStruct.Headers {
-			curlBash = append(curlBash, fmt.Sprintf(`-H '%s: %s' \`+"\n", k, v))
-		}
-	} else if h.CurlStruct.Method == http.MethodPost {
-		if h.CurlStruct.ContentType == define.ContentTypeMultiForm {
-			var body bytes.Buffer
-			writer := multipart.NewWriter(&body)
-			boundary := writer.Boundary()
-			for _, value := range h.CurlStruct.BodyForm {
-				if value.Type == p_curl.FieldTypeFile {
-					_, err := writer.CreateFormFile(value.Field, value.Value)
-					if err != nil {
-						gstool.FmtPrintlnLogTime(`添加文件字段失败 %s`, err.Error())
-					}
-					//写入文件内容 这里空 不管
-					//fileWriter.Write([]byte{})
-				} else {
-					_ = writer.WriteField(value.Field, value.Value)
-				}
-			}
-			_ = writer.Close()
-			//url
-			curlBash = append(curlBash, `curl '`+h.CurlStruct.Url+`' \`)
-			//header
-			for k, v := range h.CurlStruct.Headers {
-				if k == define.ContentTypeMultiForm {
-					curlBash = append(curlBash, fmt.Sprintf(`-H '%s: %s' \`+"\n", `Content-Type`, fmt.Sprintf("multipart/form-data; boundary=%s", boundary)))
-				} else {
-					curlBash = append(curlBash, fmt.Sprintf(`-H '%s: %s' \`+"\n", k, v))
-				}
-			}
-			//body
-			curlBash = append(curlBash, "--data-raw "+fmt.Sprintf("$'%s'", body.String()))
-			//end
-			curlBash = append(curlBash, `--insecure`)
-		}
-	}
-	return strings.Join(curlBash, "\n")
 }

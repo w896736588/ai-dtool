@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="git-page-container">
     <!-- 顶部操作区域 -->
     <div class="git-header-card">
@@ -35,18 +35,18 @@
       <!-- 操作按钮 -->
       <div class="control-row">
         <div class="action-buttons">
-          <el-button v-loading="btnLoading.pull" type="primary" plain @click="GitPullBranchOrigin">
+          <pl-button v-loading="btnLoading.pull" type="primary" plain @click="GitPullBranchOrigin">
             <el-icon><Download /></el-icon>拉取
-          </el-button>
-          <el-button v-loading="btnLoading.status" type="primary" plain @click="GitQueryStatus">
+          </pl-button>
+          <pl-button v-loading="btnLoading.status" type="primary" plain @click="GitQueryStatus">
             <el-icon><View /></el-icon>状态
-          </el-button>
-          <el-button v-loading="btnLoading.query" type="primary" plain @click="queryCurrentBranch">
+          </pl-button>
+          <pl-button v-loading="btnLoading.query" type="primary" plain @click="queryCurrentBranch">
             <el-icon><InfoFilled /></el-icon>当前分支
-          </el-button>
-          <el-button v-loading="btnLoading.queryLog" type="primary" plain @click="queryCommitLog">
+          </pl-button>
+          <pl-button v-loading="btnLoading.queryLog" type="primary" plain @click="queryCommitLog">
             <el-icon><Document /></el-icon>日志
-          </el-button>
+          </pl-button>
         </div>
         
         <div class="branch-input-group">
@@ -58,19 +58,19 @@
             class="branch-input"
             @keyup.enter="GitChangeBranch"
           ></el-input>
-          <el-button v-loading="btnLoading.change" type="warning" plain @click="GitChangeBranch">
+          <pl-button v-loading="btnLoading.change" type="warning" plain @click="GitChangeBranch">
             <el-icon><Switch /></el-icon>{{ showChangeBranch ? '确认切换' : '切换分支' }}
-          </el-button>
+          </pl-button>
         </div>
 
         <div class="more-actions-group">
-          <el-button type="primary" plain @click="drawerVisibleMarkdown = true">
+          <pl-button type="primary" plain @click="drawerVisibleMarkdown = true">
             <el-icon><QuestionFilled /></el-icon>帮助
-          </el-button>
+          </pl-button>
           <el-dropdown @command="handleDropdownCommand">
-            <el-button type="info" plain>
+            <pl-button type="info" plain>
               更多操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
-            </el-button>
+            </pl-button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="changeBranchRemote">关联远程分支切换</el-dropdown-item>
@@ -704,3 +704,4 @@ export default {
   }
 }
 </style>
+

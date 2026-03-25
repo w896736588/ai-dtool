@@ -1,5 +1,5 @@
-<template>
-  配置{{groupTitle}}组 <el-button type="primary" link @click="ShowAddGroup">添加</el-button>
+﻿<template>
+  配置{{groupTitle}}组 <pl-button type="primary" link @click="ShowAddGroup">添加</pl-button>
   <el-table :data="state.groupList" style="width: 100%">
     <el-table-column prop="id" label="#id" />
     <el-table-column prop="name" label="name" />
@@ -47,8 +47,8 @@
     </el-table-column>
     <el-table-column label="操作" >
       <template #default="scope">
-        <el-button type="primary" link @click="ShowEditGroup(scope.row)">编辑</el-button>
-        <el-button link type="danger" @click="DeleteGroup(scope.row)">删除</el-button>
+        <pl-button type="primary" link @click="ShowEditGroup(scope.row)">编辑</pl-button>
+        <pl-button link type="danger" @click="DeleteGroup(scope.row)">删除</pl-button>
       </template>
     </el-table-column>
   </el-table>
@@ -79,10 +79,10 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="state.dialogEditGroup = false">取消</el-button>
-        <el-button type="primary" @click="EditGroup">
+        <pl-button @click="state.dialogEditGroup = false">取消</pl-button>
+        <pl-button type="primary" @click="EditGroup">
           保存
-        </el-button>
+        </pl-button>
       </div>
     </template>
   </el-dialog>

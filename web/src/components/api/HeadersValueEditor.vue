@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="key-value-editor">
     <div class="header-row">
       <span class="header-key">键</span>
@@ -28,25 +28,25 @@
       />
 
       <div class="actions">
-        <el-button
+        <pl-button
             type="danger"
             plain
             size="small"
             class="delete-rule-btn"
             @click="removeItem(index)"
         >删除
-        </el-button>
+        </pl-button>
       </div>
     </div>
 
     <div class="footer-actions">
-      <el-button type="primary" plain size="small" class="add-rule-btn" @click="addItem">
+      <pl-button type="primary" plain size="small" class="add-rule-btn" @click="addItem">
         添加参数
-      </el-button>
+      </pl-button>
 
-      <el-button plain size="small" class="bulk-edit-btn" @click="handleBulkEdit">
+      <pl-button plain size="small" class="bulk-edit-btn" @click="handleBulkEdit">
         批量编辑
-      </el-button>
+      </pl-button>
     </div>
 
     <!-- 批量编辑对话框 -->
@@ -62,8 +62,8 @@
           placeholder="每行一个参数，格式：键=值&#10;例如：&#10;Content-Type=application/json&#10;Authorization=Bearer token"
       />
       <template #footer>
-        <el-button @click="bulkEditVisible = false">取消</el-button>
-        <el-button type="primary" @click="applyBulkEdit">应用</el-button>
+        <pl-button @click="bulkEditVisible = false">取消</pl-button>
+        <pl-button type="primary" @click="applyBulkEdit">应用</pl-button>
       </template>
     </el-dialog>
   </div>
@@ -275,3 +275,4 @@ export default {
   width: 100%;
 }
 </style>
+

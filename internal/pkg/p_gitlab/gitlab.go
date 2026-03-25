@@ -27,6 +27,17 @@ type Combine struct {
 	Status  string
 }
 
+type mergeUserOpSummary struct {
+	authorJoin                 bool
+	authorCommitToday          bool
+	otherCommitToday           bool
+	authorMergeLikeCommitToday bool
+}
+
+func (s mergeUserOpSummary) branchActiveToday() bool {
+	return s.authorCommitToday || s.otherCommitToday || s.authorMergeLikeCommitToday
+}
+
 func (h *TGitlab) AssignDayLogs(start, end string) ([]Combine, error) {
 	startDay, _ := gstool.TimeStringToUnix(start, "Y-m-d H:i:s")
 	endDay, _ := gstool.TimeStringToUnix(end, "Y-m-d H:i:s")
@@ -49,7 +60,7 @@ func (h *TGitlab) getLogs(startDay, endDay time.Time) ([]Combine, error) {
 
 	projectIDs := make([]string, 0, perPage*2)
 	projectNameByID := make(map[string]string)
-	for page := 1; page < 10; page++ {
+	for page := 1; page < 20; page++ {
 		projectParam := gsapi.GsGitLabParam{Page: page, PerPage: perPage}
 		projectList, resErr := h.GitLab.GetProjects(projectParam)
 		if resErr != nil {
@@ -71,11 +82,6 @@ func (h *TGitlab) getLogs(startDay, endDay time.Time) ([]Combine, error) {
 
 	sort.Strings(projectIDs)
 	for _, projectID := range projectIDs {
-		projectName := projectNameByID[projectID]
-		if !strings.Contains(projectName, "chatwiki") {
-			continue
-		}
-
 		masterCommitSet := make(map[string]struct{}, perPage*2)
 		err := h.collectMainBranchCommits(projectID, perPage, startTimestamp, masterCommitSet)
 		if err != nil {
@@ -117,23 +123,22 @@ func (h *TGitlab) checkMerges(projectID, author string, perPage int, startTimest
 			userCreated := strings.Contains(strings.ToLower(h.getMergeAuthor(merge)), author)
 			createdToday := userCreated && inRange(createdAtOk, createdAtUnix, startTimestamp, endTimestamp)
 			updatedToday := inRange(updatedAtOk, updatedAtUnix, startTimestamp, endTimestamp)
-			relevantByTime := createdToday ||
-				updatedToday ||
-				inRange(mergedAtOk, mergedAtUnix, startTimestamp, endTimestamp)
-			if !relevantByTime {
-				continue
-			}
+			mergedToday := inRange(mergedAtOk, mergedAtUnix, startTimestamp, endTimestamp)
+			relevantByTime := createdToday || updatedToday || mergedToday
 
-			authorJoin, authorCommit, otherCommitToday, err := h.checkMergeUserOp(projectID, sourceBranch, author, startTimestamp, endTimestamp, masterCommitSet)
+			opSummary, err := h.checkMergeUserOp(projectID, sourceBranch, author, startTimestamp, endTimestamp, masterCommitSet)
 			if err != nil {
 				return err
 			}
-			if !authorJoin && !userCreated {
+			if !relevantByTime && !opSummary.branchActiveToday() {
+				continue
+			}
+			if !opSummary.authorJoin && !userCreated {
 				continue
 			}
 
-			mergedToMainToday := inRange(mergedAtOk, mergedAtUnix, startTimestamp, endTimestamp) && h.isMainBranch(targetBranch)
-			status := h.getStatus(mergedToMainToday, authorCommit || createdToday || (userCreated && updatedToday), otherCommitToday)
+			mergedToMainToday := mergedToday && h.isMainBranch(targetBranch)
+			status := h.getStatus(mergedToMainToday, opSummary.authorCommitToday || createdToday || (userCreated && updatedToday), opSummary.otherCommitToday)
 			if status == "" {
 				continue
 			}
@@ -199,18 +204,16 @@ func (h *TGitlab) collectMainBranchCommits(projectID string, perPage int, startT
 	return nil
 }
 
-func (h *TGitlab) checkMergeUserOp(projectID, branchName, author string, startTimestamp, endTimestamp int64, masterCommitSet map[string]struct{}) (bool, bool, bool, error) {
-	authorJoin := false
-	authorCommit := false
-	otherCommitToday := false
+func (h *TGitlab) checkMergeUserOp(projectID, branchName, author string, startTimestamp, endTimestamp int64, masterCommitSet map[string]struct{}) (mergeUserOpSummary, error) {
+	summary := mergeUserOpSummary{}
 	if branchName == "" {
-		return false, false, false, nil
+		return summary, nil
 	}
 	for page := 1; page < 100; page++ {
 		gitLabParam := gsapi.GsGitLabParam{Sort: "desc", Page: page, PerPage: 50, RefName: branchName}
 		commitList, resErr := h.GitLab.GetProjectCommits(projectID, gitLabParam)
 		if resErr != nil {
-			return false, false, false, resErr
+			return summary, resErr
 		}
 		boolBroken := false
 		for _, commit := range commitList {
@@ -226,34 +229,66 @@ func (h *TGitlab) checkMergeUserOp(projectID, branchName, author string, startTi
 
 			beijingTime, beijingTimeErr := h.gBeijingTime(createdAt)
 			if beijingTimeErr != nil {
-				return false, false, false, beijingTimeErr
+				return summary, beijingTimeErr
 			}
-			if beijingTime.Unix() < startTimestamp {
-				boolBroken = true
-				break
+			isAuthorCommit := strings.Contains(authorName, author) || strings.Contains(committerName, author)
+			isMergeLikeCommit := h.isMergeLikeCommit(message)
+			commitUnix := beijingTime.Unix()
+
+			if commitUnix > endTimestamp {
+				if isAuthorCommit {
+					summary.authorJoin = true
+				}
+				continue
 			}
-			if beijingTime.Unix() > endTimestamp {
+			if commitUnix < startTimestamp {
+				if isAuthorCommit {
+					summary.authorJoin = true
+				}
+				if summary.authorJoin {
+					boolBroken = true
+					break
+				}
 				continue
 			}
 
-			if strings.Contains(authorName, author) || strings.Contains(committerName, author) {
-				authorJoin = true
-				if !h.isMergeBranch(message) {
-					authorCommit = true
+			if isAuthorCommit {
+				summary.authorJoin = true
+				if isMergeLikeCommit {
+					summary.authorMergeLikeCommitToday = true
+				} else {
+					summary.authorCommitToday = true
 				}
-			} else if !h.isMergeBranch(message) {
-				otherCommitToday = true
+			} else if !isMergeLikeCommit {
+				summary.otherCommitToday = true
 			}
 		}
 		if boolBroken || len(commitList) < 50 {
 			break
 		}
 	}
-	return authorJoin, authorCommit, otherCommitToday, nil
+	return summary, nil
 }
 
-func (h *TGitlab) isMergeBranch(message string) bool {
-	return strings.Contains(message, "Merge branch")
+func (h *TGitlab) isMergeLikeCommit(message string) bool {
+	message = strings.ToLower(strings.TrimSpace(message))
+	if message == "" {
+		return false
+	}
+
+	mergeLikeKeywords := []string{
+		"merge branch",
+		"merge remote-tracking branch",
+		"merge pull request",
+		"merged in ",
+		"see merge request",
+	}
+	for _, keyword := range mergeLikeKeywords {
+		if strings.Contains(message, keyword) {
+			return true
+		}
+	}
+	return strings.HasPrefix(message, "merge ")
 }
 
 func (h *TGitlab) gBeijingTime(utcTimeStr string) (time.Time, error) {

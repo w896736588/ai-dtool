@@ -49,7 +49,7 @@ go get -u gitee.com/Sxiaobai/gs/v2@latest
 # task安装
 go install github.com/go-task/task/v3/cmd/task@latest
 # 安装 Wails CLI（用于桌面端调试/构建）：
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
+go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 ```
 
 ## 启动命令（task）
@@ -132,7 +132,7 @@ task run-build
 脚本会自动执行：
 1. 构建 `web/dist`。
 2. 构建 `dtool.exe`（Web 模式）和 `dtool_wails.exe`（桌面模式）。
-3. 复制运行所需目录（`config/dtool`、`web/dist`、`internal/pkg/p_js`、数据库升级 SQL）。
+3. 复制运行所需目录（`config/dtool`、`web/dist`、`internal/pkg/p_js`、主库与记忆库数据库升级 SQL）。
 4. 输出 `build/dtool_release_时间戳.zip`。
 
 ## 相关约定

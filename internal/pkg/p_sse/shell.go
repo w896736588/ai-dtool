@@ -16,6 +16,9 @@ type SseShell struct {
 }
 
 func (h *SseShell) Send(msg any, typs ...string) {
+	if h == nil || h.Sse == nil {
+		return
+	}
 	if h.StopCall != nil && h.StopCall(h.StopKey) {
 		h.Sse.CleanMsg()
 		return
@@ -36,5 +39,8 @@ func (h *SseShell) Send(msg any, typs ...string) {
 }
 
 func (h *SseShell) CleanMsg() {
+	if h == nil || h.Sse == nil {
+		return
+	}
 	h.Sse.CleanMsg()
 }

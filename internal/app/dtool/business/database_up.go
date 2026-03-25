@@ -13,12 +13,27 @@ import (
 )
 
 type TDataBaseUp struct {
+	db             *common.CSqlite
+	databaseUpPath string
+	tableName      string
 }
 
 var DataBaseUp *TDataBaseUp
 
 func NewTDataBaseUp() *TDataBaseUp {
-	return &TDataBaseUp{}
+	return newDatabaseUp(common.DbMain, component.EnvClient.DatabaseUpPath, `tbl_database_up`)
+}
+
+func NewMemoryDataBaseUp(db *common.CSqlite, databaseUpPath string) *TDataBaseUp {
+	return newDatabaseUp(db, databaseUpPath, `tbl_memory_database_up`)
+}
+
+func newDatabaseUp(db *common.CSqlite, databaseUpPath, tableName string) *TDataBaseUp {
+	return &TDataBaseUp{
+		db:             db,
+		databaseUpPath: databaseUpPath,
+		tableName:      tableName,
+	}
 }
 
 func (h *TDataBaseUp) Run() {
@@ -27,21 +42,20 @@ func (h *TDataBaseUp) Run() {
 }
 
 func (h *TDataBaseUp) CheckDataBaseUp() {
-	gstool.FmtPrintlnLogTime(`开始检查数据库升级表`)
-	name, err := common.DbMain.Client.QuickQuery(`sqlite_master`, `name`, map[string]any{
-		`name`: `tbl_database_up`,
+	name, err := h.db.Client.QuickQuery(`sqlite_master`, `name`, map[string]any{
+		`name`: h.tableName,
 	}).Value(`name`)
 	if err != nil {
 		panic(fmt.Sprintf(`数据库升级表查询失败 %s`, err.Error()))
 		return
 	}
 	if cast.ToString(name) == `` {
-		_, err := common.DbMain.Client.ExecBySql(`
-			CREATE TABLE "tbl_database_up" (
+		_, err := h.db.Client.ExecBySql(fmt.Sprintf(`
+			CREATE TABLE "%s" (
 			  "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 			  "filename" TEXT NOT NULL DEFAULT ''
 			);
-		`).Exec()
+		`, h.tableName)).Exec()
 		if err != nil {
 			panic(fmt.Sprintf(`数据库升级表创建失败 %s`, err.Error()))
 			return
@@ -50,7 +64,7 @@ func (h *TDataBaseUp) CheckDataBaseUp() {
 }
 
 func (h *TDataBaseUp) Up() {
-	allAlreadyUpFiles, err := common.DbMain.Client.QuickQuery(`tbl_database_up`, `filename`, nil).All()
+	allAlreadyUpFiles, err := h.db.Client.QuickQuery(h.tableName, `filename`, nil).All()
 	if err != nil {
 		gstool.FmtPrintlnLogTime(`数据库升级表查询失败 %s`, err.Error())
 		return
@@ -59,23 +73,20 @@ func (h *TDataBaseUp) Up() {
 	for _, alreadyUpFile := range allAlreadyUpFiles {
 		upFileNames = append(upFileNames, cast.ToString(alreadyUpFile[`filename`]))
 	}
-	gstool.FmtPrintlnLogTime(`当前已执行sql文件 %d`, len(allAlreadyUpFiles))
 	files := make([]string, 0)
 	//循环处理
 	checkDirs := make([]string, 0)
 	for startYear := 2025; startYear <= cast.ToInt(gstool.TimeNowUnixToString(`Y`)); startYear++ {
 		for month := 1; month <= 12; month++ {
 			month := fmt.Sprintf(`%02d`, month)
-			dir := filepath.Join(component.EnvClient.DatabaseUpPath, cast.ToString(startYear), month)
+			dir := filepath.Join(h.databaseUpPath, cast.ToString(startYear), month)
 			exist, _ := gstool.DirPathExists(dir)
 			if exist {
 				checkDirs = append(checkDirs, dir)
 			}
 		}
 	}
-	gstool.FmtPrintlnLogTime(`检查的文件夹 %s`, gstool.JsonFormat(checkDirs))
 	for _, dir := range checkDirs {
-		gstool.FmtPrintlnLogTime(`开始扫描升级目录 %s`, dir)
 		walkErr := gstool.DirWalk(dir, func(path string, info os.FileInfo, err error) {
 			if info.IsDir() {
 				return
@@ -98,12 +109,12 @@ func (h *TDataBaseUp) Up() {
 			gstool.FmtPrintlnLogTime(`读取文件内容失败%s %s`, file, err.Error())
 			return
 		}
-		_, err = common.DbMain.Client.ExecBySql(sql).Exec()
+		_, err = h.db.Client.ExecBySql(sql).Exec()
 		if err != nil {
 			gstool.FmtPrintlnLogTime(`数据库升级文件执行失败 %s %s`, file, err.Error())
 			continue
 		}
-		_, err = common.DbMain.Client.QuickCreate(`tbl_database_up`, map[string]any{
+		_, err = h.db.Client.QuickCreate(h.tableName, map[string]any{
 			`filename`: gstool.FileGetNameByPath(file),
 		}).Exec()
 		if err != nil {

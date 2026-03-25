@@ -321,6 +321,37 @@ func (h *Command) DockerComposeConfig(dockerCmd, envFile string) *Command {
 	return h
 }
 
+func (h *Command) DockerImageList() *Command {
+	h.SetCommand(fmt.Sprintf(`%sdocker image ls --format "{{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.CreatedSince}}\t{{.Size}}"`, h.sudo))
+	return h
+}
+
+func (h *Command) DockerImageContainers(imageRef string) *Command {
+	h.SetCommand(fmt.Sprintf(`%sdocker ps -a --filter "ancestor=%s" --format "{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}"`, h.sudo, imageRef))
+	return h
+}
+
+func (h *Command) DockerImageRemove(imageRef string) *Command {
+	h.SetCommand(fmt.Sprintf(`%sdocker image rm %s`, h.sudo, imageRef))
+	return h
+}
+
+func (h *Command) DockerContainerStop(containerID string) *Command {
+	h.SetCommand(fmt.Sprintf(`%sdocker stop %s`, h.sudo, containerID))
+	return h
+}
+
+func (h *Command) DockerContainerRemove(containerID string) *Command {
+	h.SetCommand(fmt.Sprintf(`%sdocker rm %s`, h.sudo, containerID))
+	return h
+}
+
+// DockerContainerLogTruncate 清空 Docker json 日志文件。
+func (h *Command) DockerContainerLogTruncate() *Command {
+	h.SetCommand(fmt.Sprintf(`%sbash -lc 'shopt -s nullglob; logs=(/var/lib/docker/containers/*/*-json.log); if [ ${#logs[@]} -eq 0 ]; then exit 0; fi; truncate -s 0 /var/lib/docker/containers/*/*-json.log'`, h.sudo))
+	return h
+}
+
 func (h *Command) GitSetSafe(codeDir string) *Command {
 	h.SetCommand(fmt.Sprintf(`%sgit config --global --add safe.directory %s `, h.sudo, codeDir))
 	return h

@@ -7,9 +7,6 @@
 /playwright.lock
 build/
 /playwright.RunLock
-/internal/pkg/p_webkit/
-/internal/pkg/p_webkit/.links/
-/internal/pkg/p_node/
 /config/*/config.ini
 /upload
 /test/*
@@ -17,3 +14,9 @@ web/dist/
 web/node_modules/
 .tmp-taskfile.yml
 .worktrees/
+.gitnexus
+./AGENTS.md
+CLAUDE.md
+/.claude
+AGENTS.md
+web/test

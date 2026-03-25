@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="api-list">
     <div class="list-header">
       <el-input
@@ -8,14 +8,14 @@
           clearable
       />
       <div class="header-actions">
-        <el-button type="primary" @click="handleCreateApi">
+        <pl-button type="primary" @click="handleCreateApi">
           <el-icon><Plus /></el-icon>
           新建接口
-        </el-button>
-        <el-button @click="handleBatchRun" :disabled="selectedApis.length === 0">
+        </pl-button>
+        <pl-button @click="handleBatchRun" :disabled="selectedApis.length === 0">
           <el-icon><VideoPlay /></el-icon>
           批量运行
-        </el-button>
+        </pl-button>
       </div>
     </div>
 
@@ -66,12 +66,12 @@
 
       <el-table-column label="操作" width="200" align="center" fixed="right">
         <template #default="{ row }">
-          <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
-          <el-button type="primary" link @click="handleExecute(row)">运行</el-button>
+          <pl-button type="primary" link @click="handleEdit(row)">编辑</pl-button>
+          <pl-button type="primary" link @click="handleExecute(row)">运行</pl-button>
           <el-dropdown @command="(command) => handleMore(command, row)">
-            <el-button type="primary" link>
+            <pl-button type="primary" link>
               更多<el-icon class="el-icon--right"><arrow-down /></el-icon>
-            </el-button>
+            </pl-button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="copy">复制接口</el-dropdown-item>
@@ -370,3 +370,4 @@ export default {
   color: #4e594a;
 }
 </style>
+

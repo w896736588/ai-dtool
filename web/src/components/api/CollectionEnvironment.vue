@@ -1,9 +1,9 @@
-<template>
+﻿<template>
   <div class="collection-environment">
     <div class="environment-header">
-      <el-button type="primary" @click="handleAddEnvironment">新增环境</el-button>
-      <el-button @click="handleImport">导入环境</el-button>
-      <el-button @click="handleExport">导出环境</el-button>
+      <pl-button type="primary" @click="handleAddEnvironment">新增环境</pl-button>
+      <pl-button @click="handleImport">导入环境</pl-button>
+      <pl-button @click="handleExport">导出环境</pl-button>
     </div>
 
     <el-table
@@ -47,13 +47,13 @@
       <el-table-column label="操作" width="200" align="center">
         <template #default="{ row, $index }">
           <div v-if="row.editing">
-            <el-button type="primary" link @click="handleSaveEnv(row)">保存</el-button>
-            <el-button link @click="handleCancelEdit(row, $index)">取消</el-button>
+            <pl-button type="primary" link @click="handleSaveEnv(row)">保存</pl-button>
+            <pl-button link @click="handleCancelEdit(row, $index)">取消</pl-button>
           </div>
           <div v-else>
-            <el-button type="primary" link @click="handleEditEnv(row)">编辑</el-button>
-            <el-button type="primary" link @click="handleManageVariables(row)">变量管理</el-button>
-            <el-button type="danger" link @click="handleDeleteEnv(row)">删除</el-button>
+            <pl-button type="primary" link @click="handleEditEnv(row)">编辑</pl-button>
+            <pl-button type="primary" link @click="handleManageVariables(row)">变量管理</pl-button>
+            <pl-button type="danger" link @click="handleDeleteEnv(row)">删除</pl-button>
           </div>
         </template>
       </el-table-column>
@@ -70,8 +70,8 @@
           @update="handleVariablesUpdate"
       />
       <template #footer>
-        <el-button @click="variableDialogVisible = false">取消</el-button>
-<!--        <el-button type="primary" @click="handleSaveVariables">保存变量</el-button>-->
+        <pl-button @click="variableDialogVisible = false">取消</pl-button>
+<!--        <pl-button type="primary" @click="handleSaveVariables">保存变量</pl-button>-->
       </template>
     </el-dialog>
   </div>
@@ -277,6 +277,7 @@ export default {
   overflow: hidden;
 }
 </style>
+
 
 
 

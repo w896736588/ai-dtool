@@ -2,20 +2,20 @@
   <div class="set-config-page">
     <div class="set-config-header">
       <h3 class="set-config-title">AI 服务商与模型配置</h3>
-      <p class="set-config-desc">模型属于服务商子项，当前请求格式仅支持 openai</p>
+      <p class="set-config-desc">服务商仅保存基础域名，模型保存具体 URI，并区分 LLM 与嵌入模型</p>
     </div>
 
     <el-tabs v-model="state.activeTab" class="set-config-inner-tabs" @tab-change="HandleInnerTabChange">
       <el-tab-pane label="服务商配置" name="provider">
         <div class="set-config-actions" style="margin-bottom: 10px;">
-          <el-button type="primary" @click="ShowAddProvider">新增服务商</el-button>
+          <pl-button type="primary" @click="ShowAddProvider">新增服务商</pl-button>
         </div>
         <div class="set-config-table-card">
           <el-table :data="state.providerList" class="set-config-table" row-key="id">
             <el-table-column prop="id" label="#id" width="70"/>
             <el-table-column prop="name" label="服务商名称" min-width="160"/>
             <el-table-column prop="request_format" label="请求格式" width="140"/>
-            <el-table-column prop="base_url" label="Base URL" min-width="220"/>
+            <el-table-column prop="base_url" label="基础域名" min-width="220"/>
             <el-table-column prop="api_key" label="API Key" min-width="160">
               <template #default="scope">
                 <span>{{ MaskKey(scope.row.api_key) }}</span>
@@ -24,10 +24,10 @@
             <el-table-column label="操作" width="220">
               <template #default="scope">
                 <div class="set-op-group">
-                  <el-button type="primary" link @click="ShowEditProvider(scope.row, false)">编辑</el-button>
-                  <el-button type="primary" link @click="ShowEditProvider(scope.row, true)">复制新增</el-button>
-                  <el-button type="primary" link @click="SwitchToModelTab(scope.row)">管理模型</el-button>
-                  <el-button link type="danger" @click="DeleteProvider(scope.row)">删除</el-button>
+                  <pl-button type="primary" link @click="ShowEditProvider(scope.row, false)">编辑</pl-button>
+                  <pl-button type="primary" link @click="ShowEditProvider(scope.row, true)">复制新增</pl-button>
+                  <pl-button type="primary" link @click="SwitchToModelTab(scope.row)">管理模型</pl-button>
+                  <pl-button link type="danger" @click="DeleteProvider(scope.row)">删除</pl-button>
                 </div>
               </template>
             </el-table-column>
@@ -38,20 +38,16 @@
       <el-tab-pane label="模型配置" name="model">
         <div class="set-config-actions model-actions">
           <el-select
-              v-model="state.currentProviderId"
-              style="width: 280px;"
-              placeholder="请选择服务商"
-              @change="LoadModelList"
+            v-model="state.currentProviderId"
+            style="width: 280px;"
+            placeholder="请选择服务商"
+            @change="LoadModelList"
           >
             <template v-for="(provider, idx) in state.providerList" :key="idx">
-              <el-option
-                  :label="provider.name + ' (' + provider.request_format + ')'
-"
-                  :value="provider.id"
-              />
+              <el-option :label="provider.name + ' (' + provider.request_format + ')'" :value="provider.id"/>
             </template>
           </el-select>
-          <el-button type="primary" :disabled="!state.currentProviderId" @click="ShowAddModel">新增模型</el-button>
+          <pl-button type="primary" :disabled="!state.currentProviderId" @click="ShowAddModel">新增模型</pl-button>
         </div>
 
         <div class="set-config-table-card">
@@ -59,13 +55,32 @@
             <el-table-column prop="id" label="#id" width="70"/>
             <el-table-column prop="provider_name" label="所属服务商" min-width="150"/>
             <el-table-column prop="name" label="展示名" min-width="170"/>
-            <el-table-column prop="model" label="模型标识" min-width="220"/>
-            <el-table-column label="操作" width="200">
+            <el-table-column prop="model_type" label="模型类型" width="120">
+              <template #default="scope">
+                <el-tag size="small" effect="light">{{ ModelTypeLabel(scope.row.model_type) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="model" label="模型标识" min-width="180"/>
+            <el-table-column prop="uri" label="URI" min-width="190"/>
+            <el-table-column label="完整地址" min-width="260">
+              <template #default="scope">
+                <span>{{ BuildRequestUrl(scope.row.base_url, scope.row.uri) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="250">
               <template #default="scope">
                 <div class="set-op-group">
-                  <el-button type="primary" link @click="ShowEditModel(scope.row, false)">编辑</el-button>
-                  <el-button type="primary" link @click="ShowEditModel(scope.row, true)">复制新增</el-button>
-                  <el-button link type="danger" @click="DeleteModel(scope.row)">删除</el-button>
+                  <pl-button type="primary" link @click="ShowEditModel(scope.row, false)">编辑</pl-button>
+                  <pl-button type="primary" link @click="ShowEditModel(scope.row, true)">复制新增</pl-button>
+                  <pl-button
+                    type="primary"
+                    link
+                    :loading="Number(state.testingModelId) === Number(scope.row.id)"
+                    @click="TestModel(scope.row)"
+                  >
+                    测试
+                  </pl-button>
+                  <pl-button link type="danger" @click="DeleteModel(scope.row)">删除</pl-button>
                 </div>
               </template>
             </el-table-column>
@@ -84,8 +99,12 @@
             <el-option label="openai" value="openai"/>
           </el-select>
         </el-form-item>
-        <el-form-item label="Base URL">
-          <el-input v-model="state.editProvider.base_url" autocomplete="off" placeholder="例如: https://api.openai.com/v1/chat/completions"/>
+        <el-form-item label="基础域名">
+          <el-input
+            v-model="state.editProvider.base_url"
+            autocomplete="off"
+            placeholder="例如: https://api.openai.com"
+          />
         </el-form-item>
         <el-form-item label="API Key">
           <el-input v-model="state.editProvider.api_key" type="password" show-password autocomplete="off"/>
@@ -93,8 +112,8 @@
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="state.dialogProvider = false">取消</el-button>
-          <el-button type="primary" @click="SaveProvider">保存</el-button>
+          <pl-button @click="state.dialogProvider = false">取消</pl-button>
+          <pl-button type="primary" @click="SaveProvider">保存</pl-button>
         </div>
       </template>
     </el-dialog>
@@ -111,14 +130,26 @@
         <el-form-item label="展示名称">
           <el-input v-model="state.editModel.name" autocomplete="off"/>
         </el-form-item>
+        <el-form-item label="模型类型">
+          <el-select v-model="state.editModel.model_type" style="width: 100%;">
+            <el-option label="LLM" value="llm"/>
+            <el-option label="嵌入模型" value="embedding"/>
+          </el-select>
+        </el-form-item>
         <el-form-item label="模型标识">
           <el-input v-model="state.editModel.model" autocomplete="off" placeholder="例如: gpt-4o-mini"/>
+        </el-form-item>
+        <el-form-item label="URI">
+          <el-input v-model="state.editModel.uri" autocomplete="off" placeholder="例如: /v1/chat/completions"/>
+        </el-form-item>
+        <el-form-item label="完整地址预览">
+          <div class="request-preview">{{ BuildRequestUrl(CurrentEditProviderBaseURL(), state.editModel.uri) || '-' }}</div>
         </el-form-item>
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="state.dialogModel = false">取消</el-button>
-          <el-button type="primary" @click="SaveModel">保存</el-button>
+          <pl-button @click="state.dialogModel = false">取消</pl-button>
+          <pl-button type="primary" @click="SaveModel">保存</pl-button>
         </div>
       </template>
     </el-dialog>
@@ -135,7 +166,6 @@ export default defineComponent({
     const proxy = getCurrentInstance().proxy
     const instance = getCurrentInstance().appContext.config.globalProperties
 
-    // state 页面状态容器
     const state = reactive({
       activeTab: 'provider',
       providerList: [],
@@ -143,11 +173,11 @@ export default defineComponent({
       modelList: [],
       dialogProvider: false,
       dialogModel: false,
+      testingModelId: 0,
       editProvider: {},
       editModel: {},
     })
 
-    // MaskKey 隐藏敏感 Key 文本
     const MaskKey = function (key){
       const str = String(key || '')
       if(str.length <= 6){
@@ -156,7 +186,30 @@ export default defineComponent({
       return str.slice(0, 3) + '******' + str.slice(-3)
     }
 
-    // EnsureCurrentProvider 确保模型页有可用服务商
+    const NormalizeUri = function (uri){
+      const str = String(uri || '').trim()
+      if(str === ''){
+        return ''
+      }
+      return str.startsWith('/') ? str : '/' + str
+    }
+
+    const BuildRequestUrl = function (baseUrl, uri){
+      const cleanBase = String(baseUrl || '').trim().replace(/\/+$/, '')
+      const cleanUri = NormalizeUri(uri)
+      if(cleanBase === ''){
+        return cleanUri
+      }
+      if(cleanUri === ''){
+        return cleanBase
+      }
+      return cleanBase + cleanUri
+    }
+
+    const ModelTypeLabel = function (modelType){
+      return String(modelType || 'llm') === 'embedding' ? '嵌入模型' : 'LLM'
+    }
+
     const EnsureCurrentProvider = function (){
       if(state.providerList.length === 0){
         state.currentProviderId = 0
@@ -170,7 +223,21 @@ export default defineComponent({
       }
     }
 
-    // LoadProviderList 拉取服务商配置
+    const CurrentEditProviderBaseURL = function (){
+      const provider = (state.providerList || []).find(function (item){
+        return Number(item.id) === Number(state.editModel.provider_id)
+      })
+      return provider ? provider.base_url : ''
+    }
+
+    const NormalizeModelRow = function (item){
+      return {
+        ...item,
+        model_type: item.model_type || 'llm',
+        uri: NormalizeUri(item.uri || ''),
+      }
+    }
+
     const LoadProviderList = function (){
       aiSet.AiProviderList(function (response){
         if(response.ErrCode === 0){
@@ -190,7 +257,6 @@ export default defineComponent({
       })
     }
 
-    // LoadModelList 拉取当前服务商模型列表
     const LoadModelList = function (){
       if(!state.currentProviderId){
         state.modelList = []
@@ -198,28 +264,25 @@ export default defineComponent({
       }
       aiSet.AiModelList({provider_id: state.currentProviderId}, function (response){
         if(response.ErrCode === 0){
-          state.modelList = response.Data || []
+          state.modelList = (response.Data || []).map(NormalizeModelRow)
         }else{
           instance.$helperNotify.error(response.ErrMsg)
         }
       })
     }
 
-    // SwitchToModelTab 切换到模型配置页
     const SwitchToModelTab = function (provider){
       state.currentProviderId = provider.id
       state.activeTab = 'model'
       LoadModelList()
     }
 
-    // HandleInnerTabChange 处理内层标签切换，进入模型页时自动加载列表
     const HandleInnerTabChange = function (tabName){
       if(String(tabName) === 'model'){
         LoadModelList()
       }
     }
 
-    // ShowAddProvider 打开新增服务商弹窗
     const ShowAddProvider = function (){
       state.editProvider = {
         request_format: 'openai',
@@ -227,7 +290,6 @@ export default defineComponent({
       state.dialogProvider = true
     }
 
-    // ShowEditProvider 打开编辑服务商弹窗
     const ShowEditProvider = function (row, isCopy){
       state.editProvider = {
         ...row,
@@ -239,7 +301,6 @@ export default defineComponent({
       state.dialogProvider = true
     }
 
-    // SaveProvider 保存服务商配置
     const SaveProvider = function (){
       const submitData = {
         ...state.editProvider,
@@ -255,7 +316,6 @@ export default defineComponent({
       })
     }
 
-    // DeleteProvider 删除服务商配置
     const DeleteProvider = function (row){
       common.ConfirmProxyDelete(proxy, function (){
         aiSet.AiProviderDelete(row, function (response){
@@ -269,7 +329,6 @@ export default defineComponent({
       })
     }
 
-    // ShowAddModel 打开新增模型弹窗
     const ShowAddModel = function (){
       if(!state.currentProviderId){
         instance.$helperNotify.error('请先选择服务商')
@@ -277,24 +336,29 @@ export default defineComponent({
       }
       state.editModel = {
         provider_id: state.currentProviderId,
+        model_type: 'llm',
+        uri: '/v1/chat/completions',
       }
       state.dialogModel = true
     }
 
-    // ShowEditModel 打开编辑模型弹窗
     const ShowEditModel = function (row, isCopy){
-      state.editModel = {
+      state.editModel = NormalizeModelRow({
         ...row,
-      }
+      })
       if(isCopy){
         state.editModel.id = 0
       }
       state.dialogModel = true
     }
 
-    // SaveModel 保存模型配置
     const SaveModel = function (){
-      aiSet.AiModelAdd(state.editModel, function (response){
+      const submitData = {
+        ...state.editModel,
+        model_type: state.editModel.model_type || 'llm',
+        uri: NormalizeUri(state.editModel.uri),
+      }
+      aiSet.AiModelAdd(submitData, function (response){
         if(response.ErrCode === 0){
           state.dialogModel = false
           LoadModelList()
@@ -304,7 +368,6 @@ export default defineComponent({
       })
     }
 
-    // DeleteModel 删除模型配置
     const DeleteModel = function (row){
       common.ConfirmProxyDelete(proxy, function (){
         aiSet.AiModelDelete(row, function (response){
@@ -317,12 +380,26 @@ export default defineComponent({
       })
     }
 
-    // 初始化页面数据
+    const TestModel = function (row){
+      state.testingModelId = row.id
+      aiSet.AiModelTest({id: row.id}, function (response){
+        state.testingModelId = 0
+        if(response.ErrCode === 0){
+          instance.$helperNotify.success((row.name || row.model || '模型') + ' 连通成功')
+        }else{
+          instance.$helperNotify.error(response.ErrMsg || '连通失败')
+        }
+      })
+    }
+
     LoadProviderList()
 
     return {
       state,
       MaskKey,
+      BuildRequestUrl,
+      ModelTypeLabel,
+      CurrentEditProviderBaseURL,
       LoadProviderList,
       LoadModelList,
       SwitchToModelTab,
@@ -335,6 +412,7 @@ export default defineComponent({
       ShowEditModel,
       SaveModel,
       DeleteModel,
+      TestModel,
     }
   },
 })
@@ -348,11 +426,22 @@ export default defineComponent({
   gap: 10px;
 }
 
+.request-preview {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #f8faf6;
+  color: #53624d;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
 .set-config-inner-tabs :deep(.el-tabs__header) {
   margin-bottom: 10px;
 }
 
-/* 统一 AI 配置页按钮风格，避免显示 Element 默认蓝色 */
 .set-config-page :deep(.el-button--primary),
 .set-config-page :deep(.el-button--primary.is-plain) {
   border-color: #d8ded2 !important;
@@ -375,3 +464,4 @@ export default defineComponent({
   color: #3f6f3f !important;
 }
 </style>
+

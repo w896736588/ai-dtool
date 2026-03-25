@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div style="text-align: center;">
     <div>
       <el-radio
@@ -35,7 +35,7 @@
         v-model="modelSql"
         rows="10"
     ></el-input>
-    <el-button style="margin-top: 5px;" type="primary" @click="exec()">生成Php的Mode代码</el-button>
+    <pl-button style="margin-top: 5px;" type="primary" @click="exec()">生成Php的Mode代码</pl-button>
     <el-input
         style="margin-top: 5px"
         id="modelTextarea"
@@ -370,3 +370,4 @@ export default {
 </script>
 
 <style scoped></style>
+

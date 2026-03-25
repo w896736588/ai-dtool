@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="shell-page-container">
     <!-- 顶部操作区域 -->
     <div class="shell-header-card">
@@ -16,15 +16,15 @@
           <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="String(g.id)" />
         </el-select>
         <div class="action-buttons">
-          <el-button type="primary" @click="createTab">
+          <pl-button type="primary" @click="createTab">
             <el-icon><Plus /></el-icon>创建
-          </el-button>
-          <el-button @click="groupDialog = true">
+          </pl-button>
+          <pl-button @click="groupDialog = true">
             <el-icon><FolderOpened /></el-icon>分组管理
-          </el-button>
-          <el-button type="success">
+          </pl-button>
+          <pl-button type="success">
             <el-icon><DataLine /></el-icon>运行总览
-          </el-button>
+          </pl-button>
         </div>
         <!-- 本地搜索框 -->
         <el-input
@@ -49,18 +49,18 @@
             <span class="tab-name">{{ tab.name }}</span>
           </div>
           <div class="card-actions">
-            <el-button size="small" @click="showEditTabConfig(tab.id)">
+            <pl-button size="small" @click="showEditTabConfig(tab.id)">
               <el-icon><Edit /></el-icon>编辑
-            </el-button>
-            <el-button size="small" @click="showCopyCreateTabConfig(tab.id)">
+            </pl-button>
+            <pl-button size="small" @click="showCopyCreateTabConfig(tab.id)">
               <el-icon><CopyDocument /></el-icon>复制
-            </el-button>
-            <el-button size="small" type="danger" @click="removeTab(tab.id)">
+            </pl-button>
+            <pl-button size="small" type="danger" @click="removeTab(tab.id)">
               <el-icon><Delete /></el-icon>删除
-            </el-button>
-            <el-button size="small" type="primary" @click="openNewTab(tab)">
+            </pl-button>
+            <pl-button size="small" type="primary" @click="openNewTab(tab)">
               <el-icon><Position /></el-icon>新窗口
-            </el-button>
+            </pl-button>
           </div>
         </div>
         <div class="card-command">
@@ -95,10 +95,10 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="shellOutDialog = false">取消</el-button>
-        <el-button type="primary" @click="executeCommand" style="min-width: 120px;">
+        <pl-button @click="shellOutDialog = false">取消</pl-button>
+        <pl-button type="primary" @click="executeCommand" style="min-width: 120px;">
           <el-icon><Check /></el-icon>{{ editTabConfigData.id ? '保存更改' : '创建' }}
-        </el-button>
+        </pl-button>
       </template>
     </el-dialog>
 
@@ -683,3 +683,4 @@ export default {
   }
 }
 </style>
+

@@ -7,6 +7,7 @@ import (
 	"dev_tool/internal/pkg/p_shell"
 	"dev_tool/internal/pkg/p_sse"
 	"errors"
+	"fmt"
 	"path"
 	"regexp"
 	"strings"
@@ -18,6 +19,22 @@ import (
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+)
+
+const (
+	// dockerImageFieldCount 镜像列表输出字段数量。
+	dockerImageFieldCount = 5
+	// dockerContainerFieldCount 容器列表输出字段数量。
+	dockerContainerFieldCount = 5
+	// dockerActionTimeoutSeconds Docker 相关操作统一超时时间，避免前端长时间无响应。
+	dockerActionTimeoutSeconds = 40
+	// byteSizeUnit 1024 进制字节单位换算基数。
+	byteSizeUnit = 1024
+)
+
+var (
+	// byteSizeUnits 字节格式化展示单位。
+	byteSizeUnits = []string{"B", "KB", "MB", "GB", "TB"}
 )
 
 func DockerComposeList(c *gin.Context) {
@@ -64,7 +81,7 @@ func DockerComposeServices(c *gin.Context) {
 	command1.Sudo()
 	command1.Cd(path.Dir(composeYmlPath))
 	command1.DockerComposeServices(cast.ToString(one[`docker_cmd`]), envFile)
-	result1, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), 40*time.Second)
+	result1, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
 	services := parseDockerComposeServiceNames(result1)
 	list := make([]map[string]any, 0)
 	for _, v := range services {
@@ -85,7 +102,7 @@ func DockerComposeConfigShow(c *gin.Context) {
 		return
 	}
 	catCommand := p_shell.NewCommand().Sudo().Cat(cast.ToString(data[`config_path`]))
-	ret, _ := sshClient.RunCommandWait(catCommand.GetCommand().ToStr(), 40*time.Second)
+	ret, _ := sshClient.RunCommandWait(catCommand.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
 	retMsgList := make([]string, 0)
 	retMsgList = append(retMsgList, ret)
 	gsgin.GinResponseSuccess(c, ``, strings.Join(retMsgList, gsdefine.Enter))
@@ -116,7 +133,7 @@ func DockerComposeRestart(c *gin.Context) {
 	command.Sudo()
 	command.Cd(path.Dir(composeYmlPath))
 	command.DockerComposeRestart(cast.ToString(one[`docker_cmd`]), envFile, []string{service})
-	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 }
 
@@ -144,7 +161,7 @@ func DockerComposeStatus(c *gin.Context) {
 	command.Sudo()
 	command.Cd(path.Dir(composeYmlPath))
 	command.DockerComposeStatus(cast.ToString(one[`docker_cmd`]), envFile)
-	status, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	status, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
 	headers := []string{`服务名`, `CPU 使用率`, `内存用量 / 内存上限`, `内存使用率`, `网络收发流量`, `磁盘块设备读写量`}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`status`:  ParseStats(status),
@@ -243,7 +260,7 @@ func DockerComposeStop(c *gin.Context) {
 	} else {
 		command.DockerComposeStop(cast.ToString(one[`docker_cmd`]), envFile)
 	}
-	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 }
 
@@ -272,8 +289,184 @@ func DockerComposeStart(c *gin.Context) {
 	command.Sudo()
 	command.Cd(path.Dir(composeYmlPath))
 	command.DockerComposeUpd(cast.ToString(one[`docker_cmd`]), envFile, service)
-	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+}
+
+// DockerContainerLogTruncate 清理当前环境全部 Docker 容器日志。
+func DockerContainerLogTruncate(c *gin.Context) {
+	_, sshClient, err := getDockerComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.DockerContainerLogTruncate()
+	result, runErr := sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	if runErr != nil {
+		gsgin.GinResponseError(c, runErr.Error(), map[string]any{
+			`raw`: result,
+		})
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+}
+
+func DockerImageList(c *gin.Context) {
+	_, sshClient, err := getDockerComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.DockerImageList()
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: parseDockerImageRows(result),
+	})
+}
+
+func DockerImageContainers(c *gin.Context) {
+	data, sshClient, err := getDockerComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	imageRef := cast.ToString(data[`image_ref`])
+	if imageRef == `` {
+		gsgin.GinResponseError(c, `image_ref is empty`, nil)
+		return
+	}
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.DockerImageContainers(imageRef)
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: parseDockerContainerRows(result),
+	})
+}
+
+func DockerImageRemove(c *gin.Context) {
+	data, sshClient, err := getDockerComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	imageRef := cast.ToString(data[`image_ref`])
+	if imageRef == `` {
+		gsgin.GinResponseError(c, `image_ref is empty`, nil)
+		return
+	}
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.DockerImageRemove(imageRef)
+	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+}
+
+func DockerContainerStop(c *gin.Context) {
+	data, sshClient, err := getDockerComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	containerId := cast.ToString(data[`container_id`])
+	if containerId == `` {
+		gsgin.GinResponseError(c, `container_id is empty`, nil)
+		return
+	}
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.DockerContainerStop(containerId)
+	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+}
+
+func DockerContainerRemove(c *gin.Context) {
+	data, sshClient, err := getDockerComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	containerId := cast.ToString(data[`container_id`])
+	if containerId == `` {
+		gsgin.GinResponseError(c, `container_id is empty`, nil)
+		return
+	}
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.DockerContainerRemove(containerId)
+	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+}
+
+func parseDockerImageRows(raw string) []map[string]string {
+	rows := parseDockerRows(raw, dockerImageFieldCount)
+	list := make([]map[string]string, 0, len(rows))
+	for _, fields := range rows {
+		imageRef := fields[2]
+		if fields[0] != `<none>` && fields[1] != `<none>` {
+			imageRef = fields[0] + `:` + fields[1]
+		}
+		list = append(list, map[string]string{
+			`repository`: fields[0],
+			`tag`:        fields[1],
+			`image_id`:   fields[2],
+			`created`:    fields[3],
+			`size`:       fields[4],
+			`image_ref`:  imageRef,
+		})
+	}
+	return list
+}
+
+func parseDockerContainerRows(raw string) []map[string]string {
+	rows := parseDockerRows(raw, dockerContainerFieldCount)
+	list := make([]map[string]string, 0, len(rows))
+	for _, fields := range rows {
+		list = append(list, map[string]string{
+			`container_id`:   fields[0],
+			`container_name`: fields[1],
+			`image`:          fields[2],
+			`state`:          fields[3],
+			`status`:         fields[4],
+		})
+	}
+	return list
+}
+
+// formatByteSize 将字节数转换为便于页面展示的大小字符串。
+func formatByteSize(size int64) string {
+	if size < byteSizeUnit {
+		return cast.ToString(size) + `B`
+	}
+	value := float64(size)
+	unitIndex := 0
+	for value >= byteSizeUnit && unitIndex < len(byteSizeUnits)-1 {
+		value = value / byteSizeUnit
+		unitIndex++
+	}
+	return fmt.Sprintf(`%.2f%s`, value, byteSizeUnits[unitIndex])
+}
+
+func parseDockerRows(raw string, fieldCount int) [][]string {
+	lines := strings.Split(raw, "\n")
+	list := make([][]string, 0, len(lines))
+	for _, line := range lines {
+		clean := ansi.ReplaceAllString(line, "")
+		clean = strings.TrimSpace(strings.ReplaceAll(clean, "\r", ""))
+		if clean == "" {
+			continue
+		}
+		fields := strings.Split(clean, "\t")
+		if len(fields) != fieldCount {
+			continue
+		}
+		list = append(list, fields)
+	}
+	return list
 }
 
 func getDockerComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal, error) {

@@ -1,18 +1,27 @@
-<template>
+﻿<template>
   <div class="memory-welcome">
+    <section v-if="!configured" class="welcome-card welcome-empty-card">
+      <div class="welcome-title">知识片段</div>
+      <div class="welcome-subtitle">请先到设置页面配置记忆目录和数据库名</div>
+      <div class="welcome-actions">
+        <pl-button type="primary" @click="$emit('go-memory-setting')">去设置</pl-button>
+      </div>
+    </section>
+
+    <template v-else>
     <div class="welcome-hero">
       <div>
-        <div class="welcome-title">记忆片段</div>
+        <div class="welcome-title">知识片段</div>
         <div class="welcome-subtitle">把零散的 Markdown 知识片段收进一个可检索、可追溯、可多标签组织的工作区。</div>
       </div>
       <div class="welcome-actions">
-        <el-button type="primary" @click="$emit('create-fragment')">
+        <pl-button type="primary" @click="$emit('create-fragment')">
           <el-icon><Plus /></el-icon>
           新建片段
-        </el-button>
-        <el-button plain @click="$emit('clear-filter')">
+        </pl-button>
+        <pl-button plain @click="$emit('clear-filter')">
           清空筛选
-        </el-button>
+        </pl-button>
       </div>
     </div>
 
@@ -83,6 +92,7 @@
         </div>
       </section>
     </div>
+    </template>
   </div>
 </template>
 
@@ -118,6 +128,10 @@ export default {
     loading: {
       type: Boolean,
       default: false
+    },
+    configured: {
+      type: Boolean,
+      default: true
     }
   },
   computed: {
@@ -139,6 +153,11 @@ export default {
   flex-direction: column;
   gap: 16px;
   min-height: 100%;
+}
+
+.welcome-empty-card {
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .welcome-hero {
@@ -308,3 +327,4 @@ export default {
   }
 }
 </style>
+

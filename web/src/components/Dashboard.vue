@@ -20,11 +20,11 @@
                 <span class="fixed-command-desc">{{ cmd.desc }}</span>
               </button>
             </div>
-            <div v-if="recentHistoryCommands.length > 0" class="history-command-section">
-              <div class="fixed-command-title">历史操作命令</div>
+            <div v-if="topHistoryCommands.length > 0" class="history-command-section">
+              <div class="fixed-command-title">高频历史命令 TOP 10</div>
               <div class="history-command-list">
                 <div
-                  v-for="(historyCmd, historyIndex) in recentHistoryCommands"
+                  v-for="(historyCmd, historyIndex) in topHistoryCommands"
                   :key="`history_${historyIndex}_${historyCmd}`"
                 >
                   <div class="history-command-item-wrap">
@@ -46,7 +46,7 @@
               </div>
             </div>
           </div>
-          <p class="hint">输入 <kbd>/</kbd> 或直接输入命令（如 <kbd>g</kbd>），<kbd>Tab</kbd> 补全，<kbd>Space</kbd> 继续</p>
+          <p class="hint">输入 <kbd>/</kbd> 或直接输入命令（如 <kbd>git</kbd>），<kbd>Tab</kbd> 补全，<kbd>Space</kbd> 继续</p>
         </div>
         <div
           v-for="(msg, index) in messages"
@@ -54,18 +54,35 @@
           :class="['message', msg.type]"
         >
           <template v-if="hasCommandLayout(msg)">
-            <div class="message-command">
-              <span class="message-command-text">{{ msg.commandText }}</span>
-              <span
-                v-if="msg.commandStatus"
-                :class="['command-status', `command-status-${msg.commandStatus}`]"
-              >
-                <span v-if="msg.commandStatus === 'running'" class="command-status-spinner"></span>
-                <span v-else-if="msg.commandStatus === 'success'" class="command-status-icon">✓</span>
-                <span v-else-if="msg.commandStatus === 'failed'" class="command-status-icon">✕</span>
-              </span>
+            <div v-if="msg.resultText" class="message-content command-result-content">
+              <div class="message-result-command">{{ msg.commandText }}</div>
+              <div class="message-result-body">
+                <div
+                  v-for="(line, lineIndex) in getResultLines(msg.resultText)"
+                  :key="`${index}_result_${lineIndex}`"
+                  :class="['result-line', `result-line-${getResultLineState(line, lineIndex, getResultLines(msg.resultText))}`]"
+                >
+                  <span class="result-line-text">{{ line }}</span>
+                  <span
+                    v-if="getResultLineState(line, lineIndex, getResultLines(msg.resultText)) === 'running'"
+                    class="result-line-dots"
+                    aria-hidden="true"
+                  >
+                    <span></span><span></span><span></span>
+                  </span>
+                  <span
+                    v-else-if="getResultLineState(line, lineIndex, getResultLines(msg.resultText)) === 'success'"
+                    class="result-line-check"
+                    aria-hidden="true"
+                  >✓</span>
+                  <span
+                    v-else-if="getResultLineState(line, lineIndex, getResultLines(msg.resultText)) === 'failed'"
+                    class="result-line-failed"
+                    aria-hidden="true"
+                  >✕</span>
+                </div>
+              </div>
             </div>
-            <div v-if="msg.resultText" class="message-content">{{ msg.resultText }}</div>
             <div v-if="msg.processText" class="process-window">
               <div class="process-title">执行过程 (SSE)</div>
               <div class="process-text markdown-body" v-html="renderProcessMarkdown(msg.processText)"></div>
@@ -76,7 +93,7 @@
       </div>
 
       <!-- 命令提示下拉框 -->
-      <div v-show="showCommands" class="command-dropdown">
+      <div ref="commandDropdown" v-show="showCommands" class="command-dropdown">
         <div class="command-breadcrumb" v-if="commandBreadcrumb">
           <span class="breadcrumb-text">{{ commandBreadcrumb }}</span>
         </div>
@@ -89,23 +106,26 @@
         <div
           v-for="(cmd, index) in filteredCommands"
           :key="getCommandKey(cmd, index)"
+          :ref="(el) => setCommandItemRef(el, index)"
           :class="['command-item', { active: activeCommandIndex === index }]"
-          @click="selectCommand(cmd)"
-          @mouseenter="activeCommandIndex = index"
         >
           <span class="command-icon">{{ cmd.icon }}</span>
           <span class="command-name">{{ cmd.name }}</span>
+          <span
+            v-if="!cmd.insertOnly && getCommandLevelUsageCount(cmd, filteredCommands) > 0"
+            class="command-usage-count"
+          >{{ getCommandLevelUsageCount(cmd, filteredCommands) }} 次</span>
           <span class="command-desc">
             {{ cmd.desc }}<template v-if="getCommandMatchHint(cmd)"> | 匹配: {{ getCommandMatchHint(cmd) }}</template>
           </span>
-          <button
+          <pl-button
             v-if="cmd.insertOnly"
-            type="button"
             class="command-item-delete"
+            link
             title="删除该历史命令"
             @mousedown.prevent="markKeepDropdownOnBlur"
             @click.stop="removeHistoryCommand(cmd.insertText || cmd.command || cmd.name)"
-          >×</button>
+          >×</pl-button>
           <span v-if="cmd.children || cmd.needTarget" class="command-arrow">→</span>
         </div>
       </div>
@@ -113,7 +133,9 @@
       <!-- 输入区域 -->
       <div class="input-container">
         <div class="input-center-box" :style="{ width: inputWrapperWidth }">
-          <div class="input-wrapper">
+          <div class="input-main-row">
+            <div class="input-main-panel">
+              <div class="input-wrapper">
             <div class="input-overlay-box">
               <div
                 v-if="inputText"
@@ -132,11 +154,33 @@
                 @focus="handleFocus"
               />
             </div>
-            <button class="send-btn" :disabled="!canExecuteCommand" @click="executeCommand">
+            <pl-button class="send-btn" type="primary" :disabled="!canSubmitCommand" @click="executeCommand">
               <span class="send-icon">→</span>
-            </button>
+            </pl-button>
+              </div>
+              <div class="next-step-tip">{{ nextStepHint }}</div>
+            </div>
+            <div v-if="hasPendingCommandQueue" class="pending-command-panel">
+              <div class="pending-command-header">
+                <span class="pending-command-title">{{ pendingCommandTitle }}</span>
+                <span class="pending-command-count">{{ pendingCommandQueue.length }}</span>
+              </div>
+              <div class="pending-command-list">
+                <div
+                  v-for="item in pendingCommandQueue"
+                  :key="item.id"
+                  class="pending-command-item"
+                >
+                  <span class="pending-command-text" :title="item.rawCommand">{{ item.rawCommand }}</span>
+                  <pl-button
+                    class="pending-command-delete"
+                    link
+                    @click="removePendingCommand(item.id)"
+                  >移除</pl-button>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="next-step-tip">{{ nextStepHint }}</div>
         </div>
       </div>
     </div>
@@ -144,27 +188,49 @@
 </template>
 
 <script>
-import { ref, computed, nextTick, onMounted, onUnmounted, onActivated } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, onActivated, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { ElMessageBox } from 'element-plus'
 import module from '@/utils/module'
 import commandConfig from '@/config/commandConfig.js'
 import ssh from '@/utils/base/ssh_set'
 import git from '@/utils/base/git'
 import compose from '@/utils/base/compose'
 import supervisor from '@/utils/base/supervisor'
-import shell from '@/utils/base/shell'
 import shellOut from '@/utils/base/shell_out'
 import smartLinkSet from '@/utils/base/smart_link_set'
 import variableSet from '@/utils/base/variable_set'
-import group from '@/utils/base/group'
 import store from '@/utils/base/store'
 import sseDistribute from '@/utils/base/sse_distribute'
 import { Throttle_string } from '@/utils/base/throttle_string'
+import * as linkRunSelection from '@/utils/link_run_selection.cjs'
+import pendingCommandQueueUtils from '@/utils/dashboard_command_queue.cjs'
+import dashboardHistoryRankUtils from '@/utils/dashboard_history_rank.cjs'
 
 export default {
   name: 'DashboardPage',
   setup() {
+    const {
+      buildLinkAccountOptionsFromEnv,
+      buildLinkEnvOptionsFromConfig,
+      buildLinkRunPayload,
+      getLinkRunSelection,
+      hasConfiguredLinkAccounts,
+      isLinkRunSelectionComplete,
+    } = linkRunSelection
+    const {
+      createPendingCommandItem,
+      enqueuePendingCommand,
+      dequeuePendingCommand,
+      removePendingCommandById,
+      consumeNextPendingCommand,
+    } = pendingCommandQueueUtils
+    const {
+      buildTopHistoryCommands,
+      normalizeHistoryCommandText,
+    } = dashboardHistoryRankUtils
+
     marked.setOptions({
       gfm: true,
       breaks: true
@@ -176,7 +242,10 @@ export default {
     const activeCommandIndex = ref(0)
     const inputRef = ref(null)
     const messageList = ref(null)
+    const commandDropdown = ref(null)
+    const commandItemRefs = ref([])
     const keepDropdownOnBlur = ref(false) // 删除历史候选时，避免 input blur 关闭下拉
+    const suppressDropdownOnNextFocus = ref(false) // 历史命令回填后回焦输入框时，避免重新弹出候选
     
     // 多级命令状态
     const commandStack = ref([]) // 命令栈，存储已选择的命令
@@ -188,40 +257,73 @@ export default {
     const commandHistory = ref([]) // 命令历史记录
     const commandHistoryIndex = ref(0) // 命令历史游标（指向“下一条”位置）
     const commandUsageMap = ref({}) // 命令使用次数统计（key=命令文本，value=次数）
+    const commandLevelUsageMap = ref({})
     const commandHistoryCacheKey = 'dashboard_command_history_v1'
     const commandUsageCacheKey = 'dashboard_command_usage_v1'
+    const commandLevelUsageCacheKey = 'dashboard_command_level_usage_v1'
     const supervisorProcessCacheKeyPrefix = 'dashboard_supervisor_process_cache_v1'
     const supervisorProcessCacheExpireMs = 60 * 60 * 1000
     // 历史命令自动执行状态：选中历史项后，等待动态列表补齐并自动触发执行
     const pendingHistoryExecution = ref({
       active: false,
       commandText: '',
-      reparsedTypeMap: {}
+      reparsedTypeMap: {},
+      autoExecute: false
     })
+    const pendingCommandQueue = ref([])
     
     // SSE 相关状态
     const sseDistributeId = ref('') // SSE 分发 ID
     const isExecuting = ref(false) // 是否正在执行命令
     const currentOutputMessage = ref(null) // 当前输出消息的引用
-    // variable 会话状态（用于首页快捷命令多步交互）
-    const variableSession = ref({
+    // script 会话状态（用于首页脚本执行多步交互）
+    const scriptSession = ref({
       active: false,
-      variableId: 0,
-      variableName: '',
+      stage: 'idle',
+      scriptId: 0,
+      scriptName: '',
       runCmdId: 0,
       replaceList: {},
-      isRun: 0,
-      isFinish: 0,
       currentForm: null,
+      pendingInputLabel: '',
+      optionList: [],
+      canExecute: false,
     })
     const browserNotificationPermissionRequested = ref(false)
+
+    // 首页命令待执行队列展示文案。
+    // 执行中的新命令采用入队提示，避免误以为已立即执行。
+    // 当前命令既不可执行也不可入队时，沿用执行中的阻塞提示。
 
     // 开放的模块列表
     const openModules = module.GetOpenModuleList()
 
+    // 首页命令待执行队列展示文案。
+    // 执行中的新命令采用入队提示，避免误以为已立即执行。
+    // 当前命令既不可执行也不可入队时，沿用执行中的阻塞提示。
+
+    // Queue labels for pending home commands.
+    const QUEUE_PANEL_TITLE_TEXT = '待执行'
+    const QUEUE_ENQUEUED_MESSAGE_TEXT = '命令已加入待执行列表，当前任务完成后自动执行\n'
+    const QUEUE_RUNNING_MESSAGE_TEXT = '正在执行其他命令，请稍候...\n'
+
     const normalizeCommandPart = (value) => {
       if (value === null || value === undefined) return ''
       return String(value).trim()
+    }
+
+    // 获取当前待入队的完整命令文本，后续按该原始文本重新解析执行。
+    const getPendingCommandText = () => {
+      return String(inputText.value || '').trim()
+    }
+
+    // 入队后清理当前输入态，避免用户误以为该命令仍在编辑中。
+    const clearCommandInputState = () => {
+      inputText.value = ''
+      showCommands.value = false
+      commandStack.value = []
+      currentChildren.value = []
+      currentInputValue.value = ''
     }
 
     const getCommandKeywords = (cmd) => {
@@ -388,27 +490,6 @@ export default {
       return `idx:${index}`
     }
 
-    // 获取 link run 命令在命令栈中的选择（环境(含配置)/账号）
-    const getLinkRunSelection = (stack) => {
-      const sourceStack = Array.isArray(stack) ? stack : []
-      const actionIndex = sourceStack.findIndex(item => item?.action === 'linkRun')
-      if (actionIndex < 0) {
-        return {
-          configCmd: null,
-          envCmd: null,
-          accountCmd: null
-        }
-      }
-      const tailStack = sourceStack.slice(actionIndex + 1)
-      const envCmd = tailStack.find(item => item?.data?.__linkType === 'env') || null
-      return {
-        // 兼容旧结构：如存在 configCmd 则使用；否则从 envCmd.data.config 反推出配置对象。
-        configCmd: tailStack.find(item => item?.data?.__linkType === 'config') || (envCmd?.data?.config ? { data: envCmd.data.config } : null),
-        envCmd,
-        accountCmd: tailStack.find(item => item?.data?.__linkType === 'account') || null
-      }
-    }
-
     // getGitQuickCreateSelection 获取 git quick-create-branch 选择项（仓库/基线分支/分支类型）
     const getGitQuickCreateSelection = (stack) => {
       const sourceStack = Array.isArray(stack) ? stack : []
@@ -440,7 +521,7 @@ export default {
       }
       if (actionCmd.action === 'linkRun') {
         const selection = getLinkRunSelection(sourceStack)
-        return !!(selection.envCmd && selection.accountCmd)
+        return isLinkRunSelectionComplete(selection)
       }
       // docker quick-restart/quick-stop 需要先选项目，再选服务
       if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop') {
@@ -474,7 +555,7 @@ export default {
         if (!selection.envCmd) {
           return '命令未完成：请选择要执行的环境'
         }
-        if (!selection.accountCmd) {
+        if (hasConfiguredLinkAccounts(selection.envCmd) && !selection.accountCmd) {
           return '命令未完成：请选择账号'
         }
       }
@@ -529,6 +610,35 @@ export default {
       return aCmd !== '' && aCmd === bCmd && aPath === bPath
     }
 
+    const getCommandInputToken = (cmd) => {
+      if (!cmd) return ''
+      return normalizeCommandPart(cmd.__selectedInputToken || cmd.insertText || cmd.command || cmd.name)
+    }
+
+    const setCommandItemRef = (el, index) => {
+      if (!Array.isArray(commandItemRefs.value)) {
+        commandItemRefs.value = []
+      }
+      if (el) {
+        commandItemRefs.value[index] = el
+        return
+      }
+      if (index >= 0 && index < commandItemRefs.value.length) {
+        commandItemRefs.value[index] = null
+      }
+    }
+
+    const ensureActiveCommandVisible = () => {
+      if (!showCommands.value) return
+      const dropdownElement = commandDropdown.value
+      if (!dropdownElement) return
+      const activeElement = Array.isArray(commandItemRefs.value)
+        ? commandItemRefs.value[activeCommandIndex.value]
+        : null
+      if (!activeElement || typeof activeElement.scrollIntoView !== 'function') return
+      activeElement.scrollIntoView({ block: 'nearest' })
+    }
+
     const parseTokens = (rawText) => {
       const text = String(rawText || '')
       const leftTrimmed = text.trimStart()
@@ -540,9 +650,48 @@ export default {
       return { useSlash, parts }
     }
 
-    // 统一规范历史命令文本，避免因多空格导致的匹配误差。
-    const normalizeHistoryCommandText = (rawText) => {
-      return normalizeCommandPart(rawText).replace(/\s+/g, ' ')
+    const getCommandLevelUsageKey = (scopeTokens, token) => {
+      const normalizedScope = Array.isArray(scopeTokens)
+        ? scopeTokens.map(item => normalizeCommandPart(item)).filter(Boolean)
+        : []
+      const normalizedToken = normalizeCommandPart(token)
+      if (!normalizedToken) return ''
+      return [...normalizedScope, normalizedToken].join(' > ').toLowerCase()
+    }
+
+    const getCommandLevelScopeTokens = () => {
+      return commandStack.value
+        .map(item => getCommandInputToken(item))
+        .filter(Boolean)
+    }
+
+    const persistCommandLevelUsageCache = () => {
+      store.setStore(commandLevelUsageCacheKey, JSON.stringify(commandLevelUsageMap.value || {}))
+    }
+
+    const recordCommandLevelUsage = (stack) => {
+      const normalizedStack = Array.isArray(stack) ? stack : []
+      const scopeTokens = []
+      normalizedStack.forEach((item) => {
+        if (!item || item.insertOnly) return
+        const token = getCommandInputToken(item)
+        if (!token) return
+        const usageKey = getCommandLevelUsageKey(scopeTokens, token)
+        if (!usageKey) return
+        commandLevelUsageMap.value[usageKey] = (Number(commandLevelUsageMap.value[usageKey]) || 0) + 1
+        scopeTokens.push(token)
+      })
+      persistCommandLevelUsageCache()
+    }
+
+    const getCommandLevelUsageCount = (cmd, commandList = currentChildren.value) => {
+      if (!cmd || cmd.insertOnly) return 0
+      const token = getCommandInputToken(cmd)
+      if (!token) return 0
+      const scopeTokens = Array.isArray(commandList) ? getCommandLevelScopeTokens() : []
+      const usageKey = getCommandLevelUsageKey(scopeTokens, token)
+      if (!usageKey) return 0
+      return Number(commandLevelUsageMap.value[usageKey]) || 0
     }
 
     // 清理历史命令自动执行状态。
@@ -550,16 +699,18 @@ export default {
       pendingHistoryExecution.value = {
         active: false,
         commandText: '',
-        reparsedTypeMap: {}
+        reparsedTypeMap: {},
+        autoExecute: false
       }
     }
 
     // 历史命令选中后进入“待自动执行”状态。
-    const markPendingHistoryExecution = (rawCommandText) => {
+    const markPendingHistoryExecution = (rawCommandText, options = {}) => {
       pendingHistoryExecution.value = {
         active: true,
         commandText: normalizeHistoryCommandText(rawCommandText),
-        reparsedTypeMap: {}
+        reparsedTypeMap: {},
+        autoExecute: options.autoExecute === true
       }
     }
 
@@ -576,8 +727,13 @@ export default {
       if (!canExecuteCommand.value) {
         return false
       }
+      const shouldAutoExecute = pendingHistoryExecution.value.autoExecute
       clearPendingHistoryExecution()
-      executeCommand()
+      if (shouldAutoExecute) {
+        executeCommand()
+      } else {
+        showCommands.value = false
+      }
       return true
     }
 
@@ -600,20 +756,27 @@ export default {
       tryAutoExecutePendingHistory()
     }
 
-    // startHistoryCommandExecution 统一处理“选中历史命令后直接执行”流程。
-    const startHistoryCommandExecution = (historyCommand) => {
+    // loadHistoryCommandForExecution 统一加载历史命令，可选择仅进入可执行态或自动执行。
+    const loadHistoryCommandForExecution = (historyCommand, options = {}) => {
       const commandText = normalizeHistoryCommandText(historyCommand)
       if (!commandText) return
-      markPendingHistoryExecution(commandText)
+      const autoExecute = options.autoExecute === true
+      markPendingHistoryExecution(commandText, { autoExecute })
       // 补一个空格，确保 parseInput 将最后一个 token 视为已确认输入。
       inputText.value = /\s$/.test(commandText) ? commandText : `${commandText} `
       parseInput()
-      showCommands.value = isCommandModeByText(inputText.value) && !isCommandReadyToExecute()
-      activeCommandIndex.value = 0
+      showCommands.value = false
+      activeCommandIndex.value = getDefaultActiveCommandIndex()
+      suppressDropdownOnNextFocus.value = true
       nextTick(() => {
         inputRef.value?.focus()
       })
       tryAutoExecutePendingHistory()
+    }
+
+    // startHistoryCommandExecution 统一处理“选中历史命令后直接执行”流程。
+    const startHistoryCommandExecution = (historyCommand) => {
+      loadHistoryCommandForExecution(historyCommand, { autoExecute: true })
     }
 
     const escapeHtml = (value) => {
@@ -621,44 +784,6 @@ export default {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-    }
-
-    // buildLinkEnvOptionsFromConfig 基于已选链接配置生成“环境”候选（高亮兜底）
-    const buildLinkEnvOptionsFromConfig = (configCmd) => {
-      const linkList = Array.isArray(configCmd?.data?.linkList) ? configCmd.data.linkList : []
-      return linkList.map((item, index) => {
-        const envName = normalizeCommandPart(item?.label) || `环境${index + 1}`
-        return {
-          command: envName,
-          name: envName,
-          dynamicChildren: 'linkAccountList',
-          data: {
-            __linkType: 'env',
-            env: item || {},
-            config: configCmd?.data || {}
-          }
-        }
-      })
-    }
-
-    // buildLinkAccountOptionsFromEnv 基于已选环境生成“账号”候选（高亮兜底）
-    const buildLinkAccountOptionsFromEnv = (envCmd) => {
-      const userListRaw = Array.isArray(envCmd?.data?.env?.userList) ? envCmd.data.env.userList : []
-      const userList = userListRaw.length > 0 ? userListRaw : [{ user_name: '默认账号(空)', password: '' }]
-      return userList.map((item, index) => {
-        const userName = normalizeCommandPart(item?.user_name) || `账号${index + 1}`
-        return {
-          command: userName,
-          name: userName,
-          data: {
-            __linkType: 'account',
-            account: {
-              user_name: normalizeCommandPart(item?.user_name),
-              password: normalizeCommandPart(item?.password)
-            }
-          }
-        }
-      })
     }
 
     // resolveNextTargetOptions 解析“已选目标”后的下一层候选，支持多级目标命令高亮
@@ -716,16 +841,146 @@ export default {
       return !!(firstCmd && firstCmd.dynamicChildren === 'historyList')
     }
 
+    const isScriptSessionMode = () => {
+      return !!(scriptSession.value?.active && scriptSession.value?.stage && scriptSession.value.stage !== 'idle')
+    }
+
+    // 判断当前命令是否允许进入待执行队列：仅普通命令链路支持排队。
+    const canQueueCurrentCommand = () => {
+      if (!isExecuting.value || isScriptSessionMode()) {
+        return false
+      }
+      const actionCmd = commandStack.value.find(item => item.action)
+      if (!actionCmd) {
+        return false
+      }
+      return isActionReady(actionCmd, commandStack.value, currentInputValue.value)
+    }
+
+    // 当前已有命令执行中时，将新命令排到待执行队列末尾。
+    const queuePendingCommand = () => {
+      const rawCommand = getPendingCommandText()
+      if (!rawCommand) {
+        return false
+      }
+      const pendingItem = createPendingCommandItem(rawCommand)
+      pendingCommandQueue.value = enqueuePendingCommand(pendingCommandQueue.value, pendingItem)
+      messages.value.push({
+        type: 'system',
+        content: QUEUE_ENQUEUED_MESSAGE_TEXT
+      })
+      clearCommandInputState()
+      scrollToBottom()
+      return true
+    }
+
+    // 删除指定待执行命令，保留其余排队顺序不变。
+    const removePendingCommand = async (pendingCommandId) => {
+      try {
+        await ElMessageBox.confirm('确认移除这条待执行命令吗？', '提示', {
+          confirmButtonText: '移除',
+          cancelButtonText: '取消',
+          type: 'warning',
+        })
+      } catch (error) {
+        return
+      }
+      pendingCommandQueue.value = removePendingCommandById(pendingCommandQueue.value, pendingCommandId)
+    }
+
+    // 当前命令结束后，自动从队列取下一条并走原有解析执行链路。
+    const executePendingCommandText = (rawCommand) => {
+      const pendingRawCommand = normalizeCommandPart(rawCommand)
+      if (!pendingRawCommand) {
+        return false
+      }
+      inputText.value = pendingRawCommand
+      if (isCommandModeByText(pendingRawCommand)) {
+        parseInput()
+      }
+      if (!canExecuteCommand.value) {
+        messages.value.push({
+          type: 'system',
+          content: `待执行命令自动执行失败：${pendingRawCommand}\n`
+        })
+        clearCommandInputState()
+        scrollToBottom()
+        return false
+      }
+      executeCommand()
+      return true
+    }
+
+    const triggerNextPendingCommand = () => {
+      if (isExecuting.value) {
+        return false
+      }
+      const dequeueResult = consumeNextPendingCommand(
+        pendingCommandQueue.value,
+        (rawCommand) => {
+          loadHistoryCommandForExecution(rawCommand, { autoExecute: true })
+        }
+      )
+      if (!dequeueResult.item) {
+        return false
+      }
+      pendingCommandQueue.value = dequeueResult.queue
+      return true
+    }
+
+    const getDefaultActiveCommandIndex = (commandList = filteredCommands.value) => {
+      const normalizedList = Array.isArray(commandList) ? commandList : []
+      if (normalizedList.length === 0) return 0
+      if (normalizedList.every(item => item && item.insertOnly)) {
+        return Math.max(normalizedList.length - 1, 0)
+      }
+      let maxCount = -1
+      let selectedIndex = 0
+      normalizedList.forEach((item, index) => {
+        const count = getCommandLevelUsageCount(item, normalizedList)
+        if (count > maxCount) {
+          maxCount = count
+          selectedIndex = index
+        }
+      })
+      return maxCount > 0 ? selectedIndex : 0
+    }
+
     const refreshCommandDropdownVisibility = () => {
+      if (isScriptSessionMode()) {
+        const stage = normalizeCommandPart(scriptSession.value.stage)
+        showCommands.value = (
+          stage === 'selecting_script' ||
+          stage === 'waiting_option'
+        ) && (currentChildren.value.length > 0 || isLoadingDynamic.value)
+        if (showCommands.value) {
+          activeCommandIndex.value = getDefaultActiveCommandIndex()
+        }
+        return
+      }
       showCommands.value = isCommandModeByText(inputText.value) &&
         (currentChildren.value.length > 0 || isLoadingDynamic.value) &&
         !isCommandReadyToExecute()
+      if (showCommands.value) {
+        activeCommandIndex.value = getDefaultActiveCommandIndex()
+      }
     }
 
     // 更新当前命令状态（running/success/failed）
     const updateCurrentCommandStatus = (status) => {
       if (!currentOutputMessage.value || !status) return
       currentOutputMessage.value.commandStatus = status
+    }
+
+    const applyResponseCommandStatus = (response) => {
+      if (!response || response.ErrCode === undefined || response.ErrCode === null) return
+      if (Number(response?.ErrCode) === 1) {
+        updateCurrentCommandStatus('failed')
+        return
+      }
+      if (Number(response?.ErrCode) === 0) {
+        updateCurrentCommandStatus('success')
+      }
     }
 
     // 根据输出文本推断状态，并移除独立“执行成功/执行失败”行，避免重复展示
@@ -761,12 +1016,57 @@ export default {
       scrollToBottom()
     }
 
+    const appendOutputSummary = (text) => {
+      if (!currentOutputMessage.value) return
+      const parsed = parseResultTextAndStatus(String(text || ''))
+      if (parsed.status) {
+        updateCurrentCommandStatus(parsed.status)
+      }
+      const summary = sanitizeCommandOutput(parsed.text).trim()
+      if (!summary) return
+      const current = String(currentOutputMessage.value.resultText || '')
+      const nextText = current && !current.endsWith('\n') ? `${current}\n${summary}` : `${current}${summary}`
+      const merged = sanitizeCommandOutput(nextText)
+      currentOutputMessage.value.resultText = merged.length > 50000 ? merged.slice(-50000) : merged
+      scrollToBottom()
+    }
+
     const appendOutputProcess = (text) => {
       if (!currentOutputMessage.value) return
       const current = String(currentOutputMessage.value.processText || '')
       const merged = sanitizeCommandOutput(current + String(text || ''))
       currentOutputMessage.value.processText = merged.length > 50000 ? merged.slice(-50000) : merged
       scrollToBottom()
+    }
+
+    const getResultLines = (text) => {
+      return String(text || '')
+        .split('\n')
+        .map(line => String(line))
+        .filter(line => line.trim() !== '')
+    }
+
+    const getResultLineState = (line, lineIndex = 0, lines = []) => {
+      const text = normalizeCommandPart(line)
+      if (!text) return 'default'
+      const sourceLines = Array.isArray(lines) ? lines : []
+      const hasTerminalLineAfter = sourceLines.slice(lineIndex + 1).some(item => {
+        const nextText = normalizeCommandPart(item)
+        return /完成$/.test(nextText) || /成功$/.test(nextText) || /失败$/.test(nextText) || /^执行失败[:：]/.test(nextText) || /^错误[:：]/.test(nextText) || /已打开/.test(nextText)
+      })
+      if (/^正在/.test(text)) {
+        if (hasTerminalLineAfter) {
+          return 'default'
+        }
+        return 'running'
+      }
+      if (/^执行失败[:：]/.test(text) || /^错误[:：]/.test(text) || /失败$/.test(text)) {
+        return 'failed'
+      }
+      if (/完成$/.test(text) || /成功$/.test(text) || /已打开/.test(text)) {
+        return 'success'
+      }
+      return 'default'
     }
 
     const sanitizeCommandOutput = (rawText) => {
@@ -781,24 +1081,50 @@ export default {
       })
     })
 
-    // recentHistoryCommands 首页展示最近使用的历史命令（倒序）
-    const recentHistoryCommands = computed(() => {
-      if (!Array.isArray(commandHistory.value) || commandHistory.value.length === 0) {
-        return []
-      }
-      return commandHistory.value.slice(-12).reverse()
+    // topHistoryCommands 首页仅展示使用率最高的 10 个历史命令。
+    // topHistoryCommands shows only the top 10 most frequently used history commands on the home panel.
+    const topHistoryCommands = computed(() => {
+      return buildTopHistoryCommands({
+        historyList: commandHistory.value,
+        usageMap: commandUsageMap.value,
+        limit: 10,
+      })
     })
 
     // 命令面包屑导航
     const commandBreadcrumb = computed(() => {
+      if (isScriptSessionMode()) {
+        const session = scriptSession.value || {}
+        return session.scriptName
+          ? `script > ${session.scriptName}`
+          : 'script'
+      }
       if (commandStack.value.length === 0) return ''
       return commandStack.value.map(c => c.name).join(' > ')
     })
 
     // 输入框提示
     const inputPlaceholder = computed(() => {
+      if (isScriptSessionMode()) {
+        const session = scriptSession.value || {}
+        if (session.stage === 'selecting_script') {
+          return '请选择要执行的脚本'
+        }
+        if (session.stage === 'waiting_input') {
+          return normalizeCommandPart(session.pendingInputLabel) || '请在命令框输入内容并回车'
+        }
+        if (session.stage === 'waiting_option') {
+          return normalizeCommandPart(session.pendingInputLabel) || '请在命令框选择一个选项'
+        }
+        if (session.stage === 'ready_execute') {
+          return '脚本已就绪，按回车执行'
+        }
+        if (session.stage === 'executing') {
+          return '脚本执行中，请稍候...'
+        }
+      }
       if (commandStack.value.length === 0) {
-        return '输入 / 或直接输入命令（如 g），Tab 补全，Space 继续...'
+        return '输入 / 或直接输入命令（如 git），Tab 补全，Space 继续...'
       }
       const lastCmd = commandStack.value[commandStack.value.length - 1]
       const actionCmd = commandStack.value.find(item => item.action)
@@ -807,7 +1133,7 @@ export default {
         if (!selection.envCmd) {
           return '请选择要执行的环境...'
         }
-        if (!selection.accountCmd) {
+        if (hasConfiguredLinkAccounts(selection.envCmd) && !selection.accountCmd) {
           return '请选择账号...'
         }
         return '按 Enter 执行命令'
@@ -844,7 +1170,39 @@ export default {
       return aText.localeCompare(bText, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
     }
 
+    const sortCommandsByLevelUsage = (commandList) => {
+      const normalizedList = Array.isArray(commandList) ? commandList : []
+      if (normalizedList.every(item => item && item.insertOnly)) {
+        return [...normalizedList]
+      }
+      // usage-enriched
+      return normalizedList
+        .map((cmd) => ({
+          cmd,
+          count: getCommandLevelUsageCount(cmd, commandList)
+        }))
+        .sort((a, b) => {
+          if (a.count !== b.count) {
+            return a.count - b.count
+          }
+          return compareCommandByNaturalAsc(a.cmd, b.cmd)
+        })
+        .map(item => item.cmd)
+    }
+
     const filteredCommands = computed(() => {
+      if (isScriptSessionMode()) {
+        const sourceList = Array.isArray(currentChildren.value) ? currentChildren.value : []
+        const searchText = normalizeCommandPart(inputText.value).toLowerCase()
+        const sortedList = sortCommandsByLevelUsage(sourceList)
+        if (!searchText) {
+          return sortedList
+        }
+        return sortedList.filter(cmd => {
+          const keywords = getCommandKeywords(cmd)
+          return keywords.some(keyword => keyword.includes(searchText))
+        })
+      }
       let commands = currentChildren.value.length > 0 
         ? currentChildren.value
         : (commandStack.value.length === 0 ? availableCommands.value : [])
@@ -870,7 +1228,7 @@ export default {
         }
       }
       
-      const sortedCommands = [...commands].sort(compareCommandByNaturalAsc)
+      const sortedCommands = sortCommandsByLevelUsage(commands)
 
       // history 前缀模式：使用“history 后整段输入”做历史命令搜索，支持空格短语筛选。
       if (isHistoryPrefixSearchMode()) {
@@ -1008,7 +1366,37 @@ export default {
       }
     })
 
-    const canExecuteCommand = computed(() => commandAnalysis.value.canExecute)
+    const canExecuteCommand = computed(() => {
+      if (isScriptSessionMode()) {
+        const stage = normalizeCommandPart(scriptSession.value.stage)
+        if (stage === 'selecting_script' || stage === 'waiting_option') {
+          return !!filteredCommands.value[activeCommandIndex.value]
+        }
+        if (stage === 'waiting_input') {
+          return !!normalizeCommandPart(inputText.value)
+        }
+        if (stage === 'ready_execute') {
+          return !!scriptSession.value.canExecute && !isExecuting.value
+        }
+        return false
+      }
+      return commandAnalysis.value.canExecute
+    })
+
+    const canSubmitCommand = computed(() => {
+      if (canExecuteCommand.value) {
+        return true
+      }
+      return canQueueCurrentCommand()
+    })
+
+    const hasPendingCommandQueue = computed(() => {
+      return pendingCommandQueue.value.length > 0
+    })
+
+    const pendingCommandTitle = computed(() => {
+      return QUEUE_PANEL_TITLE_TEXT
+    })
 
     const highlightedInputHtml = computed(() => {
       return commandAnalysis.value.highlightedTokens.map(item => {
@@ -1033,26 +1421,28 @@ export default {
       return isActionReady(actionCmd, commandStack.value, currentInputValue.value)
     }
 
-    // 获取 variable 会话的下一步提示语（首页多步命令）
-    const getVariableSessionStepHint = () => {
-      const session = variableSession.value || {}
-      if (!session.active || !session.variableId) {
+    // 获取 script 会话的下一步提示语（首页多步命令）
+    const getScriptSessionStepHint = () => {
+      const session = scriptSession.value || {}
+      if (!session.active) {
         return ''
       }
-      if (Number(session.isFinish) === 1) {
-        return '下一步：输入 variable run <脚本名> 开始新会话'
+      if (session.stage === 'selecting_script') {
+        return '下一步：请选择要执行的脚本'
       }
-      if (Number(session.isRun) === 1) {
-        return '下一步：输入 variable exec 并回车执行'
+      if (session.stage === 'waiting_input') {
+        return `下一步：${normalizeCommandPart(session.pendingInputLabel) || '请在命令框输入内容并回车'}`
       }
-      const cmdType = normalizeCommandPart(session.currentForm?.CmdType)
-      if (['3', '17'].includes(cmdType)) {
-        return '下一步：输入 variable set <值> 并回车'
+      if (session.stage === 'waiting_option') {
+        return `下一步：${normalizeCommandPart(session.pendingInputLabel) || '请在命令框选择一个选项'}`
       }
-      if (['9', '12', '14'].includes(cmdType)) {
-        return '下一步：输入 variable choose <选项> 并回车'
+      if (session.stage === 'ready_execute') {
+        return '下一步：脚本已就绪，按回车执行'
       }
-      return '下一步：继续 variable 会话，或输入 variable cancel 取消'
+      if (session.stage === 'executing') {
+        return '下一步：脚本执行中，请稍候...'
+      }
+      return ''
     }
 
     // 计算首页命令行的下一步浅色提示文案
@@ -1061,9 +1451,9 @@ export default {
         return '正在执行命令，请稍候...'
       }
 
-      const variableHint = getVariableSessionStepHint()
-      if (variableHint) {
-        return variableHint
+      const scriptHint = getScriptSessionStepHint()
+      if (scriptHint) {
+        return scriptHint
       }
 
       if (commandStack.value.length === 0) {
@@ -1130,6 +1520,11 @@ export default {
 
     // 解析输入文本，获取当前命令层级
     const parseInput = () => {
+      if (isScriptSessionMode()) {
+        activeCommandIndex.value = getDefaultActiveCommandIndex()
+        refreshCommandDropdownVisibility()
+        return
+      }
       if (!isCommandModeByText(inputText.value)) {
         commandStack.value = []
         currentChildren.value = []
@@ -1320,7 +1715,7 @@ export default {
         currentChildren.value = availableCommands.value
       }
       // 动态列表加载中时也展示下拉，避免慢查询时列表框闪退。
-      showCommands.value = (currentChildren.value.length > 0 || isLoadingDynamic.value) && !isCommandReadyToExecute()
+      refreshCommandDropdownVisibility()
     }
 
     // 加载动态子命令
@@ -1333,7 +1728,7 @@ export default {
         type !== 'supervisorProcessList' &&
         type !== 'linkEnvList' &&
         type !== 'linkAccountList' &&
-        type !== 'variableOptionList' &&
+        type !== 'scriptOptionList' &&
         type !== 'historyList' &&
         dynamicDataCache.value[type]
       ) {
@@ -1389,11 +1784,11 @@ export default {
         case 'linkAccountList':
           loadLinkAccountList()
           break
-        case 'variableScriptList':
-          loadVariableScriptList()
+        case 'scriptList':
+          loadScriptList()
           break
-        case 'variableOptionList':
-          loadVariableOptionList()
+        case 'scriptOptionList':
+          loadScriptOptionList()
           break
         case 'historyList':
           loadHistoryList()
@@ -1565,6 +1960,7 @@ export default {
           }))
           dynamicDataCache.value['gitGroupList'] = list
           currentChildren.value = list
+          reparseForPendingHistoryExecution('gitGroupList')
           refreshCommandDropdownVisibility()
         }
       })
@@ -1778,10 +2174,11 @@ export default {
             list.push({
               command: envName,
               name: envName,
+              insertText: `${configName}/${envName}`,
               aliases: [configName, `${configName}/${envName}`].filter(Boolean),
               desc: `${configName} | ${normalizeCommandPart(envItem?.link) || '未配置链接地址'}`,
               id: `${configItem?.id || 'cfg'}_${envIndex}`,
-              dynamicChildren: 'linkAccountList',
+              dynamicChildren: hasConfiguredLinkAccounts(envItem) ? 'linkAccountList' : undefined,
               data: {
                 __linkType: 'env',
                 env: envItem || {},
@@ -1802,29 +2199,17 @@ export default {
 
     // 加载已选环境下的账号列表
     const loadLinkAccountList = () => {
-      const { configCmd, envCmd } = getLinkRunSelection(commandStack.value)
-      const userListRaw = Array.isArray(envCmd?.data?.env?.userList) ? envCmd.data.env.userList : []
-      const userList = userListRaw.length > 0
-        ? userListRaw
-        : [{ user_name: '默认账号(空)', password: '' }]
-      const list = userList.map((item, index) => {
-        const userName = normalizeCommandPart(item?.user_name) || `账号${index + 1}`
-        return {
-          command: userName,
-          name: userName,
-          desc: userListRaw.length > 0 ? '账号' : '该环境未配置账号，使用空账号执行',
-          id: `${envCmd?.id || 'env'}_${index}`,
-          data: {
-            __linkType: 'account',
-            account: {
-              user_name: normalizeCommandPart(item?.user_name),
-              password: normalizeCommandPart(item?.password)
-            },
-            env: envCmd?.data?.env || {},
-            config: configCmd?.data || {}
-          }
+      const { envCmd } = getLinkRunSelection(commandStack.value)
+      const list = buildLinkAccountOptionsFromEnv(envCmd).map((item, index) => ({
+        ...item,
+        desc: '账号',
+        id: `${envCmd?.id || 'env'}_${index}`,
+        data: {
+          ...(item.data || {}),
+          env: envCmd?.data?.env || {},
+          config: envCmd?.data?.config || {}
         }
-      })
+      }))
       dynamicDataCache.value['linkAccountList'] = list
       currentChildren.value = list
       isLoadingDynamic.value = false
@@ -1832,18 +2217,18 @@ export default {
       refreshCommandDropdownVisibility()
     }
 
-    // 加载 variable 脚本列表
-    const loadVariableScriptList = () => {
+    // 加载 script 脚本列表
+    const loadScriptList = () => {
       variableSet.VariableList((response) => {
         isLoadingDynamic.value = false
         if (!(response && response.ErrCode === 0)) {
-          dynamicDataCache.value['variableScriptList'] = []
+          dynamicDataCache.value['scriptList'] = []
           currentChildren.value = []
           refreshCommandDropdownVisibility()
           return
         }
-        const variableList = Array.isArray(response.Data?.variable_list) ? response.Data.variable_list : []
-        const list = variableList.map(item => ({
+        const scriptList = Array.isArray(response.Data?.variable_list) ? response.Data.variable_list : []
+        const list = scriptList.map(item => ({
           command: normalizeCommandPart(item?.name) || `脚本${item?.id || ''}`,
           name: normalizeCommandPart(item?.name) || `脚本${item?.id || ''}`,
           aliases: [String(item?.id || '')].filter(Boolean),
@@ -1851,20 +2236,22 @@ export default {
           id: item?.id,
           data: item
         }))
-        dynamicDataCache.value['variableScriptList'] = list
+        dynamicDataCache.value['scriptList'] = list
         currentChildren.value = list
-        reparseForPendingHistoryExecution('variableScriptList')
+        reparseForPendingHistoryExecution('scriptList')
         refreshCommandDropdownVisibility()
       })
     }
 
-    // 加载 variable 当前步骤可选项
-    const loadVariableOptionList = () => {
-      const currentForm = variableSession.value.currentForm
+    // 加载 script 当前步骤可选项
+    const loadScriptOptionList = () => {
+      const currentForm = scriptSession.value.currentForm
       const cmdType = normalizeCommandPart(currentForm?.CmdType)
-      const optionList = Array.isArray(currentForm?.Select?.OptionList) ? currentForm.Select.OptionList : []
+      const optionList = Array.isArray(scriptSession.value.optionList) && scriptSession.value.optionList.length > 0
+        ? scriptSession.value.optionList
+        : (Array.isArray(currentForm?.Select?.OptionList) ? currentForm.Select.OptionList : [])
       if (!['9', '12', '14'].includes(cmdType) || optionList.length === 0) {
-        dynamicDataCache.value['variableOptionList'] = []
+        dynamicDataCache.value['scriptOptionList'] = []
         currentChildren.value = []
         isLoadingDynamic.value = false
         refreshCommandDropdownVisibility()
@@ -1878,17 +2265,17 @@ export default {
           name: label,
           aliases: [optionValue].filter(Boolean),
           desc: optionValue ? `值: ${optionValue}` : '选项',
-          id: `${variableSession.value.runCmdId || 'cmd'}_${index}`,
+          id: `${scriptSession.value.runCmdId || 'cmd'}_${index}`,
           data: {
             optionValue,
             optionLabel: label
           }
         }
       })
-      dynamicDataCache.value['variableOptionList'] = list
+      dynamicDataCache.value['scriptOptionList'] = list
       currentChildren.value = list
       isLoadingDynamic.value = false
-      reparseForPendingHistoryExecution('variableOptionList')
+      reparseForPendingHistoryExecution('scriptOptionList')
       refreshCommandDropdownVisibility()
     }
 
@@ -1939,9 +2326,12 @@ export default {
           clearPendingHistoryExecution()
         }
       }
+      if (isScriptSessionMode()) {
+        refreshCommandDropdownVisibility()
+        return
+      }
       if (isCommandModeByText(inputText.value)) {
         parseInput()
-        activeCommandIndex.value = 0
       } else {
         showCommands.value = false
         commandStack.value = []
@@ -1952,6 +2342,14 @@ export default {
 
     // 处理焦点
     const handleFocus = () => {
+      if (suppressDropdownOnNextFocus.value) {
+        suppressDropdownOnNextFocus.value = false
+        return
+      }
+      if (isScriptSessionMode()) {
+        refreshCommandDropdownVisibility()
+        return
+      }
       if (isCommandModeByText(inputText.value)) {
         parseInput()
       }
@@ -1985,11 +2383,14 @@ export default {
     const loadCommandHistoryCache = () => {
       let historyList = []
       let usageMap = {}
+      let levelUsageMap = {}
       try {
         const historyRaw = store.getStore(commandHistoryCacheKey)
         const usageRaw = store.getStore(commandUsageCacheKey)
+        const levelUsageRaw = store.getStore(commandLevelUsageCacheKey)
         const parsedHistory = historyRaw ? JSON.parse(historyRaw) : []
         const parsedUsage = usageRaw ? JSON.parse(usageRaw) : {}
+        const parsedLevelUsage = levelUsageRaw ? JSON.parse(levelUsageRaw) : {}
         if (Array.isArray(parsedHistory)) {
           historyList = parsedHistory
             .map(item => normalizeCommandPart(item))
@@ -2005,12 +2406,23 @@ export default {
             }
           })
         }
+        if (parsedLevelUsage && typeof parsedLevelUsage === 'object' && !Array.isArray(parsedLevelUsage)) {
+          Object.keys(parsedLevelUsage).forEach((key) => {
+            const normalizedKey = normalizeCommandPart(key).toLowerCase()
+            const count = Number(parsedLevelUsage[key]) || 0
+            if (normalizedKey && count > 0) {
+              levelUsageMap[normalizedKey] = count
+            }
+          })
+        }
       } catch (e) {
         historyList = []
         usageMap = {}
+        levelUsageMap = {}
       }
       commandHistory.value = historyList
       commandUsageMap.value = usageMap
+      commandLevelUsageMap.value = levelUsageMap
       commandHistoryIndex.value = historyList.length
     }
 
@@ -2021,6 +2433,7 @@ export default {
       // 到达边界继续按方向键时，清空输入框并退出历史浏览状态
       if (direction < 0 && commandHistoryIndex.value <= 0) {
         commandHistoryIndex.value = maxIndex
+        clearPendingHistoryExecution()
         inputText.value = ''
         showCommands.value = false
         commandStack.value = []
@@ -2029,6 +2442,7 @@ export default {
         return
       }
       if (direction > 0 && commandHistoryIndex.value >= maxIndex) {
+        clearPendingHistoryExecution()
         inputText.value = ''
         showCommands.value = false
         commandStack.value = []
@@ -2039,6 +2453,7 @@ export default {
       const nextIndex = Math.max(0, Math.min(maxIndex, commandHistoryIndex.value + direction))
       commandHistoryIndex.value = nextIndex
       if (nextIndex >= maxIndex) {
+        clearPendingHistoryExecution()
         inputText.value = ''
         showCommands.value = false
         commandStack.value = []
@@ -2046,19 +2461,27 @@ export default {
         currentInputValue.value = ''
         return
       }
-      inputText.value = commandHistory.value[nextIndex]
-      parseInput()
-      activeCommandIndex.value = 0
+      loadHistoryCommandForExecution(commandHistory.value[nextIndex])
     }
 
     // 固定一级命令面板点击：快速填充并进入下一层候选
     const quickSelectTopCommand = (cmd) => {
       const commandText = normalizeCommandPart(cmd?.command)
       if (!commandText) return
+      if (commandText === 'script') {
+        inputText.value = '/script '
+        parseInput()
+        showCommands.value = true
+        activeCommandIndex.value = 0
+        nextTick(() => {
+          inputRef.value?.focus()
+        })
+        return
+      }
       inputText.value = `/${commandText} `
       parseInput()
       showCommands.value = true
-      activeCommandIndex.value = 0
+      activeCommandIndex.value = getDefaultActiveCommandIndex()
       nextTick(() => {
         inputRef.value?.focus()
       })
@@ -2092,7 +2515,12 @@ export default {
 
     // 处理键盘事件
     const handleKeydown = (e) => {
-      if (e.key === 'Enter' && !canExecuteCommand.value) {
+      if (e.key === 'Enter' && !canExecuteCommand.value && !showCommands.value) {
+        if (canQueueCurrentCommand()) {
+          e.preventDefault()
+          executeCommand()
+          return
+        }
         e.preventDefault()
         return
       }
@@ -2151,6 +2579,12 @@ export default {
           break
         case 'Enter':
           e.preventDefault()
+          if (showCommands.value && filteredCommands.value[activeCommandIndex.value]) {
+            if (isScriptSessionMode()) {
+              selectCommand(filteredCommands.value[activeCommandIndex.value])
+              return
+            }
+          }
           if (canExecuteCommand.value) {
             executeCommand()
           }
@@ -2186,7 +2620,7 @@ export default {
       // 重新构建输入文本
       const tokenInfo = parseTokens(inputText.value)
       const prefix = tokenInfo.useSlash ? '/' : ''
-      const commandText = commandStack.value.map(c => c.command).join(' ')
+      const commandText = commandStack.value.map(getCommandInputToken).join(' ')
       if (commandText.length > 0) {
         inputText.value = prefix + commandText + ' '
       } else {
@@ -2199,6 +2633,28 @@ export default {
 
     // 选择命令
     const selectCommand = (cmd) => {
+      if (isScriptSessionMode()) {
+        if (!cmd) return
+        const selectedToken = normalizeCommandPart(cmd.insertText || cmd.command || cmd.name)
+        inputText.value = selectedToken
+        if (scriptSession.value.stage === 'selecting_script') {
+          executeAction(
+            { action: 'scriptRun', name: '运行脚本' },
+            {
+              rawCommand: `script ${selectedToken}`,
+              stackOverride: [
+                { action: 'scriptRun' },
+                { ...cmd, data: cmd.data || {} }
+              ]
+            }
+          )
+          return
+        }
+        if (scriptSession.value.stage === 'waiting_option') {
+          executeScriptSessionAction(normalizeCommandPart(cmd?.data?.optionValue) || normalizeCommandPart(cmd.command || cmd.name))
+          return
+        }
+      }
       // history 选择项：仅回填输入框，不改变命令栈
       if (cmd && cmd.insertOnly) {
         const historyText = normalizeCommandPart(cmd.insertText || cmd.command || cmd.name)
@@ -2219,14 +2675,18 @@ export default {
       const stackLast = commandStack.value.length > 0
         ? commandStack.value[commandStack.value.length - 1]
         : null
+      const selectedCmd = {
+        ...cmd,
+        __selectedInputToken: normalizeCommandPart(cmd.insertText || cmd.command || cmd.name)
+      }
       if (!isSameCommandItem(stackLast, cmd)) {
-        commandStack.value.push(cmd)
+        commandStack.value.push(selectedCmd)
       }
       
       // 更新输入文本
       const tokenInfo = parseTokens(inputText.value)
       const prefix = tokenInfo.useSlash ? '/' : ''
-      inputText.value = prefix + commandStack.value.map(c => c.command || c.name).join(' ') + ' '
+      inputText.value = prefix + commandStack.value.map(getCommandInputToken).join(' ') + ' '
       // 清空上一步残留输入，避免在“选择目标步骤”被误判为已输入业务参数。
       currentInputValue.value = ''
       
@@ -2249,27 +2709,27 @@ export default {
       if (cmd.children && cmd.children.length > 0) {
         // 有子命令，显示子命令列表
         currentChildren.value = cmd.children
-        activeCommandIndex.value = 0
+        activeCommandIndex.value = getDefaultActiveCommandIndex()
         return
       }
       
       if (cmd.dynamicChildren) {
         // 需要加载动态数据
         loadDynamicChildren(cmd.dynamicChildren)
-        activeCommandIndex.value = 0
+        activeCommandIndex.value = getDefaultActiveCommandIndex()
         return
       }
 
       // 支持“当前选择项自身声明了 nextDynamicChildren”的场景（如 git quick-create-branch 选择基线分支后切到分支类型）。
       if (cmd.nextDynamicChildren) {
         loadDynamicChildren(cmd.nextDynamicChildren)
-        activeCommandIndex.value = 0
+        activeCommandIndex.value = getDefaultActiveCommandIndex()
         return
       }
       
       if (cmd.needTarget) {
         // 需要选择目标，保持下拉框打开（等待动态数据加载）
-        activeCommandIndex.value = 0
+        activeCommandIndex.value = getDefaultActiveCommandIndex()
         return
       }
       
@@ -2283,6 +2743,20 @@ export default {
         // 动作命令仅进入待执行状态，实际执行由 Enter / 发送按钮触发
         showCommands.value = false
         currentChildren.value = []
+        return
+      }
+
+      if (parentCmd && parentCmd.action === 'scriptRun' && cmd.data) {
+        executeAction(
+          { action: 'scriptRun', name: '运行脚本' },
+          {
+            rawCommand: `script ${normalizeCommandPart(cmd.insertText || cmd.command || cmd.name)}`,
+            stackOverride: [
+              { action: 'scriptRun' },
+              { ...cmd, data: cmd.data || {} }
+            ]
+          }
+        )
         return
       }
       
@@ -2319,6 +2793,41 @@ export default {
 
     // 执行命令
     const executeCommand = () => {
+      if (isExecuting.value) {
+        if (canQueueCurrentCommand()) {
+          queuePendingCommand()
+        } else {
+          messages.value.push({
+            type: 'system',
+            content: QUEUE_RUNNING_MESSAGE_TEXT
+          })
+          scrollToBottom()
+        }
+        return
+      }
+      if (isScriptSessionMode()) {
+        if (scriptSession.value.stage === 'selecting_script' || scriptSession.value.stage === 'waiting_option') {
+          const selectedCmd = filteredCommands.value[activeCommandIndex.value]
+          if (selectedCmd) {
+            selectCommand(selectedCmd)
+          }
+          return
+        }
+        if (scriptSession.value.stage === 'waiting_input') {
+          executeScriptSessionAction(inputText.value || '')
+          return
+        }
+        executeAction(
+          { action: 'scriptSession', name: '执行脚本' },
+          {
+            inputValue: inputText.value || '',
+            rawCommand: normalizeCommandPart(scriptSession.value.scriptName)
+              ? `script ${scriptSession.value.scriptName}`
+              : 'script'
+          }
+        )
+        return
+      }
       if (!canExecuteCommand.value) return
 
       if (isCommandModeByText(inputText.value)) {
@@ -2400,6 +2909,7 @@ export default {
         type: 'system',
         commandText: `执行命令: ${displayCommandText}`,
         commandStatus: 'running',
+        summaryText: '',
         resultText: '',
         processText: ''
       }
@@ -2410,7 +2920,10 @@ export default {
       // 清理输入状态
       inputText.value = ''
       showCommands.value = false
-      const currentStack = [...commandStack.value]
+      const currentStack = Array.isArray(options.stackOverride)
+        ? [...options.stackOverride]
+        : [...commandStack.value]
+      recordCommandLevelUsage(currentStack)
       commandStack.value = []
       currentChildren.value = []
       currentInputValue.value = ''
@@ -2493,35 +3006,17 @@ export default {
         case 'gitSetSafe':
           executeGitAction('setSafe', currentStack, options.inputValue || '')
           break
-        case 'shellCreate':
-          executeShellAction('create', currentStack, options.inputValue || '')
-          break
-        case 'shellList':
-          executeShellAction('list', currentStack, options.inputValue || '')
-          break
-        case 'shellRun':
+        case 'shell':
           executeShellAction('run', currentStack, options.inputValue || '')
           break
         case 'linkRun':
           executeLinkAction(currentStack)
           break
-        case 'variableRun':
-          executeVariableRunAction(currentStack)
+        case 'scriptRun':
+          executeScriptRunAction(currentStack)
           break
-        case 'variableSet':
-          executeVariableSessionAction('set', currentStack, options.inputValue || '')
-          break
-        case 'variableChoose':
-          executeVariableSessionAction('choose', currentStack, options.inputValue || '')
-          break
-        case 'variableExec':
-          executeVariableSessionAction('exec', currentStack, options.inputValue || '')
-          break
-        case 'variableReset':
-          executeVariableSessionAction('reset', currentStack, options.inputValue || '')
-          break
-        case 'variableCancel':
-          executeVariableSessionAction('cancel', currentStack, options.inputValue || '')
+        case 'scriptSession':
+          executeScriptSessionAction(currentInputValue.value || options.inputValue || '')
           break
         case 'gitViewConfig':
           appendOutputResult('已禁用页面跳转，请仅使用命令快捷操作。\n')
@@ -2749,7 +3244,7 @@ export default {
         if (!(response && response.ErrCode === 0)) {
           appendOutputResult(`错误: ${normalizeCommandPart(response?.ErrMsg) || '未知错误'}\n`)
           setTimeout(() => {
-            finishExecution()
+            finishExecution(response)
           }, 1500)
         } else {
           if (typeof renderer === 'function') {
@@ -2759,7 +3254,7 @@ export default {
           }
           // 结果详情统一在“执行过程(SSE)”里查看，上方只保留成功提示
           setTimeout(() => {
-            finishExecution()
+            finishExecution(response)
           }, 1500)
         }
       }
@@ -2858,7 +3353,7 @@ export default {
         }
         setTimeout(() => {
           sseDistribute.UnRegisterReceive(newSseDistributeId)
-          finishExecution()
+          finishExecution(response)
         }, 1200)
       }
 
@@ -2926,14 +3421,14 @@ export default {
       // 处理 HTTP 响应的回调
       const callback = (response) => {
         if (response.ErrCode !== 0) {
-          appendOutputResult('执行失败\n')
+          appendOutputResult(`执行失败: ${normalizeCommandPart(response?.ErrMsg) || '未知错误'}\n`)
         } else {
-          appendOutputResult(`${gitActionDoneLabelMap[action] || '执行成功'}\n`)
+          appendOutputSummary(gitActionDoneLabelMap[action] || '执行成功')
         }
         setTimeout(() => {
           // 给 SSE 尾包一点时间，避免过程/结果末尾被截断
           sseDistribute.UnRegisterReceive(newSseDistributeId)
-          finishExecution()
+          finishExecution(response)
         }, 1200)
       }
       
@@ -3004,76 +3499,13 @@ export default {
       }
     }
 
-    // 解析 shell create 输入参数：任务名 | SSH(名称或ID) | 命令
-    const parseShellCreateInput = (inputValue) => {
-      const text = String(inputValue || '')
-      const parts = text.split('|').map(item => String(item || '').trim()).filter(Boolean)
-      if (parts.length < 3) {
-        return {
-          ok: false,
-          err: '参数格式错误，请使用: 任务名 | SSH(名称或ID) | 命令'
-        }
-      }
-      const [name, sshKey, ...commandParts] = parts
-      const command = commandParts.join(' | ').trim()
-      if (!name || !sshKey || !command) {
-        return {
-          ok: false,
-          err: '参数不完整，请使用: 任务名 | SSH(名称或ID) | 命令'
-        }
-      }
-      return {
-        ok: true,
-        data: { name, sshKey, command }
-      }
-    }
-
-    // 解析 SSH 标识：支持 SSH id 或 SSH 名称
-    const resolveShellSshId = (sshKey, callback) => {
-      const target = normalizeCommandPart(sshKey)
-      if (!target) {
-        callback('')
-        return
-      }
-      ssh.SshList((response) => {
-        if (!(response && response.ErrCode === 0 && Array.isArray(response.Data))) {
-          callback('')
-          return
-        }
-        const list = response.Data || []
-        const exactId = list.find(item => String(item.id) === target)
-        if (exactId) {
-          callback(String(exactId.id))
-          return
-        }
-        const lower = target.toLowerCase()
-        const exactName = list.find(item => String(item.name || '').toLowerCase() === lower)
-        if (exactName) {
-          callback(String(exactName.id))
-          return
-        }
-        const fuzzyName = list.find(item => String(item.name || '').toLowerCase().includes(lower))
-        callback(fuzzyName ? String(fuzzyName.id) : '')
-      })
-    }
-
-    // 获取 shell_out 分组 ID（与 ShellOut 页面保持一致：groupType=6）
-    const resolveShellGroupId = (callback) => {
-      group.GroupList({ type: '6' }, (response) => {
-        if (!(response && response.ErrCode === 0 && Array.isArray(response.Data) && response.Data.length > 0)) {
-          callback('')
-          return
-        }
-        callback(String(response.Data[0].id || ''))
-      })
-    }
-
-    // 执行终端输出相关动作：create/list/run
+    // 执行终端输出相关动作：复用“新窗口”按钮行为
     const executeShellAction = (action, stack, inputValue) => {
-      if (action === 'list') {
-        const actionIndex = stack.findIndex(item => item.action === 'shellList')
+      if (action === 'run') {
+        const actionIndex = stack.findIndex(item => item.action === 'shell')
         const targetCmd = actionIndex >= 0 ? stack[actionIndex + 1] : null
         if (!targetCmd || !targetCmd.data) {
+          appendOutputSummary('打开失败')
           appendOutputResult('错误：请先选择要打开的终端输出任务\n')
           finishExecution()
           return
@@ -3084,110 +3516,20 @@ export default {
         const id = normalizeCommandPart(target.id)
         const title = encodeURIComponent(String(target.name || id || 'shellout'))
         if (!id) {
+          appendOutputSummary('打开失败')
           appendOutputResult('错误：任务ID为空，无法打开新窗口\n')
           finishExecution()
           return
         }
+        appendOutputResult(`正在打开终端输出任务 [${target.name || target.id}]...\n`)
         const url = `${window.location.origin}/#/fullpage?group_id=${groupId}&id=${id}&title=${title}`
         window.open(url, '_blank')
-        appendOutputResult('执行成功\n')
+        appendOutputSummary(`已打开终端输出任务 [${target.name || target.id}]`)
         finishExecution()
         return
       }
 
-      if (action === 'run') {
-        const actionIndex = stack.findIndex(item => item.action === 'shellRun')
-        const targetCmd = actionIndex >= 0 ? stack[actionIndex + 1] : null
-        if (!targetCmd || !targetCmd.data) {
-          appendOutputResult('错误：请先选择要运行的终端输出任务\n')
-          finishExecution()
-          return
-        }
-        const target = targetCmd.data
-        const groupId = Number(target.group_id || 0)
-        if (!groupId) {
-          appendOutputResult('错误：任务缺少 group_id，无法启动\n')
-          finishExecution()
-          return
-        }
-
-        const newSseDistributeId = sseDistribute.GetSseDistributeId('dashboard_shell_' + Date.now())
-        const throttleStringFunc = new Throttle_string(50, (text) => {
-          if (currentOutputMessage.value) {
-            appendOutputProcess(text)
-          }
-        })
-        sseDistribute.RegisterReceive(newSseDistributeId, (msg) => {
-          throttleStringFunc.update(msg)
-        })
-
-        appendOutputResult(`正在运行任务 [${target.name || target.id}]...\n\n`)
-        shell.ShellOutSetSeeId({
-          sse_distribute_id: newSseDistributeId,
-          shell_client_id: target.shell_client_id,
-          ssh_id: target.ssh_id,
-          command: target.command,
-          id: target.id,
-          group_id: target.group_id,
-          is_run: 1,
-        }, (response) => {
-          if (response.ErrCode !== 0) {
-            appendOutputResult('执行失败\n')
-          } else {
-            appendOutputResult('执行成功\n')
-          }
-          setTimeout(() => {
-            sseDistribute.UnRegisterReceive(newSseDistributeId)
-            finishExecution()
-          }, 1200)
-        })
-        return
-      }
-
-      if (action === 'create') {
-        const parsed = parseShellCreateInput(inputValue)
-        if (!parsed.ok) {
-          appendOutputResult(`${parsed.err}\n`)
-          appendOutputResult('示例: shell create 发布日志 | 1 | tail -f /var/log/app.log\n')
-          finishExecution()
-          return
-        }
-        const payload = parsed.data
-        resolveShellSshId(payload.sshKey, (sshId) => {
-          if (!sshId) {
-            appendOutputResult(`错误：未找到 SSH "${payload.sshKey}"\n`)
-            finishExecution()
-            return
-          }
-          resolveShellGroupId((groupId) => {
-            if (!groupId) {
-              appendOutputResult('错误：未找到 shell_out 分组，请先在“终端输出”页面创建分组\n')
-              finishExecution()
-              return
-            }
-            // 复用 shellOut 页面创建逻辑的接口
-            shell.ShellOutStart({
-              id: '',
-              command: payload.command,
-              sse_distribute_id: '',
-              shell_client_id: '',
-              ssh_id: sshId,
-              name: payload.name,
-              is_run: 1,
-              group_id: groupId,
-            }, (response) => {
-              if (response.ErrCode !== 0) {
-                appendOutputResult('执行失败\n')
-              } else {
-                appendOutputResult('执行成功\n')
-              }
-              finishExecution()
-            })
-          })
-        })
-        return
-      }
-
+      appendOutputSummary('执行失败')
       appendOutputResult('该终端输出操作暂未实现\n')
       finishExecution()
     }
@@ -3195,25 +3537,12 @@ export default {
     // 执行 link run：根据“环境(含配置) -> 账号”选择启动自定义链接
     const executeLinkAction = (stack) => {
       const selection = getLinkRunSelection(stack)
-      if (!selection.envCmd || !selection.accountCmd) {
-        appendOutputResult('错误：请完整选择环境和账号\n')
+      if (!isLinkRunSelectionComplete(selection)) {
+        appendOutputResult(`${getActionIncompleteMessage({ action: 'linkRun' }, stack, '')}\n`)
         finishExecution()
         return
       }
-
-      const configData = (selection.configCmd?.data || selection.envCmd?.data?.config || {})
-      const envData = selection.envCmd.data?.env || {}
-      const accountData = selection.accountCmd.data?.account || {}
-
-      const payload = {
-        id: configData.id,
-        label: normalizeCommandPart(envData.label),
-        user_name: normalizeCommandPart(accountData.user_name),
-        password: normalizeCommandPart(accountData.password),
-        open_num: normalizeCommandPart(configData.open_num),
-        open_type: normalizeCommandPart(configData.open_type),
-        sse_distribute_id: sseDistributeId.value
-      }
+      const payload = buildLinkRunPayload(selection, sseDistributeId.value, normalizeCommandPart)
 
       if (!payload.id || !payload.label) {
         appendOutputResult('错误：链接配置不完整，无法执行\n')
@@ -3228,159 +3557,189 @@ export default {
         } else {
           appendOutputResult(`执行失败: ${normalizeCommandPart(response?.ErrMsg) || '未知错误'}\n`)
         }
-        finishExecution()
+        finishExecution(response)
       })
     }
 
-    // 重置 variable 会话
-    const resetVariableSession = () => {
-      variableSession.value = {
+    // 重置 script 会话
+    const resetScriptSession = () => {
+      scriptSession.value = {
         active: false,
-        variableId: 0,
-        variableName: '',
+        stage: 'idle',
+        scriptId: 0,
+        scriptName: '',
         runCmdId: 0,
         replaceList: {},
-        isRun: 0,
-        isFinish: 0,
         currentForm: null,
+        pendingInputLabel: '',
+        optionList: [],
+        canExecute: false,
       }
-      dynamicDataCache.value['variableOptionList'] = []
+      dynamicDataCache.value['scriptOptionList'] = []
+      currentChildren.value = []
+      inputText.value = ''
+      refreshCommandDropdownVisibility()
     }
 
-    // 处理 variable API 返回，更新会话与下一步提示
-    const handleVariableFlowResponse = (response) => {
+    const enterScriptSelectionStage = () => {
+      scriptSession.value.active = true
+      scriptSession.value.stage = 'selecting_script'
+      scriptSession.value.scriptId = 0
+      scriptSession.value.scriptName = ''
+      scriptSession.value.runCmdId = 0
+      scriptSession.value.replaceList = {}
+      scriptSession.value.currentForm = null
+      scriptSession.value.pendingInputLabel = ''
+      scriptSession.value.optionList = []
+      scriptSession.value.canExecute = false
+      inputText.value = ''
+      loadScriptList()
+    }
+
+    // 处理 script API 返回，更新会话与下一步提示
+    const handleScriptFlowResponse = (response, options = {}) => {
+      const { fallbackToSelectingScript = false } = options
       if (!(response && response.ErrCode === 0)) {
         appendOutputResult(`执行失败: ${normalizeCommandPart(response?.ErrMsg) || '未知错误'}\n`)
-        finishExecution()
+        if (fallbackToSelectingScript) {
+          enterScriptSelectionStage()
+        }
+        finishExecution(response)
         return
       }
       const data = response.Data || {}
       const runStatus = Number(data.RunStatus)
       const currentForm = data.Form || null
+      const optionList = Array.isArray(currentForm?.Select?.OptionList) ? currentForm.Select.OptionList : []
       if (data.ReplaceList && typeof data.ReplaceList === 'object') {
-        variableSession.value.replaceList = data.ReplaceList
+        scriptSession.value.replaceList = data.ReplaceList
       }
       if (currentForm && currentForm.Id !== undefined && currentForm.Id !== null) {
-        variableSession.value.runCmdId = Number(currentForm.Id) || 0
+        scriptSession.value.runCmdId = Number(currentForm.Id) || 0
       }
-      variableSession.value.currentForm = currentForm
-      variableSession.value.active = true
-      variableSession.value.isFinish = runStatus === 2 ? 1 : 0
-      variableSession.value.isRun = runStatus === 1 ? 1 : 0
+      scriptSession.value.currentForm = currentForm
+      scriptSession.value.active = true
 
       if (runStatus === 0) {
         const cmdType = normalizeCommandPart(currentForm?.CmdType)
         if (['3', '17'].includes(cmdType)) {
-          const label = normalizeCommandPart(currentForm?.Input?.Label) || '输入参数'
-          appendOutputResult(`当前步骤: ${label}\n下一步: variable set <值>\n`)
+          const label = normalizeCommandPart(currentForm?.Input?.Label) || '请在命令框输入内容并回车'
+          scriptSession.value.stage = 'waiting_input'
+          scriptSession.value.pendingInputLabel = label
+          scriptSession.value.optionList = []
+          scriptSession.value.canExecute = false
+          currentChildren.value = []
+          showCommands.value = false
+          inputText.value = ''
+          appendOutputResult(`当前步骤: ${label}\n请在命令框输入内容并回车\n`)
         } else if (['9', '12', '14'].includes(cmdType)) {
-          const options = Array.isArray(currentForm?.Select?.OptionList) ? currentForm.Select.OptionList : []
-          const optionText = options.map(item => normalizeCommandPart(item?.Label) || normalizeCommandPart(item?.Value)).filter(Boolean).join('、')
-          appendOutputResult(`当前步骤: ${normalizeCommandPart(currentForm?.Select?.Label) || '选择选项'}\n可选项: ${optionText || '无'}\n下一步: variable choose <选项>\n`)
+          scriptSession.value.stage = 'waiting_option'
+          scriptSession.value.pendingInputLabel = normalizeCommandPart(currentForm?.Select?.Label) || '请在命令框选择一个选项'
+          scriptSession.value.optionList = optionList
+          scriptSession.value.canExecute = false
+          inputText.value = ''
+          loadScriptOptionList()
+          appendOutputResult(`当前步骤: ${scriptSession.value.pendingInputLabel}\n请在命令框选择一个选项\n`)
         } else {
-          appendOutputResult('脚本返回了未适配的步骤类型，请到 Variable 页面执行。\n')
+          appendOutputResult('脚本返回了未适配的步骤类型，请到脚本页面执行。\n')
+          enterScriptSelectionStage()
         }
         finishExecution()
         return
       }
       if (runStatus === 1) {
-        appendOutputResult('当前脚本已就绪，下一步: variable exec\n')
+        scriptSession.value.stage = 'ready_execute'
+        scriptSession.value.pendingInputLabel = ''
+        scriptSession.value.optionList = []
+        scriptSession.value.canExecute = true
+        currentChildren.value = []
+        showCommands.value = false
+        inputText.value = ''
+        appendOutputResult('脚本已就绪，按回车执行\n')
         finishExecution()
         return
       }
       if (runStatus === 2) {
-        appendOutputResult('执行完成\n')
-        resetVariableSession()
+        appendOutputResult('脚本执行完成\n')
+        resetScriptSession()
         finishExecution()
         return
       }
-      appendOutputResult('收到未知状态，已保留当前会话\n')
+      appendOutputResult('收到未知状态，已保留当前脚本会话\n')
       finishExecution()
     }
 
-    // 执行 variable run：选择脚本并启动
-    const executeVariableRunAction = (stack) => {
-      const actionIndex = stack.findIndex(item => item.action === 'variableRun')
+    // 执行 script run：选择脚本并启动
+    const executeScriptRunAction = (stack) => {
+      const actionIndex = stack.findIndex(item => item.action === 'scriptRun')
       const targetCmd = actionIndex >= 0 ? stack[actionIndex + 1] : null
       if (!(targetCmd && targetCmd.data && targetCmd.data.id)) {
         appendOutputResult('错误：请先选择要执行的脚本\n')
+        enterScriptSelectionStage()
         finishExecution()
         return
       }
-      resetVariableSession()
-      variableSession.value.active = true
-      variableSession.value.variableId = Number(targetCmd.data.id) || 0
-      variableSession.value.variableName = normalizeCommandPart(targetCmd.data.name) || normalizeCommandPart(targetCmd.name)
-      appendOutputResult(`已启动脚本会话: ${variableSession.value.variableName || variableSession.value.variableId}\n`)
+      resetScriptSession()
+      scriptSession.value.active = true
+      scriptSession.value.stage = 'executing'
+      scriptSession.value.scriptId = Number(targetCmd.data.id) || 0
+      scriptSession.value.scriptName = normalizeCommandPart(targetCmd.data.name) || normalizeCommandPart(targetCmd.name)
+      appendOutputResult(`已启动脚本: ${scriptSession.value.scriptName || scriptSession.value.scriptId}\n`)
       variableSet.VariableRun(
         sseDistributeId.value,
-        variableSession.value.variableId,
+        scriptSession.value.scriptId,
         0,
         0,
         JSON.stringify({}),
         (response) => {
-          handleVariableFlowResponse(response)
+          handleScriptFlowResponse(response, { fallbackToSelectingScript: true })
         }
       )
     }
 
-    // 执行 variable 会话动作：set/choose/exec/reset/cancel
-    const executeVariableSessionAction = (action, stack, inputValue) => {
-      const session = variableSession.value
-      if (action === 'reset') {
-        resetVariableSession()
-        appendOutputResult('已重置 variable 会话，可重新执行 variable run <脚本名>\n')
-        finishExecution()
-        return
-      }
-      if (action === 'cancel') {
-        resetVariableSession()
-        appendOutputResult('已取消 variable 会话\n')
-        finishExecution()
-        return
-      }
-      if (!session.active || !session.variableId) {
-        appendOutputResult('当前没有进行中的 variable 会话，请先执行 variable run <脚本名>\n')
-        finishExecution()
+    // 执行 script 会话动作：按当前阶段自动解释输入/选项/执行
+    const executeScriptSessionAction = (inputValue) => {
+      const session = scriptSession.value
+      if (!session.active || !session.scriptId) {
+        enterScriptSelectionStage()
         return
       }
 
       const currentForm = session.currentForm || {}
       const cmdType = normalizeCommandPart(currentForm?.CmdType)
 
-      if (action === 'set') {
+      if (session.stage === 'waiting_input') {
         if (!['3', '17'].includes(cmdType)) {
-          appendOutputResult('当前步骤不是输入步骤，请使用 variable choose <选项>\n')
+          appendOutputResult('当前步骤不是输入步骤，请在命令框选择一个选项\n')
           finishExecution()
           return
         }
         const editValue = normalizeCommandPart(inputValue)
         if (!editValue) {
-          appendOutputResult('请输入参数值，例如: variable set 123\n')
+          appendOutputResult('请在命令框输入内容并回车\n')
           finishExecution()
           return
         }
+        session.stage = 'executing'
         variableSet.VariableSet(
-          session.variableId,
+          session.scriptId,
           Number(currentForm.Id) || Number(session.runCmdId) || 0,
           JSON.stringify(session.replaceList || {}),
           editValue,
           (response) => {
-            handleVariableFlowResponse(response)
+            handleScriptFlowResponse(response)
           }
         )
         return
       }
 
-      if (action === 'choose') {
+      if (session.stage === 'waiting_option') {
         if (!['9', '12', '14'].includes(cmdType)) {
-          appendOutputResult('当前步骤不是选项步骤，请使用 variable set <值>\n')
+          appendOutputResult('当前步骤不是选项步骤，请在命令框输入内容并回车\n')
           finishExecution()
           return
         }
-        const actionIndex = stack.findIndex(item => item.action === 'variableChoose')
-        const targetCmd = actionIndex >= 0 ? stack[actionIndex + 1] : null
-        const selectedValue = normalizeCommandPart(targetCmd?.data?.optionValue) || normalizeCommandPart(inputValue)
+        const selectedValue = normalizeCommandPart(inputValue)
         const options = Array.isArray(currentForm?.Select?.OptionList) ? currentForm.Select.OptionList : []
         const matched = options.find(item => {
           const label = normalizeCommandPart(item?.Label)
@@ -3388,43 +3747,45 @@ export default {
           return selectedValue && (selectedValue === label || selectedValue === value)
         })
         if (!matched) {
-          const optionText = options.map(item => normalizeCommandPart(item?.Label) || normalizeCommandPart(item?.Value)).filter(Boolean).join('、')
-          appendOutputResult(`选项不存在，可选项: ${optionText || '无'}\n`)
+          appendOutputResult('请在命令框选择一个选项\n')
           finishExecution()
           return
         }
+        session.stage = 'executing'
         variableSet.VariableSet(
-          session.variableId,
+          session.scriptId,
           Number(currentForm.Id) || Number(session.runCmdId) || 0,
           JSON.stringify(session.replaceList || {}),
           normalizeCommandPart(matched?.Value),
           (response) => {
-            handleVariableFlowResponse(response)
+            handleScriptFlowResponse(response)
           }
         )
         return
       }
 
-      if (action === 'exec') {
-        if (Number(session.isRun) !== 1) {
-          appendOutputResult('当前步骤尚未就绪，不能最终执行\n')
-          finishExecution()
-          return
-        }
+      if (session.stage === 'ready_execute') {
+        session.stage = 'executing'
+        session.canExecute = false
         variableSet.VariableRun(
           sseDistributeId.value,
-          session.variableId,
+          session.scriptId,
           Number(session.runCmdId) || Number(currentForm.Id) || 0,
           1,
           JSON.stringify(session.replaceList || {}),
           (response) => {
-            handleVariableFlowResponse(response)
+            handleScriptFlowResponse(response)
           }
         )
         return
       }
 
-      appendOutputResult('未知 variable 操作\n')
+      if (session.stage === 'selecting_script') {
+        enterScriptSelectionStage()
+        return
+      }
+
+      appendOutputResult('脚本执行中，请稍候\n')
       finishExecution()
     }
 
@@ -3489,7 +3850,8 @@ export default {
     }
     
     // 完成执行
-    const finishExecution = () => {
+    const finishExecution = (response = null) => {
+      applyResponseCommandStatus(response)
       const finishedMessage = currentOutputMessage.value
       // 若未显式写入成功/失败状态，执行结束后默认标记为成功
       if (finishedMessage && finishedMessage.commandStatus === 'running') {
@@ -3499,6 +3861,7 @@ export default {
       currentOutputMessage.value = null
       notifyCommandFinished(finishedMessage)
       scrollToBottom()
+      triggerNextPendingCommand()
     }
 
     // 滚动到底部
@@ -3599,6 +3962,20 @@ export default {
       scrollToBottom()
     }
 
+    watch(filteredCommands, (commandList) => {
+      if (!showCommands.value) {
+        return
+      }
+      activeCommandIndex.value = getDefaultActiveCommandIndex(commandList)
+    })
+
+    watch([showCommands, activeCommandIndex, filteredCommands], () => {
+      commandItemRefs.value = []
+      nextTick(() => {
+        ensureActiveCommandVisible()
+      })
+    })
+
     onMounted(() => {
       loadCommandHistoryCache()
       handleHomeAppear()
@@ -3622,16 +3999,21 @@ export default {
       isLoadingDynamic,
       filteredCommands,
       activeCommandIndex,
+      commandDropdown,
       inputRef,
       messageList,
       commandBreadcrumb,
       inputPlaceholder,
       canExecuteCommand,
+      canSubmitCommand,
       highlightedInputHtml,
       inputWrapperWidth,
       nextStepHint,
+      pendingCommandQueue,
+      pendingCommandTitle,
+      hasPendingCommandQueue,
       availableCommands,
-      recentHistoryCommands,
+      topHistoryCommands,
       handleInput,
       handleKeydown,
       handleFocus,
@@ -3639,11 +4021,16 @@ export default {
       quickSelectTopCommand,
       quickSelectHistoryCommand,
       removeHistoryCommand,
+      removePendingCommand,
       markKeepDropdownOnBlur,
+      setCommandItemRef,
       selectCommand,
       executeCommand,
+      getCommandLevelUsageCount,
       getCommandKey,
       getCommandMatchHint,
+      getResultLineState,
+      getResultLines,
       renderProcessMarkdown,
       hasCommandLayout,
     }
@@ -3854,9 +4241,10 @@ export default {
 }
 
 .message-command {
-  font-size: 12px;
-  color: #5a8a5a;
-  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #456545;
+  margin-bottom: 10px;
   padding: 0 4px;
   display: flex;
   align-items: center;
@@ -3920,6 +4308,86 @@ export default {
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.command-result-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message-result-command {
+  font-size: 13px;
+  font-weight: 600;
+  color: #486048;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #d8e3d2;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-result-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.result-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.result-line-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.result-line-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.result-line-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #6f8d70;
+  animation: resultDotsPulse 1.2s infinite ease-in-out;
+}
+
+.result-line-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.result-line-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.result-line-check {
+  color: #4f7d5f;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.result-line-failed {
+  color: #d84a4a;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+@keyframes resultDotsPulse {
+  0%, 80%, 100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .process-window {
@@ -4061,7 +4529,6 @@ export default {
   display: flex;
   align-items: center;
   padding: 6px 12px;
-  cursor: pointer;
   transition: background 0.15s;
   border-bottom: 1px solid #f0f0e8;
   white-space: nowrap;
@@ -4072,9 +4539,9 @@ export default {
   border-bottom: none;
 }
 
-.command-item:hover,
 .command-item.active {
-  background: #f5f8f5;
+  background: #eef6ee;
+  box-shadow: inset 3px 0 0 #7aa874;
 }
 
 .command-icon {
@@ -4090,6 +4557,18 @@ export default {
   margin-right: 8px;
   min-width: 70px;
   flex-shrink: 0;
+}
+
+.command-usage-count {
+  flex: 0 0 auto;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #edf4e8;
+  color: #53714f;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
 }
 
 .command-desc {
@@ -4171,6 +4650,17 @@ export default {
   transition: width 0.18s ease;
 }
 
+.input-main-row {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.input-main-panel {
+  flex: 1;
+  min-width: 0;
+}
+
 .input-wrapper {
   width: 100%;
   display: flex;
@@ -4194,6 +4684,93 @@ export default {
   font-size: 12px;
   line-height: 1.4;
   color: #9aa79a;
+}
+
+.pending-command-panel {
+  width: 260px;
+  flex-shrink: 0;
+  border: 1px solid #dfe8dc;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fbfdf8 0%, #f4f9f1 100%);
+  padding: 10px;
+}
+
+.pending-command-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.pending-command-title {
+  font-size: 12px;
+  color: #4f6d4f;
+  font-weight: 600;
+}
+
+.pending-command-count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #dfeeda;
+  color: #3f6f3f;
+  font-size: 12px;
+  line-height: 22px;
+  text-align: center;
+}
+
+.pending-command-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.pending-command-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #dbe7d6;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px 8px 8px 10px;
+}
+
+.pending-command-text {
+  flex: 1;
+  min-width: 0;
+  color: #486248;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pending-command-delete {
+  min-width: 52px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #f2b8b5;
+  border-radius: 999px;
+  background: #fff5f4;
+  color: #c45656;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.pending-command-delete:hover {
+  background: #fdeaea;
+  border-color: #e58f8f;
+  color: #b43c3c;
 }
 
 .input-overlay-box {
@@ -4292,6 +4869,16 @@ export default {
 }
 
 /* 滚动条样式 */
+@media (max-width: 900px) {
+  .input-main-row {
+    flex-direction: column;
+  }
+
+  .pending-command-panel {
+    width: 100%;
+  }
+}
+
 .message-list::-webkit-scrollbar,
 .command-dropdown::-webkit-scrollbar {
   width: 6px;

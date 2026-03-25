@@ -71,6 +71,7 @@ copy /Y "%ROOT_DIR%\config\dtool\frog.db" "%PKG_DIR%\config\dtool\frog.db" >nul 
 xcopy "%ROOT_DIR%\web\dist" "%PKG_DIR%\web\dist" /E /I /Y >nul || goto :error
 xcopy "%ROOT_DIR%\internal\pkg\p_js" "%PKG_DIR%\internal\pkg\p_js" /E /I /Y >nul || goto :error
 xcopy "%ROOT_DIR%\internal\app\dtool\database" "%PKG_DIR%\internal\app\dtool\database" /E /I /Y >nul || goto :error
+xcopy "%ROOT_DIR%\internal\app\dtool\database_memory" "%PKG_DIR%\internal\app\dtool\database_memory" /E /I /Y >nul || goto :error
 
 echo [5/6] Generate launch scripts and release note
 for /f %%i in ('powershell -NoProfile -Command "[string]([char]32593+[char]39029+[char]29256)+'.bat'"') do set "WEB_BAT=%%i"

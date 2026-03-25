@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="supervisor-config-page">
     <div class="page-header">
       <div class="header-content">
@@ -11,10 +11,10 @@
           </svg>
           <h3>Supervisor 配置管理</h3>
         </div>
-        <el-button type="primary" @click="ShowAddSupervisor">
+        <pl-button type="primary" @click="ShowAddSupervisor">
           <el-icon><Plus /></el-icon>
           添加配置
-        </el-button>
+        </pl-button>
       </div>
       <p class="header-desc">管理Supervisor进程监控配置，支持SSH远程和Docker环境</p>
     </div>
@@ -54,15 +54,15 @@
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="scope">
             <div class="action-buttons">
-              <el-button type="primary" link size="small" @click="ShowEditSupervisor(scope.row , true)">
+              <pl-button type="primary" link size="small" @click="ShowEditSupervisor(scope.row , true)">
                 <el-icon><CopyDocument /></el-icon>复制新增
-              </el-button>
-              <el-button type="primary" link size="small" @click="ShowEditSupervisor(scope.row , false)">
+              </pl-button>
+              <pl-button type="primary" link size="small" @click="ShowEditSupervisor(scope.row , false)">
                 <el-icon><Edit /></el-icon>编辑
-              </el-button>
-              <el-button type="danger" link size="small" @click="DeleteSupervisor(scope.row)">
+              </pl-button>
+              <pl-button type="danger" link size="small" @click="DeleteSupervisor(scope.row)">
                 <el-icon><Delete /></el-icon>删除
-              </el-button>
+              </pl-button>
             </div>
           </template>
         </el-table-column>
@@ -101,10 +101,10 @@
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="state.dialogEditSupervisor = false">取消</el-button>
-          <el-button type="primary" @click="EditSupervisor">
+          <pl-button @click="state.dialogEditSupervisor = false">取消</pl-button>
+          <pl-button type="primary" @click="EditSupervisor">
             <el-icon><Check /></el-icon>保存
-          </el-button>
+          </pl-button>
         </div>
       </template>
     </el-dialog>
@@ -325,3 +325,4 @@ export default defineComponent({
   border-radius: 8px;
 }
 </style>
+

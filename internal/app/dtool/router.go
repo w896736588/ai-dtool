@@ -18,6 +18,7 @@ import (
 
 func InitRouter(tGin *p_gin.Gin) {
 	baseRouter(tGin)
+	toolRouter(tGin)
 	redisRouter(tGin)
 	phpRouter(tGin)
 	supervisorRouter(tGin)
@@ -31,6 +32,8 @@ func InitRouter(tGin *p_gin.Gin) {
 	setStar(tGin)
 	setMarkdown(tGin)
 	setMemoryFragment(tGin)
+	homeTask(tGin)
+	infoCrawl(tGin)
 	shellOut(tGin)
 	variableRouter(tGin)
 	smartLink(tGin)
@@ -83,6 +86,17 @@ func InitRouter(tGin *p_gin.Gin) {
 		})
 		return
 	})
+}
+
+func toolRouter(tGin *p_gin.Gin) {
+	tGin.GinPost(`/api/ToolPortProcessList`, controller.ToolPortProcessList)
+	tGin.GinPost(`/api/ToolPortProcessKill`, controller.ToolPortProcessKill)
+	tGin.GinPost(`/api/ToolManagedProcessStatus`, controller.ToolManagedProcessStatus)
+	tGin.GinPost(`/api/ToolManagedProcessEnsureRunning`, controller.ToolManagedProcessEnsureRunning)
+	tGin.GinPost(`/api/ToolManagedProcessStart`, controller.ToolManagedProcessStart)
+	tGin.GinPost(`/api/ToolManagedProcessStop`, controller.ToolManagedProcessStop)
+	tGin.GinPost(`/api/ToolManagedProcessRestart`, controller.ToolManagedProcessRestart)
+	tGin.GinPost(`/api/ToolManagedProcessLogTail`, controller.ToolManagedProcessLogTail)
 }
 
 // 基础接口
@@ -216,6 +230,9 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/AiModelList`, controller.SetAiModelList)
 	tGin.GinPost(`/api/Set/AiModelAdd`, controller.SetAiModelAdd)
 	tGin.GinPost(`/api/Set/AiModelDelete`, controller.SetAiModelDelete)
+	tGin.GinPost(`/api/Set/AiModelTest`, controller.SetAiModelTest)
+	tGin.GinPost(`/api/Set/MemoryConfigGet`, controller.SetMemoryConfigGet)
+	tGin.GinPost(`/api/Set/MemoryConfigSave`, controller.SetMemoryConfigSave)
 }
 
 func setStar(tGin *p_gin.Gin) {
@@ -234,6 +251,7 @@ func setMarkdown(tGin *p_gin.Gin) {
 }
 
 func setMemoryFragment(tGin *p_gin.Gin) {
+	tGin.GinPost(`/api/MemoryFragmentStatus`, controller.MemoryFragmentStatus)
 	tGin.GinPost(`/api/MemoryFragmentList`, controller.MemoryFragmentList)
 	tGin.GinPost(`/api/MemoryFragmentInfo`, controller.MemoryFragmentInfo)
 	tGin.GinPost(`/api/MemoryFragmentSave`, controller.MemoryFragmentSave)
@@ -241,6 +259,27 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/MemoryFragmentHistoryList`, controller.MemoryFragmentHistoryList)
 	tGin.GinPost(`/api/MemoryFragmentTagList`, controller.MemoryFragmentTagList)
 	tGin.GinPost(`/api/MemoryFragmentSearch`, controller.MemoryFragmentSearch)
+	tGin.GinPost(`/api/MemoryFragmentOrganize`, controller.MemoryFragmentOrganize)
+}
+
+func homeTask(tGin *p_gin.Gin) {
+	tGin.GinPost(`/api/HomeTaskList`, controller.HomeTaskList)
+	tGin.GinPost(`/api/HomeTaskSave`, controller.HomeTaskSave)
+	tGin.GinPost(`/api/HomeTaskArchiveToggle`, controller.HomeTaskArchiveToggle)
+	tGin.GinPost(`/api/HomeTaskStatusQuickUpdate`, controller.HomeTaskStatusQuickUpdate)
+	tGin.GinPost(`/api/HomeTaskDelete`, controller.HomeTaskDelete)
+	tGin.GinPost(`/api/HomeTaskDailyReportGenerate`, controller.HomeTaskDailyReportGenerate)
+}
+
+func infoCrawl(tGin *p_gin.Gin) {
+	tGin.GinPost(`/api/InfoCrawlCrawl4AIStatus`, controller.InfoCrawlCrawl4AIStatus)
+	tGin.GinPost(`/api/InfoCrawlTaskList`, controller.InfoCrawlTaskList)
+	tGin.GinPost(`/api/InfoCrawlTaskInfo`, controller.InfoCrawlTaskInfo)
+	tGin.GinPost(`/api/InfoCrawlTaskSave`, controller.InfoCrawlTaskSave)
+	tGin.GinPost(`/api/InfoCrawlTaskDelete`, controller.InfoCrawlTaskDelete)
+	tGin.GinPost(`/api/InfoCrawlTaskRun`, controller.InfoCrawlTaskRun)
+	tGin.GinPost(`/api/InfoCrawlRunList`, controller.InfoCrawlRunList)
+	tGin.GinPost(`/api/InfoCrawlRunInfo`, controller.InfoCrawlRunInfo)
 }
 
 func shellOut(tGin *p_gin.Gin) {
@@ -303,12 +342,20 @@ func docker(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/DockerComposeStop`, controller.DockerComposeStop)
 	tGin.GinPost(`/api/DockerComposeConfigShow`, controller.DockerComposeConfigShow)
 	tGin.GinPost(`/api/DockerComposeStart`, controller.DockerComposeStart)
+	tGin.GinPost(`/api/DockerImageList`, controller.DockerImageList)
+	tGin.GinPost(`/api/DockerImageContainers`, controller.DockerImageContainers)
+	tGin.GinPost(`/api/DockerImageRemove`, controller.DockerImageRemove)
+	tGin.GinPost(`/api/DockerContainerStop`, controller.DockerContainerStop)
+	tGin.GinPost(`/api/DockerContainerRemove`, controller.DockerContainerRemove)
+	tGin.GinPost(`/api/DockerContainerLogTruncate`, controller.DockerContainerLogTruncate)
 }
 
 func api(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/CreateCollection`, controller.ApiCreateCollection)
 	tGin.GinPost(`/api/DeleteCollection`, controller.ApiDeleteCollection)
 	tGin.GinPost(`/api/Collections`, controller.ApiCollections)
+	tGin.GinPost(`/api/CollectionListBasic`, controller.ApiCollectionListBasic)
+	tGin.GinPost(`/api/CollectionFoldersBasic`, controller.ApiCollectionFoldersBasic)
 	tGin.GinPost(`/api/CollectionEnvs`, controller.ApiCollectionEnvs)
 	tGin.GinPost(`/api/CreateCollectionEnv`, controller.ApiCreateCollectionEnv)
 	tGin.GinPost(`/api/CollectionEnvItems`, controller.ApiCollectionEnvItems)
@@ -318,6 +365,8 @@ func api(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/DeleteApi`, controller.ApiDeleteApi)
 	tGin.GinPost(`/api/DeleteDir`, controller.ApiDeleteDir)
 	tGin.GinPost(`/api/Apis`, controller.Apis)
+	tGin.GinPost(`/api/FolderApisBasic`, controller.ApiFolderApisBasic)
+	tGin.GinPost(`/api/ApisDetailByIds`, controller.ApiApisDetailByIds)
 	tGin.GinPost(`/api/ApiRun`, controller.ApiRun)
 	tGin.GinPost(`/api/ApiCode`, controller.ApiCode)
 	tGin.GinPost(`/api/ApiWeightDown`, controller.ApiWeightDown)

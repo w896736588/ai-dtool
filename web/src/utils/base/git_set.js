@@ -45,6 +45,14 @@ function GlobalDelete(data , callBack){
     base.BasePost('/api/Set/GlobalDelete', data, callBack)
 }
 
+function MemoryConfigGet(callBack){
+    base.BasePost('/api/Set/MemoryConfigGet', {}, callBack)
+}
+
+function MemoryConfigSave(data , callBack){
+    base.BasePost('/api/Set/MemoryConfigSave', data, callBack)
+}
+
 export default {
     GitList,
     GitAdd,
@@ -59,4 +67,6 @@ export default {
     GlobalList,
     GlobalAdd,
     GlobalDelete,
+    MemoryConfigGet,
+    MemoryConfigSave,
 }

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="collection-container" :class="{ resizing: sidebarResizing }">
     <!-- 左侧集合列表 -->
     <div class="left-sidebar" :style="{ width: sidebarWidth + 'px' }">
@@ -7,17 +7,17 @@
         <div class="section-header">
           <span class="section-header-title">集合列表</span>
           <div class="section-header-actions">
-            <el-button class="toolbar-btn toolbar-btn-small" size="small" type="primary" plain @click="openCreateCollectionDialog">
+            <pl-button class="toolbar-btn toolbar-btn-small" size="small" type="primary" plain @click="openCreateCollectionDialog">
               <el-icon><Plus /></el-icon>新建集合
-            </el-button>
-            <el-button class="toolbar-btn toolbar-btn-small" size="small" type="primary" plain @click="drawerVisibleMarkdown = true">
+            </pl-button>
+            <pl-button class="toolbar-btn toolbar-btn-small" size="small" type="primary" plain @click="drawerVisibleMarkdown = true">
               <el-icon><QuestionFilled /></el-icon>文档
-            </el-button>
+            </pl-button>
             <el-popover placement="bottom-end" :width="360" trigger="click">
               <template #reference>
-                <el-button class="toolbar-btn toolbar-btn-mini" size="small" type="info" plain>
+                <pl-button class="toolbar-btn toolbar-btn-mini" size="small" type="info" plain>
                   <el-icon><Tools /></el-icon>Skills安装
-                </el-button>
+                </pl-button>
               </template>
               <div class="skill-install-popover">
                 <div class="skill-install-title">dtool-api-import-update 安装</div>
@@ -27,8 +27,8 @@
                 </div>
                 <el-input :model-value="skillInstallZipUrl" readonly class="skill-install-url" />
                 <div class="skill-install-actions">
-                  <el-button size="small" type="primary" plain @click="copyText(skillInstallZipUrl, 'ZIP 地址已复制')">复制 ZIP 地址</el-button>
-                  <el-button size="small" type="primary" plain @click="copyText(skillInstallPrompt, 'AI 安装提示已复制')">复制安装提示</el-button>
+                  <pl-button size="small" type="primary" plain @click="copyText(skillInstallZipUrl, 'ZIP 地址已复制')">复制 ZIP 地址</pl-button>
+                  <pl-button size="small" type="primary" plain @click="copyText(skillInstallPrompt, 'AI 安装提示已复制')">复制安装提示</pl-button>
                   <el-link :href="skillInstallZipUrl" target="_blank" type="primary">打开链接</el-link>
                 </div>
                 <el-input
@@ -51,6 +51,8 @@
                 :default-expand-all="false"
                 :expand-on-click-node="false"
                 :highlight-current="true"
+                :lazy="true"
+                :load="loadTreeNode"
                 :props="treeProps"
                 :draggable="true"
                 :allow-drop="allowTreeNodeDrop"
@@ -69,11 +71,11 @@
                     <el-icon v-else-if="data.type === 'folder'"><Folder/></el-icon>
                     <!--                    <el-icon v-else><Document /></el-icon>-->
                   </span>
-                  <span v-if="data.type === 'folder'" :title="node.label + '(' + (data.children ? data.children.length : 0) + ')'" class="node-label" style="font-weight: 500;">{{
-                      node.label + '(' + (data.children ? data.children.length : 0) + ')'
+                  <span v-if="data.type === 'folder'" :title="node.label + '(' + getNodeChildCount(data) + ')'" class="node-label" style="font-weight: 500;">{{
+                      node.label + '(' + getNodeChildCount(data) + ')'
                     }}</span>
-                  <span v-if="data.type === 'collection'" :title="node.label + '(' + (data.children ? data.children.length : 0) + ')'" class="node-label" style="font-weight: 800;">{{
-                      node.label + '(' + (data.children ? data.children.length : 0) + ')'
+                  <span v-if="data.type === 'collection'" :title="node.label + '(' + getNodeChildCount(data) + ')'" class="node-label" style="font-weight: 800;">{{
+                      node.label + '(' + getNodeChildCount(data) + ')'
                     }}</span>
                   <span v-if="data.type === 'api'" :title="node.label" class="node-label">
                     <el-tag v-if="data.method === 'GET'" size="small" type="success">G</el-tag>
@@ -81,11 +83,11 @@
                     {{ node.label }}
                   </span>
                   <span v-if="data.type === 'collection'" class="node-actions">
-                    <el-button link type="primary" @click.stop="toggleCollection(data)">
+                    <pl-button link type="primary" @click.stop="toggleCollection(data)">
                       <el-dropdown>
-                      <el-button link type="primary" @click.stop>
+                      <pl-button link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
-                      </el-button>
+                      </pl-button>
                       <template #dropdown>
                         <el-dropdown-menu>
                           <el-dropdown-item command="copy_api" icon="CopyDocument" @click="createNewDir(data)">创建文件夹</el-dropdown-item>
@@ -94,13 +96,13 @@
                         </el-dropdown-menu>
                       </template>
                       </el-dropdown>
-                    </el-button>
+                    </pl-button>
                   </span>
                   <span v-else-if="data.type === 'api'" class="node-actions">
                     <el-dropdown>
-                      <el-button link type="primary" @click.stop>
+                      <pl-button link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
-                      </el-button>
+                      </pl-button>
                       <template #dropdown>
                         <el-dropdown-menu>
                           <el-dropdown-item command="copy_api" icon="CopyDocument" @click="handleApiAction('copy_api' , data)">复制接口</el-dropdown-item>
@@ -112,9 +114,9 @@
                   </span>
                   <span v-else-if="data.type === 'folder'" class="node-actions">
                     <el-dropdown>
-                      <el-button link type="primary" @click.stop>
+                      <pl-button link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
-                      </el-button>
+                      </pl-button>
                       <template #dropdown>
                         <el-dropdown-menu>
                           <el-dropdown-item command="copy_api" icon="CopyDocument" @click="handleFolderCreateApi()">创建接口</el-dropdown-item>
@@ -157,7 +159,34 @@
 
     <!-- 右侧展示面板 -->
     <div class="right-panel">
-      <!-- 顶部信息栏 -->
+      <!-- 工作区 Tab 条 -->
+      <div v-if="openTabs.length > 0" class="workspace-tabs">
+        <el-tabs
+            v-model="activeTabKey"
+            type="card"
+            closable
+            @tab-remove="closeWorkspaceTab"
+            @tab-change="handleWorkspaceTabChange"
+        >
+          <el-tab-pane
+              v-for="tab in openTabs"
+              :key="tab.key"
+              :label="tab.title"
+              :name="tab.key"
+          >
+            <template #label>
+              <span class="workspace-tab-label">
+                <el-icon v-if="tab.type === 'collection'" class="tab-icon"><Files /></el-icon>
+                <el-icon v-else-if="tab.type === 'folder'" class="tab-icon"><Folder /></el-icon>
+                <el-icon v-else class="tab-icon"><Document /></el-icon>
+                <span class="tab-title">{{ tab.title }}</span>
+              </span>
+            </template>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+
+      <!-- 顶部信息栏（仅集合 tab 显示） -->
       <div v-if="selectedItem && selectedItem.type === 'collection'" class="panel-header">
         <div class="header-left">
           <div v-if="selectedItem" class="selected-info">
@@ -179,18 +208,18 @@
         </div>
 
         <div v-if="selectedItem" class="header-right">
-          <el-button v-if="selectedItem.type === 'collection'" type="primary" @click="createNewDir(selectedItem)">创建文件夹
-          </el-button>
-          <el-button type="primary" @click="executeAll">运行全部</el-button>
-          <el-button @click="exportCollection">导出</el-button>
+          <pl-button v-if="selectedItem.type === 'collection'" type="primary" @click="createNewDir(selectedItem)">创建文件夹
+          </pl-button>
+          <pl-button type="primary" @click="executeAll">运行全部</pl-button>
+          <pl-button @click="exportCollection">导出</pl-button>
         </div>
       </div>
 
       <!-- 内容区域 -->
-      <div class="panel-content">
+      <div :class="['panel-content', { 'panel-content--flush': selectedItem && selectedItem.type === 'folder' }]">
         <!-- 集合设置 -->
         <div v-if="selectedItem && selectedItem.type === 'collection'" class="collection-settings">
-          <el-tabs v-model="collectionActiveTab" type="card">
+          <el-tabs :model-value="getActiveCollectionInnerTab(selectedItem)" type="card" @tab-change="handleCollectionInnerTabChange">
             <el-tab-pane label="基本信息" name="basic">
               <collection-basic-info
                   :collection="selectedItem"
@@ -214,7 +243,9 @@
         <div v-else-if="selectedItem && selectedItem.type === 'folder'" class="folder-info">
           <folder-detail
               :folder="selectedItem"
+              :active-tab-name="getActiveFolderInnerTab(selectedItem)"
               :handleCreateApi="handleFolderCreateApi"
+              @tab-change="handleFolderInnerTabChange"
               @delete="handleFolderDelete"
               @update="handleFolderUpdate"
           />
@@ -222,7 +253,9 @@
 
         <!-- 接口设置 -->
         <div v-else-if="selectedItem && selectedItem.type === 'api'" class="api-settings">
+          <el-skeleton v-if="apiDetailLoading" :rows="12" animated />
           <api-detail
+              v-else
               ref="refApiDetail"
               :environment="currentEnvironment"
               @execute="executeApi"
@@ -246,8 +279,8 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="dialogShow.createCollection = false">取消</el-button>
-        <el-button type="primary" @click="createNewCollection">保存</el-button>
+        <pl-button @click="dialogShow.createCollection = false">取消</pl-button>
+        <pl-button type="primary" @click="createNewCollection">保存</pl-button>
       </div>
     </template>
   </el-dialog>
@@ -260,8 +293,8 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="dialogShow.createDir = false">取消</el-button>
-        <el-button type="primary" @click="createNewDir">保存</el-button>
+        <pl-button @click="dialogShow.createDir = false">取消</pl-button>
+        <pl-button type="primary" @click="createNewDir">保存</pl-button>
       </div>
     </template>
   </el-dialog>
@@ -305,8 +338,8 @@
     </el-tabs>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="dialogShow.createApi = false">取消</el-button>
-        <el-button type="primary" @click="handleFolderCreateApi">保存</el-button>
+        <pl-button @click="dialogShow.createApi = false">取消</pl-button>
+        <pl-button type="primary" @click="handleFolderCreateApi">保存</pl-button>
       </div>
     </template>
   </el-dialog>
@@ -319,8 +352,8 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="dialogShow.copyApi = false">取消</el-button>
-        <el-button type="primary" @click="copyApi">保存</el-button>
+        <pl-button @click="dialogShow.copyApi = false">取消</pl-button>
+        <pl-button type="primary" @click="copyApi">保存</pl-button>
       </div>
     </template>
   </el-dialog>
@@ -348,8 +381,8 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="dialogShow.jsonImport = false">取消</el-button>
-        <el-button type="primary" @click="apiImportJson">导入</el-button>
+        <pl-button @click="dialogShow.jsonImport = false">取消</pl-button>
+        <pl-button type="primary" @click="apiImportJson">导入</pl-button>
       </div>
     </template>
   </el-dialog>
@@ -366,10 +399,9 @@
 </template>
 
 <script>
-import {FolderOpened, Folder, Document, ArrowDown, ArrowUp, More, Plus, QuestionFilled, Tools} from '@element-plus/icons-vue'
+import {FolderOpened, Folder, Document, More, Plus, QuestionFilled, Tools} from '@element-plus/icons-vue'
 import CollectionBasicInfo from './api/CollectionBasicInfo'
 import CollectionEnvironment from './api/CollectionEnvironment'
-import CollectionPermission from './api/CollectionPermission'
 import FolderDetail from './api/FolderDetail'
 import ApiDetail from './api/ApiDetail'
 import Markdown from '@/components/Markdown.vue'
@@ -384,15 +416,12 @@ export default {
     FolderOpened,
     Folder,
     Document,
-    ArrowDown,
-    ArrowUp,
     More,
     Plus,
     QuestionFilled,
     Tools,
     CollectionBasicInfo,
     CollectionEnvironment,
-    CollectionPermission,
     FolderDetail,
     ApiDetail,
     Markdown
@@ -403,7 +432,8 @@ export default {
       treeData: [],
       treeProps: {
         children: 'children',
-        label: 'name'
+        label: 'name',
+        isLeaf: 'isLeaf'
       },
       createApiType: 'params',
       defaultExpandedKeys: [],
@@ -412,14 +442,21 @@ export default {
       archiveExpanded: false,
       archivedItems: [],
 
-      // 选中项
+      // 选中项（当前激活 tab 的数据镜像，用于兼容现有详情组件和旧逻辑）
       selectedItem: null,
+      apiDetailLoading: false,
+
+      // 工作区 tab 状态
+      openTabs: [],
+      activeTabKey: '',
+      activeCollectionInnerTabMap: {},
+      activeFolderInnerTabMap: {},
 
       // 文档drawer
       drawerVisibleMarkdown: false,
       markdownType: 'api',
-      skillInstallZipUrl: 'https://gitee.com/Sxiaobai/skills/raw/master/dtool-api-import-update.zip',
-      skillInstallPrompt: '请安装这个 skills zip： https://gitee.com/Sxiaobai/skills/raw/master/dtool-api-import-update.zip',
+      skillInstallZipUrl: 'https://gitee.com/Sxiaobai/skills/blob/master/dtool-api.zip',
+      skillInstallPrompt: '请安装这个 skills zip： https://gitee.com/Sxiaobai/skills/blob/master/dtool-api.zip',
 
       // 环境相关
       currentEnvironment: 'dev',
@@ -448,6 +485,7 @@ export default {
           name: '',
           parent_id: '',
           parent_type: '',
+          headers: '{}',
         },
         createApi: {
           uniqueid: '',
@@ -521,6 +559,383 @@ export default {
   },
   methods: {
 
+    // ==================== 工作区 Tab 方法 ====================
+
+    // 构建稳定的 tab key（collection:1 / folder:2 / api:3）
+    buildWorkspaceTabKey(node) {
+      if (!node || !node.type || !node.id) {
+        return ''
+      }
+      return `${node.type}:${node.id}`
+    },
+
+    // 根据 tab key 获取已打开的 tab
+    getWorkspaceTabByKey(tabKey) {
+      if (!tabKey) {
+        return null
+      }
+      return this.openTabs.find(tab => tab.key === tabKey) || null
+    },
+
+    // 获取当前激活的 tab
+    getActiveWorkspaceTab() {
+      return this.getWorkspaceTabByKey(this.activeTabKey)
+    },
+    getActiveCollectionInnerTab(collection) {
+      if (!collection || !collection.id) {
+        return 'basic'
+      }
+      return this.activeCollectionInnerTabMap[String(collection.id)] || 'basic'
+    },
+    handleCollectionInnerTabChange(tabName) {
+      const tab = this.getActiveWorkspaceTab()
+      if (!tab || tab.type !== 'collection') {
+        return
+      }
+      this.activeCollectionInnerTabMap[String(tab.id)] = tabName || 'basic'
+    },
+    getActiveFolderInnerTab(folder) {
+      if (!folder || !folder.id) {
+        return 'basic'
+      }
+      return this.activeFolderInnerTabMap[String(folder.id)] || 'basic'
+    },
+    handleFolderInnerTabChange(tabName) {
+      const tab = this.getActiveWorkspaceTab()
+      if (!tab || tab.type !== 'folder') {
+        return
+      }
+      this.activeFolderInnerTabMap[String(tab.id)] = tabName || 'basic'
+    },
+
+    // 创建新的工作区 tab
+    createWorkspaceTab(node) {
+      if (!node || !node.type) {
+        return null
+      }
+      return {
+        key: this.buildWorkspaceTabKey(node),
+        type: node.type,
+        id: node.id,
+        uniqueid: node.uniqueid,
+        title: node.name || '未命名',
+        data: { ...node },
+        loaded: false,
+        loading: false
+      }
+    },
+
+    // 打开或激活工作区 tab
+    async openWorkspaceTab(node, options = {}) {
+      const { reload = true } = options
+      if (!node || !node.type) {
+        return
+      }
+      const tabKey = this.buildWorkspaceTabKey(node)
+      let tab = this.getWorkspaceTabByKey(tabKey)
+      
+      // 如果 tab 不存在，创建并添加
+      if (!tab) {
+        tab = this.createWorkspaceTab(node)
+        if (!tab) {
+          return
+        }
+        this.openTabs.push(tab)
+      } else {
+        tab.data = { ...tab.data, ...node }
+        tab.title = node.name || tab.title
+        tab.uniqueid = node.uniqueid || tab.uniqueid
+      }
+      
+      // 激活 tab
+      await this.activateWorkspaceTab(tabKey, { reload })
+    },
+
+    // 激活指定 tab
+    async activateWorkspaceTab(tabKey, options = {}) {
+      const { reload = false } = options
+      const tab = this.getWorkspaceTabByKey(tabKey)
+      if (!tab) {
+        return
+      }
+      
+      this.activeTabKey = tabKey
+      
+      // 同步 selectedItem
+      this.syncSelectedItemFromActiveTab()
+      
+      // 同步左侧树高亮
+      await this.highlightWorkspaceTreeNode(tab)
+      
+      // 如果需要重新加载或 tab 未加载
+      if (reload || !tab.loaded) {
+        await this.reloadWorkspaceTab(tabKey)
+      }
+    },
+
+    // 从当前激活 tab 同步 selectedItem
+    syncSelectedItemFromActiveTab() {
+      const tab = this.getActiveWorkspaceTab()
+      if (!tab) {
+        this.selectedItem = null
+        return
+      }
+      this.selectedItem = {
+        ...tab.data,
+        type: tab.type,
+        id: tab.id,
+        uniqueid: tab.uniqueid,
+      }
+    },
+
+    // 关闭工作区 tab
+    closeWorkspaceTab(tabKey) {
+      const index = this.openTabs.findIndex(tab => tab.key === tabKey)
+      if (index === -1) {
+        return
+      }
+      
+      // 移除 tab
+      this.openTabs.splice(index, 1)
+      
+      // 如果关闭的是当前激活的 tab，切换到相邻 tab
+      if (this.activeTabKey === tabKey) {
+        if (this.openTabs.length > 0) {
+          // 切换到相邻 tab（优先右侧，否则左侧）
+          const newIndex = Math.min(index, this.openTabs.length - 1)
+          const nextTab = this.openTabs[newIndex]
+          this.activateWorkspaceTab(nextTab.key, { reload: false })
+        } else {
+          // 没有 tab 了，清空状态
+          this.activeTabKey = ''
+          this.selectedItem = null
+        }
+      }
+    },
+
+    // 关闭指定文件夹下的所有 tab
+    closeWorkspaceTabsByFolder(folderId) {
+      const tabsToClose = this.openTabs.filter(tab =>
+        (tab.type === 'folder' && parseInt(tab.id) === parseInt(folderId)) ||
+        (tab.type === 'api' && parseInt(tab.data.folder_id) === parseInt(folderId))
+      )
+      tabsToClose.forEach(tab => this.closeWorkspaceTab(tab.key))
+    },
+
+    // 关闭指定集合下的所有 tab
+    closeWorkspaceTabsByCollection(collectionId) {
+      const tabsToClose = this.openTabs.filter(tab =>
+        (tab.type === 'collection' && parseInt(tab.id) === parseInt(collectionId)) ||
+        (tab.type === 'folder' && parseInt(tab.data.collection_id) === parseInt(collectionId)) ||
+        (tab.type === 'api' && parseInt(tab.data.collection_id) === parseInt(collectionId))
+      )
+      tabsToClose.forEach(tab => this.closeWorkspaceTab(tab.key))
+    },
+
+    // 处理 tab 切换
+    async handleWorkspaceTabChange(tabKey) {
+      const tab = this.getWorkspaceTabByKey(tabKey)
+      if (!tab) {
+        return
+      }
+      
+      // 同步 selectedItem
+      this.syncSelectedItemFromActiveTab()
+      
+      // 同步左侧树高亮
+      await this.highlightWorkspaceTreeNode(tab)
+    },
+
+    // 高亮左侧树节点
+    async ensureNodeVisibleInTree(tab) {
+      if (!tab) {
+        return null
+      }
+      if (tab.type === 'collection') {
+        return this.findCollectionNode(tab.id)
+      }
+      if (tab.type === 'folder') {
+        const collectionNode = this.findCollectionNode(tab.data.collection_id)
+        if (!collectionNode) {
+          return null
+        }
+        await this.ensureCollectionFoldersLoaded(collectionNode)
+        return this.findFolderNode(tab.data.collection_id, tab.id)
+      }
+      if (tab.type === 'api') {
+        const collectionNode = this.findCollectionNode(tab.data.collection_id)
+        if (!collectionNode) {
+          return null
+        }
+        await this.ensureCollectionFoldersLoaded(collectionNode)
+        const folderNode = this.findFolderNode(tab.data.collection_id, tab.data.folder_id)
+        if (!folderNode) {
+          return null
+        }
+        await this.ensureFolderApisLoaded(folderNode)
+        return this.findApiNode(tab.data.collection_id, tab.data.folder_id, tab.id)
+      }
+      return null
+    },
+    async highlightWorkspaceTreeNode(tab) {
+      if (!tab || !this.$refs.collectionTreeRef) {
+        return
+      }
+      const visibleNode = await this.ensureNodeVisibleInTree(tab)
+      const targetKey = visibleNode && visibleNode.uniqueid ? visibleNode.uniqueid : tab.uniqueid
+      if (targetKey) {
+        this.$refs.collectionTreeRef.setCurrentKey(targetKey)
+      }
+    },
+
+    // 重新加载工作区 tab
+    async reloadWorkspaceTab(tabKey) {
+      const tab = this.getWorkspaceTabByKey(tabKey)
+      if (!tab) {
+        return
+      }
+      
+      if (tab.type === 'collection') {
+        await this.reloadCollectionTab(tab)
+      } else if (tab.type === 'folder') {
+        await this.reloadFolderTab(tab)
+      } else if (tab.type === 'api') {
+        await this.reloadApiTab(tab)
+      }
+    },
+
+    // 重新加载集合 tab
+    async reloadCollectionTab(tab) {
+      if (!tab || tab.loading) {
+        return
+      }
+      tab.loading = true
+      try {
+        const data = await this.requestApi('CollectionListBasic', {})
+        const collection = (data.list || []).find((item) => parseInt(item.id) === parseInt(tab.id))
+        if (collection) {
+          const collectionNode = this.findCollectionNode(tab.id)
+          const normalizedCollection = this.normalizeCollectionNode(collection)
+          if (collectionNode) {
+            normalizedCollection.children = Array.isArray(collectionNode.children) ? collectionNode.children : []
+            normalizedCollection.loaded = collectionNode.loaded
+            normalizedCollection.loading = collectionNode.loading
+            Object.assign(collectionNode, normalizedCollection)
+            tab.data = { ...collectionNode }
+            tab.title = collectionNode.name || tab.title
+          } else {
+            tab.data = normalizedCollection
+            tab.title = normalizedCollection.name || tab.title
+          }
+        }
+        tab.loaded = true
+        this.syncSelectedItemFromActiveTab()
+      } finally {
+        tab.loading = false
+      }
+    },
+
+    // 重新加载文件夹 tab
+    async reloadFolderTab(tab) {
+      if (!tab || tab.loading) {
+        return
+      }
+      tab.loading = true
+      try {
+        const detailData = await this.requestApi('FolderDetail', {
+          dir_id: tab.id,
+        })
+        const folderDetail = detailData.dir || null
+        const folderNode = this.findFolderNode(tab.data.collection_id, tab.id)
+        if (folderNode) {
+          if (folderDetail) {
+            this.syncFolderNodeFields(folderNode, folderDetail)
+          }
+          await this.loadFolderApis(folderNode, true)
+          folderNode.child_count = Array.isArray(folderNode.children) ? folderNode.children.length : 0
+          folderNode.isLeaf = folderNode.child_count <= 0
+          tab.data = { ...folderNode }
+          tab.title = folderNode.name || tab.title
+        } else if (folderDetail) {
+          const normalizedFolder = this.normalizeFolderNode(folderDetail, folderDetail.collection_id)
+          normalizedFolder.children = Array.isArray(folderDetail.children)
+            ? folderDetail.children.map((api) => this.normalizeApiNode(api, normalizedFolder.id, normalizedFolder.collection_id))
+            : []
+          normalizedFolder.loaded = true
+          normalizedFolder.child_count = normalizedFolder.children.length
+          normalizedFolder.isLeaf = normalizedFolder.child_count <= 0
+          tab.data = normalizedFolder
+          tab.title = normalizedFolder.name || tab.title
+        }
+        this.syncSelectedItemFromActiveTab()
+        tab.loaded = true
+      } finally {
+        tab.loading = false
+      }
+    },
+
+    // 重新加载接口 tab
+    async reloadApiTab(tab) {
+      if (!tab || tab.loading) {
+        return
+      }
+      tab.loading = true
+      this.apiDetailLoading = true
+      try {
+        const data = await this.requestApi('ApisDetailByIds', {
+          ids: [tab.id],
+        })
+        const detail = Array.isArray(data.list) ? data.list[0] : null
+        if (detail) {
+          tab.data = {
+            ...detail,
+            type: 'api',
+            id: tab.id,
+            uniqueid: tab.uniqueid,
+          }
+          tab.title = detail.name || tab.title
+          this.syncSelectedItemFromActiveTab()
+          const treeApiNode = this.findApiNode(detail.collection_id, detail.folder_id, detail.id)
+          if (treeApiNode) {
+            this.syncApiNodeFields(treeApiNode, detail)
+          }
+        }
+        tab.loaded = true
+      } catch (error) {
+        this.$message.error(error.message || '加载接口详情失败')
+      } finally {
+        tab.loading = false
+        this.apiDetailLoading = false
+      }
+      await this.$nextTick()
+      if (this.$refs.refApiDetail && this.activeTabKey === tab.key && tab.data) {
+        this.$refs.refApiDetail.InitApiDetail(tab.data)
+      }
+    },
+
+    // 更新或插入 tab 数据
+    upsertWorkspaceTabData(nodeLike) {
+      if (!nodeLike || !nodeLike.type || !nodeLike.id) {
+        return
+      }
+      const tabKey = this.buildWorkspaceTabKey(nodeLike)
+        const tab = this.getWorkspaceTabByKey(tabKey)
+      
+      if (tab) {
+        // 更新已有 tab
+        tab.data = { ...tab.data, ...nodeLike }
+        tab.title = nodeLike.name || tab.title
+        tab.uniqueid = nodeLike.uniqueid || tab.uniqueid
+        tab.loaded = true
+        // 如果是当前激活的 tab，同步 selectedItem
+        if (this.activeTabKey === tabKey) {
+          this.syncSelectedItemFromActiveTab()
+        }
+      }
+    },
+
+    // ==================== 树节点方法 ====================
+
     // 读取并应用左侧面板宽度缓存
     loadSidebarWidthCache() {
       let _that = this
@@ -572,12 +987,290 @@ export default {
     },
 
 
+    normalizeCollectionNode(collection) {
+      return {
+        ...collection,
+        type: 'collection',
+        children: [],
+        isLeaf: this.resolveTreeNodeLeafState('collection', collection.child_count),
+        loaded: false,
+        loading: false,
+      }
+    },
+    resolveTreeNodeLeafState(type, childCount) {
+      if (type === 'api') {
+        return true
+      }
+      const count = Number(childCount)
+      if (!Number.isNaN(count)) {
+        return count <= 0
+      }
+      return false
+    },
+    getNodeChildCount(node) {
+      if (!node) {
+        return 0
+      }
+      if (typeof node.child_count === 'number') {
+        return node.child_count
+      }
+      if (Array.isArray(node.children)) {
+        return node.children.length
+      }
+      return 0
+    },
+    normalizeFolderNode(folder, collectionId) {
+      return {
+        ...folder,
+        collection_id: folder.collection_id || collectionId,
+        headers: folder.headers || '{}',
+        type: 'folder',
+        children: [],
+        isLeaf: this.resolveTreeNodeLeafState('folder', folder.child_count),
+        loaded: false,
+        loading: false,
+      }
+    },
+    normalizeApiNode(api, folderId, collectionId) {
+      return {
+        ...api,
+        folder_id: api.folder_id || folderId,
+        collection_id: api.collection_id || collectionId,
+        type: 'api',
+        children: [],
+        isLeaf: true,
+        loaded: true,
+        loading: false,
+      }
+    },
+    requestApi(methodName, params) {
+      return new Promise((resolve, reject) => {
+        Api[methodName](params || {}, function (res) {
+          if (res.ErrCode === 0) {
+            resolve(res.Data || {})
+            return
+          }
+          reject(new Error(res.ErrMsg || '请求失败'))
+        })
+      })
+    },
+    findCollectionNode(collectionId) {
+      return this.treeData.find((collection) => parseInt(collection.id) === parseInt(collectionId)) || null
+    },
+    findFolderNode(collectionId, folderId) {
+      const collection = this.findCollectionNode(collectionId)
+      if (!collection || !Array.isArray(collection.children)) {
+        return null
+      }
+      return collection.children.find((folder) => parseInt(folder.id) === parseInt(folderId)) || null
+    },
+    findApiNode(collectionId, folderId, apiId) {
+      const folder = this.findFolderNode(collectionId, folderId)
+      if (!folder || !Array.isArray(folder.children)) {
+        return null
+      }
+      return folder.children.find((api) => parseInt(api.id) === parseInt(apiId)) || null
+    },
+    syncTreeNodeChildren(nodeKey, children) {
+      if (!this.$refs.collectionTreeRef || !nodeKey) {
+        return
+      }
+      this.$refs.collectionTreeRef.updateKeyChildren(nodeKey, Array.isArray(children) ? children : [])
+    },
+    syncCollectionNodeFields(target, source) {
+      if (!target || !source) {
+        return
+      }
+      Object.assign(target, {
+        name: source.name,
+        create_time: source.create_time,
+        update_time: source.update_time,
+      })
+    },
+    syncFolderNodeFields(target, source) {
+      if (!target || !source) {
+        return
+      }
+      Object.assign(target, {
+        name: source.name,
+        desc: source.desc,
+        headers: source.headers || '{}',
+        collection_id: source.collection_id,
+        create_time: source.create_time,
+        update_time: source.update_time,
+      })
+    },
+    syncApiNodeFields(target, source) {
+      if (!target || !source) {
+        return
+      }
+      Object.assign(target, {
+        name: source.name,
+        method: source.method,
+        url: source.url,
+        desc: source.desc,
+        env_id: source.env_id,
+        weight: source.weight,
+        update_time: source.update_time,
+      })
+    },
+    async loadCollectionFolders(collectionNode, force = false) {
+      if (!collectionNode) {
+        return []
+      }
+      if (collectionNode.loading) {
+        return collectionNode.children || []
+      }
+      if (!force && collectionNode.loaded) {
+        return collectionNode.children || []
+      }
+      collectionNode.loading = true
+      try {
+        const data = await this.requestApi('CollectionFoldersBasic', {
+          collection_id: collectionNode.id,
+        })
+        collectionNode.children = (data.list || []).map((folder) => this.normalizeFolderNode(folder, collectionNode.id))
+        collectionNode.child_count = collectionNode.children.length
+        collectionNode.isLeaf = collectionNode.child_count <= 0
+        collectionNode.loaded = true
+        this.sortListByIdOrder(collectionNode.children, this.getTreeSortCache().folders[String(collectionNode.id)] || [])
+        this.syncTreeNodeChildren(collectionNode.uniqueid, collectionNode.children)
+        return collectionNode.children
+      } finally {
+        collectionNode.loading = false
+      }
+    },
+    async loadFolderApis(folderNode, force = false) {
+      if (!folderNode) {
+        return []
+      }
+      if (folderNode.loading) {
+        return folderNode.children || []
+      }
+      if (!force && folderNode.loaded) {
+        return folderNode.children || []
+      }
+      folderNode.loading = true
+      try {
+        const data = await this.requestApi('FolderApisBasic', {
+          folder_id: folderNode.id,
+        })
+        folderNode.children = (data.list || []).map((api) => this.normalizeApiNode(api, folderNode.id, folderNode.collection_id))
+        folderNode.child_count = folderNode.children.length
+        folderNode.isLeaf = folderNode.child_count <= 0
+        folderNode.loaded = true
+        this.applyFolderApiSort(folderNode.collection_id, folderNode.id)
+        this.syncTreeNodeChildren(folderNode.uniqueid, folderNode.children)
+        return folderNode.children
+      } finally {
+        folderNode.loading = false
+      }
+    },
+    async ensureCollectionFoldersLoaded(collectionNode) {
+      if (!collectionNode) {
+        return []
+      }
+      try {
+        return await this.loadCollectionFolders(collectionNode, false)
+      } catch (error) {
+        this.$message.error(error.message || '加载集合文件夹失败')
+        return []
+      }
+    },
+    async ensureFolderApisLoaded(folderNode) {
+      if (!folderNode) {
+        return []
+      }
+      try {
+        return await this.loadFolderApis(folderNode, false)
+      } catch (error) {
+        this.$message.error(error.message || '加载文件夹接口失败')
+        return []
+      }
+    },
+    async refreshCollectionFolders(collectionId) {
+      const collectionNode = this.findCollectionNode(collectionId)
+      if (!collectionNode) {
+        return []
+      }
+      try {
+        const folders = await this.loadCollectionFolders(collectionNode, true)
+        this.upsertWorkspaceTabData(collectionNode)
+        return folders
+      } catch (error) {
+        this.$message.error(error.message || '刷新集合文件夹失败')
+        return []
+      }
+    },
+    async refreshFolderApis(collectionId, folderId) {
+      const folderNode = this.findFolderNode(collectionId, folderId)
+      if (!folderNode) {
+        return []
+      }
+      try {
+        const apis = await this.loadFolderApis(folderNode, true)
+        this.upsertWorkspaceTabData(folderNode)
+        return apis
+      } catch (error) {
+        this.$message.error(error.message || '刷新文件夹接口失败')
+        return []
+      }
+    },
+    async loadApiDetail(apiNode) {
+      if (!apiNode || !apiNode.id) {
+        return null
+      }
+      let loadedDetail = null
+      this.apiDetailLoading = true
+      try {
+        const data = await this.requestApi('ApisDetailByIds', {
+          ids: [apiNode.id],
+        })
+        const detail = Array.isArray(data.list) ? data.list[0] : null
+        if (!detail) {
+          throw new Error('未获取到接口详情')
+        }
+        const treeApiNode = this.findApiNode(apiNode.collection_id, apiNode.folder_id, apiNode.id)
+        if (treeApiNode) {
+          this.syncApiNodeFields(treeApiNode, detail)
+        }
+        const activeTab = this.getActiveWorkspaceTab()
+        if (activeTab && activeTab.type === 'api' && parseInt(activeTab.id) === parseInt(detail.id)) {
+          activeTab.data = {
+            ...detail,
+            type: 'api',
+            id: activeTab.id,
+            uniqueid: activeTab.uniqueid,
+          }
+          activeTab.title = detail.name || activeTab.title
+          activeTab.loaded = true
+        }
+        this.selectedItem = {
+          ...detail,
+          type: 'api',
+          id: apiNode.id,
+          uniqueid: apiNode.uniqueid,
+        }
+        loadedDetail = this.selectedItem
+      } catch (error) {
+        this.selectedItem = null
+        this.$message.error(error.message || '加载接口详情失败')
+        return null
+      } finally {
+        this.apiDetailLoading = false
+      }
+      await this.$nextTick()
+      if (this.$refs.refApiDetail && loadedDetail && this.selectedItem && this.selectedItem.type === 'api') {
+        this.$refs.refApiDetail.InitApiDetail(loadedDetail)
+      }
+      return loadedDetail
+    },
     // 加载集合数据
     loadCollectionData() {
       let _that = this
-      Api.Collections({}, function (res) {
+      Api.CollectionListBasic({}, function (res) {
         if (res.ErrCode === 0) {
-          _that.treeData = res.Data.list
+          _that.treeData = (res.Data.list || []).map((collection) => _that.normalizeCollectionNode(collection))
           // 加载集合树后按本地缓存恢复排序
           _that.applyTreeSortCache()
           _that.initTreeExpansion()
@@ -593,26 +1286,32 @@ export default {
       // 仅恢复集合/文件夹展开状态，使用稳定的 type:id 作为缓存键
       const expandedStateCache = _that.getExpandedStateCache()
       if (!expandedStateCache.initialized) {
-        _that.expandAllNodes()
+        _that.setExpandedStateCache([])
         return
       }
       _that.$nextTick(() => {
-        _that.applyExpandedStateFromCache(expandedStateCache.expandedKeys)
+        _that.restoreExpandedNodes(expandedStateCache.expandedKeys)
       })
     },
-
-    // 展开所有节点
-    expandAllNodes() {
-      let _that = this
-      _that.$nextTick(() => {
-        _that.$refs.collectionTreeRef.store._getAllNodes().forEach(node => {
-          if (node.level > 0) {
-            node.expand()
-          }
-        })
-        // 首次默认展开后，立即写入缓存，保证刷新可恢复
-        _that.syncExpandedStateCacheFromTree()
-      })
+    async loadTreeNode(node, resolve) {
+      if (!node || node.level === 0) {
+        resolve(this.treeData)
+        return
+      }
+      const data = node.data
+      if (!data || !data.type) {
+        resolve([])
+        return
+      }
+      if (data.type === 'collection') {
+        resolve(await this.ensureCollectionFoldersLoaded(data))
+        return
+      }
+      if (data.type === 'folder') {
+        resolve(await this.ensureFolderApisLoaded(data))
+        return
+      }
+      resolve([])
     },
 
     // 处理节点展开
@@ -698,32 +1397,37 @@ export default {
       _that.setExpandedStateCache(expandedState)
     },
     // 按缓存恢复展开状态
-    applyExpandedStateFromCache(expandedState) {
+    async restoreExpandedNodes(expandedState) {
       let _that = this
       if (!_that.$refs.collectionTreeRef) {
         return
       }
-      _that.treeData.forEach(collection => {
+      const expandedKeys = Array.isArray(expandedState) ? expandedState : []
+      for (const collection of _that.treeData) {
         const collectionKey = _that.buildExpandStateKey(collection)
-        if (collectionKey && expandedState.includes(collectionKey)) {
+        if (collectionKey && expandedKeys.includes(collectionKey)) {
+          await _that.ensureCollectionFoldersLoaded(collection)
           const collectionNode = _that.$refs.collectionTreeRef.getNode(collection.uniqueid)
           if (collectionNode) {
             collectionNode.expand()
           }
         }
+      }
+      for (const collection of _that.treeData) {
         if (!Array.isArray(collection.children)) {
-          return
+          continue
         }
-        collection.children.forEach(folder => {
+        for (const folder of collection.children) {
           const folderKey = _that.buildExpandStateKey(folder)
-          if (folderKey && expandedState.includes(folderKey)) {
+          if (folderKey && expandedKeys.includes(folderKey)) {
+            await _that.ensureFolderApisLoaded(folder)
             const folderNode = _that.$refs.collectionTreeRef.getNode(folder.uniqueid)
             if (folderNode) {
               folderNode.expand()
             }
           }
-        })
-      })
+        }
+      }
     },
     // 更新展开缓存
     updateExpandedCache(data, isExpanded) {
@@ -769,7 +1473,7 @@ export default {
         // 展开时添加key
         this.defaultExpandedKeys.push(collection.id)
       }
-      this.$refs.collectionTreeRef.updateKeyChildren(collection.id, collection.children)
+      this.$refs.collectionTreeRef.updateKeyChildren(collection.uniqueid, collection.children)
     },
 
     // 切换归档列表
@@ -932,9 +1636,9 @@ export default {
       }
       _that.keyup = new KeyDebounceDetector(function (key1, key2) {
         if ((key1 === 'Control' && key2 === 's') || (key1 === 's' && key2 === 'Control')) {
-
+          return
         } else if ((key1 === 'Control' && key2 === 'Enter') || (key1 === 'Enter' && key2 === 'Control')) {
-          if (_that.selectedItem.type === 'api') {
+          if (_that.selectedItem && _that.selectedItem.type === 'api') {
             _that.$nextTick(() => {
               _that.$refs.refApiDetail.handleExecute();
             });
@@ -943,15 +1647,15 @@ export default {
         }
       }, 500)
     },
-    // 处理节点点击：单击仅负责选中节点，不再自动展开/收起
-    handleNodeClick(data) {
+    // 处理节点点击：单击打开或激活工作区 tab
+    async handleNodeClick(data) {
       let _that = this
-      if (data.type && data.type === 'api') {
-        _that.$nextTick(() => {
-          _that.$refs.refApiDetail.InitApiDetail(data);
-        });
+      if (!data || !data.type) {
+        return
       }
-      _that.selectedItem = data
+      
+      // 打开或激活工作区 tab，重复点击时会重新加载数据
+      await _that.openWorkspaceTab(data, { reload: true })
     },
     // 处理节点双击：集合和文件夹双击时切换展开/收起
     handleNodeDoubleClick(data) {
@@ -972,39 +1676,18 @@ export default {
         this.updateExpandedCache(data, false)
         return
       }
-      if (data.type === 'folder') {
-        this.fillCollectionApis(data.collection_id, data.id)
+      if (data.type === 'collection') {
+        this.ensureCollectionFoldersLoaded(data)
+      } else if (data.type === 'folder') {
+        this.ensureFolderApisLoaded(data)
       }
       node.expand()
       // 双击展开时主动同步本地展开缓存，避免依赖树事件遗漏
       this.updateExpandedCache(data, true)
     },
-    fillCollectionApis: function (collection_id, dir_id) {
-      let _that = this
-      Api.Apis({
-        collection_id: collection_id,
-        dir_id: dir_id
-      }, function (res) {
-        if (res.ErrCode !== 0) {
-          _that.$message.error(res.ErrMsg)
-          return
-        }
-        for (let i in _that.treeData) {
-          if (parseInt(collection_id) === parseInt(_that.treeData[i].id)) {
-            for (let j in _that.treeData[i].children) {
-              if (parseInt(dir_id) === parseInt(_that.treeData[i].children[j].id)) {
-                _that.treeData[i].children[j].children = res.Data.list
-              }
-            }
-          }
-        }
-        // 拉取接口后按缓存顺序恢复
-        _that.applyFolderApiSort(collection_id, dir_id)
-      })
-    },
     // 处理归档项点击
     handleArchiveItemClick(item) {
-      this.selectedItem = item
+      this.openWorkspaceTab(item, { reload: false })
     },
     // 处理弹窗内回车提交（统一入口，避免重复触发）
     handleDialogEnter(dialogType, event) {
@@ -1104,10 +1787,13 @@ export default {
         _that.endDialogSubmit('createCollection')
         if (res.ErrCode === 0) {
           _that.dialogShow.createCollection = false
-          let newCollection = res.Data
-          newCollection.children = []
+          let newCollection = _that.normalizeCollectionNode(res.Data)
           _that.pushUniqueByKey(_that.treeData, newCollection, 'uniqueid')
           _that.syncTreeSortCacheFromTree()
+          // 新建集合成功后，自动打开该集合 tab
+          _that.$nextTick(() => {
+            _that.openWorkspaceTab(newCollection, { reload: true })
+          })
         } else {
           _that.$message.error(res.ErrMsg)
         }
@@ -1119,8 +1805,7 @@ export default {
       let _that = this
       if (!_that.dialogShow.createDir) {
         if (data !== undefined && data !== null) {
-          _that.selectedItem = data
-          _that.$refs.collectionTreeRef.setCurrentKey(_that.selectedItem.uniqueid)
+          _that.openWorkspaceTab(data, { reload: false })
         }
         _that.dialogShow.createDir = true
         _that.dialogData.createDir = {}
@@ -1135,14 +1820,12 @@ export default {
         _that.endDialogSubmit('createDir')
         if (res.ErrCode === 0) {
           _that.dialogShow.createDir = false
-          let newDir = res.Data
-          newDir.children = []
-          for (let i in _that.treeData) {
-            if (parseInt(_that.dialogData.createDir.collection_id) === parseInt(_that.treeData[i].id)) {
-              _that.pushUniqueByKey(_that.treeData[i].children, newDir, 'uniqueid')
-            }
-          }
-          _that.syncTreeSortCacheFromTree()
+          _that.refreshCollectionFolders(_that.dialogData.createDir.collection_id).then(async () => {
+            _that.syncTreeSortCacheFromTree()
+            // 新建文件夹成功后，自动打开该文件夹 tab
+            const newFolder = _that.normalizeFolderNode(res.Data, _that.dialogData.createDir.collection_id)
+            await _that.openWorkspaceTab(newFolder, { reload: true })
+          })
         } else {
           _that.$message.error(res.ErrMsg)
         }
@@ -1170,8 +1853,9 @@ export default {
         if (res.ErrCode === 0) {
           for (let i in _that.treeData) {
             if (parseInt(collection.id) === parseInt(_that.treeData[i].id)) {
-              _that.treeData[i] = collection
-              _that.selectedItem = collection
+              _that.syncCollectionNodeFields(_that.treeData[i], res.Data || collection)
+              // 更新工作区 tab 数据
+              _that.upsertWorkspaceTabData(_that.treeData[i])
             }
           }
         } else {
@@ -1190,12 +1874,8 @@ export default {
         Api.DeleteCollection(collection, function (res) {
           if (res.ErrCode === 0) {
             _that.treeData = ArrayUtil.DeleteValueByStringKey(_that.treeData, 'uniqueid', collection.uniqueid)
-            //如果是删除的集合
-            if (_that.selectedItem && _that.selectedItem.type === 'collection') {
-              if (_that.selectedItem.id === collection.id) {
-                _that.selectedItem = {}
-              }
-            }
+            // 关闭该集合相关的所有 tab
+            _that.closeWorkspaceTabsByCollection(collection.id)
             _that.syncTreeSortCacheFromTree()
             _that.$message.success('删除成功')
           } else {
@@ -1211,28 +1891,12 @@ export default {
     handleFolderUpdate(folder) {
       console.log('更新文件夹', folder)
       let _that = this
-      for (let i in _that.treeData) {
-        if (parseInt(folder.collection_id) !== parseInt(_that.treeData[i].id)) {
-          continue
-        }
-        for (let j in _that.treeData[i].children) {
-          if (parseInt(folder.id) !== parseInt(_that.treeData[i].children[j].id)) {
-            continue
-          }
-          // Use Object.assign to ensure reactivity
-          Object.assign(_that.treeData[i].children[j], {
-            name: folder.name,
-            desc: folder.desc
-          })
-          break
-        }
-      }
-      // Update the selected item if it's the same folder
-      if (_that.selectedItem && parseInt(_that.selectedItem.id) === parseInt(folder.id)) {
-        Object.assign(_that.selectedItem, {
-          name: folder.name,
-          desc: folder.desc
-        })
+      const folderNode = _that.findFolderNode(folder.collection_id, folder.id)
+      if (folderNode) {
+        _that.syncFolderNodeFields(folderNode, folder)
+        _that.upsertWorkspaceTabData(folderNode)
+      } else {
+        _that.upsertWorkspaceTabData(folder)
       }
     },
 
@@ -1246,26 +1910,11 @@ export default {
       }).then(() => {
         Api.DeleteDir(folder, function (res) {
           if (res.ErrCode === 0) {
-            for (let i in _that.treeData) {
-              if (parseInt(folder.collection_id) !== parseInt(_that.treeData[i].id)) {
-                continue
-              }
-              _that.treeData[i].children = ArrayUtil.DeleteValueByStringKey(_that.treeData[i].children, 'uniqueid', folder.uniqueid)
-            }
-
-            //如果是删除的集合
-            if(_that.selectedItem){
-              if (_that.selectedItem.type === 'folder') {
-                if (_that.selectedItem.id === folder.id) {
-                  _that.selectedItem = {}
-                }
-              } else if (_that.selectedItem.type === 'api') {
-                if (_that.selectedItem.folder_id === folder.id) {
-                  _that.selectedItem = {}
-                }
-              }
-            }
-            _that.syncTreeSortCacheFromTree()
+            // 关闭该文件夹及其下所有接口的 tab
+            _that.closeWorkspaceTabsByFolder(folder.id)
+            _that.refreshCollectionFolders(folder.collection_id).finally(() => {
+              _that.syncTreeSortCacheFromTree()
+            })
             _that.$message.success('删除成功')
           } else {
             _that.$message.error(res.ErrMsg)
@@ -1295,23 +1944,12 @@ export default {
           return
         }
         let newApi = res.Data
-        for (let i in _that.treeData) {
-          if (parseInt(_that.dialogData.createApi.collection_id) !== parseInt(_that.treeData[i].id)) {
-            continue
-          }
-          for (let j in _that.treeData[i].children) {
-            if (parseInt(_that.dialogData.createApi.folder_id) !== parseInt(_that.treeData[i].children[j].id)) {
-              continue
-            }
-            _that.pushUniqueByKey(_that.treeData[i].children[j].children, newApi, 'uniqueid')
-          }
-        }
-        _that.syncTreeSortCacheFromTree()
-        _that.selectedItem = newApi
-        _that.$nextTick(function () {
-          _that.$refs.refApiDetail.InitApiDetail(newApi)
-          _that.$refs.collectionTreeRef.setCurrentKey(newApi.uniqueid)
-          console.log('设置当前选中的菜单为', newApi.uniqueid)
+        _that.refreshFolderApis(_that.dialogData.createApi.collection_id, _that.dialogData.createApi.folder_id).then(async () => {
+          _that.syncTreeSortCacheFromTree()
+          // 新建接口成功后，自动打开新接口 tab
+          const newApiNode = _that.normalizeApiNode(newApi, newApi.folder_id, newApi.collection_id)
+          _that.upsertWorkspaceTabData(_that.findFolderNode(newApi.collection_id, newApi.folder_id))
+          await _that.openWorkspaceTab(newApiNode, { reload: true })
         })
       })
     },
@@ -1343,23 +1981,12 @@ export default {
           return
         }
         let newApi = res.Data
-        for (let i in _that.treeData) {
-          if (parseInt(api.collection_id) !== parseInt(_that.treeData[i].id)) {
-            continue
-          }
-          for (let j in _that.treeData[i].children) {
-            if (parseInt(api.folder_id) !== parseInt(_that.treeData[i].children[j].id)) {
-              continue
-            }
-            for (let k in _that.treeData[i].children[j].children) {
-              if (parseInt(api.id) !== parseInt(_that.treeData[i].children[j].children[k].id)) {
-                continue
-              }
-              _that.treeData[i].children[j].children[k] = newApi
-            }
-          }
+        const currentApiNode = _that.findApiNode(api.collection_id, api.folder_id, api.id)
+        if (currentApiNode) {
+          _that.syncApiNodeFields(currentApiNode, newApi)
         }
-        _that.selectedItem = newApi
+        // 更新工作区 tab 数据
+        _that.upsertWorkspaceTabData(_that.normalizeApiNode(newApi, newApi.folder_id, newApi.collection_id))
       })
     },
 
@@ -1376,23 +2003,12 @@ export default {
         }).then(() => {
           Api.DeleteApi(data, function (res) {
             if (res.ErrCode === 0) {
-              for (let i in _that.treeData) {
-                let collectionInfo = _that.treeData[i]
-                if (parseInt(data.collection_id) !== parseInt(collectionInfo.id)) { //集合
-                  continue
-                }
-                for (let j in collectionInfo.children) { //文件夹
-                  let folderInfo = collectionInfo.children[j]
-                  if (parseInt(data.folder_id) !== parseInt(folderInfo.id)) {
-                    continue
-                  }
-                  _that.treeData[i].children[j].children = ArrayUtil.DeleteValueByStringKey(folderInfo.children, 'uniqueid', data.uniqueid)
-                }
-              }
-              if (_that.selectedItem.uniqueid === data.uniqueid) {//如果当前删除的api是选中的api 那么置空当前选项
-                _that.selectedItem = {}
-              }
-              _that.syncTreeSortCacheFromTree()
+              // 关闭该接口的 tab
+              const tabKey = _that.buildWorkspaceTabKey(data)
+              _that.closeWorkspaceTab(tabKey)
+              _that.refreshFolderApis(data.collection_id, data.folder_id).finally(() => {
+                _that.syncTreeSortCacheFromTree()
+              })
               _that.$message.success('删除成功')
             } else {
               _that.$message.error(res.ErrMsg)
@@ -1405,7 +2021,9 @@ export default {
       } else if (command === 'down_api') {
         Api.ApiWeightDown(data, function (res) {
           if (res.ErrCode === 0) {
-            _that.fillCollectionApis(data.collection_id, data.folder_id)
+            _that.refreshFolderApis(data.collection_id, data.folder_id).then(() => {
+              _that.upsertWorkspaceTabData(_that.findFolderNode(data.collection_id, data.folder_id))
+            })
             _that.$message.success('移动成功')
           } else {
             _that.$message.error(res.ErrMsg)
@@ -1480,24 +2098,13 @@ export default {
           return
         }
         let newApi = res.Data
-        // 将新接口添加到对应文件夹下
-        for (let i in _that.treeData) {
-          if (parseInt(_that.dialogData.copyApi.collection_id) !== parseInt(_that.treeData[i].id)) {
-            continue
-          }
-          for (let j in _that.treeData[i].children) {
-            if (parseInt(_that.dialogData.copyApi.folder_id) !== parseInt(_that.treeData[i].children[j].id)) {
-              continue
-            }
-            _that.pushUniqueByKey(_that.treeData[i].children[j].children, newApi, 'uniqueid')
-          }
-        }
-        _that.syncTreeSortCacheFromTree()
-        _that.selectedItem = newApi
-        _that.$nextTick(() => {
-          _that.$refs.collectionTreeRef.setCurrentKey(newApi.uniqueid)
+        _that.refreshFolderApis(_that.dialogData.copyApi.collection_id, _that.dialogData.copyApi.folder_id).then(async () => {
+          _that.syncTreeSortCacheFromTree()
+          // 复制接口成功后，自动打开新接口 tab
+          const newApiNode = _that.normalizeApiNode(newApi, newApi.folder_id, newApi.collection_id)
+          _that.upsertWorkspaceTabData(_that.findFolderNode(newApi.collection_id, newApi.folder_id))
+          await _that.openWorkspaceTab(newApiNode, { reload: true })
         })
-        _that.$refs.refApiDetail.InitApiDetail(newApi);
         _that.$message.success('接口复制成功')
       })
     }
@@ -1775,6 +2382,67 @@ export default {
   box-shadow: 0 4px 12px rgba(54, 74, 54, 0.05);
 }
 
+/* 工作区 Tab 样式 */
+.workspace-tabs {
+  background: #f7f7f2;
+  border-bottom: 1px solid #ecece4;
+  padding: 0 12px;
+}
+
+.workspace-tabs :deep(.el-tabs__header) {
+  margin: 0;
+  border-bottom: none;
+}
+
+.workspace-tabs :deep(.el-tabs__nav-wrap) {
+  padding: 8px 0 0 0;
+}
+
+.workspace-tabs :deep(.el-tabs__item) {
+  height: 32px;
+  line-height: 32px;
+  padding: 0 12px;
+  border-radius: 6px 6px 0 0;
+  background: #fff;
+  border: 1px solid #e8e8e0;
+  border-bottom: none;
+  margin-right: 4px;
+  color: #5e6b57;
+  font-size: 13px;
+}
+
+.workspace-tabs :deep(.el-tabs__item.is-active) {
+  color: #4f804f;
+  background: #fff;
+  border-bottom: 1px solid #fff;
+}
+
+.workspace-tabs :deep(.el-tabs__item:hover) {
+  color: #4f804f;
+}
+
+.workspace-tabs :deep(.el-tabs__nav-prev),
+.workspace-tabs :deep(.el-tabs__nav-next) {
+  line-height: 40px;
+}
+
+.workspace-tab-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace-tab-label .tab-icon {
+  font-size: 14px;
+}
+
+.workspace-tab-label .tab-title {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
@@ -1833,6 +2501,10 @@ export default {
   padding: 12px 16px;
   overflow-y: auto;
   background: #fff;
+}
+
+.panel-content--flush {
+  padding: 0;
 }
 
 .empty-state {
@@ -1898,6 +2570,7 @@ export default {
 }
 
 </style>
+
 
 
 

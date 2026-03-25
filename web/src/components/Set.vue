@@ -37,6 +37,9 @@
       <el-tab-pane label="AI" name="AI" class="set-tab-pane">
         <ai_provider ref="ai_provider"></ai_provider>
       </el-tab-pane>
+      <el-tab-pane label="记忆" name="Memory" class="set-tab-pane">
+        <memory_set ref="memory_set"></memory_set>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -58,6 +61,7 @@ import store from "@/utils/base/store"
 import global from "@/components/set/global.vue"
 import account from "@/components/set/account.vue";
 import ai_provider from "@/components/set/ai_provider.vue";
+import memory_set from "@/components/set/memory.vue";
 export default {
   props : {
     shellShowResult : {
@@ -76,6 +80,7 @@ export default {
     gitlab_token ,
     global,
     ai_provider,
+    memory_set,
   },
   data() {
     return {
@@ -88,33 +93,45 @@ export default {
     if (process.env.NODE_ENV === 'production') {
       this.apiHost = ''
     }
-    this.activeLabel = String(store.getStore("set_active_label"))
-    if  (this.activeLabel === '') {
-      this.activeLabel = 'Ssh'
-    }
+    this.syncActiveLabel()
     this.SshList()
   },
+  activated() {
+    this.syncActiveLabel()
+  },
   methods: {
+    syncActiveLabel: function () {
+      this.activeLabel = String(store.getStore("set_active_label"))
+      if  (this.activeLabel === '') {
+        this.activeLabel = 'Ssh'
+      }
+      this.loadActiveTabData()
+    },
     handleTabClick : function (tab){
-      let index = tab.index
       this.activeLabel = tab.props.name
       console.log(tab , this.activeLabel)
       store.setStore("set_active_label", tab.props.name)
+      this.loadActiveTabData()
+    },
+    loadActiveTabData: function (){
       switch (this.activeLabel){
         case 'Ssh':
-          this.$refs.ssh.SshList();
+          this.$refs.ssh && this.$refs.ssh.SshList();
           break
         case 'Git':
-          this.$refs.git.GitList()
-          this.$refs.git.GitGroupList()
+          this.$refs.git && this.$refs.git.GitList()
+          this.$refs.git && this.$refs.git.GitGroupList()
           break
         case 'Account':
-          this.$refs.account.AccountList()
-          this.$refs.account.AccountGroupList()
+          this.$refs.account && this.$refs.account.AccountList()
+          this.$refs.account && this.$refs.account.AccountGroupList()
           break
         case 'AI':
-          this.$refs.ai_provider.LoadProviderList()
-          this.$refs.ai_provider.LoadModelList()
+          this.$refs.ai_provider && this.$refs.ai_provider.LoadProviderList()
+          this.$refs.ai_provider && this.$refs.ai_provider.LoadModelList()
+          break
+        case 'Memory':
+          this.$refs.memory_set && this.$refs.memory_set.loadConfig()
           break
       }
     },

@@ -30,6 +30,11 @@ function AiModelDelete(data , callBack){
     base.BasePost('/api/Set/AiModelDelete', data, callBack)
 }
 
+// AiModelTest 测试 AI 模型连通性
+function AiModelTest(data , callBack){
+    base.BasePost('/api/Set/AiModelTest', data, callBack)
+}
+
 export default {
     AiProviderList,
     AiProviderAdd,
@@ -37,5 +42,6 @@ export default {
     AiModelList,
     AiModelAdd,
     AiModelDelete,
+    AiModelTest,
 }
 

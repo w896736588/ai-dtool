@@ -1,12 +1,17 @@
-<template>
+﻿<template>
   <div class="memory-page">
-    <aside class="memory-sidebar">
+    <aside v-if="memoryConfigured" class="memory-sidebar">
       <div class="sidebar-header">
         <div class="sidebar-title">片段列表</div>
-        <el-button type="primary" plain @click="createFragment">
-          <el-icon><Plus /></el-icon>
-          新建片段
-        </el-button>
+        <div class="sidebar-header-actions">
+          <pl-button type="primary" plain @click="createFragment">
+            <el-icon><Plus /></el-icon>
+            新建片段
+          </pl-button>
+          <pl-button plain @click="openSettingsTab">
+            设置
+          </pl-button>
+        </div>
       </div>
 
       <div class="search-card sidebar-search-card">
@@ -24,8 +29,22 @@
           </el-input>
         </div>
         <div class="tag-filter-row">
-          <span class="tag-filter-label">标签筛选</span>
-          <div class="tag-filter-list">
+          <div class="tag-filter-head">
+            <span class="tag-filter-label">标签筛选</span>
+            <pl-button
+              v-if="showTagFilterToggle"
+              class="tag-filter-toggle"
+              link
+              @click="toggleTagFilterExpanded"
+            >
+              {{ tagFilterToggleText }}
+            </pl-button>
+          </div>
+          <div
+            class="tag-filter-list"
+            :class="{ collapsed: !tagFilterExpanded }"
+            :style="tagFilterListStyle"
+          >
             <button
               v-for="tag in tagList"
               :key="tag.tag_name"
@@ -39,11 +58,11 @@
           </div>
         </div>
         <div class="search-actions">
-          <el-button type="primary" @click="submitSearch">
+          <pl-button type="primary" @click="submitSearch">
             <el-icon><Search /></el-icon>
             搜索
-          </el-button>
-          <el-button plain @click="clearFilter">清空条件</el-button>
+          </pl-button>
+          <pl-button plain @click="clearFilter">清空条件</pl-button>
         </div>
       </div>
 
@@ -71,6 +90,17 @@
           </div>
         </button>
       </el-scrollbar>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-row">
+          <span class="sidebar-footer-label">上一次 push 记忆库</span>
+          <span class="sidebar-footer-value">{{ lastPushTimeDesc }}</span>
+        </div>
+        <div v-if="lastPushError" class="sidebar-footer-row sidebar-footer-error">
+          <span class="sidebar-footer-label">失败原因</span>
+          <span class="sidebar-footer-value">{{ lastPushError }}</span>
+        </div>
+      </div>
     </aside>
 
     <section class="memory-main">
@@ -94,11 +124,20 @@
               :selected-tags="[]"
               :query="''"
               :loading="false"
+              :configured="memoryConfigured"
               @open-fragment="openFragment"
               @create-fragment="createFragment"
               @toggle-tag="toggleTag"
               @clear-filter="clearFilter"
+              @go-memory-setting="goMemorySetting"
             />
+          </el-tab-pane>
+
+          <el-tab-pane name="settings" :closable="false">
+            <template #label>
+              <span class="tab-label">设置</span>
+            </template>
+            <MemorySettingPage ref="memorySettingPage" />
           </el-tab-pane>
 
           <el-tab-pane
@@ -213,6 +252,18 @@ import MemoryFragmentApi from '@/utils/base/memory_fragment'
 import MemoryWelcome from '@/components/memory/MemoryWelcome.vue'
 import MemoryEditor from '@/components/memory/MemoryEditor.vue'
 import MemoryHistoryDialog from '@/components/memory/MemoryHistoryDialog.vue'
+import MemorySettingPage from '@/components/set/memory.vue'
+
+// TAG_FILTER_COLLAPSED_MAX_HEIGHT 控制左侧标签筛选区收起时的最大高度。
+const TAG_FILTER_COLLAPSED_MAX_HEIGHT = 76
+// TAG_FILTER_TOGGLE_MIN_COUNT 控制多少个标签时展示展开/收起入口。
+const TAG_FILTER_TOGGLE_MIN_COUNT = 10
+// SEARCH_TAB_NAME 统一定义搜索结果标签页名称，避免散落硬编码。
+const SEARCH_TAB_NAME = 'search'
+// HOME_TAB_NAME 统一定义首页标签页名称，避免散落硬编码。
+const HOME_TAB_NAME = 'home'
+// KEYWORD_SEARCH_MODE 统一定义关键词搜索模式值，避免散落硬编码。
+const KEYWORD_SEARCH_MODE = 'keyword'
 
 export default {
   name: 'MemoryFragment',
@@ -222,6 +273,7 @@ export default {
     MemoryWelcome,
     MemoryEditor,
     MemoryHistoryDialog,
+    MemorySettingPage,
   },
   data() {
     return {
@@ -229,17 +281,22 @@ export default {
       tagList: [],
       searchResults: [],
       searchQuery: '',
-      searchMode: 'keyword',
+      searchMode: KEYWORD_SEARCH_MODE,
       selectedTags: [],
+      tagFilterExpanded: false,
       searchTabVisible: false,
       submittedSearchQuery: '',
-      submittedSearchMode: 'keyword',
+      submittedSearchMode: KEYWORD_SEARCH_MODE,
       submittedSelectedTags: [],
-      activeTab: 'home',
+      activeTab: HOME_TAB_NAME,
       fragmentTabs: [],
       searchLoading: false,
       historyDialogVisible: false,
       historyFragmentId: 0,
+      memoryConfigured: true,
+      lastPushTimeDesc: '-',
+      lastPushError: '',
+      statusPollTimer: null,
     }
   },
   computed: {
@@ -257,27 +314,100 @@ export default {
         return `搜索结果: ${this.submittedSelectedTags.join('、')}`
       }
       return '搜索结果'
+    },
+    // showTagFilterToggle 判断左侧标签筛选区是否需要展示展开入口。
+    showTagFilterToggle() {
+      return this.tagList.length >= TAG_FILTER_TOGGLE_MIN_COUNT
+    },
+    // tagFilterListStyle 统一生成标签筛选区在不同状态下的高度样式。
+    tagFilterListStyle() {
+      if (this.tagFilterExpanded) {
+        return {}
+      }
+      return {
+        maxHeight: `${TAG_FILTER_COLLAPSED_MAX_HEIGHT}px`
+      }
+    },
+    // tagFilterToggleText 返回左侧标签筛选区的展开文案。
+    tagFilterToggleText() {
+      return this.tagFilterExpanded ? '收起标签' : `展开标签（${this.tagList.length}）`
     }
   },
   mounted() {
-    this.loadFragmentList()
-    this.loadTagList()
+    this.loadMemoryStatus()
+    this.startStatusPolling()
+  },
+  activated() {
+    this.startStatusPolling()
+    this.loadMemoryStatus()
+  },
+  deactivated() {
+    this.stopStatusPolling()
+  },
+  beforeUnmount() {
+    this.stopStatusPolling()
   },
   methods: {
+    startStatusPolling() {
+      if (this.statusPollTimer) {
+        return
+      }
+      this.statusPollTimer = window.setInterval(() => {
+        this.loadMemoryStatus(false)
+      }, 10000)
+    },
+    stopStatusPolling() {
+      if (!this.statusPollTimer) {
+        return
+      }
+      window.clearInterval(this.statusPollTimer)
+      this.statusPollTimer = null
+    },
+    loadMemoryStatus(needReloadLists = true) {
+      MemoryFragmentApi.MemoryFragmentStatus((response) => {
+        this.memoryConfigured = !!(response.Data && response.Data.configured)
+        this.lastPushTimeDesc = response.Data && response.Data.last_push_time_desc ? response.Data.last_push_time_desc : '-'
+        this.lastPushError = response.Data && response.Data.last_push_error ? response.Data.last_push_error : ''
+        if (!this.memoryConfigured) {
+          this.fragmentList = []
+          this.tagList = []
+          this.searchResults = []
+          this.fragmentTabs = []
+          this.activeTab = HOME_TAB_NAME
+          return
+        }
+        if (needReloadLists) {
+          this.loadFragmentList()
+          this.loadTagList()
+        }
+      })
+    },
     // loadFragmentList 加载左侧片段列表。
     loadFragmentList() {
+      if (!this.memoryConfigured) {
+        return
+      }
       MemoryFragmentApi.MemoryFragmentList(0, (response) => {
         this.fragmentList = Array.isArray(response.Data) ? response.Data : []
       })
     },
     // loadTagList 加载标签筛选列表。
     loadTagList() {
+      if (!this.memoryConfigured) {
+        return
+      }
       MemoryFragmentApi.MemoryFragmentTagList((response) => {
         this.tagList = Array.isArray(response.Data) ? response.Data : []
+        if (!this.showTagFilterToggle) {
+          this.tagFilterExpanded = false
+        }
       })
     },
     // runSearch 根据指定条件执行搜索。
     runSearch(query, mode, selectedTags) {
+      if (!this.memoryConfigured) {
+        return
+      }
       this.searchLoading = true
       MemoryFragmentApi.MemoryFragmentSearch(
         query,
@@ -300,7 +430,7 @@ export default {
       this.submittedSearchMode = this.searchMode
       this.submittedSelectedTags = [...this.selectedTags]
       this.searchTabVisible = true
-      this.activeTab = 'search'
+      this.activeTab = SEARCH_TAB_NAME
       this.runSearch(this.submittedSearchQuery, this.submittedSearchMode, this.submittedSelectedTags)
     },
     // escapeHtml 对文本做 HTML 转义，避免高亮时插入原始标签。
@@ -326,15 +456,15 @@ export default {
     // clearFilter 清空左侧搜索条件，并关闭结果 tab。
     clearFilter() {
       this.searchQuery = ''
-      this.searchMode = 'keyword'
+      this.searchMode = KEYWORD_SEARCH_MODE
       this.selectedTags = []
       this.submittedSearchQuery = ''
-      this.submittedSearchMode = 'keyword'
+      this.submittedSearchMode = KEYWORD_SEARCH_MODE
       this.submittedSelectedTags = []
       this.searchTabVisible = false
       this.searchResults = []
-      if (this.activeTab === 'search') {
-        this.activeTab = 'home'
+      if (this.activeTab === SEARCH_TAB_NAME) {
+        this.activeTab = HOME_TAB_NAME
       }
     },
     // toggleTag 切换左侧待提交的标签筛选条件。
@@ -354,8 +484,12 @@ export default {
       }
       this.selectedTags = [...this.submittedSelectedTags]
       this.searchTabVisible = true
-      this.activeTab = 'search'
+      this.activeTab = SEARCH_TAB_NAME
       this.rerunSubmittedSearch()
+    },
+    // toggleTagFilterExpanded 切换左侧标签筛选区的展开状态。
+    toggleTagFilterExpanded() {
+      this.tagFilterExpanded = !this.tagFilterExpanded
     },
     // getSearchSnippet 生成搜索结果中的命中文本片段。
     getSearchSnippet(item) {
@@ -508,7 +642,10 @@ export default {
     },
     // createFragment 创建一个新片段并自动打开。
     createFragment() {
-      MemoryFragmentApi.MemoryFragmentSave(0, '新记忆片段', '# 新记忆片段\n\n在这里开始记录。', [], (response) => {
+      if (!this.memoryConfigured) {
+        return
+      }
+      MemoryFragmentApi.MemoryFragmentSave(0, '新知识片段', '# 新知识片段\n\n在这里开始记录。', [], (response) => {
         if (response.ErrCode !== 0 || !response.Data) {
           return
         }
@@ -517,8 +654,19 @@ export default {
         this.upsertFragmentTab(response.Data, true)
       })
     },
+    openSettingsTab() {
+      this.activeTab = 'settings'
+      this.$nextTick(() => {
+        if (this.$refs.memorySettingPage && this.$refs.memorySettingPage.loadConfig) {
+          this.$refs.memorySettingPage.loadConfig()
+        }
+      })
+    },
     // openFragment 打开指定片段 tab。
     openFragment(fragmentId) {
+      if (!this.memoryConfigured) {
+        return
+      }
       const existingTab = this.fragmentTabs.find(item => item.fragment.id === fragmentId)
       if (existingTab) {
         this.activeTab = existingTab.name
@@ -627,6 +775,10 @@ export default {
     // handleTabChange 切换 tab 时保持页面状态一致。
     handleTabChange(tabPane) {
       this.activeTab = tabPane.paneName
+    },
+    goMemorySetting() {
+      localStorage.setItem('set_active_label', 'Memory')
+      this.$router.push('/Set')
     }
   }
 }
@@ -662,6 +814,14 @@ export default {
   background: #f7f7f2;
 }
 
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .sidebar-title {
   font-size: 15px;
   font-weight: 600;
@@ -670,6 +830,38 @@ export default {
 
 .sidebar-scroll {
   flex: 1;
+}
+
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid #ecece4;
+  background: #f9faf6;
+  font-size: 12px;
+  color: #6c7767;
+}
+
+.sidebar-footer-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.sidebar-footer-label {
+  flex-shrink: 0;
+}
+
+.sidebar-footer-value {
+  color: #4f5f49;
+  flex: 1;
+}
+
+.sidebar-footer-error .sidebar-footer-value {
+  color: #bb5b4a;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .sidebar-item {
@@ -770,29 +962,55 @@ export default {
 
 .tag-filter-row {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.tag-filter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  align-items: flex-start;
-  margin-top: 14px;
 }
 
 .tag-filter-label {
-  min-width: 64px;
   color: #60705a;
   font-size: 13px;
-  line-height: 34px;
+  line-height: 1.4;
+}
+
+.tag-filter-toggle {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #5f7d56;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tag-filter-toggle:hover {
+  color: #45603e;
+  text-decoration: underline;
 }
 
 .tag-filter-list {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  overflow: hidden;
+  transition: max-height 0.2s ease;
+}
+
+.tag-filter-list.collapsed {
+  mask-image: linear-gradient(180deg, #000 0%, #000 78%, rgba(0, 0, 0, 0) 100%);
 }
 
 .filter-chip {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 7px 11px;
   border: 1px solid #dbe7d4;
   border-radius: 999px;
   background: #f8fbf5;
@@ -818,7 +1036,7 @@ export default {
 .search-actions {
   display: flex;
   gap: 10px;
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
 .workspace-card {
@@ -993,3 +1211,4 @@ export default {
   }
 }
 </style>
+

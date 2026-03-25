@@ -518,10 +518,9 @@ func (h *RCmd) RunLlm() (string, error) {
 		baseURL = strings.TrimSpace(cast.ToString(baseURLConf[`value`]))
 	}
 	if baseURL == `` {
-		baseURL = `https://api.openai.com/v1/chat/completions`
-	} else if !strings.Contains(baseURL, `/chat/completions`) {
-		baseURL = strings.TrimRight(baseURL, `/`) + `/v1/chat/completions`
+		baseURL = `https://api.openai.com`
 	}
+	baseURL = resolveOpenAIChatCompletionsURL(baseURL)
 
 	apiKey := strings.TrimSpace(cfg.ApiKey)
 	if apiKey == `` {
@@ -590,6 +589,26 @@ func (h *RCmd) RunLlm() (string, error) {
 		VariableClient.AddReplace(h.replaceList, resultKey, content)
 	}
 	return content, nil
+}
+
+func resolveOpenAIChatCompletionsURL(baseURL string) string {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == `` {
+		baseURL = `https://api.openai.com`
+	}
+	if strings.Contains(baseURL, `://`) {
+		schemeSplit := strings.SplitN(baseURL, `://`, 2)
+		if len(schemeSplit) == 2 {
+			pathIndex := strings.Index(schemeSplit[1], `/`)
+			if pathIndex >= 0 {
+				return strings.TrimRight(baseURL, `/`)
+			}
+		}
+	}
+	if strings.Contains(baseURL, `/chat/completions`) {
+		return strings.TrimRight(baseURL, `/`)
+	}
+	return strings.TrimRight(baseURL, `/`) + `/v1/chat/completions`
 }
 
 func (h *RCmd) RunPlaywright(stopCall func() bool) (string, error) {

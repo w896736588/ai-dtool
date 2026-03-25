@@ -32,7 +32,7 @@
   </div>
   <template v-for="(v,k) in searchLineList">
     <div style="margin-top: 8px;">
-      <button class="copy-btn" @click="copyJson(v.value)">复制</button>
+      <pl-button class="copy-btn" link @click="copyJson(v.value)">复制</pl-button>
       <pre class="pretty-json" ref="textarea">{{ v.value }}</pre>
     </div>
 

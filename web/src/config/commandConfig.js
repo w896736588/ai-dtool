@@ -322,32 +322,9 @@ const commandConfig = [
     desc: '终端输出查看',
     module: 'shellout',
     path: '/shellout',
-    children: [
-      {
-        command: 'create',
-        name: '创建',
-        desc: '创建新的终端输出任务',
-        action: 'shellCreate',
-        needInput: true,
-        inputPlaceholder: '请输入: 任务名 | SSH(名称或ID) | 命令'
-      },
-      {
-        command: 'list',
-        name: '任务列表',
-        desc: '查看所有任务',
-        action: 'shellList',
-        needTarget: true,
-        dynamicChildren: 'shellOutList'
-      },
-      {
-        command: 'run',
-        name: '运行任务',
-        desc: '运行指定任务',
-        action: 'shellRun',
-        needTarget: true,
-        dynamicChildren: 'shellOutList'
-      }
-    ]
+    action: 'shell',
+    needTarget: true,
+    dynamicChildren: 'shellOutList'
   },
   {
     command: 'link',
@@ -359,58 +336,6 @@ const commandConfig = [
     action: 'linkRun',
     needTarget: true,
     dynamicChildren: 'linkEnvList'
-  },
-  {
-    command: 'variable',
-    name: '自定义脚本',
-    icon: '📝',
-    desc: '自定义脚本管理',
-    module: 'variable',
-    path: '/Variable',
-    children: [
-      {
-        command: 'run',
-        name: '启动脚本',
-        desc: '选择脚本并启动多步执行',
-        action: 'variableRun',
-        needTarget: true,
-        dynamicChildren: 'variableScriptList'
-      },
-      {
-        command: 'set',
-        name: '输入参数',
-        desc: '给当前步骤输入值',
-        action: 'variableSet',
-        needInput: true,
-        inputPlaceholder: '请输入当前步骤的值'
-      },
-      {
-        command: 'choose',
-        name: '选择选项',
-        desc: '从当前步骤候选项中选择',
-        action: 'variableChoose',
-        needTarget: true,
-        dynamicChildren: 'variableOptionList'
-      },
-      {
-        command: 'exec',
-        name: '执行最终步骤',
-        desc: '当脚本可执行时触发最终执行',
-        action: 'variableExec'
-      },
-      {
-        command: 'reset',
-        name: '重置会话',
-        desc: '重置当前 variable 会话',
-        action: 'variableReset'
-      },
-      {
-        command: 'cancel',
-        name: '取消会话',
-        desc: '取消当前 variable 会话',
-        action: 'variableCancel'
-      }
-    ]
   }
 ]
 

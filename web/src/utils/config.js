@@ -17,18 +17,23 @@ function getSupervisorConfigList(confList, consumerConfig) {
     if (configParam.length !== 2) {
       continue
     }
-    let configFileName = consumerConfig.config_dir + '/' + configParam[0]
-    configParam[1] = configParam[1].replaceAll('[', '')
+    const configName = typeof configParam[0] === 'string' ? configParam[0].trim() : ''
+    const supervisorName = typeof configParam[1] === 'string' ? configParam[1] : ''
+    if (configName === '' || supervisorName === '') {
+      continue
+    }
+    let configFileName = consumerConfig.config_dir + '/' + configName
+    configParam[1] = supervisorName.replaceAll('[', '')
     configParam[1] = configParam[1].replaceAll(']', '')
     configParam[1] = configParam[1].replaceAll('program:', '')
     configParam[1] = configParam[1].replaceAll('\r', '')
     //建立配置
-    let showName = store.getStore(configParam[0])
+    let showName = store.getStore(configName)
     if (showName === null || showName === undefined) {
-      showName = configParam[0].split('.')[0]
+      showName = configName.split('.')[0]
     }
     addConfigList.push({
-      name: configParam[0],
+      name: configName,
       supervisor_config: configFileName,
       supervisor_name: configParam[1],
       running_status: '',

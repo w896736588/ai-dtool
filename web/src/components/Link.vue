@@ -1,10 +1,7 @@
 <template>
-  <div id="mainCard" ref="mainCard" class="link-page-card">
-    <Links @changeModelToFlow="changeToFlow" @changeModelToEditProcess="changeToEditProcess" v-if="model === 'links'"/>
-    <Process @changeModelToLinks="changeToLinks" v-if="model === 'process'"/>
-    <Flow @changeModelToLinks="changeToLinks" @changeModelToFlow="changeToFlow" v-if="model === 'flow'"/>
-  </div>
-
+  <Links @changeModelToFlow="changeToFlow" @changeModelToEditProcess="changeToEditProcess" v-if="model === 'links'"/>
+  <Process @changeModelToLinks="changeToLinks" v-if="model === 'process'"/>
+  <Flow @changeModelToLinks="changeToLinks" @changeModelToFlow="changeToFlow" v-if="model === 'flow'"/>
 </template>
 <script>
 import Links from '@/components/smart_link/link_run.vue'
@@ -56,13 +53,9 @@ export default {
 </script>
 
 <style scoped>
-.link-page-card {
-  min-height: calc(100vh - 110px);
-  padding: 12px;
-  background: #fafaf7;
-  border: 1px solid #e6e8de;
-  border-radius: 12px;
-  box-sizing: border-box;
+:deep(.link-run-page),
+:deep(.smart-process-container),
+:deep(.smart-process-canvas-container) {
   color: #3f4a3f;
   --el-color-primary: #6fa56f;
   --el-color-primary-light-3: #8db88d;
@@ -73,8 +66,8 @@ export default {
   --el-color-primary-dark-2: #5f8f5f;
 }
 
-.link-page-card :deep(.smart-process-container),
-.link-page-card :deep(.smart-process-canvas-container) {
+:deep(.smart-process-container),
+:deep(.smart-process-canvas-container) {
   height: calc(100vh - 140px);
   background: #fafaf7;
   border: 1px solid #e6e8de;
@@ -82,76 +75,61 @@ export default {
   overflow: hidden;
 }
 
-.link-page-card :deep(.left-sidebar) {
+:deep(.left-sidebar) {
   background: #f5f5f0;
   border-right: 1px solid #e6e8de;
 }
 
-.link-page-card :deep(.right-content) {
+:deep(.right-content) {
   background: #fafaf7;
 }
 
-.link-page-card :deep(.search-box),
-.link-page-card :deep(.add-btn),
-.link-page-card :deep(.canvas-header) {
+:deep(.search-box),
+:deep(.add-btn),
+:deep(.canvas-header) {
   background: #f7f8f2;
 }
 
-.link-page-card :deep(.canvas-header) {
+:deep(.canvas-header) {
   border-bottom: 1px solid #e6e8de;
 }
 
-.link-page-card :deep(.process-item) {
+:deep(.process-item) {
   border-radius: 6px;
   margin: 2px 8px;
   color: #465246;
 }
 
-.link-page-card :deep(.process-item:hover) {
+:deep(.process-item:hover) {
   background: #e8f2e5 !important;
 }
 
-.link-page-card :deep(.process-item.active) {
+:deep(.process-item.active) {
   background: #dcedc8 !important;
   color: #3a7a3a;
 }
 
-.link-page-card :deep(.process-item-card),
-.link-page-card :deep(.box-card),
-.link-page-card :deep(.custom-node) {
+:deep(.process-item-card),
+:deep(.box-card),
+:deep(.custom-node) {
   background: #ffffff;
   border: 1px solid #e6e8de;
   border-radius: 10px;
   box-shadow: 0 1px 2px rgba(80, 96, 80, 0.08);
 }
 
-.link-page-card :deep(.custom-node.selected) {
+:deep(.custom-node.selected) {
   border-color: #7cb87c;
   box-shadow: 0 0 0 2px rgba(124, 184, 124, 0.2);
 }
 
-.link-page-card :deep(.node-type) {
+:deep(.node-type) {
   background: #f1f5ec;
   color: #4f5b4f;
 }
 
-.link-page-card :deep(.el-button--primary),
-.link-page-card :deep(.el-button--primary.is-plain) {
-  border-radius: 8px;
-  border-color: #d8ded2 !important;
-  background: #f6f8f3 !important;
-  color: #4f804f !important;
-}
-
-.link-page-card :deep(.el-button--primary:hover),
-.link-page-card :deep(.el-button--primary.is-plain:hover) {
-  background: #eef4ea !important;
-  border-color: #bfd1bf !important;
-  color: #3f6f3f !important;
-}
-
-.link-page-card :deep(.el-link.el-link--primary),
-.link-page-card :deep(a) {
+:deep(.el-link.el-link--primary),
+:deep(a) {
   color: #4a8b4a;
 }
 </style>

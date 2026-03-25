@@ -798,6 +798,131 @@ func SetGlobalDelete(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
+func SetMemoryConfigGet(c *gin.Context) {
+	memoryDir, err := memoryConfigValue(define.GlobalMemoryDir)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	memoryDBName, err := memoryConfigValue(define.GlobalMemoryDBName)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	arrangePrompt, err := memoryConfigValue(define.GlobalMemoryArrangePrompt)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	arrangeModelID, err := memoryConfigValue(define.GlobalMemoryArrangeModelID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	dailyReportPrompt, err := memoryConfigValue(define.GlobalHomeTaskDailyReportPrompt)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	dailyReportModelID, err := memoryConfigValue(define.GlobalHomeTaskDailyReportModelID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`memory_dir`:                      memoryDir,
+		`memory_db_name`:                  memoryDBName,
+		`memory_arrange_prompt`:           arrangePrompt,
+		`memory_arrange_model_id`:         cast.ToInt(arrangeModelID),
+		`home_task_daily_report_prompt`:   dailyReportPrompt,
+		`home_task_daily_report_model_id`: cast.ToInt(dailyReportModelID),
+	})
+}
+
+func SetMemoryConfigSave(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	memoryDir := strings.TrimSpace(cast.ToString(dataMap[`memory_dir`]))
+	memoryDBName := strings.TrimSpace(cast.ToString(dataMap[`memory_db_name`]))
+	if err := common.DbMain.SetGlobalValue(`记忆目录`, define.GlobalMemoryDir, memoryDir, `记忆专属库目录`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if err := common.DbMain.SetGlobalValue(`记忆数据库名`, define.GlobalMemoryDBName, memoryDBName, `记忆专属库文件名`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	memoryArrangePrompt := strings.TrimSpace(cast.ToString(dataMap[`memory_arrange_prompt`]))
+	if memoryArrangePrompt == `` {
+		memoryArrangePrompt = defaultMemoryArrangePrompt()
+	}
+	memoryArrangeModelID := cast.ToInt(dataMap[`memory_arrange_model_id`])
+	if memoryArrangeModelID > 0 {
+		modelInfo, err := common.DbMain.InfoCrawlAiModelInfo(memoryArrangeModelID)
+		if err != nil {
+			gsgin.GinResponseError(c, `AI 模型不存在`, nil)
+			return
+		}
+		if strings.ToLower(cast.ToString(modelInfo[`model_type`])) != `llm` {
+			gsgin.GinResponseError(c, `记忆整理仅支持选择 LLM 模型`, nil)
+			return
+		}
+	}
+	if err := common.DbMain.SetGlobalValue(`记忆整理提示词`, define.GlobalMemoryArrangePrompt, memoryArrangePrompt, `知识片段 AI 整理提示词`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if err := common.DbMain.SetGlobalValue(`记忆整理模型`, define.GlobalMemoryArrangeModelID, cast.ToString(memoryArrangeModelID), `知识片段 AI 整理所用模型 id`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskDailyReportPrompt := strings.TrimSpace(cast.ToString(dataMap[`home_task_daily_report_prompt`]))
+	if homeTaskDailyReportPrompt == `` {
+		homeTaskDailyReportPrompt = defaultHomeTaskDailyReportPrompt()
+	}
+	homeTaskDailyReportModelID := cast.ToInt(dataMap[`home_task_daily_report_model_id`])
+	if homeTaskDailyReportModelID > 0 {
+		modelInfo, err := common.DbMain.InfoCrawlAiModelInfo(homeTaskDailyReportModelID)
+		if err != nil {
+			gsgin.GinResponseError(c, `AI 模型不存在`, nil)
+			return
+		}
+		if strings.ToLower(cast.ToString(modelInfo[`model_type`])) != `llm` {
+			gsgin.GinResponseError(c, `工作日报仅支持选择 LLM 模型`, nil)
+			return
+		}
+	}
+	if err := common.DbMain.SetGlobalValue(`工作日报提示词`, define.GlobalHomeTaskDailyReportPrompt, homeTaskDailyReportPrompt, `首页任务工作日报 AI 提示词`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if err := common.DbMain.SetGlobalValue(`工作日报模型`, define.GlobalHomeTaskDailyReportModelID, cast.ToString(homeTaskDailyReportModelID), `首页任务工作日报所用模型 id`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if err := business.LoadMemoryStore(); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+func memoryConfigValue(key string) (string, error) {
+	value, err := common.DbMain.GlobalValue(key)
+	if err != nil {
+		if memoryConfigValueMissing(err) {
+			return ``, nil
+		}
+		return ``, err
+	}
+	return value, nil
+}
+
+func memoryConfigValueMissing(err error) bool {
+	errText := strings.ToLower(err.Error())
+	return strings.Contains(errText, `not found`) || strings.Contains(errText, `no rows`)
+}
+
 func SetAccountList(c *gin.Context) {
 	allAccount, allAccountErr := common.DbMain.Client.QuickQuery(`tbl_account`, `*`, nil).All()
 	if allAccountErr != nil {

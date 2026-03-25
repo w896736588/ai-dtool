@@ -22,6 +22,14 @@ export default {
 </script>
 
 <style>
+html,
+body,
+#app {
+  /* 根节点统一占满视口，给内部 100% 高度布局提供稳定基线。
+     Let root nodes fill the viewport so inner 100% layouts have a reliable baseline. */
+  height: 100%;
+}
+
 #app {
   font-family: Consolas , Avenir, Helvetica, Arial, sans-serif !important;
   -moz-osx-font-smoothing: grayscale;
