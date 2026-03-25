@@ -1,7 +1,7 @@
 // PROCESS_ITEM_FIELD_GUIDES 用于集中维护流程项字段说明。
 // PROCESS_ITEM_FIELD_GUIDES centralizes field guidance for process item forms.
 const PROCESS_ITEM_FIELD_GUIDES = {
-  locator: '支持 CSS/XPath 定位；结构化模式可用 && 表示同时满足、|| 表示任一满足、!selector 表示元素不存在、|first 表示只取首个。',
+  locator: '统一使用结构化 Locator 配置，按页面可见内容填写后系统会自动生成后端需要的 {"spec": {...}} 结构。',
   secondary_locator: '请输入密码输入框定位，建议使用稳定的 CSS 选择器或 XPath。',
   tertiary_locator: '请输入提交按钮定位，建议避免依赖易变的动态 class。',
   value: '跳转步骤填写目标地址；输入步骤可使用 {user_name}、{password}、{rand} 等占位符。',
@@ -9,7 +9,7 @@ const PROCESS_ITEM_FIELD_GUIDES = {
   check_key: '仅支持英文字母开头，后续可包含字母、数字、下划线，例如 login_state。',
   response_url: '支持 http(s):// 完整地址、/path 相对路径，以及 {scheme}://{domain}/path 这类占位写法。',
   register_response_urls: '每条等待地址都需要合法地址格式，并填写大于 0 的等待秒数。',
-  bool_result_rules: '至少配置一条定位规则；命中定位时按右侧 true/false 返回结果。',
+  bool_result_rules: '每条规则都使用结构化定位，命中定位时按右侧 true / false 返回结果。',
   domain_limit: '可选，仅填写域名本身，例如 example.com 或 sub.example.com，不要包含协议和路径。',
 }
 
@@ -282,17 +282,18 @@ function validateRawLocator(rawLocator) {
 }
 
 function validateLocatorField(formMeta) {
-  if (normalizeText(formMeta.locator_joiner) === 'raw') {
-    return validateRawLocator(formMeta.locator_raw)
+  const structuredForm = formMeta.locator_structured_form || {}
+  if (!normalizeText(structuredForm.kind)) {
+    return '请先选择查找方式。'
   }
-
-  const locatorList = Array.isArray(formMeta.locator_list) ? formMeta.locator_list : []
-  if (locatorList.length === 0) {
-    return '主元素定位不能为空，请至少新增一条定位。'
+  if (normalizeText(structuredForm.kind) === 'button_text') {
+    if (!normalizeText(structuredForm.value) && !normalizeText(structuredForm.target_text)) {
+      return '按按钮文字查找时，至少要填写按钮上显示的文字。'
+    }
+    return ''
   }
-  const hasEmptyRow = locatorList.some(item => !normalizeText(item && item.value))
-  if (hasEmptyRow) {
-    return '主元素定位存在空行，请删除空行或补全定位。'
+  if (!normalizeText(structuredForm.value)) {
+    return '当前查找方式还没有填写内容。'
   }
   return ''
 }
@@ -344,7 +345,8 @@ function validateProcessItemForm({ item = {}, formMeta = {} }) {
     }
   }
 
-  if (showTypeField(type, 'out_key') && !isValidTokenKey(normalizeText(formMeta.out_key || item.out_key))) {
+  const normalizedOutKey = normalizeText(formMeta.out_key || item.out_key)
+  if (showTypeField(type, 'out_key') && normalizedOutKey && !isValidTokenKey(normalizedOutKey)) {
     setFieldError(fieldErrors, 'out_key', '输出键格式不正确，请使用英文字母开头，后续仅包含字母、数字、下划线。')
   }
   if (showTypeField(type, 'check_key')) {
@@ -393,8 +395,17 @@ function validateProcessItemForm({ item = {}, formMeta = {} }) {
 
   if (showTypeField(type, 'bool_result_rules')) {
     const boolResultRules = Array.isArray(formMeta.bool_result_rules) ? formMeta.bool_result_rules : []
-    if (boolResultRules.length === 0 || boolResultRules.some(rule => !normalizeText(rule && rule.locator))) {
-      setFieldError(fieldErrors, 'bool_result_rules', '布尔判断规则至少需要一条完整定位。')
+    const hasInvalidBoolResultRule = boolResultRules.length === 0 || boolResultRules.some((rule) => {
+      if (!rule) return true
+      const structuredForm = rule.locator_structured_form || {}
+      if (!normalizeText(structuredForm.kind)) return true
+      if (normalizeText(structuredForm.kind) === 'button_text') {
+        return !normalizeText(structuredForm.value) && !normalizeText(structuredForm.target_text)
+      }
+      return !normalizeText(structuredForm.value)
+    })
+    if (hasInvalidBoolResultRule) {
+      setFieldError(fieldErrors, 'bool_result_rules', '布尔判断规则里有未填写完整的定位，请检查每一条规则。')
     }
   }
 

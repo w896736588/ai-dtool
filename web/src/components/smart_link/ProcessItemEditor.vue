@@ -22,84 +22,121 @@
     <template v-if="showField('locator')">
       <el-form-item :label="fieldLabel('locator')" :error="fieldError('locator')">
         <div class="list-editor">
-          <template v-if="useLocatorExpressionEditor">
-            <div class="locator-expression-toolbar">
-              <el-select v-model="formMeta.locator_joiner" class="locator-expression-toolbar__select">
-                <el-option
-                  v-for="option in locatorJoinerOptions"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value"
+          <div class="structured-locator-editor">
+            <div class="structured-locator-card">
+              <div class="structured-locator-card__header">
+                <div>
+                  <div class="structured-locator-card__title">定位配置</div>
+                  <div class="structured-locator-card__desc">
+                    按页面上你能看到的内容来选，系统会自动帮你生成底层定位配置。
+                  </div>
+                </div>
+                <div class="structured-locator-card__badge">推荐</div>
+              </div>
+
+              <div class="structured-locator-section">
+                <div class="structured-locator-section__title">1. 先选要找什么</div>
+                <div class="structured-locator-grid">
+                  <el-select v-model="formMeta.locator_structured_form.kind" placeholder="请选择查找方式">
+                    <el-option
+                      v-for="option in structuredLocatorKindOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                  <el-input
+                    v-model="structuredLocatorPrimaryValue"
+                    :placeholder="structuredLocatorPrimaryPlaceholder"
+                  />
+                </div>
+
+                <div v-if="showStructuredLocatorTargetText" class="structured-locator-grid structured-locator-grid--secondary">
+                  <el-input
+                    v-model="formMeta.locator_structured_form.target_text"
+                    :placeholder="structuredLocatorTargetPlaceholder"
+                  />
+                </div>
+
+                <div class="structured-locator-tip">
+                  {{ structuredLocatorScenarioHint }}
+                </div>
+              </div>
+
+              <div class="structured-locator-section">
+                <div class="structured-locator-section__title">2. 再决定匹配规则</div>
+                <div class="structured-locator-switches">
+                  <div class="structured-locator-switch-card">
+                    <div class="structured-locator-switch-card__label">文字要不要完全一致</div>
+                    <div class="structured-locator-switch-card__control">
+                      <span class="structured-locator-switch-card__state">{{ formMeta.locator_structured_form.exact ? '完全一致' : '允许模糊包含' }}</span>
+                      <el-switch v-model="formMeta.locator_structured_form.exact" />
+                    </div>
+                  </div>
+                  <div class="structured-locator-switch-card">
+                    <div class="structured-locator-switch-card__label">这个元素必须存在吗</div>
+                    <div class="structured-locator-switch-card__control">
+                      <span class="structured-locator-switch-card__state">{{ formMeta.locator_structured_form.negate ? '要求不存在' : '要求存在' }}</span>
+                      <el-switch v-model="formMeta.locator_structured_form.negate" />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="structured-locator-inline-field">
+                  <div class="structured-locator-inline-field__label">
+                    <div class="structured-locator-inline-field__title">最多等待多久</div>
+                    <div class="structured-locator-inline-field__desc">通常保持默认即可，页面慢时再适当调大。</div>
+                  </div>
+                  <div class="structured-locator-inline-field__control">
+                    <el-input-number
+                      v-model="formMeta.locator_structured_form.timeout_mills"
+                      :min="0"
+                      :controls="false"
+                      class="plain-number-input"
+                      placeholder="3000"
+                    />
+                    <span class="structured-locator-inline-field__unit">ms</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="structured-locator-section">
+                <div class="structured-locator-section__title">3. 如果找到多个结果，怎么处理</div>
+                <div class="structured-locator-grid">
+                  <el-select v-model="formMeta.locator_structured_form.pick_mode" placeholder="多个结果时怎么处理">
+                    <el-option label="按默认方式处理" value="none" />
+                    <el-option label="只取第一个" value="first" />
+                    <el-option label="只取最后一个" value="last" />
+                    <el-option label="取第 N 个" value="nth" />
+                  </el-select>
+                  <div class="structured-locator-inline-field structured-locator-inline-field--compact">
+                    <div class="structured-locator-inline-field__label">
+                      <div class="structured-locator-inline-field__title">第几个结果</div>
+                    </div>
+                    <div class="structured-locator-inline-field__control">
+                      <el-input-number
+                        v-model="formMeta.locator_structured_form.nth"
+                        :min="0"
+                        :controls="false"
+                        class="plain-number-input"
+                        :disabled="formMeta.locator_structured_form.pick_mode !== 'nth'"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="structured-locator-preview">
+                <div class="structured-locator-preview__title">系统生成的结构化配置</div>
+                <el-input
+                  :model-value="formMeta.locator_structured"
+                  type="textarea"
+                  :rows="8"
+                  readonly
                 />
-                <el-option label="高级表达式" value="raw" />
-              </el-select>
-              <div class="locator-expression-toolbar__tip">
-                先选匹配方式，再逐条填写定位条件。“要求找到”表示页面上必须出现该元素；“要求找不到”表示该元素不能出现；最后一项用来决定遇到多个同类元素时，是检查全部，还是只按第一个来判断。
               </div>
             </div>
-
-            <div v-if="showTextContentLocatorSummary" class="locator-purpose-card">
-              <div class="locator-purpose-card__title">提取规则说明</div>
-              <div class="locator-purpose-card__text">
-                这个类型最终会按整条定位表达式去查找元素并读取文本内容，并没有单独的“提取目标字段”。如果只是想稳定提取一个元素的文本，建议优先使用“只找一个元素”并只保留 1 条定位。
-              </div>
-            </div>
-
-            <template v-if="useRawLocatorTextarea">
-              <el-input
-                v-model="formMeta.locator_raw"
-                type="textarea"
-                :rows="3"
-                placeholder="例如 .username&&!.btn.login_as_reg_btn 或 .dialog|first"
-              />
-            </template>
-
-            <template v-else>
-              <div
-                v-for="(item, index) in formMeta.locator_list"
-                :key="item.uid"
-                class="locator-expression-row"
-              >
-                <el-input v-model="item.value" :placeholder="fieldPlaceholder('locator')" />
-                <el-select
-                  v-if="showLocatorExistMode"
-                  v-model="item.exist_mode"
-                  class="locator-expression-row__mode"
-                >
-                  <el-option label="要求找到" value="exist" />
-                  <el-option label="要求找不到" value="not_exist" />
-                </el-select>
-                <el-select v-model="item.match_mode" class="locator-expression-row__mode">
-                  <el-option label="多个时按默认方式处理" value="all" />
-                  <el-option label="多个时只取第一个" value="first" />
-                </el-select>
-                <GitActionButton compact size="small" variant="danger" native-type="button" @click="removeLocatorRow(index)">
-                  删除
-                </GitActionButton>
-              </div>
-              <GitActionButton
-                v-if="formMeta.locator_joiner !== 'single'"
-                compact
-                size="small"
-                native-type="button"
-                @click="addLocatorRow"
-              >
-                新增定位条件
-              </GitActionButton>
-            </template>
-          </template>
-
-          <template v-else>
-            <div v-for="(item, index) in formMeta.locator_list" :key="item.uid" class="list-editor__row">
-              <el-input v-model="item.value" :placeholder="fieldPlaceholder('locator')" />
-              <GitActionButton compact size="small" variant="danger" native-type="button" @click="removeLocatorRow(index)">
-                删除
-              </GitActionButton>
-            </div>
-            <GitActionButton compact size="small" native-type="button" @click="addLocatorRow">
-              新增定位条件
-            </GitActionButton>
-          </template>
+          </div>
 
           <div class="field-guide">{{ fieldGuide('locator') }}</div>
           <div v-if="locatorBehaviorSummary" class="locator-behavior-summary">
@@ -203,7 +240,7 @@
       </template>
     </template>
 
-    <template v-if="showField('out_key')">
+    <template v-if="showField('out_key') && localItem.type !== 'input'">
       <el-form-item :label="fieldLabel('out_key')" :error="fieldError('out_key')">
         <el-input v-model="formMeta.out_key" placeholder="例如 {login_state}" />
         <div class="field-guide">{{ fieldGuide('out_key') }}</div>
@@ -304,16 +341,114 @@
     <template v-if="showField('bool_result_rules')">
       <el-form-item label="主元素定位规则" :error="fieldError('bool_result_rules')">
         <div class="list-editor">
-          <div v-for="(item, index) in formMeta.bool_result_rules" :key="item.uid" class="bool-result-row">
-            <el-input v-model="item.locator" placeholder="例如 .user-info.ant-dropdown-trigger" />
-            <el-select v-model="item.return" style="width: 140px">
-              <el-option label="存在返回 true" :value="true" />
-              <el-option label="存在返回 false" :value="false" />
-            </el-select>
-            <GitActionButton compact size="small" variant="danger" native-type="button" @click="removeBoolResultRule(index)">
-              删除
-            </GitActionButton>
+          <div v-for="(item, index) in formMeta.bool_result_rules" :key="item.uid" class="bool-result-rule-card">
+            <div class="bool-result-rule-card__header">
+              <div class="bool-result-rule-card__title">规则 {{ index + 1 }}</div>
+              <div class="bool-result-rule-card__actions">
+                <el-select v-model="item.return" class="bool-result-rule-card__result">
+                  <el-option label="命中返回 true" :value="true" />
+                  <el-option label="命中返回 false" :value="false" />
+                </el-select>
+                <GitActionButton compact size="small" variant="danger" native-type="button" @click="removeBoolResultRule(index)">
+                  删除
+                </GitActionButton>
+              </div>
+            </div>
+
+            <div class="structured-locator-card structured-locator-card--nested">
+              <div class="structured-locator-section">
+                <div class="structured-locator-section__title">先选要找什么</div>
+                <div class="structured-locator-grid">
+                  <el-select v-model="item.locator_structured_form.kind" placeholder="请选择查找方式">
+                    <el-option
+                      v-for="option in structuredLocatorKindOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                  <el-input
+                    v-model="item.locator_structured_form.value"
+                    :placeholder="getStructuredLocatorPrimaryPlaceholder(item.locator_structured_form.kind)"
+                  />
+                </div>
+
+                <div v-if="shouldShowStructuredLocatorTargetText(item.locator_structured_form.kind)" class="structured-locator-grid structured-locator-grid--secondary">
+                  <el-input
+                    v-model="item.locator_structured_form.target_text"
+                    :placeholder="structuredLocatorTargetPlaceholder"
+                  />
+                </div>
+
+                <div class="structured-locator-tip">
+                  {{ getStructuredLocatorScenarioHint(item.locator_structured_form.kind) }}
+                </div>
+              </div>
+
+              <div class="structured-locator-section">
+                <div class="structured-locator-section__title">匹配规则</div>
+                <div class="structured-locator-switches">
+                  <div class="structured-locator-switch-card">
+                    <div class="structured-locator-switch-card__label">文字要不要完全一致</div>
+                    <div class="structured-locator-switch-card__control">
+                      <span class="structured-locator-switch-card__state">{{ item.locator_structured_form.exact ? '完全一致' : '允许模糊包含' }}</span>
+                      <el-switch v-model="item.locator_structured_form.exact" />
+                    </div>
+                  </div>
+                  <div class="structured-locator-switch-card">
+                    <div class="structured-locator-switch-card__label">这个元素必须存在吗</div>
+                    <div class="structured-locator-switch-card__control">
+                      <span class="structured-locator-switch-card__state">{{ item.locator_structured_form.negate ? '要求不存在' : '要求存在' }}</span>
+                      <el-switch v-model="item.locator_structured_form.negate" />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="structured-locator-inline-field">
+                  <div class="structured-locator-inline-field__label">
+                    <div class="structured-locator-inline-field__title">最多等待多久</div>
+                  </div>
+                  <div class="structured-locator-inline-field__control">
+                    <el-input-number
+                      v-model="item.locator_structured_form.timeout_mills"
+                      :min="0"
+                      :controls="false"
+                      class="plain-number-input"
+                      placeholder="3000"
+                    />
+                    <span class="structured-locator-inline-field__unit">ms</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="structured-locator-section">
+                <div class="structured-locator-section__title">多个结果时怎么处理</div>
+                <div class="structured-locator-grid">
+                  <el-select v-model="item.locator_structured_form.pick_mode" placeholder="多个结果时怎么处理">
+                    <el-option label="按默认方式处理" value="none" />
+                    <el-option label="只取第一个" value="first" />
+                    <el-option label="只取最后一个" value="last" />
+                    <el-option label="取第 N 个" value="nth" />
+                  </el-select>
+                  <div class="structured-locator-inline-field structured-locator-inline-field--compact">
+                    <div class="structured-locator-inline-field__label">
+                      <div class="structured-locator-inline-field__title">第几个结果</div>
+                    </div>
+                    <div class="structured-locator-inline-field__control">
+                      <el-input-number
+                        v-model="item.locator_structured_form.nth"
+                        :min="0"
+                        :controls="false"
+                        class="plain-number-input"
+                        :disabled="item.locator_structured_form.pick_mode !== 'nth'"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
+
           <GitActionButton compact size="small" native-type="button" @click="addBoolResultRule">
             新增定位
           </GitActionButton>
@@ -419,6 +554,22 @@ function safeParseJson(text, fallback) {
   }
 }
 
+function parseStructuredLocatorPayload(rawValue) {
+  if (!rawValue) return null
+  if (typeof rawValue === 'object') {
+    return rawValue
+  }
+  if (typeof rawValue !== 'string') return null
+  const parsed = safeParseJson(rawValue, null)
+  if (!parsed || typeof parsed !== 'object') return null
+  if (parsed.spec && typeof parsed.spec === 'object') return parsed
+  if (parsed.raw || parsed.first !== undefined) return parsed
+  if (parsed.method || parsed.value !== undefined) {
+    return { spec: parsed }
+  }
+  return null
+}
+
 function createRegisterUrl() {
   return {
     uid: `response-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
@@ -439,7 +590,8 @@ function createLocatorRow() {
 function createBoolResultRule() {
   return {
     uid: `bool-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-    locator: '',
+    locator_structured: '',
+    locator_structured_form: createStructuredLocatorForm(),
     return: true,
   }
 }
@@ -457,6 +609,20 @@ function createCompareRule() {
     left: '',
     operator: '==',
     right: '',
+  }
+}
+
+function createStructuredLocatorForm() {
+  return {
+    kind: 'css',
+    method: 'locator',
+    value: '',
+    target_text: '',
+    exact: false,
+    negate: false,
+    pick_mode: 'none',
+    nth: 0,
+    timeout_mills: 3000,
   }
 }
 
@@ -507,8 +673,10 @@ export default {
       localItem: createDefaultItem(),
       formMeta: {
         locator_list: [],
-        locator_joiner: 'single',
+        locator_joiner: 'structured',
         locator_raw: '',
+        locator_structured: '',
+        locator_structured_form: createStructuredLocatorForm(),
         secondary_locator: '',
         tertiary_locator: '',
         value: '',
@@ -540,28 +708,49 @@ export default {
     useLocatorExpressionEditor() {
       return this.showField('locator') && this.supportLocatorExpression(this.localItem.type)
     },
-    locatorJoinerOptions() {
-      const optionList = [{ label: '只找一个元素', value: 'single' }]
-      if (this.localItem.type !== 'text_content') {
-        optionList.push(
-          { label: '多个条件都满足', value: 'and' },
-          { label: '多个条件满足其一', value: 'or' }
-        )
-      } else if (this.formMeta.locator_joiner === 'and' || this.formMeta.locator_joiner === 'or') {
-        optionList.push({
-          label: this.formMeta.locator_joiner === 'and' ? '多个条件都满足（旧配置）' : '多个条件满足其一（旧配置）',
-          value: this.formMeta.locator_joiner,
-        })
-      }
-      return optionList
+    structuredLocatorKindOptions() {
+      return [
+        { label: '按按钮文字查找', value: 'button_text' },
+        { label: '按页面文字查找', value: 'text' },
+        { label: '按输入框标签查找', value: 'label' },
+        { label: '按占位提示查找', value: 'placeholder' },
+        { label: '按图片说明文字查找', value: 'alt_text' },
+        { label: '按标题提示查找', value: 'title' },
+        { label: '按测试标识查找', value: 'test_id' },
+        { label: '按 CSS / XPath 查找', value: 'css' },
+      ]
     },
-    useRawLocatorTextarea() {
-      return this.formMeta.locator_joiner === 'raw'
-        || (this.localItem.type === 'text_content'
-          && (this.formMeta.locator_joiner === 'and' || this.formMeta.locator_joiner === 'or'))
+    showStructuredLocatorTargetText() {
+      return this.formMeta.locator_structured_form.kind === 'button_text'
     },
-    showLocatorExistMode() {
-      return !(this.localItem.type === 'text_content' && this.formMeta.locator_joiner === 'single')
+    structuredLocatorPrimaryPlaceholder() {
+      const kind = this.formMeta.locator_structured_form.kind
+      if (kind === 'button_text') return '例如 提交、登录、确定'
+      if (kind === 'text') return '例如 登录成功、请选择门店'
+      if (kind === 'label') return '例如 用户名、手机号'
+      if (kind === 'placeholder') return '例如 请输入用户名'
+      if (kind === 'alt_text') return '例如 商品图片、头像'
+      if (kind === 'title') return '例如 复制、刷新'
+      if (kind === 'test_id') return '例如 submit-btn'
+      return '例如 .dialog .confirm-btn 或 //button[text()="提交"]'
+    },
+    structuredLocatorTargetPlaceholder() {
+      return '如果不是普通按钮，可改成链接、菜单项等显示文字'
+    },
+    structuredLocatorScenarioHint() {
+      return this.getStructuredLocatorScenarioHint(this.formMeta.locator_structured_form.kind)
+    },
+    structuredLocatorPrimaryValue: {
+      get() {
+        const form = this.formMeta.locator_structured_form || createStructuredLocatorForm()
+        return form.value
+      },
+      set(value) {
+        this.formMeta.locator_structured_form.value = value
+      },
+    },
+    useStructuredLocatorTextarea() {
+      return true
     },
     checkKeyOptions() {
       const processList = Array.isArray(this.processItemOptions) ? this.processItemOptions : []
@@ -581,42 +770,14 @@ export default {
       ]
     },
     showTextContentLocatorSummary() {
-      return this.localItem.type === 'text_content' && this.formMeta.locator_joiner !== 'raw'
+      return false
     },
     locatorBehaviorSummary() {
       if (!this.showField('locator')) return ''
-      if (this.useRawLocatorTextarea) {
-        const rawText = String(this.formMeta.locator_raw || '').trim()
-        return rawText
-          ? `当前使用高级表达式查找：${rawText}。系统会按这条原始表达式直接处理。`
-          : ''
-      }
-
-      const locatorList = (Array.isArray(this.formMeta.locator_list) ? this.formMeta.locator_list : [])
-        .filter(item => String(item && item.value || '').trim() !== '')
-
-      if (locatorList.length === 0) return ''
-
-      const conditionText = locatorList
-        .map((item) => {
-          const locatorValue = String(item.value || '').trim()
-          const existText = item.exist_mode === 'not_exist' ? '不能出现' : '必须出现'
-          const matchText = item.match_mode === 'first' ? '多个同类元素时只按第一个处理' : '多个同类元素时按默认方式处理'
-          return this.localItem.type === 'text_content' && this.formMeta.locator_joiner === 'single'
-            ? `读取“${locatorValue}”的文本，${matchText}`
-            : `“${locatorValue}”${existText}，并且${matchText}`
-        })
-
-      if (this.formMeta.locator_joiner === 'single') {
-        return `当前只按 1 条定位查找：${conditionText[0]}。`
-      }
-      if (this.formMeta.locator_joiner === 'and') {
-        return `当前要求以下条件全部同时成立后才算找到：${conditionText.join('；')}。`
-      }
-      if (this.formMeta.locator_joiner === 'or') {
-        return `当前只要下面任意 1 条条件成立就算找到：${conditionText.join('；')}。`
-      }
-      return ''
+      const structuredText = String(this.formMeta.locator_structured || '').trim()
+      return structuredText
+        ? `当前使用结构化 Locator 配置。后端会按 spec 字段解析，支持 role、text、label、placeholder、pick 和 timeout 等查询能力。`
+        : ''
     },
     usedCheckKeyCount() {
       return (Array.isArray(this.formMeta.check_rule_list) ? this.formMeta.check_rule_list : [])
@@ -650,20 +811,12 @@ export default {
         this.resetMetaForType(nextType)
       }
     },
-    'formMeta.locator_joiner'(nextValue) {
-      if (this.syncingFromParent) return
-      if (nextValue === 'single') {
-        const firstRow = Array.isArray(this.formMeta.locator_list) && this.formMeta.locator_list.length > 0
-          ? this.formMeta.locator_list[0]
-          : createLocatorRow()
-        if (this.localItem.type === 'text_content') {
-          firstRow.exist_mode = 'exist'
-        }
-        this.formMeta.locator_list = [firstRow]
-      }
-      if ((nextValue === 'and' || nextValue === 'or') && this.formMeta.locator_list.length === 0) {
-        this.formMeta.locator_list = [createLocatorRow()]
-      }
+    'formMeta.locator_structured_form': {
+      deep: true,
+      handler() {
+        if (this.syncingFromParent) return
+        this.formMeta.locator_structured = this.stringifyStructuredLocatorPayload(this.buildStructuredLocatorPayload())
+      },
     },
   },
   methods: {
@@ -708,8 +861,10 @@ export default {
       // deserializeMeta converts backend payloads into editable form state.
       const meta = {
         locator_list: [],
-        locator_joiner: 'single',
+        locator_joiner: 'structured',
         locator_raw: '',
+        locator_structured: '',
+        locator_structured_form: createStructuredLocatorForm(),
         secondary_locator: '',
         tertiary_locator: '',
         value: item.value || '',
@@ -729,11 +884,16 @@ export default {
       if (item.type === 'bool_result') {
         const rules = safeParseJson(item.locator, [])
         meta.bool_result_rules = Array.isArray(rules)
-          ? rules.map(rule => ({
-            uid: createBoolResultRule().uid,
-            locator: rule.locator || '',
-            return: rule.return !== false,
-          }))
+          ? rules.map(rule => {
+            const baseRule = createBoolResultRule()
+            const structuredLocator = parseStructuredLocatorPayload(rule && rule.locator)
+            return {
+              ...baseRule,
+              locator_structured: structuredLocator ? JSON.stringify(structuredLocator, null, 2) : '',
+              locator_structured_form: structuredLocator ? this.deserializeStructuredLocatorForm(structuredLocator) : createStructuredLocatorForm(),
+              return: rule.return !== false,
+            }
+          })
           : []
         if (meta.bool_result_rules.length === 0) {
           meta.bool_result_rules = [createBoolResultRule()]
@@ -748,7 +908,11 @@ export default {
         const [waitSecond, waitCount] = String(item.value || '').split('|')
         meta.wait_second = Number(waitSecond || 10)
         meta.wait_count = Number(waitCount || 3)
-        Object.assign(meta, this.decodeLocatorExpression(item.locator))
+        const structuredLocator = parseStructuredLocatorPayload(item.locator)
+        if (structuredLocator) {
+          meta.locator_structured_form = this.deserializeStructuredLocatorForm(structuredLocator)
+          meta.locator_structured = JSON.stringify(structuredLocator, null, 2)
+        }
       } else if (item.type === 'login_username_password') {
         const parts = String(item.locator || '').split('||')
         meta.locator_list = parts[0] ? [{ uid: createLocatorRow().uid, value: parts[0] }] : [createLocatorRow()]
@@ -757,14 +921,11 @@ export default {
       } else if (item.type === 'delete_element') {
         meta.locator_list = this.decodeLocatorList(item.locator, '|')
       } else if (this.showTypeField(item.type, 'locator')) {
-        Object.assign(meta, this.decodeLocatorExpression(item.locator))
-      }
-
-      if (item.type === 'text_content' && (meta.locator_joiner === 'and' || meta.locator_joiner === 'or')) {
-        meta.locator_raw = item.locator || ''
-      }
-      if (item.type === 'text_content' && meta.locator_joiner === 'single' && meta.locator_list[0]) {
-        meta.locator_list[0].exist_mode = 'exist'
+        const structuredLocator = parseStructuredLocatorPayload(item.locator)
+        if (structuredLocator) {
+          meta.locator_structured_form = this.deserializeStructuredLocatorForm(structuredLocator)
+          meta.locator_structured = JSON.stringify(structuredLocator, null, 2)
+        }
       }
 
       if (this.showTypeField(item.type, 'check_key')) {
@@ -775,6 +936,10 @@ export default {
           ...createCompareRule(),
           ...(checkConfig.compare_rule || {}),
         }
+      }
+
+      if (this.showTypeField(item.type, 'locator') && !String(meta.locator_structured || '').trim()) {
+        meta.locator_structured = this.stringifyStructuredLocatorPayload(this.buildStructuredLocatorPayloadByForm(meta.locator_structured_form))
       }
 
       return meta
@@ -840,27 +1005,140 @@ export default {
         match_mode: partList.includes('first') ? 'first' : 'all',
       }
     },
+    shouldShowStructuredLocatorTargetText(kind) {
+      return kind === 'button_text'
+    },
+    getStructuredLocatorPrimaryPlaceholder(kind) {
+      if (kind === 'button_text') return '例如 提交、登录、确定'
+      if (kind === 'text') return '例如 登录成功、请选择门店'
+      if (kind === 'label') return '例如 用户名、手机号'
+      if (kind === 'placeholder') return '例如 请输入用户名'
+      if (kind === 'alt_text') return '例如 商品图片、头像'
+      if (kind === 'title') return '例如 复制、刷新'
+      if (kind === 'test_id') return '例如 submit-btn'
+      return '例如 .dialog .confirm-btn 或 //button[text()="提交"]'
+    },
+    getStructuredLocatorScenarioHint(kind) {
+      if (kind === 'button_text') return '适合页面上有明确按钮文案的场景，最适合普通用户配置。'
+      if (kind === 'text') return '适合根据页面上看得到的文字定位，例如提示语、标题、状态文案。'
+      if (kind === 'label') return '适合输入框左侧或上方有固定标签文字的场景。'
+      if (kind === 'placeholder') return '适合输入框内部有占位提示语的场景。'
+      if (kind === 'alt_text') return '适合图片、图标有替代说明文字的场景。'
+      if (kind === 'title') return '适合鼠标悬停提示或 title 属性稳定的元素。'
+      if (kind === 'test_id') return '适合研发已经在页面里埋了稳定 test_id 的场景。'
+      return '适合复杂页面或无法通过文字稳定定位的场景，推荐由研发或熟悉选择器的人填写。'
+    },
+    deserializeStructuredLocatorForm(locatorValue) {
+      const form = createStructuredLocatorForm()
+      const payload = locatorValue && typeof locatorValue === 'object' ? locatorValue : {}
+      const spec = payload.spec && typeof payload.spec === 'object' ? payload.spec : {}
+      const options = spec.options && typeof spec.options === 'object' ? spec.options : {}
+      const pick = spec.pick && typeof spec.pick === 'object' ? spec.pick : {}
+
+      form.method = spec.method || 'locator'
+      form.value = spec.value || ''
+      form.target_text = options.name || ''
+      form.exact = Boolean(options.exact)
+      form.negate = Boolean(spec.negate)
+      form.timeout_mills = Number(spec.timeout_mills ?? 3000)
+
+      if (spec.method === 'role' && spec.value === 'button') {
+        form.kind = 'button_text'
+      } else if (spec.method === 'text') {
+        form.kind = 'text'
+      } else if (spec.method === 'label') {
+        form.kind = 'label'
+      } else if (spec.method === 'placeholder') {
+        form.kind = 'placeholder'
+      } else if (spec.method === 'alt_text') {
+        form.kind = 'alt_text'
+      } else if (spec.method === 'title') {
+        form.kind = 'title'
+      } else if (spec.method === 'test_id') {
+        form.kind = 'test_id'
+      } else {
+        form.kind = 'css'
+      }
+
+      if (pick.first) {
+        form.pick_mode = 'first'
+      } else if (pick.last) {
+        form.pick_mode = 'last'
+      } else if (Number.isInteger(Number(pick.nth))) {
+        form.pick_mode = 'nth'
+        form.nth = Number(pick.nth)
+      }
+
+      return form
+    },
+    buildStructuredLocatorPayload() {
+      return this.buildStructuredLocatorPayloadByForm(this.formMeta.locator_structured_form)
+    },
+    buildStructuredLocatorPayloadByForm(formValue) {
+      const form = formValue || createStructuredLocatorForm()
+      const kind = String(form.kind || '').trim() || 'css'
+      let method = 'locator'
+      let value = String(form.value || '').trim()
+      let targetText = ''
+
+      if (kind === 'button_text') {
+        method = 'role'
+        value = 'button'
+        targetText = String(form.target_text || form.value || '').trim()
+      } else if (kind === 'text') {
+        method = 'text'
+      } else if (kind === 'label') {
+        method = 'label'
+      } else if (kind === 'placeholder') {
+        method = 'placeholder'
+      } else if (kind === 'alt_text') {
+        method = 'alt_text'
+      } else if (kind === 'title') {
+        method = 'title'
+      } else if (kind === 'test_id') {
+        method = 'test_id'
+      }
+
+      const spec = {
+        method,
+        value,
+      }
+
+      const options = {}
+      if (targetText) {
+        options.name = targetText
+      }
+      if (form.exact) {
+        options.exact = true
+      }
+      if (Object.keys(options).length > 0) {
+        spec.options = options
+      }
+
+      if (form.negate) {
+        spec.negate = true
+      }
+      if (Number(form.timeout_mills) > 0) {
+        spec.timeout_mills = Number(form.timeout_mills)
+      }
+      if (form.pick_mode === 'first') {
+        spec.pick = { first: true }
+      } else if (form.pick_mode === 'last') {
+        spec.pick = { last: true }
+      } else if (form.pick_mode === 'nth') {
+        spec.pick = { nth: Number(form.nth || 0) }
+      }
+
+      return { spec }
+    },
+    stringifyStructuredLocatorPayload(payload) {
+      return JSON.stringify(payload || { spec: { method: 'locator', value: '' } }, null, 2)
+    },
     serializeLocatorExpression() {
-      if (this.formMeta.locator_joiner === 'raw') {
-        return String(this.formMeta.locator_raw || '').trim()
-      }
-
-      const locatorList = this.formMeta.locator_list
-        .map(item => {
-          const locatorValue = String(item.value || '').trim()
-          if (!locatorValue) return ''
-          const prefix = item.exist_mode === 'not_exist' ? '!' : ''
-          const suffix = item.match_mode === 'first' ? '|first' : ''
-          return `${prefix}${locatorValue}${suffix}`
-        })
-        .filter(Boolean)
-
-      if (locatorList.length === 0) {
-        return ''
-      }
-      if (this.formMeta.locator_joiner === 'and') return locatorList.join('&&')
-      if (this.formMeta.locator_joiner === 'or') return locatorList.join('||')
-      return locatorList[0]
+      return this.stringifyStructuredLocatorPayload(this.buildStructuredLocatorPayload())
+    },
+    parseStructuredLocatorValue() {
+      return this.buildStructuredLocatorPayload()
     },
     serializeItem() {
       // serializeItem 负责把前端表单重新编码成后端需要的流程项结构。
@@ -878,9 +1156,9 @@ export default {
       if (item.type === 'bool_result') {
         item.locator = JSON.stringify(
           this.formMeta.bool_result_rules
-            .filter(rule => String(rule.locator || '').trim() !== '')
+            .filter(rule => rule && rule.locator_structured_form)
             .map(rule => ({
-              locator: String(rule.locator || '').trim(),
+              locator: this.buildStructuredLocatorPayloadByForm(rule.locator_structured_form),
               return: rule.return !== false,
             }))
         )
@@ -949,29 +1227,7 @@ export default {
     },
     fieldGuide(fieldName) {
       if (fieldName === 'locator') {
-        if (this.localItem.type === 'text_content') {
-          if (this.formMeta.locator_joiner === 'single') {
-            return '提取元素内容时，后端会直接读取这条定位命中的元素文本。单条定位时不需要再配置“要求找不到”，最稳妥的用法就是只保留 1 条定位。'
-          }
-          if (this.formMeta.locator_joiner === 'and') {
-            return '这是旧的多条件提取配置。后端会按整条 && 表达式处理，不存在“第一条单独提取、后面只做条件”的独立语义，所以这里改成原始表达式展示更准确。'
-          }
-          if (this.formMeta.locator_joiner === 'or') {
-            return '这是旧的多条件提取配置。后端会按整条 || 表达式处理，最终提取目标不够直观，所以这里改成原始表达式展示更准确。'
-          }
-        }
-        if (this.formMeta.locator_joiner === 'and') {
-          return '当前为“多个条件都满足”：下面每一条定位条件都必须符合，节点才会继续执行。如果页面上找到多个同类元素，“多个时按默认方式处理”表示沿用后端默认查找方式；“多个时只取第一个”表示只看第一个匹配元素。'
-        }
-        if (this.formMeta.locator_joiner === 'or') {
-          return '当前为“多个条件满足其一”：下面任意一条定位条件符合即可。如果页面上找到多个同类元素，“多个时按默认方式处理”表示沿用后端默认查找方式；“多个时只取第一个”表示只看第一个匹配元素。'
-        }
-        if (this.formMeta.locator_joiner === 'raw') {
-          return '高级表达式模式适合兼容旧配置或直接粘贴后端语法；普通场景建议优先使用上面的结构化选项。'
-        }
-        if (this.formMeta.locator_joiner === 'single') {
-          return '当前为“只找一个元素”：通常只需要填 1 条定位。“多个时按默认方式处理”表示沿用后端默认查找方式；“多个时只取第一个”表示只取第一个匹配元素。'
-        }
+        return '统一使用结构化 Locator 配置。按页面可见内容填写后，系统会自动生成 {"spec": {...}} 结构并提交给后端。'
       }
       if (fieldName === 'check_key') {
         if (this.formMeta.check_mode === 'compare') {
@@ -981,6 +1237,9 @@ export default {
           return '结果判断会生成类似 {need_login}、{need_login}&&{qrcode_dialog} 或 {need_login}&&{need_change_to_password} 的条件。后端这里只支持多个条件用 && 同时成立，不支持或条件；单独一个条件就表示该输出为 true 时执行。'
         }
         return '可以不限制执行，也可以按前面节点的结果判断，或按文本内容比较判断。'
+      }
+      if (fieldName === 'bool_result_rules') {
+        return '每条规则都使用结构化定位。命中该规则时，按右侧 true / false 返回结果。'
       }
       return PROCESS_ITEM_FIELD_GUIDES[fieldName] || ''
     },
@@ -1131,6 +1390,180 @@ export default {
   line-height: 1.6;
 }
 
+.structured-locator-editor {
+  margin-top: 4px;
+}
+
+.structured-locator-card {
+  padding: 16px;
+  background: linear-gradient(180deg, #fcfdfb 0%, #f6f8f4 100%);
+  border: 1px solid #d8e3d0;
+  border-radius: 14px;
+  box-shadow: 0 8px 18px rgba(89, 113, 72, 0.08);
+}
+
+.structured-locator-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.structured-locator-card__title {
+  color: #355128;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.structured-locator-card__desc {
+  margin-top: 4px;
+  color: #6a7d60;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.structured-locator-card__badge {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  color: #48653a;
+  font-size: 12px;
+  font-weight: 600;
+  background: #e7f1df;
+  border-radius: 999px;
+}
+
+.structured-locator-section {
+  padding: 14px;
+  margin-bottom: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid #e4ebde;
+  border-radius: 12px;
+}
+
+.structured-locator-section:last-child {
+  margin-bottom: 0;
+}
+
+.structured-locator-section__title {
+  margin-bottom: 10px;
+  color: #456238;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.structured-locator-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.structured-locator-grid + .structured-locator-grid {
+  margin-top: 10px;
+}
+
+.structured-locator-grid--secondary {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.structured-locator-tip {
+  margin-top: 10px;
+  padding: 10px 12px;
+  color: #607355;
+  font-size: 12px;
+  line-height: 1.6;
+  background: #f7faf4;
+  border-radius: 10px;
+}
+
+.structured-locator-switches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.structured-locator-switch-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f9fbf7;
+  border: 1px solid #e3eadc;
+  border-radius: 10px;
+}
+
+.structured-locator-switch-card__label {
+  color: #4e6442;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.structured-locator-switch-card__control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.structured-locator-switch-card__state {
+  color: #6c7c63;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.structured-locator-inline-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  background: #f9fbf7;
+  border: 1px solid #e3eadc;
+  border-radius: 10px;
+}
+
+.structured-locator-inline-field--compact {
+  min-height: 46px;
+}
+
+.structured-locator-inline-field__label {
+  min-width: 0;
+}
+
+.structured-locator-inline-field__title {
+  color: #4e6442;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.structured-locator-inline-field__desc {
+  margin-top: 2px;
+  color: #7a8970;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.structured-locator-inline-field__control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 180px;
+}
+
+.structured-locator-inline-field__unit {
+  color: #69805d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.structured-locator-preview {
+  margin-top: 4px;
+}
+
 .locator-expression-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 130px 130px 60px;
@@ -1162,6 +1595,48 @@ export default {
   gap: 10px;
   align-items: center;
   margin-bottom: 10px;
+}
+
+.bool-result-rule-card {
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #fbfcfa;
+  border: 1px solid #e2eadc;
+  border-radius: 12px;
+}
+
+.bool-result-rule-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.bool-result-rule-card__title {
+  color: #48653a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.bool-result-rule-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bool-result-rule-card__mode {
+  width: 140px;
+}
+
+.bool-result-rule-card__result {
+  width: 160px;
+}
+
+.structured-locator-card--nested {
+  padding: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7faf5 100%);
+  box-shadow: none;
 }
 
 .check-rule-row {

@@ -172,7 +172,7 @@
     </el-dialog>
 
     <!-- 缂栬緫鎵ц閫昏緫瀛愰」瀵硅瘽妗?-->
-    <el-dialog v-model="state.dialogProcessItem" :title="state.editingItem.id ? '缂栬緫鎵ц閫昏緫瀛愰」' : '鏂板鎵ц閫昏緫瀛愰」'" width="70%">
+    <el-dialog v-model="state.dialogProcessItem" :title="state.editingItem.id ? `编辑执行逻辑子项 #${state.editingItem.id}` : '新增执行逻辑子项'" width="70%">
       <ProcessItemEditor ref="processItemEditorRef" v-model="state.editingItem" :process-item-options="state.processItems" />
       <template #footer>
         <GitActionButton @click="state.dialogProcessItem = false">鍙栨秷</GitActionButton>

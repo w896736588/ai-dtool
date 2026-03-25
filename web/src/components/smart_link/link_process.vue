@@ -110,7 +110,7 @@
     </el-dialog>
 
     <!-- 编辑执行逻辑子项对话框 -->
-    <el-dialog v-model="state.dialogProcessItem" :title="state.editingItem.id ? '编辑执行逻辑子项' : '新增执行逻辑子项'" width="70%">
+    <el-dialog v-model="state.dialogProcessItem" :title="state.editingItem.id ? `编辑执行逻辑子项 #${state.editingItem.id}` : '新增执行逻辑子项'" width="70%">
       <ProcessItemEditor ref="processItemEditorRef" v-model="state.editingItem" :process-item-options="state.processItems" />
       <template #footer>
         <GitActionButton @click="state.dialogProcessItem = false">取消</GitActionButton>
