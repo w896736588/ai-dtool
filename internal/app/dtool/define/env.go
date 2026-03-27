@@ -22,6 +22,7 @@ type Env struct {
 	ConfigFile           string     //配置文件名
 	ConfigPath           string     //配置文件目录
 	DatabaseUpPath       string     //数据库升级目录
+	LogDatabaseUpPath    string     //日志数据库升级目录
 	MemoryDatabaseUpPath string     //记忆数据库升级目录
 	LogPath              string     //日志目录
 	NodePath             string     //node js可执行程序目录
@@ -37,5 +38,6 @@ type Env struct {
 	Ports                []string   //gin支持的端口
 	ConfigBase           *Base      //基础配置
 	DbConfig             *DbConfig  //数据库配置
+	LogDbConfig          *DbConfig  //日志数据库配置
 	WebConfig            *WebConfig //web配置
 }

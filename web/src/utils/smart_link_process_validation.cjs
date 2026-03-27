@@ -1,5 +1,9 @@
 // PROCESS_ITEM_FIELD_GUIDES 用于集中维护流程项字段说明。
 // PROCESS_ITEM_FIELD_GUIDES centralizes field guidance for process item forms.
+const {
+  parseStructuredLocatorPayload,
+} = require('./smart_link_locator_form.cjs')
+
 const PROCESS_ITEM_FIELD_GUIDES = {
   locator: '统一使用结构化 Locator 配置，按页面可见内容填写后系统会自动生成后端需要的 {"spec": {...}} 结构。',
   secondary_locator: '请输入密码输入框定位，建议使用稳定的 CSS 选择器或 XPath。',
@@ -282,6 +286,9 @@ function validateRawLocator(rawLocator) {
 }
 
 function validateLocatorField(formMeta) {
+  if (normalizeText(formMeta.locator_editor_mode) === 'advanced') {
+    return validateAdvancedLocatorField(formMeta.locator_advanced_form)
+  }
   const structuredForm = formMeta.locator_structured_form || {}
   if (!normalizeText(structuredForm.kind)) {
     return '请先选择查找方式。'
@@ -294,6 +301,35 @@ function validateLocatorField(formMeta) {
   }
   if (!normalizeText(structuredForm.value)) {
     return '当前查找方式还没有填写内容。'
+  }
+  return ''
+}
+
+function validateAdvancedLocatorField(locatorAdvancedForm) {
+  const advancedForm = locatorAdvancedForm || {}
+  if (!normalizeText(advancedForm.kind)) {
+    return '请先选择主元素查找方式。'
+  }
+  if (!normalizeText(advancedForm.value)) {
+    return '请先填写主元素定位内容。'
+  }
+  if (normalizeText(advancedForm.has_kind) && !normalizeText(advancedForm.has_value)) {
+    return '包含子元素时，需要填写完整的子元素定位内容。'
+  }
+  if (normalizeText(advancedForm.has_value) && !normalizeText(advancedForm.has_kind)) {
+    return '包含子元素时，需要先选择子元素查找方式。'
+  }
+  if (normalizeText(advancedForm.has_not_kind) && !normalizeText(advancedForm.has_not_value)) {
+    return '不包含子元素时，需要填写完整的子元素定位内容。'
+  }
+  if (normalizeText(advancedForm.has_not_value) && !normalizeText(advancedForm.has_not_kind)) {
+    return '不包含子元素时，需要先选择子元素查找方式。'
+  }
+  if (normalizeText(advancedForm.chain_value) && !normalizeText(advancedForm.chain_kind)) {
+    return '向下继续查找时，需要先选择子节点查找方式。'
+  }
+  if (normalizeText(advancedForm.pick_mode) === 'nth' && !Number.isInteger(Number(advancedForm.nth))) {
+    return '取第 N 个结果时，必须填写有效的索引。'
   }
   return ''
 }
@@ -397,6 +433,14 @@ function validateProcessItemForm({ item = {}, formMeta = {} }) {
     const boolResultRules = Array.isArray(formMeta.bool_result_rules) ? formMeta.bool_result_rules : []
     const hasInvalidBoolResultRule = boolResultRules.length === 0 || boolResultRules.some((rule) => {
       if (!rule) return true
+      if (rule.locator_advanced_form) {
+        return validateAdvancedLocatorField(rule.locator_advanced_form) !== ''
+      }
+      const structuredLocator = parseStructuredLocatorPayload(rule.locator)
+      if (structuredLocator && structuredLocator.spec) {
+        const spec = structuredLocator.spec
+        return !normalizeText(spec.method) || !normalizeText(spec.value)
+      }
       const structuredForm = rule.locator_structured_form || {}
       if (!normalizeText(structuredForm.kind)) return true
       if (normalizeText(structuredForm.kind) === 'button_text') {

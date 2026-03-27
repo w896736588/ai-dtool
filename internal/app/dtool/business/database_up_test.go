@@ -3,6 +3,7 @@ package business
 import (
 	"bytes"
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,6 +60,55 @@ func TestDataBaseUpRunOnlyLogsExecutedSQLFiles(t *testing.T) {
 	}
 	if len(rows) != 2 {
 		t.Fatalf("upgrade rows count = %d, want 2", len(rows))
+	}
+}
+
+func TestLogDataBaseUpRunCreatesSmartLinkLastTable(t *testing.T) {
+	tempDir := t.TempDir()
+	oldEnv := component.EnvClient
+	t.Cleanup(func() {
+		component.EnvClient = oldEnv
+	})
+
+	sqliteClient, err := gsdb.NewSqlite(":memory:", false)
+	if err != nil {
+		t.Fatalf("NewSqlite() error = %v", err)
+	}
+	db := &common.CSqlite{Client: sqliteClient}
+
+	migrationDir := filepath.Join(tempDir, "database_log")
+	migrationFile := filepath.Join(migrationDir, "2026", "03", "202603261030_smart_link_last.sql")
+	writeSQLFile(t, migrationFile, `
+create table if not exists tbl_smart_link_last (
+	id integer not null primary key autoincrement,
+	smart_link_id integer not null default 0,
+	user_name text not null default '',
+	user_data_index integer not null default 0,
+	domain text not null default '',
+	create_time integer not null default 0,
+	update_time integer not null default 0
+);
+`)
+
+	handler := NewLogDataBaseUp(db, migrationDir)
+	handler.Run()
+
+	tableName, err := db.Client.QuickQuery("sqlite_master", "name", map[string]any{
+		"name": logSmartLinkLastTableName,
+	}).Value("name")
+	if err != nil {
+		t.Fatalf("query sqlite_master error = %v", err)
+	}
+	if tableName != logSmartLinkLastTableName {
+		t.Fatalf("table name = %v, want %s", tableName, logSmartLinkLastTableName)
+	}
+
+	rows, err := db.Client.QuickQuery(logDatabaseUpTableName, "filename", nil).All()
+	if err != nil {
+		t.Fatalf("query log upgrade rows error = %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("log upgrade rows count = %d, want 1", len(rows))
 	}
 }
 

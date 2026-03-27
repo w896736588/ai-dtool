@@ -22,7 +22,161 @@
     <template v-if="showField('locator')">
       <el-form-item :label="fieldLabel('locator')" :error="fieldError('locator')">
         <div class="list-editor">
-          <div class="structured-locator-editor">
+          <div v-if="useAdvancedLocatorEditor" class="structured-locator-editor">
+            <div class="structured-locator-card">
+              <div class="structured-locator-card__header">
+                <div>
+                  <div class="structured-locator-card__title">高级定位配置</div>
+                  <div class="structured-locator-card__desc">
+                    直接映射当前后端已支持的结构化 Locator 能力，可配置 has / has_not / 文本过滤 / chain。
+                  </div>
+                </div>
+                <div class="structured-locator-card__badge">text_content</div>
+              </div>
+
+              <div class="structured-locator-section">
+                <div class="structured-locator-section__title">1. 主元素</div>
+                <div class="structured-locator-grid">
+                  <el-select v-model="formMeta.locator_advanced_form.kind" placeholder="请选择查找方式">
+                    <el-option
+                      v-for="option in structuredLocatorKindOptions"
+                      :key="`advanced-${option.value}`"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                  <el-input
+                    v-model="formMeta.locator_advanced_form.value"
+                    :placeholder="getStructuredLocatorPrimaryPlaceholder(formMeta.locator_advanced_form.kind)"
+                  />
+                </div>
+              </div>
+
+              <div class="structured-locator-section">
+                <div class="structured-locator-section__title">2. 过滤条件</div>
+                <div class="structured-locator-grid">
+                  <el-input v-model="formMeta.locator_advanced_form.has_text" placeholder="包含文本，例如 已登录" />
+                  <el-input v-model="formMeta.locator_advanced_form.has_not_text" placeholder="不包含文本，例如 去登录" />
+                </div>
+                <div class="structured-locator-grid structured-locator-grid--stacked">
+                  <div class="structured-locator-filter-pair">
+                    <el-select v-model="formMeta.locator_advanced_form.has_kind" placeholder="包含子元素的查找方式">
+                      <el-option
+                        v-for="option in structuredLocatorKindOptions"
+                        :key="`has-${option.value}`"
+                        :label="option.label"
+                        :value="option.value"
+                      />
+                    </el-select>
+                    <el-input v-model="formMeta.locator_advanced_form.has_value" placeholder="必须包含的子元素，例如 .profile-name" />
+                  </div>
+                  <div class="structured-locator-filter-pair">
+                    <el-select v-model="formMeta.locator_advanced_form.has_not_kind" placeholder="不包含子元素的查找方式">
+                      <el-option
+                        v-for="option in structuredLocatorKindOptions"
+                        :key="`has-not-${option.value}`"
+                        :label="option.label"
+                        :value="option.value"
+                      />
+                    </el-select>
+                    <el-input v-model="formMeta.locator_advanced_form.has_not_value" placeholder="不能包含的子元素，例如 .btn.login_as_reg_btn" />
+                  </div>
+                </div>
+                <div class="structured-locator-inline-field">
+                  <div class="structured-locator-inline-field__label">
+                    <div class="structured-locator-inline-field__title">可见性</div>
+                    <div class="structured-locator-inline-field__desc">不限制时留空；仅当后端已有 visible 过滤需求时使用。</div>
+                  </div>
+                  <div class="structured-locator-inline-field__control">
+                    <el-select v-model="formMeta.locator_advanced_form.visible" placeholder="不限制">
+                      <el-option label="不限制" value="" />
+                      <el-option label="必须可见" value="true" />
+                      <el-option label="必须不可见" value="false" />
+                    </el-select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="structured-locator-section">
+                <div class="structured-locator-section__title">3. 向下继续查找</div>
+                <div class="structured-locator-grid">
+                  <el-select v-model="formMeta.locator_advanced_form.chain_kind" placeholder="子节点查找方式">
+                    <el-option
+                      v-for="option in structuredLocatorKindOptions"
+                      :key="`chain-${option.value}`"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                  <el-input v-model="formMeta.locator_advanced_form.chain_value" placeholder="可选，例如 .nickname" />
+                </div>
+              </div>
+
+              <div class="structured-locator-section">
+                <div class="structured-locator-section__title">4. 匹配规则</div>
+                <div class="structured-locator-switches">
+                  <div class="structured-locator-switch-card">
+                    <div class="structured-locator-switch-card__label">文字完全一致</div>
+                    <div class="structured-locator-switch-card__control">
+                      <span class="structured-locator-switch-card__state">{{ formMeta.locator_advanced_form.exact ? '完全一致' : '允许模糊包含' }}</span>
+                      <el-switch v-model="formMeta.locator_advanced_form.exact" />
+                    </div>
+                  </div>
+                  <div class="structured-locator-switch-card">
+                    <div class="structured-locator-switch-card__label">要求元素不存在</div>
+                    <div class="structured-locator-switch-card__control">
+                      <span class="structured-locator-switch-card__state">{{ formMeta.locator_advanced_form.negate ? '要求不存在' : '要求存在' }}</span>
+                      <el-switch v-model="formMeta.locator_advanced_form.negate" />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="structured-locator-grid">
+                  <el-select v-model="formMeta.locator_advanced_form.pick_mode" placeholder="多个结果时怎么处理">
+                    <el-option label="按默认方式处理" value="none" />
+                    <el-option label="只取第一个" value="first" />
+                    <el-option label="只取最后一个" value="last" />
+                    <el-option label="取第 N 个" value="nth" />
+                  </el-select>
+                  <el-input-number
+                    v-model="formMeta.locator_advanced_form.nth"
+                    :min="0"
+                    :controls="false"
+                    class="plain-number-input"
+                    :disabled="formMeta.locator_advanced_form.pick_mode !== 'nth'"
+                  />
+                </div>
+
+                <div class="structured-locator-inline-field">
+                  <div class="structured-locator-inline-field__label">
+                    <div class="structured-locator-inline-field__title">最多等待多久</div>
+                  </div>
+                  <div class="structured-locator-inline-field__control">
+                    <el-input-number
+                      v-model="formMeta.locator_advanced_form.timeout_mills"
+                      :min="0"
+                      :controls="false"
+                      class="plain-number-input"
+                      placeholder="3000"
+                    />
+                    <span class="structured-locator-inline-field__unit">ms</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="structured-locator-preview">
+                <div class="structured-locator-preview__title">系统生成的结构化配置</div>
+                <el-input
+                  :model-value="formMeta.locator_structured"
+                  type="textarea"
+                  :rows="10"
+                  readonly
+                />
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="structured-locator-editor">
             <div class="structured-locator-card">
               <div class="structured-locator-card__header">
                 <div>
@@ -357,93 +511,88 @@
 
             <div class="structured-locator-card structured-locator-card--nested">
               <div class="structured-locator-section">
-                <div class="structured-locator-section__title">先选要找什么</div>
+                <div class="structured-locator-section__title">主元素</div>
                 <div class="structured-locator-grid">
-                  <el-select v-model="item.locator_structured_form.kind" placeholder="请选择查找方式">
+                  <el-select v-model="item.locator_advanced_form.kind" placeholder="请选择查找方式">
                     <el-option
                       v-for="option in structuredLocatorKindOptions"
-                      :key="option.value"
+                      :key="`rule-${option.value}`"
                       :label="option.label"
                       :value="option.value"
                     />
                   </el-select>
                   <el-input
-                    v-model="item.locator_structured_form.value"
-                    :placeholder="getStructuredLocatorPrimaryPlaceholder(item.locator_structured_form.kind)"
+                    v-model="item.locator_advanced_form.value"
+                    :placeholder="getStructuredLocatorPrimaryPlaceholder(item.locator_advanced_form.kind)"
                   />
-                </div>
-
-                <div v-if="shouldShowStructuredLocatorTargetText(item.locator_structured_form.kind)" class="structured-locator-grid structured-locator-grid--secondary">
-                  <el-input
-                    v-model="item.locator_structured_form.target_text"
-                    :placeholder="structuredLocatorTargetPlaceholder"
-                  />
-                </div>
-
-                <div class="structured-locator-tip">
-                  {{ getStructuredLocatorScenarioHint(item.locator_structured_form.kind) }}
                 </div>
               </div>
 
               <div class="structured-locator-section">
-                <div class="structured-locator-section__title">匹配规则</div>
+                <div class="structured-locator-section__title">过滤条件</div>
+                <div class="structured-locator-grid">
+                  <el-input v-model="item.locator_advanced_form.has_text" placeholder="包含文本" />
+                  <el-input v-model="item.locator_advanced_form.has_not_text" placeholder="不包含文本" />
+                </div>
+                <div class="structured-locator-grid structured-locator-grid--stacked">
+                  <div class="structured-locator-filter-pair">
+                    <el-select v-model="item.locator_advanced_form.has_kind" placeholder="包含子元素查找方式">
+                      <el-option
+                        v-for="option in structuredLocatorKindOptions"
+                        :key="`rule-has-${option.value}`"
+                        :label="option.label"
+                        :value="option.value"
+                      />
+                    </el-select>
+                    <el-input v-model="item.locator_advanced_form.has_value" placeholder="必须包含的子元素" />
+                  </div>
+                  <div class="structured-locator-filter-pair">
+                    <el-select v-model="item.locator_advanced_form.has_not_kind" placeholder="不包含子元素查找方式">
+                      <el-option
+                        v-for="option in structuredLocatorKindOptions"
+                        :key="`rule-has-not-${option.value}`"
+                        :label="option.label"
+                        :value="option.value"
+                      />
+                    </el-select>
+                    <el-input v-model="item.locator_advanced_form.has_not_value" placeholder="不能包含的子元素" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="structured-locator-section">
+                <div class="structured-locator-section__title">其他规则</div>
                 <div class="structured-locator-switches">
                   <div class="structured-locator-switch-card">
-                    <div class="structured-locator-switch-card__label">文字要不要完全一致</div>
+                    <div class="structured-locator-switch-card__label">文字完全一致</div>
                     <div class="structured-locator-switch-card__control">
-                      <span class="structured-locator-switch-card__state">{{ item.locator_structured_form.exact ? '完全一致' : '允许模糊包含' }}</span>
-                      <el-switch v-model="item.locator_structured_form.exact" />
+                      <span class="structured-locator-switch-card__state">{{ item.locator_advanced_form.exact ? '完全一致' : '允许模糊包含' }}</span>
+                      <el-switch v-model="item.locator_advanced_form.exact" />
                     </div>
                   </div>
                   <div class="structured-locator-switch-card">
-                    <div class="structured-locator-switch-card__label">这个元素必须存在吗</div>
+                    <div class="structured-locator-switch-card__label">要求元素不存在</div>
                     <div class="structured-locator-switch-card__control">
-                      <span class="structured-locator-switch-card__state">{{ item.locator_structured_form.negate ? '要求不存在' : '要求存在' }}</span>
-                      <el-switch v-model="item.locator_structured_form.negate" />
+                      <span class="structured-locator-switch-card__state">{{ item.locator_advanced_form.negate ? '要求不存在' : '要求存在' }}</span>
+                      <el-switch v-model="item.locator_advanced_form.negate" />
                     </div>
                   </div>
                 </div>
 
-                <div class="structured-locator-inline-field">
-                  <div class="structured-locator-inline-field__label">
-                    <div class="structured-locator-inline-field__title">最多等待多久</div>
-                  </div>
-                  <div class="structured-locator-inline-field__control">
-                    <el-input-number
-                      v-model="item.locator_structured_form.timeout_mills"
-                      :min="0"
-                      :controls="false"
-                      class="plain-number-input"
-                      placeholder="3000"
-                    />
-                    <span class="structured-locator-inline-field__unit">ms</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="structured-locator-section">
-                <div class="structured-locator-section__title">多个结果时怎么处理</div>
                 <div class="structured-locator-grid">
-                  <el-select v-model="item.locator_structured_form.pick_mode" placeholder="多个结果时怎么处理">
+                  <el-select v-model="item.locator_advanced_form.pick_mode" placeholder="多个结果时怎么处理">
                     <el-option label="按默认方式处理" value="none" />
                     <el-option label="只取第一个" value="first" />
                     <el-option label="只取最后一个" value="last" />
                     <el-option label="取第 N 个" value="nth" />
                   </el-select>
-                  <div class="structured-locator-inline-field structured-locator-inline-field--compact">
-                    <div class="structured-locator-inline-field__label">
-                      <div class="structured-locator-inline-field__title">第几个结果</div>
-                    </div>
-                    <div class="structured-locator-inline-field__control">
-                      <el-input-number
-                        v-model="item.locator_structured_form.nth"
-                        :min="0"
-                        :controls="false"
-                        class="plain-number-input"
-                        :disabled="item.locator_structured_form.pick_mode !== 'nth'"
-                      />
-                    </div>
-                  </div>
+                  <el-input-number
+                    v-model="item.locator_advanced_form.nth"
+                    :min="0"
+                    :controls="false"
+                    class="plain-number-input"
+                    :disabled="item.locator_advanced_form.pick_mode !== 'nth'"
+                  />
                 </div>
               </div>
             </div>
@@ -507,6 +656,15 @@ const {
   serializeWaitUrlValue,
   validateProcessItemForm,
 } = require('../../utils/smart_link_process_validation.cjs')
+const {
+  buildAdvancedLocatorPayload,
+  buildSimpleLocatorPayload,
+  createAdvancedLocatorForm,
+  createSimpleLocatorForm,
+  deserializeLocatorEditorState,
+  parseStructuredLocatorPayload,
+  stringifyLocatorPayload,
+} = require('../../utils/smart_link_locator_form.cjs')
 
 const createDefaultItem = () => ({
   id: 0,
@@ -554,22 +712,6 @@ function safeParseJson(text, fallback) {
   }
 }
 
-function parseStructuredLocatorPayload(rawValue) {
-  if (!rawValue) return null
-  if (typeof rawValue === 'object') {
-    return rawValue
-  }
-  if (typeof rawValue !== 'string') return null
-  const parsed = safeParseJson(rawValue, null)
-  if (!parsed || typeof parsed !== 'object') return null
-  if (parsed.spec && typeof parsed.spec === 'object') return parsed
-  if (parsed.raw || parsed.first !== undefined) return parsed
-  if (parsed.method || parsed.value !== undefined) {
-    return { spec: parsed }
-  }
-  return null
-}
-
 function createRegisterUrl() {
   return {
     uid: `response-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
@@ -592,6 +734,7 @@ function createBoolResultRule() {
     uid: `bool-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     locator_structured: '',
     locator_structured_form: createStructuredLocatorForm(),
+    locator_advanced_form: createAdvancedStructuredLocatorForm(),
     return: true,
   }
 }
@@ -613,17 +756,11 @@ function createCompareRule() {
 }
 
 function createStructuredLocatorForm() {
-  return {
-    kind: 'css',
-    method: 'locator',
-    value: '',
-    target_text: '',
-    exact: false,
-    negate: false,
-    pick_mode: 'none',
-    nth: 0,
-    timeout_mills: 3000,
-  }
+  return createSimpleLocatorForm()
+}
+
+function createAdvancedStructuredLocatorForm() {
+  return createAdvancedLocatorForm()
 }
 
 // normalizeTokenLabel 用于统一下拉标签展示，兼容已带大括号的旧 out_key。
@@ -675,8 +812,10 @@ export default {
         locator_list: [],
         locator_joiner: 'structured',
         locator_raw: '',
+        locator_editor_mode: 'simple',
         locator_structured: '',
         locator_structured_form: createStructuredLocatorForm(),
+        locator_advanced_form: createAdvancedStructuredLocatorForm(),
         secondary_locator: '',
         tertiary_locator: '',
         value: '',
@@ -722,6 +861,9 @@ export default {
     },
     showStructuredLocatorTargetText() {
       return this.formMeta.locator_structured_form.kind === 'button_text'
+    },
+    useAdvancedLocatorEditor() {
+      return this.localItem.type === 'text_content'
     },
     structuredLocatorPrimaryPlaceholder() {
       const kind = this.formMeta.locator_structured_form.kind
@@ -776,7 +918,7 @@ export default {
       if (!this.showField('locator')) return ''
       const structuredText = String(this.formMeta.locator_structured || '').trim()
       return structuredText
-        ? `当前使用结构化 Locator 配置。后端会按 spec 字段解析，支持 role、text、label、placeholder、pick 和 timeout 等查询能力。`
+        ? `当前使用结构化 Locator 配置。后端会按 spec 字段解析，支持 role、text、label、placeholder、filters、chain、pick 和 timeout 等查询能力。`
         : ''
     },
     usedCheckKeyCount() {
@@ -814,8 +956,15 @@ export default {
     'formMeta.locator_structured_form': {
       deep: true,
       handler() {
-        if (this.syncingFromParent) return
+        if (this.syncingFromParent || this.useAdvancedLocatorEditor) return
         this.formMeta.locator_structured = this.stringifyStructuredLocatorPayload(this.buildStructuredLocatorPayload())
+      },
+    },
+    'formMeta.locator_advanced_form': {
+      deep: true,
+      handler() {
+        if (this.syncingFromParent || !this.useAdvancedLocatorEditor) return
+        this.formMeta.locator_structured = this.stringifyStructuredLocatorPayload(this.buildAdvancedLocatorPayload())
       },
     },
   },
@@ -863,8 +1012,10 @@ export default {
         locator_list: [],
         locator_joiner: 'structured',
         locator_raw: '',
+        locator_editor_mode: item.type === 'text_content' ? 'advanced' : 'simple',
         locator_structured: '',
         locator_structured_form: createStructuredLocatorForm(),
+        locator_advanced_form: createAdvancedStructuredLocatorForm(),
         secondary_locator: '',
         tertiary_locator: '',
         value: item.value || '',
@@ -891,6 +1042,7 @@ export default {
               ...baseRule,
               locator_structured: structuredLocator ? JSON.stringify(structuredLocator, null, 2) : '',
               locator_structured_form: structuredLocator ? this.deserializeStructuredLocatorForm(structuredLocator) : createStructuredLocatorForm(),
+              locator_advanced_form: structuredLocator ? this.deserializeAdvancedLocatorForm(structuredLocator) : createAdvancedStructuredLocatorForm(),
               return: rule.return !== false,
             }
           })
@@ -923,7 +1075,12 @@ export default {
       } else if (this.showTypeField(item.type, 'locator')) {
         const structuredLocator = parseStructuredLocatorPayload(item.locator)
         if (structuredLocator) {
-          meta.locator_structured_form = this.deserializeStructuredLocatorForm(structuredLocator)
+          const editorState = deserializeLocatorEditorState(structuredLocator, {
+            preferAdvanced: item.type === 'text_content',
+          })
+          meta.locator_editor_mode = editorState.mode
+          meta.locator_structured_form = editorState.simpleForm
+          meta.locator_advanced_form = editorState.advancedForm
           meta.locator_structured = JSON.stringify(structuredLocator, null, 2)
         }
       }
@@ -939,7 +1096,9 @@ export default {
       }
 
       if (this.showTypeField(item.type, 'locator') && !String(meta.locator_structured || '').trim()) {
-        meta.locator_structured = this.stringifyStructuredLocatorPayload(this.buildStructuredLocatorPayloadByForm(meta.locator_structured_form))
+        meta.locator_structured = item.type === 'text_content'
+          ? this.stringifyStructuredLocatorPayload(this.buildAdvancedLocatorPayloadByForm(meta.locator_advanced_form))
+          : this.stringifyStructuredLocatorPayload(this.buildStructuredLocatorPayloadByForm(meta.locator_structured_form))
       }
 
       return meta
@@ -1074,71 +1233,28 @@ export default {
     buildStructuredLocatorPayload() {
       return this.buildStructuredLocatorPayloadByForm(this.formMeta.locator_structured_form)
     },
+    buildAdvancedLocatorPayload() {
+      return this.buildAdvancedLocatorPayloadByForm(this.formMeta.locator_advanced_form)
+    },
     buildStructuredLocatorPayloadByForm(formValue) {
-      const form = formValue || createStructuredLocatorForm()
-      const kind = String(form.kind || '').trim() || 'css'
-      let method = 'locator'
-      let value = String(form.value || '').trim()
-      let targetText = ''
-
-      if (kind === 'button_text') {
-        method = 'role'
-        value = 'button'
-        targetText = String(form.target_text || form.value || '').trim()
-      } else if (kind === 'text') {
-        method = 'text'
-      } else if (kind === 'label') {
-        method = 'label'
-      } else if (kind === 'placeholder') {
-        method = 'placeholder'
-      } else if (kind === 'alt_text') {
-        method = 'alt_text'
-      } else if (kind === 'title') {
-        method = 'title'
-      } else if (kind === 'test_id') {
-        method = 'test_id'
-      }
-
-      const spec = {
-        method,
-        value,
-      }
-
-      const options = {}
-      if (targetText) {
-        options.name = targetText
-      }
-      if (form.exact) {
-        options.exact = true
-      }
-      if (Object.keys(options).length > 0) {
-        spec.options = options
-      }
-
-      if (form.negate) {
-        spec.negate = true
-      }
-      if (Number(form.timeout_mills) > 0) {
-        spec.timeout_mills = Number(form.timeout_mills)
-      }
-      if (form.pick_mode === 'first') {
-        spec.pick = { first: true }
-      } else if (form.pick_mode === 'last') {
-        spec.pick = { last: true }
-      } else if (form.pick_mode === 'nth') {
-        spec.pick = { nth: Number(form.nth || 0) }
-      }
-
-      return { spec }
+      return buildSimpleLocatorPayload(formValue || createStructuredLocatorForm())
+    },
+    buildAdvancedLocatorPayloadByForm(formValue) {
+      return buildAdvancedLocatorPayload(formValue || createAdvancedStructuredLocatorForm())
+    },
+    deserializeAdvancedLocatorForm(locatorValue) {
+      return deserializeLocatorEditorState(locatorValue, { preferAdvanced: true }).advancedForm
     },
     stringifyStructuredLocatorPayload(payload) {
-      return JSON.stringify(payload || { spec: { method: 'locator', value: '' } }, null, 2)
+      return stringifyLocatorPayload(payload)
     },
     serializeLocatorExpression() {
-      return this.stringifyStructuredLocatorPayload(this.buildStructuredLocatorPayload())
+      return this.stringifyStructuredLocatorPayload(
+        this.useAdvancedLocatorEditor ? this.buildAdvancedLocatorPayload() : this.buildStructuredLocatorPayload()
+      )
     },
     parseStructuredLocatorValue() {
-      return this.buildStructuredLocatorPayload()
+      return this.useAdvancedLocatorEditor ? this.buildAdvancedLocatorPayload() : this.buildStructuredLocatorPayload()
     },
     serializeItem() {
       // serializeItem 负责把前端表单重新编码成后端需要的流程项结构。
@@ -1156,9 +1272,9 @@ export default {
       if (item.type === 'bool_result') {
         item.locator = JSON.stringify(
           this.formMeta.bool_result_rules
-            .filter(rule => rule && rule.locator_structured_form)
+            .filter(rule => rule && rule.locator_advanced_form)
             .map(rule => ({
-              locator: this.buildStructuredLocatorPayloadByForm(rule.locator_structured_form),
+              locator: this.buildAdvancedLocatorPayloadByForm(rule.locator_advanced_form),
               return: rule.return !== false,
             }))
         )
@@ -1227,7 +1343,9 @@ export default {
     },
     fieldGuide(fieldName) {
       if (fieldName === 'locator') {
-        return '统一使用结构化 Locator 配置。按页面可见内容填写后，系统会自动生成 {"spec": {...}} 结构并提交给后端。'
+        return this.useAdvancedLocatorEditor
+          ? '当前节点使用高级结构化 Locator 配置，支持 has / has_not / has_text / has_not_text / chain，保存后仍统一提交 {"spec": {...}}。'
+          : '统一使用结构化 Locator 配置。按页面可见内容填写后，系统会自动生成 {"spec": {...}} 结构并提交给后端。'
       }
       if (fieldName === 'check_key') {
         if (this.formMeta.check_mode === 'compare') {
@@ -1239,7 +1357,7 @@ export default {
         return '可以不限制执行，也可以按前面节点的结果判断，或按文本内容比较判断。'
       }
       if (fieldName === 'bool_result_rules') {
-        return '每条规则都使用结构化定位。命中该规则时，按右侧 true / false 返回结果。'
+        return '每条规则都使用高级结构化定位。命中该规则时，按右侧 true / false 返回结果。'
       }
       return PROCESS_ITEM_FIELD_GUIDES[fieldName] || ''
     },
@@ -1466,6 +1584,17 @@ export default {
 
 .structured-locator-grid--secondary {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.structured-locator-grid--stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.structured-locator-filter-pair {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
 }
 
 .structured-locator-tip {

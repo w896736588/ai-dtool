@@ -179,7 +179,8 @@ func (h *Playwright) LastUserDataIndex(runParams *PlaywrightRunParams, userDataI
 		return
 	}
 	sql := `select * from tbl_smart_link_last where  smart_link_id = ? and user_name = ? and domain = ?`
-	smartLinkLast, smartLinkErr := common.DbMain.Client.QueryBySql(sql, runParams.Id, runParams.LastIndexLabel, runParams.Domain).One()
+	// 最近一次用户目录索引已经迁移到独立 log 库，这里只查询 log 库。
+	smartLinkLast, smartLinkErr := common.DbLog.Client.QueryBySql(sql, runParams.Id, runParams.LastIndexLabel, runParams.Domain).One()
 	if smartLinkErr != nil {
 		runParams.StreamFunc(`记录历史数据目录`, `失败：`+smartLinkErr.Error())
 		return

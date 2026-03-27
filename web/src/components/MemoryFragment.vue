@@ -4,6 +4,12 @@
       <div class="sidebar-header">
         <div class="sidebar-title">片段列表</div>
         <div class="sidebar-header-actions">
+          <GitActionButton variant="warning" compact @click="openTrashTab">
+            <template #icon>
+              <el-icon><Delete /></el-icon>
+            </template>
+            回收站
+          </GitActionButton>
           <pl-button type="primary" plain @click="createFragment">
             <el-icon><Plus /></el-icon>
             新建片段
@@ -217,6 +223,69 @@
           </el-tab-pane>
 
           <el-tab-pane
+            v-if="trashTabVisible"
+            name="trash"
+          >
+            <template #label>
+              <span class="tab-label">{{ trashTabLabel }}</span>
+            </template>
+            <div v-loading="trashLoading" class="search-result-panel">
+              <div class="search-result-toolbar">
+                <div class="search-result-summary">
+                  <div class="search-result-title">回收站</div>
+                  <div class="search-result-desc">
+                    <span>已删除片段：{{ trashList.length }}</span>
+                    <span>支持恢复和彻底删除</span>
+                  </div>
+                </div>
+              </div>
+
+              <el-empty
+                v-if="!trashLoading && trashList.length === 0"
+                description="回收站为空"
+              />
+
+              <div v-else class="search-result-list">
+                <div
+                  v-for="item in trashList"
+                  :key="item.id"
+                  class="trash-result-item"
+                >
+                  <div class="search-result-item-head">
+                    <div class="search-result-item-title">{{ item.title || '未命名片段' }}</div>
+                    <div class="search-result-item-time">{{ item.update_time_desc || '-' }}</div>
+                  </div>
+                  <div v-if="item.tags && item.tags.length > 0" class="search-result-item-tags">
+                    <el-tag
+                      v-for="tag in item.tags.slice(0, 5)"
+                      :key="tag"
+                      size="small"
+                      effect="plain"
+                    >
+                      {{ tag }}
+                    </el-tag>
+                  </div>
+                  <div class="trash-result-actions">
+                    <GitActionButton variant="info" compact @click="handleFragmentRestore(item.id)">
+                      恢复
+                    </GitActionButton>
+                    <el-popconfirm
+                      title="确定彻底删除这个片段吗？"
+                      confirm-button-text="彻底删除"
+                      cancel-button-text="取消"
+                      @confirm="handleFragmentHardDelete(item.id)"
+                    >
+                      <template #reference>
+                        <GitActionButton variant="danger" compact>彻底删除</GitActionButton>
+                      </template>
+                    </el-popconfirm>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane
             v-for="tab in fragmentTabs"
             :key="tab.name"
             :name="tab.name"
@@ -229,6 +298,7 @@
             <MemoryEditor
               :fragment="tab.fragment"
               :saved-fragment="tab.savedFragment"
+              :available-tags="availableTagNames"
               @change="syncTabDirty(tab.name, $event)"
               @saved="handleFragmentSaved(tab.name, $event)"
               @deleted="handleFragmentDeleted"
@@ -247,12 +317,13 @@
 </template>
 
 <script>
-import { Plus, Search } from '@element-plus/icons-vue'
+import { Delete, Plus, Search } from '@element-plus/icons-vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
 import MemoryWelcome from '@/components/memory/MemoryWelcome.vue'
 import MemoryEditor from '@/components/memory/MemoryEditor.vue'
 import MemoryHistoryDialog from '@/components/memory/MemoryHistoryDialog.vue'
 import MemorySettingPage from '@/components/set/memory.vue'
+import GitActionButton from '@/components/base/GitActionButton.vue'
 
 // TAG_FILTER_COLLAPSED_MAX_HEIGHT 控制左侧标签筛选区收起时的最大高度。
 const TAG_FILTER_COLLAPSED_MAX_HEIGHT = 76
@@ -260,6 +331,8 @@ const TAG_FILTER_COLLAPSED_MAX_HEIGHT = 76
 const TAG_FILTER_TOGGLE_MIN_COUNT = 10
 // SEARCH_TAB_NAME 统一定义搜索结果标签页名称，避免散落硬编码。
 const SEARCH_TAB_NAME = 'search'
+// TRASH_TAB_NAME 统一定义回收站标签页名称，避免散落硬编码。
+const TRASH_TAB_NAME = 'trash'
 // HOME_TAB_NAME 统一定义首页标签页名称，避免散落硬编码。
 const HOME_TAB_NAME = 'home'
 // KEYWORD_SEARCH_MODE 统一定义关键词搜索模式值，避免散落硬编码。
@@ -268,8 +341,10 @@ const KEYWORD_SEARCH_MODE = 'keyword'
 export default {
   name: 'MemoryFragment',
   components: {
+    Delete,
     Plus,
     Search,
+    GitActionButton,
     MemoryWelcome,
     MemoryEditor,
     MemoryHistoryDialog,
@@ -278,6 +353,7 @@ export default {
   data() {
     return {
       fragmentList: [],
+      trashList: [],
       tagList: [],
       searchResults: [],
       searchQuery: '',
@@ -285,12 +361,14 @@ export default {
       selectedTags: [],
       tagFilterExpanded: false,
       searchTabVisible: false,
+      trashTabVisible: false,
       submittedSearchQuery: '',
       submittedSearchMode: KEYWORD_SEARCH_MODE,
       submittedSelectedTags: [],
       activeTab: HOME_TAB_NAME,
       fragmentTabs: [],
       searchLoading: false,
+      trashLoading: false,
       historyDialogVisible: false,
       historyFragmentId: 0,
       memoryConfigured: true,
@@ -314,6 +392,14 @@ export default {
         return `搜索结果: ${this.submittedSelectedTags.join('、')}`
       }
       return '搜索结果'
+    },
+    // trashTabLabel 返回回收站标签名称。
+    trashTabLabel() {
+      return `回收站${this.trashList.length > 0 ? ` (${this.trashList.length})` : ''}`
+    },
+    // availableTagNames 返回编辑器可用的已有标签名称列表。
+    availableTagNames() {
+      return this.tagList.map(item => item.tag_name)
     },
     // showTagFilterToggle 判断左侧标签筛选区是否需要展示展开入口。
     showTagFilterToggle() {
@@ -370,6 +456,7 @@ export default {
         this.lastPushError = response.Data && response.Data.last_push_error ? response.Data.last_push_error : ''
         if (!this.memoryConfigured) {
           this.fragmentList = []
+          this.trashList = []
           this.tagList = []
           this.searchResults = []
           this.fragmentTabs = []
@@ -378,6 +465,7 @@ export default {
         }
         if (needReloadLists) {
           this.loadFragmentList()
+          this.loadTrashList()
           this.loadTagList()
         }
       })
@@ -389,6 +477,17 @@ export default {
       }
       MemoryFragmentApi.MemoryFragmentList(0, (response) => {
         this.fragmentList = Array.isArray(response.Data) ? response.Data : []
+      })
+    },
+    // loadTrashList 加载回收站片段列表。
+    loadTrashList() {
+      if (!this.memoryConfigured) {
+        return
+      }
+      this.trashLoading = true
+      MemoryFragmentApi.MemoryFragmentTrashList(0, (response) => {
+        this.trashLoading = false
+        this.trashList = Array.isArray(response.Data) ? response.Data : []
       })
     },
     // loadTagList 加载标签筛选列表。
@@ -654,6 +753,12 @@ export default {
         this.upsertFragmentTab(response.Data, true)
       })
     },
+    // openTrashTab 打开回收站 tab 并刷新内容。
+    openTrashTab() {
+      this.trashTabVisible = true
+      this.activeTab = TRASH_TAB_NAME
+      this.loadTrashList()
+    },
     openSettingsTab() {
       this.activeTab = 'settings'
       this.$nextTick(() => {
@@ -735,6 +840,7 @@ export default {
       target.savedFragment = this.cloneFragment(target.fragment)
       target.dirty = false
       this.loadFragmentList()
+      this.loadTrashList()
       this.loadTagList()
       this.rerunSubmittedSearch()
     },
@@ -742,11 +848,40 @@ export default {
     handleFragmentDeleted(fragmentId) {
       this.fragmentTabs = this.fragmentTabs.filter(item => item.fragment.id !== fragmentId)
       this.loadFragmentList()
+      this.loadTrashList()
       this.loadTagList()
       this.rerunSubmittedSearch()
       if (this.activeTab === `fragment-${fragmentId}`) {
         this.activeTab = 'home'
       }
+    },
+    // handleFragmentRestore 从回收站恢复片段并刷新列表。
+    handleFragmentRestore(fragmentId) {
+      MemoryFragmentApi.MemoryFragmentRestore(fragmentId, (response) => {
+        if (response.ErrCode !== 0) {
+          return
+        }
+        this.loadFragmentList()
+        this.loadTrashList()
+        this.loadTagList()
+        this.rerunSubmittedSearch()
+      })
+    },
+    // handleFragmentHardDelete 彻底删除回收站中的片段。
+    handleFragmentHardDelete(fragmentId) {
+      MemoryFragmentApi.MemoryFragmentHardDelete(fragmentId, (response) => {
+        if (response.ErrCode !== 0) {
+          return
+        }
+        this.fragmentTabs = this.fragmentTabs.filter(item => item.fragment.id !== fragmentId)
+        this.loadFragmentList()
+        this.loadTrashList()
+        this.loadTagList()
+        this.rerunSubmittedSearch()
+        if (this.activeTab === `fragment-${fragmentId}`) {
+          this.activeTab = this.trashTabVisible ? TRASH_TAB_NAME : HOME_TAB_NAME
+        }
+      })
     },
     // showHistory 打开历史记录弹窗。
     showHistory(fragmentId) {
@@ -760,6 +895,13 @@ export default {
         this.searchResults = []
         if (this.activeTab === 'search') {
           this.activeTab = 'home'
+        }
+        return
+      }
+      if (tabName === TRASH_TAB_NAME) {
+        this.trashTabVisible = false
+        if (this.activeTab === TRASH_TAB_NAME) {
+          this.activeTab = HOME_TAB_NAME
         }
         return
       }
@@ -1113,6 +1255,14 @@ export default {
   transform: translateY(-1px);
 }
 
+.trash-result-item {
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid #e8eee3;
+  border-radius: 14px;
+  background: #fbfcf8;
+}
+
 .search-result-item-head {
   display: flex;
   align-items: flex-start;
@@ -1155,6 +1305,12 @@ export default {
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 12px;
+}
+
+.trash-result-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .search-result-item-snippet :deep(.search-keyword-highlight) {

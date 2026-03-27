@@ -56,6 +56,10 @@ func TestFormatEnvSummary(t *testing.T) {
 			DbName: "frog.db",
 			DbPath: `C:\work\frog\dev_tool_db\zhima`,
 		},
+		LogDbConfig: &define.DbConfig{
+			DbName: "frog.log.db",
+			DbPath: `C:\work\frog\dev_tool_db\zhima`,
+		},
 		WebConfig: &define.WebConfig{
 			WebPath: `C:\work\frog\dev_tool_master\web\dist`,
 		},
@@ -70,6 +74,7 @@ func TestFormatEnvSummary(t *testing.T) {
 		"根目录: C:\\work\\frog\\dev_tool_master",
 		"[数据库]",
 		"完整路径: C:\\work\\frog\\dev_tool_db\\zhima\\frog.db",
+		"log库完整路径: C:\\work\\frog\\dev_tool_db\\zhima\\frog.log.db",
 		"[Web]",
 		"目录: C:\\work\\frog\\dev_tool_master\\web\\dist",
 		"[Playwright]",
@@ -96,5 +101,43 @@ func TestFormatEnvSummary(t *testing.T) {
 		if strings.Contains(got, s) {
 			t.Fatalf("summary should not contain %q\nfull summary:\n%s", s, got)
 		}
+	}
+}
+
+func TestBuildLogDBName(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		mainDBName string
+		want       string
+	}{
+		{
+			name:       "带后缀主库名",
+			mainDBName: "dtool.db",
+			want:       "dtool.log.db",
+		},
+		{
+			name:       "不带后缀主库名",
+			mainDBName: "dtool",
+			want:       "dtool.log.db",
+		},
+		{
+			name:       "多段后缀主库名",
+			mainDBName: "dtool.test.db",
+			want:       "dtool.test.log.db",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := buildLogDBName(testCase.mainDBName)
+			if got != testCase.want {
+				t.Fatalf("buildLogDBName() = %q, want %q", got, testCase.want)
+			}
+		})
 	}
 }

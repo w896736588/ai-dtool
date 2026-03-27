@@ -33,6 +33,9 @@ const run = () => {
   const invalidLocatorResult = validateProcessItemForm({
     item: createBaseItem(),
     formMeta: {
+      locator_structured_form: {
+        kind: '',
+      },
       locator_joiner: 'raw',
       locator_raw: '.dialog&&',
       locator_list: [],
@@ -43,7 +46,7 @@ const run = () => {
   })
   assert.strictEqual(invalidLocatorResult.valid, false, '非法主元素定位表达式应被拦截')
   assert.ok(
-    invalidLocatorResult.fieldErrors.locator.includes('定位'),
+    invalidLocatorResult.fieldErrors.locator.includes('查找方式'),
     '主元素定位应返回对应字段错误说明'
   )
 
@@ -54,6 +57,10 @@ const run = () => {
       out_key: 'login-state',
     },
     formMeta: {
+      locator_structured_form: {
+        kind: 'css',
+        value: '.user-info',
+      },
       locator_joiner: 'single',
       locator_raw: '',
       locator_list: [{ value: '.user-info', exist_mode: 'exist', match_mode: 'all' }],
@@ -101,14 +108,52 @@ const run = () => {
       locator_raw: '',
       locator_list: [],
       bool_result_rules: [
-        { locator: '.user-info', return: true },
-        { locator: '.login-btn', return: false },
+        {
+          locator_advanced_form: {
+            kind: 'css',
+            value: '.user-info',
+            has_not_kind: 'css',
+            has_not_value: '.btn.login_as_reg_btn',
+          },
+          return: true,
+        },
+        {
+          locator_advanced_form: {
+            kind: 'css',
+            value: '.login-btn',
+          },
+          return: false,
+        },
       ],
       register_response_urls: [],
       next_id_list: [],
     },
   })
   assert.strictEqual(validBoolResult.valid, true, '合法配置应通过校验')
+
+  const invalidAdvancedLocatorResult = validateProcessItemForm({
+    item: {
+      ...createBaseItem(),
+      type: 'text_content',
+    },
+    formMeta: {
+      locator_editor_mode: 'advanced',
+      locator_advanced_form: {
+        kind: 'css',
+        value: '.username',
+        has_not_kind: 'css',
+        has_not_value: '',
+      },
+      bool_result_rules: [],
+      register_response_urls: [],
+      next_id_list: [],
+    },
+  })
+  assert.strictEqual(invalidAdvancedLocatorResult.valid, false, '高级定位缺少 has_not 子定位值时应被拦截')
+  assert.ok(
+    invalidAdvancedLocatorResult.fieldErrors.locator.includes('子元素'),
+    '高级定位错误提示应指出子元素定位不完整'
+  )
 
   const waitUrlMeta = parseWaitUrlValue('{"response_url":"{scheme}://{domain}/kefuLogin/getLoginQrcode","wait_second":5}')
   assert.strictEqual(

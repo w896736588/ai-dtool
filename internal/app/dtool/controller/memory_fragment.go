@@ -111,6 +111,63 @@ func MemoryFragmentDelete(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
+// MemoryFragmentTrashList 查询回收站中的知识片段。
+func MemoryFragmentTrashList(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	list, err := memoryDB.MemoryFragmentTrashList(cast.ToInt(dataMap[`limit`]))
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, list)
+}
+
+// MemoryFragmentRestore 从回收站恢复知识片段。
+func MemoryFragmentRestore(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	if cast.ToInt(dataMap[`id`]) <= 0 {
+		gsgin.GinResponseError(c, `片段id不能为空`, nil)
+		return
+	}
+	_, err := memoryDB.MemoryFragmentRestore(cast.ToInt(dataMap[`id`]))
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	common.MemoryRuntime.ScheduleSync()
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+// MemoryFragmentHardDelete 彻底删除回收站中的知识片段。
+func MemoryFragmentHardDelete(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	if cast.ToInt(dataMap[`id`]) <= 0 {
+		gsgin.GinResponseError(c, `片段id不能为空`, nil)
+		return
+	}
+	if err := memoryDB.MemoryFragmentHardDelete(cast.ToInt(dataMap[`id`])); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	common.MemoryRuntime.ScheduleSync()
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
 // MemoryFragmentHistoryList 查询知识片段历史记录。
 func MemoryFragmentHistoryList(c *gin.Context) {
 	memoryDB, ok := memoryDBOrResponse(c)

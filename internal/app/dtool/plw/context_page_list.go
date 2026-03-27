@@ -236,7 +236,8 @@ func (h *ContextPageList) GetLastUserDataIndex(runParams *PlaywrightRunParams) i
 		return 0
 	}
 	sql := `select * from tbl_smart_link_last where user_name = ? and domain = ? `
-	smartLinkLast, smartLinkErr := common.DbMain.Client.QueryBySql(sql, runParams.LastIndexLabel, runParams.Domain).One()
+	// 历史索引只保存在 log 库，不再依赖主库中的旧表。
+	smartLinkLast, smartLinkErr := common.DbLog.Client.QueryBySql(sql, runParams.LastIndexLabel, runParams.Domain).One()
 	if smartLinkErr != nil {
 		runParams.StreamFunc(`查询历史数据目录`, fmt.Sprintf(`获取上次使用索引失败 %s %s`, sql, smartLinkErr.Error()))
 		return 0
@@ -303,7 +304,8 @@ func (h *ContextPageList) GetFindUserDataIndex(runParams *PlaywrightRunParams) i
 
 func (h *ContextPageList) ExistDomainUserDataIndex(userDataIndex int, runParams *PlaywrightRunParams) bool {
 	sql := `select * from tbl_smart_link_last where domain = ? and user_data_index = ? `
-	smartLinkLast, smartLinkErr := common.DbMain.Client.QueryBySql(sql, runParams.Domain, userDataIndex).One()
+	// 目录占用关系已迁移到 log 库，避免继续读主库旧数据。
+	smartLinkLast, smartLinkErr := common.DbLog.Client.QueryBySql(sql, runParams.Domain, userDataIndex).One()
 	if smartLinkErr != nil {
 		return false
 	} else if len(smartLinkLast) > 0 {

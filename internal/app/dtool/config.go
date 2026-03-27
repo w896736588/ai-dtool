@@ -34,6 +34,19 @@ import (
 
 const AppName = `dtool`
 
+const (
+	// defaultDatabaseDirName 是默认数据库目录名。
+	defaultDatabaseDirName = `database`
+	// logDatabaseDirName 是 log 库迁移目录名。
+	logDatabaseDirName = `database_log`
+	// memoryDatabaseDirName 是记忆库迁移目录名。
+	memoryDatabaseDirName = `database_memory`
+	// logDatabaseNameSuffix 是 log 库文件名追加的后缀。
+	logDatabaseNameSuffix = `.log`
+	// databaseFileExt 是 sqlite 文件常用后缀。
+	databaseFileExt = `.db`
+)
+
 func formatEnvSummary(env *define.Env) string {
 	if env == nil {
 		return "配置摘要\n  未加载配置"
@@ -63,6 +76,7 @@ func formatEnvSummary(env *define.Env) string {
 		{"文件名", dbName},
 		{"目录", dbPath},
 		{"完整路径", dbFullPath},
+		{"log库完整路径", formatLogDBFullPath(env)},
 	})
 
 	webPath := ""
@@ -161,8 +175,9 @@ func initComponent(appName, ConfigFile string) {
 	}
 	//初始化配置
 	InitEnv(appName, ConfigFile, component.ConfigViper)
-	component.EnvClient.DatabaseUpPath = filepath.Join(component.EnvClient.RootPath, `internal`, `app`, AppName, `database`)
-	component.EnvClient.MemoryDatabaseUpPath = filepath.Join(component.EnvClient.RootPath, `internal`, `app`, AppName, `database_memory`)
+	component.EnvClient.DatabaseUpPath = filepath.Join(component.EnvClient.RootPath, `internal`, `app`, AppName, defaultDatabaseDirName)
+	component.EnvClient.LogDatabaseUpPath = filepath.Join(component.EnvClient.RootPath, `internal`, `app`, AppName, logDatabaseDirName)
+	component.EnvClient.MemoryDatabaseUpPath = filepath.Join(component.EnvClient.RootPath, `internal`, `app`, AppName, memoryDatabaseDirName)
 	p_common.TBaseClient = &p_common.TBase{
 		StartMillUnix: gstool.TimeNowMilliInt64(),
 		LogPath:       component.EnvClient.LogPath,
@@ -239,6 +254,11 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	if component.EnvClient.DbConfig.DbPath == `` {
 		component.EnvClient.DbConfig.DbPath = filepath.Join(component.EnvClient.RootPath, `config`, component.EnvClient.AppName)
 	}
+	// log 库默认与主库放在同一目录，便于统一管理。
+	component.EnvClient.LogDbConfig = &define.DbConfig{
+		DbName: buildLogDBName(component.EnvClient.DbConfig.DbName),
+		DbPath: component.EnvClient.DbConfig.DbPath,
+	}
 	//判断是否存在D盘如果没有那么就改为C盘
 	drive := ``
 	drivePath := string(`D`) + ":\\"
@@ -310,10 +330,45 @@ func initSqlite() {
 	common.DbMain = &common.CSqlite{Client: component.SqliteClient, Env: component.EnvClient}
 	business.DataBaseUp = business.NewTDataBaseUp()
 	business.DataBaseUp.Run()
+	initLogSqlite()
 	if err = business.LoadMemoryStore(); err != nil {
 		panic(err.Error())
 	}
 	common.ShellOutClient.InitGroupConfigs()
+}
+
+// initLogSqlite 初始化独立 log 库，并执行 log 库迁移。
+func initLogSqlite() {
+	fmt.Println(fmt.Sprintf(`log库目录 %s`, component.EnvClient.LogDbConfig.DbPath))
+	fmt.Println(fmt.Sprintf(`log库路径 %s`, filepath.Join(component.EnvClient.LogDbConfig.DbPath, component.EnvClient.LogDbConfig.DbName)))
+
+	var err error
+	component.LogSqliteClient, err = p_db.InitSqlite(component.EnvClient.LogDbConfig.DbPath, component.EnvClient.LogDbConfig.DbName)
+	if err != nil {
+		panic(fmt.Sprintf(`连接log sqlite失败 %s`, err.Error()))
+	}
+
+	common.DbLog = &common.CSqlite{Client: component.LogSqliteClient, Env: component.EnvClient}
+	business.NewLogDataBaseUp(common.DbLog, component.EnvClient.LogDatabaseUpPath).Run()
+}
+
+// buildLogDBName 基于主库文件名派生 log 库文件名。
+func buildLogDBName(mainDBName string) string {
+	if strings.HasSuffix(mainDBName, databaseFileExt) {
+		return strings.TrimSuffix(mainDBName, databaseFileExt) + logDatabaseNameSuffix + databaseFileExt
+	}
+	return mainDBName + logDatabaseNameSuffix + databaseFileExt
+}
+
+// formatLogDBFullPath 返回 log 库完整路径，便于统一输出配置摘要。
+func formatLogDBFullPath(env *define.Env) string {
+	if env == nil || env.LogDbConfig == nil {
+		return ""
+	}
+	if env.LogDbConfig.DbName == "" || env.LogDbConfig.DbPath == "" {
+		return ""
+	}
+	return filepath.Join(env.LogDbConfig.DbPath, env.LogDbConfig.DbName)
 }
 
 func initGin() {
