@@ -116,10 +116,38 @@ function formatStructuredLocator(locatorConfig) {
   return descriptionParts.join('，')
 }
 
+function formatLocatorConfig(locatorConfig) {
+  const payload = locatorConfig && typeof locatorConfig === 'string' ? safeParseJson(locatorConfig, null) : locatorConfig
+  if (!payload || Number(payload.version) !== 2 || !Array.isArray(payload.locators)) {
+    return []
+  }
+  if (payload.mode === 'bool_result') {
+    return payload.locators.map((item, index) => `${index + 1}. ${formatStructuredLocator(item.query)}，命中返回 ${item.on_found === false ? 'false' : 'true'}`)
+  }
+  if (payload.mode === 'text_content') {
+    return payload.locators.map((item, index) => {
+      const actionLabel = item.on_found === 'return_empty' ? '命中返回空值' : '命中返回其提取'
+      return `${index + 1}. ${formatStructuredLocator(item.query)}，${actionLabel}`
+    })
+  }
+  if (payload.mode === 'click' || payload.mode === 'input') {
+    return [
+      `策略: ${payload.strategy === 'first_found_do_action' ? '任意一个元素存在时执行' : payload.strategy}`,
+      ...payload.locators.map((item, index) => `${index + 1}. ${formatStructuredLocator(item.query)}`),
+    ]
+  }
+  return []
+}
+
 function formatRawLocator(locatorValue) {
   const normalizedValue = normalizeText(locatorValue)
   if (!normalizedValue) {
     return []
+  }
+
+  const locatorConfigLines = formatLocatorConfig(normalizedValue)
+  if (locatorConfigLines.length > 0) {
+    return locatorConfigLines
   }
 
   const boolResultRuleList = safeParseJson(normalizedValue, null)
@@ -203,6 +231,7 @@ function buildProcessItemDisplayDetails(item) {
 
 module.exports = {
   buildProcessItemDisplayDetails,
+  formatLocatorConfig,
   formatRawLocator,
   formatStructuredLocator,
   normalizeTokenDisplay,

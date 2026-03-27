@@ -22,7 +22,66 @@
     <template v-if="showField('locator')">
       <el-form-item :label="fieldLabel('locator')" :error="fieldError('locator')">
         <div class="list-editor">
-          <div v-if="useAdvancedLocatorEditor" class="structured-locator-editor">
+          <div v-if="localItem.type === 'text_content'" class="locator-config-panel">
+            <div
+              v-for="(item, index) in formMeta.text_content_locators"
+              :key="item.id"
+              class="base-locator-card"
+            >
+              <div class="base-locator-card__header">
+                <div class="base-locator-card__title">提取规则 {{ index + 1 }}</div>
+                <GitActionButton compact size="small" variant="danger" native-type="button" @click="removeTextContentLocator(index)">
+                  删除
+                </GitActionButton>
+              </div>
+              <div class="base-locator-card__summary">{{ describeBaseLocator(item.base_locator) }}</div>
+              <div class="base-locator-card__footer">
+                <GitActionButton compact size="small" native-type="button" @click="openBaseLocatorDialog('text_content', index, `编辑提取规则 ${index + 1}`)">
+                  编辑定位
+                </GitActionButton>
+                <div class="base-locator-card__action">
+                  <span class="base-locator-card__action-label">存在时</span>
+                  <el-select v-model="item.on_found" size="small" class="base-locator-card__action-select">
+                    <el-option label="返回其提取" value="extract_text" />
+                    <el-option label="返回空值" value="return_empty" />
+                  </el-select>
+                </div>
+              </div>
+            </div>
+            <GitActionButton compact size="small" native-type="button" @click="addTextContentLocator">
+              新增提取规则
+            </GitActionButton>
+          </div>
+
+          <div v-else-if="localItem.type === 'click' || localItem.type === 'input'" class="locator-config-panel">
+            <div class="locator-config-panel__header">
+              <div class="locator-config-panel__title">操作类型</div>
+              <el-select v-model="formMeta.action_strategy" class="locator-config-panel__select">
+                <el-option label="任意一个元素存在时执行" value="first_found_do_action" />
+              </el-select>
+            </div>
+            <div
+              v-for="(item, index) in formMeta.action_locators"
+              :key="item.id"
+              class="base-locator-card"
+            >
+              <div class="base-locator-card__header">
+                <div class="base-locator-card__title">基础定位 {{ index + 1 }}</div>
+                <GitActionButton compact size="small" variant="danger" native-type="button" @click="removeActionLocator(index)">
+                  删除
+                </GitActionButton>
+              </div>
+              <div class="base-locator-card__summary">{{ describeBaseLocator(item.base_locator) }}</div>
+              <GitActionButton compact size="small" native-type="button" @click="openBaseLocatorDialog('action', index, `编辑基础定位 ${index + 1}`)">
+                编辑定位
+              </GitActionButton>
+            </div>
+            <GitActionButton compact size="small" native-type="button" @click="addActionLocator">
+              新增基础定位
+            </GitActionButton>
+          </div>
+
+          <div v-else-if="useAdvancedLocatorEditor" class="structured-locator-editor">
             <div class="structured-locator-card">
               <div class="structured-locator-card__header">
                 <div>
@@ -292,11 +351,6 @@
             </div>
           </div>
 
-          <div class="field-guide">{{ fieldGuide('locator') }}</div>
-          <div v-if="locatorBehaviorSummary" class="locator-behavior-summary">
-            <div class="locator-behavior-summary__title">当前查找方式</div>
-            <div class="locator-behavior-summary__text">{{ locatorBehaviorSummary }}</div>
-          </div>
         </div>
       </el-form-item>
     </template>
@@ -499,7 +553,7 @@
             <div class="bool-result-rule-card__header">
               <div class="bool-result-rule-card__title">规则 {{ index + 1 }}</div>
               <div class="bool-result-rule-card__actions">
-                <el-select v-model="item.return" class="bool-result-rule-card__result">
+                <el-select v-model="item.on_found" class="bool-result-rule-card__result">
                   <el-option label="命中返回 true" :value="true" />
                   <el-option label="命中返回 false" :value="false" />
                 </el-select>
@@ -508,98 +562,14 @@
                 </GitActionButton>
               </div>
             </div>
-
-            <div class="structured-locator-card structured-locator-card--nested">
-              <div class="structured-locator-section">
-                <div class="structured-locator-section__title">主元素</div>
-                <div class="structured-locator-grid">
-                  <el-select v-model="item.locator_advanced_form.kind" placeholder="请选择查找方式">
-                    <el-option
-                      v-for="option in structuredLocatorKindOptions"
-                      :key="`rule-${option.value}`"
-                      :label="option.label"
-                      :value="option.value"
-                    />
-                  </el-select>
-                  <el-input
-                    v-model="item.locator_advanced_form.value"
-                    :placeholder="getStructuredLocatorPrimaryPlaceholder(item.locator_advanced_form.kind)"
-                  />
-                </div>
-              </div>
-
-              <div class="structured-locator-section">
-                <div class="structured-locator-section__title">过滤条件</div>
-                <div class="structured-locator-grid">
-                  <el-input v-model="item.locator_advanced_form.has_text" placeholder="包含文本" />
-                  <el-input v-model="item.locator_advanced_form.has_not_text" placeholder="不包含文本" />
-                </div>
-                <div class="structured-locator-grid structured-locator-grid--stacked">
-                  <div class="structured-locator-filter-pair">
-                    <el-select v-model="item.locator_advanced_form.has_kind" placeholder="包含子元素查找方式">
-                      <el-option
-                        v-for="option in structuredLocatorKindOptions"
-                        :key="`rule-has-${option.value}`"
-                        :label="option.label"
-                        :value="option.value"
-                      />
-                    </el-select>
-                    <el-input v-model="item.locator_advanced_form.has_value" placeholder="必须包含的子元素" />
-                  </div>
-                  <div class="structured-locator-filter-pair">
-                    <el-select v-model="item.locator_advanced_form.has_not_kind" placeholder="不包含子元素查找方式">
-                      <el-option
-                        v-for="option in structuredLocatorKindOptions"
-                        :key="`rule-has-not-${option.value}`"
-                        :label="option.label"
-                        :value="option.value"
-                      />
-                    </el-select>
-                    <el-input v-model="item.locator_advanced_form.has_not_value" placeholder="不能包含的子元素" />
-                  </div>
-                </div>
-              </div>
-
-              <div class="structured-locator-section">
-                <div class="structured-locator-section__title">其他规则</div>
-                <div class="structured-locator-switches">
-                  <div class="structured-locator-switch-card">
-                    <div class="structured-locator-switch-card__label">文字完全一致</div>
-                    <div class="structured-locator-switch-card__control">
-                      <span class="structured-locator-switch-card__state">{{ item.locator_advanced_form.exact ? '完全一致' : '允许模糊包含' }}</span>
-                      <el-switch v-model="item.locator_advanced_form.exact" />
-                    </div>
-                  </div>
-                  <div class="structured-locator-switch-card">
-                    <div class="structured-locator-switch-card__label">要求元素不存在</div>
-                    <div class="structured-locator-switch-card__control">
-                      <span class="structured-locator-switch-card__state">{{ item.locator_advanced_form.negate ? '要求不存在' : '要求存在' }}</span>
-                      <el-switch v-model="item.locator_advanced_form.negate" />
-                    </div>
-                  </div>
-                </div>
-
-                <div class="structured-locator-grid">
-                  <el-select v-model="item.locator_advanced_form.pick_mode" placeholder="多个结果时怎么处理">
-                    <el-option label="按默认方式处理" value="none" />
-                    <el-option label="只取第一个" value="first" />
-                    <el-option label="只取最后一个" value="last" />
-                    <el-option label="取第 N 个" value="nth" />
-                  </el-select>
-                  <el-input-number
-                    v-model="item.locator_advanced_form.nth"
-                    :min="0"
-                    :controls="false"
-                    class="plain-number-input"
-                    :disabled="item.locator_advanced_form.pick_mode !== 'nth'"
-                  />
-                </div>
-              </div>
-            </div>
+            <div class="base-locator-card__summary">{{ describeBaseLocator(item.base_locator) }}</div>
+            <GitActionButton compact size="small" native-type="button" @click="openBaseLocatorDialog('bool_result', index, `编辑规则 ${index + 1} 定位`)">
+              编辑定位
+            </GitActionButton>
           </div>
 
           <GitActionButton compact size="small" native-type="button" @click="addBoolResultRule">
-            新增定位
+            新增基础定位
           </GitActionButton>
           <div class="field-guide">{{ fieldGuide('bool_result_rules') }}</div>
         </div>
@@ -640,6 +610,106 @@
       </el-select>
     </el-form-item>
   </el-form>
+  <el-dialog v-model="baseLocatorDialog.visible" :title="baseLocatorDialog.title || '编辑基础定位'" width="60%">
+    <div class="structured-locator-editor">
+      <div class="structured-locator-card">
+        <div class="structured-locator-card__header">
+          <div>
+            <div class="structured-locator-card__title">基础定位配置</div>
+            <div class="structured-locator-card__desc">保存后会折叠成按钮展示，避免占用过多空间。</div>
+          </div>
+        </div>
+
+        <div class="structured-locator-inline-field">
+          <div class="structured-locator-inline-field__label">
+            <div class="structured-locator-inline-field__title">编辑模式</div>
+            <div class="structured-locator-inline-field__desc">普通场景优先用简单模式；复杂页面再切高级模式。</div>
+          </div>
+          <div class="structured-locator-inline-field__control">
+            <el-select v-model="baseLocatorDialog.draft.locator_editor_mode">
+              <el-option label="简单模式" value="simple" />
+              <el-option label="高级模式" value="advanced" />
+            </el-select>
+          </div>
+        </div>
+
+        <template v-if="baseLocatorDialog.draft.locator_editor_mode === 'advanced'">
+          <div class="structured-locator-section">
+            <div class="structured-locator-section__title">1. 主元素</div>
+            <div class="structured-locator-grid">
+              <el-select v-model="baseLocatorDialog.draft.locator_advanced_form.kind" placeholder="请选择查找方式">
+                <el-option
+                  v-for="option in structuredLocatorKindOptions"
+                  :key="`dialog-advanced-${option.value}`"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+              <el-input
+                v-model="baseLocatorDialog.draft.locator_advanced_form.value"
+                :placeholder="getStructuredLocatorPrimaryPlaceholder(baseLocatorDialog.draft.locator_advanced_form.kind)"
+              />
+            </div>
+          </div>
+          <div class="structured-locator-section">
+            <div class="structured-locator-section__title">2. 过滤条件</div>
+            <div class="structured-locator-grid">
+              <el-input v-model="baseLocatorDialog.draft.locator_advanced_form.has_text" placeholder="包含文本" />
+              <el-input v-model="baseLocatorDialog.draft.locator_advanced_form.has_not_text" placeholder="不包含文本" />
+            </div>
+            <div class="structured-locator-grid structured-locator-grid--stacked">
+              <div class="structured-locator-filter-pair">
+                <el-select v-model="baseLocatorDialog.draft.locator_advanced_form.has_kind" placeholder="包含子元素查找方式">
+                  <el-option
+                    v-for="option in structuredLocatorKindOptions"
+                    :key="`dialog-has-${option.value}`"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+                <el-input v-model="baseLocatorDialog.draft.locator_advanced_form.has_value" placeholder="必须包含的子元素" />
+              </div>
+              <div class="structured-locator-filter-pair">
+                <el-select v-model="baseLocatorDialog.draft.locator_advanced_form.has_not_kind" placeholder="不包含子元素查找方式">
+                  <el-option
+                    v-for="option in structuredLocatorKindOptions"
+                    :key="`dialog-has-not-${option.value}`"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+                <el-input v-model="baseLocatorDialog.draft.locator_advanced_form.has_not_value" placeholder="不能包含的子元素" />
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="structured-locator-section">
+            <div class="structured-locator-section__title">1. 先选要找什么</div>
+            <div class="structured-locator-grid">
+              <el-select v-model="baseLocatorDialog.draft.locator_structured_form.kind" placeholder="请选择查找方式">
+                <el-option
+                  v-for="option in structuredLocatorKindOptions"
+                  :key="`dialog-${option.value}`"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+              <el-input
+                v-model="baseLocatorDialog.draft.locator_structured_form.value"
+                :placeholder="getStructuredLocatorPrimaryPlaceholder(baseLocatorDialog.draft.locator_structured_form.kind)"
+              />
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+    <template #footer>
+      <GitActionButton @click="baseLocatorDialog.visible = false">取消</GitActionButton>
+      <GitActionButton @click="saveBaseLocatorDialog">保存定位</GitActionButton>
+    </template>
+  </el-dialog>
 </template>
 
 <script>
@@ -665,6 +735,15 @@ const {
   parseStructuredLocatorPayload,
   stringifyLocatorPayload,
 } = require('../../utils/smart_link_locator_form.cjs')
+const {
+  buildLocatorConfigByType,
+  createBaseLocatorMeta,
+  deserializeLocatorConfigToFormMeta,
+  isLocatorConfigPayload,
+} = require('../../utils/smart_link_locator_config.cjs')
+const {
+  formatStructuredLocator,
+} = require('../../utils/smart_link_process_display.cjs')
 
 const createDefaultItem = () => ({
   id: 0,
@@ -732,10 +811,29 @@ function createLocatorRow() {
 function createBoolResultRule() {
   return {
     uid: `bool-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    id: `bool-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    base_locator: createBaseLocatorMeta(),
+    on_found: true,
     locator_structured: '',
     locator_structured_form: createStructuredLocatorForm(),
     locator_advanced_form: createAdvancedStructuredLocatorForm(),
     return: true,
+  }
+}
+
+function createActionLocator(role = '') {
+  return {
+    id: `base-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    role,
+    base_locator: createBaseLocatorMeta(),
+  }
+}
+
+function createTextContentRule() {
+  return {
+    id: `text-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    on_found: 'extract_text',
+    base_locator: createBaseLocatorMeta(),
   }
 }
 
@@ -830,6 +928,16 @@ export default {
         delete_mode: 'class',
         register_response_urls: [],
         bool_result_rules: [],
+        text_content_locators: [createTextContentRule()],
+        action_strategy: 'first_found_do_action',
+        action_locators: [createActionLocator()],
+      },
+      baseLocatorDialog: {
+        visible: false,
+        targetType: '',
+        targetIndex: -1,
+        title: '',
+        draft: createBaseLocatorMeta(),
       },
       syncingFromParent: false,
       lastSerializedSignature: '',
@@ -864,6 +972,9 @@ export default {
     },
     useAdvancedLocatorEditor() {
       return this.localItem.type === 'text_content'
+    },
+    useLocatorConfigEditor() {
+      return this.localItem.type === 'text_content' || this.localItem.type === 'click' || this.localItem.type === 'input'
     },
     structuredLocatorPrimaryPlaceholder() {
       const kind = this.formMeta.locator_structured_form.kind
@@ -913,13 +1024,6 @@ export default {
     },
     showTextContentLocatorSummary() {
       return false
-    },
-    locatorBehaviorSummary() {
-      if (!this.showField('locator')) return ''
-      const structuredText = String(this.formMeta.locator_structured || '').trim()
-      return structuredText
-        ? `当前使用结构化 Locator 配置。后端会按 spec 字段解析，支持 role、text、label、placeholder、filters、chain、pick 和 timeout 等查询能力。`
-        : ''
     },
     usedCheckKeyCount() {
       return (Array.isArray(this.formMeta.check_rule_list) ? this.formMeta.check_rule_list : [])
@@ -1030,9 +1134,23 @@ export default {
         delete_mode: item.value || 'class',
         register_response_urls: [],
         bool_result_rules: [],
+        text_content_locators: [createTextContentRule()],
+        action_strategy: 'first_found_do_action',
+        action_locators: [createActionLocator()],
       }
 
-      if (item.type === 'bool_result') {
+      if (item.type === 'bool_result' && isLocatorConfigPayload(item.locator)) {
+        const configMeta = deserializeLocatorConfigToFormMeta(item.locator) || {}
+        meta.bool_result_rules = Array.isArray(configMeta.bool_result_rules)
+          ? configMeta.bool_result_rules.map((rule) => ({
+            ...createBoolResultRule(),
+            id: rule.id || '',
+            on_found: rule.on_found !== false,
+            return: rule.on_found !== false,
+            base_locator: rule.base_locator || createBaseLocatorMeta(),
+          }))
+          : []
+      } else if (item.type === 'bool_result') {
         const rules = safeParseJson(item.locator, [])
         meta.bool_result_rules = Array.isArray(rules)
           ? rules.map(rule => {
@@ -1047,9 +1165,11 @@ export default {
             }
           })
           : []
-        if (meta.bool_result_rules.length === 0) {
-          meta.bool_result_rules = [createBoolResultRule()]
-        }
+      } else if (item.type === 'text_content' && isLocatorConfigPayload(item.locator)) {
+        const configMeta = deserializeLocatorConfigToFormMeta(item.locator) || {}
+        meta.text_content_locators = Array.isArray(configMeta.text_content_locators) && configMeta.text_content_locators.length > 0
+          ? configMeta.text_content_locators
+          : [createTextContentRule()]
       } else if (item.type === 'wait_url') {
         Object.assign(meta, parseWaitUrlValue(item.value))
       } else if (item.type === 'redirect_uri') {
@@ -1072,6 +1192,12 @@ export default {
         meta.tertiary_locator = parts[2] || ''
       } else if (item.type === 'delete_element') {
         meta.locator_list = this.decodeLocatorList(item.locator, '|')
+      } else if ((item.type === 'click' || item.type === 'input') && isLocatorConfigPayload(item.locator)) {
+        const configMeta = deserializeLocatorConfigToFormMeta(item.locator) || {}
+        meta.action_strategy = configMeta.action_strategy || 'first_found_do_action'
+        meta.action_locators = Array.isArray(configMeta.action_locators) && configMeta.action_locators.length > 0
+          ? configMeta.action_locators
+          : [createActionLocator()]
       } else if (this.showTypeField(item.type, 'locator')) {
         const structuredLocator = parseStructuredLocatorPayload(item.locator)
         if (structuredLocator) {
@@ -1270,14 +1396,14 @@ export default {
       })
 
       if (item.type === 'bool_result') {
-        item.locator = JSON.stringify(
-          this.formMeta.bool_result_rules
-            .filter(rule => rule && rule.locator_advanced_form)
-            .map(rule => ({
-              locator: this.buildAdvancedLocatorPayloadByForm(rule.locator_advanced_form),
-              return: rule.return !== false,
-            }))
-        )
+        item.locator = this.formMeta.bool_result_rules.length > 0
+          ? JSON.stringify(buildLocatorConfigByType('bool_result', this.formMeta))
+          : ''
+        item.value = ''
+        item.out_key = this.formMeta.out_key
+        item.check_key = checkKeyExpression
+      } else if (item.type === 'text_content') {
+        item.locator = JSON.stringify(buildLocatorConfigByType('text_content', this.formMeta))
         item.value = ''
         item.out_key = this.formMeta.out_key
         item.check_key = checkKeyExpression
@@ -1307,6 +1433,11 @@ export default {
         item.value = this.formMeta.delete_mode
         item.out_key = ''
         item.check_key = ''
+      } else if (item.type === 'click' || item.type === 'input') {
+        item.locator = JSON.stringify(buildLocatorConfigByType(item.type, this.formMeta))
+        item.value = this.formMeta.value
+        item.out_key = this.formMeta.out_key
+        item.check_key = checkKeyExpression
       } else {
         if (this.showTypeField(item.type, 'locator')) {
           item.locator = this.supportLocatorExpression(item.type)
@@ -1343,9 +1474,7 @@ export default {
     },
     fieldGuide(fieldName) {
       if (fieldName === 'locator') {
-        return this.useAdvancedLocatorEditor
-          ? '当前节点使用高级结构化 Locator 配置，支持 has / has_not / has_text / has_not_text / chain，保存后仍统一提交 {"spec": {...}}。'
-          : '统一使用结构化 Locator 配置。按页面可见内容填写后，系统会自动生成 {"spec": {...}} 结构并提交给后端。'
+        return ''
       }
       if (fieldName === 'check_key') {
         if (this.formMeta.check_mode === 'compare') {
@@ -1434,6 +1563,58 @@ export default {
     applyCompareRightQuickPick(value) {
       this.formMeta.compare_rule.right = String(value || '')
     },
+    describeBaseLocator(baseLocator) {
+      const payload = baseLocator && baseLocator.locator_editor_mode === 'advanced'
+        ? this.buildAdvancedLocatorPayloadByForm(baseLocator.locator_advanced_form)
+        : this.buildStructuredLocatorPayloadByForm(baseLocator && baseLocator.locator_structured_form)
+      return formatStructuredLocator(payload)
+    },
+    openBaseLocatorDialog(targetType, index, title) {
+      let source = createBaseLocatorMeta()
+      if (targetType === 'bool_result') {
+        source = this.formMeta.bool_result_rules[index] && this.formMeta.bool_result_rules[index].base_locator
+          ? this.formMeta.bool_result_rules[index].base_locator
+          : createBaseLocatorMeta()
+      } else if (targetType === 'text_content') {
+        source = this.formMeta.text_content_locators[index] && this.formMeta.text_content_locators[index].base_locator
+          ? this.formMeta.text_content_locators[index].base_locator
+          : createBaseLocatorMeta()
+      } else if (targetType === 'action') {
+        source = this.formMeta.action_locators[index] && this.formMeta.action_locators[index].base_locator
+          ? this.formMeta.action_locators[index].base_locator
+          : createBaseLocatorMeta()
+      }
+      this.baseLocatorDialog = {
+        visible: true,
+        targetType,
+        targetIndex: index,
+        title,
+        draft: JSON.parse(JSON.stringify(source || createBaseLocatorMeta())),
+      }
+    },
+    saveBaseLocatorDialog() {
+      const draft = JSON.parse(JSON.stringify(this.baseLocatorDialog.draft || createBaseLocatorMeta()))
+      if (this.baseLocatorDialog.targetType === 'bool_result' && this.formMeta.bool_result_rules[this.baseLocatorDialog.targetIndex]) {
+        this.formMeta.bool_result_rules[this.baseLocatorDialog.targetIndex].base_locator = draft
+      } else if (this.baseLocatorDialog.targetType === 'text_content' && this.formMeta.text_content_locators[this.baseLocatorDialog.targetIndex]) {
+        this.formMeta.text_content_locators[this.baseLocatorDialog.targetIndex].base_locator = draft
+      } else if (this.baseLocatorDialog.targetType === 'action' && this.formMeta.action_locators[this.baseLocatorDialog.targetIndex]) {
+        this.formMeta.action_locators[this.baseLocatorDialog.targetIndex].base_locator = draft
+      }
+      this.baseLocatorDialog.visible = false
+    },
+    addActionLocator() {
+      this.formMeta.action_locators.push(createActionLocator())
+    },
+    addTextContentLocator() {
+      this.formMeta.text_content_locators.push(createTextContentRule())
+    },
+    removeTextContentLocator(index) {
+      this.formMeta.text_content_locators.splice(index, 1)
+    },
+    removeActionLocator(index) {
+      this.formMeta.action_locators.splice(index, 1)
+    },
   },
 }
 </script>
@@ -1460,6 +1641,82 @@ export default {
   color: #6b7b68;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.locator-config-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.locator-config-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f7faf4;
+  border: 1px solid #dfe8d7;
+  border-radius: 10px;
+}
+
+.locator-config-panel__title {
+  color: #456238;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.locator-config-panel__select {
+  width: 280px;
+}
+
+.base-locator-card {
+  padding: 14px;
+  background: #fcfdfb;
+  border: 1px solid #d8e3d0;
+  border-radius: 12px;
+}
+
+.base-locator-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.base-locator-card__title {
+  color: #355128;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.base-locator-card__summary {
+  margin: 10px 0;
+  color: #6b7b68;
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.base-locator-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.base-locator-card__action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.base-locator-card__action-label {
+  color: #4b6540;
+  font-size: 12px;
+}
+
+.base-locator-card__action-select {
+  width: 180px;
 }
 
 .field-guide {

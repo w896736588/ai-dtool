@@ -47,6 +47,23 @@ const (
 	databaseFileExt = `.db`
 )
 
+var (
+	// initComponentFunc 允许测试替换基础初始化流程 / allow tests to replace bootstrap initialization.
+	initComponentFunc = initComponent
+	// prepareMemoryStoreBeforeDBFunc 允许测试校验记忆库预处理时机 / allow tests to verify memory preflight timing.
+	prepareMemoryStoreBeforeDBFunc = business.PrepareMemoryStore
+	// initSqliteFunc 允许测试替换数据库初始化流程 / allow tests to replace sqlite initialization.
+	initSqliteFunc = initSqlite
+	// initGinFunc 允许测试替换 gin 初始化流程 / allow tests to replace gin initialization.
+	initGinFunc = initGin
+	// initOtherFunc 允许测试替换其他组件初始化流程 / allow tests to replace other component initialization.
+	initOtherFunc = initOther
+	// initPlaywrightFunc 允许测试替换 Playwright 初始化流程 / allow tests to replace Playwright initialization.
+	initPlaywrightFunc = initPlaywright
+	// stdLogFunc 允许测试替换标准输出重定向流程 / allow tests to replace stdio redirection flow.
+	stdLogFunc = stdLog
+)
+
 func formatEnvSummary(env *define.Env) string {
 	if env == nil {
 		return "配置摘要\n  未加载配置"
@@ -133,12 +150,16 @@ func writeSummarySection(builder *strings.Builder, title string, lines [][2]stri
 }
 
 func InitBase(ConfigFile string) {
-	initComponent(AppName, ConfigFile)
-	initSqlite()
-	initGin()
-	initOther()
-	initPlaywright()
-	stdLog()
+	initComponentFunc(AppName, ConfigFile)
+	// 记忆库若需要 git pull，必须先于所有数据库初始化 / memory git pull must happen before any database init.
+	if err := prepareMemoryStoreBeforeDBFunc(); err != nil {
+		panic(err.Error())
+	}
+	initSqliteFunc()
+	initGinFunc()
+	initOtherFunc()
+	initPlaywrightFunc()
+	stdLogFunc()
 }
 
 // 如果是编译后运行 那么将所有标准输出和报错重定向到 日志文件

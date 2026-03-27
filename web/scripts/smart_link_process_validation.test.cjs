@@ -131,6 +131,83 @@ const run = () => {
   })
   assert.strictEqual(validBoolResult.valid, true, '合法配置应通过校验')
 
+  const optionalBoolResult = validateProcessItemForm({
+    item: {
+      ...createBaseItem(),
+      type: 'bool_result',
+      out_key: 'login_state',
+      locator: '',
+    },
+    formMeta: {
+      bool_result_rules: [],
+      register_response_urls: [],
+      next_id_list: [],
+    },
+  })
+  assert.strictEqual(optionalBoolResult.valid, true, 'bool_result 的主元素定位规则现在应允许为空')
+
+  const waitWithCheckKeyResult = validateProcessItemForm({
+    item: {
+      ...createBaseItem(),
+      type: 'wait',
+      check_key: '',
+    },
+    formMeta: {
+      check_mode: 'bool',
+      check_rule_list: [
+        { key: 'need_login', expect: 'true' },
+      ],
+      bool_result_rules: [],
+      register_response_urls: [],
+      next_id_list: [],
+    },
+  })
+  assert.strictEqual(waitWithCheckKeyResult.valid, true, 'wait 类型现在应允许配置是否执行判断')
+
+  const clickWithCheckKeyResult = validateProcessItemForm({
+    item: {
+      ...createBaseItem(),
+      type: 'click',
+      locator: JSON.stringify({
+        version: 2,
+        mode: 'click',
+        strategy: 'first_found_do_action',
+        locators: [
+          {
+            id: 'loc_1',
+            query: {
+              spec: {
+                method: 'locator',
+                value: '.submit-btn',
+              },
+            },
+          },
+        ],
+        options: {
+          action_type: 'click',
+        },
+      }),
+    },
+    formMeta: {
+      action_locators: [
+        {
+          base_locator: {
+            locator_editor_mode: 'simple',
+            locator_structured_form: { kind: 'css', value: '.submit-btn' },
+          },
+        },
+      ],
+      check_mode: 'bool',
+      check_rule_list: [
+        { key: 'need_login', expect: 'false' },
+      ],
+      bool_result_rules: [],
+      register_response_urls: [],
+      next_id_list: [],
+    },
+  })
+  assert.strictEqual(clickWithCheckKeyResult.valid, true, 'click 类型现在应允许配置是否执行判断')
+
   const invalidAdvancedLocatorResult = validateProcessItemForm({
     item: {
       ...createBaseItem(),
@@ -154,6 +231,38 @@ const run = () => {
     invalidAdvancedLocatorResult.fieldErrors.locator.includes('子元素'),
     '高级定位错误提示应指出子元素定位不完整'
   )
+
+  const validTextConfigResult = validateProcessItemForm({
+    item: {
+      ...createBaseItem(),
+      type: 'text_content',
+      locator: JSON.stringify({
+        version: 2,
+        mode: 'text_content',
+        strategy: 'first_match_return',
+        locators: [],
+      }),
+    },
+    formMeta: {
+      text_content_locators: [
+        {
+          on_found: 'extract_text',
+          base_locator: {
+            locator_editor_mode: 'simple',
+            locator_structured_form: { kind: 'css', value: '.content' },
+          },
+        },
+        {
+          on_found: 'return_empty',
+          base_locator: {
+            locator_editor_mode: 'simple',
+            locator_structured_form: { kind: 'css', value: '.empty-state' },
+          },
+        },
+      ],
+    },
+  })
+  assert.strictEqual(validTextConfigResult.valid, true, '新版 text_content locator 配置应通过校验')
 
   const waitUrlMeta = parseWaitUrlValue('{"response_url":"{scheme}://{domain}/kefuLogin/getLoginQrcode","wait_second":5}')
   assert.strictEqual(

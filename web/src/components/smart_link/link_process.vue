@@ -26,19 +26,27 @@
               <span class="process-item-id">#{{ process.id }}</span>
               <span class="process-item-name">{{ process.name }}</span>
             </div>
-            <el-popconfirm
-                title="确定删除此执行逻辑吗？"
-                @confirm="deleteProcess(process.id)"
-            >
-              <template #reference>
-                <GitActionButton
-                    compact
-                    variant="danger"
-                    @click.stop
-                >删除
-                </GitActionButton>
-              </template>
-            </el-popconfirm>
+            <div class="process-item-actions">
+              <GitActionButton
+                  compact
+                  variant="info"
+                  @click.stop="openCopyProcessDialog(process)"
+              >复制
+              </GitActionButton>
+              <el-popconfirm
+                  title="确定删除此执行逻辑吗？"
+                  @confirm="deleteProcess(process.id)"
+              >
+                <template #reference>
+                  <GitActionButton
+                      compact
+                      variant="danger"
+                      @click.stop
+                  >删除
+                  </GitActionButton>
+                </template>
+              </el-popconfirm>
+            </div>
           </div>
         </el-scrollbar>
       </div>
@@ -78,6 +86,7 @@
                     </div>
                     <div class="item-actions">
                       <GitActionButton compact @click="addNewItem(element)">新增复制</GitActionButton>
+                      <GitActionButton compact variant="info" @click="openCopyFromProcessDialog(element)">复制其他流程节点</GitActionButton>
                       <GitActionButton compact variant="info" @click="editItem(element)">编辑</GitActionButton>
                       <el-popconfirm
                           title="确定删除此执行逻辑子项吗？"
@@ -141,12 +150,62 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="state.dialogCopyProcess" title="复制执行流程" :width="DEFAULT_PROCESS_DIALOG_WIDTH">
+      <el-input v-model="state.copyProcessName" placeholder="请输入新执行流程名称" />
+      <template #footer>
+        <GitActionButton @click="state.dialogCopyProcess = false">取消</GitActionButton>
+        <GitActionButton @click="confirmCopyProcess">保存</GitActionButton>
+      </template>
+    </el-dialog>
+
     <!-- 编辑执行逻辑子项对话框 -->
     <el-dialog v-model="state.dialogProcessItem" :title="state.editingItem.id ? `编辑执行逻辑子项 #${state.editingItem.id}` : '新增执行逻辑子项'" :width="DEFAULT_PROCESS_ITEM_DIALOG_WIDTH">
       <ProcessItemEditor ref="processItemEditorRef" v-model="state.editingItem" :process-item-options="state.processItems" />
       <template #footer>
         <GitActionButton @click="state.dialogProcessItem = false">取消</GitActionButton>
         <GitActionButton @click="saveProcessItem">保存</GitActionButton>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="state.dialogCopyFromProcessItem" title="复制其他流程节点" width="520px">
+      <div class="copy-process-dialog">
+        <el-form label-width="110px">
+          <el-form-item label="选择执行流程">
+            <el-select
+              v-model="state.copySourceProcessId"
+              placeholder="请选择执行流程"
+              style="width: 100%"
+              @change="handleCopySourceProcessChange"
+            >
+              <el-option
+                v-for="process in state.processes"
+                :key="`copy-process-${process.id}`"
+                :label="`#${process.id} ${process.name}`"
+                :value="process.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="选择节点">
+            <el-select
+              v-model="state.copySourceItemId"
+              placeholder="请选择节点"
+              style="width: 100%"
+              :disabled="state.copySourceItems.length === 0"
+            >
+              <el-option
+                v-for="item in state.copySourceItems"
+                :key="`copy-item-${item.id}`"
+                :label="`#${item.id} ${item.name} (${item.type})`"
+                :value="item.id"
+              />
+            </el-select>
+          </el-form-item>
+        </el-form>
+        <div class="copy-process-dialog__tip">确认后会覆盖当前节点配置，保留当前节点的 ID、所属执行流程和权重。</div>
+      </div>
+      <template #footer>
+        <GitActionButton @click="state.dialogCopyFromProcessItem = false">取消</GitActionButton>
+        <GitActionButton @click="confirmCopyFromProcessItem">确定覆盖</GitActionButton>
       </template>
     </el-dialog>
   </div>
@@ -199,7 +258,11 @@ export default {
       processItems: [],
       dialogProcessName: false,
       editingProcessName: '',
+      dialogCopyProcess: false,
+      copySourceProcess: null,
+      copyProcessName: '',
       dialogProcessItem: false,
+      dialogCopyFromProcessItem: false,
       editingItem: {
         id: 0,
         name: '',
@@ -218,7 +281,11 @@ export default {
         is_error_continue : DEFAULT_FLAG_DISABLED, //遇到错误是否继续
         next_ids : DEFAULT_NEXT_IDS, //下一个节点的id,多个用逗号分割
         is_start : DEFAULT_IS_START, //是否为开始节点，1是
-      }
+      },
+      copyTargetItem: null,
+      copySourceProcessId: null,
+      copySourceItemId: null,
+      copySourceItems: [],
     })
 
     // Methods
@@ -269,6 +336,30 @@ export default {
       })
     }
 
+    const smartProcessAddAsync = function (payload) {
+      return new Promise((resolve) => {
+        API.SmartProcessAdd(payload, function (response) {
+          resolve(response && response.Data ? response.Data : {})
+        })
+      })
+    }
+
+    const smartProcessItemListAsync = function (processId) {
+      return new Promise((resolve) => {
+        API.SmartProcessItemList({ smart_link_process_id: processId }, function (response) {
+          resolve(response && response.Data ? (response.Data.list || []) : [])
+        })
+      })
+    }
+
+    const smartProcessItemAddAsync = function (payload) {
+      return new Promise((resolve) => {
+        API.SmartProcessItemAdd(payload, function (response) {
+          resolve(response && response.Data ? response.Data : {})
+        })
+      })
+    }
+
     //关联节点
     const ProcessSetRelation = function (prevId , nextId) {
       API.SmartProcessSetRelation({prev_id: prevId, next_id: nextId}, function (response) {
@@ -298,6 +389,12 @@ export default {
       })
     }
 
+    const openCopyProcessDialog = function (process) {
+      state.copySourceProcess = JSON.parse(JSON.stringify(process))
+      state.copyProcessName = `${process.name}-复制`
+      state.dialogCopyProcess = true
+    }
+
     const editProcessName = function () {
       state.editingProcessName = state.activeProcess.name
       state.dialogProcessName = true
@@ -310,10 +407,81 @@ export default {
       })
     }
 
+    const confirmCopyProcess = async function () {
+      const sourceProcess = state.copySourceProcess
+      const nextName = String(state.copyProcessName || '').trim()
+      if (!sourceProcess || !sourceProcess.id) {
+        ElMessage.error('没有可复制的执行流程。')
+        return
+      }
+      if (!nextName) {
+        ElMessage.error('请输入新执行流程名称。')
+        return
+      }
+
+      const createdProcess = await smartProcessAddAsync({
+        id: 0,
+        name: nextName,
+      })
+      if (!createdProcess.id) {
+        ElMessage.error('复制执行流程失败：创建新流程失败。')
+        return
+      }
+
+      const sourceItemList = await smartProcessItemListAsync(sourceProcess.id)
+      const idMap = {}
+      const createdPairs = []
+
+      for (const sourceItem of sourceItemList) {
+        const createdItem = await smartProcessItemAddAsync({
+          ...JSON.parse(JSON.stringify(sourceItem)),
+          id: 0,
+          smart_link_process_id: createdProcess.id,
+          next_ids: '',
+        })
+        if (createdItem.id) {
+          idMap[sourceItem.id] = createdItem.id
+          createdPairs.push({
+            source: sourceItem,
+            created: createdItem,
+          })
+        }
+      }
+
+      for (const pair of createdPairs) {
+        const nextIds = String(pair.source.next_ids || '')
+          .split(',')
+          .map((item) => String(item || '').trim())
+          .filter(Boolean)
+          .map((item) => idMap[item])
+          .filter(Boolean)
+          .join(',')
+        await smartProcessItemAddAsync({
+          ...JSON.parse(JSON.stringify(pair.created)),
+          next_ids: nextIds,
+        })
+      }
+
+      state.dialogCopyProcess = false
+      state.copySourceProcess = null
+      state.copyProcessName = ''
+      fetchProcesses()
+      ElMessage.success('执行流程复制成功。')
+    }
+
     const fetchProcessItems = function (processId) {
       API.SmartProcessItemList({smart_link_process_id: processId}, function (response) {
         if (response && response.Data) {
           state.processItems = response.Data.list
+        }
+      })
+    }
+
+    const fetchProcessItemsByProcessId = function (processId, callback) {
+      API.SmartProcessItemList({smart_link_process_id: processId}, function (response) {
+        const list = response && response.Data ? (response.Data.list || []) : []
+        if (typeof callback === 'function') {
+          callback(list)
         }
       })
     }
@@ -364,6 +532,50 @@ export default {
       state.dialogProcessItem = true
     }
 
+    const openCopyFromProcessDialog = function (targetItem) {
+      state.copyTargetItem = JSON.parse(JSON.stringify(targetItem))
+      state.copySourceProcessId = state.activeProcess ? state.activeProcess.id : null
+      state.copySourceItemId = null
+      state.copySourceItems = []
+      state.dialogCopyFromProcessItem = true
+      if (state.copySourceProcessId) {
+        handleCopySourceProcessChange(state.copySourceProcessId)
+      }
+    }
+
+    const handleCopySourceProcessChange = function (processId) {
+      state.copySourceItemId = null
+      if (!processId) {
+        state.copySourceItems = []
+        return
+      }
+      fetchProcessItemsByProcessId(processId, function (list) {
+        state.copySourceItems = list
+      })
+    }
+
+    const confirmCopyFromProcessItem = function () {
+      if (!state.copyTargetItem || !state.copySourceProcessId || !state.copySourceItemId) {
+        ElMessage.error('请先选择执行流程和节点。')
+        return
+      }
+      const sourceItem = state.copySourceItems.find((item) => item.id === state.copySourceItemId)
+      if (!sourceItem) {
+        ElMessage.error('没有找到要复制的节点，请重新选择。')
+        return
+      }
+      state.editingItem = {
+        ...JSON.parse(JSON.stringify(sourceItem)),
+        id: state.copyTargetItem.id,
+        smart_link_process_id: state.copyTargetItem.smart_link_process_id,
+        weight: state.copyTargetItem.weight,
+        x: state.copyTargetItem.x,
+        y: state.copyTargetItem.y,
+      }
+      state.dialogCopyFromProcessItem = false
+      state.dialogProcessItem = true
+    }
+
     const saveProcessItem = function () {
       const isValid = processItemEditorRef.value ? processItemEditorRef.value.validateForSave() : true
       if (!isValid) {
@@ -409,9 +621,14 @@ export default {
       createNewProcess,
       selectProcess,
       deleteProcess,
+      openCopyProcessDialog,
       editProcessName,
       saveProcessName,
+      confirmCopyProcess,
       addNewItem,
+      openCopyFromProcessDialog,
+      handleCopySourceProcessChange,
+      confirmCopyFromProcessItem,
       editItem,
       saveProcessItem,
       deleteItem,
@@ -489,6 +706,13 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.process-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
 }
 
 .process-item-id {
@@ -708,6 +932,12 @@ export default {
   border-radius: 8px;
   background: #ffffff;
   border: 1px solid #eef0ea;
+}
+
+.copy-process-dialog__tip {
+  color: #6b7b68;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .empty-tip {
