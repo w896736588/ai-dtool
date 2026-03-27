@@ -743,13 +743,64 @@
     </div>
     <template #footer>
       <GitActionButton @click="baseLocatorDialog.visible = false">取消</GitActionButton>
+      <GitActionButton variant="info" @click="openAutoExtractDialog">自动提取</GitActionButton>
       <GitActionButton @click="saveBaseLocatorDialog">保存定位</GitActionButton>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="autoExtractDialog.visible" title="AI 自动提取基础定位" width="760px">
+    <el-form label-position="top" class="auto-extract-form">
+      <div class="structured-locator-grid">
+        <el-form-item label="服务商">
+          <el-select v-model="autoExtractDialog.provider_id" placeholder="请选择服务商" @change="handleAutoExtractProviderChange">
+            <el-option
+              v-for="item in autoExtractDialog.provider_list"
+              :key="item.id"
+              :label="item.name || `服务商 ${item.id}`"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="模型">
+          <el-select v-model="autoExtractDialog.model_id" placeholder="请选择模型">
+            <el-option
+              v-for="item in autoExtractModelOptions"
+              :key="item.id"
+              :label="`${item.provider_name || '-'} / ${item.name || item.model}`"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+      </div>
+
+      <el-form-item label="想定位哪个元素">
+        <el-input v-model="autoExtractDialog.target_desc" placeholder="例如：登录按钮、用户名输入框、顶部昵称文本" />
+      </el-form-item>
+
+      <el-form-item label="网页源码">
+        <el-input v-model="autoExtractDialog.html_source" type="textarea" :rows="10" placeholder="请粘贴页面 HTML 源码" />
+      </el-form-item>
+
+      <el-form-item label="内置提示词（只读）">
+        <el-input :model-value="autoExtractDialog.system_prompt" type="textarea" :rows="14" readonly />
+      </el-form-item>
+
+      <el-form-item v-if="autoExtractDialog.raw_content" label="AI 原始返回">
+        <el-input :model-value="autoExtractDialog.raw_content" type="textarea" :rows="8" readonly />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <GitActionButton @click="autoExtractDialog.visible = false">取消</GitActionButton>
+      <GitActionButton :loading="autoExtractDialog.loading" @click="submitAutoExtractDialog">开始提取</GitActionButton>
     </template>
   </el-dialog>
 </template>
 
 <script>
 import GitActionButton from '@/components/base/GitActionButton.vue'
+import { ElMessage } from 'element-plus'
+import AiSetApi from '@/utils/base/ai_set'
+import ProcessApi from '@/utils/base/smart_link_proces'
 
 const {
   PROCESS_ITEM_FIELD_GUIDES,
@@ -780,6 +831,9 @@ const {
 const {
   formatStructuredLocator,
 } = require('../../utils/smart_link_process_display.cjs')
+const {
+  LOCATOR_AUTO_EXTRACT_SYSTEM_PROMPT,
+} = require('../../utils/smart_link_locator_ai.cjs')
 
 const createDefaultItem = () => ({
   id: 0,
@@ -975,6 +1029,18 @@ export default {
         title: '',
         draft: createBaseLocatorMeta(),
       },
+      autoExtractDialog: {
+        visible: false,
+        loading: false,
+        provider_id: 0,
+        model_id: 0,
+        target_desc: '',
+        html_source: '',
+        raw_content: '',
+        system_prompt: LOCATOR_AUTO_EXTRACT_SYSTEM_PROMPT,
+        provider_list: [],
+        model_list: [],
+      },
       syncingFromParent: false,
       lastSerializedSignature: '',
       fieldErrors: {},
@@ -1057,6 +1123,14 @@ export default {
         { value: '{user_name}', label: '当前账号用户名 {user_name}' },
         { value: '{password}', label: '当前账号密码 {password}' },
       ]
+    },
+    autoExtractModelOptions() {
+      const providerId = Number(this.autoExtractDialog.provider_id || 0)
+      const modelList = Array.isArray(this.autoExtractDialog.model_list) ? this.autoExtractDialog.model_list : []
+      if (providerId <= 0) {
+        return modelList
+      }
+      return modelList.filter((item) => Number(item.provider_id) === providerId)
     },
     showTextContentLocatorSummary() {
       return false
@@ -1598,6 +1672,91 @@ export default {
     // applyCompareRightQuickPick applies injected-variable shortcuts into the compare right input.
     applyCompareRightQuickPick(value) {
       this.formMeta.compare_rule.right = String(value || '')
+    },
+    // openAutoExtractDialog 用于打开 AI 自动提取弹窗并懒加载服务商与模型列表。
+    // openAutoExtractDialog opens the AI extractor dialog and lazily loads provider/model options.
+    openAutoExtractDialog() {
+      this.autoExtractDialog.visible = true
+      this.autoExtractDialog.raw_content = ''
+      if (this.autoExtractDialog.provider_list.length === 0 || this.autoExtractDialog.model_list.length === 0) {
+        this.loadAutoExtractProviderAndModelList()
+      }
+    },
+    loadAutoExtractProviderAndModelList() {
+      AiSetApi.AiProviderList((providerResponse) => {
+        const providerList = Array.isArray(providerResponse && providerResponse.Data)
+          ? providerResponse.Data
+          : []
+        this.autoExtractDialog.provider_list = providerList
+        if (!this.autoExtractDialog.provider_id && providerList.length > 0) {
+          this.autoExtractDialog.provider_id = Number(providerList[0].id || 0)
+        }
+      })
+      AiSetApi.AiModelList({ model_type: 'llm' }, (modelResponse) => {
+        const modelList = Array.isArray(modelResponse && modelResponse.Data)
+          ? modelResponse.Data
+          : []
+        this.autoExtractDialog.model_list = modelList
+        if (!this.autoExtractDialog.model_id) {
+          const firstModel = this.autoExtractModelOptions[0] || modelList[0]
+          this.autoExtractDialog.model_id = Number(firstModel && firstModel.id || 0)
+        }
+      })
+    },
+    handleAutoExtractProviderChange() {
+      const firstModel = this.autoExtractModelOptions[0]
+      this.autoExtractDialog.model_id = Number(firstModel && firstModel.id || 0)
+    },
+    // submitAutoExtractDialog 用于调用后端 AI 接口并把结果回填到基础定位表单。
+    // submitAutoExtractDialog calls backend AI endpoint and writes the result into the base locator form.
+    submitAutoExtractDialog() {
+      if (Number(this.autoExtractDialog.model_id || 0) <= 0) {
+        ElMessage.error('请先选择 AI 模型。')
+        return
+      }
+      if (!String(this.autoExtractDialog.target_desc || '').trim()) {
+        ElMessage.error('请先填写想定位哪个元素。')
+        return
+      }
+      if (!String(this.autoExtractDialog.html_source || '').trim()) {
+        ElMessage.error('请先填写网页源码。')
+        return
+      }
+      this.autoExtractDialog.loading = true
+      this.autoExtractDialog.raw_content = ''
+      ProcessApi.SmartLinkLocatorAutoExtract({
+        model_id: Number(this.autoExtractDialog.model_id || 0),
+        html_source: this.autoExtractDialog.html_source,
+        target_desc: this.autoExtractDialog.target_desc,
+      }, (response) => {
+        this.autoExtractDialog.loading = false
+        const data = response && response.Data ? response.Data : {}
+        this.autoExtractDialog.raw_content = String(data.raw_content || '')
+        this.autoExtractDialog.system_prompt = String(data.system_prompt || LOCATOR_AUTO_EXTRACT_SYSTEM_PROMPT)
+        if (data.is_valid === false) {
+          ElMessage.error(`AI 返回格式不正确：${data.parse_error || '请检查原始返回内容。'}`)
+          return
+        }
+        this.applyAutoExtractPayload(data.locator_payload)
+      })
+    },
+    applyAutoExtractPayload(payload) {
+      const form = payload && payload.locator_structured_form ? payload.locator_structured_form : null
+      if (!payload || payload.locator_editor_mode !== 'simple' || !form || !String(form.kind || '').trim()) {
+        ElMessage.error('AI 返回格式不正确，请检查原始返回内容。')
+        return
+      }
+      this.baseLocatorDialog.draft = {
+        ...createBaseLocatorMeta(),
+        locator_editor_mode: 'simple',
+        locator_structured_form: {
+          ...createStructuredLocatorForm(),
+          ...form,
+        },
+        locator_advanced_form: createAdvancedStructuredLocatorForm(),
+      }
+      this.autoExtractDialog.visible = false
+      ElMessage.success('基础定位已自动填入表单。')
     },
     describeBaseLocator(baseLocator) {
       const payload = baseLocator && baseLocator.locator_editor_mode === 'advanced'

@@ -324,6 +324,7 @@ func smartLink(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/SmartLinkChromeDownload`, controller.SmartLinkUpWebkit)
 	tGin.GinPost(`/api/SmartLinkRecycle`, controller.SmartLinkRecycle)
 	tGin.GinPost(`/api/SmartLinkDownloadPath`, controller.SmartLinkDownloadPath)
+	tGin.GinPost(`/api/SmartLinkLocatorAutoExtract`, controller.SmartLinkLocatorAutoExtract)
 	//执行逻辑
 	tGin.GinPost(`/api/SmartProcessList`, controller.SmartProcessList)
 	tGin.GinPost(`/api/SmartProcessAdd`, controller.SmartProcessAdd)
