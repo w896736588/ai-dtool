@@ -13,10 +13,10 @@ tasks:
       - npm install
       - npm run dev
 
-  run-wails:
-    desc: 启动桌面端（Wails，本机运行）
+  run-dev-wails3-company:
+    desc: 启动桌面端开发模式（Wails + 前端 dev server，ConfigFile=company）
     cmds:
-      - go run -tags production ./cmd/dtool_wails --ConfigFile=company
+      - powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $jobName = 'dtool-wails-frontend-dev'; $existingJob = Get-Job -Name $jobName -ErrorAction SilentlyContinue; if ($existingJob) { Remove-Job -Name $jobName -Force }; Start-Job -Name $jobName -ScriptBlock { Set-Location 'C:\work\frog\dev_tool_master\web'; npm run dev } | Out-Null; Start-Sleep -Seconds 5; $env:FRONTEND_DEVSERVER_URL = 'http://localhost:8080'; go run ./cmd/dtool_wails --ConfigFile=company"
 
   run-dev-company:
     desc: 启动company库，开发环境

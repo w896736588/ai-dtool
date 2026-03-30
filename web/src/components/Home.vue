@@ -1,9 +1,22 @@
 ﻿<template>
-  <div class="layout-container">
+  <div v-if="showInitialSetupState" class="setup-state">
+    <div class="setup-state__panel">
+      <div class="setup-state__badge">DT</div>
+      <div class="setup-state__eyebrow">First Setup</div>
+      <h2 class="setup-state__title">还没有检测到任何配置</h2>
+      <p class="setup-state__desc">
+        当前界面先隐藏业务页面，避免默认兜底值造成误解。点击下面的按钮进入设置页，完成基础配置后再开始使用。
+      </p>
+      <pl-button type="primary" class="setup-state__button" @click="openSetupPage">
+        点击设置
+      </pl-button>
+    </div>
+  </div>
+  <div v-else class="layout-container">
     <!-- 左侧菜单 -->
     <aside class="sidebar">
       <div class="sidebar-header">
-        <span class="logo">🛠️</span>
+        <span class="logo">DT</span>
         <span class="title">DevTools</span>
       </div>
       
@@ -16,57 +29,16 @@
         class="sidebar-menu"
         @select="handleSelect"
       >
-        <el-menu-item index="/Dashboard">
-          <el-icon><HomeFilled /></el-icon>
-          <span>首页</span>
-        </el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('redis')" index="/Redis">
-          <el-icon><Coin /></el-icon>
-          <span>Redis</span>
-        </el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('supervisor')" index="/Supervisor">
-          <el-icon><Setting /></el-icon>
-          <span>Supervisor</span>
-        </el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('git')" index="/Git">
-          <el-icon><Folder /></el-icon>
-          <span>Git</span>
-        </el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('tools')" index="/CommonActions" class="menu-item-common-actions">
-          <el-icon><ToolsIcon /></el-icon>
-          <span>常用操作</span>
-        </el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('login')" index="/Link">
-          <el-icon><Link /></el-icon>
-          <span>自定义网页</span>
-        </el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('variable')" index="/Variable">
-          <el-icon><Document /></el-icon>
-          <span>自定义脚本</span>
-        </el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('memory_fragment')" index="/MemoryFragment">
-          <el-icon><Memo /></el-icon>
-          <span>知识片段</span>
-        </el-menu-item>
-        <!-- <el-menu-item v-if="checkModuleOpen('info_crawl')" index="/InfoCrawl">
-          <el-icon><Connection /></el-icon>
-          <span>信息抓取</span>
-        </el-menu-item> -->
-        <el-menu-item v-if="checkModuleOpen('docker')" index="/Docker">
-          <el-icon><Box /></el-icon>
-          <span>Docker</span>
-        </el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('api')" index="/Api">
-          <el-icon><Connection /></el-icon>
-          <span>接口开发</span>
-        </el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('shellout')" index="/shellout">
-          <el-icon><Monitor /></el-icon>
-          <span>终端输出</span>
-        </el-menu-item>
-        <el-menu-item index="/Set" class="menu-item-settings">
-          <el-icon><Setting /></el-icon>
-          <span>配置</span>
+        <el-menu-item
+          v-for="item in visibleNavigationItems"
+          :key="item.index"
+          :index="item.index"
+          :class="['sidebar-menu__item', `sidebar-menu__item--${item.tone}`]"
+        >
+          <span class="sidebar-menu__glyph">
+            <el-icon><component :is="item.icon" /></el-icon>
+          </span>
+          <span>{{ item.label }}</span>
         </el-menu-item>
       </el-menu>
 
@@ -76,15 +48,18 @@
           {{ ip }}
         </el-tag>
         <div class="footer-buttons">
-          <el-tag size="small" style="cursor: pointer;" @click="OpenNewBlank()">
-            新页卡
-          </el-tag>
-          <el-tag size="small" style="cursor: pointer;" @click="drawerVisibleTools = true">
-            小工具
-          </el-tag>
-          <el-tag size="small" style="cursor: pointer;" @click="openSshConnectionsDialog">
-            当前SSH连接数 {{ sshConnectionCount }}
-          </el-tag>
+          <button type="button" class="footer-action footer-action--leaf" @click="OpenNewBlank()">
+            <span class="footer-action__title">新页卡</span>
+            <span class="footer-action__desc">快速打开一个独立工作页</span>
+          </button>
+          <button type="button" class="footer-action footer-action--mint" @click="drawerVisibleTools = true">
+            <span class="footer-action__title">小工具</span>
+            <span class="footer-action__desc">常用功能集中入口</span>
+          </button>
+          <button type="button" class="footer-action footer-action--sky" @click="openSshConnectionsDialog">
+            <span class="footer-action__title">当前 SSH 连接数 {{ sshConnectionCount }}</span>
+            <span class="footer-action__desc">查看活跃连接和当前命令</span>
+          </button>
         </div>
         <pl-button v-if="loginInfo.dialog" size="small" @click="loginInfo.dialog = true">登录</pl-button>
       </div>
@@ -484,6 +459,7 @@ import module from "@/utils/module"
 import baseApi from '@/utils/base/base_api'
 import sshSet from '@/utils/base/ssh_set'
 import homeTaskApi from '@/utils/base/home_task'
+import setApi from '@/utils/base/git_set'
 const {
   HOME_DASHBOARD_PAGE_SWITCH_HOT_ZONE_WIDTH,
   isHomeDashboardPageSwitchHotZone,
@@ -515,6 +491,18 @@ const HOME_TASK_TAB_ACTIVE = 'active'
 const HOME_TASK_TAB_ARCHIVED = 'archived'
 // HOME_ROUTE_DASHBOARD 标识首页路由路径。
 const HOME_ROUTE_DASHBOARD = '/Dashboard'
+// HOME_ROUTE_SET 标识设置页路由路径。
+const HOME_ROUTE_SET = '/Set'
+// HOME_SETUP_EMPTY_KEYS 用于判断配置文件是否仍然保持空白。
+const HOME_SETUP_EMPTY_KEYS = [
+  'db_path_raw',
+  'db_name_raw',
+  'memory_db_path_raw',
+  'memory_db_name_raw',
+  'webkit_driver_path',
+  'webkit_data_path',
+  'webkit_download_path',
+]
 // HOME_TASK_ARCHIVED_* 对应后端归档状态常量。
 const HOME_TASK_ARCHIVED_NO = 0
 const HOME_TASK_ARCHIVED_YES = 1
@@ -614,6 +602,18 @@ export default {
       sshConnectionsDialogVisible: false,
       sshConnectionsLoading: false,
       sshConnectionTimer: null,
+      setupGateDismissed: false,
+      runtimeConfigSnapshot: {
+        db_path_raw: '',
+        db_name_raw: '',
+        memory_db_path_raw: '',
+        memory_db_name_raw: '',
+        webkit_driver_path: '',
+        webkit_data_path: '',
+        webkit_download_path: '',
+        db_is_git_repo: false,
+        memory_db_is_git_repo: false,
+      },
       HOME_TASK_TAB_ACTIVE,
       HOME_TASK_TAB_ARCHIVED,
       HOME_TASK_ARCHIVED_NO,
@@ -646,6 +646,32 @@ export default {
     }
   },
   computed: {
+    // showInitialSetupState 在完全未配置且尚未点击设置时显示引导卡片。
+    showInitialSetupState() {
+      return !this.setupGateDismissed && !this.hasAnyUserConfig
+    },
+    // hasAnyUserConfig 依据 ini 原始值判断是否已有任何显式配置。
+    hasAnyUserConfig() {
+      const hasTextConfig = HOME_SETUP_EMPTY_KEYS.some((key) => String(this.runtimeConfigSnapshot[key] || '').trim() !== '')
+      return hasTextConfig || !!this.runtimeConfigSnapshot.db_is_git_repo || !!this.runtimeConfigSnapshot.memory_db_is_git_repo
+    },
+    // visibleNavigationItems 统一定义左侧导航条目与图标风格。
+    visibleNavigationItems() {
+      return [
+        { index: '/Dashboard', label: '首页', icon: HomeFilled, tone: 'earth' },
+        { index: '/Redis', label: 'Redis', icon: Coin, tone: 'rose', gate: 'redis' },
+        { index: '/Supervisor', label: 'Supervisor', icon: Setting, tone: 'amber', gate: 'supervisor' },
+        { index: '/Git', label: 'Git', icon: Folder, tone: 'forest', gate: 'git' },
+        { index: '/CommonActions', label: '常用操作', icon: ToolsIcon, tone: 'mint', gate: 'tools' },
+        { index: '/Link', label: '自定义网页', icon: Link, tone: 'sky', gate: 'login' },
+        { index: '/Variable', label: '自定义脚本', icon: Document, tone: 'violet', gate: 'variable' },
+        { index: '/MemoryFragment', label: '知识片段', icon: Memo, tone: 'sea', gate: 'memory_fragment' },
+        { index: '/Docker', label: 'Docker', icon: Box, tone: 'ocean', gate: 'docker' },
+        { index: '/Api', label: '接口开发', icon: Connection, tone: 'teal', gate: 'api' },
+        { index: '/shellout', label: '终端输出', icon: Monitor, tone: 'slate', gate: 'shellout' },
+        { index: '/Set', label: '配置', icon: Setting, tone: 'sun' },
+      ].filter((item) => !item.gate || this.checkModuleOpen(item.gate))
+    },
     // isDashboardRoute 控制任务清单只在首页底部展示。
     isDashboardRoute() {
       return this.$route.path === HOME_ROUTE_DASHBOARD
@@ -664,6 +690,10 @@ export default {
   watch: {
     // 当用户切回首页时主动刷新任务，避免跨页面停留后数据过期。
     '$route.path'(newPath) {
+      if (newPath === HOME_ROUTE_SET) {
+        this.setupGateDismissed = true
+      }
+      this.loadRuntimeConfigSnapshot()
       if (newPath !== HOME_ROUTE_DASHBOARD) {
         this.homeDashboardPageIndex = HOME_DASHBOARD_PAGE_COMMAND
         return
@@ -688,12 +718,16 @@ export default {
     })
     this.forceIp(false)
     this.refreshSshConnections(false)
+    this.loadRuntimeConfigSnapshot()
     this.sshConnectionTimer = setInterval(() => {
       this.refreshSshConnections(false)
     }, SSH_CONNECTION_REFRESH_INTERVAL_MS)
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
     this.menuName = this.$helperStore.getStore(this.menuKeyStore)
+    if (this.$route.path === HOME_ROUTE_SET) {
+      this.setupGateDismissed = true
+    }
     if (this.$route.path !== this.menuName && this.menuName != null) {
       this.$router.push(this.menuName)
     }
@@ -706,6 +740,32 @@ export default {
     };
   },
   methods: {
+    // loadRuntimeConfigSnapshot 拉取首页空状态判断所需的原始配置快照。
+    loadRuntimeConfigSnapshot() {
+      setApi.MemoryConfigGet((response) => {
+        if (!(response && response.ErrCode === 0 && response.Data)) {
+          return
+        }
+        this.runtimeConfigSnapshot = {
+          db_path_raw: response.Data.db_path_raw || '',
+          db_name_raw: response.Data.db_name_raw || '',
+          memory_db_path_raw: response.Data.memory_db_path_raw || '',
+          memory_db_name_raw: response.Data.memory_db_name_raw || '',
+          webkit_driver_path: response.Data.webkit_driver_path || '',
+          webkit_data_path: response.Data.webkit_data_path || '',
+          webkit_download_path: response.Data.webkit_download_path || '',
+          db_is_git_repo: !!response.Data.db_is_git_repo,
+          memory_db_is_git_repo: !!response.Data.memory_db_is_git_repo,
+        }
+      })
+    },
+    // openSetupPage 进入设置页并解除首页首次配置挡板。
+    openSetupPage() {
+      this.setupGateDismissed = true
+      if (this.$route.path !== HOME_ROUTE_SET) {
+        this.$router.push(HOME_ROUTE_SET)
+      }
+    },
     OpenNewBlank: function () {
       window.open(window.location.href, '_blank');
     },
@@ -1118,6 +1178,9 @@ export default {
       if (keyPath[0].indexOf('Ignore-') >= 0) {
         return;
       }
+      if (key === HOME_ROUTE_SET) {
+        this.setupGateDismissed = true
+      }
       this.menuName = keyPath[0]
       this.$helperStore.setStore(_that.menuKeyStore, this.menuName)
     },
@@ -1151,6 +1214,70 @@ export default {
 </script>
 
 <style scoped>
+.setup-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(188, 214, 180, 0.32), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(197, 223, 236, 0.36), transparent 24%),
+    linear-gradient(145deg, #f3f7ef 0%, #fcfdf9 56%, #f6f4eb 100%);
+}
+
+.setup-state__panel {
+  width: min(520px, 100%);
+  padding: 38px 34px;
+  border: 1px solid rgba(120, 145, 114, 0.16);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 24px 80px rgba(72, 88, 68, 0.12);
+  text-align: center;
+}
+
+.setup-state__badge {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 16px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fdfdf8;
+  background: linear-gradient(145deg, #455b41 0%, #73906f 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.setup-state__eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #80927b;
+}
+
+.setup-state__title {
+  margin: 14px 0 10px;
+  font-size: 28px;
+  line-height: 1.25;
+  color: #324130;
+}
+
+.setup-state__desc {
+  margin: 0 auto;
+  max-width: 360px;
+  font-size: 14px;
+  line-height: 1.85;
+  color: #667463;
+}
+
+.setup-state__button {
+  margin-top: 24px;
+  min-width: 150px;
+}
+
 .layout-container {
   display: flex;
   height: 100vh;
@@ -1160,30 +1287,42 @@ export default {
 
 .sidebar {
   width: 140px;
-  background-color: #f5f5f0;
+  background: linear-gradient(180deg, #f6f7f1 0%, #f1f4ed 100%);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  border-right: 1px solid #e8e8e0;
+  border-right: 1px solid #e4e8db;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.7);
 }
 
 .sidebar-header {
-  height: 50px;
+  height: 62px;
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  border-bottom: 1px solid #e8e8e0;
+  gap: 10px;
+  padding: 0 14px;
+  border-bottom: 1px solid #e4e8db;
 }
 
 .logo {
-  font-size: 20px;
-  margin-right: 6px;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #f9fbf7;
+  background: linear-gradient(145deg, #445943 0%, #728b6f 100%);
+  box-shadow: 0 8px 18px rgba(71, 92, 70, 0.16);
 }
 
 .title {
-  color: #4a4a4a;
+  color: #40503e;
   font-size: 16px;
   font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .sidebar-menu {
@@ -1197,22 +1336,76 @@ export default {
 }
 
 .sidebar-footer {
-  padding: 10px;
-  border-top: 1px solid #e8e8e0;
+  padding: 12px 10px 14px;
+  border-top: 1px solid #e4e8db;
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  background: linear-gradient(180deg, rgba(246, 248, 242, 0.86) 0%, rgba(242, 245, 238, 0.96) 100%);
 }
 
-.footer-button-bar {
+.footer-buttons {
   display: flex;
   flex-direction: column;
   width: 100%;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 8px;
 }
 
-.footer-button-bar :deep(.git-action-button) {
+.footer-action {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(120, 140, 111, 0.14);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.97) 0%, rgba(247, 249, 243, 0.98) 100%);
+  box-shadow: 0 10px 24px rgba(119, 137, 112, 0.08);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.footer-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(119, 137, 112, 0.12);
+}
+
+.footer-action:active {
+  transform: translateY(0);
+}
+
+.footer-action__title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3f5040;
+}
+
+.footer-action__desc {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #73806f;
+}
+
+.footer-action--leaf:hover {
+  border-color: rgba(87, 126, 80, 0.28);
+}
+
+.footer-action--mint:hover {
+  border-color: rgba(56, 128, 109, 0.28);
+}
+
+.footer-action--sky:hover {
+  border-color: rgba(53, 119, 166, 0.28);
+}
+
+.footer-action:focus-visible {
+  outline: 2px solid rgba(83, 123, 77, 0.24);
+  outline-offset: 2px;
+}
+
+.footer-buttons :deep(.git-action-button) {
   width: 100%;
   justify-content: center;
 }
@@ -1385,62 +1578,64 @@ export default {
 
 .sidebar-menu .el-menu-item {
   position: relative;
-  height: 40px;
-  line-height: 40px;
-  margin: 2px 6px;
-  border-radius: 6px;
-  padding-left: 12px !important;
+  height: 46px;
+  line-height: 46px;
+  margin: 3px 8px;
+  border-radius: 14px;
+  padding-left: 10px !important;
+  transition: background-color 0.22s ease, transform 0.22s ease, box-shadow 0.22s ease;
 }
 
 .sidebar-menu .el-menu-item:hover {
-  background-color: #e8f5e8 !important;
-  border-radius: 6px;
+  background-color: #edf4ea !important;
+  transform: translateX(2px);
 }
 
 .sidebar-menu .el-menu-item.is-active {
-  background-color: #dcedc8 !important;
-  border-radius: 6px;
-  color: #3a7a3a !important;
+  background: linear-gradient(90deg, rgba(114, 145, 102, 0.16) 0%, rgba(114, 145, 102, 0.08) 100%) !important;
+  color: #38573d !important;
+  box-shadow: inset 0 0 0 1px rgba(114, 145, 102, 0.14);
+}
+
+.sidebar-menu__glyph {
+  width: 28px;
+  height: 28px;
+  margin-right: 10px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(92, 112, 83, 0.08);
 }
 
 .sidebar-menu .el-menu-item .el-icon {
-  margin-right: 8px;
-  font-size: 16px;
+  margin-right: 0;
+  font-size: 15px;
 }
 
-.sidebar-menu .el-menu-item.menu-item-common-actions .el-icon {
-  color: #4f8a5b;
-  filter: drop-shadow(0 2px 4px rgba(92, 143, 101, 0.24));
-}
+.sidebar-menu__item--earth .sidebar-menu__glyph { color: #506947; }
+.sidebar-menu__item--rose .sidebar-menu__glyph { color: #b15457; }
+.sidebar-menu__item--amber .sidebar-menu__glyph { color: #a37327; }
+.sidebar-menu__item--forest .sidebar-menu__glyph { color: #497451; }
+.sidebar-menu__item--mint .sidebar-menu__glyph { color: #33806d; }
+.sidebar-menu__item--sky .sidebar-menu__glyph { color: #3577a6; }
+.sidebar-menu__item--violet .sidebar-menu__glyph { color: #6955a6; }
+.sidebar-menu__item--sea .sidebar-menu__glyph { color: #2f7b74; }
+.sidebar-menu__item--ocean .sidebar-menu__glyph { color: #2e6f93; }
+.sidebar-menu__item--teal .sidebar-menu__glyph { color: #2c7b7b; }
+.sidebar-menu__item--slate .sidebar-menu__glyph { color: #59667a; }
+.sidebar-menu__item--sun .sidebar-menu__glyph { color: #c68727; }
 
-.sidebar-menu .el-menu-item.menu-item-settings .el-icon {
-  color: #de8a2a;
-  transform-origin: center;
-  transition: transform 0.25s ease, color 0.25s ease, filter 0.25s ease;
-  filter: drop-shadow(0 2px 6px rgba(222, 138, 42, 0.28));
-}
-
-.sidebar-menu .el-menu-item.menu-item-settings:hover .el-icon,
-.sidebar-menu .el-menu-item.menu-item-settings.is-active .el-icon {
-  color: #f29f38;
-  transform: rotate(24deg) scale(1.08);
-}
-
-.sidebar-menu .el-menu-item.menu-item-settings.is-active::after {
-  content: '';
-  position: absolute;
-  top: 7px;
-  right: 10px;
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: radial-gradient(circle, #ffd66b 0%, #f29f38 70%, rgba(242, 159, 56, 0) 100%);
-  box-shadow: 0 0 10px rgba(255, 214, 107, 0.7);
+.sidebar-menu .el-menu-item.is-active .sidebar-menu__glyph {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(241, 247, 237, 0.98) 100%);
+  box-shadow: inset 0 0 0 1px rgba(112, 142, 103, 0.12), 0 6px 16px rgba(104, 132, 96, 0.1);
 }
 
 .sidebar-menu .el-menu-item span {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .ssh-dialog-toolbar {

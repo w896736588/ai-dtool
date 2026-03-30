@@ -112,7 +112,7 @@
         <!-- 右侧详情区域 -->
         <div class="detail-wrapper">
           <div class="detail-card">
-            <el-form ref="form" v-loading="load.callRefresh">
+            <el-form ref="form" v-loading="load.callRefresh" class="detail-content-form">
               <redisHashList ref="redisHashList" :callMoreList="callMoreList" :callRefresh="callRefresh" :star="setCacheHistory"></redisHashList>
             </el-form>
           </div>
@@ -443,6 +443,17 @@
 
 .detail-card {
   padding: 14px;
+}
+
+.detail-content-form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.detail-content-form :deep(.el-form-item) {
+  margin-bottom: 0;
 }
 
 .box-card .el-tag-he {
