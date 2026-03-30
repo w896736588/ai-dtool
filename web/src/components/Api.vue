@@ -106,6 +106,7 @@
                       <template #dropdown>
                         <el-dropdown-menu>
                           <el-dropdown-item command="copy_api" icon="CopyDocument" @click="handleApiAction('copy_api' , data)">复制接口</el-dropdown-item>
+                          <el-dropdown-item command="move_api" icon="FolderOpened" @click="handleApiAction('move_api' , data)">迁移</el-dropdown-item>
                           <el-dropdown-item command="delete_api" icon="Move" @click="handleApiAction('delete_api' , data)">删除接口</el-dropdown-item>
                           <el-dropdown-item command="down_api" icon="Move" @click="handleApiAction('down_api' , data)">下移</el-dropdown-item>
                         </el-dropdown-menu>
@@ -358,6 +359,47 @@
     </template>
   </el-dialog>
 
+  <el-dialog v-model="dialogShow.moveApi" title="迁移接口" width="560" @keydown.enter.prevent="handleDialogEnter('moveApi', $event)">
+    <el-form :model="dialogData.moveApi" label-width="100px" @submit.prevent>
+      <el-form-item label="接口名称">
+        <el-input :model-value="dialogData.moveApi.name" readonly />
+      </el-form-item>
+      <el-form-item label="当前位置">
+        <el-input :model-value="dialogData.moveApi.current_path" readonly />
+      </el-form-item>
+      <el-form-item label="目标文件夹">
+        <el-select
+          v-model="dialogData.moveApi.folder_id"
+          filterable
+          clearable
+          placeholder="请选择目标文件夹"
+          style="width: 100%;"
+          :loading="moveApiFolderOptionsLoading"
+        >
+          <el-option-group
+            v-for="group in moveApiFolderOptions"
+            :key="group.collection_id"
+            :label="group.collection_name"
+          >
+            <el-option
+              v-for="folder in group.folders"
+              :key="folder.id"
+              :label="folder.optionLabel"
+              :value="folder.id"
+              :disabled="folder.disabled"
+            />
+          </el-option-group>
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <div class="dialog-footer">
+        <pl-button @click="dialogShow.moveApi = false">取消</pl-button>
+        <pl-button type="primary" @click="moveApi">确认迁移</pl-button>
+      </div>
+    </template>
+  </el-dialog>
+
   <el-dialog v-model="dialogShow.jsonImport" title="通过JSON导入" width="800" @keydown.enter.prevent="handleDialogEnter('jsonImport', $event)">
     <el-form :model="dialogData.jsonImport" label-width="120px" @submit.prevent>
       <el-form-item label="选择集合">
@@ -473,6 +515,7 @@ export default {
         createDir: false, //创建文件夹弹窗
         createApi: false, //创建接口弹窗
         copyApi: false, //复制接口弹窗
+        moveApi: false, //迁移接口弹窗
         jsonImport: false, //JSON导入弹窗
       },
       dialogData: {
@@ -518,17 +561,28 @@ export default {
           body_form: {},
           body_json: {},
         },
+        moveApi: {
+          api_id: '',
+          name: '',
+          folder_id: '',
+          current_folder_id: '',
+          current_collection_id: '',
+          current_path: '',
+        },
         jsonImport: {
           collection_id: '',
           json: '',
         }
       },
+      moveApiFolderOptions: [],
+      moveApiFolderOptionsLoading: false,
       // 弹窗保存防重入，避免回车和点击导致重复提交
       dialogSubmitting: {
         createCollection: false,
         createDir: false,
         createApi: false,
         copyApi: false,
+        moveApi: false,
         jsonImport: false,
       },
       keyup: null,
@@ -1710,6 +1764,7 @@ export default {
         createDir: () => this.createNewDir(),
         createApi: () => this.handleFolderCreateApi(),
         copyApi: () => this.copyApi(),
+        moveApi: () => this.moveApi(),
         jsonImport: () => this.apiImportJson(),
       }
       if (submitMap[dialogType]) {
@@ -1772,6 +1827,53 @@ export default {
       } finally {
         document.body.removeChild(input)
       }
+    },
+    async buildMoveApiFolderOptions(api) {
+      this.moveApiFolderOptionsLoading = true
+      try {
+        const groups = []
+        for (const collection of this.treeData) {
+          const folders = await this.ensureCollectionFoldersLoaded(collection)
+          if (!Array.isArray(folders) || folders.length === 0) {
+            continue
+          }
+          groups.push({
+            collection_id: collection.id,
+            collection_name: collection.name,
+            folders: folders.map((folder) => ({
+              id: folder.id,
+              name: folder.name,
+              collection_id: folder.collection_id,
+              collection_name: collection.name,
+              optionLabel: `${folder.name} (${collection.name})`,
+              disabled: parseInt(folder.id) === parseInt(api.folder_id),
+            })),
+          })
+        }
+        this.moveApiFolderOptions = groups
+        return groups
+      } finally {
+        this.moveApiFolderOptionsLoading = false
+      }
+    },
+    findMoveApiTargetFolder(folderId) {
+      for (const group of this.moveApiFolderOptions) {
+        if (!Array.isArray(group.folders)) {
+          continue
+        }
+        const targetFolder = group.folders.find((folder) => parseInt(folder.id) === parseInt(folderId))
+        if (targetFolder) {
+          return targetFolder
+        }
+      }
+      return null
+    },
+    buildApiFolderPath(api) {
+      const collectionNode = this.findCollectionNode(api.collection_id)
+      const folderNode = this.findFolderNode(api.collection_id, api.folder_id)
+      const collectionName = (collectionNode && collectionNode.name) || api.collection_name || api.collection_id
+      const folderName = (folderNode && folderNode.name) || api.folder_name || api.folder_id
+      return `${collectionName} / ${folderName}`
     },
     // 创建新集合
     createNewCollection() {
@@ -1995,6 +2097,8 @@ export default {
       let _that = this
       if (command === 'copy_api') {
         _that.openCopyApiDialog(data)
+      } else if (command === 'move_api') {
+        _that.openMoveApiDialog(data)
       } else if (command === 'delete_api') {
         _that.$confirm(`确定要删除接口 "${data.name}" 吗？`, '确认删除', {
           confirmButtonText: '确定',
@@ -2039,6 +2143,86 @@ export default {
       this.dialogData.copyApi.id = 0
       this.dialogData.copyApi.name = api.name + '-复制'
       this.dialogShow.copyApi = true
+    },
+    async openMoveApiDialog(api) {
+      this.dialogData.moveApi = {
+        api_id: api.id,
+        name: api.name || '',
+        folder_id: '',
+        current_folder_id: api.folder_id,
+        current_collection_id: api.collection_id,
+        current_path: this.buildApiFolderPath(api),
+      }
+      this.dialogShow.moveApi = true
+      try {
+        const groups = await this.buildMoveApiFolderOptions(api)
+        const hasAvailableTarget = groups.some((group) => Array.isArray(group.folders) && group.folders.some((folder) => !folder.disabled))
+        if (!hasAvailableTarget) {
+          this.$message.warning('当前没有可迁移的目标文件夹')
+        }
+      } catch (error) {
+        this.$message.error(error.message || '加载目标文件夹失败')
+      }
+    },
+    async moveApi() {
+      let _that = this
+      if (_that.beginDialogSubmit('moveApi')) {
+        return
+      }
+      const moveForm = _that.dialogData.moveApi
+      const targetFolder = _that.findMoveApiTargetFolder(moveForm.folder_id)
+      if (!moveForm.api_id) {
+        _that.endDialogSubmit('moveApi')
+        _that.$message.error('请选择要迁移的接口')
+        return
+      }
+      if (!targetFolder) {
+        _that.endDialogSubmit('moveApi')
+        _that.$message.error('请选择目标文件夹')
+        return
+      }
+      try {
+        await _that.requestApi('ApiMove', {
+          api_id: moveForm.api_id,
+          folder_id: moveForm.folder_id,
+        })
+        const sourceCollectionId = moveForm.current_collection_id
+        const sourceFolderId = moveForm.current_folder_id
+        const targetCollectionId = targetFolder.collection_id
+        const targetFolderId = targetFolder.id
+        const targetCollectionNode = _that.findCollectionNode(targetCollectionId)
+        if (targetCollectionNode) {
+          await _that.ensureCollectionFoldersLoaded(targetCollectionNode)
+        }
+        const refreshTasks = []
+        if (parseInt(sourceCollectionId) !== parseInt(targetCollectionId) || parseInt(sourceFolderId) !== parseInt(targetFolderId)) {
+          refreshTasks.push(_that.refreshFolderApis(sourceCollectionId, sourceFolderId))
+          refreshTasks.push(_that.refreshFolderApis(targetCollectionId, targetFolderId))
+        }
+        await Promise.all(refreshTasks)
+        const moveApiNode = _that.normalizeApiNode({
+          ...(_that.getWorkspaceTabByKey(`api:${moveForm.api_id}`)?.data || {}),
+          id: moveForm.api_id,
+          name: moveForm.name,
+          folder_id: targetFolderId,
+          collection_id: targetCollectionId,
+        }, targetFolderId, targetCollectionId)
+        _that.upsertWorkspaceTabData(moveApiNode)
+        const activeTab = _that.getWorkspaceTabByKey(`api:${moveForm.api_id}`)
+        if (activeTab) {
+          activeTab.loaded = false
+        }
+        _that.dialogShow.moveApi = false
+        _that.syncTreeSortCacheFromTree()
+        if (_that.activeTabKey === `api:${moveForm.api_id}`) {
+          await _that.activateWorkspaceTab(`api:${moveForm.api_id}`, { reload: true })
+        }
+        _that.$message.success('迁移成功')
+      } catch (error) {
+        _that.$message.error(error.message || '迁移失败')
+      } finally {
+        _that.endDialogSubmit('moveApi')
+      }
     },
     // 打开JSON导入对话框
     openJsonImportDialog(collection) {

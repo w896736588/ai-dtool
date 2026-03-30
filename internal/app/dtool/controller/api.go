@@ -1017,20 +1017,15 @@ func ApiMoveApi(c *gin.Context) {
 		return
 	}
 
-	// Check if target folder belongs to the same collection
-	apiCollectionId := cast.ToInt(apiInfo[`collection_id`])
 	folderCollectionId := cast.ToInt(folderInfo[`collection_id`])
-	if apiCollectionId != folderCollectionId {
-		gsgin.GinResponseError(c, `不能移动到不同集合的文件夹`, nil)
-		return
-	}
 
-	// Update api folder_id
+	// Update api folder_id and collection_id to match the target folder.
 	_, err := common.DbMain.Client.QuickUpdate(`tbl_api`, map[string]any{
 		`id`: apiId,
 	}, map[string]any{
-		`folder_id`:   newFolderId,
-		`update_time`: time.Now().Unix(),
+		`folder_id`:      newFolderId,
+		`collection_id`:  folderCollectionId,
+		`update_time`:    time.Now().Unix(),
 	}).Exec()
 
 	if err != nil {
