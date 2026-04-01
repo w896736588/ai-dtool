@@ -1152,6 +1152,8 @@ export default {
 
 <style scoped>
 .layout-container {
+  --layout-sidebar-width: 140px;
+  --layout-content-padding: 20px;
   display: flex;
   height: 100vh;
   width: 100%;
@@ -1288,7 +1290,7 @@ export default {
   min-height: 0;
   background-color: #fafaf7;
   height: 100%;
-  padding: 20px;
+  padding: var(--layout-content-padding);
   box-sizing: border-box;
 }
 

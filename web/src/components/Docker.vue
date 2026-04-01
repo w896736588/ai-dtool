@@ -9,9 +9,6 @@
           <path d="M8 15H12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </svg>
         <span>Docker Compose 管理</span>
-        <pl-button class="page-settings-btn" type="warning" plain @click="openComposeSettings">
-          设置
-        </pl-button>
       </div>
       <div class="control-row">
         <el-select v-model="chooseSshId" placeholder="选择环境" @change="changeSsh" class="env-select">
@@ -33,9 +30,17 @@
         ></el-input>
         <div class="header-tail-actions">
           <pl-button
+            class="header-tail-btn"
+            type="warning"
+            plain
+            @click="openComposeSettings"
+          >
+            设置
+          </pl-button>
+          <pl-button
             :disabled="!chooseSshId"
             :loading="containerLogCleaning"
-            class="image-list-btn"
+            class="header-tail-btn"
             type="danger"
             plain
             @click="confirmTruncateContainerLogs"
@@ -45,7 +50,7 @@
           <pl-button
             :disabled="!chooseSshId"
             :loading="imageListLoading"
-            class="image-list-btn"
+            class="header-tail-btn"
             type="primary"
             plain
             @click="openImageListDialog"
@@ -89,13 +94,13 @@
             <div class="operation-block">
               <span class="operation-title">常用操作：</span>
               <div class="operation-buttons">
-                <pl-button class="operation-btn" size="small" plain @click="dialogServices(scope.row)">服务列表</pl-button>
-                <pl-button class="operation-btn" size="small" plain @click="status(scope.row)">运行状态</pl-button>
-                <pl-button class="operation-btn" size="small" plain @click="start(scope.row)">启动（up -d）</pl-button>
-                <pl-button class="operation-btn" size="small" plain @click="restart(scope.row)">重启（restart）</pl-button>
+                <pl-button class="operation-btn operation-btn-primary" size="small" plain @click="dialogServices(scope.row)">服务列表</pl-button>
+                <pl-button class="operation-btn operation-btn-primary" size="small" plain @click="status(scope.row)">运行状态</pl-button>
+                <pl-button class="operation-btn operation-btn-success" size="small" plain @click="start(scope.row)">启动（up -d）</pl-button>
+                <pl-button class="operation-btn operation-btn-success" size="small" plain @click="restart(scope.row)">重启（restart）</pl-button>
                 <pl-button class="operation-btn operation-btn-danger" size="small" plain @click="stop(scope.row)">停止(stop)</pl-button>
-                <pl-button class="operation-btn" size="small" plain @click="configShow(scope.row)">查看compose.yml</pl-button>
-                <pl-button class="operation-btn" size="small" plain @click="envShow(scope.row)">查看env</pl-button>
+                <pl-button class="operation-btn operation-btn-primary" size="small" plain @click="configShow(scope.row)">查看compose.yml</pl-button>
+                <pl-button class="operation-btn operation-btn-primary" size="small" plain @click="envShow(scope.row)">查看env</pl-button>
               </div>
             </div>
             <div class="operation-block">
@@ -948,10 +953,6 @@ export default {
   margin-bottom: 12px;
 }
 
-.page-settings-btn {
-  margin-left: auto;
-}
-
 .header-icon {
   width: 20px;
   height: 20px;
@@ -1012,7 +1013,7 @@ export default {
   justify-content: flex-end;
 }
 
-.image-list-btn {
+.header-tail-btn {
   border-radius: 8px;
 }
 
@@ -1065,7 +1066,10 @@ export default {
 
 .operation-block {
   margin-top: 8px;
-  padding: 7px 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 10px;
   border: 1px solid #e8eee4;
   border-radius: 10px;
   background: #fbfdf9;
@@ -1076,54 +1080,78 @@ export default {
 }
 
 .operation-title {
+  flex: 0 0 auto;
   font-weight: 500;
   color: #4a4a4a;
-  margin-right: 6px;
+  line-height: 28px;
 }
 
 .operation-buttons {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  flex: 1;
 }
 
 .operation-btn {
-  border-radius: 999px;
-  border-color: #c8d9c3;
-  color: #3f6f3f;
-  background: #f3f9f0;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.18s ease;
 }
 
-.operation-btn:hover {
-  border-color: #a9c3a4;
-  color: #2f5c2f;
-  background: #e9f4e5;
+.operation-btn.operation-btn-primary {
+  border-color: #d8ded2;
+  color: #4f804f;
+  background: #f6f8f3;
+}
+
+.operation-btn.operation-btn-primary:hover {
+  background: #eef4ea;
+  border-color: #bfd1bf;
+  color: #3f6f3f;
+}
+
+.operation-btn.operation-btn-success {
+  border-color: #c1d9ba;
+  color: #356a35;
+  background: #edf6e9;
+}
+
+.operation-btn.operation-btn-success:hover {
+  border-color: #9fc49c;
+  color: #2d5a2d;
+  background: #e2f0dd;
 }
 
 .operation-btn.operation-btn-danger {
-  border-color: #e6c4be;
-  color: #a54434;
-  background: #fdf2f0;
+  border-color: #e6c9be;
+  color: #9b523d;
+  background: #fcf4f1;
 }
 
 .operation-btn.operation-btn-danger:hover {
-  border-color: #dca79e;
-  color: #913a2d;
-  background: #fbe8e4;
+  border-color: #d8ad9f;
+  color: #864434;
+  background: #f8e9e4;
 }
 
 .quick-actions {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  flex: 1;
 }
 
 .quick-action-btn {
-  border-radius: 999px;
+  min-height: 28px;
+  border-radius: 8px;
   font-size: 12px;
-  padding: 3px 10px;
+  font-weight: 500;
+  padding: 0 10px;
 }
 
 .quick-action-restart {
@@ -1223,6 +1251,15 @@ export default {
   .header-tail-actions {
     margin-left: 0;
     justify-content: flex-start;
+  }
+
+  .operation-block {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .operation-title {
+    line-height: 1.4;
   }
 }
 </style>
