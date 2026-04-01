@@ -959,57 +959,6 @@ func SetRuntimeConfigSave(c *gin.Context) {
 	})
 }
 
-const runtimeDatabaseSyncTargetMain = `main`
-const runtimeDatabaseSyncTargetMemory = `memory`
-
-// SetRuntimeDatabaseGitSync 手动触发主库或记忆库的 git commit push。 // Manually trigger git commit and push for the main or memory database.
-func SetRuntimeDatabaseGitSync(c *gin.Context) {
-	dataMap := make(map[string]any)
-	_ = gsgin.GinPostBody(c, &dataMap)
-
-	target := strings.TrimSpace(cast.ToString(dataMap[`target`]))
-	// target 只允许主库或记忆库两种同步入口，避免误触发其他路径。 // Only allow main or memory targets so the manual sync route stays explicit.
-	switch target {
-	case runtimeDatabaseSyncTargetMain:
-		config := business.ReadMainDBConfig()
-		if !config.GitRepoEnabled {
-			gsgin.GinResponseError(c, `主库未开启 Git 同步`, nil)
-			return
-		}
-		config.IsGitRepo = true
-		changed, err := business.SyncMainDBFile(config, business.NewMemoryGit())
-		if err != nil {
-			gsgin.GinResponseError(c, err.Error(), nil)
-			return
-		}
-		gsgin.GinResponseSuccess(c, ``, map[string]any{
-			`target`:  target,
-			`changed`: changed,
-		})
-		return
-	case runtimeDatabaseSyncTargetMemory:
-		config := business.ReadMemoryConfigFromINI()
-		if !config.GitRepoEnabled {
-			gsgin.GinResponseError(c, `记忆库未开启 Git 同步`, nil)
-			return
-		}
-		config.IsGitRepo = true
-		changed, err := business.SyncMemoryDBFile(config, business.NewMemoryGit())
-		if err != nil {
-			gsgin.GinResponseError(c, err.Error(), nil)
-			return
-		}
-		gsgin.GinResponseSuccess(c, ``, map[string]any{
-			`target`:  target,
-			`changed`: changed,
-		})
-		return
-	default:
-		gsgin.GinResponseError(c, `target 参数无效`, nil)
-		return
-	}
-}
-
 func setIniKey(section *ini.Section, key, value string) {
 	if section == nil {
 		return

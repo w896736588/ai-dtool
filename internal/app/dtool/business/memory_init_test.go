@@ -1,7 +1,6 @@
 package business
 
 import (
-	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"errors"
 	"os"
@@ -66,16 +65,8 @@ func TestReadMemoryConfigFromINIHandlesMissingConfig(t *testing.T) {
 
 type fakeMemoryGitSyncer struct {
 	isRepo       bool
-	hasChanges   bool
 	pullErr      error
 	isGitRepoErr error
-	hasChangeErr error
-	addErr       error
-	commitErr    error
-	pushErr      error
-	addCount     int
-	commitCount  int
-	pushCount    int
 }
 
 func (h *fakeMemoryGitSyncer) IsGitRepo(string) (bool, error) {
@@ -87,22 +78,19 @@ func (h *fakeMemoryGitSyncer) Pull(string) error {
 }
 
 func (h *fakeMemoryGitSyncer) HasFileChanges(string, string) (bool, error) {
-	return h.hasChanges, h.hasChangeErr
+	return false, nil
 }
 
 func (h *fakeMemoryGitSyncer) AddFile(string, string) error {
-	h.addCount++
-	return h.addErr
+	return nil
 }
 
 func (h *fakeMemoryGitSyncer) Commit(string, string, string) error {
-	h.commitCount++
-	return h.commitErr
+	return nil
 }
 
 func (h *fakeMemoryGitSyncer) Push(string) error {
-	h.pushCount++
-	return h.pushErr
+	return nil
 }
 
 func TestPrepareMemoryStoreReturnsPullErrorWhenGitPullFails(t *testing.T) {
@@ -140,44 +128,4 @@ func TestPrepareMemoryStoreReturnsPullErrorWhenGitPullFails(t *testing.T) {
 
 func newTestMemoryConfigViper() *viper.Viper {
 	return viper.New()
-}
-
-func TestSyncMemoryDBFilePushesChangedFile(t *testing.T) {
-	fakeGit := &fakeMemoryGitSyncer{hasChanges: true}
-
-	changed, err := SyncMemoryDBFile(common.MemoryConfig{
-		Dir:       `C:\repo`,
-		DBName:    `memory.db`,
-		DBPath:    `C:\repo\memory.db`,
-		IsGitRepo: true,
-	}, fakeGit)
-	if err != nil {
-		t.Fatalf("SyncMemoryDBFile() error = %v", err)
-	}
-	if !changed {
-		t.Fatalf("changed = false, want true")
-	}
-	if fakeGit.addCount != 1 || fakeGit.commitCount != 1 || fakeGit.pushCount != 1 {
-		t.Fatalf("sync counts = add:%d commit:%d push:%d, want all 1", fakeGit.addCount, fakeGit.commitCount, fakeGit.pushCount)
-	}
-}
-
-func TestSyncMemoryDBFileSkipsWhenNoChanges(t *testing.T) {
-	fakeGit := &fakeMemoryGitSyncer{hasChanges: false}
-
-	changed, err := SyncMemoryDBFile(common.MemoryConfig{
-		Dir:       `C:\repo`,
-		DBName:    `memory.db`,
-		DBPath:    `C:\repo\memory.db`,
-		IsGitRepo: true,
-	}, fakeGit)
-	if err != nil {
-		t.Fatalf("SyncMemoryDBFile() error = %v", err)
-	}
-	if changed {
-		t.Fatalf("changed = true, want false")
-	}
-	if fakeGit.addCount != 0 || fakeGit.commitCount != 0 || fakeGit.pushCount != 0 {
-		t.Fatalf("sync counts = add:%d commit:%d push:%d, want all 0", fakeGit.addCount, fakeGit.commitCount, fakeGit.pushCount)
-	}
 }

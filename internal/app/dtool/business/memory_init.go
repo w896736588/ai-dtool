@@ -35,46 +35,6 @@ var newMemoryGitFactory = func() memoryGitSyncer {
 	return NewMemoryGit()
 }
 
-// SyncMemoryDBFile 手动同步记忆库 sqlite 文件到 git 仓库。 // Sync the memory sqlite file into the git repository on demand.
-func SyncMemoryDBFile(config common.MemoryConfig, memoryGit memoryGitSyncer) (bool, error) {
-	if config.Dir == `` || config.DBPath == `` {
-		return false, fmt.Errorf(`记忆库配置不完整，无法执行同步`)
-	}
-	if !config.IsGitRepo {
-		return false, fmt.Errorf(`记忆库未启用 git 仓库同步`)
-	}
-	if memoryGit == nil {
-		return false, fmt.Errorf(`记忆库 git syncer 未设置`)
-	}
-
-	fileName := filepath.Base(config.DBPath)
-	gstool.FmtPrintlnLogTime(`记忆库开始检查变更并执行手动同步 dir=%s file=%s`, config.Dir, fileName)
-	hasChanges, err := memoryGit.HasFileChanges(config.Dir, fileName)
-	if err != nil {
-		gstool.FmtPrintlnLogTime(`记忆库手动同步前检查变更失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
-		return false, err
-	}
-	// 没有文件变更时直接返回未同步，供页面提示无需 push。 // Return a no-op result when the database file has no pending changes.
-	if !hasChanges {
-		gstool.FmtPrintlnLogTime(`记忆库未检测到文件变更，跳过手动同步 dir=%s file=%s`, config.Dir, fileName)
-		return false, nil
-	}
-	if err = memoryGit.AddFile(config.Dir, fileName); err != nil {
-		gstool.FmtPrintlnLogTime(`记忆库手动同步 add 失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
-		return false, err
-	}
-	if err = memoryGit.Commit(config.Dir, fileName, common.MemorySyncCommitMessage); err != nil {
-		gstool.FmtPrintlnLogTime(`记忆库手动同步 commit 失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
-		return false, err
-	}
-	if err = memoryGit.Push(config.Dir); err != nil {
-		gstool.FmtPrintlnLogTime(`记忆库手动同步 push 失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
-		return false, err
-	}
-	gstool.FmtPrintlnLogTime(`记忆库手动同步成功 dir=%s file=%s`, config.Dir, fileName)
-	return true, nil
-}
-
 // ReadMemoryConfigFromINI 从 ini 读取记忆库配置 / read memory db config from ini.
 func ReadMemoryConfigFromINI() common.MemoryConfig {
 	if component.ConfigViper == nil {

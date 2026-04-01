@@ -8,7 +8,7 @@
           <pl-button v-if="!runtimeEditMode" type="primary" @click="startRuntimeEdit">编辑配置</pl-button>
           <template v-else>
             <pl-button @click="cancelRuntimeEdit">取消</pl-button>
-            <pl-button type="primary" @click="saveRuntimeConfig">保存并重新加载</pl-button>
+            <pl-button type="primary" @click="saveRuntimeConfig">保存并重载配置</pl-button>
           </template>
         </template>
         <pl-button v-else type="primary" @click="saveAiConfig">保存 AI 配置</pl-button>
@@ -28,7 +28,7 @@
         <el-descriptions class="memory-config-display" :column="1" border>
           <el-descriptions-item label="当前文件">
             <div class="config-value">{{ form.memory_config_file || '-' }}</div>
-            <div class="config-item-help">当前页面展示和编辑的配置都来自这个 ini 文件。</div>
+            <div class="config-item-help">当前界面展示和编辑的配置都来自这个 ini 文件。</div>
           </el-descriptions-item>
         </el-descriptions>
 
@@ -96,16 +96,6 @@
             <el-descriptions-item label="dbIsGitRepo">
               <div class="config-value">{{ boolText(form.db_is_git_repo) }}</div>
               <div class="config-item-help">开启后主库在使用前会 git pull，关闭程序时会自动 push。</div>
-              <div v-if="showMainDbSyncButton" class="config-item-actions">
-                <GitActionButton
-                  compact
-                  variant="info"
-                  :loading="syncLoading.main"
-                  @click="syncDatabase(RUNTIME_DATABASE_SYNC_TARGET_MAIN)"
-                >
-                  同步
-                </GitActionButton>
-              </div>
             </el-descriptions-item>
           </el-descriptions>
 
@@ -122,16 +112,6 @@
             <el-descriptions-item label="memoryDbIsGitRepo">
               <div class="config-value">{{ boolText(form.memory_db_is_git_repo) }}</div>
               <div class="config-item-help">开启后记忆库启动前会 git pull，自动同步时会 push。</div>
-              <div v-if="showMemoryDbSyncButton" class="config-item-actions">
-                <GitActionButton
-                  compact
-                  variant="info"
-                  :loading="syncLoading.memory"
-                  @click="syncDatabase(RUNTIME_DATABASE_SYNC_TARGET_MEMORY)"
-                >
-                  同步
-                </GitActionButton>
-              </div>
             </el-descriptions-item>
           </el-descriptions>
 
@@ -193,17 +173,13 @@
 <script>
 import set from '@/utils/base/git_set'
 import AiSetApi from '@/utils/base/ai_set'
-import GitActionButton from '@/components/base/GitActionButton.vue'
 
 // DEFAULT_MEMORY_ARRANGE_PROMPT 定义记忆整理默认提示词。 // Default prompt used when arranging memory fragments with AI.
 const DEFAULT_MEMORY_ARRANGE_PROMPT = '帮我把当前 markdown 进行整理格式，让它看起来更顺畅清晰，注意禁止修改内容'
 // DEFAULT_HOME_TASK_DAILY_REPORT_PROMPT 作为透传字段保留工作日报配置。 // Keep daily report fields in state so saving memory settings does not overwrite them.
 const DEFAULT_HOME_TASK_DAILY_REPORT_PROMPT = '请基于当前活跃任务生成中文工作日报，按已完成、进行中、风险与阻塞三个部分总结，输出 Markdown，禁止编造未提供的信息。'
-// RUNTIME_DATABASE_SYNC_TARGET_* 约束手动同步接口的库类型。 // Enumerates the supported manual database sync targets.
-const RUNTIME_DATABASE_SYNC_TARGET_MAIN = 'main'
-const RUNTIME_DATABASE_SYNC_TARGET_MEMORY = 'memory'
 
-// createRuntimeEditForm 创建可编辑运行时配置表单默认值。 // Build the default state for editable runtime config fields.
+// createRuntimeEditForm 创建可编辑运行时配置表单的默认值。 // Build the default state for editable runtime config fields.
 function createRuntimeEditForm() {
   return {
     db_path: '',
@@ -218,19 +194,8 @@ function createRuntimeEditForm() {
   }
 }
 
-// createSyncLoading 创建主库和记忆库的独立同步 loading 状态。 // Build independent loading flags for main and memory manual sync actions.
-function createSyncLoading() {
-  return {
-    main: false,
-    memory: false,
-  }
-}
-
 export default {
   name: 'MemorySet',
-  components: {
-    GitActionButton,
-  },
   props: {
     showRuntimeConfig: {
       type: Boolean,
@@ -243,7 +208,6 @@ export default {
       aiModelList: [],
       runtimeEditMode: false,
       runtimeEditForm: createRuntimeEditForm(),
-      syncLoading: createSyncLoading(),
       form: {
         db_dir: '',
         db_name: '',
@@ -262,8 +226,6 @@ export default {
         home_task_daily_report_model_id: null,
         home_task_daily_report_prompt: DEFAULT_HOME_TASK_DAILY_REPORT_PROMPT,
       },
-      RUNTIME_DATABASE_SYNC_TARGET_MAIN,
-      RUNTIME_DATABASE_SYNC_TARGET_MEMORY,
     }
   },
   computed: {
@@ -292,14 +254,6 @@ export default {
         return `未检测到记忆库配置，请在 ${configFile} 的 [base] 节点中配置 memoryDbPath 和 memoryDbFileName。`
       }
       return `当前主库、记忆库和路径配置均来自 ${configFile} 的 [base] 与 [path] 节点。`
-    },
-    // showMainDbSyncButton 仅在运行时配置展示态且主库启用 Git 时展示同步按钮。 // Show the main-db sync button only in display mode when Git sync is enabled.
-    showMainDbSyncButton() {
-      return this.showRuntimeConfig && !this.runtimeEditMode && this.form.db_is_git_repo
-    },
-    // showMemoryDbSyncButton 仅在运行时配置展示态且记忆库启用 Git 时展示同步按钮。 // Show the memory-db sync button only in display mode when Git sync is enabled.
-    showMemoryDbSyncButton() {
-      return this.showRuntimeConfig && !this.runtimeEditMode && this.form.memory_db_is_git_repo
     },
   },
   mounted() {
@@ -391,32 +345,12 @@ export default {
       }
       set.RuntimeConfigSave(payload, (response) => {
         if (response.ErrCode !== 0) {
-          this.$helperNotify.error(response.ErrMsg || '配置保存失败')
           return
         }
         this.runtimeEditMode = false
         this.loadConfig()
         this.$helperNotify.success('配置已写入文件并重新加载')
         this.$emit('changed')
-      })
-    },
-    // syncDatabase 手动触发当前库的 git commit push，并保留后端错误原文。 // Trigger git commit and push for the selected database and preserve backend error details.
-    syncDatabase(target) {
-      const loadingKey = target === RUNTIME_DATABASE_SYNC_TARGET_MAIN ? 'main' : 'memory'
-      const successText = target === RUNTIME_DATABASE_SYNC_TARGET_MAIN ? '主库同步完成' : '记忆库同步完成'
-      const idleText = target === RUNTIME_DATABASE_SYNC_TARGET_MAIN ? '主库未检测到变更，无需同步' : '记忆库未检测到变更，无需同步'
-      this.syncLoading[loadingKey] = true
-      set.RuntimeDatabaseGitSync({ target }, (response) => {
-        this.syncLoading[loadingKey] = false
-        if (response.ErrCode !== 0) {
-          this.$helperNotify.error(response.ErrMsg || '同步失败')
-          return
-        }
-        if (response.Data && response.Data.changed) {
-          this.$helperNotify.success(successText)
-          return
-        }
-        this.$helperNotify.info(idleText)
       })
     },
     // saveAiConfig 保存知识片段 AI 配置，并透传日报配置防止被覆盖。 // Save memory AI config and pass through daily-report config to avoid overwriting it.
@@ -431,9 +365,7 @@ export default {
         if (response.ErrCode === 0) {
           this.$helperNotify.success('AI 配置已保存')
           this.$emit('changed')
-          return
         }
-        this.$helperNotify.error(response.ErrMsg || 'AI 配置保存失败')
       })
     },
   },
@@ -462,9 +394,5 @@ export default {
   color: #6b7280;
   font-size: 12px;
   line-height: 1.6;
-}
-
-.config-item-actions {
-  margin-top: 10px;
 }
 </style>

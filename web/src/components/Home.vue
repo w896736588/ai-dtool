@@ -37,12 +37,15 @@
         <div class="footer-buttons">
           <button type="button" class="footer-action footer-action--leaf" @click="OpenNewBlank()">
             <span class="footer-action__title">新页卡</span>
+            <span class="footer-action__desc">快速打开一个独立工作页</span>
           </button>
           <button type="button" class="footer-action footer-action--mint" @click="drawerVisibleTools = true">
             <span class="footer-action__title">小工具</span>
+            <span class="footer-action__desc">常用功能集中入口</span>
           </button>
           <button type="button" class="footer-action footer-action--sky" @click="openSshConnectionsDialog">
             <span class="footer-action__title">当前 SSH 连接数 {{ sshConnectionCount }}</span>
+            <span class="footer-action__desc">查看活跃连接和当前命令</span>
           </button>
         </div>
         <pl-button v-if="loginInfo.dialog" size="small" @click="loginInfo.dialog = true">登录</pl-button>
@@ -1410,11 +1413,8 @@ export default {
   border-radius: 14px;
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.97) 0%, rgba(247, 249, 243, 0.98) 100%);
   box-shadow: 0 10px 24px rgba(119, 137, 112, 0.08);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   cursor: pointer;
-  text-align: center;
+  text-align: left;
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
@@ -1431,8 +1431,15 @@ export default {
   display: block;
   font-size: 13px;
   font-weight: 600;
-  line-height: 1.5;
   color: #3f5040;
+}
+
+.footer-action__desc {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #73806f;
 }
 
 .footer-action--leaf:hover {

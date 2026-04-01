@@ -42,46 +42,6 @@ var newMainDBGitSyncer = func() mainDBGitSyncer {
 	return NewMemoryGit()
 }
 
-// SyncMainDBFile 手动同步主库 sqlite 文件到 git 仓库。 // Sync the main sqlite file into the git repository on demand.
-func SyncMainDBFile(config MainDBConfig, gitSyncer mainDBGitSyncer) (bool, error) {
-	if config.Dir == `` || config.DBPath == `` {
-		return false, fmt.Errorf(`主库配置不完整，无法执行同步`)
-	}
-	if !config.IsGitRepo {
-		return false, fmt.Errorf(`主库未启用 git 仓库同步`)
-	}
-	if gitSyncer == nil {
-		return false, fmt.Errorf(`主库 git syncer 未设置`)
-	}
-
-	fileName := filepath.Base(config.DBPath)
-	gstool.FmtPrintlnLogTime(`主库开始检查变更并执行手动同步 dir=%s file=%s`, config.Dir, fileName)
-	hasChanges, err := gitSyncer.HasFileChanges(config.Dir, fileName)
-	if err != nil {
-		gstool.FmtPrintlnLogTime(`主库手动同步前检查变更失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
-		return false, err
-	}
-	// 没有文件变更时直接返回未同步，前端可展示“无需同步”。 // Return a no-op result when the database file has no pending changes.
-	if !hasChanges {
-		gstool.FmtPrintlnLogTime(`主库未检测到文件变更，跳过手动同步 dir=%s file=%s`, config.Dir, fileName)
-		return false, nil
-	}
-	if err = gitSyncer.AddFile(config.Dir, fileName); err != nil {
-		gstool.FmtPrintlnLogTime(`主库手动同步 add 失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
-		return false, err
-	}
-	if err = gitSyncer.Commit(config.Dir, fileName, mainDBSyncCommitMessage); err != nil {
-		gstool.FmtPrintlnLogTime(`主库手动同步 commit 失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
-		return false, err
-	}
-	if err = gitSyncer.Push(config.Dir); err != nil {
-		gstool.FmtPrintlnLogTime(`主库手动同步 push 失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
-		return false, err
-	}
-	gstool.FmtPrintlnLogTime(`主库手动同步成功 dir=%s file=%s`, config.Dir, fileName)
-	return true, nil
-}
-
 // ReadMainDBConfig 读取已经解析过默认值的主库配置。 // Reads the resolved main database config after defaults are applied.
 func ReadMainDBConfig() MainDBConfig {
 	if component.EnvClient == nil || component.EnvClient.DbConfig == nil {
@@ -120,7 +80,7 @@ func PrepareMainDBStore() error {
 		if err != nil {
 			return fmt.Errorf(`检测主库目录 git 仓库失败 %w`, err)
 		}
-		// 开启了 git 模式却不是仓库时直接失败，避免静默运行。 // Fail fast when git mode is enabled but the directory is not a repository.
+		// 开启了 git 模式却不是仓库时直接失败，避免静默行为。 // Fail fast when git mode is enabled but the directory is not a repository.
 		if !isGitRepo {
 			return fmt.Errorf(`主库目录未检测到 git 仓库，请检查 base.dbIsGitRepo 和 dbPath 配置`)
 		}
@@ -154,6 +114,30 @@ func SyncMainDBStoreOnShutdown() error {
 		gstool.FmtPrintlnLogTime(`主库未启用 git 仓库同步，关闭前跳过 push dir=%s file=%s`, config.Dir, config.DBName)
 		return nil
 	}
-	_, err := SyncMainDBFile(config, preparedMainDBStore.Git)
-	return err
+	fileName := filepath.Base(config.DBPath)
+	gstool.FmtPrintlnLogTime(`主库关闭前开始检查变更 dir=%s file=%s`, config.Dir, fileName)
+	hasChanges, err := preparedMainDBStore.Git.HasFileChanges(config.Dir, fileName)
+	if err != nil {
+		gstool.FmtPrintlnLogTime(`主库关闭前检查变更失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
+		return err
+	}
+	if !hasChanges {
+		gstool.FmtPrintlnLogTime(`主库关闭前未检测到变更，跳过 push dir=%s file=%s`, config.Dir, fileName)
+		return nil
+	}
+	gstool.FmtPrintlnLogTime(`主库关闭前检测到变更，开始 add/commit/push dir=%s file=%s`, config.Dir, fileName)
+	if err = preparedMainDBStore.Git.AddFile(config.Dir, fileName); err != nil {
+		gstool.FmtPrintlnLogTime(`主库关闭前 add 失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
+		return err
+	}
+	if err = preparedMainDBStore.Git.Commit(config.Dir, fileName, mainDBSyncCommitMessage); err != nil {
+		gstool.FmtPrintlnLogTime(`主库关闭前 commit 失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
+		return err
+	}
+	if err = preparedMainDBStore.Git.Push(config.Dir); err != nil {
+		gstool.FmtPrintlnLogTime(`主库关闭前 push 失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
+		return err
+	}
+	gstool.FmtPrintlnLogTime(`主库关闭前 push 成功 dir=%s file=%s`, config.Dir, fileName)
+	return nil
 }

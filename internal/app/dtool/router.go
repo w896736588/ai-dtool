@@ -234,7 +234,6 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/MemoryConfigGet`, controller.SetMemoryConfigGet)
 	tGin.GinPost(`/api/Set/MemoryConfigSave`, controller.SetMemoryConfigSave)
 	tGin.GinPost(`/api/Set/RuntimeConfigSave`, controller.SetRuntimeConfigSave)
-	tGin.GinPost(`/api/Set/RuntimeDatabaseGitSync`, controller.SetRuntimeDatabaseGitSync)
 }
 
 func setStar(tGin *p_gin.Gin) {
