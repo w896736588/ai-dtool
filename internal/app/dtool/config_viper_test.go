@@ -18,7 +18,7 @@ func TestNewConfigViperReadsINI(t *testing.T) {
 	}
 
 	cfgPath := filepath.Join(cfgDir, "company.ini")
-	cfgBody := []byte("[base]\ndbFileName=frog.db\ndbIsGitRepo=true\nmemoryDbPath=D:/repo/memory\nmemoryDbFileName=memory.db\nmemoryDbIsGitRepo=true\n")
+	cfgBody := []byte("[base]\ndbFileName=frog.db\ndbIsGitRepo=true\nmemoryDbPath=D:/repo/memory\nmemoryDbFileName=memory.db\nmemoryDbIsGitRepo=true\nmemoryDbAutoPushDelayMinutes=7\n")
 	if err := os.WriteFile(cfgPath, cfgBody, 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -46,6 +46,9 @@ func TestNewConfigViperReadsINI(t *testing.T) {
 	}
 	if got := v.GetBool("base.memoryDbIsGitRepo"); !got {
 		t.Fatalf("memoryDbIsGitRepo = %v, want true", got)
+	}
+	if got := v.GetInt("base.memoryDbAutoPushDelayMinutes"); got != 7 {
+		t.Fatalf("memoryDbAutoPushDelayMinutes = %d, want %d", got, 7)
 	}
 }
 

@@ -10,15 +10,17 @@ import (
 )
 
 const MemorySyncCommitMessage = `chore: sync memory db`
+const DefaultMemoryAutoPushDelayMinutes = 1
 
 var ErrMemoryNotConfigured = errors.New(`请先在配置文件中配置记忆库目录和数据库名`)
 
 type MemoryConfig struct {
-	Dir            string `json:"memory_dir"`
-	DBName         string `json:"memory_db_name"`
-	DBPath         string `json:"memory_db_path"`
-	IsGitRepo      bool   `json:"is_git_repo"`
-	GitRepoEnabled bool   `json:"git_repo_enabled"`
+	Dir                  string `json:"memory_dir"`
+	DBName               string `json:"memory_db_name"`
+	DBPath               string `json:"memory_db_path"`
+	IsGitRepo            bool   `json:"is_git_repo"`
+	GitRepoEnabled       bool   `json:"git_repo_enabled"`
+	AutoPushDelayMinutes int    `json:"auto_push_delay_minutes"`
 }
 
 type stoppableTimer interface {
@@ -46,6 +48,7 @@ type MemoryStore struct {
 	db           *CSqlite
 	timer        stoppableTimer
 	dirty        bool
+	nextPushTime int64
 	lastPushTime int64
 	lastPushErr  string
 	afterFunc    func(time.Duration, func()) stoppableTimer
@@ -74,6 +77,7 @@ func (h *MemoryStore) Configure(config MemoryConfig, db *CSqlite) {
 	h.config = config
 	h.db = db
 	h.dirty = false
+	h.nextPushTime = 0
 	h.lastPushTime = 0
 	h.lastPushErr = ``
 	if h.timer != nil {
@@ -104,6 +108,12 @@ func (h *MemoryStore) LastPushTime() int64 {
 	return h.lastPushTime
 }
 
+func (h *MemoryStore) NextPushTime() int64 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.nextPushTime
+}
+
 func (h *MemoryStore) LastPushError() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -130,10 +140,19 @@ func (h *MemoryStore) ScheduleSync() {
 		return
 	}
 	h.dirty = true
+	if h.config.AutoPushDelayMinutes <= 0 {
+		if h.timer != nil {
+			h.timer.Stop()
+			h.timer = nil
+		}
+		h.nextPushTime = 0
+		return
+	}
 	if h.timer != nil {
 		h.timer.Stop()
 	}
-	h.timer = h.afterFunc(time.Minute, func() {
+	h.nextPushTime = time.Now().Add(time.Duration(h.config.AutoPushDelayMinutes) * time.Minute).Unix()
+	h.timer = h.afterFunc(time.Duration(h.config.AutoPushDelayMinutes)*time.Minute, func() {
 		_ = h.SyncNow()
 	})
 }
@@ -147,6 +166,7 @@ func (h *MemoryStore) SyncNow() error {
 		h.timer.Stop()
 		h.timer = nil
 	}
+	h.nextPushTime = 0
 	h.mu.Unlock()
 
 	if config.Dir == `` || config.DBName == `` {

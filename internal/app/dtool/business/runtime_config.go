@@ -29,6 +29,10 @@ func ReloadEditableRuntimeConfig() {
 	component.EnvClient.ConfigBase.MemoryDBPath = component.ConfigViper.GetString(`base.memoryDbPath`)
 	component.EnvClient.ConfigBase.MemoryDBName = component.ConfigViper.GetString(`base.memoryDbFileName`)
 	component.EnvClient.ConfigBase.MemoryDBIsGitRepo = component.ConfigViper.GetBool(`base.memoryDbIsGitRepo`)
+	component.EnvClient.ConfigBase.MemoryDBAutoPushDelayMinutes = common.DefaultMemoryAutoPushDelayMinutes
+	if component.ConfigViper.IsSet(`base.memoryDbAutoPushDelayMinutes`) {
+		component.EnvClient.ConfigBase.MemoryDBAutoPushDelayMinutes = component.ConfigViper.GetInt(`base.memoryDbAutoPushDelayMinutes`)
+	}
 	component.EnvClient.ConfigBase.WebPath = component.ConfigViper.GetString(`base.webPath`)
 
 	if component.EnvClient.WebConfig == nil {

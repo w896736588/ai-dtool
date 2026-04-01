@@ -15,21 +15,29 @@ import (
 // MemoryFragmentStatus 返回记忆库配置状态。
 func MemoryFragmentStatus(c *gin.Context) {
 	config := common.MemoryRuntime.Config()
+	nextPushTime := common.MemoryRuntime.NextPushTime()
 	lastPushTime := common.MemoryRuntime.LastPushTime()
 	lastPushError := common.MemoryRuntime.LastPushError()
+	nextPushTimeDesc := `-`
 	lastPushTimeDesc := `-`
+	if nextPushTime > 0 {
+		nextPushTimeDesc = gstool.TimeUnixToString(time.Unix(nextPushTime, 0), `Y-m-d H:i:s`)
+	}
 	if lastPushTime > 0 {
 		lastPushTimeDesc = gstool.TimeUnixToString(time.Unix(lastPushTime, 0), `Y-m-d H:i:s`)
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`configured`:          common.MemoryRuntime.IsConfigured(),
-		`memory_dir`:          config.Dir,
-		`memory_db_name`:      config.DBName,
-		`git_repo_enabled`:    config.GitRepoEnabled,
-		`is_git_repo`:         config.IsGitRepo,
-		`last_push_time`:      lastPushTime,
-		`last_push_time_desc`: lastPushTimeDesc,
-		`last_push_error`:     lastPushError,
+		`configured`:              common.MemoryRuntime.IsConfigured(),
+		`memory_dir`:              config.Dir,
+		`memory_db_name`:          config.DBName,
+		`git_repo_enabled`:        config.GitRepoEnabled,
+		`is_git_repo`:             config.IsGitRepo,
+		`auto_push_delay_minutes`: config.AutoPushDelayMinutes,
+		`next_push_time`:          nextPushTime,
+		`next_push_time_desc`:     nextPushTimeDesc,
+		`last_push_time`:          lastPushTime,
+		`last_push_time_desc`:     lastPushTimeDesc,
+		`last_push_error`:         lastPushError,
 	})
 }
 

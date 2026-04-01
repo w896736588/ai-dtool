@@ -88,9 +88,13 @@ func ReadMemoryConfigFromINI() common.MemoryConfig {
 		memoryDBName = `memory.db`
 	}
 	config := common.MemoryConfig{
-		Dir:            common.ResolveDefaultDToolDir(memoryDir),
-		DBName:         memoryDBName,
-		GitRepoEnabled: memoryDBIsGitRepo,
+		Dir:                  common.ResolveDefaultDToolDir(memoryDir),
+		DBName:               memoryDBName,
+		GitRepoEnabled:       memoryDBIsGitRepo,
+		AutoPushDelayMinutes: common.DefaultMemoryAutoPushDelayMinutes,
+	}
+	if component.ConfigViper.IsSet(`base.memoryDbAutoPushDelayMinutes`) {
+		config.AutoPushDelayMinutes = component.ConfigViper.GetInt(`base.memoryDbAutoPushDelayMinutes`)
 	}
 	config.DBPath = filepath.Join(config.Dir, config.DBName)
 	return config

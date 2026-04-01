@@ -826,22 +826,23 @@ func SetMemoryConfigGet(c *gin.Context) {
 		return
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`db_dir`:                          mainDBConfig.Dir,
-		`db_name`:                         mainDBConfig.DBName,
-		`db_configured`:                   mainDBConfig.Dir != `` && mainDBConfig.DBName != ``,
-		`db_is_git_repo`:                  mainDBConfig.GitRepoEnabled,
-		`webkit_driver_path`:              component.ConfigViper.GetString(`path.webkit_driver_path`),
-		`webkit_data_path`:                component.ConfigViper.GetString(`path.webkit_data_path`),
-		`webkit_download_path`:            component.ConfigViper.GetString(`path.webkit_download_path`),
-		`memory_dir`:                      memoryConfig.Dir,
-		`memory_db_name`:                  memoryConfig.DBName,
-		`memory_db_configured`:            memoryConfig.Dir != `` && memoryConfig.DBName != ``,
-		`memory_db_is_git_repo`:           memoryConfig.GitRepoEnabled,
-		`memory_config_file`:              memoryConfigFilePath(),
-		`memory_arrange_prompt`:           arrangePrompt,
-		`memory_arrange_model_id`:         cast.ToInt(arrangeModelID),
-		`home_task_daily_report_prompt`:   dailyReportPrompt,
-		`home_task_daily_report_model_id`: cast.ToInt(dailyReportModelID),
+		`db_dir`:                            mainDBConfig.Dir,
+		`db_name`:                           mainDBConfig.DBName,
+		`db_configured`:                     mainDBConfig.Dir != `` && mainDBConfig.DBName != ``,
+		`db_is_git_repo`:                    mainDBConfig.GitRepoEnabled,
+		`webkit_driver_path`:                component.ConfigViper.GetString(`path.webkit_driver_path`),
+		`webkit_data_path`:                  component.ConfigViper.GetString(`path.webkit_data_path`),
+		`webkit_download_path`:              component.ConfigViper.GetString(`path.webkit_download_path`),
+		`memory_dir`:                        memoryConfig.Dir,
+		`memory_db_name`:                    memoryConfig.DBName,
+		`memory_db_configured`:              memoryConfig.Dir != `` && memoryConfig.DBName != ``,
+		`memory_db_is_git_repo`:             memoryConfig.GitRepoEnabled,
+		`memory_db_auto_push_delay_minutes`: memoryConfig.AutoPushDelayMinutes,
+		`memory_config_file`:                memoryConfigFilePath(),
+		`memory_arrange_prompt`:             arrangePrompt,
+		`memory_arrange_model_id`:           cast.ToInt(arrangeModelID),
+		`home_task_daily_report_prompt`:     dailyReportPrompt,
+		`home_task_daily_report_model_id`:   cast.ToInt(dailyReportModelID),
 	})
 }
 
@@ -930,6 +931,7 @@ func SetRuntimeConfigSave(c *gin.Context) {
 	setIniKey(baseSection, `memoryDbPath`, strings.TrimSpace(cast.ToString(dataMap[`memory_db_path`])))
 	setIniKey(baseSection, `memoryDbFileName`, strings.TrimSpace(cast.ToString(dataMap[`memory_db_file_name`])))
 	setIniKey(baseSection, `memoryDbIsGitRepo`, cast.ToString(cast.ToBool(dataMap[`memory_db_is_git_repo`])))
+	setIniKey(baseSection, `memoryDbAutoPushDelayMinutes`, cast.ToString(cast.ToInt(dataMap[`memory_db_auto_push_delay_minutes`])))
 	setIniKey(pathSection, `webkit_driver_path`, strings.TrimSpace(cast.ToString(dataMap[`webkit_driver_path`])))
 	setIniKey(pathSection, `webkit_data_path`, strings.TrimSpace(cast.ToString(dataMap[`webkit_data_path`])))
 	setIniKey(pathSection, `webkit_download_path`, strings.TrimSpace(cast.ToString(dataMap[`webkit_download_path`])))

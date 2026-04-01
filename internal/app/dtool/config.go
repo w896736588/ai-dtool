@@ -251,13 +251,17 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	component.EnvClient.NodePath = `node`
 	//base配置初始化
 	component.EnvClient.ConfigBase = &define.Base{
-		DbFileName:        viper.GetString(`base.dbFileName`),
-		DbPath:            viper.GetString(`base.dbPath`),
-		DbIsGitRepo:       viper.GetBool(`base.dbIsGitRepo`),
-		MemoryDBPath:      viper.GetString(`base.memoryDbPath`),
-		MemoryDBName:      viper.GetString(`base.memoryDbFileName`),
-		MemoryDBIsGitRepo: viper.GetBool(`base.memoryDbIsGitRepo`),
-		WebPath:           viper.GetString(`base.webPath`),
+		DbFileName:                   viper.GetString(`base.dbFileName`),
+		DbPath:                       viper.GetString(`base.dbPath`),
+		DbIsGitRepo:                  viper.GetBool(`base.dbIsGitRepo`),
+		MemoryDBPath:                 viper.GetString(`base.memoryDbPath`),
+		MemoryDBName:                 viper.GetString(`base.memoryDbFileName`),
+		MemoryDBIsGitRepo:            viper.GetBool(`base.memoryDbIsGitRepo`),
+		MemoryDBAutoPushDelayMinutes: common.DefaultMemoryAutoPushDelayMinutes,
+		WebPath:                      viper.GetString(`base.webPath`),
+	}
+	if viper.IsSet(`base.memoryDbAutoPushDelayMinutes`) {
+		component.EnvClient.ConfigBase.MemoryDBAutoPushDelayMinutes = viper.GetInt(`base.memoryDbAutoPushDelayMinutes`)
 	}
 	//web
 	component.EnvClient.WebConfig = &define.WebConfig{

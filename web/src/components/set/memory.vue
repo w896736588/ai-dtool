@@ -63,6 +63,10 @@
               <el-switch v-model="runtimeEditForm.memory_db_is_git_repo" />
               <div class="config-item-help">开启后记忆库启动前会 git pull，自动同步时会 push。</div>
             </el-form-item>
+            <el-form-item label="memoryDbAutoPushDelayMinutes">
+              <el-input-number v-model="runtimeEditForm.memory_db_auto_push_delay_minutes" :min="0" :step="1" />
+              <div class="config-item-help">知识库内容写入 sqlite 后，延迟多少分钟自动 git commit + push；0 表示关闭自动 push。</div>
+            </el-form-item>
           </el-form>
 
           <el-divider content-position="left">[path] 路径配置</el-divider>
@@ -132,6 +136,10 @@
                   同步
                 </GitActionButton>
               </div>
+            </el-descriptions-item>
+            <el-descriptions-item label="memoryDbAutoPushDelayMinutes">
+              <div class="config-value">{{ form.memory_db_auto_push_delay_minutes }}</div>
+              <div class="config-item-help">知识库内容写入 sqlite 后，延迟多少分钟自动 git commit + push；0 表示关闭自动 push。</div>
             </el-descriptions-item>
           </el-descriptions>
 
@@ -212,6 +220,7 @@ function createRuntimeEditForm() {
     memory_db_path: '',
     memory_db_file_name: '',
     memory_db_is_git_repo: false,
+    memory_db_auto_push_delay_minutes: 1,
     webkit_driver_path: '',
     webkit_data_path: '',
     webkit_download_path: '',
@@ -255,6 +264,7 @@ export default {
         memory_dir: '',
         memory_db_name: '',
         memory_db_is_git_repo: false,
+        memory_db_auto_push_delay_minutes: 1,
         memory_db_configured: false,
         memory_config_file: '',
         memory_arrange_model_id: null,
@@ -337,6 +347,7 @@ export default {
         memory_db_path: this.form.memory_dir || '',
         memory_db_file_name: this.form.memory_db_name || '',
         memory_db_is_git_repo: !!this.form.memory_db_is_git_repo,
+        memory_db_auto_push_delay_minutes: Number(this.form.memory_db_auto_push_delay_minutes ?? 1),
         webkit_driver_path: this.form.webkit_driver_path || '',
         webkit_data_path: this.form.webkit_data_path || '',
         webkit_download_path: this.form.webkit_download_path || '',
@@ -357,6 +368,7 @@ export default {
         this.form.memory_dir = response.Data.memory_dir || ''
         this.form.memory_db_name = response.Data.memory_db_name || ''
         this.form.memory_db_is_git_repo = !!response.Data.memory_db_is_git_repo
+        this.form.memory_db_auto_push_delay_minutes = Number(response.Data.memory_db_auto_push_delay_minutes ?? 1)
         this.form.memory_db_configured = !!response.Data.memory_db_configured
         this.form.memory_config_file = response.Data.memory_config_file || ''
         this.form.memory_arrange_model_id = response.Data.memory_arrange_model_id || null
@@ -385,6 +397,7 @@ export default {
         memory_db_path: this.runtimeEditForm.memory_db_path,
         memory_db_file_name: this.runtimeEditForm.memory_db_file_name,
         memory_db_is_git_repo: this.runtimeEditForm.memory_db_is_git_repo,
+        memory_db_auto_push_delay_minutes: Number(this.runtimeEditForm.memory_db_auto_push_delay_minutes || 0),
         webkit_driver_path: this.runtimeEditForm.webkit_driver_path,
         webkit_data_path: this.runtimeEditForm.webkit_data_path,
         webkit_download_path: this.runtimeEditForm.webkit_download_path,

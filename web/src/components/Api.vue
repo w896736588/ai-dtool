@@ -1965,14 +1965,40 @@ export default {
         }
       })
     },
+    escapeHtml(text) {
+      return String(text ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;')
+    },
+    confirmDeleteAction(entityType, entityName, onConfirm) {
+      const safeType = this.escapeHtml(entityType)
+      const safeName = this.escapeHtml(entityName)
+      const message = `
+        <div>
+          <div>此操作不可恢复，请确认是否继续删除。</div>
+          <div style="margin-top: 8px; color: #f56c6c; font-weight: 600;">
+            ${safeType}：${safeName}
+          </div>
+        </div>
+      `
+      this.$confirm(message, '确认删除', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+        dangerouslyUseHTMLString: true,
+      }).then(() => {
+        onConfirm()
+      }).catch(() => {
+        this.$message.info('已取消删除')
+      })
+    },
     //删除集合
     handleCollectionDelete(collection) {
       let _that = this
-      this.$confirm('确定要删除这个集合吗？此操作不可恢复。', '确认删除', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(() => {
+      _that.confirmDeleteAction('集合', collection.name || collection.label || `#${collection.id}`, () => {
         Api.DeleteCollection(collection, function (res) {
           if (res.ErrCode === 0) {
             _that.treeData = ArrayUtil.DeleteValueByStringKey(_that.treeData, 'uniqueid', collection.uniqueid)
@@ -1984,8 +2010,6 @@ export default {
             _that.$message.error(res.ErrMsg)
           }
         })
-      }).catch(() => {
-        _that.$message.info('已取消删除')
       })
     },
 
@@ -2005,11 +2029,7 @@ export default {
     handleFolderDelete: function (folder) {
       console.log('删除文件夹', folder)
       let _that = this
-      _that.$confirm('确定要删除这个文件夹吗？此操作不可恢复。', '确认删除', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(() => {
+      _that.confirmDeleteAction('文件夹', folder.name || folder.label || `#${folder.id}`, () => {
         Api.DeleteDir(folder, function (res) {
           if (res.ErrCode === 0) {
             // 关闭该文件夹及其下所有接口的 tab
@@ -2022,8 +2042,6 @@ export default {
             _that.$message.error(res.ErrMsg)
           }
         })
-      }).catch(() => {
-        _that.$message.info('已取消删除')
       })
     },
     handleFolderCreateApi: function () {
@@ -2100,11 +2118,7 @@ export default {
       } else if (command === 'move_api') {
         _that.openMoveApiDialog(data)
       } else if (command === 'delete_api') {
-        _that.$confirm(`确定要删除接口 "${data.name}" 吗？`, '确认删除', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        }).then(() => {
+        _that.confirmDeleteAction('接口', data.name || data.label || `#${data.id}`, () => {
           Api.DeleteApi(data, function (res) {
             if (res.ErrCode === 0) {
               // 关闭该接口的 tab
@@ -2118,9 +2132,6 @@ export default {
               _that.$message.error(res.ErrMsg)
             }
           })
-        }).catch(() => {
-          // 用户点击取消，不做任何操作
-          _that.$message.info('已取消删除')
         })
       } else if (command === 'down_api') {
         Api.ApiWeightDown(data, function (res) {

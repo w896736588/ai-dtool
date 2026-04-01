@@ -98,8 +98,8 @@
 
       <div v-if="memoryGitRepoEnabled" class="sidebar-footer">
         <div class="sidebar-footer-row">
-          <span class="sidebar-footer-label">上一次 push 记忆库</span>
-          <span class="sidebar-footer-value">{{ lastPushTimeDesc }}</span>
+          <span class="sidebar-footer-label">{{ pushStatusLabel }}</span>
+          <span class="sidebar-footer-value">{{ pushStatusDesc }}</span>
         </div>
         <div v-if="lastPushError" class="sidebar-footer-row sidebar-footer-error">
           <span class="sidebar-footer-label">失败原因</span>
@@ -376,8 +376,11 @@ export default {
       historyFragmentId: 0,
       memoryConfigured: true,
       memoryGitRepoEnabled: false,
+      nextPushTime: 0,
+      lastPushTime: 0,
       lastPushTimeDesc: '-',
       lastPushError: '',
+      statusNowTick: Math.floor(Date.now() / 1000),
       statusPollTimer: null,
       settingsDialogVisible: false,
     }
@@ -422,6 +425,20 @@ export default {
     // tagFilterToggleText 返回左侧标签筛选区的展开文案。
     tagFilterToggleText() {
       return this.tagFilterExpanded ? '收起标签' : `展开标签（${this.tagList.length}）`
+    },
+    // pushStatusLabel 返回记忆库 push 状态标签，优先展示下一次 push。
+    pushStatusLabel() {
+      return this.nextPushTime > 0 ? '下一次 push 记忆库' : '上一次 push 记忆库'
+    },
+    // pushStatusDesc 返回记忆库 push 状态文案，优先展示下一次 push 倒计时。
+    pushStatusDesc() {
+      if (this.nextPushTime > 0) {
+        return this.formatRelativeTime(this.nextPushTime, 'future')
+      }
+      if (this.lastPushTime > 0) {
+        return this.formatRelativeTime(this.lastPushTime, 'past')
+      }
+      return this.lastPushTimeDesc || '-'
     }
   },
   mounted() {
@@ -444,6 +461,7 @@ export default {
         return
       }
       this.statusPollTimer = window.setInterval(() => {
+        this.statusNowTick = Math.floor(Date.now() / 1000)
         this.loadMemoryStatus(false)
       }, 10000)
     },
@@ -454,10 +472,31 @@ export default {
       window.clearInterval(this.statusPollTimer)
       this.statusPollTimer = null
     },
+    // formatRelativeTime 把 unix 秒时间格式化为“xx小时xx分钟前/后”。
+    formatRelativeTime(unixTime, direction) {
+      const targetTime = Number(unixTime || 0)
+      if (targetTime <= 0) {
+        return '-'
+      }
+      const now = this.statusNowTick
+      let diffSeconds = direction === 'future' ? targetTime - now : now - targetTime
+      if (diffSeconds <= 0) {
+        return direction === 'future' ? '1分钟内' : '刚刚'
+      }
+      diffSeconds = Math.ceil(diffSeconds / 60) * 60
+      const totalMinutes = Math.floor(diffSeconds / 60)
+      const hours = Math.floor(totalMinutes / 60)
+      const minutes = totalMinutes % 60
+      const durationText = hours > 0 ? `${hours}小时${minutes}分钟` : `${minutes}分钟`
+      return direction === 'future' ? `${durationText}后` : `${durationText}前`
+    },
     loadMemoryStatus(needReloadLists = true) {
       MemoryFragmentApi.MemoryFragmentStatus((response) => {
+        this.statusNowTick = Math.floor(Date.now() / 1000)
         this.memoryConfigured = !!(response.Data && response.Data.configured)
         this.memoryGitRepoEnabled = !!(response.Data && response.Data.git_repo_enabled)
+        this.nextPushTime = response.Data && response.Data.next_push_time ? Number(response.Data.next_push_time) : 0
+        this.lastPushTime = response.Data && response.Data.last_push_time ? Number(response.Data.last_push_time) : 0
         this.lastPushTimeDesc = response.Data && response.Data.last_push_time_desc ? response.Data.last_push_time_desc : '-'
         this.lastPushError = response.Data && response.Data.last_push_error ? response.Data.last_push_error : ''
         if (!this.memoryConfigured) {
@@ -468,6 +507,8 @@ export default {
           this.fragmentTabs = []
           this.activeTab = HOME_TAB_NAME
           this.memoryGitRepoEnabled = false
+          this.nextPushTime = 0
+          this.lastPushTime = 0
           return
         }
         if (needReloadLists) {
@@ -1006,7 +1047,8 @@ export default {
 .sidebar-footer-row {
   display: flex;
   gap: 8px;
-  align-items: flex-start;
+  align-items: center;
+  line-height: 1.4;
 }
 
 .sidebar-footer-label {
@@ -1022,6 +1064,10 @@ export default {
   color: #bb5b4a;
   white-space: normal;
   word-break: break-word;
+}
+
+.sidebar-footer-error {
+  align-items: flex-start;
 }
 
 .sidebar-item {

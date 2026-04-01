@@ -20,6 +20,7 @@ func TestReadMemoryConfigFromINI(t *testing.T) {
 	v.Set(`base.memoryDbPath`, `D:\repo\memory`)
 	v.Set(`base.memoryDbFileName`, `memory.db`)
 	v.Set(`base.memoryDbIsGitRepo`, true)
+	v.Set(`base.memoryDbAutoPushDelayMinutes`, 9)
 	component.ConfigViper = v
 
 	got := ReadMemoryConfigFromINI()
@@ -34,6 +35,9 @@ func TestReadMemoryConfigFromINI(t *testing.T) {
 	}
 	if !got.GitRepoEnabled {
 		t.Fatalf("GitRepoEnabled = %v, want true", got.GitRepoEnabled)
+	}
+	if got.AutoPushDelayMinutes != 9 {
+		t.Fatalf("AutoPushDelayMinutes = %d, want %d", got.AutoPushDelayMinutes, 9)
 	}
 }
 
@@ -60,6 +64,9 @@ func TestReadMemoryConfigFromINIHandlesMissingConfig(t *testing.T) {
 	}
 	if got.GitRepoEnabled {
 		t.Fatalf("GitRepoEnabled = %v, want false", got.GitRepoEnabled)
+	}
+	if got.AutoPushDelayMinutes != 1 {
+		t.Fatalf("AutoPushDelayMinutes = %d, want %d", got.AutoPushDelayMinutes, 1)
 	}
 }
 
