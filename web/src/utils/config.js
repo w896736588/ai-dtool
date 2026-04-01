@@ -1,5 +1,6 @@
 import store from './base/store'
 import notify from './base/notify'
+import { normalizeSupervisorProgramNameFromHeader } from './supervisor_status'
 
 //拿到接口地址
 function getApiHost() {
@@ -23,10 +24,7 @@ function getSupervisorConfigList(confList, consumerConfig) {
       continue
     }
     let configFileName = consumerConfig.config_dir + '/' + configName
-    configParam[1] = supervisorName.replaceAll('[', '')
-    configParam[1] = configParam[1].replaceAll(']', '')
-    configParam[1] = configParam[1].replaceAll('program:', '')
-    configParam[1] = configParam[1].replaceAll('\r', '')
+    configParam[1] = normalizeSupervisorProgramNameFromHeader(supervisorName)
     //建立配置
     let showName = store.getStore(configName)
     if (showName === null || showName === undefined) {

@@ -50,7 +50,7 @@
     <!-- 进程列表 -->
     <div class="process-table-card">
       <el-table :data="configMap" :row-class-name="getColumnColor" class="process-table" stripe>
-        <el-table-column label="自定义名称" min-width="200">
+        <el-table-column label="自定义名称" max-width="200">
           <template #default="scope">
             <div class="name-cell">
               <span class="custom-name" v-html="scope.row.showName"></span>
@@ -60,12 +60,12 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="进程名称" min-width="200">
+        <el-table-column label="进程名称" max-width="200">
           <template #default="scope">
             <code class="process-name" v-html="scope.row.name"></code>
           </template>
         </el-table-column>
-        <el-table-column label="运行状态" width="180" sortable>
+        <el-table-column label="运行状态" width="600" sortable>
           <template #default="scope">
             <div class="status-cell">
               <span v-html="scope.row.running_status" class="status-text"></span>
@@ -139,6 +139,7 @@ import {Throttle_string} from "@/utils/base/throttle_string";
 import search from "@/utils/base/search";
 import SettingsDialog from '@/components/base/SettingsDialog.vue'
 import SupervisorSettingPage from '@/components/set/supervisor.vue'
+import { parseSupervisorStatusLine } from '@/utils/supervisor_status'
 
 export default {
   props : {
@@ -529,42 +530,25 @@ export default {
     supervisorStatusExplain: function () {
       for (let n in this.configMap) {
         this.configMap[n].processNum = 0
+        this.configMap[n].running_status = ''
       }
       //分析结果
       let supervisorStatusList = this.getExecResultText(this.execResult).split('\n')
       for (let i in supervisorStatusList) {
-        if (supervisorStatusList[i] === '') {
-          continue
-        }
-        //根据；分割
-        let name_params = []
-        if(supervisorStatusList[i].match(/^[^\s]+/g)){
-          name_params.push(supervisorStatusList[i].match(/^[^\s]+/g)[0])
-        }else{
-          name_params.push('-')
-        }
-        name_params.push(supervisorStatusList[i].replace(name_params[0], ''))
-        //循环判断
-        let name_params_two = this.filterArray(name_params)
-        //获取supervisor进程名
-        if (name_params_two.length === 0) {
-          continue
-        }
-        let name = name_params_two[0]
-        let name_params_four = this.filterArray(name.split(':'))
-        if (name_params_four.length === 0) {
+        const parsedStatus = parseSupervisorStatusLine(supervisorStatusList[i])
+        if (!parsedStatus) {
           continue
         }
         //给与状态
         for (let n in this.configMap) {
-          if (this.configMap[n].supervisor_name === name_params_four[0]) {
-            this.configMap[n].running_status = name_params_two[1]
+          if (this.configMap[n].supervisor_name === parsedStatus.groupName) {
+            this.configMap[n].running_status = parsedStatus.statusText
             //重启名
-            if (name_params_four.length === 2) {
+            if (parsedStatus.processName.indexOf(':') >= 0) {
               this.configMap[n].supervisor_restart_name =
-                  name_params_four[0] + ':'
+                  parsedStatus.groupName + ':'
             } else {
-              this.configMap[n].supervisor_restart_name = name_params_four[0]
+              this.configMap[n].supervisor_restart_name = parsedStatus.groupName
             }
             this.configMap[n].show = true
             this.configMap[n].processNum++
