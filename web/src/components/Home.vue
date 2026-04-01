@@ -1,5 +1,18 @@
 ﻿<template>
-  <div class="layout-container">
+  <div v-if="showInitialSetupState" class="setup-state">
+    <div class="setup-state__panel">
+      <div class="setup-state__badge">DT</div>
+      <div class="setup-state__eyebrow">First Setup</div>
+      <h2 class="setup-state__title">还没有检测到任何配置</h2>
+      <p class="setup-state__desc">
+        当前界面先隐藏业务页面，避免默认兜底值造成误解。点击下面的按钮进入设置页，完成基础配置后再开始使用。
+      </p>
+      <pl-button type="primary" class="setup-state__button" @click="openSetupPage">
+        点击设置
+      </pl-button>
+    </div>
+  </div>
+  <div v-else class="layout-container">
     <!-- 左侧菜单 -->
     <aside class="sidebar">
       <div class="sidebar-header">
@@ -67,16 +80,6 @@
           >
             <section class="home-dashboard-screen home-dashboard-screen--command">
               <div class="main-content__view main-content__view--dashboard">
-                <section v-if="currentPageSetupNotice" class="setup-inline-notice">
-                  <div class="setup-inline-notice__body">
-                    <div class="setup-inline-notice__eyebrow">{{ currentPageSetupNotice.eyebrow }}</div>
-                    <div class="setup-inline-notice__title">{{ currentPageSetupNotice.title }}</div>
-                    <div class="setup-inline-notice__desc">{{ currentPageSetupNotice.desc }}</div>
-                  </div>
-                  <pl-button type="primary" class="setup-inline-notice__button" @click="openSetupPage">
-                    {{ currentPageSetupNotice.buttonText }}
-                  </pl-button>
-                </section>
                 <router-view v-slot="{ Component, route }" name="home">
                   <keep-alive>
                     <component :is="Component" ref="currentRef"/>
@@ -287,16 +290,6 @@
           </div>
         </div>
         <div v-else class="main-content__view">
-          <section v-if="currentPageSetupNotice" class="setup-inline-notice">
-            <div class="setup-inline-notice__body">
-              <div class="setup-inline-notice__eyebrow">{{ currentPageSetupNotice.eyebrow }}</div>
-              <div class="setup-inline-notice__title">{{ currentPageSetupNotice.title }}</div>
-              <div class="setup-inline-notice__desc">{{ currentPageSetupNotice.desc }}</div>
-            </div>
-            <pl-button type="primary" class="setup-inline-notice__button" @click="openSetupPage">
-              {{ currentPageSetupNotice.buttonText }}
-            </pl-button>
-          </section>
           <router-view v-slot="{ Component, route }" name="home">
             <keep-alive>
               <component :is="Component" ref="currentRef"/>
@@ -510,75 +503,6 @@ const HOME_SETUP_EMPTY_KEYS = [
   'webkit_data_path',
   'webkit_download_path',
 ]
-// HOME_PAGE_SETUP_NOTICE_MAP 为每个页面提供独立的配置提示文案。
-const HOME_PAGE_SETUP_NOTICE_MAP = {
-  '/Dashboard': {
-    eyebrow: 'Dashboard Setup',
-    title: '首页还没有基础配置',
-    desc: '首页可以先进入，但很多汇总能力会依赖基础配置。建议先去配置页补齐数据库、WebKit 或连接信息。',
-    buttonText: '去基础设置',
-  },
-  '/Redis': {
-    eyebrow: 'Redis Setup',
-    title: 'Redis 页面还没有可用配置',
-    desc: '先去设置页补充 Redis 连接信息，再回来查看 Key、Hash 和收藏记录会更完整。',
-    buttonText: '去配置 Redis',
-  },
-  '/Supervisor': {
-    eyebrow: 'Supervisor Setup',
-    title: 'Supervisor 页面还没有可用配置',
-    desc: '建议先补齐 Supervisor 主机、账号或分组信息，之后这里的进程查看和控制能力才会完整可用。',
-    buttonText: '去配置 Supervisor',
-  },
-  '/Git': {
-    eyebrow: 'Git Setup',
-    title: 'Git 页面还没有可用配置',
-    desc: '当前还没有检测到 Git 相关的显式配置。先补充仓库组、账号或本地目录配置，再回来操作会更顺手。',
-    buttonText: '去配置 Git',
-  },
-  '/CommonActions': {
-    eyebrow: 'Common Actions Setup',
-    title: '常用操作页还没有基础配置',
-    desc: '常用操作页已经能进入，但很多动作依赖基础配置。建议先补齐通用设置再回来使用。',
-    buttonText: '去基础设置',
-  },
-  '/Variable': {
-    eyebrow: 'Variable Setup',
-    title: '自定义脚本页还没有可用配置',
-    desc: '如果你准备维护脚本和变量，建议先在设置页补齐分组和相关基础环境信息。',
-    buttonText: '去配置脚本',
-  },
-  '/Link': {
-    eyebrow: 'Link Setup',
-    title: '自定义网页页还没有可用配置',
-    desc: '当前还没有检测到这类页面所需的显式配置。先补齐登录信息或链接配置，后续使用会更完整。',
-    buttonText: '去配置网页',
-  },
-  '/Docker': {
-    eyebrow: 'Docker Setup',
-    title: 'Docker 页面还没有可用配置',
-    desc: '建议先补充 Docker 连接或主机信息，否则这里只能先进入页面，后续操作能力会受限。',
-    buttonText: '去配置 Docker',
-  },
-  '/MemoryFragment': {
-    eyebrow: 'Memory Setup',
-    title: '知识片段页还没有可用配置',
-    desc: '当前还没有检测到记忆库相关的显式配置。建议先确认库路径和基础设置，再回来管理知识片段。',
-    buttonText: '去配置记忆库',
-  },
-  '/Api': {
-    eyebrow: 'API Setup',
-    title: '接口开发页还没有基础配置',
-    desc: '接口开发页可以先打开，但如果没有基础配置，环境变量、历史数据和本地资源能力会不完整。',
-    buttonText: '去基础设置',
-  },
-  '/shellout': {
-    eyebrow: 'Shell Setup',
-    title: '终端输出页还没有基础配置',
-    desc: '终端输出页已经打开，但如果缺少基础配置或连接信息，后续输出能力会受到影响。',
-    buttonText: '去基础设置',
-  },
-}
 // HOME_TASK_ARCHIVED_* 对应后端归档状态常量。
 const HOME_TASK_ARCHIVED_NO = 0
 const HOME_TASK_ARCHIVED_YES = 1
@@ -678,6 +602,7 @@ export default {
       sshConnectionsDialogVisible: false,
       sshConnectionsLoading: false,
       sshConnectionTimer: null,
+      setupGateDismissed: false,
       runtimeConfigSnapshot: {
         db_path_raw: '',
         db_name_raw: '',
@@ -721,22 +646,14 @@ export default {
     }
   },
   computed: {
+    // showInitialSetupState 在完全未配置且尚未点击设置时显示引导卡片。
+    showInitialSetupState() {
+      return !this.setupGateDismissed && !this.hasAnyUserConfig
+    },
     // hasAnyUserConfig 依据 ini 原始值判断是否已有任何显式配置。
     hasAnyUserConfig() {
       const hasTextConfig = HOME_SETUP_EMPTY_KEYS.some((key) => String(this.runtimeConfigSnapshot[key] || '').trim() !== '')
       return hasTextConfig || !!this.runtimeConfigSnapshot.db_is_git_repo || !!this.runtimeConfigSnapshot.memory_db_is_git_repo
-    },
-    // currentPageSetupNotice 根据当前页面返回独立提示文案。
-    currentPageSetupNotice() {
-      if (this.hasAnyUserConfig || this.$route.path === HOME_ROUTE_SET) {
-        return null
-      }
-      return HOME_PAGE_SETUP_NOTICE_MAP[this.$route.path] || {
-        eyebrow: 'Page Setup',
-        title: '当前页面还没有可用配置',
-        desc: '页面已经可以打开，但建议先进入设置页补齐基础配置，避免后续功能依赖默认兜底值。',
-        buttonText: '去配置',
-      }
     },
     // visibleNavigationItems 统一定义左侧导航条目与图标风格。
     visibleNavigationItems() {
@@ -773,6 +690,9 @@ export default {
   watch: {
     // 当用户切回首页时主动刷新任务，避免跨页面停留后数据过期。
     '$route.path'(newPath) {
+      if (newPath === HOME_ROUTE_SET) {
+        this.setupGateDismissed = true
+      }
       this.loadRuntimeConfigSnapshot()
       if (newPath !== HOME_ROUTE_DASHBOARD) {
         this.homeDashboardPageIndex = HOME_DASHBOARD_PAGE_COMMAND
@@ -805,6 +725,9 @@ export default {
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
     this.menuName = this.$helperStore.getStore(this.menuKeyStore)
+    if (this.$route.path === HOME_ROUTE_SET) {
+      this.setupGateDismissed = true
+    }
     if (this.$route.path !== this.menuName && this.menuName != null) {
       this.$router.push(this.menuName)
     }
@@ -836,8 +759,9 @@ export default {
         }
       })
     },
-    // openSetupPage 进入设置页，供页面内提示条统一复用。
+    // openSetupPage 进入设置页并解除首页首次配置挡板。
     openSetupPage() {
+      this.setupGateDismissed = true
       if (this.$route.path !== HOME_ROUTE_SET) {
         this.$router.push(HOME_ROUTE_SET)
       }
@@ -1254,6 +1178,9 @@ export default {
       if (keyPath[0].indexOf('Ignore-') >= 0) {
         return;
       }
+      if (key === HOME_ROUTE_SET) {
+        this.setupGateDismissed = true
+      }
       this.menuName = keyPath[0]
       this.$helperStore.setStore(_that.menuKeyStore, this.menuName)
     },
@@ -1287,49 +1214,68 @@ export default {
 </script>
 
 <style scoped>
-.setup-inline-notice {
+.setup-state {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 16px;
-  padding: 18px 20px;
-  border: 1px solid rgba(122, 145, 111, 0.16);
-  border-radius: 20px;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
   background:
-    radial-gradient(circle at top left, rgba(189, 214, 181, 0.2), transparent 34%),
-    linear-gradient(145deg, rgba(250, 252, 247, 0.98) 0%, rgba(244, 247, 239, 0.96) 100%);
-  box-shadow: 0 16px 36px rgba(122, 140, 114, 0.08);
+    radial-gradient(circle at top left, rgba(188, 214, 180, 0.32), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(197, 223, 236, 0.36), transparent 24%),
+    linear-gradient(145deg, #f3f7ef 0%, #fcfdf9 56%, #f6f4eb 100%);
 }
 
-.setup-inline-notice__body {
-  min-width: 0;
+.setup-state__panel {
+  width: min(520px, 100%);
+  padding: 38px 34px;
+  border: 1px solid rgba(120, 145, 114, 0.16);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 24px 80px rgba(72, 88, 68, 0.12);
+  text-align: center;
 }
 
-.setup-inline-notice__eyebrow {
+.setup-state__badge {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 16px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fdfdf8;
+  background: linear-gradient(145deg, #455b41 0%, #73906f 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.setup-state__eyebrow {
   font-size: 11px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: #869480;
+  color: #80927b;
 }
 
-.setup-inline-notice__title {
-  margin-top: 6px;
-  font-size: 18px;
-  font-weight: 600;
-  color: #334331;
+.setup-state__title {
+  margin: 14px 0 10px;
+  font-size: 28px;
+  line-height: 1.25;
+  color: #324130;
 }
 
-.setup-inline-notice__desc {
-  margin-top: 6px;
-  font-size: 13px;
-  line-height: 1.7;
+.setup-state__desc {
+  margin: 0 auto;
+  max-width: 360px;
+  font-size: 14px;
+  line-height: 1.85;
   color: #667463;
 }
 
-.setup-inline-notice__button {
-  flex-shrink: 0;
-  min-width: 132px;
+.setup-state__button {
+  margin-top: 24px;
+  min-width: 150px;
 }
 
 .layout-container {

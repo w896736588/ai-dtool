@@ -21,29 +21,28 @@ func TestStartupSplashPageLoadsWailsRuntime(t *testing.T) {
 	}
 }
 
-func TestGetDesktopWindowLayoutUsesNinetyPercentOfPrimaryWorkArea(t *testing.T) {
+func TestGetDesktopWindowHeightUsesNinetyPercentOfPrimaryWorkArea(t *testing.T) {
 	screen := &application.Screen{
 		WorkArea: application.Rect{
 			Height: 1000,
 		},
 	}
 
-	gotHeight, gotMinHeight := getDesktopWindowLayout(screen, desktopWindowMinHeight)
-	if gotHeight != 900 || gotMinHeight != desktopWindowMinHeight {
-		t.Fatalf("getDesktopWindowLayout() = (%d, %d), want (%d, %d)", gotHeight, gotMinHeight, 900, desktopWindowMinHeight)
+	got := getDesktopWindowHeight(screen, desktopWindowMinHeight)
+	if got != 900 {
+		t.Fatalf("getDesktopWindowHeight() = %d, want %d", got, 900)
 	}
 }
 
-func TestGetDesktopWindowLayoutClampsHeightIntoVisibleArea(t *testing.T) {
+func TestGetDesktopWindowHeightRespectsMinimumHeight(t *testing.T) {
 	screen := &application.Screen{
 		WorkArea: application.Rect{
 			Height: 720,
 		},
 	}
 
-	gotHeight, gotMinHeight := getDesktopWindowLayout(screen, desktopWindowMinHeight)
-	wantVisibleHeight := 720 - desktopWindowFrameReserveHeight
-	if gotHeight != wantVisibleHeight || gotMinHeight != wantVisibleHeight {
-		t.Fatalf("getDesktopWindowLayout() = (%d, %d), want (%d, %d)", gotHeight, gotMinHeight, wantVisibleHeight, wantVisibleHeight)
+	got := getDesktopWindowHeight(screen, desktopWindowMinHeight)
+	if got != desktopWindowMinHeight {
+		t.Fatalf("getDesktopWindowHeight() = %d, want %d", got, desktopWindowMinHeight)
 	}
 }

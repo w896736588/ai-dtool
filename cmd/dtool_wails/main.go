@@ -18,8 +18,6 @@ const (
 	desktopWindowDefaultHeight = 900
 	// desktopWindowMinHeight 表示桌面窗口允许的最小高度。 // Defines the minimum allowed height for the desktop window.
 	desktopWindowMinHeight = 700
-	// desktopWindowFrameReserveHeight 为窗口标题栏和系统边框预留安全空间。 // Reserves safe space for the native title bar and window frame.
-	desktopWindowFrameReserveHeight = 64
 )
 
 //go:embed frontend/dist
@@ -53,17 +51,16 @@ func main() {
 	})
 
 	primaryScreen := app.Screen.GetPrimary()
-	windowHeight, windowMinHeight := getDesktopWindowLayout(primaryScreen, desktopWindowMinHeight)
+	windowHeight := getDesktopWindowHeight(primaryScreen, desktopWindowMinHeight)
 
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "dtool",
 		Width:            1400,
 		Height:           windowHeight,
 		MinWidth:         1100,
-		MinHeight:        windowMinHeight,
+		MinHeight:        desktopWindowMinHeight,
 		BackgroundColour: application.NewRGBA(255, 255, 255, 255),
 		URL:              "/",
-		InitialPosition:  application.WindowCentered,
 	})
 	desktopApp.BindRuntime(app, window)
 	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
@@ -75,25 +72,15 @@ func main() {
 	}
 }
 
-// getDesktopWindowLayout 按主屏工作区高度生成桌面窗口高度与最小高度，目标为 90%，同时为系统标题栏预留空间。 // Calculates the desktop window height and minimum height from the primary screen work area, targeting 90% while reserving space for the native frame.
-func getDesktopWindowLayout(primaryScreen *application.Screen, preferredMinHeight int) (height int, minHeight int) {
+// getDesktopWindowHeight 按主屏工作区高度计算桌面窗口高度，目标为 90%。 // Calculates the desktop window height from the primary screen work area, targeting 90%.
+func getDesktopWindowHeight(primaryScreen *application.Screen, minHeight int) int {
 	if primaryScreen == nil || primaryScreen.WorkArea.Height <= 0 {
-		return desktopWindowDefaultHeight, preferredMinHeight
-	}
-	maxVisibleHeight := primaryScreen.WorkArea.Height - desktopWindowFrameReserveHeight
-	if maxVisibleHeight <= 0 {
-		return desktopWindowDefaultHeight, preferredMinHeight
-	}
-	if preferredMinHeight > maxVisibleHeight {
-		preferredMinHeight = maxVisibleHeight
+		return desktopWindowDefaultHeight
 	}
 	targetHeight := primaryScreen.WorkArea.Height * 9 / 10
-	// 先按 90% 取目标高度，再收敛到可见范围内，避免缩放场景下标题栏被顶出屏幕。 // Start from the 90% target, then clamp into the visible range so DPI scaling does not push the title bar off-screen.
-	if targetHeight < preferredMinHeight {
-		targetHeight = preferredMinHeight
+	// 保证窗口高度不会低于最小高度，避免小屏场景下窗口初始化过小。 // Keep the initial window height above the minimum height to avoid undersized startup windows on small screens.
+	if targetHeight < minHeight {
+		return minHeight
 	}
-	if targetHeight > maxVisibleHeight {
-		targetHeight = maxVisibleHeight
-	}
-	return targetHeight, preferredMinHeight
+	return targetHeight
 }

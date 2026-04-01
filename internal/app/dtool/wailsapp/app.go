@@ -4,7 +4,6 @@ import (
 	"dev_tool/internal/app/dtool"
 	"fmt"
 	"net"
-	"os"
 	"sync"
 	"time"
 
@@ -41,11 +40,6 @@ func (a *DesktopApp) BindRuntime(app *application.App, window application.Window
 // DomReady 在前端运行时就绪后异步拉起后端并跳转到本地页面。
 // DomReady boots the backend asynchronously after the frontend runtime is ready.
 func (a *DesktopApp) DomReady() {
-	// 开发模式下允许外部脚本提前拉起后端，并保持窗口停留在前端 dev server。
-	// In development mode, allow an external script to boot the backend early and keep the window on the frontend dev server.
-	if isExternalBackendManaged() {
-		return
-	}
 	go a.bootBackendAndOpen()
 }
 
@@ -112,10 +106,4 @@ func waitPortReady(port string, timeout time.Duration) bool {
 		time.Sleep(250 * time.Millisecond)
 	}
 	return false
-}
-
-// isExternalBackendManaged 标识桌面开发模式是否交由外部脚本托管本地后端。
-// Indicates whether desktop development mode delegates backend lifecycle to an external script.
-func isExternalBackendManaged() bool {
-	return os.Getenv(`DTOOL_WAILS_DEV_EXTERNAL_BACKEND`) == `1`
 }
