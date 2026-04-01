@@ -52,27 +52,89 @@ go install github.com/go-task/task/v3/cmd/task@latest
 go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 ```
 
-## 开发启动命令（task）
+## 启动命令（task）
+
+
+### Web 端（浏览器模式）
 
 ```bash
 开发时
-# 网页版，前后端一起，启动company.ini配置文件
-task run-dev-company
-# 桌面版,启动company.ini配置文件
-task run-dev-wails3-company
+# 后端
+task run-company
+# 前端
+task run-web-dev
 ```
 正式运行时
 默认访问地址：`http://localhost:17170/`（以配置中的 `run.ports` 为准）。
 
-## 一键打包
+### 桌面端（Wails）
 
-打完包的产物，在build文件夹下
 ```bash
-# windows
-task package-windows
-# linux
-task package-linux
-# macos
-task package-macos
+task run-wails
 ```
 
+说明：
+1. Wails 使用 `go run/go build` 时必须带 tag（建议 `production`）。
+2. 如果不方便传 `--ConfigFile`，可用环境变量 `DTOOL_CONFIG_FILE` 指定。
+
+## 编译命令
+
+### 构建前端 dist
+
+```bash
+task run-web-dist
+```
+
+### 构建 Web 模式后端 exe
+
+```bash
+task build-web
+```
+
+### 构建桌面端 exe
+
+```bash
+task build-wails
+```
+
+## 配置项说明（`config/dtool/*.ini`）
+
+### `[run]`
+
+1. `host`：监听地址（可选，未配置时按默认行为）。
+2. `ports`：服务端口列表，逗号分隔，例如 `17170,17171`。前端会从该列表中选端口请求 API。
+
+### `[path]`
+
+1. `webkit_driver_path`：webkit 驱动目录，支持占位符 `{DRIVE}`。
+2. `webkit_data_path`：webkit 用户数据目录，支持占位符 `{DRIVE}`。
+3. `webkit_download_path`：webkit 下载目录，支持占位符 `{DRIVE}`。
+
+占位符说明：
+1. `{DRIVE}`：优先 `D:`，若不存在则回退到 `C:`。
+
+### `[base]`
+
+1. `dbPath`：数据库目录；为空时默认 `config/dtool`。
+2. `dbFileName`：数据库文件名；为空时默认 `dtool.db`（项目内逻辑为 `AppName.db`）。
+3. `webPath`：前端 dist 目录绝对路径。
+
+`webPath` 为空时默认使用当前项目 `web/dist`。
+
+## 一键打包
+
+在 `Windows PowerShell` 或 `CMD` 中，先切到项目根目录再执行：
+
+```bash
+task run-build
+```
+
+脚本会自动执行：
+1. 构建 `web/dist`。
+2. 构建 `dtool.exe`（Web 模式）和 `dtool_wails.exe`（桌面模式）。
+3. 复制运行所需目录（`config/dtool`、`web/dist`、`internal/pkg/p_js`、主库与记忆库数据库升级 SQL）。
+4. 输出 `build/dtool_release_时间戳.zip`。
+
+## 相关约定
+
+开发约定见 [AGENTS.md](AGENTS.md)。

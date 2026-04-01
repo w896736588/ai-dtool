@@ -1,5 +1,5 @@
 ﻿<template>
-  <div v-if="state.mainForm.cacheKey !== ''" class="redis-hash-detail">
+  <template v-if="state.mainForm.cacheKey !== ''">
     <!-- Key信息头部 -->
     <div class="key-info-header">
       <div class="key-tags">
@@ -121,11 +121,13 @@
         </template>
       </el-table-column>
     </el-table>
+  </template>
+
   <!-- String类型编辑区 -->
   <el-form v-if="state.mainForm.cacheType === 'string'" class="string-editor">
-    <el-input v-if="state.editForm.strShowType === 1" v-model="state.editForm.value" rows="20" type="textarea" :style="{ minHeight: state.scrollHeight + 'px', height: '100%' }" class="string-textarea"></el-input>
-    <el-input v-if="state.editForm.strShowType === 2" v-model="state.editForm.searchResult" readonly rows="20" type="textarea" :style="{ minHeight: state.scrollHeight + 'px', height: '100%' }" class="string-textarea readonly"></el-input>
-    <div class="json-viewer" v-if="state.editForm.strShowType === 3" :style="{ minHeight: state.scrollHeight + 'px', height: '100%' }">
+    <el-input v-if="state.editForm.strShowType === 1" v-model="state.editForm.value" rows="20" type="textarea" :style="{ height: state.scrollHeight + 'px' }" class="string-textarea"></el-input>
+    <el-input v-if="state.editForm.strShowType === 2" v-model="state.editForm.searchResult" readonly rows="20" type="textarea" :style="{ height: state.scrollHeight + 'px' }" class="string-textarea readonly"></el-input>
+    <div class="json-viewer" v-if="state.editForm.strShowType === 3">
       <pl-button class="copy-btn" link @click="CopyJson(state.editForm.searchResult)">
         <el-icon><DocumentCopy /></el-icon> 复制
       </pl-button>
@@ -153,7 +155,7 @@
       <el-form-item style="margin-top: 10px">
         <el-input v-if="state.editForm.strShowType === 1" v-model="state.editForm.value" rows="20" type="textarea"></el-input>
         <el-input v-if="state.editForm.strShowType === 2" v-model="state.editForm.searchResult" readonly rows="20" type="textarea"></el-input>
-        <div class="json-viewer dialog-json-viewer" v-if="state.editForm.strShowType === 3">
+        <div class="json-viewer" v-if="state.editForm.strShowType === 3">
           <pl-button class="copy-btn" link @click="CopyJson(state.editForm.searchResult)">
             <el-icon><DocumentCopy /></el-icon> 复制
           </pl-button>
@@ -214,7 +216,6 @@
   <el-dialog v-model="state.isDeepParse" :append-to-body="true" title="深度解析" width="80%" class="deep-parse-dialog">
     <Decode v-if="state.isDeepParse" :source="state.editForm.value"></Decode>
   </el-dialog>
-  </div>
 </template>
 <script>
 import {defineExpose, defineComponent, inject, defineEmits, getCurrentInstance, reactive} from 'vue';
@@ -584,13 +585,6 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.redis-hash-detail {
-  height: 100%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
 .key-info-header {
   padding: 14px;
   background: #f7f7f2;
@@ -742,20 +736,13 @@ export default defineComponent({
 
 .string-editor {
   margin-top: 10px;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
 }
 
 .string-textarea {
-  flex: 1;
-  min-height: 0;
   border-radius: 10px;
 }
 
 .string-textarea :deep(.el-textarea__inner) {
-  height: 100%;
   border-radius: 10px;
   font-family: Consolas, Monaco, monospace;
   font-size: 13px;
@@ -770,30 +757,19 @@ export default defineComponent({
 
 .json-viewer {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  background: linear-gradient(180deg, #fbfcf8 0%, #f3f7ef 100%);
+  background: #1f221d;
   border-radius: 10px;
   padding: 14px;
   min-height: 320px;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid #dde7d8;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-}
-
-.dialog-json-viewer {
-  max-height: 420px;
 }
 
 .copy-btn {
   position: absolute;
   top: 10px;
   right: 10px;
-  background: #f7fbf4;
-  border: 1px solid #d6e4cf;
-  color: #5f7357;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
   padding: 5px 10px;
   border-radius: 6px;
   cursor: pointer;
@@ -804,44 +780,19 @@ export default defineComponent({
 }
 
 .copy-btn:hover {
-  background: #edf5e8;
-  border-color: #bfd3b6;
-  color: #466741;
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .json-content {
-  flex: 1;
-  min-height: 0;
-  color: #52624d;
+  color: #d7dfd1;
   font-family: Consolas, Monaco, monospace;
   font-size: 13px;
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
-  padding-top: 34px;
+  max-height: 600px;
   overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #b7c9ad #edf4e8;
-}
-
-.json-content::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.json-content::-webkit-scrollbar-track {
-  background: #edf4e8;
-  border-radius: 999px;
-}
-
-.json-content::-webkit-scrollbar-thumb {
-  background: #b7c9ad;
-  border-radius: 999px;
-}
-
-.json-content::-webkit-scrollbar-thumb:hover {
-  background: #9db48f;
 }
 
 </style>

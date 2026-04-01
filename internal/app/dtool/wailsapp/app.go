@@ -10,16 +10,11 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// desktopWindow 定义桌面启动页跳转所需的最小窗口能力。 // Defines the minimal window capability required for splash-page redirection.
-type desktopWindow interface {
-	SetURL(url string) application.Window
-}
-
 // DesktopApp 管理桌面端生命周期与本地后端启动流程。
 // DesktopApp manages desktop lifecycle and the local backend bootstrap flow.
 type DesktopApp struct {
 	app        *application.App
-	window     desktopWindow
+	window     application.Window
 	configFile string
 	bootOnce   sync.Once
 }
@@ -68,17 +63,8 @@ func (a *DesktopApp) bootBackendAndOpen() {
 			a.logErrorf("桌面窗口未初始化，无法跳转到后端页面: %s / Desktop window is not ready for backend redirect: %s", targetURL, targetURL)
 			return
 		}
-		a.openBackendURL(targetURL)
+		a.window.ExecJS(fmt.Sprintf("window.location.replace(%q)", targetURL))
 	})
-}
-
-// openBackendURL 使用窗口原生导航切换到本地后端页面。 // Uses native window navigation to switch to the local backend page.
-func (a *DesktopApp) openBackendURL(targetURL string) {
-	if a.window == nil {
-		return
-	}
-	// Wails 3 提供原生 SetURL 导航，避免依赖 ExecJS 的页面上下文与时序。 // Wails 3 provides native SetURL navigation, avoiding ExecJS page-context timing issues.
-	a.window.SetURL(targetURL)
 }
 
 // logErrorf 统一输出桌面端错误日志，优先复用 Wails 3 logger。

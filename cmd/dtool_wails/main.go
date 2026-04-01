@@ -13,13 +13,6 @@ import (
 
 var ConfigFile string
 
-const (
-	// desktopWindowDefaultHeight 表示无法获取屏幕信息时的默认窗口高度。 // Defines the fallback window height when screen information is unavailable.
-	desktopWindowDefaultHeight = 900
-	// desktopWindowMinHeight 表示桌面窗口允许的最小高度。 // Defines the minimum allowed height for the desktop window.
-	desktopWindowMinHeight = 700
-)
-
 //go:embed frontend/dist
 var assets embed.FS
 
@@ -38,27 +31,22 @@ func main() {
 		panic(err)
 	}
 
-	// BundledAssetFileServer 在生产模式服务内嵌资源，在开发模式可自动接管 FRONTEND_DEVSERVER_URL。
-	// BundledAssetFileServer serves embedded assets in production and automatically proxies FRONTEND_DEVSERVER_URL in development.
 	desktopApp := wailsapp.NewDesktopApp(ConfigFile)
 	app := application.New(application.Options{
 		Name:        "dtool",
 		Description: "dtool desktop client",
 		Assets: application.AssetOptions{
-			Handler: application.BundledAssetFileServer(distAssets),
+			Handler: application.AssetFileServerFS(distAssets),
 		},
 		OnShutdown: desktopApp.Shutdown,
 	})
 
-	primaryScreen := app.Screen.GetPrimary()
-	windowHeight := getDesktopWindowHeight(primaryScreen, desktopWindowMinHeight)
-
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "dtool",
 		Width:            1400,
-		Height:           windowHeight,
+		Height:           900,
 		MinWidth:         1100,
-		MinHeight:        desktopWindowMinHeight,
+		MinHeight:        700,
 		BackgroundColour: application.NewRGBA(255, 255, 255, 255),
 		URL:              "/",
 	})
@@ -70,17 +58,4 @@ func main() {
 	if err := app.Run(); err != nil {
 		panic(err)
 	}
-}
-
-// getDesktopWindowHeight 按主屏工作区高度计算桌面窗口高度，目标为 90%。 // Calculates the desktop window height from the primary screen work area, targeting 90%.
-func getDesktopWindowHeight(primaryScreen *application.Screen, minHeight int) int {
-	if primaryScreen == nil || primaryScreen.WorkArea.Height <= 0 {
-		return desktopWindowDefaultHeight
-	}
-	targetHeight := primaryScreen.WorkArea.Height * 9 / 10
-	// 保证窗口高度不会低于最小高度，避免小屏场景下窗口初始化过小。 // Keep the initial window height above the minimum height to avoid undersized startup windows on small screens.
-	if targetHeight < minHeight {
-		return minHeight
-	}
-	return targetHeight
 }
