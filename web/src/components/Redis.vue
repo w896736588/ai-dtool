@@ -9,10 +9,6 @@
           <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <span>Redis 管理器</span>
-        <pl-button class="page-settings-btn" type="warning" plain @click="openRedisSettings">
-          <el-icon><Setting /></el-icon>
-          设置
-        </pl-button>
       </div>
       <div class="search-row">
         <el-input 
@@ -41,6 +37,10 @@
         <pl-button class="action-btn list-btn" @click="$refs.redisStarRecord.showStarList();">
           <el-icon><Collection /></el-icon>
           收藏列表
+        </pl-button>
+        <pl-button class="action-btn settings-btn" @click="openRedisSettings">
+          <el-icon><Setting /></el-icon>
+          设置
         </pl-button>
       </div>
       <!-- 搜索历史 -->
@@ -157,10 +157,6 @@
   margin-bottom: 12px;
 }
 
-.page-settings-btn {
-  margin-left: auto;
-}
-
 .header-icon {
   width: 20px;
   height: 20px;
@@ -217,6 +213,27 @@
   background: #f6f8f3;
   border-color: #d8ded2;
   color: #4f804f;
+}
+
+.settings-btn {
+  --pl-button-text-color: #7a5a33;
+  --pl-button-border-color: #dcc5a6;
+  --pl-button-background-color: #f3e6d3;
+  --pl-button-hover-text-color: #6d502d;
+  --pl-button-hover-border-color: #d1b896;
+  --pl-button-hover-background-color: #ebdac2;
+}
+
+.settings-btn:hover {
+  --pl-button-text-color: #6d502d;
+  --pl-button-border-color: #d1b896;
+  --pl-button-background-color: #ebdac2;
+}
+
+.settings-btn:active {
+  --pl-button-text-color: #624726;
+  --pl-button-border-color: #c6ab87;
+  --pl-button-background-color: #e1ccb0;
 }
 
 .search-history-container {
