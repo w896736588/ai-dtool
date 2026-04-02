@@ -571,6 +571,9 @@ export default {
     },
     // handleSave 保存当前片段。
     handleSave() {
+      if (this.saving) {
+        return
+      }
       this.appendTag()
       this.saving = true
       MemoryFragmentApi.MemoryFragmentSave(
@@ -586,6 +589,10 @@ export default {
           this.$emit('saved', response.Data)
         }
       )
+    },
+    // triggerSave 供父组件通过 ref 统一触发保存，保证快捷键和点击入口一致。
+    triggerSave() {
+      this.handleSave()
     },
     // handleOrganize 调用 AI 对当前最新内容执行整理。
     handleOrganize() {

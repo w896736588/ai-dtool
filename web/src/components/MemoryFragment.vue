@@ -76,7 +76,10 @@
           v-for="item in fragmentList"
           :key="item.id"
           class="sidebar-item"
-          :class="{ active: activeFragmentId === item.id }"
+          :class="{
+            active: activeFragmentId === item.id,
+            'save-success': !!saveFeedbackMap[item.id],
+          }"
           @click="openFragment(item.id)"
         >
           <div class="sidebar-item-main">
@@ -92,6 +95,9 @@
             >
               {{ tag }}
             </el-tag>
+          </div>
+          <div v-if="saveFeedbackMap[item.id]" class="sidebar-item-check" aria-hidden="true">
+            <el-icon><Check /></el-icon>
           </div>
         </button>
       </el-scrollbar>
@@ -288,6 +294,7 @@
               </span>
             </template>
             <MemoryEditor
+              :ref="(el) => setEditorRef(tab.name, el)"
               :fragment="tab.fragment"
               :saved-fragment="tab.savedFragment"
               :available-tags="availableTagNames"
@@ -318,7 +325,7 @@
 </template>
 
 <script>
-import { Delete, Plus, Search } from '@element-plus/icons-vue'
+import { Check, Delete, Plus, Search } from '@element-plus/icons-vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
 import MemoryWelcome from '@/components/memory/MemoryWelcome.vue'
 import MemoryEditor from '@/components/memory/MemoryEditor.vue'
@@ -326,6 +333,11 @@ import MemoryHistoryDialog from '@/components/memory/MemoryHistoryDialog.vue'
 import MemorySettingPage from '@/components/set/memory.vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 import SettingsDialog from '@/components/base/SettingsDialog.vue'
+const {
+  isMemoryFragmentTabName,
+  activateMemorySaveFeedback,
+  clearExpiredMemorySaveFeedback,
+} = require('@/utils/memory_fragment_feedback.cjs')
 
 // TAG_FILTER_COLLAPSED_MAX_HEIGHT 控制左侧标签筛选区收起时的最大高度。
 const TAG_FILTER_COLLAPSED_MAX_HEIGHT = 76
@@ -343,6 +355,7 @@ const KEYWORD_SEARCH_MODE = 'keyword'
 export default {
   name: 'MemoryFragment',
   components: {
+    Check,
     Delete,
     Plus,
     Search,
@@ -383,6 +396,11 @@ export default {
       statusNowTick: Math.floor(Date.now() / 1000),
       statusPollTimer: null,
       settingsDialogVisible: false,
+      editorRefMap: {},
+      saveFeedbackMap: {},
+      saveFeedbackTimers: {},
+      saveFeedbackDurationMs: 1000,
+      globalSaveShortcutBound: false,
     }
   },
   computed: {
@@ -442,20 +460,95 @@ export default {
     }
   },
   mounted() {
+    this.bindGlobalSaveShortcut()
     this.loadMemoryStatus()
     this.startStatusPolling()
   },
   activated() {
+    this.bindGlobalSaveShortcut()
     this.startStatusPolling()
     this.loadMemoryStatus()
   },
   deactivated() {
+    this.unbindGlobalSaveShortcut()
     this.stopStatusPolling()
   },
   beforeUnmount() {
+    this.unbindGlobalSaveShortcut()
     this.stopStatusPolling()
+    this.clearSaveFeedbackTimers()
   },
   methods: {
+    bindGlobalSaveShortcut() {
+      if (this.globalSaveShortcutBound) {
+        return
+      }
+      window.addEventListener('keydown', this.handleGlobalSaveKeydown)
+      this.globalSaveShortcutBound = true
+    },
+    unbindGlobalSaveShortcut() {
+      if (!this.globalSaveShortcutBound) {
+        return
+      }
+      window.removeEventListener('keydown', this.handleGlobalSaveKeydown)
+      this.globalSaveShortcutBound = false
+    },
+    handleGlobalSaveKeydown(event) {
+      if (!event) {
+        return
+      }
+      const key = String(event.key || '').toLowerCase()
+      if ((!event.ctrlKey && !event.metaKey) || key !== 's') {
+        return
+      }
+      if (!isMemoryFragmentTabName(this.activeTab)) {
+        return
+      }
+      event.preventDefault()
+      this.triggerActiveFragmentSave()
+    },
+    setEditorRef(tabName, instance) {
+      if (!tabName) {
+        return
+      }
+      if (instance) {
+        this.editorRefMap[tabName] = instance
+        return
+      }
+      delete this.editorRefMap[tabName]
+    },
+    triggerActiveFragmentSave() {
+      const editor = this.editorRefMap[this.activeTab]
+      if (!editor || typeof editor.triggerSave !== 'function') {
+        return
+      }
+      editor.triggerSave()
+    },
+    clearSaveFeedbackTimers() {
+      Object.values(this.saveFeedbackTimers).forEach((timerId) => {
+        window.clearTimeout(timerId)
+      })
+      this.saveFeedbackTimers = {}
+    },
+    triggerFragmentSaveFeedback(fragmentId) {
+      const normalizedId = Number(fragmentId || 0)
+      if (normalizedId <= 0) {
+        return
+      }
+      if (this.saveFeedbackTimers[normalizedId]) {
+        window.clearTimeout(this.saveFeedbackTimers[normalizedId])
+      }
+      this.saveFeedbackMap = activateMemorySaveFeedback(
+        this.saveFeedbackMap,
+        normalizedId,
+        Date.now(),
+        this.saveFeedbackDurationMs
+      )
+      this.saveFeedbackTimers[normalizedId] = window.setTimeout(() => {
+        this.saveFeedbackMap = clearExpiredMemorySaveFeedback(this.saveFeedbackMap, Date.now())
+        delete this.saveFeedbackTimers[normalizedId]
+      }, this.saveFeedbackDurationMs)
+    },
     startStatusPolling() {
       if (this.statusPollTimer) {
         return
@@ -899,6 +992,7 @@ export default {
       target.fragment = this.normalizeFragment(fragment)
       target.savedFragment = this.cloneFragment(target.fragment)
       target.dirty = false
+      this.triggerFragmentSaveFeedback(target.fragment.id)
       this.loadFragmentList()
       this.loadTrashList()
       this.loadTagList()
@@ -986,6 +1080,12 @@ export default {
 </script>
 
 <style scoped>
+@property --sidebar-save-border-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .memory-page {
   display: flex;
   gap: 14px;
@@ -1071,6 +1171,9 @@ export default {
 }
 
 .sidebar-item {
+  position: relative;
+  isolation: isolate;
+  --sidebar-save-border-angle: 0deg;
   width: calc(100% - 16px);
   margin: 8px;
   padding: 12px;
@@ -1082,6 +1185,35 @@ export default {
   transition: all 0.2s ease;
 }
 
+.sidebar-item::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--sidebar-save-border-angle),
+    rgba(63, 154, 84, 0) 0deg,
+    rgba(63, 154, 84, 0) 235deg,
+    rgba(63, 154, 84, 0.24) 275deg,
+    rgba(63, 154, 84, 0.98) 312deg,
+    rgba(151, 220, 167, 0.92) 330deg,
+    rgba(63, 154, 84, 0.12) 345deg,
+    rgba(63, 154, 84, 0) 360deg
+  );
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.sidebar-item.save-success::before {
+  opacity: 1;
+  animation: sidebar-item-border-flow 1s linear 1;
+}
+
 .sidebar-item:hover,
 .sidebar-item.active {
   border-color: #cfe0c8;
@@ -1089,6 +1221,8 @@ export default {
 }
 
 .sidebar-item-main {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -1109,10 +1243,57 @@ export default {
 }
 
 .sidebar-item-tags {
+  position: relative;
+  z-index: 1;
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
   margin-top: 10px;
+}
+
+.sidebar-item-check {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #40b364 0%, #2a954d 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 18px rgba(42, 149, 77, 0.24);
+  animation: sidebar-item-check-pop 1s ease forwards;
+}
+
+@keyframes sidebar-item-border-flow {
+  from {
+    --sidebar-save-border-angle: 0deg;
+  }
+  to {
+    --sidebar-save-border-angle: 360deg;
+  }
+}
+
+@keyframes sidebar-item-check-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.7);
+  }
+  18% {
+    opacity: 1;
+    transform: translateY(0) scale(1.05);
+  }
+  82% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.92);
+  }
 }
 
 .memory-main {
