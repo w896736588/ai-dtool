@@ -114,7 +114,7 @@
   </div>
 </template>
 <script>
-import {defineExpose , defineComponent , inject , defineEmits , getCurrentInstance , reactive , onActivated } from 'vue';
+import {defineComponent , getCurrentInstance , reactive , onActivated } from 'vue';
 import ssh_set from '../../utils/base/ssh_set'
 import set from '../../utils/base/git_set'
 import common from '../../utils/common'
@@ -131,7 +131,8 @@ export default defineComponent({
     }
   },
 
-  setup() {
+  emits: ['changed'],
+  setup(props, { emit }) {
     onActivated(() => {
       if(Init.GetIsInit('git') === true){
         GitList()
@@ -179,10 +180,16 @@ export default defineComponent({
         state.loading.quick = false
       })
     }
+    // emitChanged 告知宿主页面配置已变更，方便业务页自动刷新。
+    // Notify host pages that git settings changed so the business page can refresh immediately.
+    const emitChanged = function (){
+      emit('changed')
+    }
     const EditGit = function (){
       set.GitAdd(state.editGitConfig , function (response){
         if(response.ErrCode === 0){
           GitList()
+          emitChanged()
         }else{
           instance.$helperNotify.error(response.ErrMsg)
         }
@@ -194,6 +201,7 @@ export default defineComponent({
       set.GitAdd(rowData , function (response){
         if(response.ErrCode === 0){
           GitList()
+          emitChanged()
         }else{
           instance.$helperNotify.error(response.ErrMsg)
         }
@@ -205,6 +213,7 @@ export default defineComponent({
         set.GitDelete(rowData , function (response){
           if(response.ErrCode === 0){
             GitList()
+            emitChanged()
           }else{
             instance.$helperNotify.error(response.ErrMsg)
           }

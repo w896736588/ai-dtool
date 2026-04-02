@@ -38,23 +38,46 @@ var (
 )
 
 func DockerComposeList(c *gin.Context) {
-	dataMap, _, err := getDockerComponent(c)
-	if err != nil {
+	dataMap := make(map[string]any)
+	if err := gsgin.GinPostBody(c, &dataMap); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	sshId := cast.ToInt(dataMap[`ssh_id`])
-	all, allErr := common.DbMain.Client.QuickQuery(`tbl_docker_compose`, `*`, map[string]any{
+	queryWhere := map[string]any{
 		`status`: 1,
-		`ssh_id`: sshId,
-	}).All()
+	}
+	sshId := cast.ToInt(dataMap[`ssh_id`])
+	if sshId > 0 {
+		queryWhere[`ssh_id`] = sshId
+	}
+	all, allErr := common.DbMain.Client.QuickQuery(`tbl_docker_compose`, `*`, queryWhere).All()
 	if allErr != nil {
 		gsgin.GinResponseError(c, allErr.Error(), nil)
 		return
 	}
+	allSsh, allSshErr := common.DbMain.Client.QuickQuery(`tbl_ssh`, `*`, nil).All()
+	if allSshErr != nil {
+		gsgin.GinResponseError(c, allSshErr.Error(), nil)
+		return
+	}
+	applyDockerComposeSshNames(all, allSsh)
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`list`: all,
 	})
+}
+
+func applyDockerComposeSshNames(composeList []map[string]any, sshList []map[string]any) {
+	sshNameMap := make(map[int]string, len(sshList))
+	for _, sshValue := range sshList {
+		sshId := cast.ToInt(sshValue[`id`])
+		if sshId == 0 {
+			continue
+		}
+		sshNameMap[sshId] = cast.ToString(sshValue[`name`])
+	}
+	for _, composeValue := range composeList {
+		composeValue[`ssh_name`] = sshNameMap[cast.ToInt(composeValue[`ssh_id`])]
+	}
 }
 
 func DockerComposeServices(c *gin.Context) {

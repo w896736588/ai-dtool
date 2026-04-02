@@ -34,6 +34,37 @@ import (
 
 const AppName = `dtool`
 
+const (
+	// defaultDatabaseDirName 是默认数据库目录名。
+	defaultDatabaseDirName = `database`
+	// logDatabaseDirName 是 log 库迁移目录名。
+	logDatabaseDirName = `database_log`
+	// memoryDatabaseDirName 是记忆库迁移目录名。
+	memoryDatabaseDirName = `database_memory`
+	// logDatabaseNameSuffix 是 log 库文件名追加的后缀。
+	logDatabaseNameSuffix = `.log`
+	// databaseFileExt 是 sqlite 文件常用后缀。
+	databaseFileExt = `.db`
+)
+
+var (
+	// initComponentFunc 允许测试替换基础初始化流程 / allow tests to replace bootstrap initialization.
+	initComponentFunc              = initComponent
+	prepareMainDBStoreBeforeDBFunc = business.PrepareMainDBStore
+	// prepareMemoryStoreBeforeDBFunc 允许测试校验记忆库预处理时机 / allow tests to verify memory preflight timing.
+	prepareMemoryStoreBeforeDBFunc = business.PrepareMemoryStore
+	// initSqliteFunc 允许测试替换数据库初始化流程 / allow tests to replace sqlite initialization.
+	initSqliteFunc = initSqlite
+	// initGinFunc 允许测试替换 gin 初始化流程 / allow tests to replace gin initialization.
+	initGinFunc = initGin
+	// initOtherFunc 允许测试替换其他组件初始化流程 / allow tests to replace other component initialization.
+	initOtherFunc = initOther
+	// initPlaywrightFunc 允许测试替换 Playwright 初始化流程 / allow tests to replace Playwright initialization.
+	initPlaywrightFunc = initPlaywright
+	// stdLogFunc 允许测试替换标准输出重定向流程 / allow tests to replace stdio redirection flow.
+	stdLogFunc = stdLog
+)
+
 func formatEnvSummary(env *define.Env) string {
 	if env == nil {
 		return "配置摘要\n  未加载配置"
@@ -63,6 +94,7 @@ func formatEnvSummary(env *define.Env) string {
 		{"文件名", dbName},
 		{"目录", dbPath},
 		{"完整路径", dbFullPath},
+		{"log库完整路径", formatLogDBFullPath(env)},
 	})
 
 	webPath := ""
@@ -119,12 +151,19 @@ func writeSummarySection(builder *strings.Builder, title string, lines [][2]stri
 }
 
 func InitBase(ConfigFile string) {
-	initComponent(AppName, ConfigFile)
-	initSqlite()
-	initGin()
-	initOther()
-	initPlaywright()
-	stdLog()
+	initComponentFunc(AppName, ConfigFile)
+	if err := prepareMainDBStoreBeforeDBFunc(); err != nil {
+		panic(err.Error())
+	}
+	// 记忆库若需要 git pull，必须先于所有数据库初始化 / memory git pull must happen before any database init.
+	if err := prepareMemoryStoreBeforeDBFunc(); err != nil {
+		panic(err.Error())
+	}
+	initSqliteFunc()
+	initGinFunc()
+	initOtherFunc()
+	initPlaywrightFunc()
+	stdLogFunc()
 }
 
 // 如果是编译后运行 那么将所有标准输出和报错重定向到 日志文件
@@ -161,8 +200,9 @@ func initComponent(appName, ConfigFile string) {
 	}
 	//初始化配置
 	InitEnv(appName, ConfigFile, component.ConfigViper)
-	component.EnvClient.DatabaseUpPath = filepath.Join(component.EnvClient.RootPath, `internal`, `app`, AppName, `database`)
-	component.EnvClient.MemoryDatabaseUpPath = filepath.Join(component.EnvClient.RootPath, `internal`, `app`, AppName, `database_memory`)
+	component.EnvClient.DatabaseUpPath = filepath.Join(component.EnvClient.RootPath, `internal`, `app`, AppName, defaultDatabaseDirName)
+	component.EnvClient.LogDatabaseUpPath = filepath.Join(component.EnvClient.RootPath, `internal`, `app`, AppName, logDatabaseDirName)
+	component.EnvClient.MemoryDatabaseUpPath = filepath.Join(component.EnvClient.RootPath, `internal`, `app`, AppName, memoryDatabaseDirName)
 	p_common.TBaseClient = &p_common.TBase{
 		StartMillUnix: gstool.TimeNowMilliInt64(),
 		LogPath:       component.EnvClient.LogPath,
@@ -211,9 +251,17 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	component.EnvClient.NodePath = `node`
 	//base配置初始化
 	component.EnvClient.ConfigBase = &define.Base{
-		DbFileName: viper.GetString(`base.dbFileName`),
-		DbPath:     viper.GetString(`base.dbPath`),
-		WebPath:    viper.GetString(`base.webPath`),
+		DbFileName:                   viper.GetString(`base.dbFileName`),
+		DbPath:                       viper.GetString(`base.dbPath`),
+		DbIsGitRepo:                  viper.GetBool(`base.dbIsGitRepo`),
+		MemoryDBPath:                 viper.GetString(`base.memoryDbPath`),
+		MemoryDBName:                 viper.GetString(`base.memoryDbFileName`),
+		MemoryDBIsGitRepo:            viper.GetBool(`base.memoryDbIsGitRepo`),
+		MemoryDBAutoPushDelayMinutes: common.DefaultMemoryAutoPushDelayMinutes,
+		WebPath:                      viper.GetString(`base.webPath`),
+	}
+	if viper.IsSet(`base.memoryDbAutoPushDelayMinutes`) {
+		component.EnvClient.ConfigBase.MemoryDBAutoPushDelayMinutes = viper.GetInt(`base.memoryDbAutoPushDelayMinutes`)
 	}
 	//web
 	component.EnvClient.WebConfig = &define.WebConfig{
@@ -227,17 +275,19 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	}
 	//数据库配置
 	component.EnvClient.DbConfig = &define.DbConfig{
-		DbName: ``,
-		DbPath: component.EnvClient.ConfigBase.DbPath,
+		DbName:      ``,
+		DbPath:      common.ResolveDefaultDToolDir(component.EnvClient.ConfigBase.DbPath),
+		DbIsGitRepo: component.EnvClient.ConfigBase.DbIsGitRepo,
 	}
 	//数据库名
 	component.EnvClient.DbConfig.DbName = component.EnvClient.AppName + `.db`
 	if component.EnvClient.ConfigBase.DbFileName != `` {
 		component.EnvClient.DbConfig.DbName = component.EnvClient.ConfigBase.DbFileName
 	}
-	//配置文件目录
-	if component.EnvClient.DbConfig.DbPath == `` {
-		component.EnvClient.DbConfig.DbPath = filepath.Join(component.EnvClient.RootPath, `config`, component.EnvClient.AppName)
+	// log 库默认与主库放在同一目录，便于统一管理。
+	component.EnvClient.LogDbConfig = &define.DbConfig{
+		DbName: buildLogDBName(component.EnvClient.DbConfig.DbName),
+		DbPath: component.EnvClient.DbConfig.DbPath,
 	}
 	//判断是否存在D盘如果没有那么就改为C盘
 	drive := ``
@@ -248,21 +298,12 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	} else {
 		drive = `C`
 	}
-	component.EnvClient.WebkitDriverPath = viper.GetString(`path.webkit_driver_path`)
-	component.EnvClient.WebkitDataPath = viper.GetString(`path.webkit_data_path`)
-	component.EnvClient.WebkitDownloadPath = viper.GetString(`path.webkit_download_path`)
+	component.EnvClient.WebkitDriverPath = common.ResolvePlaywrightPath(viper.GetString(`path.webkit_driver_path`), `webkit_driver`, drive)
+	component.EnvClient.WebkitDataPath = common.ResolvePlaywrightPath(viper.GetString(`path.webkit_data_path`), `webkit_data`, drive)
+	component.EnvClient.WebkitDownloadPath = common.ResolvePlaywrightPath(viper.GetString(`path.webkit_download_path`), `webkit_download`, drive)
 	component.EnvClient.Crawl4AIHost = viper.GetString(`crawl4ai.host`)
 	component.EnvClient.Crawl4AIPort = viper.GetString(`crawl4ai.port`)
 	component.EnvClient.Crawl4AIDataPath = viper.GetString(`crawl4ai.data_path`)
-	component.EnvClient.WebkitDataPath = gstool.SReplaces(component.EnvClient.WebkitDataPath, map[string]string{
-		`{DRIVE}`: drive,
-	})
-	component.EnvClient.WebkitDownloadPath = gstool.SReplaces(component.EnvClient.WebkitDownloadPath, map[string]string{
-		`{DRIVE}`: drive,
-	})
-	component.EnvClient.WebkitDriverPath = gstool.SReplaces(component.EnvClient.WebkitDriverPath, map[string]string{
-		`{DRIVE}`: drive,
-	})
 	if component.EnvClient.Crawl4AIHost == `` {
 		component.EnvClient.Crawl4AIHost = `127.0.0.1`
 	}
@@ -310,10 +351,45 @@ func initSqlite() {
 	common.DbMain = &common.CSqlite{Client: component.SqliteClient, Env: component.EnvClient}
 	business.DataBaseUp = business.NewTDataBaseUp()
 	business.DataBaseUp.Run()
+	initLogSqlite()
 	if err = business.LoadMemoryStore(); err != nil {
 		panic(err.Error())
 	}
 	common.ShellOutClient.InitGroupConfigs()
+}
+
+// initLogSqlite 初始化独立 log 库，并执行 log 库迁移。
+func initLogSqlite() {
+	fmt.Println(fmt.Sprintf(`log库目录 %s`, component.EnvClient.LogDbConfig.DbPath))
+	fmt.Println(fmt.Sprintf(`log库路径 %s`, filepath.Join(component.EnvClient.LogDbConfig.DbPath, component.EnvClient.LogDbConfig.DbName)))
+
+	var err error
+	component.LogSqliteClient, err = p_db.InitSqlite(component.EnvClient.LogDbConfig.DbPath, component.EnvClient.LogDbConfig.DbName)
+	if err != nil {
+		panic(fmt.Sprintf(`连接log sqlite失败 %s`, err.Error()))
+	}
+
+	common.DbLog = &common.CSqlite{Client: component.LogSqliteClient, Env: component.EnvClient}
+	business.NewLogDataBaseUp(common.DbLog, component.EnvClient.LogDatabaseUpPath).Run()
+}
+
+// buildLogDBName 基于主库文件名派生 log 库文件名。
+func buildLogDBName(mainDBName string) string {
+	if strings.HasSuffix(mainDBName, databaseFileExt) {
+		return strings.TrimSuffix(mainDBName, databaseFileExt) + logDatabaseNameSuffix + databaseFileExt
+	}
+	return mainDBName + logDatabaseNameSuffix + databaseFileExt
+}
+
+// formatLogDBFullPath 返回 log 库完整路径，便于统一输出配置摘要。
+func formatLogDBFullPath(env *define.Env) string {
+	if env == nil || env.LogDbConfig == nil {
+		return ""
+	}
+	if env.LogDbConfig.DbName == "" || env.LogDbConfig.DbPath == "" {
+		return ""
+	}
+	return filepath.Join(env.LogDbConfig.DbPath, env.LogDbConfig.DbName)
 }
 
 func initGin() {
@@ -396,6 +472,9 @@ func Stop() {
 	}
 	if err := common.MemoryRuntime.SyncNow(); err != nil && !errors.Is(err, common.ErrMemoryNotConfigured) {
 		gstool.FmtPrintlnLogTime(`记忆库关闭前同步失败 %s`, err.Error())
+	}
+	if err := business.SyncMainDBStoreOnShutdown(); err != nil {
+		gstool.FmtPrintlnLogTime(`主库关闭前同步失败 %s`, err.Error())
 	}
 	_ = plw.PlaywrightClient.Log.Close()
 	_ = variable.VariableClient.Log.Close()

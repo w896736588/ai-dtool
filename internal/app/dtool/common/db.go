@@ -16,6 +16,7 @@ import (
 )
 
 var DbMain = &CSqlite{}
+var DbLog = &CSqlite{}
 
 type CSqlite struct {
 	Client *gsdb.GsSqlite
@@ -356,23 +357,19 @@ func (h *CSqlite) GetApiInfo(id int) (map[string]any, error) {
 
 // MemoryFragmentList 查询知识片段列表。
 func (h *CSqlite) MemoryFragmentList(limit int) ([]map[string]any, error) {
-	sql := `
-select
-	f.*,
-	ifnull(group_concat(t.tag_name, ','), '') as tags_text
-from tbl_memory_fragment f
-left join tbl_memory_fragment_tag t on t.fragment_id = f.id
-where f.is_deleted = 0
-group by f.id
-order by f.update_time desc, f.id desc`
-	if limit > 0 {
-		sql += fmt.Sprintf(" limit %d", limit)
-	}
-	list, err := h.Client.QueryBySql(sql).All()
+	list, err := h.memoryFragmentListByDeleted(0, limit)
 	if err != nil {
 		return nil, err
 	}
-	h.memoryFragmentFillDisplayFields(list)
+	return list, nil
+}
+
+// MemoryFragmentTrashList 查询回收站中的知识片段列表。
+func (h *CSqlite) MemoryFragmentTrashList(limit int) ([]map[string]any, error) {
+	list, err := h.memoryFragmentListByDeleted(1, limit)
+	if err != nil {
+		return nil, err
+	}
 	return list, nil
 }
 
@@ -519,6 +516,81 @@ func (h *CSqlite) MemoryFragmentSoftDelete(id int) (int64, error) {
 	}).Exec()
 }
 
+// MemoryFragmentRestore 从回收站恢复知识片段。
+func (h *CSqlite) MemoryFragmentRestore(id int) (int64, error) {
+	now := time.Now().Unix()
+	affected, err := h.Client.QuickUpdate(`tbl_memory_fragment`, map[string]any{
+		`id`:         id,
+		`is_deleted`: 1,
+	}, map[string]any{
+		`is_deleted`:   0,
+		`index_status`: `pending`,
+		`update_time`:  now,
+	}).Exec()
+	if err != nil {
+		return 0, err
+	}
+	if affected == 0 {
+		return 0, errors.New(`片段不存在`)
+	}
+	info, infoErr := h.MemoryFragmentInfo(id)
+	if infoErr != nil {
+		return affected, infoErr
+	}
+	if syncErr := h.memoryFragmentSyncSearchIndex(
+		id,
+		cast.ToString(info[`title`]),
+		h.memoryFragmentToPlainText(cast.ToString(info[`content`])),
+		h.memoryFragmentNormalizeTags(cast.ToStringSlice(info[`tags`])),
+		now,
+	); syncErr != nil {
+		return affected, syncErr
+	}
+	_, _ = h.Client.QuickUpdate(`tbl_memory_fragment`, map[string]any{
+		`id`: id,
+	}, map[string]any{
+		`index_status`: `success`,
+		`update_time`:  now,
+	}).Exec()
+	return affected, nil
+}
+
+// MemoryFragmentHardDelete 彻底删除回收站中的知识片段及关联数据。
+func (h *CSqlite) MemoryFragmentHardDelete(id int) error {
+	trashInfo, err := h.Client.QuickQuery(`tbl_memory_fragment`, `id`, map[string]any{
+		`id`:         id,
+		`is_deleted`: 1,
+	}).One()
+	if err != nil {
+		return err
+	}
+	if len(trashInfo) == 0 {
+		return errors.New(`片段不存在`)
+	}
+	if _, err = h.Client.QuickDelete(`tbl_memory_fragment_tag`, map[string]any{
+		`fragment_id`: id,
+	}).Exec(); err != nil {
+		return err
+	}
+	if _, err = h.Client.QuickDelete(`tbl_memory_fragment_history`, map[string]any{
+		`fragment_id`: id,
+	}).Exec(); err != nil {
+		return err
+	}
+	if _, err = h.Client.QuickDelete(`tbl_memory_fragment_fts`, map[string]any{
+		`fragment_id`: id,
+	}).Exec(); err != nil {
+		return err
+	}
+	if _, err = h.Client.QuickDelete(`tbl_memory_fragment`, map[string]any{
+		`id`:         id,
+		`is_deleted`: 1,
+	}).Exec(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // MemoryFragmentHistoryList 查询知识片段历史记录。
 func (h *CSqlite) MemoryFragmentHistoryList(fragmentID int) ([]map[string]any, error) {
 	list, err := h.Client.QuickQuery(`tbl_memory_fragment_history`, `*`, map[string]any{
@@ -536,6 +608,28 @@ func (h *CSqlite) MemoryFragmentHistoryList(fragmentID int) ([]map[string]any, e
 		list[i][`tags_old_list`] = tagsOld
 		list[i][`tags_new_list`] = tagsNew
 	}
+	return list, nil
+}
+
+// memoryFragmentListByDeleted 按删除状态查询知识片段列表。
+func (h *CSqlite) memoryFragmentListByDeleted(isDeleted int, limit int) ([]map[string]any, error) {
+	sql := `
+select
+	f.*,
+	ifnull(group_concat(t.tag_name, ','), '') as tags_text
+from tbl_memory_fragment f
+left join tbl_memory_fragment_tag t on t.fragment_id = f.id
+where f.is_deleted = ?
+group by f.id
+order by f.update_time desc, f.id desc`
+	if limit > 0 {
+		sql += fmt.Sprintf(" limit %d", limit)
+	}
+	list, err := h.Client.QueryBySql(sql, isDeleted).All()
+	if err != nil {
+		return nil, err
+	}
+	h.memoryFragmentFillDisplayFields(list)
 	return list, nil
 }
 

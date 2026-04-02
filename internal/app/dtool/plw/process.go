@@ -20,6 +20,8 @@ type Process struct {
 	DomainLimit    string                                           //限制域名执行
 	ProcessType    define.ProcessType                               //类型
 	Locators       string                                           //元素选择
+	LocatorInput   *LocatorInput                                    //结构化元素选择配置
+	LocatorConfig  *LocatorConfig                                   //新版结构化 locator 配置
 	Tip            string                                           //输出提示
 	Checks         string                                           //检查判断 是否执行
 	OutKey         string                                           //输出的判断
@@ -40,11 +42,30 @@ type Process struct {
 
 func NewProcess(process map[string]any, page *playwright.Page, runParams *PlaywrightRunParams,
 	boolResultMap map[string]bool, takeContentMap map[string]string, log *gstool.GsSlog) *Process {
+	locatorService := NewLocatorService()
+	processType := define.ProcessType(cast.ToString(process[`type`]))
+	var (
+		locatorInput   *LocatorInput
+		locatorDisplay string
+		locatorConfig  *LocatorConfig
+		locatorErr     error
+	)
+
+	if configText := cast.ToString(process[`locator`]); configText != `` {
+		locatorConfig, _ = decodeLocatorConfig(configText)
+	}
+
+	// bool_result 的旧 locator 存的是规则数组，不能在流程初始化阶段按单个结构化 locator 解析。
+	if processType != define.BoolResult && locatorConfig == nil {
+		locatorInput, locatorDisplay, locatorErr = locatorService.ParseInputValue(process[`locator`])
+	}
 	p := &Process{
 		Name:           cast.ToString(process[`name`]),
 		DomainLimit:    cast.ToString(process[`domain_limit`]),
-		ProcessType:    define.ProcessType(cast.ToString(process[`type`])),
-		Locators:       cast.ToString(process[`locator`]),
+		ProcessType:    processType,
+		Locators:       locatorDisplay,
+		LocatorInput:   locatorInput,
+		LocatorConfig:  locatorConfig,
 		WaitMills:      cast.ToFloat64(process[`wait_mills`]),
 		Tip:            cast.ToString(process[`tip`]),
 		Checks:         ValueFormat(cast.ToString(process[`name`]), cast.ToString(process[`check_key`]), runParams),
@@ -60,8 +81,11 @@ func NewProcess(process map[string]any, page *playwright.Page, runParams *Playwr
 		Page:           page,
 		log:            log,
 	}
+	if p.Locators == `` {
+		p.Locators = cast.ToString(process[`locator`])
+	}
 	p.Check = NewCheck(p.OutKey, p.Checks, p.BoolResultMap, p.log)
-	p.Locator = NewLocator(p.Locators, page, p.ElementOp, p.log) //元素解析
+	p.Locator = NewLocator(p.Locators, p.LocatorInput, page, p.ElementOp, p.log, locatorErr) //元素解析
 	return p
 }
 
@@ -191,6 +215,19 @@ func (h *Process) NoExistWait() (define.ProcessCode, string, error) {
 
 func (h *Process) PTextContent() (define.ProcessCode, string, error) {
 	PlaywrightClient.AddTipMsg(h.Page, h.Tip)
+	if h.LocatorConfig != nil {
+		result, err := h.runLocatorConfig(h.LocatorConfig, h.Value)
+		if err != nil {
+			h.TakeContentMap[h.OutKey] = ``
+			h.callRun(err.Error(), h.Locators)
+			h.runParams.StreamFunc(h.Name, `新版 locator text_content 提取失败 `+err.Error())
+			return define.ProcessOk, ``, nil
+		}
+		h.TakeContentMap[h.OutKey] = result.TextValue
+		h.callRun(``, result.TextValue)
+		h.runParams.StreamFunc(h.Name, `新版 locator text_content 提取完成:`+h.OutKey+`,`+result.TextValue)
+		return define.ProcessOk, ``, nil
+	}
 	h.ElementOp.Type = define.ElementTextContent
 	_, elementErr := h.Locator.Do(h.WaitMills)
 	if elementErr != nil {
@@ -207,9 +244,22 @@ func (h *Process) PTextContent() (define.ProcessCode, string, error) {
 
 func (h *Process) PBoolResult() (define.ProcessCode, string, error) {
 	PlaywrightClient.AddTipMsg(h.Page, h.Tip)
+	if h.LocatorConfig != nil {
+		result, err := h.runLocatorConfig(h.LocatorConfig, ``)
+		if err != nil || result == nil || result.BoolValue == nil {
+			h.runParams.StreamFunc(h.Name, `新版 locator bool_result 执行失败`)
+			return define.ProcessBreak, `没有找到任意的元素` + h.Locators, errors.New(`没有找到任意的元素` + h.Locators)
+		}
+		h.BoolResultMap[h.OutKey] = *result.BoolValue
+		h.runParams.StreamFunc(h.Name, `新版 locator bool_result 执行成功,`+h.OutKey+`,`+fmt.Sprintf(`%t`, *result.BoolValue))
+		return define.ProcessOk, ``, nil
+	}
 	if h.Locators != `` {
 		h.ElementOp.Type = define.ElementCount
-		boolRet, boolErr := h.Locator.DoBoolResult(h.WaitMills)
+		h.runParams.StreamFunc(h.Name, `开始执行 bool_result 判断，原始 locator:`+h.Locators)
+		boolRet, boolErr := h.Locator.DoBoolResult(h.WaitMills, func(message string) {
+			h.runParams.StreamFunc(h.Name, message)
+		})
 		if boolErr != nil {
 			h.runParams.StreamFunc(h.Name, h.Locators+` 根据多个locators判断是否存在失败`)
 			return define.ProcessBreak, `没有找到任意的元素` + h.Locators, errors.New(`没有找到任意的元素` + h.Locators)
@@ -232,8 +282,8 @@ func (h *Process) PBoolExist() (define.ProcessCode, string, error) {
 		return define.ProcessBreak, `locators为空`, gstool.Error(`locators为空`)
 	}
 	h.ElementOp.Type = define.ElementCount
-	result := h.Locator.FindLocator(h.Locators, h.WaitMills)
-	if result.Err != nil || result.Result == nil {
+	result, err := h.Locator.Do(h.WaitMills)
+	if err != nil || result == nil {
 		h.runParams.StreamFunc(h.Name, h.Locators+` 未找到 `+h.OutKey+`,设置为:false`)
 		h.BoolResultMap[h.OutKey] = false
 	} else {
@@ -255,6 +305,17 @@ func (h *Process) PLoginUsernamePassword() (define.ProcessCode, string, error) {
 
 func (h *Process) PClick() (define.ProcessCode, string, error) {
 	PlaywrightClient.AddTipMsg(h.Page, h.Tip)
+	if h.LocatorConfig != nil {
+		_, err := h.runLocatorConfig(h.LocatorConfig, ``)
+		if err != nil {
+			h.callRun(err.Error(), h.Locators)
+			h.runParams.StreamFunc(h.Name, `新版 locator click 执行失败 `+err.Error())
+			return define.ProcessBreak, `获取需要点击的元素失败`, gstool.Error(`获取元素%s失败`, h.Locators)
+		}
+		h.callRun(``, h.Locators)
+		h.runParams.StreamFunc(h.Name, `新版 locator click 执行成功`)
+		return define.ProcessOk, ``, nil
+	}
 	h.ElementOp.Type = define.ElementClick
 	_, elementErr := h.Locator.Do(h.WaitMills)
 	if elementErr != nil {
@@ -291,6 +352,17 @@ func (h *Process) PInput() (define.ProcessCode, string, error) {
 	PlaywrightClient.AddTipMsg(h.Page, h.Tip)
 	h.ElementOp.Type = define.ElementInput
 	h.Value = p_common.Replace(h.Value, h.runParams.ReplaceList)
+	if h.LocatorConfig != nil {
+		_, err := h.runLocatorConfig(h.LocatorConfig, h.Value)
+		if err != nil {
+			h.callRun(err.Error(), h.Locators)
+			h.runParams.StreamFunc(h.Name, `新版 locator input 执行失败 `+err.Error())
+			return define.ProcessBreak, `获取需要输入的元素失败`, gstool.Error(`获取元素%s失败`, h.Locators)
+		}
+		h.callRun(``, h.Value)
+		h.runParams.StreamFunc(h.Name, `新版 locator input 执行成功`)
+		return define.ProcessOk, ``, nil
+	}
 	h.ElementOp.FillValue = h.Value
 	_, elementErr := h.Locator.Do(h.WaitMills)
 	if elementErr != nil {
@@ -301,6 +373,41 @@ func (h *Process) PInput() (define.ProcessCode, string, error) {
 	h.callRun(``, h.Value)
 	h.runParams.StreamFunc(h.Name, h.Locators+` 输入内容 `+h.Value+`，成功`)
 	return define.ProcessOk, ``, nil
+}
+
+// runLocatorConfig 用于通过新版 locator 配置调度基础定位执行。
+// runLocatorConfig dispatches base locator execution through the new locator config.
+func (h *Process) runLocatorConfig(config *LocatorConfig, value string) (*LocatorConfigRunResult, error) {
+	runner := &LocatorConfigRunner{
+		runQuery: func(item LocatorConfigItem, action *ElementAction) (*ElementResult, error) {
+			if item.Query == nil {
+				return nil, errLocatorConfigNotFound
+			}
+			elementOp := &ElementOp{}
+			switch action.Type {
+			case define.ElementClick:
+				elementOp.Type = define.ElementClick
+			case define.ElementInput:
+				elementOp.Type = define.ElementInput
+				elementOp.FillValue = action.Value
+			case define.ElementTextContent:
+				elementOp.Type = define.ElementTextContent
+			default:
+				elementOp.Type = define.ElementExist
+			}
+			locator := NewLocator(gstool.JsonEncode(item.Query), item.Query, h.Page, elementOp, h.log, nil)
+			_, err := locator.Do(h.WaitMills)
+			if err != nil {
+				return nil, errLocatorConfigNotFound
+			}
+			return &ElementResult{
+				TextContent: elementOp.TextContent,
+				Count:       elementOp.Count,
+				Exists:      true,
+			}, nil
+		},
+	}
+	return runner.Run(config, value)
 }
 
 func (h *Process) PWaitUrl() (define.ProcessCode, string, error) {

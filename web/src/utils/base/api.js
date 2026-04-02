@@ -76,6 +76,10 @@ function ApiWeightDown(data , callBack){
     base.BasePost('/api/ApiWeightDown', data , callBack)
 }
 
+function ApiMove(data , callBack){
+    base.BasePost('/api/ApiMove', data , callBack)
+}
+
 function ApiCode(data , callBack){
     base.BasePost('/api/ApiCode', data , callBack)
 }
@@ -114,6 +118,7 @@ export default {
     DeleteApi,
     DeleteDir,
     ApiCode,
+    ApiMove,
     ApiWeightDown,
     ApiTakeJsonResult,
     ApiImportJson,

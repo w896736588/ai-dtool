@@ -2,9 +2,9 @@
   <div class="memory-welcome">
     <section v-if="!configured" class="welcome-card welcome-empty-card">
       <div class="welcome-title">知识片段</div>
-      <div class="welcome-subtitle">请先到设置页面配置记忆目录和数据库名</div>
+      <div class="welcome-subtitle">当前未配置记忆库，请先在配置文件中设置记忆库目录和数据库名，再回到此页面使用。</div>
       <div class="welcome-actions">
-        <pl-button type="primary" @click="$emit('go-memory-setting')">去设置</pl-button>
+        <pl-button type="primary" @click="$emit('go-memory-setting')">查看配置说明</pl-button>
       </div>
     </section>
 

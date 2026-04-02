@@ -3,7 +3,9 @@ package controller
 import (
 	"dev_tool/internal/app/dtool/business"
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	ini "gopkg.in/ini.v1"
 )
 
 // SetSshList ssh列表
@@ -798,17 +801,10 @@ func SetGlobalDelete(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
+// SetMemoryConfigGet 返回记忆配置页面数据 / return memory settings page data.
 func SetMemoryConfigGet(c *gin.Context) {
-	memoryDir, err := memoryConfigValue(define.GlobalMemoryDir)
-	if err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
-	}
-	memoryDBName, err := memoryConfigValue(define.GlobalMemoryDBName)
-	if err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
-	}
+	mainDBConfig := business.ReadMainDBConfig()
+	memoryConfig := business.ReadMemoryConfigFromINI()
 	arrangePrompt, err := memoryConfigValue(define.GlobalMemoryArrangePrompt)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -830,28 +826,30 @@ func SetMemoryConfigGet(c *gin.Context) {
 		return
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`memory_dir`:                      memoryDir,
-		`memory_db_name`:                  memoryDBName,
-		`memory_arrange_prompt`:           arrangePrompt,
-		`memory_arrange_model_id`:         cast.ToInt(arrangeModelID),
-		`home_task_daily_report_prompt`:   dailyReportPrompt,
-		`home_task_daily_report_model_id`: cast.ToInt(dailyReportModelID),
+		`db_dir`:                            mainDBConfig.Dir,
+		`db_name`:                           mainDBConfig.DBName,
+		`db_configured`:                     mainDBConfig.Dir != `` && mainDBConfig.DBName != ``,
+		`db_is_git_repo`:                    mainDBConfig.GitRepoEnabled,
+		`webkit_driver_path`:                component.ConfigViper.GetString(`path.webkit_driver_path`),
+		`webkit_data_path`:                  component.ConfigViper.GetString(`path.webkit_data_path`),
+		`webkit_download_path`:              component.ConfigViper.GetString(`path.webkit_download_path`),
+		`memory_dir`:                        memoryConfig.Dir,
+		`memory_db_name`:                    memoryConfig.DBName,
+		`memory_db_configured`:              memoryConfig.Dir != `` && memoryConfig.DBName != ``,
+		`memory_db_is_git_repo`:             memoryConfig.GitRepoEnabled,
+		`memory_db_auto_push_delay_minutes`: memoryConfig.AutoPushDelayMinutes,
+		`memory_config_file`:                memoryConfigFilePath(),
+		`memory_arrange_prompt`:             arrangePrompt,
+		`memory_arrange_model_id`:           cast.ToInt(arrangeModelID),
+		`home_task_daily_report_prompt`:     dailyReportPrompt,
+		`home_task_daily_report_model_id`:   cast.ToInt(dailyReportModelID),
 	})
 }
 
+// SetMemoryConfigSave 仅保存 AI 相关配置 / save AI-related memory settings only.
 func SetMemoryConfigSave(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	memoryDir := strings.TrimSpace(cast.ToString(dataMap[`memory_dir`]))
-	memoryDBName := strings.TrimSpace(cast.ToString(dataMap[`memory_db_name`]))
-	if err := common.DbMain.SetGlobalValue(`记忆目录`, define.GlobalMemoryDir, memoryDir, `记忆专属库目录`); err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
-	}
-	if err := common.DbMain.SetGlobalValue(`记忆数据库名`, define.GlobalMemoryDBName, memoryDBName, `记忆专属库文件名`); err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
-	}
 	memoryArrangePrompt := strings.TrimSpace(cast.ToString(dataMap[`memory_arrange_prompt`]))
 	if memoryArrangePrompt == `` {
 		memoryArrangePrompt = defaultMemoryArrangePrompt()
@@ -863,6 +861,7 @@ func SetMemoryConfigSave(c *gin.Context) {
 			gsgin.GinResponseError(c, `AI 模型不存在`, nil)
 			return
 		}
+		// 记忆整理仅允许使用 LLM 模型 / only LLM models are allowed for memory arrangement.
 		if strings.ToLower(cast.ToString(modelInfo[`model_type`])) != `llm` {
 			gsgin.GinResponseError(c, `记忆整理仅支持选择 LLM 模型`, nil)
 			return
@@ -887,6 +886,7 @@ func SetMemoryConfigSave(c *gin.Context) {
 			gsgin.GinResponseError(c, `AI 模型不存在`, nil)
 			return
 		}
+		// 工作日报仅允许使用 LLM 模型 / only LLM models are allowed for daily report.
 		if strings.ToLower(cast.ToString(modelInfo[`model_type`])) != `llm` {
 			gsgin.GinResponseError(c, `工作日报仅支持选择 LLM 模型`, nil)
 			return
@@ -900,11 +900,132 @@ func SetMemoryConfigSave(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	if err := business.LoadMemoryStore(); err != nil {
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+// SetRuntimeConfigSave 保存可编辑的 ini 配置并重新加载运行时配置。 // Save editable ini config values and reload runtime config.
+func SetRuntimeConfigSave(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+
+	configFile := memoryConfigFilePath()
+	if strings.TrimSpace(configFile) == `` {
+		gsgin.GinResponseError(c, `未找到配置文件路径`, nil)
+		return
+	}
+
+	cfg, err := ini.LoadSources(ini.LoadOptions{
+		Loose: true,
+	}, configFile)
+	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	gsgin.GinResponseSuccess(c, ``, nil)
+
+	baseSection := cfg.Section(`base`)
+	pathSection := cfg.Section(`path`)
+
+	setIniKey(baseSection, `dbPath`, strings.TrimSpace(cast.ToString(dataMap[`db_path`])))
+	setIniKey(baseSection, `dbFileName`, strings.TrimSpace(cast.ToString(dataMap[`db_file_name`])))
+	setIniKey(baseSection, `dbIsGitRepo`, cast.ToString(cast.ToBool(dataMap[`db_is_git_repo`])))
+	setIniKey(baseSection, `memoryDbPath`, strings.TrimSpace(cast.ToString(dataMap[`memory_db_path`])))
+	setIniKey(baseSection, `memoryDbFileName`, strings.TrimSpace(cast.ToString(dataMap[`memory_db_file_name`])))
+	setIniKey(baseSection, `memoryDbIsGitRepo`, cast.ToString(cast.ToBool(dataMap[`memory_db_is_git_repo`])))
+	setIniKey(baseSection, `memoryDbAutoPushDelayMinutes`, cast.ToString(cast.ToInt(dataMap[`memory_db_auto_push_delay_minutes`])))
+	setIniKey(pathSection, `webkit_driver_path`, strings.TrimSpace(cast.ToString(dataMap[`webkit_driver_path`])))
+	setIniKey(pathSection, `webkit_data_path`, strings.TrimSpace(cast.ToString(dataMap[`webkit_data_path`])))
+	setIniKey(pathSection, `webkit_download_path`, strings.TrimSpace(cast.ToString(dataMap[`webkit_download_path`])))
+
+	if err = cfg.SaveTo(configFile); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	if component.ConfigViper != nil {
+		// 保存后重新读取整个 ini，确保其他未编辑配置也保持最新。 // Re-read the whole ini after save so all config values stay in sync.
+		if readErr := component.ConfigViper.ReadInConfig(); readErr != nil {
+			gsgin.GinResponseError(c, readErr.Error(), nil)
+			return
+		}
+	}
+	business.ReloadEditableRuntimeConfig()
+
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`config_file`:  configFile,
+		`reloaded`:     true,
+		`need_restart`: true,
+	})
+}
+
+const runtimeDatabaseSyncTargetMain = `main`
+const runtimeDatabaseSyncTargetMemory = `memory`
+
+// SetRuntimeDatabaseGitSync 手动触发主库或记忆库的 git commit push。 // Manually trigger git commit and push for the main or memory database.
+func SetRuntimeDatabaseGitSync(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+
+	target := strings.TrimSpace(cast.ToString(dataMap[`target`]))
+	// target 只允许主库或记忆库两种同步入口，避免误触发其他路径。 // Only allow main or memory targets so the manual sync route stays explicit.
+	switch target {
+	case runtimeDatabaseSyncTargetMain:
+		config := business.ReadMainDBConfig()
+		if !config.GitRepoEnabled {
+			gsgin.GinResponseError(c, `主库未开启 Git 同步`, nil)
+			return
+		}
+		config.IsGitRepo = true
+		changed, err := business.SyncMainDBFile(config, business.NewMemoryGit())
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+		gsgin.GinResponseSuccess(c, ``, map[string]any{
+			`target`:  target,
+			`changed`: changed,
+		})
+		return
+	case runtimeDatabaseSyncTargetMemory:
+		config := business.ReadMemoryConfigFromINI()
+		if !config.GitRepoEnabled {
+			gsgin.GinResponseError(c, `记忆库未开启 Git 同步`, nil)
+			return
+		}
+		config.IsGitRepo = true
+		changed, err := business.SyncMemoryDBFile(config, business.NewMemoryGit())
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+		gsgin.GinResponseSuccess(c, ``, map[string]any{
+			`target`:  target,
+			`changed`: changed,
+		})
+		return
+	default:
+		gsgin.GinResponseError(c, `target 参数无效`, nil)
+		return
+	}
+}
+
+func setIniKey(section *ini.Section, key, value string) {
+	if section == nil {
+		return
+	}
+	section.Key(key).SetValue(value)
+}
+
+// memoryConfigFilePath 返回当前运行中的 ini 配置文件路径 / return active ini config file path.
+func memoryConfigFilePath() string {
+	if component.EnvClient == nil {
+		return ``
+	}
+	configFileName := component.EnvClient.ConfigFile
+	// 仅在未携带扩展名时补 `.ini` / append `.ini` only when extension is missing.
+	if filepath.Ext(configFileName) == `` {
+		configFileName += `.ini`
+	}
+	return filepath.Join(component.EnvClient.ConfigPath, configFileName)
 }
 
 func memoryConfigValue(key string) (string, error) {

@@ -1,5 +1,5 @@
 *.ini
-!config_bak.ini
+!config.ini
 /logs/
 /config/.db/
 *.db
@@ -7,7 +7,6 @@
 /playwright.lock
 build/
 /playwright.RunLock
-/config/*/config.ini
 /upload
 /test/*
 web/dist/
@@ -20,3 +19,5 @@ CLAUDE.md
 /.claude
 AGENTS.md
 web/test
+/docs/
+/.codex/docs/

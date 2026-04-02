@@ -10,6 +10,9 @@
           <path d="M9 17H12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </svg>
         <span>Supervisor 进程管理</span>
+        <pl-button class="page-settings-btn" type="warning" plain @click="openSupervisorSettings">
+          <el-icon><Setting /></el-icon>设置
+        </pl-button>
       </div>
       <div class="control-row">
         <el-select v-model="chooseSupervisorId" placeholder="选择环境" @change="changeSupervisor" class="env-select">
@@ -47,7 +50,7 @@
     <!-- 进程列表 -->
     <div class="process-table-card">
       <el-table :data="configMap" :row-class-name="getColumnColor" class="process-table" stripe>
-        <el-table-column label="自定义名称" min-width="200">
+        <el-table-column label="自定义名称" max-width="200">
           <template #default="scope">
             <div class="name-cell">
               <span class="custom-name" v-html="scope.row.showName"></span>
@@ -57,12 +60,12 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="进程名称" min-width="200">
+        <el-table-column label="进程名称" max-width="200">
           <template #default="scope">
             <code class="process-name" v-html="scope.row.name"></code>
           </template>
         </el-table-column>
-        <el-table-column label="运行状态" width="180" sortable>
+        <el-table-column label="运行状态" width="600" sortable>
           <template #default="scope">
             <div class="status-cell">
               <span v-html="scope.row.running_status" class="status-text"></span>
@@ -106,6 +109,15 @@
     </el-dialog>
 
     <shellResult ref="shellRef" :shellShowResult="shellController.sshResult" :isRunning="shellController.isRunning" :show-model="shellController.showModel"></shellResult>
+
+    <SettingsDialog
+      v-model="supervisorSettingsVisible"
+      title="Supervisor 设置"
+      width="82%"
+      @closed="refreshSupervisorAfterSettingsClose"
+    >
+      <SupervisorSettingPage @changed="handleSupervisorSettingsChanged" />
+    </SettingsDialog>
   </div>
 </template>
 <script>
@@ -125,6 +137,9 @@ import Init from '@/utils/base/set_init'
 import sseDistribute from "@/utils/base/sse_distribute";
 import {Throttle_string} from "@/utils/base/throttle_string";
 import search from "@/utils/base/search";
+import SettingsDialog from '@/components/base/SettingsDialog.vue'
+import SupervisorSettingPage from '@/components/set/supervisor.vue'
+import { parseSupervisorStatusLine } from '@/utils/supervisor_status'
 
 export default {
   props : {
@@ -137,6 +152,8 @@ export default {
     Search,
     Edit,
     Document,
+    SettingsDialog,
+    SupervisorSettingPage,
   },
   activated: function () {
     this.resizeTerminal()
@@ -188,6 +205,7 @@ export default {
       sseId : '',
       sse_distribute_id: '',
       sseThrottleStringFunc: null,
+      supervisorSettingsVisible: false,
     }
   },
   inject: ["showTerminal", "resizeTerminal"],
@@ -242,6 +260,29 @@ export default {
         _that.sseThrottleStringFunc.update(msg)
       })
       return _that.sse_distribute_id
+    },
+    // openSupervisorSettings 打开 Supervisor 设置弹窗，在当前业务页内维护环境配置。
+    // Open the Supervisor settings modal so environment config can be edited in-place.
+    openSupervisorSettings: function () {
+      this.supervisorSettingsVisible = true
+    },
+    // handleSupervisorSettingsChanged 配置保存成功后立即刷新环境列表与当前数据。
+    // Refresh environment list and current page data immediately after settings change.
+    handleSupervisorSettingsChanged: function () {
+      let _that = this
+      supervisor.SupervisorConfigList({sse_distribute_id : _that.sse_distribute_id},function (response){
+        if(response.ErrCode === 0){
+          _that.supervisorConfigList = response.Data.supervisor_list
+          arr.SortByKey(_that.supervisorConfigList , 'name' , 'asc')
+          _that.chooseSupervisorId = _that.getLastSupervisorId()
+          _that.changeSupervisor()
+        }
+      })
+    },
+    // refreshSupervisorAfterSettingsClose 在弹窗关闭时再次刷新，兜底覆盖更多配置修改场景。
+    // Refresh once more when the dialog closes as a fallback for additional setting change paths.
+    refreshSupervisorAfterSettingsClose: function () {
+      this.handleSupervisorSettingsChanged()
     },
     getLastSupervisorId : function (){
       let _that = this
@@ -489,42 +530,25 @@ export default {
     supervisorStatusExplain: function () {
       for (let n in this.configMap) {
         this.configMap[n].processNum = 0
+        this.configMap[n].running_status = ''
       }
       //分析结果
       let supervisorStatusList = this.getExecResultText(this.execResult).split('\n')
       for (let i in supervisorStatusList) {
-        if (supervisorStatusList[i] === '') {
-          continue
-        }
-        //根据；分割
-        let name_params = []
-        if(supervisorStatusList[i].match(/^[^\s]+/g)){
-          name_params.push(supervisorStatusList[i].match(/^[^\s]+/g)[0])
-        }else{
-          name_params.push('-')
-        }
-        name_params.push(supervisorStatusList[i].replace(name_params[0], ''))
-        //循环判断
-        let name_params_two = this.filterArray(name_params)
-        //获取supervisor进程名
-        if (name_params_two.length === 0) {
-          continue
-        }
-        let name = name_params_two[0]
-        let name_params_four = this.filterArray(name.split(':'))
-        if (name_params_four.length === 0) {
+        const parsedStatus = parseSupervisorStatusLine(supervisorStatusList[i])
+        if (!parsedStatus) {
           continue
         }
         //给与状态
         for (let n in this.configMap) {
-          if (this.configMap[n].supervisor_name === name_params_four[0]) {
-            this.configMap[n].running_status = name_params_two[1]
+          if (this.configMap[n].supervisor_name === parsedStatus.groupName) {
+            this.configMap[n].running_status = parsedStatus.statusText
             //重启名
-            if (name_params_four.length === 2) {
+            if (parsedStatus.processName.indexOf(':') >= 0) {
               this.configMap[n].supervisor_restart_name =
-                  name_params_four[0] + ':'
+                  parsedStatus.groupName + ':'
             } else {
-              this.configMap[n].supervisor_restart_name = name_params_four[0]
+              this.configMap[n].supervisor_restart_name = parsedStatus.groupName
             }
             this.configMap[n].show = true
             this.configMap[n].processNum++
@@ -578,6 +602,10 @@ export default {
   font-size: 18px;
   font-weight: 600;
   margin-bottom: 12px;
+}
+
+.page-settings-btn {
+  margin-left: auto;
 }
 
 .header-icon {

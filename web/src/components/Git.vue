@@ -9,6 +9,9 @@
           <path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-width="2"/>
         </svg>
         <span>Git 版本管理</span>
+        <pl-button class="page-settings-btn" type="warning" plain @click="openGitSettings">
+          <el-icon><Setting /></el-icon>设置
+        </pl-button>
       </div>
       
       <!-- 项目选择 -->
@@ -122,11 +125,20 @@
     >
       <Markdown v-if="drawerVisibleMarkdown" :markdownType="markdownType"></Markdown>
     </el-drawer>
+
+    <SettingsDialog
+      v-model="gitSettingsVisible"
+      title="Git 设置"
+      width="82%"
+      @closed="refreshGitAfterSettingsClose"
+    >
+      <GitSettingPage @changed="handleGitSettingsChanged" />
+    </SettingsDialog>
   </div>
 </template>
 
 <script>
-import { Download, View, InfoFilled, Document, Switch, QuestionFilled, ArrowDown } from '@element-plus/icons-vue';
+import { Download, View, InfoFilled, Document, Switch, QuestionFilled, ArrowDown, Setting } from '@element-plus/icons-vue';
 import git from '../utils/base/git.js'
 import shellResult from "@/components/shell/result_div.vue";
 import format from "@/utils/base/format";
@@ -138,11 +150,15 @@ import base from "@/utils/base";
 import Markdown from "@/components/Markdown.vue";
 import sseDistribute from "@/utils/base/sse_distribute";
 import {Throttle_string} from "@/utils/base/throttle_string";
+import SettingsDialog from '@/components/base/SettingsDialog.vue'
+import GitSettingPage from '@/components/set/git.vue'
 
 export default {
   props: {},
   components: {
     Markdown,
+    SettingsDialog,
+    GitSettingPage,
     shellResult,
     Download,
     View,
@@ -151,6 +167,7 @@ export default {
     Switch,
     QuestionFilled,
     ArrowDown,
+    Setting,
   },
   data() {
     return {
@@ -163,6 +180,7 @@ export default {
         divHeight: 250,
       },
       drawerVisibleMarkdown: false,
+      gitSettingsVisible: false,
       name: 'Git',
       //输入框
       showChangeBranch: false,
@@ -292,6 +310,21 @@ export default {
         default:
           break;
       }
+    },
+    // openGitSettings 打开 Git 设置弹窗，在当前业务页内完成配置维护。
+    // Open the Git settings modal so configuration changes happen inside the Git page.
+    openGitSettings() {
+      this.gitSettingsVisible = true
+    },
+    // handleGitSettingsChanged 配置保存成功后立即刷新 Git 页面列表与当前选中仓库。
+    // Refresh the Git page immediately after settings change so the new config becomes usable.
+    handleGitSettingsChanged() {
+      this.GetGitConfigList()
+    },
+    // refreshGitAfterSettingsClose 作为兜底，在弹窗关闭时再次同步页面状态。
+    // Refresh once more when the modal closes as a safety net for nested setting changes.
+    refreshGitAfterSettingsClose() {
+      this.GetGitConfigList()
     },
     GitSaveCredentials(){
       let _that = this
@@ -535,6 +568,10 @@ export default {
   font-size: 18px;
   font-weight: 600;
   margin-bottom: 12px;
+}
+
+.page-settings-btn {
+  margin-left: auto;
 }
 
 .header-icon {

@@ -133,10 +133,23 @@ export default defineComponent({
 <style scoped>
 .shellContainer {
   position: fixed;
-  width: 98%;
+  left: calc(var(--layout-sidebar-width, 0px) + var(--layout-content-padding, 0px));
+  right: var(--layout-content-padding, 0px);
   bottom: 5px;
   text-align: center;
   z-index: 998;
+  pointer-events: none;
+}
+
+.shellButton {
+  pointer-events: auto;
+}
+
+@media (max-width: 768px) {
+  .shellContainer {
+    left: 12px;
+    right: 12px;
+  }
 }
 .sticky-textarea-div {
   background: #eef3ea;

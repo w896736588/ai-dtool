@@ -1800,56 +1800,80 @@ export default {
 
     // 加载 Docker Compose 列表
     const loadDockerComposeList = () => {
-      const sshId = store.getStore('dockerChooseSshId')
-      if (!sshId) {
-        ssh.SshList((response) => {
-          if (response.ErrCode === 0 && response.Data.length > 0) {
-            const firstSshId = response.Data[0].id
-            fetchDockerComposeList(firstSshId)
-          }
-        })
-      } else {
-        fetchDockerComposeList(sshId)
-      }
-    }
-
-    const fetchDockerComposeList = (sshId) => {
-      compose.DockerComposeList({ ssh_id: sshId }, (response) => {
-        isLoadingDynamic.value = false
-        if (response.ErrCode === 0) {
-          const normalizeDockerDefaultServices = (item) => {
-            if (Array.isArray(item?.default_service_list) && item.default_service_list.length > 0) {
-              return item.default_service_list
-                .map(s => normalizeCommandPart(s))
-                .filter(Boolean)
-            }
-            const raw = normalizeCommandPart(item?.default_service)
-            if (!raw) return []
-            return raw
-              .split(',')
-              .map(s => normalizeCommandPart(s))
-              .filter(Boolean)
-          }
-          const list = response.Data.list.map(item => ({
-            command: item.name,
-            name: item.name,
-            desc: item.compose_yml_path || '',
-            id: item.id,
-            data: item,
-            // 保存 default_service_list 用于快速重启/停止
-            default_service_list: normalizeDockerDefaultServices(item)
-          }))
-          dynamicDataCache.value['dockerComposeList'] = list
-          currentChildren.value = list
-          // Docker 项目列表为异步加载；当用户已输入 `docker quick-restart <项目>` 时，
-          // 需要在数据到达后重新解析一次输入，才能自动进入“服务列表”层级。
-          parseInput()
-          tryAutoExecutePendingHistory()
-          refreshCommandDropdownVisibility()
+      const normalizeDockerDefaultServices = (item) => {
+        if (Array.isArray(item?.default_service_list) && item.default_service_list.length > 0) {
+          return item.default_service_list
+            .map(s => normalizeCommandPart(s))
+            .filter(Boolean)
         }
+        const raw = normalizeCommandPart(item?.default_service)
+        if (!raw) return []
+        return raw
+          .split(',')
+          .map(s => normalizeCommandPart(s))
+          .filter(Boolean)
+      }
+
+      compose.DockerComposeList({}, (response) => {
+        const composeItemList = Array.isArray(response?.Data?.list)
+          ? response.Data.list
+          : (Array.isArray(response?.Data) ? response.Data : [])
+
+        if (response?.ErrCode !== 0 || composeItemList.length === 0) {
+          isLoadingDynamic.value = false
+          dynamicDataCache.value['dockerComposeList'] = []
+          currentChildren.value = []
+          refreshCommandDropdownVisibility()
+          return
+        }
+
+        const duplicateNameCountMap = {}
+        composeItemList.forEach(item => {
+          const nameKey = normalizeCommandPart(item?.name).toLowerCase()
+          if (!nameKey) {
+            return
+          }
+          duplicateNameCountMap[nameKey] = (duplicateNameCountMap[nameKey] || 0) + 1
+        })
+        const list = composeItemList
+          .map(item => {
+            const sshId = normalizeCommandPart(item?.ssh_id)
+            const sshName = normalizeCommandPart(item?.ssh_name) || `SSH ${sshId || '-'}`
+            const normalizedName = normalizeCommandPart(item?.name)
+            const hasDuplicateName = !!normalizedName && duplicateNameCountMap[normalizedName.toLowerCase()] > 1
+            const displayName = hasDuplicateName ? `${normalizedName} (${sshName})` : normalizedName
+            return {
+              command: displayName,
+              name: displayName,
+              insertText: displayName,
+              aliases: [
+                normalizedName,
+                `${normalizedName}@${sshName}`,
+                `${normalizedName}(${sshName})`,
+                String(item.id || '')
+              ].filter(Boolean),
+              desc: [sshName, item.compose_yml_path || ''].filter(Boolean).join(' | '),
+              id: sshId ? `${sshId}_${item.id}` : String(item.id || normalizedName),
+              data: item,
+              default_service_list: normalizeDockerDefaultServices(item)
+            }
+          })
+          .sort((a, b) => {
+            const aName = normalizeCommandPart(a.name).toLowerCase()
+            const bName = normalizeCommandPart(b.name).toLowerCase()
+            if (aName !== bName) {
+              return aName.localeCompare(bName)
+            }
+            return normalizeCommandPart(a.desc).toLowerCase().localeCompare(normalizeCommandPart(b.desc).toLowerCase())
+          })
+        dynamicDataCache.value['dockerComposeList'] = list
+        currentChildren.value = list
+        isLoadingDynamic.value = false
+        parseInput()
+        tryAutoExecutePendingHistory()
+        refreshCommandDropdownVisibility()
       })
     }
-
     // 加载 Docker 服务列表（用于快速重启/停止）
     const loadDockerServiceList = () => {
       // 从命令栈中找到已选择的项目
@@ -3033,7 +3057,12 @@ export default {
       }
     }
 
-    const getDockerSshId = (callback) => {
+    const getDockerSshId = (composeData, callback) => {
+      const composeSshId = normalizeCommandPart(composeData?.ssh_id)
+      if (composeSshId) {
+        callback(composeSshId)
+        return
+      }
       const cachedSshId = normalizeCommandPart(store.getStore('dockerChooseSshId'))
       if (cachedSshId) {
         callback(cachedSshId)
@@ -3051,6 +3080,7 @@ export default {
         callback('')
       })
     }
+
 
     const toMarkdownTable = (headers, rows) => {
       const safeCell = (v) => String(v === undefined || v === null ? '' : v).replace(/\|/g, '\\|').replace(/\n/g, ' ')
@@ -3072,7 +3102,7 @@ export default {
         return
       }
 
-      getDockerSshId((sshId) => {
+      getDockerSshId(composeCmd.data || {}, (sshId) => {
         if (!sshId) {
           appendOutputResult('错误：未找到可用 SSH 环境，请先在 /Docker 页面选择环境\n')
           finishExecution()

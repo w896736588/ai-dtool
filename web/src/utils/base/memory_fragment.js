@@ -36,6 +36,27 @@ function MemoryFragmentDelete(id, callBack) {
   }, callBack)
 }
 
+// MemoryFragmentTrashList 查询回收站中的片段列表。
+function MemoryFragmentTrashList(limit, callBack) {
+  base.BasePost('/api/MemoryFragmentTrashList', {
+    limit: limit,
+  }, callBack)
+}
+
+// MemoryFragmentRestore 恢复回收站中的片段。
+function MemoryFragmentRestore(id, callBack) {
+  base.BasePost('/api/MemoryFragmentRestore', {
+    id: id,
+  }, callBack)
+}
+
+// MemoryFragmentHardDelete 彻底删除回收站中的片段。
+function MemoryFragmentHardDelete(id, callBack) {
+  base.BasePost('/api/MemoryFragmentHardDelete', {
+    id: id,
+  }, callBack)
+}
+
 // MemoryFragmentHistoryList 查询片段历史记录。
 function MemoryFragmentHistoryList(id, callBack) {
   base.BasePost('/api/MemoryFragmentHistoryList', {
@@ -74,6 +95,9 @@ export default {
   MemoryFragmentInfo,
   MemoryFragmentSave,
   MemoryFragmentDelete,
+  MemoryFragmentTrashList,
+  MemoryFragmentRestore,
+  MemoryFragmentHardDelete,
   MemoryFragmentHistoryList,
   MemoryFragmentTagList,
   MemoryFragmentSearch,

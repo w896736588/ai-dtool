@@ -76,15 +76,15 @@
           {{ ip }}
         </el-tag>
         <div class="footer-buttons">
-          <el-tag size="small" style="cursor: pointer;" @click="OpenNewBlank()">
-            新页卡
-          </el-tag>
-          <el-tag size="small" style="cursor: pointer;" @click="drawerVisibleTools = true">
-            小工具
-          </el-tag>
-          <el-tag size="small" style="cursor: pointer;" @click="openSshConnectionsDialog">
-            当前SSH连接数 {{ sshConnectionCount }}
-          </el-tag>
+          <button type="button" class="footer-action footer-action--leaf" @click="OpenNewBlank()">
+            <span class="footer-action__title">新页卡</span>
+          </button>
+          <button type="button" class="footer-action footer-action--mint" @click="drawerVisibleTools = true">
+            <span class="footer-action__title">小工具</span>
+          </button>
+          <button type="button" class="footer-action footer-action--sky" @click="openSshConnectionsDialog">
+            <span class="footer-action__title">当前 SSH 连接数 {{ sshConnectionCount }}</span>
+          </button>
         </div>
         <pl-button v-if="loginInfo.dialog" size="small" @click="loginInfo.dialog = true">登录</pl-button>
       </div>
@@ -130,6 +130,9 @@
                       <div class="home-task-toolbar__desc">保留状态切换和归档能力，并支持基于活跃任务一键生成工作日报</div>
                     </div>
                     <div class="home-task-toolbar__actions">
+                      <GitActionButton compact variant="warning" @click="openHomeTaskReportSettingsDialog">
+                        设置
+                      </GitActionButton>
                       <GitActionButton compact variant="info" :loading="homeTaskGeneratingDailyReport" @click="generateHomeTaskDailyReport">
                         {{ HOME_TASK_DAILY_REPORT_BUTTON_TEXT }}
                       </GitActionButton>
@@ -458,6 +461,15 @@
       </div>
     </template>
   </el-dialog>
+
+  <SettingsDialog
+    v-model="homeTaskReportSettingsDialogVisible"
+    title="工作日报 AI 设置"
+    width="760px"
+    @closed="refreshHomeTaskReportSettings"
+  >
+    <HomeTaskReportSetting ref="homeTaskReportSetting" />
+  </SettingsDialog>
 </template>
 
 <script>
@@ -480,6 +492,8 @@ const {
 import Tools from "@/components/Tools.vue";
 import Markdown from '@/components/Markdown.vue'
 import GitActionButton from "@/components/base/GitActionButton.vue";
+import SettingsDialog from '@/components/base/SettingsDialog.vue'
+import HomeTaskReportSetting from '@/components/set/home_task_report.vue'
 import { 
   HomeFilled,
   Coin,
@@ -614,6 +628,7 @@ export default {
       HOME_TASK_DAILY_REPORT_BUTTON_TEXT,
       homeTaskActiveTab: HOME_TASK_TAB_ACTIVE,
       homeTaskDialogVisible: false,
+      homeTaskReportSettingsDialogVisible: false,
       homeDashboardPageIndex: HOME_DASHBOARD_PAGE_COMMAND,
       homeDashboardAnimating: false,
       homeTaskLoadingActive: false,
@@ -845,6 +860,24 @@ export default {
     openCreateHomeTaskDialog() {
       this.resetHomeTaskForm()
       this.homeTaskDialogVisible = true
+    },
+    // openHomeTaskReportSettingsDialog 打开工作日报 AI 设置弹窗。
+    openHomeTaskReportSettingsDialog() {
+      this.homeTaskReportSettingsDialogVisible = true
+      this.$nextTick(() => {
+        if (this.$refs.homeTaskReportSetting && this.$refs.homeTaskReportSetting.loadConfig) {
+          this.$refs.homeTaskReportSetting.loadConfig()
+        }
+        if (this.$refs.homeTaskReportSetting && this.$refs.homeTaskReportSetting.loadAiModelList) {
+          this.$refs.homeTaskReportSetting.loadAiModelList()
+        }
+      })
+    },
+    // refreshHomeTaskReportSettings 在弹窗关闭时兜底刷新设置组件状态。
+    refreshHomeTaskReportSettings() {
+      if (this.$refs.homeTaskReportSetting && this.$refs.homeTaskReportSetting.loadConfig) {
+        this.$refs.homeTaskReportSetting.loadConfig()
+      }
     },
     // generateHomeTaskDailyReport 调用后端基于活跃任务生成日报并写入记忆。
     generateHomeTaskDailyReport() {
@@ -1108,6 +1141,8 @@ export default {
     Monitor,
     ToolsIcon,
     GitActionButton,
+    SettingsDialog,
+    HomeTaskReportSetting,
     Markdown,
     Tools,
     Clipboard,
@@ -1117,6 +1152,8 @@ export default {
 
 <style scoped>
 .layout-container {
+  --layout-sidebar-width: 140px;
+  --layout-content-padding: 20px;
   display: flex;
   height: 100vh;
   width: 100%;
@@ -1125,11 +1162,13 @@ export default {
 
 .sidebar {
   width: 140px;
-  background-color: #f5f5f0;
+  background:
+    linear-gradient(180deg, #f9fbf6 0%, #f3f5ee 100%);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  border-right: 1px solid #e8e8e0;
+  border-right: 1px solid rgba(212, 220, 205, 0.9);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.72);
 }
 
 .sidebar-header {
@@ -1137,18 +1176,28 @@ export default {
   display: flex;
   align-items: center;
   padding: 0 12px;
-  border-bottom: 1px solid #e8e8e0;
+  border-bottom: 1px solid rgba(214, 223, 208, 0.82);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.68) 0%, rgba(245, 248, 239, 0.32) 100%);
 }
 
 .logo {
-  font-size: 20px;
-  margin-right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 8px;
+  font-size: 16px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.95) 0%, rgba(234, 241, 229, 0.98) 100%);
+  box-shadow: 0 6px 14px rgba(118, 141, 104, 0.14);
 }
 
 .title {
-  color: #4a4a4a;
-  font-size: 16px;
-  font-weight: 600;
+  color: #455446;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .sidebar-menu {
@@ -1162,22 +1211,73 @@ export default {
 }
 
 .sidebar-footer {
-  padding: 10px;
-  border-top: 1px solid #e8e8e0;
+  padding: 8px 10px 10px;
+  border-top: 1px solid rgba(214, 223, 208, 0.82);
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  background: linear-gradient(180deg, rgba(246, 248, 242, 0.4) 0%, rgba(255, 255, 255, 0.72) 100%);
 }
 
-.footer-button-bar {
+.footer-buttons {
   display: flex;
   flex-direction: column;
   width: 100%;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 6px;
 }
 
-.footer-button-bar :deep(.git-action-button) {
+.footer-action {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid rgba(126, 145, 117, 0.12);
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 248, 240, 0.98) 100%);
+  box-shadow: 0 5px 12px rgba(119, 137, 112, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.footer-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(119, 137, 112, 0.1);
+}
+
+.footer-action:active {
+  transform: translateY(0);
+}
+
+.footer-action__title {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #425142;
+}
+
+.footer-action--leaf:hover {
+  border-color: rgba(87, 126, 80, 0.28);
+}
+
+.footer-action--mint:hover {
+  border-color: rgba(56, 128, 109, 0.28);
+}
+
+.footer-action--sky:hover {
+  border-color: rgba(53, 119, 166, 0.28);
+}
+
+.footer-action:focus-visible {
+  outline: 2px solid rgba(83, 123, 77, 0.24);
+  outline-offset: 2px;
+}
+
+.footer-buttons :deep(.git-action-button) {
   width: 100%;
   justify-content: center;
 }
@@ -1190,7 +1290,7 @@ export default {
   min-height: 0;
   background-color: #fafaf7;
   height: 100%;
-  padding: 20px;
+  padding: var(--layout-content-padding);
   box-sizing: border-box;
 }
 
@@ -1345,32 +1445,55 @@ export default {
 
 /* 覆盖 Element Plus 菜单样式 */
 .sidebar-menu {
-  padding: 6px 0;
+  padding: 8px 0;
 }
 
 .sidebar-menu .el-menu-item {
   position: relative;
-  height: 40px;
-  line-height: 40px;
-  margin: 2px 6px;
-  border-radius: 6px;
+  height: 42px;
+  line-height: 42px;
+  margin: 3px 8px;
+  border-radius: 12px;
   padding-left: 12px !important;
+  border: 1px solid transparent;
+  transition: background-color 0.18s ease, transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .sidebar-menu .el-menu-item:hover {
-  background-color: #e8f5e8 !important;
-  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(237, 246, 232, 0.9) 0%, rgba(250, 252, 246, 0.98) 100%) !important;
+  border-color: rgba(168, 194, 149, 0.26);
+  transform: translateX(2px);
+  box-shadow: 0 6px 14px rgba(141, 163, 126, 0.1);
 }
 
 .sidebar-menu .el-menu-item.is-active {
-  background-color: #dcedc8 !important;
-  border-radius: 6px;
-  color: #3a7a3a !important;
+  background: linear-gradient(135deg, rgba(221, 238, 203, 0.96) 0%, rgba(241, 248, 231, 0.98) 100%) !important;
+  border-color: rgba(130, 173, 107, 0.3);
+  color: #376e38 !important;
+  box-shadow: 0 8px 18px rgba(128, 160, 112, 0.12);
 }
 
 .sidebar-menu .el-menu-item .el-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   margin-right: 8px;
   font-size: 16px;
+  color: #71836f;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(206, 216, 198, 0.45);
+  transition: transform 0.18s ease, color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.sidebar-menu .el-menu-item:hover .el-icon,
+.sidebar-menu .el-menu-item.is-active .el-icon {
+  transform: translateY(-1px) scale(1.03);
+  color: #537953;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(178, 198, 166, 0.42), 0 5px 12px rgba(137, 162, 122, 0.14);
 }
 
 .sidebar-menu .el-menu-item.menu-item-common-actions .el-icon {
@@ -1405,7 +1528,8 @@ export default {
 
 .sidebar-menu .el-menu-item span {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .ssh-dialog-toolbar {

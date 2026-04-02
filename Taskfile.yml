@@ -2,72 +2,80 @@ version: "3"
 
 tasks:
   run-server-company:
-    desc: 启动 Web 模式后端（ConfigFile=company）
+    desc: Run web backend with company config
     cmds:
       - go run ./cmd/dtool/main.go --ConfigFile=company
 
   run-web-dev:
-    desc: 启动前端开发服务
+    desc: Run frontend dev server
     dir: web
     cmds:
       - npm install
       - npm run dev
 
   run-wails:
-    desc: 启动桌面端（Wails，本机运行）
+    desc: Run desktop app locally
     cmds:
       - go run -tags production ./cmd/dtool_wails --ConfigFile=company
 
   run-dev-company:
-    desc: 启动company库，开发环境
+    desc: Run frontend and backend for company environment
     deps:
       - run-web-dev
       - run-server-company
 
   build-frontend:
-    desc: 构建前端 dist
+    desc: Build frontend dist assets
     dir: web
     cmds:
       - npm install
       - npm run prod
 
   build-web-windows:
-    desc: 构建 Windows Web 模式后端
+    desc: Build Windows web backend
     cmds:
       - go build -ldflags "-s -w" -o build/dtool.exe ./cmd/dtool
 
   build-web-linux:
-    desc: 构建 Linux Web 模式后端
+    desc: Build Linux web backend
+    env:
+      GOOS: linux
+      GOARCH: amd64
+      CGO_ENABLED: "0"
     cmds:
       - go build -ldflags "-s -w" -o build/dtool ./cmd/dtool
 
   build-web-macos:
-    desc: 构建 macOS Web 模式后端
+    desc: Build macOS web backend
     cmds:
       - go build -ldflags "-s -w" -o build/dtool ./cmd/dtool
 
   build-wails-windows:
-    desc: 构建 Windows 桌面端
+    desc: Build Windows desktop app
     cmds:
       - go build -tags production -ldflags "-s -w -H=windowsgui" -o build/dtool_wails.exe ./cmd/dtool_wails
 
   build-wails-linux:
-    desc: 构建 Linux 桌面端
+    desc: Build Linux desktop app
+    env:
+      GOOS: linux
+      GOARCH: amd64
+      CGO_ENABLED: "0"
     cmds:
       - go build -tags production -ldflags "-s -w" -o build/dtool_wails ./cmd/dtool_wails
 
   build-wails-macos:
-    desc: 构建 macOS 桌面端
+    desc: Build macOS desktop app
     cmds:
       - go build -tags production -ldflags "-s -w" -o build/dtool_wails ./cmd/dtool_wails
 
   clean-build:
-    desc: 清理所有 build 产物
+    desc: Recreate the build directory
     cmds:
       - powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; if (Test-Path './build') { Remove-Item './build' -Recurse -Force }; New-Item -ItemType Directory -Path './build' | Out-Null"
 
   package-windows:
-    desc: Windows 一键打包
+    desc: Build Windows release package
     platforms: [windows]
     deps:
       - build-frontend
@@ -77,21 +85,11 @@ tasks:
       - powershell -NoProfile -ExecutionPolicy Bypass -File ./script/package_windows.ps1
 
   package-linux:
-    desc: Linux 一键打包
-    platforms: [linux]
-    deps:
-      - build-frontend
-      - build-web-linux
-      - build-wails-linux
+    desc: Build Linux release package
     cmds:
       - bash ./script/package_unix.sh linux
 
   package-macos:
-    desc: macOS 一键打包
-    platforms: [darwin]
-    deps:
-      - build-frontend
-      - build-web-macos
-      - build-wails-macos
+    desc: Build macOS release package
     cmds:
       - bash ./script/package_unix.sh macos

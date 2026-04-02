@@ -1,7 +1,15 @@
 // PROCESS_ITEM_FIELD_GUIDES 用于集中维护流程项字段说明。
 // PROCESS_ITEM_FIELD_GUIDES centralizes field guidance for process item forms.
+const {
+  parseStructuredLocatorPayload,
+} = require('./smart_link_locator_form.cjs')
+const {
+  createBaseLocatorMeta,
+  isLocatorConfigPayload,
+} = require('./smart_link_locator_config.cjs')
+
 const PROCESS_ITEM_FIELD_GUIDES = {
-  locator: '支持 CSS/XPath 定位；结构化模式可用 && 表示同时满足、|| 表示任一满足、!selector 表示元素不存在、|first 表示只取首个。',
+  locator: '统一使用结构化 Locator 配置，按页面可见内容填写后系统会自动生成后端需要的 {"spec": {...}} 结构。',
   secondary_locator: '请输入密码输入框定位，建议使用稳定的 CSS 选择器或 XPath。',
   tertiary_locator: '请输入提交按钮定位，建议避免依赖易变的动态 class。',
   value: '跳转步骤填写目标地址；输入步骤可使用 {user_name}、{password}、{rand} 等占位符。',
@@ -9,7 +17,7 @@ const PROCESS_ITEM_FIELD_GUIDES = {
   check_key: '仅支持英文字母开头，后续可包含字母、数字、下划线，例如 login_state。',
   response_url: '支持 http(s):// 完整地址、/path 相对路径，以及 {scheme}://{domain}/path 这类占位写法。',
   register_response_urls: '每条等待地址都需要合法地址格式，并填写大于 0 的等待秒数。',
-  bool_result_rules: '至少配置一条定位规则；命中定位时按右侧 true/false 返回结果。',
+  bool_result_rules: '每条规则都使用结构化定位，命中定位时按右侧 true / false 返回结果。',
   domain_limit: '可选，仅填写域名本身，例如 example.com 或 sub.example.com，不要包含协议和路径。',
 }
 
@@ -19,10 +27,10 @@ const PROCESS_TYPE_FIELDS = {
   text_content: ['locator', 'out_key', 'check_key'],
   redirect_uri: ['value', 'register_response_urls', 'check_key'],
   wait_url: ['response_url', 'wait_second', 'check_key'],
-  wait: [],
+  wait: ['check_key'],
   bool_result: ['bool_result_rules', 'out_key', 'check_key'],
   bool_exist: ['locator', 'out_key', 'check_key'],
-  click: ['locator'],
+  click: ['locator', 'check_key'],
   input: ['locator', 'value', 'out_key', 'check_key'],
   close: [],
   no_exist_wait: ['locator', 'wait_second', 'wait_count', 'out_key', 'check_key'],
@@ -282,17 +290,63 @@ function validateRawLocator(rawLocator) {
 }
 
 function validateLocatorField(formMeta) {
-  if (normalizeText(formMeta.locator_joiner) === 'raw') {
-    return validateRawLocator(formMeta.locator_raw)
+  if (normalizeText(formMeta.locator_editor_mode) === 'advanced') {
+    return validateAdvancedLocatorField(formMeta.locator_advanced_form)
   }
+  const structuredForm = formMeta.locator_structured_form || {}
+  if (!normalizeText(structuredForm.kind)) {
+    return '请先选择查找方式。'
+  }
+  if (normalizeText(structuredForm.kind) === 'button_text') {
+    if (!normalizeText(structuredForm.value) && !normalizeText(structuredForm.target_text)) {
+      return '按按钮文字查找时，至少要填写按钮上显示的文字。'
+    }
+    return ''
+  }
+  if (!normalizeText(structuredForm.value)) {
+    return '当前查找方式还没有填写内容。'
+  }
+  return ''
+}
 
-  const locatorList = Array.isArray(formMeta.locator_list) ? formMeta.locator_list : []
-  if (locatorList.length === 0) {
-    return '主元素定位不能为空，请至少新增一条定位。'
+function validateBaseLocatorMeta(baseLocator) {
+  const meta = {
+    locator_editor_mode: 'simple',
+    locator_structured_form: createBaseLocatorMeta().locator_structured_form,
+    locator_advanced_form: createBaseLocatorMeta().locator_advanced_form,
+    ...(baseLocator || {}),
   }
-  const hasEmptyRow = locatorList.some(item => !normalizeText(item && item.value))
-  if (hasEmptyRow) {
-    return '主元素定位存在空行，请删除空行或补全定位。'
+  if (normalizeText(meta.locator_editor_mode) === 'advanced') {
+    return validateAdvancedLocatorField(meta.locator_advanced_form)
+  }
+  return validateLocatorField(meta)
+}
+
+function validateAdvancedLocatorField(locatorAdvancedForm) {
+  const advancedForm = locatorAdvancedForm || {}
+  if (!normalizeText(advancedForm.kind)) {
+    return '请先选择主元素查找方式。'
+  }
+  if (!normalizeText(advancedForm.value)) {
+    return '请先填写主元素定位内容。'
+  }
+  if (normalizeText(advancedForm.has_kind) && !normalizeText(advancedForm.has_value)) {
+    return '包含子元素时，需要填写完整的子元素定位内容。'
+  }
+  if (normalizeText(advancedForm.has_value) && !normalizeText(advancedForm.has_kind)) {
+    return '包含子元素时，需要先选择子元素查找方式。'
+  }
+  if (normalizeText(advancedForm.has_not_kind) && !normalizeText(advancedForm.has_not_value)) {
+    return '不包含子元素时，需要填写完整的子元素定位内容。'
+  }
+  if (normalizeText(advancedForm.has_not_value) && !normalizeText(advancedForm.has_not_kind)) {
+    return '不包含子元素时，需要先选择子元素查找方式。'
+  }
+  if (normalizeText(advancedForm.chain_value) && !normalizeText(advancedForm.chain_kind)) {
+    return '向下继续查找时，需要先选择子节点查找方式。'
+  }
+  if (normalizeText(advancedForm.pick_mode) === 'nth' && !Number.isInteger(Number(advancedForm.nth))) {
+    return '取第 N 个结果时，必须填写有效的索引。'
   }
   return ''
 }
@@ -307,6 +361,7 @@ function setFieldError(fieldErrors, fieldName, message) {
 function validateProcessItemForm({ item = {}, formMeta = {} }) {
   const fieldErrors = {}
   const type = normalizeText(item.type)
+  const useLocatorConfig = isLocatorConfigPayload(item.locator)
 
   if (!normalizeText(item.name)) {
     setFieldError(fieldErrors, 'name', '名称不能为空。')
@@ -324,7 +379,9 @@ function validateProcessItemForm({ item = {}, formMeta = {} }) {
   }
 
   if (showTypeField(type, 'locator')) {
-    setFieldError(fieldErrors, 'locator', validateLocatorField(formMeta))
+    if (!(useLocatorConfig && (type === 'text_content' || type === 'click' || type === 'input'))) {
+      setFieldError(fieldErrors, 'locator', validateLocatorField(formMeta))
+    }
   }
   if (type === 'login_username_password') {
     if (!normalizeText(formMeta.secondary_locator)) {
@@ -344,7 +401,8 @@ function validateProcessItemForm({ item = {}, formMeta = {} }) {
     }
   }
 
-  if (showTypeField(type, 'out_key') && !isValidTokenKey(normalizeText(formMeta.out_key || item.out_key))) {
+  const normalizedOutKey = normalizeText(formMeta.out_key || item.out_key)
+  if (showTypeField(type, 'out_key') && normalizedOutKey && !isValidTokenKey(normalizedOutKey)) {
     setFieldError(fieldErrors, 'out_key', '输出键格式不正确，请使用英文字母开头，后续仅包含字母、数字、下划线。')
   }
   if (showTypeField(type, 'check_key')) {
@@ -393,8 +451,48 @@ function validateProcessItemForm({ item = {}, formMeta = {} }) {
 
   if (showTypeField(type, 'bool_result_rules')) {
     const boolResultRules = Array.isArray(formMeta.bool_result_rules) ? formMeta.bool_result_rules : []
-    if (boolResultRules.length === 0 || boolResultRules.some(rule => !normalizeText(rule && rule.locator))) {
-      setFieldError(fieldErrors, 'bool_result_rules', '布尔判断规则至少需要一条完整定位。')
+    const hasInvalidBoolResultRule = boolResultRules.some((rule) => {
+      if (!rule) return true
+      if (rule.base_locator) {
+        return validateBaseLocatorMeta(rule.base_locator) !== ''
+      }
+      if (rule.locator_advanced_form) {
+        return validateAdvancedLocatorField(rule.locator_advanced_form) !== ''
+      }
+      const structuredLocator = parseStructuredLocatorPayload(rule.locator)
+      if (structuredLocator && structuredLocator.spec) {
+        const spec = structuredLocator.spec
+        return !normalizeText(spec.method) || !normalizeText(spec.value)
+      }
+      const structuredForm = rule.locator_structured_form || {}
+      if (!normalizeText(structuredForm.kind)) return true
+      if (normalizeText(structuredForm.kind) === 'button_text') {
+        return !normalizeText(structuredForm.value) && !normalizeText(structuredForm.target_text)
+      }
+      return !normalizeText(structuredForm.value)
+    })
+    if (hasInvalidBoolResultRule) {
+      setFieldError(fieldErrors, 'bool_result_rules', '布尔判断规则里有未填写完整的定位，请检查每一条规则。')
+    }
+  }
+
+  if (type === 'text_content' && isLocatorConfigPayload(item.locator)) {
+    const locatorList = Array.isArray(formMeta.text_content_locators) ? formMeta.text_content_locators : []
+    const hasInvalidLocator = locatorList.length === 0 || locatorList.some((item) => {
+      const normalizedAction = normalizeText(item && item.on_found)
+      return validateBaseLocatorMeta(item && item.base_locator) !== ''
+        || (normalizedAction !== 'extract_text' && normalizedAction !== 'return_empty')
+    })
+    if (hasInvalidLocator) {
+      setFieldError(fieldErrors, 'locator', '文本提取至少需要 1 条完整规则，且每条规则都要选择“返回其提取”或“返回空值”。')
+    }
+  }
+
+  if ((type === 'click' || type === 'input') && isLocatorConfigPayload(item.locator)) {
+    const locatorList = Array.isArray(formMeta.action_locators) ? formMeta.action_locators : []
+    const hasInvalidLocator = locatorList.length === 0 || locatorList.some((item) => validateBaseLocatorMeta(item && item.base_locator) !== '')
+    if (hasInvalidLocator) {
+      setFieldError(fieldErrors, 'locator', '当前操作至少需要配置 1 个完整的基础定位。')
     }
   }
 

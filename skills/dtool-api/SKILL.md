@@ -1,5 +1,5 @@
 ---
-name: dtool-api-import-update
+name: dtool-api
 description: Use when operating the dtool 接口开发模块 and the task involves querying collections, folders, APIs, environments, importing, updating, moving, running, or batch-managing API definitions.
 ---
 

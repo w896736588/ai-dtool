@@ -65,18 +65,19 @@
   </div>
 </template>
 <script>
-import {defineExpose , defineComponent , inject , defineEmits , getCurrentInstance , reactive} from 'vue';
+import {defineComponent , getCurrentInstance , reactive} from 'vue';
 import set from '../../utils/base/compose_set'
 import common from '../../utils/common'
 import ssh_set from "@/utils/base/ssh_set";
 export default defineComponent({
   props: {
   },
+  emits: ['changed'],
   data() {
     return {
     }
   },
-  setup() {
+  setup(props, { emit }) {
     const proxy = getCurrentInstance().proxy
     const instance = getCurrentInstance().appContext.config.globalProperties
     const ComposeList = function (){
@@ -97,10 +98,16 @@ export default defineComponent({
       state.dialogEditCompose = true
       state.editComposeConfig = {}
     }
+    // emitChanged 告知宿主页面 Compose 配置已变化，便于刷新项目列表。
+    // Notify host pages when compose settings changed so project lists can reload right away.
+    const emitChanged = function (){
+      emit('changed')
+    }
     const EditCompose = function (){
       set.ComposeAdd(state.editComposeConfig , function (response){
         if(response.ErrCode === 0){
           ComposeList()
+          emitChanged()
         }else{
           instance.$helperNotify.success(response.ErrMsg)
         }
@@ -112,6 +119,7 @@ export default defineComponent({
         set.ComposeDelete(rowData , function (response){
           if(response.ErrCode === 0){
             ComposeList()
+            emitChanged()
           }else{
             instance.$helperNotify.success(response.ErrMsg)
           }

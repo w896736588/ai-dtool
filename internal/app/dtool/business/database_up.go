@@ -20,12 +20,23 @@ type TDataBaseUp struct {
 
 var DataBaseUp *TDataBaseUp
 
+// log 库升级表名，单独记录 log 库执行过的迁移文件。
+const logDatabaseUpTableName = `tbl_log_database_up`
+
+// log 库中的 smart link 最近使用目录表名。
+const logSmartLinkLastTableName = `tbl_smart_link_last`
+
 func NewTDataBaseUp() *TDataBaseUp {
 	return newDatabaseUp(common.DbMain, component.EnvClient.DatabaseUpPath, `tbl_database_up`)
 }
 
 func NewMemoryDataBaseUp(db *common.CSqlite, databaseUpPath string) *TDataBaseUp {
 	return newDatabaseUp(db, databaseUpPath, `tbl_memory_database_up`)
+}
+
+// NewLogDataBaseUp 创建 log 库迁移执行器。
+func NewLogDataBaseUp(db *common.CSqlite, databaseUpPath string) *TDataBaseUp {
+	return newDatabaseUp(db, databaseUpPath, logDatabaseUpTableName)
 }
 
 func newDatabaseUp(db *common.CSqlite, databaseUpPath, tableName string) *TDataBaseUp {

@@ -49,3 +49,27 @@ func TestParseDockerContainerRows(t *testing.T) {
 		t.Fatalf("second state = %q, want %q", got[1]["state"], "exited")
 	}
 }
+
+func TestApplyDockerComposeSshNames(t *testing.T) {
+	composeList := []map[string]any{
+		{"id": 1, "ssh_id": 10, "name": "api"},
+		{"id": 2, "ssh_id": 0, "name": "worker"},
+		{"id": 3, "ssh_id": 11, "name": "admin"},
+	}
+	sshList := []map[string]any{
+		{"id": 10, "name": "prod-a"},
+		{"id": 11, "name": "prod-b"},
+	}
+
+	applyDockerComposeSshNames(composeList, sshList)
+
+	if composeList[0]["ssh_name"] != "prod-a" {
+		t.Fatalf("composeList[0].ssh_name = %v, want prod-a", composeList[0]["ssh_name"])
+	}
+	if composeList[1]["ssh_name"] != "" {
+		t.Fatalf("composeList[1].ssh_name = %v, want empty string", composeList[1]["ssh_name"])
+	}
+	if composeList[2]["ssh_name"] != "prod-b" {
+		t.Fatalf("composeList[2].ssh_name = %v, want prod-b", composeList[2]["ssh_name"])
+	}
+}

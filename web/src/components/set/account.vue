@@ -58,7 +58,7 @@
   </div>
 </template>
 <script>
-import {defineExpose , defineComponent , inject , defineEmits , getCurrentInstance , reactive} from 'vue';
+import {defineComponent , getCurrentInstance , reactive} from 'vue';
 import set from '../../utils/base/account_set'
 import common from '../../utils/common'
 import list from "@/utils/base/list";
@@ -68,11 +68,12 @@ export default defineComponent({
   components: {account_group},
   props: {
   },
+  emits: ['changed'],
   data() {
     return {
     }
   },
-  setup() {
+  setup(props, { emit }) {
     const proxy = getCurrentInstance().proxy
     const instance = getCurrentInstance().appContext.config.globalProperties
     const AccountList = function (){
@@ -97,10 +98,16 @@ export default defineComponent({
       state.dialogAccountGroup = true
     }
 
+    // emitChanged 告知宿主页面账号配置已变化，便于自定义网页页内立即刷新。
+    // Notify host pages that account settings changed so the custom web page can refresh immediately.
+    const emitChanged = function (){
+      emit('changed')
+    }
     const EditAccount = function (){
       set.AccountAdd(state.editAccountConfig , function (response){
         if(response.ErrCode === 0){
           AccountList()
+          emitChanged()
         }else{
           instance.$helperNotify.error(response.ErrMsg)
         }
@@ -113,6 +120,7 @@ export default defineComponent({
         set.AccountDelete(rowData , function (response){
           if(response.ErrCode === 0){
             AccountList()
+            emitChanged()
           }else{
             instance.$helperNotify.error(response.ErrMsg)
           }
@@ -131,6 +139,7 @@ export default defineComponent({
     const UpdateGroup = function (){
       AccountGroupList()
       Init.SetIsInit('smart_link')
+      emitChanged()
     }
     //固有属性
     const state = reactive({

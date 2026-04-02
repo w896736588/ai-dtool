@@ -50,16 +50,19 @@ func TestMemoryStoreScheduleSyncDebounce(t *testing.T) {
 
 	store := NewMemoryStore()
 	store.config = MemoryConfig{
-		Dir:       `C:/memory`,
-		DBName:    `memory.db`,
-		DBPath:    `C:/memory/memory.db`,
-		IsGitRepo: true,
+		Dir:                  `C:/memory`,
+		DBName:               `memory.db`,
+		DBPath:               `C:/memory/memory.db`,
+		IsGitRepo:            true,
+		AutoPushDelayMinutes: 3,
 	}
 
 	firstTimer := &fakeTimer{}
 	secondTimer := &fakeTimer{}
 	created := make([]*fakeTimer, 0, 2)
-	store.afterFunc = func(_ time.Duration, _ func()) stoppableTimer {
+	var durations []time.Duration
+	store.afterFunc = func(duration time.Duration, _ func()) stoppableTimer {
+		durations = append(durations, duration)
 		timer := firstTimer
 		if len(created) > 0 {
 			timer = secondTimer
@@ -74,11 +77,52 @@ func TestMemoryStoreScheduleSyncDebounce(t *testing.T) {
 	if len(created) != 2 {
 		t.Fatalf("created timers = %d, want 2", len(created))
 	}
+	if len(durations) != 2 {
+		t.Fatalf("scheduled durations = %d, want 2", len(durations))
+	}
+	for _, duration := range durations {
+		if duration != 3*time.Minute {
+			t.Fatalf("scheduled duration = %v, want %v", duration, 3*time.Minute)
+		}
+	}
 	if firstTimer.stopCount != 1 {
 		t.Fatalf("first timer stop count = %d, want 1", firstTimer.stopCount)
 	}
 	if secondTimer.stopCount != 0 {
 		t.Fatalf("second timer stop count = %d, want 0", secondTimer.stopCount)
+	}
+	if store.NextPushTime() <= time.Now().Unix() {
+		t.Fatalf("NextPushTime() = %d, want a future unix timestamp", store.NextPushTime())
+	}
+}
+
+func TestMemoryStoreScheduleSyncDisabledWhenDelayNonPositive(t *testing.T) {
+	t.Parallel()
+
+	store := NewMemoryStore()
+	store.config = MemoryConfig{
+		Dir:                  `C:/memory`,
+		DBName:               `memory.db`,
+		DBPath:               `C:/memory/memory.db`,
+		IsGitRepo:            true,
+		AutoPushDelayMinutes: 0,
+	}
+	scheduled := false
+	store.afterFunc = func(_ time.Duration, _ func()) stoppableTimer {
+		scheduled = true
+		return &fakeTimer{}
+	}
+
+	store.ScheduleSync()
+
+	if scheduled {
+		t.Fatalf("ScheduleSync() scheduled timer when auto push delay disabled")
+	}
+	if !store.dirty {
+		t.Fatalf("dirty = false, want true")
+	}
+	if store.NextPushTime() != 0 {
+		t.Fatalf("NextPushTime() = %d, want 0 when auto push disabled", store.NextPushTime())
 	}
 }
 
@@ -107,6 +151,9 @@ func TestMemoryStoreSyncNowOnlyPushesChangedFile(t *testing.T) {
 	}
 	if store.LastPushTime() <= 0 {
 		t.Fatalf("LastPushTime() = %d, want > 0", store.LastPushTime())
+	}
+	if store.NextPushTime() != 0 {
+		t.Fatalf("NextPushTime() = %d, want 0 after SyncNow()", store.NextPushTime())
 	}
 }
 

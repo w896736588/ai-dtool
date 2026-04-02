@@ -36,21 +36,62 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 STAGE_DIR="${BUILD_DIR}/release_${TARGET_OS}_${TIMESTAMP}"
 PACKAGE_DIR="${STAGE_DIR}/package"
 ARCHIVE_FILE="${BUILD_DIR}/dtool_release_${TARGET_OS}_${TIMESTAMP}.${ARCHIVE_EXT}"
+HOST_UNAME="$(uname -s)"
+SKIP_DESKTOP_BUILD="0"
+BUILD_GOOS=""
+BUILD_GOARCH=""
+BUILD_CGO_ENABLED=""
+
+if [[ "${TARGET_OS}" == "linux" ]]; then
+  BUILD_GOOS="linux"
+  BUILD_GOARCH="amd64"
+  BUILD_CGO_ENABLED="0"
+fi
+
+if [[ "${TARGET_OS}" == "macos" ]] && [[ "${HOST_UNAME}" =~ ^(MINGW|MSYS|CYGWIN) ]]; then
+  BUILD_GOOS="darwin"
+  BUILD_GOARCH="amd64"
+  BUILD_CGO_ENABLED="0"
+fi
+
+if [[ "${TARGET_OS}" == "linux" || "${TARGET_OS}" == "macos" ]] && [[ "${HOST_UNAME}" =~ ^(MINGW|MSYS|CYGWIN) ]]; then
+  SKIP_DESKTOP_BUILD="1"
+fi
 
 write_step() {
   printf '%s\n' "$1"
 }
 
+copy_if_exists() {
+  local source_path="$1"
+  local target_path="$2"
+  local description="$3"
+
+  if [[ -e "${source_path}" ]]; then
+    cp "${source_path}" "${target_path}"
+  else
+    write_step "[WARN] Skip missing ${description}: ${source_path}"
+  fi
+}
+
+go_build_target() {
+  if [[ -n "${BUILD_GOOS}" ]]; then
+    GOOS="${BUILD_GOOS}" GOARCH="${BUILD_GOARCH}" CGO_ENABLED="${BUILD_CGO_ENABLED}" go build "$@"
+  else
+    go build "$@"
+  fi
+}
+
 mkdir -p "${PACKAGE_DIR}"
 
-write_step "[1/6] 构建前端 web/dist"
+write_step "[1/6] Build frontend web/dist"
 pushd "${ROOT_DIR}/web" >/dev/null
 if [[ -d node_modules/.cache ]]; then
   rm -rf node_modules/.cache
 fi
 if [[ -f package-lock.json ]]; then
   if ! npm ci; then
-    write_step "[WARN] npm ci 失败，清理缓存后重试一次"
+    write_step "[WARN] npm ci failed, clearing cache and retrying once"
     rm -rf node_modules/.cache
     npm cache verify
     npm ci --no-audit --no-fund
@@ -61,24 +102,28 @@ fi
 npm run prod
 popd >/dev/null
 
-write_step "[2/6] 构建 ${TARGET_OS} Web 模式后端"
-go build -ldflags "-s -w" -o "${PACKAGE_DIR}/${WEB_BIN}" ./cmd/dtool
+write_step "[2/6] Build ${TARGET_OS} web backend"
+go_build_target -ldflags "-s -w" -o "${PACKAGE_DIR}/${WEB_BIN}" ./cmd/dtool
 
-write_step "[3/6] 构建 ${TARGET_OS} 桌面端"
-go build -tags production -ldflags "-s -w" -o "${PACKAGE_DIR}/${DESKTOP_BIN}" ./cmd/dtool_wails
+if [[ "${SKIP_DESKTOP_BUILD}" == "1" ]]; then
+  write_step "[3/6] Skip ${TARGET_OS} desktop app build on ${HOST_UNAME}; package will contain web mode only"
+else
+  write_step "[3/6] Build ${TARGET_OS} desktop app"
+  go_build_target -tags production -ldflags "-s -w" -o "${PACKAGE_DIR}/${DESKTOP_BIN}" ./cmd/dtool_wails
+fi
 
-write_step "[4/6] 复制运行资源"
+write_step "[4/6] Copy runtime assets"
 mkdir -p "${PACKAGE_DIR}/config/dtool"
 cp "${ROOT_DIR}/go.mod" "${PACKAGE_DIR}/go.mod"
 cp "${ROOT_DIR}/config/dtool/company.ini" "${PACKAGE_DIR}/config/dtool/config.ini"
-cp "${ROOT_DIR}/config/dtool/frog.db" "${PACKAGE_DIR}/config/dtool/frog.db"
+copy_if_exists "${ROOT_DIR}/config/dtool/frog.db" "${PACKAGE_DIR}/config/dtool/frog.db" "config/dtool/frog.db"
 cp -R "${ROOT_DIR}/web/dist" "${PACKAGE_DIR}/web"
 mkdir -p "${PACKAGE_DIR}/internal/pkg" "${PACKAGE_DIR}/internal/app/dtool"
 cp -R "${ROOT_DIR}/internal/pkg/p_js" "${PACKAGE_DIR}/internal/pkg/p_js"
 cp -R "${ROOT_DIR}/internal/app/dtool/database" "${PACKAGE_DIR}/internal/app/dtool/database"
 cp -R "${ROOT_DIR}/internal/app/dtool/database_memory" "${PACKAGE_DIR}/internal/app/dtool/database_memory"
 
-write_step "[5/6] 生成启动脚本和说明文件"
+write_step "[5/6] Generate launch scripts and readme"
 cat > "${PACKAGE_DIR}/${WEB_LAUNCHER}" <<'EOF'
 #!/usr/bin/env bash
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -91,11 +136,19 @@ elif command -v open >/dev/null 2>&1; then
 fi
 EOF
 
-cat > "${PACKAGE_DIR}/${DESKTOP_LAUNCHER}" <<'EOF'
+if [[ "${SKIP_DESKTOP_BUILD}" == "1" ]]; then
+  cat > "${PACKAGE_DIR}/${DESKTOP_LAUNCHER}" <<'EOF'
+#!/usr/bin/env bash
+echo "Desktop mode was skipped for this package. Build on Linux to include dtool_wails."
+exit 1
+EOF
+else
+  cat > "${PACKAGE_DIR}/${DESKTOP_LAUNCHER}" <<'EOF'
 #!/usr/bin/env bash
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 exec "${SCRIPT_DIR}/dtool_wails" --ConfigFile=config
 EOF
+fi
 
 cat > "${PACKAGE_DIR}/README_RELEASE.txt" <<EOF
 dtool release package (${TARGET_OS})
@@ -109,11 +162,16 @@ Run desktop mode:
 Notes:
 1. ConfigFile matches config/dtool/*.ini filename without extension
 2. Check webPath/dbPath and other ini settings before first run
+3. Desktop mode may be omitted when packaging from non-native hosts
 EOF
 
-chmod +x "${PACKAGE_DIR}/${WEB_BIN}" "${PACKAGE_DIR}/${DESKTOP_BIN}" "${PACKAGE_DIR}/${WEB_LAUNCHER}" "${PACKAGE_DIR}/${DESKTOP_LAUNCHER}"
+if [[ "${SKIP_DESKTOP_BUILD}" == "1" ]]; then
+  chmod +x "${PACKAGE_DIR}/${WEB_BIN}" "${PACKAGE_DIR}/${WEB_LAUNCHER}" "${PACKAGE_DIR}/${DESKTOP_LAUNCHER}"
+else
+  chmod +x "${PACKAGE_DIR}/${WEB_BIN}" "${PACKAGE_DIR}/${DESKTOP_BIN}" "${PACKAGE_DIR}/${WEB_LAUNCHER}" "${PACKAGE_DIR}/${DESKTOP_LAUNCHER}"
+fi
 
-write_step "[6/6] 压缩归档"
+write_step "[6/6] Create archive"
 rm -f "${ARCHIVE_FILE}"
 tar -czf "${ARCHIVE_FILE}" -C "${PACKAGE_DIR}" .
 

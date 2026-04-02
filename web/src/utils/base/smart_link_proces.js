@@ -51,6 +51,11 @@ function SmartProcessSetPosition(data , callBack){
     base.BasePost('/api/SmartProcessSetPosition', data, callBack)
 }
 
+// data 为自动提取基础定位配置的请求参数。
+// data stores params for AI auto extraction of base locator config.
+function SmartLinkLocatorAutoExtract(data , callBack){
+    base.BasePost('/api/SmartLinkLocatorAutoExtract', data, callBack)
+}
 
 
 export default {
@@ -65,4 +70,5 @@ export default {
     SmartProcessSetRelation,
     SmartProcessCancelRelation,
     SmartProcessSetPosition,
+    SmartLinkLocatorAutoExtract,
 }

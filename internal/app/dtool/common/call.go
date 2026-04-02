@@ -32,10 +32,10 @@ func GetCall() *p_common.Call {
 			return DbMain.CmdInfo(s)
 		},
 		CreateSmartLastRecord: func(d map[string]any) (int64, error) {
-			return DbMain.Client.QuickCreate(`tbl_smart_link_last`, d).Exec()
+			return DbLog.Client.QuickCreate(`tbl_smart_link_last`, d).Exec()
 		},
 		UpdateSmartLastRecord: func(m map[string]any, d map[string]any) (int64, error) {
-			return DbMain.Client.QuickUpdate(`tbl_smart_link_last`, m, d).Exec()
+			return DbLog.Client.QuickUpdate(`tbl_smart_link_last`, m, d).Exec()
 		},
 	}
 }

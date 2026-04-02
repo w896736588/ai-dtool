@@ -572,6 +572,20 @@ func ApiCreateApi(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, info)
 }
 
+// normalizedIntegerType 中文：接口参数保存时唯一允许的整数类型名。 English: The only accepted integer type name in API parameter definitions.
+const normalizedIntegerType = `integer`
+
+// validateArrayItemTypes 中文：校验数组参数项中的类型字段，禁止继续写入旧的 int 类型名。 English: Validate array item types and reject the legacy int type name.
+func validateArrayItemTypes(items []map[string]any, errmsg string) error {
+	for _, item := range items {
+		// 中文：明确禁止旧 int 类型，确保接口定义只保留当前规范。 English: Explicitly reject legacy int to keep definitions aligned with the current schema.
+		if cast.ToString(item[`type`]) == `int` {
+			return errors.New(errmsg + `, type 仅支持 ` + normalizedIntegerType + `，不支持 int`)
+		}
+	}
+	return nil
+}
+
 func filterEmptyArrayMap(queryParams, fieldKey, errmsg string, max int) (string, error) {
 	queryParamsData := make([]map[string]any, 0)
 	queryParamsDataNew := make([]map[string]any, 0)
@@ -586,6 +600,9 @@ func filterEmptyArrayMap(queryParams, fieldKey, errmsg string, max int) (string,
 	}
 	if len(queryParamsDataNew) > max {
 		return ``, errors.New(errmsg + `,最多` + cast.ToString(max) + `条`)
+	}
+	if err := validateArrayItemTypes(queryParamsDataNew, errmsg); err != nil {
+		return ``, err
 	}
 	return gstool.JsonEncode(queryParamsDataNew), nil
 }
@@ -1000,20 +1017,15 @@ func ApiMoveApi(c *gin.Context) {
 		return
 	}
 
-	// Check if target folder belongs to the same collection
-	apiCollectionId := cast.ToInt(apiInfo[`collection_id`])
 	folderCollectionId := cast.ToInt(folderInfo[`collection_id`])
-	if apiCollectionId != folderCollectionId {
-		gsgin.GinResponseError(c, `不能移动到不同集合的文件夹`, nil)
-		return
-	}
 
-	// Update api folder_id
+	// Update api folder_id and collection_id to match the target folder.
 	_, err := common.DbMain.Client.QuickUpdate(`tbl_api`, map[string]any{
 		`id`: apiId,
 	}, map[string]any{
-		`folder_id`:   newFolderId,
-		`update_time`: time.Now().Unix(),
+		`folder_id`:      newFolderId,
+		`collection_id`:  folderCollectionId,
+		`update_time`:    time.Now().Unix(),
 	}).Exec()
 
 	if err != nil {

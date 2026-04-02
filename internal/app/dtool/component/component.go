@@ -17,6 +17,7 @@ var TGins []*p_gin.Gin
 var MysqlClient *p_db.TMysql
 var RedisClient *p_db.TRedis
 var SqliteClient *gsdb.GsSqlite
+var LogSqliteClient *gsdb.GsSqlite
 var EnvClient *define.Env
 var ConfigViper *viper.Viper
 var GsLog *gstool.GsSlog

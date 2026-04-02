@@ -4,41 +4,17 @@
       <el-tab-pane label="Ssh" name="Ssh" class="set-tab-pane">
         <ssh ref="ssh"></ssh>
       </el-tab-pane>
-      <el-tab-pane label="Git" name="Git" class="set-tab-pane">
-        <git ref="git"></git>
-      </el-tab-pane>
-      <el-tab-pane label="Supervisor" name="Supervisor" class="set-tab-pane">
-        <supervisor ref="supervisor"></supervisor>
-      </el-tab-pane>
-      <el-tab-pane label="Redis" name="Redis" class="set-tab-pane">
-        <redis ref="redis"></redis>
-      </el-tab-pane>
       <el-tab-pane label="Mysql" name="Mysql" class="set-tab-pane">
         <mysql ref="mysql"></mysql>
       </el-tab-pane>
-<!--      <el-tab-pane label="脚本合集组">-->
-<!--        <variable_group ref="variable_group"></variable_group>-->
-<!--      </el-tab-pane>-->
-      <el-tab-pane label="Compose" name="Compose" class="set-tab-pane">
-        <compose ref="compose"></compose>
-      </el-tab-pane>
-      <el-tab-pane label="账号" name="Account" class="set-tab-pane">
-        <account ref="account"></account>
-      </el-tab-pane>
-<!--      <el-tab-pane label="命令组">-->
-<!--        <cmd_group ref="cmd_group"></cmd_group>-->
-<!--      </el-tab-pane>-->
-<!--      <el-tab-pane label="GitlabToken" name="GitlabToken" style="padding:5px;">-->
-<!--        <gitlab_token ref="gitlabToken"></gitlab_token>-->
-<!--      </el-tab-pane>-->
       <el-tab-pane label="Global" name="Global" class="set-tab-pane">
         <global ref="global"></global>
       </el-tab-pane>
       <el-tab-pane label="AI" name="AI" class="set-tab-pane">
         <ai_provider ref="ai_provider"></ai_provider>
       </el-tab-pane>
-      <el-tab-pane label="记忆" name="Memory" class="set-tab-pane">
-        <memory_set ref="memory_set"></memory_set>
+      <el-tab-pane label="Config" name="Config" class="set-tab-pane">
+        <memory ref="memory" :show-runtime-config="true"></memory>
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -46,50 +22,38 @@
 
 <script>
 import set from '@/utils/base/ssh_set'
-import ssh from "./set/ssh.vue"
-import git from "./set/git.vue"
-import git_group from "./set/git_group.vue"
-import supervisor from "./set/supervisor.vue"
-import redis from "./set/redis.vue"
-import mysql from "./set/mysql.vue"
-import variable_group from "./set/variable_group.vue"
-import Cmd_group from "@/components/set/cmd_group.vue";
-import smart_link_group from "./set/smart_link_group.vue"
-import compose from "./set/compose.vue"
-import gitlab_token from "@/components/set/gitlab_token.vue"
-import store from "@/utils/base/store"
-import global from "@/components/set/global.vue"
-import account from "@/components/set/account.vue";
-import ai_provider from "@/components/set/ai_provider.vue";
-import memory_set from "@/components/set/memory.vue";
+import ssh from './set/ssh.vue'
+import mysql from './set/mysql.vue'
+import store from '@/utils/base/store'
+import global from '@/components/set/global.vue'
+import ai_provider from '@/components/set/ai_provider.vue'
+import memory from '@/components/set/memory.vue'
+
+// SET_ACTIVE_TABS 定义当前仍保留在配置页中的标签页，避免旧缓存命中已迁出的业务设置。
+// Keep the tabs that still belong to the settings page to avoid stale cache pointing to moved pages.
+const SET_ACTIVE_TABS = ['Ssh', 'Mysql', 'Global', 'AI', 'Config']
+
 export default {
-  props : {
-    shellShowResult : {
-      type : String
+  props: {
+    shellShowResult: {
+      type: String,
     },
   },
   components: {
-    account,
     ssh,
-    git,
-    git_group,
-    supervisor,
-    redis,
     mysql,
-    compose,
-    gitlab_token ,
     global,
     ai_provider,
-    memory_set,
+    memory,
   },
   data() {
     return {
       name: 'Ssh',
-      activeLabel : 'Ssh',
-      sshList : [],
+      activeLabel: 'Ssh',
+      sshList: [],
     }
   },
-  mounted: function () {
+  mounted() {
     if (process.env.NODE_ENV === 'production') {
       this.apiHost = ''
     }
@@ -100,51 +64,46 @@ export default {
     this.syncActiveLabel()
   },
   methods: {
-    syncActiveLabel: function () {
-      this.activeLabel = String(store.getStore("set_active_label"))
-      if  (this.activeLabel === '') {
+    syncActiveLabel() {
+      this.activeLabel = String(store.getStore('set_active_label'))
+      if (this.activeLabel === '' || !SET_ACTIVE_TABS.includes(this.activeLabel)) {
         this.activeLabel = 'Ssh'
       }
       this.loadActiveTabData()
     },
-    handleTabClick : function (tab){
+    handleTabClick(tab) {
       this.activeLabel = tab.props.name
-      console.log(tab , this.activeLabel)
-      store.setStore("set_active_label", tab.props.name)
+      store.setStore('set_active_label', tab.props.name)
       this.loadActiveTabData()
     },
-    loadActiveTabData: function (){
-      switch (this.activeLabel){
+    // loadActiveTabData 在切换配置标签时按需刷新当前页数据，避免全部标签同时请求。
+    // Refresh only the active settings tab on demand instead of loading every tab at once.
+    loadActiveTabData() {
+      switch (this.activeLabel) {
         case 'Ssh':
-          this.$refs.ssh && this.$refs.ssh.SshList();
-          break
-        case 'Git':
-          this.$refs.git && this.$refs.git.GitList()
-          this.$refs.git && this.$refs.git.GitGroupList()
-          break
-        case 'Account':
-          this.$refs.account && this.$refs.account.AccountList()
-          this.$refs.account && this.$refs.account.AccountGroupList()
+          this.$refs.ssh && this.$refs.ssh.SshList()
           break
         case 'AI':
           this.$refs.ai_provider && this.$refs.ai_provider.LoadProviderList()
           this.$refs.ai_provider && this.$refs.ai_provider.LoadModelList()
           break
-        case 'Memory':
-          this.$refs.memory_set && this.$refs.memory_set.loadConfig()
+        case 'Config':
+          this.$refs.memory && this.$refs.memory.loadConfig && this.$refs.memory.loadConfig()
+          this.$refs.memory && this.$refs.memory.loadAiModelList && this.$refs.memory.loadAiModelList()
+          break
+        default:
           break
       }
     },
-    SshList : function (){
+    SshList() {
       let _that = this
-      set.SshList(function (response){
-        console.log(response)
-        if(response.ErrCode === 0){
+      set.SshList(function (response) {
+        if (response.ErrCode === 0) {
           _that.sshList = response.Data
         }
       })
     },
-    getStore: function (key) {
+    getStore(key) {
       return localStorage.getItem(key)
     },
   },

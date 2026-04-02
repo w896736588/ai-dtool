@@ -111,7 +111,7 @@
   </div>
 </template>
 <script>
-import {defineExpose, defineComponent, inject, defineEmits, getCurrentInstance, reactive, onActivated} from 'vue';
+import {defineComponent, getCurrentInstance, reactive, onActivated} from 'vue';
 import { Plus, Setting, CopyDocument, Edit, Delete, CollectionTag, Box, Folder, Check } from '@element-plus/icons-vue';
 import ssh_set from '../../utils/base/ssh_set'
 import set from '../../utils/base/supervisor_set'
@@ -122,11 +122,12 @@ export default defineComponent({
   components: { Plus, Setting, CopyDocument, Edit, Delete, CollectionTag, Box, Folder, Check },
   props: {
   },
+  emits: ['changed'],
   data() {
     return {
     }
   },
-  setup() {
+  setup(props, { emit }) {
     onActivated(() => {
       if(Init.GetIsInit('supervisor') === true){
         SupervisorList()
@@ -157,10 +158,16 @@ export default defineComponent({
       state.dialogEditSupervisor = true
       state.editSupervisorConfig = {}
     }
+    // emitChanged 告知宿主页面 Supervisor 配置已变化，便于刷新环境列表。
+    // Notify host pages when Supervisor settings changed so environment lists can refresh immediately.
+    const emitChanged = function (){
+      emit('changed')
+    }
     const EditSupervisor = function (){
       set.SupervisorAdd(state.editSupervisorConfig , function (response){
         if(response.ErrCode === 0){
           SupervisorList()
+          emitChanged()
         }else{
           instance.$helperNotify.error(response.ErrMsg)
         }
@@ -173,6 +180,7 @@ export default defineComponent({
         set.SupervisorDelete(rowData , function (response){
           if(response.ErrCode === 0){
             SupervisorList()
+            emitChanged()
           }else{
             instance.$helperNotify.error(response.ErrMsg)
           }

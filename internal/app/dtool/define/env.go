@@ -1,41 +1,49 @@
 package define
 
 type Base struct {
-	DbFileName string //db名称
-	DbPath     string //数据库文件所在目录
-	WebPath    string //前端dist所在目录
+	DbFileName                   string // 主库 db file name / main database file name
+	DbPath                       string // 主库目录 db directory / main database directory
+	DbIsGitRepo                  bool   // 主库是否按 git 仓库处理 main db git repo flag / whether main db should be treated as a git repository
+	MemoryDBPath                 string // 记忆库目录 memory db directory / memory database directory
+	MemoryDBName                 string // 记忆库文件名 memory db file name / memory database file name
+	MemoryDBIsGitRepo            bool   // 记忆库是否按 git 仓库处理 memory git repo flag / whether memory db should be treated as a git repository
+	MemoryDBAutoPushDelayMinutes int    // 知识库变更后延迟多少分钟自动 push / delayed auto-push minutes for memory database changes
+	WebPath                      string // 前端 dist 目录 web dist path / frontend dist directory
 }
 
 type DbConfig struct {
-	DbName string //数据库文件名
-	DbPath string //数据库文件所在目录
+	DbName      string // 数据库文件名 db file name / database file name
+	DbPath      string // 数据库目录 db directory / database directory
+	DbIsGitRepo bool   // 数据库是否按 git 仓库处理 db git repo flag / whether database should be treated as a git repository
 }
 
 type WebConfig struct {
-	WebPath string //dist目录
+	WebPath string // dist 目录 dist path / dist directory
 }
 
 type Env struct {
-	RootPath             string     //项目根目录
-	PkgPath              string     //pkg目录
-	AppName              string     //项目名称
-	ConfigFile           string     //配置文件名
-	ConfigPath           string     //配置文件目录
-	DatabaseUpPath       string     //数据库升级目录
-	MemoryDatabaseUpPath string     //记忆数据库升级目录
-	LogPath              string     //日志目录
-	NodePath             string     //node js可执行程序目录
-	WebkitDriverPath     string     //浏览器核心目录
-	WebkitDownloadPath   string     //浏览器核心下载临时文件数据目录
-	WebkitDataPath       string     //浏览器核心用户数据目录
-	PythonCommand        string     //python可执行命令
-	Crawl4AIHost         string     //crawl4ai服务host
-	Crawl4AIPort         string     //crawl4ai服务端口
-	Crawl4AIBaseURL      string     //crawl4ai服务地址
-	Crawl4AIDataPath     string     //crawl4ai数据目录
-	Crawl4AIScriptPath   string     //crawl4ai服务脚本路径
-	Ports                []string   //gin支持的端口
-	ConfigBase           *Base      //基础配置
-	DbConfig             *DbConfig  //数据库配置
-	WebConfig            *WebConfig //web配置
+	RootPath             string     // 项目根目录 root path / project root directory
+	PkgPath              string     // pkg 目录 pkg path / package directory
+	AppName              string     // 项目名称 app name / project name
+	ConfigFile           string     // 配置文件名 config file name / config file name
+	ConfigPath           string     // 配置文件目录 config path / config directory
+	DatabaseUpPath       string     // 主库升级目录 database upgrade path / main database migration directory
+	LogDatabaseUpPath    string     // 日志库升级目录 log database upgrade path / log database migration directory
+	MemoryDatabaseUpPath string     // 记忆库升级目录 memory database upgrade path / memory database migration directory
+	LogPath              string     // 日志目录 log path / log directory
+	NodePath             string     // Node 路径 node path / Node executable path
+	WebkitDriverPath     string     // 浏览器驱动目录 webkit driver path / browser driver directory
+	WebkitDownloadPath   string     // 浏览器下载目录 webkit download path / browser download directory
+	WebkitDataPath       string     // 浏览器数据目录 webkit data path / browser data directory
+	PythonCommand        string     // Python 命令 python command / Python executable command
+	Crawl4AIHost         string     // Crawl4AI host / Crawl4AI host
+	Crawl4AIPort         string     // Crawl4AI 端口 Crawl4AI port / Crawl4AI port
+	Crawl4AIBaseURL      string     // Crawl4AI 地址 Crawl4AI base URL / Crawl4AI base URL
+	Crawl4AIDataPath     string     // Crawl4AI 数据目录 Crawl4AI data path / Crawl4AI data directory
+	Crawl4AIScriptPath   string     // Crawl4AI 脚本路径 Crawl4AI script path / Crawl4AI script path
+	Ports                []string   // gin 端口 ports / gin ports
+	ConfigBase           *Base      // 基础配置 base config / base configuration
+	DbConfig             *DbConfig  // 主库配置 main db config / main database configuration
+	LogDbConfig          *DbConfig  // 日志库配置 log db config / log database configuration
+	WebConfig            *WebConfig // Web 配置 web config / web configuration
 }

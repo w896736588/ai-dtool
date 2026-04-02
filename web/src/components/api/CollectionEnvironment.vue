@@ -44,13 +44,14 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" width="200" align="center">
+      <el-table-column label="操作" width="240" align="center">
         <template #default="{ row, $index }">
           <div v-if="row.editing">
             <pl-button type="primary" link @click="handleSaveEnv(row)">保存</pl-button>
             <pl-button link @click="handleCancelEdit(row, $index)">取消</pl-button>
           </div>
           <div v-else>
+            <pl-button type="primary" link @click="handleCopyEnv(row)">复制</pl-button>
             <pl-button type="primary" link @click="handleEditEnv(row)">编辑</pl-button>
             <pl-button type="primary" link @click="handleManageVariables(row)">变量管理</pl-button>
             <pl-button type="danger" link @click="handleDeleteEnv(row)">删除</pl-button>
@@ -130,7 +131,6 @@ export default {
     },
 
     handleAddEnvironment() {
-      let _that = this
       const newEnv = {
         id: 0,
         name: '',
@@ -146,34 +146,119 @@ export default {
       env.editing = true
     },
 
+    handleCopyEnv(env) {
+      const copiedEnv = {
+        id: 0,
+        collection_id: env.collection_id || this.collection.id,
+        name: `${env.name || '新环境'}-复制`,
+        desc: env.desc || '',
+        variables: this.cloneEnvironmentVariables(env.variables),
+        copiedVariables: this.cloneEnvironmentVariables(env.variables),
+        editing: true
+      }
+      this.backupData = null
+      this.environmentList.unshift(copiedEnv)
+    },
+
+    cloneEnvironmentVariables(variables) {
+      if (!Array.isArray(variables)) {
+        return []
+      }
+      return variables.map(item => ({
+        ...item,
+        id: 0,
+        env_id: 0
+      }))
+    },
+
+    saveCopiedVariables(env, savedEnvId) {
+      const variables = Array.isArray(env.copiedVariables) ? env.copiedVariables : []
+      const validVariables = variables.filter(item => String(item.key || '').trim() !== '')
+      if (validVariables.length === 0) {
+        return Promise.resolve()
+      }
+      const tasks = validVariables.map(item => new Promise((resolve, reject) => {
+        Api.CreateCollectionEnvItem({
+          collection_id: this.collection.id,
+          env_id: savedEnvId,
+          name: item.name || '',
+          desc: item.desc || '',
+          key: item.key || '',
+          value: item.value || ''
+        }, function (res) {
+          if (res.ErrCode !== 0) {
+            reject(new Error(res.ErrMsg || '复制环境变量失败'))
+            return
+          }
+          resolve(res.Data)
+        })
+      }))
+      return Promise.all(tasks)
+    },
+
     handleSaveEnv(env) {
       if (!env.name.trim()) {
         this.$message.error('请输入环境名称')
         return
       }
-      env.editing = false
       let _that = this
+      _that.loading = true
       Api.CreateCollectionEnv({
         collection_id: _that.collection.id,
         name : env.name,
         desc : env.desc,
         id : env.id,
-      } , function (res){
+      } , async function (res){
         _that.loading = false
         if(res.ErrCode !== 0){
           _that.$message.error(res.ErrMsg)
           return
         }
+        let saveWarning = ''
+        try {
+          const isNewEnv = parseInt(env.id) === 0
+          if (isNewEnv) {
+            await _that.saveCopiedVariables(env, res.Data.id)
+            if (Array.isArray(env.copiedVariables) && env.copiedVariables.length > 0) {
+              const variableRes = await new Promise((resolve, reject) => {
+                Api.CollectionEnvItems({
+                  collection_id: _that.collection.id,
+                  env_id: res.Data.id,
+                }, function (itemsRes) {
+                  if (itemsRes.ErrCode !== 0) {
+                    reject(new Error(itemsRes.ErrMsg || '刷新环境变量失败'))
+                    return
+                  }
+                  resolve(itemsRes.Data.list)
+                })
+              })
+              res.Data.variables = variableRes
+            }
+          }
+        } catch (error) {
+          saveWarning = error.message || '环境已保存，但复制环境变量失败'
+        }
+        env.editing = false
         for (let i in _that.environmentList) {
           if (parseInt(res.Data.id) === parseInt(_that.environmentList[i].id) || (parseInt(env.id) === 0 && parseInt(_that.environmentList[i].id) === 0)) {
             _that.environmentList[i] = res.Data
+            _that.$emit('environmentUpdate', _that.environmentList)
+            if (saveWarning) {
+              _that.$message.warning(saveWarning)
+            } else {
+              _that.$message.success('保存成功')
+            }
             return
           }
         }
         _that.environmentList.push(res.Data)
+        _that.$emit('environmentUpdate', _that.environmentList)
+        if (saveWarning) {
+          _that.$message.warning(saveWarning)
+        } else {
+          _that.$message.success('保存成功')
+        }
       })
-      this.$emit('environmentUpdate', this.environmentList)
-      this.$message.success('保存成功')
     },
 
     handleCancelEdit(env, index) {

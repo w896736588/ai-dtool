@@ -15,20 +15,29 @@ import (
 // MemoryFragmentStatus 返回记忆库配置状态。
 func MemoryFragmentStatus(c *gin.Context) {
 	config := common.MemoryRuntime.Config()
+	nextPushTime := common.MemoryRuntime.NextPushTime()
 	lastPushTime := common.MemoryRuntime.LastPushTime()
 	lastPushError := common.MemoryRuntime.LastPushError()
+	nextPushTimeDesc := `-`
 	lastPushTimeDesc := `-`
+	if nextPushTime > 0 {
+		nextPushTimeDesc = gstool.TimeUnixToString(time.Unix(nextPushTime, 0), `Y-m-d H:i:s`)
+	}
 	if lastPushTime > 0 {
 		lastPushTimeDesc = gstool.TimeUnixToString(time.Unix(lastPushTime, 0), `Y-m-d H:i:s`)
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`configured`:          common.MemoryRuntime.IsConfigured(),
-		`memory_dir`:          config.Dir,
-		`memory_db_name`:      config.DBName,
-		`is_git_repo`:         config.IsGitRepo,
-		`last_push_time`:      lastPushTime,
-		`last_push_time_desc`: lastPushTimeDesc,
-		`last_push_error`:     lastPushError,
+		`configured`:              common.MemoryRuntime.IsConfigured(),
+		`memory_dir`:              config.Dir,
+		`memory_db_name`:          config.DBName,
+		`git_repo_enabled`:        config.GitRepoEnabled,
+		`is_git_repo`:             config.IsGitRepo,
+		`auto_push_delay_minutes`: config.AutoPushDelayMinutes,
+		`next_push_time`:          nextPushTime,
+		`next_push_time_desc`:     nextPushTimeDesc,
+		`last_push_time`:          lastPushTime,
+		`last_push_time_desc`:     lastPushTimeDesc,
+		`last_push_error`:         lastPushError,
 	})
 }
 
@@ -104,6 +113,63 @@ func MemoryFragmentDelete(c *gin.Context) {
 	}
 	_, err := memoryDB.MemoryFragmentSoftDelete(cast.ToInt(dataMap[`id`]))
 	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	common.MemoryRuntime.ScheduleSync()
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+// MemoryFragmentTrashList 查询回收站中的知识片段。
+func MemoryFragmentTrashList(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	list, err := memoryDB.MemoryFragmentTrashList(cast.ToInt(dataMap[`limit`]))
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, list)
+}
+
+// MemoryFragmentRestore 从回收站恢复知识片段。
+func MemoryFragmentRestore(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	if cast.ToInt(dataMap[`id`]) <= 0 {
+		gsgin.GinResponseError(c, `片段id不能为空`, nil)
+		return
+	}
+	_, err := memoryDB.MemoryFragmentRestore(cast.ToInt(dataMap[`id`]))
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	common.MemoryRuntime.ScheduleSync()
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+// MemoryFragmentHardDelete 彻底删除回收站中的知识片段。
+func MemoryFragmentHardDelete(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	if cast.ToInt(dataMap[`id`]) <= 0 {
+		gsgin.GinResponseError(c, `片段id不能为空`, nil)
+		return
+	}
+	if err := memoryDB.MemoryFragmentHardDelete(cast.ToInt(dataMap[`id`])); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}

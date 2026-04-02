@@ -1,16 +1,13 @@
 ﻿<template>
   <div class="api-detail" tabindex="0" @keydown="handleKeyDown" @keyup="handleKeyUp">
     <div class="api-header">
-      <el-input v-model="apiForm.name" placeholder="输入接口名称" style="width: 300px;margin-right:5px;" type="text" @blur="handleBlurSave"></el-input>
+      <el-input v-model="apiForm.name" class="api-name-input" placeholder="输入接口名称" type="text" @blur="handleBlurSave"></el-input>
       <div class="api-title-section">
-        <el-input v-model="apiForm.url" placeholder="输入请求URL" @blur="handleBlurSave">
-          <template #prepend>
-            <el-select v-model="apiForm.method" style="width: 80px">
-              <el-option label="GET" value="GET"/>
-              <el-option label="POST" value="POST"/>
-            </el-select>
-          </template>
-        </el-input>
+        <el-select v-model="apiForm.method" class="api-method-select">
+          <el-option label="GET" value="GET"/>
+          <el-option label="POST" value="POST"/>
+        </el-select>
+        <el-input v-model="apiForm.url" class="api-url-input" placeholder="输入请求URL" @blur="handleBlurSave"></el-input>
       </div>
 
       <div class="api-actions">
@@ -650,8 +647,8 @@ export default {
 
 .api-header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 10px;
   background: #f7f9f5;
   border: 1px solid #e6ece0;
@@ -662,12 +659,26 @@ export default {
   z-index: 100;
 }
 
+.api-name-input {
+  flex: 0 0 240px;
+  max-width: 300px;
+}
+
 .api-title-section {
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 95%;
-  margin-right: 3px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.api-method-select {
+  flex: 0 0 92px;
+}
+
+.api-url-input {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .config-section,
@@ -690,7 +701,10 @@ export default {
 
 .api-actions {
   display: flex;
-  gap: 5px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .api-content {
@@ -1079,6 +1093,33 @@ export default {
 }
 
 @media (max-width: 768px) {
+  .api-header {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .api-name-input,
+  .api-title-section,
+  .api-actions {
+    flex: 1 1 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .api-title-section,
+  .api-actions {
+    flex-wrap: wrap;
+  }
+
+  .api-method-select {
+    flex-basis: 100px;
+  }
+
+  .api-actions {
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
   :deep(.detail-tabs > .el-tabs__header .el-tabs__item) {
     padding: 0 10px;
   }

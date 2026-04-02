@@ -132,7 +132,7 @@
   </div>
 </template>
 <script>
-import {defineExpose, defineComponent, inject, defineEmits, getCurrentInstance, reactive, onActivated} from 'vue';
+import {defineComponent, getCurrentInstance, reactive, onActivated} from 'vue';
 import { Plus, CopyDocument, Edit, Delete, CollectionTag, Link, Connection, User, Lock, Check } from '@element-plus/icons-vue';
 import set from '../../utils/base/redis_set'
 import common from '../../utils/common'
@@ -142,11 +142,12 @@ export default defineComponent({
   components: { Plus, CopyDocument, Edit, Delete, CollectionTag, Link, Connection, User, Lock, Check },
   props: {
   },
+  emits: ['changed'],
   data() {
     return {
     }
   },
-  setup() {
+  setup(props, { emit }) {
     onActivated(() => {
       if(Init.GetIsInit('redis') === true){
         RedisList()
@@ -174,10 +175,16 @@ export default defineComponent({
       state.dialogEditRedis = true
       state.editRedisConfig = {}
     }
+    // emitChanged 告知宿主页面 Redis 配置已变化，便于立即重载实例列表。
+    // Notify host pages when Redis settings changed so instance lists can reload right away.
+    const emitChanged = function (){
+      emit('changed')
+    }
     const EditRedis = function (){
       set.RedisAdd(state.editRedisConfig , function (response){
         if(response.ErrCode === 0){
           RedisList()
+          emitChanged()
         }else{
           instance.$helperNotify.success(response.ErrMsg)
         }
@@ -190,6 +197,7 @@ export default defineComponent({
         set.RedisDelete(rowData , function (response){
           if(response.ErrCode === 0){
             RedisList()
+            emitChanged()
           }else{
             instance.$helperNotify.success(response.ErrMsg)
           }

@@ -2,13 +2,18 @@
   <div class="memory-page">
     <aside v-if="memoryConfigured" class="memory-sidebar">
       <div class="sidebar-header">
-        <div class="sidebar-title">片段列表</div>
         <div class="sidebar-header-actions">
+          <GitActionButton variant="warning" compact @click="openTrashTab">
+            <template #icon>
+              <el-icon><Delete /></el-icon>
+            </template>
+            回收站
+          </GitActionButton>
           <pl-button type="primary" plain @click="createFragment">
             <el-icon><Plus /></el-icon>
             新建片段
           </pl-button>
-          <pl-button plain @click="openSettingsTab">
+          <pl-button plain @click="openSettingsDialog">
             设置
           </pl-button>
         </div>
@@ -71,7 +76,10 @@
           v-for="item in fragmentList"
           :key="item.id"
           class="sidebar-item"
-          :class="{ active: activeFragmentId === item.id }"
+          :class="{
+            active: activeFragmentId === item.id,
+            'save-success': !!saveFeedbackMap[item.id],
+          }"
           @click="openFragment(item.id)"
         >
           <div class="sidebar-item-main">
@@ -88,13 +96,16 @@
               {{ tag }}
             </el-tag>
           </div>
+          <div v-if="saveFeedbackMap[item.id]" class="sidebar-item-check" aria-hidden="true">
+            <el-icon><Check /></el-icon>
+          </div>
         </button>
       </el-scrollbar>
 
-      <div class="sidebar-footer">
+      <div v-if="memoryGitRepoEnabled" class="sidebar-footer">
         <div class="sidebar-footer-row">
-          <span class="sidebar-footer-label">上一次 push 记忆库</span>
-          <span class="sidebar-footer-value">{{ lastPushTimeDesc }}</span>
+          <span class="sidebar-footer-label">{{ pushStatusLabel }}</span>
+          <span class="sidebar-footer-value">{{ pushStatusDesc }}</span>
         </div>
         <div v-if="lastPushError" class="sidebar-footer-row sidebar-footer-error">
           <span class="sidebar-footer-label">失败原因</span>
@@ -131,13 +142,6 @@
               @clear-filter="clearFilter"
               @go-memory-setting="goMemorySetting"
             />
-          </el-tab-pane>
-
-          <el-tab-pane name="settings" :closable="false">
-            <template #label>
-              <span class="tab-label">设置</span>
-            </template>
-            <MemorySettingPage ref="memorySettingPage" />
           </el-tab-pane>
 
           <el-tab-pane
@@ -217,6 +221,69 @@
           </el-tab-pane>
 
           <el-tab-pane
+            v-if="trashTabVisible"
+            name="trash"
+          >
+            <template #label>
+              <span class="tab-label">{{ trashTabLabel }}</span>
+            </template>
+            <div v-loading="trashLoading" class="search-result-panel">
+              <div class="search-result-toolbar">
+                <div class="search-result-summary">
+                  <div class="search-result-title">回收站</div>
+                  <div class="search-result-desc">
+                    <span>已删除片段：{{ trashList.length }}</span>
+                    <span>支持恢复和彻底删除</span>
+                  </div>
+                </div>
+              </div>
+
+              <el-empty
+                v-if="!trashLoading && trashList.length === 0"
+                description="回收站为空"
+              />
+
+              <div v-else class="search-result-list">
+                <div
+                  v-for="item in trashList"
+                  :key="item.id"
+                  class="trash-result-item"
+                >
+                  <div class="search-result-item-head">
+                    <div class="search-result-item-title">{{ item.title || '未命名片段' }}</div>
+                    <div class="search-result-item-time">{{ item.update_time_desc || '-' }}</div>
+                  </div>
+                  <div v-if="item.tags && item.tags.length > 0" class="search-result-item-tags">
+                    <el-tag
+                      v-for="tag in item.tags.slice(0, 5)"
+                      :key="tag"
+                      size="small"
+                      effect="plain"
+                    >
+                      {{ tag }}
+                    </el-tag>
+                  </div>
+                  <div class="trash-result-actions">
+                    <GitActionButton variant="info" compact @click="handleFragmentRestore(item.id)">
+                      恢复
+                    </GitActionButton>
+                    <el-popconfirm
+                      title="确定彻底删除这个片段吗？"
+                      confirm-button-text="彻底删除"
+                      cancel-button-text="取消"
+                      @confirm="handleFragmentHardDelete(item.id)"
+                    >
+                      <template #reference>
+                        <GitActionButton variant="danger" compact>彻底删除</GitActionButton>
+                      </template>
+                    </el-popconfirm>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane
             v-for="tab in fragmentTabs"
             :key="tab.name"
             :name="tab.name"
@@ -227,8 +294,10 @@
               </span>
             </template>
             <MemoryEditor
+              :ref="(el) => setEditorRef(tab.name, el)"
               :fragment="tab.fragment"
               :saved-fragment="tab.savedFragment"
+              :available-tags="availableTagNames"
               @change="syncTabDirty(tab.name, $event)"
               @saved="handleFragmentSaved(tab.name, $event)"
               @deleted="handleFragmentDeleted"
@@ -243,16 +312,32 @@
       v-model="historyDialogVisible"
       :fragment-id="historyFragmentId"
     />
+
+    <SettingsDialog
+      v-model="settingsDialogVisible"
+      title="记忆设置"
+      width="76%"
+      @closed="refreshMemoryAfterSettingsClose"
+    >
+      <MemorySettingPage ref="memorySettingPage" @changed="handleMemorySettingsChanged" />
+    </SettingsDialog>
   </div>
 </template>
 
 <script>
-import { Plus, Search } from '@element-plus/icons-vue'
+import { Check, Delete, Plus, Search } from '@element-plus/icons-vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
 import MemoryWelcome from '@/components/memory/MemoryWelcome.vue'
 import MemoryEditor from '@/components/memory/MemoryEditor.vue'
 import MemoryHistoryDialog from '@/components/memory/MemoryHistoryDialog.vue'
 import MemorySettingPage from '@/components/set/memory.vue'
+import GitActionButton from '@/components/base/GitActionButton.vue'
+import SettingsDialog from '@/components/base/SettingsDialog.vue'
+const {
+  isMemoryFragmentTabName,
+  activateMemorySaveFeedback,
+  clearExpiredMemorySaveFeedback,
+} = require('@/utils/memory_fragment_feedback.cjs')
 
 // TAG_FILTER_COLLAPSED_MAX_HEIGHT 控制左侧标签筛选区收起时的最大高度。
 const TAG_FILTER_COLLAPSED_MAX_HEIGHT = 76
@@ -260,6 +345,8 @@ const TAG_FILTER_COLLAPSED_MAX_HEIGHT = 76
 const TAG_FILTER_TOGGLE_MIN_COUNT = 10
 // SEARCH_TAB_NAME 统一定义搜索结果标签页名称，避免散落硬编码。
 const SEARCH_TAB_NAME = 'search'
+// TRASH_TAB_NAME 统一定义回收站标签页名称，避免散落硬编码。
+const TRASH_TAB_NAME = 'trash'
 // HOME_TAB_NAME 统一定义首页标签页名称，避免散落硬编码。
 const HOME_TAB_NAME = 'home'
 // KEYWORD_SEARCH_MODE 统一定义关键词搜索模式值，避免散落硬编码。
@@ -268,16 +355,21 @@ const KEYWORD_SEARCH_MODE = 'keyword'
 export default {
   name: 'MemoryFragment',
   components: {
+    Check,
+    Delete,
     Plus,
     Search,
+    GitActionButton,
     MemoryWelcome,
     MemoryEditor,
     MemoryHistoryDialog,
     MemorySettingPage,
+    SettingsDialog,
   },
   data() {
     return {
       fragmentList: [],
+      trashList: [],
       tagList: [],
       searchResults: [],
       searchQuery: '',
@@ -285,18 +377,30 @@ export default {
       selectedTags: [],
       tagFilterExpanded: false,
       searchTabVisible: false,
+      trashTabVisible: false,
       submittedSearchQuery: '',
       submittedSearchMode: KEYWORD_SEARCH_MODE,
       submittedSelectedTags: [],
       activeTab: HOME_TAB_NAME,
       fragmentTabs: [],
       searchLoading: false,
+      trashLoading: false,
       historyDialogVisible: false,
       historyFragmentId: 0,
       memoryConfigured: true,
+      memoryGitRepoEnabled: false,
+      nextPushTime: 0,
+      lastPushTime: 0,
       lastPushTimeDesc: '-',
       lastPushError: '',
+      statusNowTick: Math.floor(Date.now() / 1000),
       statusPollTimer: null,
+      settingsDialogVisible: false,
+      editorRefMap: {},
+      saveFeedbackMap: {},
+      saveFeedbackTimers: {},
+      saveFeedbackDurationMs: 1000,
+      globalSaveShortcutBound: false,
     }
   },
   computed: {
@@ -315,6 +419,14 @@ export default {
       }
       return '搜索结果'
     },
+    // trashTabLabel 返回回收站标签名称。
+    trashTabLabel() {
+      return `回收站${this.trashList.length > 0 ? ` (${this.trashList.length})` : ''}`
+    },
+    // availableTagNames 返回编辑器可用的已有标签名称列表。
+    availableTagNames() {
+      return this.tagList.map(item => item.tag_name)
+    },
     // showTagFilterToggle 判断左侧标签筛选区是否需要展示展开入口。
     showTagFilterToggle() {
       return this.tagList.length >= TAG_FILTER_TOGGLE_MIN_COUNT
@@ -331,28 +443,118 @@ export default {
     // tagFilterToggleText 返回左侧标签筛选区的展开文案。
     tagFilterToggleText() {
       return this.tagFilterExpanded ? '收起标签' : `展开标签（${this.tagList.length}）`
+    },
+    // pushStatusLabel 返回记忆库 push 状态标签，优先展示下一次 push。
+    pushStatusLabel() {
+      return this.nextPushTime > 0 ? '下一次 push 记忆库' : '上一次 push 记忆库'
+    },
+    // pushStatusDesc 返回记忆库 push 状态文案，优先展示下一次 push 倒计时。
+    pushStatusDesc() {
+      if (this.nextPushTime > 0) {
+        return this.formatRelativeTime(this.nextPushTime, 'future')
+      }
+      if (this.lastPushTime > 0) {
+        return this.formatRelativeTime(this.lastPushTime, 'past')
+      }
+      return this.lastPushTimeDesc || '-'
     }
   },
   mounted() {
+    this.bindGlobalSaveShortcut()
     this.loadMemoryStatus()
     this.startStatusPolling()
   },
   activated() {
+    this.bindGlobalSaveShortcut()
     this.startStatusPolling()
     this.loadMemoryStatus()
   },
   deactivated() {
+    this.unbindGlobalSaveShortcut()
     this.stopStatusPolling()
   },
   beforeUnmount() {
+    this.unbindGlobalSaveShortcut()
     this.stopStatusPolling()
+    this.clearSaveFeedbackTimers()
   },
   methods: {
+    bindGlobalSaveShortcut() {
+      if (this.globalSaveShortcutBound) {
+        return
+      }
+      window.addEventListener('keydown', this.handleGlobalSaveKeydown)
+      this.globalSaveShortcutBound = true
+    },
+    unbindGlobalSaveShortcut() {
+      if (!this.globalSaveShortcutBound) {
+        return
+      }
+      window.removeEventListener('keydown', this.handleGlobalSaveKeydown)
+      this.globalSaveShortcutBound = false
+    },
+    handleGlobalSaveKeydown(event) {
+      if (!event) {
+        return
+      }
+      const key = String(event.key || '').toLowerCase()
+      if ((!event.ctrlKey && !event.metaKey) || key !== 's') {
+        return
+      }
+      if (!isMemoryFragmentTabName(this.activeTab)) {
+        return
+      }
+      event.preventDefault()
+      this.triggerActiveFragmentSave()
+    },
+    setEditorRef(tabName, instance) {
+      if (!tabName) {
+        return
+      }
+      if (instance) {
+        this.editorRefMap[tabName] = instance
+        return
+      }
+      delete this.editorRefMap[tabName]
+    },
+    triggerActiveFragmentSave() {
+      const editor = this.editorRefMap[this.activeTab]
+      if (!editor || typeof editor.triggerSave !== 'function') {
+        return
+      }
+      editor.triggerSave()
+    },
+    clearSaveFeedbackTimers() {
+      Object.values(this.saveFeedbackTimers).forEach((timerId) => {
+        window.clearTimeout(timerId)
+      })
+      this.saveFeedbackTimers = {}
+    },
+    triggerFragmentSaveFeedback(fragmentId) {
+      const normalizedId = Number(fragmentId || 0)
+      if (normalizedId <= 0) {
+        return
+      }
+      if (this.saveFeedbackTimers[normalizedId]) {
+        window.clearTimeout(this.saveFeedbackTimers[normalizedId])
+      }
+      this.saveFeedbackMap = activateMemorySaveFeedback(
+        this.saveFeedbackMap,
+        normalizedId,
+        Date.now(),
+        this.saveFeedbackDurationMs
+      )
+      this.saveFeedbackTimers[normalizedId] = window.setTimeout(() => {
+        this.saveFeedbackMap = clearExpiredMemorySaveFeedback(this.saveFeedbackMap, Date.now())
+        delete this.saveFeedbackTimers[normalizedId]
+      }, this.saveFeedbackDurationMs)
+    },
     startStatusPolling() {
       if (this.statusPollTimer) {
         return
       }
       this.statusPollTimer = window.setInterval(() => {
+        this.statusNowTick = Math.floor(Date.now() / 1000)
         this.loadMemoryStatus(false)
       }, 10000)
     },
@@ -363,21 +565,48 @@ export default {
       window.clearInterval(this.statusPollTimer)
       this.statusPollTimer = null
     },
+    // formatRelativeTime 把 unix 秒时间格式化为“xx小时xx分钟前/后”。
+    formatRelativeTime(unixTime, direction) {
+      const targetTime = Number(unixTime || 0)
+      if (targetTime <= 0) {
+        return '-'
+      }
+      const now = this.statusNowTick
+      let diffSeconds = direction === 'future' ? targetTime - now : now - targetTime
+      if (diffSeconds <= 0) {
+        return direction === 'future' ? '1分钟内' : '刚刚'
+      }
+      diffSeconds = Math.ceil(diffSeconds / 60) * 60
+      const totalMinutes = Math.floor(diffSeconds / 60)
+      const hours = Math.floor(totalMinutes / 60)
+      const minutes = totalMinutes % 60
+      const durationText = hours > 0 ? `${hours}小时${minutes}分钟` : `${minutes}分钟`
+      return direction === 'future' ? `${durationText}后` : `${durationText}前`
+    },
     loadMemoryStatus(needReloadLists = true) {
       MemoryFragmentApi.MemoryFragmentStatus((response) => {
+        this.statusNowTick = Math.floor(Date.now() / 1000)
         this.memoryConfigured = !!(response.Data && response.Data.configured)
+        this.memoryGitRepoEnabled = !!(response.Data && response.Data.git_repo_enabled)
+        this.nextPushTime = response.Data && response.Data.next_push_time ? Number(response.Data.next_push_time) : 0
+        this.lastPushTime = response.Data && response.Data.last_push_time ? Number(response.Data.last_push_time) : 0
         this.lastPushTimeDesc = response.Data && response.Data.last_push_time_desc ? response.Data.last_push_time_desc : '-'
         this.lastPushError = response.Data && response.Data.last_push_error ? response.Data.last_push_error : ''
         if (!this.memoryConfigured) {
           this.fragmentList = []
+          this.trashList = []
           this.tagList = []
           this.searchResults = []
           this.fragmentTabs = []
           this.activeTab = HOME_TAB_NAME
+          this.memoryGitRepoEnabled = false
+          this.nextPushTime = 0
+          this.lastPushTime = 0
           return
         }
         if (needReloadLists) {
           this.loadFragmentList()
+          this.loadTrashList()
           this.loadTagList()
         }
       })
@@ -389,6 +618,17 @@ export default {
       }
       MemoryFragmentApi.MemoryFragmentList(0, (response) => {
         this.fragmentList = Array.isArray(response.Data) ? response.Data : []
+      })
+    },
+    // loadTrashList 加载回收站片段列表。
+    loadTrashList() {
+      if (!this.memoryConfigured) {
+        return
+      }
+      this.trashLoading = true
+      MemoryFragmentApi.MemoryFragmentTrashList(0, (response) => {
+        this.trashLoading = false
+        this.trashList = Array.isArray(response.Data) ? response.Data : []
       })
     },
     // loadTagList 加载标签筛选列表。
@@ -654,13 +894,31 @@ export default {
         this.upsertFragmentTab(response.Data, true)
       })
     },
-    openSettingsTab() {
-      this.activeTab = 'settings'
+    // openTrashTab 打开回收站 tab 并刷新内容。
+    openTrashTab() {
+      this.trashTabVisible = true
+      this.activeTab = TRASH_TAB_NAME
+      this.loadTrashList()
+    },
+    // openSettingsDialog 打开记忆设置弹窗，在当前业务页内完成 AI 配置维护。
+    // Open the memory settings modal so AI configuration can be maintained in-place.
+    openSettingsDialog() {
+      this.settingsDialogVisible = true
       this.$nextTick(() => {
         if (this.$refs.memorySettingPage && this.$refs.memorySettingPage.loadConfig) {
           this.$refs.memorySettingPage.loadConfig()
         }
       })
+    },
+    // handleMemorySettingsChanged 设置保存成功后立即刷新记忆状态区展示。
+    // Refresh memory status immediately after settings change.
+    handleMemorySettingsChanged() {
+      this.loadMemoryStatus(false)
+    },
+    // refreshMemoryAfterSettingsClose 在弹窗关闭时再做一次兜底刷新。
+    // Refresh once more when the dialog closes as a fallback for additional setting edits.
+    refreshMemoryAfterSettingsClose() {
+      this.loadMemoryStatus(false)
     },
     // openFragment 打开指定片段 tab。
     openFragment(fragmentId) {
@@ -734,7 +992,9 @@ export default {
       target.fragment = this.normalizeFragment(fragment)
       target.savedFragment = this.cloneFragment(target.fragment)
       target.dirty = false
+      this.triggerFragmentSaveFeedback(target.fragment.id)
       this.loadFragmentList()
+      this.loadTrashList()
       this.loadTagList()
       this.rerunSubmittedSearch()
     },
@@ -742,11 +1002,40 @@ export default {
     handleFragmentDeleted(fragmentId) {
       this.fragmentTabs = this.fragmentTabs.filter(item => item.fragment.id !== fragmentId)
       this.loadFragmentList()
+      this.loadTrashList()
       this.loadTagList()
       this.rerunSubmittedSearch()
       if (this.activeTab === `fragment-${fragmentId}`) {
         this.activeTab = 'home'
       }
+    },
+    // handleFragmentRestore 从回收站恢复片段并刷新列表。
+    handleFragmentRestore(fragmentId) {
+      MemoryFragmentApi.MemoryFragmentRestore(fragmentId, (response) => {
+        if (response.ErrCode !== 0) {
+          return
+        }
+        this.loadFragmentList()
+        this.loadTrashList()
+        this.loadTagList()
+        this.rerunSubmittedSearch()
+      })
+    },
+    // handleFragmentHardDelete 彻底删除回收站中的片段。
+    handleFragmentHardDelete(fragmentId) {
+      MemoryFragmentApi.MemoryFragmentHardDelete(fragmentId, (response) => {
+        if (response.ErrCode !== 0) {
+          return
+        }
+        this.fragmentTabs = this.fragmentTabs.filter(item => item.fragment.id !== fragmentId)
+        this.loadFragmentList()
+        this.loadTrashList()
+        this.loadTagList()
+        this.rerunSubmittedSearch()
+        if (this.activeTab === `fragment-${fragmentId}`) {
+          this.activeTab = this.trashTabVisible ? TRASH_TAB_NAME : HOME_TAB_NAME
+        }
+      })
     },
     // showHistory 打开历史记录弹窗。
     showHistory(fragmentId) {
@@ -760,6 +1049,13 @@ export default {
         this.searchResults = []
         if (this.activeTab === 'search') {
           this.activeTab = 'home'
+        }
+        return
+      }
+      if (tabName === TRASH_TAB_NAME) {
+        this.trashTabVisible = false
+        if (this.activeTab === TRASH_TAB_NAME) {
+          this.activeTab = HOME_TAB_NAME
         }
         return
       }
@@ -777,14 +1073,19 @@ export default {
       this.activeTab = tabPane.paneName
     },
     goMemorySetting() {
-      localStorage.setItem('set_active_label', 'Memory')
-      this.$router.push('/Set')
+      this.openSettingsDialog()
     }
   }
 }
 </script>
 
 <style scoped>
+@property --sidebar-save-border-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .memory-page {
   display: flex;
   gap: 14px;
@@ -846,7 +1147,8 @@ export default {
 .sidebar-footer-row {
   display: flex;
   gap: 8px;
-  align-items: flex-start;
+  align-items: center;
+  line-height: 1.4;
 }
 
 .sidebar-footer-label {
@@ -864,7 +1166,14 @@ export default {
   word-break: break-word;
 }
 
+.sidebar-footer-error {
+  align-items: flex-start;
+}
+
 .sidebar-item {
+  position: relative;
+  isolation: isolate;
+  --sidebar-save-border-angle: 0deg;
   width: calc(100% - 16px);
   margin: 8px;
   padding: 12px;
@@ -876,6 +1185,35 @@ export default {
   transition: all 0.2s ease;
 }
 
+.sidebar-item::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--sidebar-save-border-angle),
+    rgba(63, 154, 84, 0) 0deg,
+    rgba(63, 154, 84, 0) 235deg,
+    rgba(63, 154, 84, 0.24) 275deg,
+    rgba(63, 154, 84, 0.98) 312deg,
+    rgba(151, 220, 167, 0.92) 330deg,
+    rgba(63, 154, 84, 0.12) 345deg,
+    rgba(63, 154, 84, 0) 360deg
+  );
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.sidebar-item.save-success::before {
+  opacity: 1;
+  animation: sidebar-item-border-flow 1s linear 1;
+}
+
 .sidebar-item:hover,
 .sidebar-item.active {
   border-color: #cfe0c8;
@@ -883,6 +1221,8 @@ export default {
 }
 
 .sidebar-item-main {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -903,10 +1243,57 @@ export default {
 }
 
 .sidebar-item-tags {
+  position: relative;
+  z-index: 1;
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
   margin-top: 10px;
+}
+
+.sidebar-item-check {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #40b364 0%, #2a954d 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 18px rgba(42, 149, 77, 0.24);
+  animation: sidebar-item-check-pop 1s ease forwards;
+}
+
+@keyframes sidebar-item-border-flow {
+  from {
+    --sidebar-save-border-angle: 0deg;
+  }
+  to {
+    --sidebar-save-border-angle: 360deg;
+  }
+}
+
+@keyframes sidebar-item-check-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.7);
+  }
+  18% {
+    opacity: 1;
+    transform: translateY(0) scale(1.05);
+  }
+  82% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.92);
+  }
 }
 
 .memory-main {
@@ -1113,6 +1500,14 @@ export default {
   transform: translateY(-1px);
 }
 
+.trash-result-item {
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid #e8eee3;
+  border-radius: 14px;
+  background: #fbfcf8;
+}
+
 .search-result-item-head {
   display: flex;
   align-items: flex-start;
@@ -1155,6 +1550,12 @@ export default {
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 12px;
+}
+
+.trash-result-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .search-result-item-snippet :deep(.search-keyword-highlight) {

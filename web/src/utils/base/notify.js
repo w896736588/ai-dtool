@@ -17,7 +17,7 @@ function warning(msg) {
   })
 }
 function info(msg) {
-  Vue.prototype.$notify({
+  globals.$notify({
     title: '提示',
     message: msg,
     type: 'info',

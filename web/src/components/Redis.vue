@@ -38,6 +38,10 @@
           <el-icon><Collection /></el-icon>
           收藏列表
         </pl-button>
+        <pl-button class="action-btn settings-btn" @click="openRedisSettings">
+          <el-icon><Setting /></el-icon>
+          设置
+        </pl-button>
       </div>
       <!-- 搜索历史 -->
       <div v-if="searchHistory.length > 0" class="search-history-container">
@@ -117,6 +121,15 @@
     </div>
     <!--  收藏列表-->
     <redisStarRecord ref="redisStarRecord" :callStarListSearch="callStarListSearch"></redisStarRecord>
+
+    <SettingsDialog
+      v-model="redisSettingsVisible"
+      title="Redis 设置"
+      width="82%"
+      @closed="refreshRedisAfterSettingsClose"
+    >
+      <RedisSettingPage @changed="handleRedisSettingsChanged" />
+    </SettingsDialog>
   </div>
 </template>
 <style scoped>
@@ -200,6 +213,27 @@
   background: #f6f8f3;
   border-color: #d8ded2;
   color: #4f804f;
+}
+
+.settings-btn {
+  --pl-button-text-color: #7a5a33;
+  --pl-button-border-color: #dcc5a6;
+  --pl-button-background-color: #f3e6d3;
+  --pl-button-hover-text-color: #6d502d;
+  --pl-button-hover-border-color: #d1b896;
+  --pl-button-hover-background-color: #ebdac2;
+}
+
+.settings-btn:hover {
+  --pl-button-text-color: #6d502d;
+  --pl-button-border-color: #d1b896;
+  --pl-button-background-color: #ebdac2;
+}
+
+.settings-btn:active {
+  --pl-button-text-color: #624726;
+  --pl-button-border-color: #c6ab87;
+  --pl-button-background-color: #e1ccb0;
 }
 
 .search-history-container {
@@ -524,7 +558,9 @@ import shell from "@/utils/base/shell";
 import {onMounted, onUnmounted, ref} from 'vue';
 import arr from "@/utils/base/array";
 import KeyDebounceDetector from "@/utils/base/keyup";
-import { Close, Search, Star, Collection, Delete, View, Hide, Filter, Download, Key, FolderOpened } from '@element-plus/icons-vue';
+import { Close, Search, Star, Collection, Delete, View, Hide, Filter, Download, Key, FolderOpened, Setting } from '@element-plus/icons-vue';
+import SettingsDialog from '@/components/base/SettingsDialog.vue'
+import RedisSettingPage from '@/components/set/redis.vue'
 
 export default {
   name: 'cacheIndex',
@@ -545,6 +581,9 @@ export default {
     Download,
     Key,
     FolderOpened,
+    Setting,
+    SettingsDialog,
+    RedisSettingPage,
   },
   data() {
     return {
@@ -587,6 +626,7 @@ export default {
       loadingStatus: {},
       filterValue: '',
       scrollHeight: 0,
+      redisSettingsVisible: false,
     }
   },
   inject: ["showTerminal", "resizeTerminal"],
@@ -675,6 +715,21 @@ export default {
       let _that = this
       _that.keys = historyKey
       _that.keysSearch()
+    },
+    // openRedisSettings 打开 Redis 设置弹窗，在当前业务页内完成配置编辑。
+    // Open the Redis settings modal so configuration can be edited directly in this page.
+    openRedisSettings: function () {
+      this.redisSettingsVisible = true
+    },
+    // handleRedisSettingsChanged 配置更新成功后立即刷新可用实例列表。
+    // Refresh available Redis instances immediately after settings change.
+    handleRedisSettingsChanged: function () {
+      this.getRedisList()
+    },
+    // refreshRedisAfterSettingsClose 关闭弹窗时再做一次兜底刷新，覆盖嵌套弹窗修改场景。
+    // Refresh again on dialog close as a fallback for nested modal setting changes.
+    refreshRedisAfterSettingsClose: function () {
+      this.getRedisList()
     },
     keyUpKeys: function (event) {
       let _that = this

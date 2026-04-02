@@ -53,6 +53,14 @@ function MemoryConfigSave(data , callBack){
     base.BasePost('/api/Set/MemoryConfigSave', data, callBack)
 }
 
+function RuntimeConfigSave(data , callBack){
+    base.BasePost('/api/Set/RuntimeConfigSave', data, callBack)
+}
+
+function RuntimeDatabaseGitSync(data , callBack){
+    base.BasePost('/api/Set/RuntimeDatabaseGitSync', data, callBack)
+}
+
 export default {
     GitList,
     GitAdd,
@@ -69,4 +77,6 @@ export default {
     GlobalDelete,
     MemoryConfigGet,
     MemoryConfigSave,
+    RuntimeConfigSave,
+    RuntimeDatabaseGitSync,
 }

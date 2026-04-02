@@ -1,6 +1,7 @@
 package dtool
 
 import (
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"os"
 	"path/filepath"
@@ -17,7 +18,7 @@ func TestNewConfigViperReadsINI(t *testing.T) {
 	}
 
 	cfgPath := filepath.Join(cfgDir, "company.ini")
-	cfgBody := []byte("[base]\ndbFileName=frog.db\n")
+	cfgBody := []byte("[base]\ndbFileName=frog.db\ndbIsGitRepo=true\nmemoryDbPath=D:/repo/memory\nmemoryDbFileName=memory.db\nmemoryDbIsGitRepo=true\nmemoryDbAutoPushDelayMinutes=7\n")
 	if err := os.WriteFile(cfgPath, cfgBody, 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -33,6 +34,21 @@ func TestNewConfigViperReadsINI(t *testing.T) {
 
 	if got := v.GetString("base.dbFileName"); got != "frog.db" {
 		t.Fatalf("dbFileName = %q, want %q", got, "frog.db")
+	}
+	if got := v.GetBool("base.dbIsGitRepo"); !got {
+		t.Fatalf("dbIsGitRepo = %v, want true", got)
+	}
+	if got := v.GetString("base.memoryDbPath"); got != "D:/repo/memory" {
+		t.Fatalf("memoryDbPath = %q, want %q", got, "D:/repo/memory")
+	}
+	if got := v.GetString("base.memoryDbFileName"); got != "memory.db" {
+		t.Fatalf("memoryDbFileName = %q, want %q", got, "memory.db")
+	}
+	if got := v.GetBool("base.memoryDbIsGitRepo"); !got {
+		t.Fatalf("memoryDbIsGitRepo = %v, want true", got)
+	}
+	if got := v.GetInt("base.memoryDbAutoPushDelayMinutes"); got != 7 {
+		t.Fatalf("memoryDbAutoPushDelayMinutes = %d, want %d", got, 7)
 	}
 }
 
@@ -56,6 +72,10 @@ func TestFormatEnvSummary(t *testing.T) {
 			DbName: "frog.db",
 			DbPath: `C:\work\frog\dev_tool_db\zhima`,
 		},
+		LogDbConfig: &define.DbConfig{
+			DbName: "frog.log.db",
+			DbPath: `C:\work\frog\dev_tool_db\zhima`,
+		},
 		WebConfig: &define.WebConfig{
 			WebPath: `C:\work\frog\dev_tool_master\web\dist`,
 		},
@@ -70,6 +90,7 @@ func TestFormatEnvSummary(t *testing.T) {
 		"根目录: C:\\work\\frog\\dev_tool_master",
 		"[数据库]",
 		"完整路径: C:\\work\\frog\\dev_tool_db\\zhima\\frog.db",
+		"log库完整路径: C:\\work\\frog\\dev_tool_db\\zhima\\frog.log.db",
 		"[Web]",
 		"目录: C:\\work\\frog\\dev_tool_master\\web\\dist",
 		"[Playwright]",
@@ -96,5 +117,125 @@ func TestFormatEnvSummary(t *testing.T) {
 		if strings.Contains(got, s) {
 			t.Fatalf("summary should not contain %q\nfull summary:\n%s", s, got)
 		}
+	}
+}
+
+func TestBuildLogDBName(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		mainDBName string
+		want       string
+	}{
+		{
+			name:       "带后缀主库名",
+			mainDBName: "dtool.db",
+			want:       "dtool.log.db",
+		},
+		{
+			name:       "不带后缀主库名",
+			mainDBName: "dtool",
+			want:       "dtool.log.db",
+		},
+		{
+			name:       "多段后缀主库名",
+			mainDBName: "dtool.test.db",
+			want:       "dtool.test.log.db",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := buildLogDBName(testCase.mainDBName)
+			if got != testCase.want {
+				t.Fatalf("buildLogDBName() = %q, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
+func TestInitEnvFallsBackToHomeDToolPathsWhenPlaywrightPathsUnset(t *testing.T) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir() error = %v", err)
+	}
+
+	oldEnv := component.EnvClient
+	t.Cleanup(func() {
+		component.EnvClient = oldEnv
+	})
+
+	rootDir := t.TempDir()
+	cfgDir := filepath.Join(rootDir, "config", AppName)
+	if err = os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+
+	cfgPath := filepath.Join(cfgDir, "config.ini")
+	cfgBody := []byte("[run]\nports=17170\n[path]\nwebkit_driver_path=\nwebkit_data_path=\nwebkit_download_path=\n[base]\ndbFileName=frog.db\ndbPath=\n")
+	if err = os.WriteFile(cfgPath, cfgBody, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	component.EnvClient = &define.Env{
+		RootPath: rootDir,
+	}
+
+	v := newConfigViper()
+	InitEnv(AppName, "config", v)
+
+	if got := filepath.Clean(component.EnvClient.WebkitDriverPath); got != filepath.Join(homeDir, `.dtool`, `webkit_driver`) {
+		t.Fatalf("WebkitDriverPath = %q, want %q", got, filepath.Join(homeDir, `.dtool`, `webkit_driver`))
+	}
+	if got := filepath.Clean(component.EnvClient.WebkitDataPath); got != filepath.Join(homeDir, `.dtool`, `webkit_data`) {
+		t.Fatalf("WebkitDataPath = %q, want %q", got, filepath.Join(homeDir, `.dtool`, `webkit_data`))
+	}
+	if got := filepath.Clean(component.EnvClient.WebkitDownloadPath); got != filepath.Join(homeDir, `.dtool`, `webkit_download`) {
+		t.Fatalf("WebkitDownloadPath = %q, want %q", got, filepath.Join(homeDir, `.dtool`, `webkit_download`))
+	}
+}
+
+func TestInitEnvFallsBackToHomeDToolDirWhenDbPathUnset(t *testing.T) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir() error = %v", err)
+	}
+
+	oldEnv := component.EnvClient
+	t.Cleanup(func() {
+		component.EnvClient = oldEnv
+	})
+
+	rootDir := t.TempDir()
+	cfgDir := filepath.Join(rootDir, "config", AppName)
+	if err = os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+
+	cfgPath := filepath.Join(cfgDir, "config.ini")
+	cfgBody := []byte("[run]\nports=17170\n[base]\ndbPath=\ndbFileName=\n")
+	if err = os.WriteFile(cfgPath, cfgBody, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	component.EnvClient = &define.Env{
+		RootPath: rootDir,
+	}
+
+	v := newConfigViper()
+	InitEnv(AppName, "config", v)
+
+	if got := filepath.Clean(component.EnvClient.DbConfig.DbPath); got != filepath.Join(homeDir, `.dtool`) {
+		t.Fatalf("DbPath = %q, want %q", got, filepath.Join(homeDir, `.dtool`))
+	}
+	if component.EnvClient.DbConfig.DbName != `dtool.db` {
+		t.Fatalf("DbName = %q, want %q", component.EnvClient.DbConfig.DbName, `dtool.db`)
+	}
+	if got := filepath.Clean(component.EnvClient.LogDbConfig.DbPath); got != filepath.Join(homeDir, `.dtool`) {
+		t.Fatalf("LogDbPath = %q, want %q", got, filepath.Join(homeDir, `.dtool`))
 	}
 }

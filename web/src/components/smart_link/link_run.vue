@@ -21,6 +21,9 @@
       </div>
       <div class="link-run-toolbar">
         <el-tag size="small" type="info" effect="light">已打开 Page {{ openPageNum }}</el-tag>
+        <GitActionButton variant="warning" @click="openAccountSettings">
+          <el-icon><User /></el-icon>账号设置
+        </GitActionButton>
         <GitActionButton @click="showCreateDialog">
           <el-icon><Plus /></el-icon>创建
         </GitActionButton>
@@ -231,6 +234,15 @@
   >
     <Markdown v-if="drawerVisibleMarkdown" :markdownType="markdownType"></Markdown>
   </el-drawer>
+
+  <SettingsDialog
+      v-model="accountSettingsVisible"
+      title="账号设置"
+      width="82%"
+      @closed="refreshLinkAfterAccountSettingsClose"
+  >
+    <AccountSettingPage @changed="handleAccountSettingsChanged" />
+  </SettingsDialog>
 </template>
 <style>
 
@@ -265,7 +277,9 @@ import sse from "@/utils/base/sse";
 import sseDistribute from "@/utils/base/sse_distribute";
 import LinkConfigEditor from "@/components/smart_link/LinkConfigEditor.vue";
 import GitActionButton from "@/components/base/GitActionButton.vue";
-import { Plus, Tools, Refresh, Download, QuestionFilled, EditPen, Setting, Notebook, Delete } from '@element-plus/icons-vue'
+import SettingsDialog from '@/components/base/SettingsDialog.vue'
+import AccountSettingPage from '@/components/set/account.vue'
+import { Plus, Tools, Refresh, Download, QuestionFilled, EditPen, Setting, Notebook, Delete, User } from '@element-plus/icons-vue'
 
 export default {
   props: {
@@ -285,8 +299,11 @@ export default {
     Setting,
     Notebook,
     Delete,
+    User,
     LinkConfigEditor,
     GitActionButton,
+    SettingsDialog,
+    AccountSettingPage,
   },
   data() {
     return {
@@ -369,6 +386,7 @@ export default {
         install_url: 'https://nodejs.org/zh-cn/download',
         install_tip: '请先安装 Node.js（建议 LTS 版本），安装完成后刷新当前页面。',
       },
+      accountSettingsVisible: false,
     }
   },
   mounted: function () {
@@ -414,6 +432,21 @@ export default {
         _that.shellController.divHeight = parseInt(_height) - 60
         _that.windowChange()
       }, 1000)
+    },
+    // openAccountSettings 打开账号设置弹窗，在自定义网页页内维护账号与分组。
+    // Open the account settings modal so account and group maintenance stays inside the custom web page.
+    openAccountSettings: function () {
+      this.accountSettingsVisible = true
+    },
+    // handleAccountSettingsChanged 账号配置变化后刷新自定义网页配置列表，让账号选择立即生效。
+    // Refresh smart link configs after account settings change so account selections take effect immediately.
+    handleAccountSettingsChanged: function () {
+      this.GetConfigList()
+    },
+    // refreshLinkAfterAccountSettingsClose 在弹窗关闭时再刷新一次，兜底覆盖更多修改路径。
+    // Refresh once more when the modal closes as a fallback for additional account edit flows.
+    refreshLinkAfterAccountSettingsClose: function () {
+      this.GetConfigList()
     },
     // applyNodeInstallTip 解析并展示 Node.js 安装提示
     applyNodeInstallTip: function (response) {
