@@ -2,6 +2,7 @@ package controller
 
 import (
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"time"
 
@@ -62,7 +63,7 @@ func GroupAdd(c *gin.Context) {
 			}, updateData).Exec()
 	}
 	if groupType == define.GroupTypeShellOut {
-		common.ShellOutClient.InitGroupConfigs()
+		component.ShellOutClient.InitGroupConfigs()
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }

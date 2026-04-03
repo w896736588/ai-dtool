@@ -1,7 +1,6 @@
 package common
 
 import (
-	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_common"
 	"dev_tool/internal/pkg/p_define"
@@ -75,11 +74,9 @@ type TShellOut struct {
 	GroupConfigLock   sync.Mutex
 }
 
-var ShellOutClient *TShellOut
-
 // NewTShellOut 构造函数
-func NewTShellOut() *TShellOut {
-	log := gstool.NewSlog3(component.EnvClient.LogPath, `shell_wait`)
+func NewTShellOut(logPath string) *TShellOut {
+	log := gstool.NewSlog3(logPath, `shell_wait`)
 	_ = log.CleanOldLogs(2)
 	shellOut := &TShellOut{
 		ShellOutMap:       make(map[string]*ShellOut),

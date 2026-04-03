@@ -141,7 +141,7 @@ func PrepareMemoryStore() error {
 }
 
 func LoadMemoryStore() error {
-	common.MemoryRuntime.Reset()
+	component.MemoryRuntime.Reset()
 
 	// 若上游尚未预处理，则在这里兜底，兼容旧调用路径 / fallback here when caller did not preflight memory store.
 	if preparedMemoryStore == nil {
@@ -162,7 +162,7 @@ func LoadMemoryStore() error {
 	}
 	memoryDB := &common.CSqlite{Client: memoryClient, Env: component.EnvClient}
 	NewMemoryDataBaseUp(memoryDB, component.EnvClient.MemoryDatabaseUpPath).Run()
-	common.MemoryRuntime.SetGitSyncer(memoryGit)
-	common.MemoryRuntime.Configure(config, memoryDB)
+	component.MemoryRuntime.SetGitSyncer(memoryGit)
+	component.MemoryRuntime.Configure(config, memoryDB)
 	return nil
 }

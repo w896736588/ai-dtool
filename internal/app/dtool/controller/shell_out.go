@@ -91,7 +91,7 @@ func ShellOutErrorContext(c *gin.Context) {
 	}
 	shellClientId := cast.ToString(reqMap[`shell_client_id`])
 	errorLine := cast.ToString(reqMap[`error_line`])
-	lines, _ := common.ShellOutClient.ErrorContext(shellClientId, errorLine, 10)
+	lines, _ := component.ShellOutClient.ErrorContext(shellClientId, errorLine, 10)
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`lines`: lines,
 	})
@@ -114,7 +114,7 @@ func ShellOutSearchContent(c *gin.Context) {
 		if searchContent == `` {
 			continue
 		}
-		lines, number := common.ShellOutClient.ShellOutSearchContent(shellClientId, searchContent, 1000)
+		lines, number := component.ShellOutClient.ShellOutSearchContent(shellClientId, searchContent, 1000)
 		allLines = append(allLines, lines...)
 		allNumber += number
 	}
@@ -144,7 +144,7 @@ func ShellOutSetSeeId(c *gin.Context) {
 		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
 		SseDistributeId: cast.ToString(dataMap[`sse_distribute_id`]),
 	}
-	err = common.ShellOutClient.SetClientSseId(shellClientId, sshId, sse, command, groupId, func(s string) []string {
+	err = component.ShellOutClient.SetClientSseId(shellClientId, sshId, sse, command, groupId, func(s string) []string {
 		return []string{p_common.TBaseClient.FilterTerminalChars(s)}
 	})
 	if err != nil {
@@ -163,7 +163,7 @@ func ShellOutCleanErrors(c *gin.Context) {
 		return
 	}
 	shellClientId := cast.ToString(reqMap[`shell_client_id`])
-	common.ShellOutClient.CleanErrors(shellClientId)
+	component.ShellOutClient.CleanErrors(shellClientId)
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 	return
 }
@@ -201,7 +201,7 @@ func ShellOutDelete(c *gin.Context) {
 		return
 	}
 	shellClientId := cast.ToString(reqMap[`shell_client_id`])
-	common.ShellOutClient.Delete(shellClientId)
+	component.ShellOutClient.Delete(shellClientId)
 	gsgin.GinResponseSuccess(c, ``, nil)
 	return
 }
@@ -214,7 +214,7 @@ func ShellOutStop(c *gin.Context) {
 		return
 	}
 	shellClientId := cast.ToString(reqMap[`shell_client_id`])
-	common.ShellOutClient.Delete(shellClientId)
+	component.ShellOutClient.Delete(shellClientId)
 	_, err = common.DbMain.Client.QuickUpdate(`tbl_shell_out`, map[string]any{
 		`id`: reqMap[`id`],
 	}, map[string]any{
@@ -237,14 +237,14 @@ func ShellOutCleanLog(c *gin.Context) {
 		return
 	}
 	shellClientId := cast.ToString(reqMap[`shell_client_id`])
-	common.ShellOutClient.CleanLog(shellClientId)
+	component.ShellOutClient.CleanLog(shellClientId)
 	gsgin.GinResponseSuccess(c, ``, nil)
 	return
 }
 
 func ShellOutGetConnections(c *gin.Context) {
 	// 获取ShellOut类型的连接
-	shellOutConnections := common.ShellOutClient.GetConnections()
+	shellOutConnections := component.ShellOutClient.GetConnections()
 
 	// 获取p_shell.Shell类型的连接
 	shellConnections := component.ShellClient.GetConnections()
@@ -301,7 +301,7 @@ func ShellOutReconnect(c *gin.Context) {
 		return
 	}
 
-	common.ShellOutClient.RmClient(shellClientId)
+	component.ShellOutClient.RmClient(shellClientId)
 	component.ShellClient.RmClient(shellClientId)
 	gsgin.GinResponseSuccess(c, `重连成功`, nil)
 	return
@@ -325,7 +325,7 @@ func getShellOutComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTer
 		SseDistributeId: cast.ToString(dataMap[`sse_distribute_id`]),
 	}
 
-	shellOut, _, sshClientErr := common.ShellOutClient.GetClient(sshConfig, shellClientId, sse, groupId, nil)
+	shellOut, _, sshClientErr := component.ShellOutClient.GetClient(sshConfig, shellClientId, sse, groupId, nil)
 	if sshClientErr != nil {
 		return nil, nil, ``, sshClientErr
 	}

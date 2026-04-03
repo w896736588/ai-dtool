@@ -1,6 +1,7 @@
 package component
 
 import (
+	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_db"
 	"dev_tool/internal/pkg/p_gin"
@@ -17,6 +18,8 @@ var MysqlClient *p_db.TMysql
 var RedisClient *p_db.TRedis
 var SqliteClient *gsdb.GsSqlite
 var LogSqliteClient *gsdb.GsSqlite
+var ShellOutClient *common.TShellOut
+var MemoryRuntime *common.MemoryStore
 var EnvClient *define.Env
 var ConfigViper *viper.Viper
 var GsLog *gstool.GsSlog

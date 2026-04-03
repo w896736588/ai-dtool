@@ -2,6 +2,7 @@ package controller
 
 import (
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"strings"
 	"time"
@@ -14,10 +15,10 @@ import (
 
 // MemoryFragmentStatus 返回记忆库配置状态。
 func MemoryFragmentStatus(c *gin.Context) {
-	config := common.MemoryRuntime.Config()
-	nextPushTime := common.MemoryRuntime.NextPushTime()
-	lastPushTime := common.MemoryRuntime.LastPushTime()
-	lastPushError := common.MemoryRuntime.LastPushError()
+	config := component.MemoryRuntime.Config()
+	nextPushTime := component.MemoryRuntime.NextPushTime()
+	lastPushTime := component.MemoryRuntime.LastPushTime()
+	lastPushError := component.MemoryRuntime.LastPushError()
 	nextPushTimeDesc := `-`
 	lastPushTimeDesc := `-`
 	if nextPushTime > 0 {
@@ -27,7 +28,7 @@ func MemoryFragmentStatus(c *gin.Context) {
 		lastPushTimeDesc = gstool.TimeUnixToString(time.Unix(lastPushTime, 0), `Y-m-d H:i:s`)
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`configured`:              common.MemoryRuntime.IsConfigured(),
+		`configured`:              component.MemoryRuntime.IsConfigured(),
 		`memory_dir`:              config.Dir,
 		`memory_db_name`:          config.DBName,
 		`git_repo_enabled`:        config.GitRepoEnabled,
@@ -95,7 +96,7 @@ func MemoryFragmentSave(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	common.MemoryRuntime.ScheduleSync()
+	component.MemoryRuntime.ScheduleSync()
 	gsgin.GinResponseSuccess(c, ``, info)
 }
 
@@ -116,7 +117,7 @@ func MemoryFragmentDelete(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	common.MemoryRuntime.ScheduleSync()
+	component.MemoryRuntime.ScheduleSync()
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -153,7 +154,7 @@ func MemoryFragmentRestore(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	common.MemoryRuntime.ScheduleSync()
+	component.MemoryRuntime.ScheduleSync()
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -173,7 +174,7 @@ func MemoryFragmentHardDelete(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	common.MemoryRuntime.ScheduleSync()
+	component.MemoryRuntime.ScheduleSync()
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -266,13 +267,13 @@ func MemoryFragmentOrganize(c *gin.Context) {
 }
 
 func memoryDBOrResponse(c *gin.Context) (*common.CSqlite, bool) {
-	if err := common.MemoryRuntime.EnsureConfigured(); err != nil {
+	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
 		gsgin.GinResponseError(c, err.Error(), map[string]any{
 			`configured`: false,
 		})
 		return nil, false
 	}
-	return common.MemoryRuntime.DB(), true
+	return component.MemoryRuntime.DB(), true
 }
 
 // memoryFragmentParseTags 解析请求中的标签数组。

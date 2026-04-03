@@ -2,6 +2,7 @@ package controller
 
 import (
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	_struct "dev_tool/internal/app/dtool/struct"
 	"time"
@@ -109,7 +110,7 @@ func HomeTaskDailyReportGenerate(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	common.MemoryRuntime.ScheduleSync()
+	component.MemoryRuntime.ScheduleSync()
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`memory_fragment`: memoryInfo,
 		`model_id`:        modelID,

@@ -178,6 +178,7 @@ func stdLog() {
 func initComponent(appName, ConfigFile string) {
 	component.EnvClient = &define.Env{}
 	component.TGins = make([]*p_gin.Gin, 0)
+	component.MemoryRuntime = common.NewMemoryStore()
 	component.RedisClient = &p_db.TRedis{RedisClientMap: make(map[string]*gsdb.GsRedis)}
 	component.RedisClient.PingAll(common.GetCall())
 	component.MysqlClient = &p_db.TMysql{MysqlClientMap: make(map[string]*gsdb.GsMysql)}
@@ -202,7 +203,7 @@ func initComponent(appName, ConfigFile string) {
 	}
 	//初始化shell
 	component.ShellClient = p_shell.NewShell(component.EnvClient.LogPath)
-	common.ShellOutClient = common.NewTShellOut()
+	component.ShellOutClient = common.NewTShellOut(component.EnvClient.LogPath)
 	//aesGcm
 	gcm := gsencrypt.NewAesGcm(component.EnvClient.AppName)
 	p_common.AesGcmClient = gcm
@@ -333,7 +334,7 @@ func initSqlite() {
 	if err = business.LoadMemoryStore(); err != nil {
 		panic(err.Error())
 	}
-	common.ShellOutClient.InitGroupConfigs()
+	component.ShellOutClient.InitGroupConfigs()
 }
 
 // initLogSqlite 初始化独立 log 库，并执行 log 库迁移。
@@ -444,7 +445,7 @@ func Stop() {
 		})
 	}
 	task.RunAll()
-	if err := common.MemoryRuntime.SyncNow(); err != nil && !errors.Is(err, common.ErrMemoryNotConfigured) {
+	if err := component.MemoryRuntime.SyncNow(); err != nil && !errors.Is(err, common.ErrMemoryNotConfigured) {
 		gstool.FmtPrintlnLogTime(`记忆库关闭前同步失败 %s`, err.Error())
 	}
 	if err := business.SyncMainDBStoreOnShutdown(); err != nil {

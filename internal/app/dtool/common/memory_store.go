@@ -55,8 +55,6 @@ type MemoryStore struct {
 	gitSyncer    memoryGitSyncer
 }
 
-var MemoryRuntime = NewMemoryStore()
-
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		afterFunc: func(duration time.Duration, callback func()) stoppableTimer {
