@@ -3109,7 +3109,7 @@ export default {
           return
         }
 
-        const newSseDistributeId = sseDistribute.GetSseDistributeId('dashboard_docker_' + Date.now())
+        const newSseDistributeId = sseDistribute.GetSseDistributeId('dashboard_docker')
         const throttleStringFunc = new Throttle_string(50, (text) => {
           if (currentOutputMessage.value) {
             appendOutputProcess(text)
@@ -3364,7 +3364,7 @@ export default {
         return
       }
 
-      const newSseDistributeId = sseDistribute.GetSseDistributeId('dashboard_git_group_' + Date.now())
+      const newSseDistributeId = sseDistribute.GetSseDistributeId('dashboard_git_group')
       const throttleStringFunc = new Throttle_string(50, (text) => {
         if (currentOutputMessage.value) {
           appendOutputProcess(text)
@@ -3404,7 +3404,7 @@ export default {
       }
       
       // 每次操作生成新的 SSE 分发 ID，确保使用新的连接
-      const newSseDistributeId = sseDistribute.GetSseDistributeId('dashboard_git_' + Date.now())
+      const newSseDistributeId = sseDistribute.GetSseDistributeId('dashboard_git')
       
       // 注册当前操作的 SSE 回调
       const throttleStringFunc = new Throttle_string(50, (text) => {

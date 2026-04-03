@@ -73,7 +73,7 @@ function Close() {
 
 //获取分发id
 function GetSseDistributeId(businessId){
-    return base.GenerateId(businessId + `_sse_distribute_id`)
+    return businessId
 }
 
 export default {
