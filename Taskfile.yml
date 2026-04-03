@@ -13,11 +13,6 @@ tasks:
       - npm install
       - npm run dev
 
-  run-wails:
-    desc: Run desktop app locally
-    cmds:
-      - go run -tags production ./cmd/dtool_wails --ConfigFile=company
-
   run-dev-company:
     desc: Run frontend and backend for company environment
     deps:
@@ -50,25 +45,6 @@ tasks:
     cmds:
       - go build -ldflags "-s -w" -o build/dtool ./cmd/dtool
 
-  build-wails-windows:
-    desc: Build Windows desktop app
-    cmds:
-      - go build -tags production -ldflags "-s -w -H=windowsgui" -o build/dtool_wails.exe ./cmd/dtool_wails
-
-  build-wails-linux:
-    desc: Build Linux desktop app
-    env:
-      GOOS: linux
-      GOARCH: amd64
-      CGO_ENABLED: "0"
-    cmds:
-      - go build -tags production -ldflags "-s -w" -o build/dtool_wails ./cmd/dtool_wails
-
-  build-wails-macos:
-    desc: Build macOS desktop app
-    cmds:
-      - go build -tags production -ldflags "-s -w" -o build/dtool_wails ./cmd/dtool_wails
-
   clean-build:
     desc: Recreate the build directory
     cmds:
@@ -80,7 +56,6 @@ tasks:
     deps:
       - build-frontend
       - build-web-windows
-      - build-wails-windows
     cmds:
       - powershell -NoProfile -ExecutionPolicy Bypass -File ./script/package_windows.ps1
 

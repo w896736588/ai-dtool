@@ -52,11 +52,11 @@ func SmartLinkRecycle(c *gin.Context) {
 	p := plw.NewPlaywright(nil, plw.PlaywrightClient.Log)
 	err := p.Recycle()
 	if err != nil {
-		sse.Send(fmt.Sprintf(`释放失败 `+err.Error()) + "\n")
+		sse.Send(`释放失败 ` + err.Error() + "\n")
 		gsgin.GinResponseError(c, fmt.Sprintf(`释放失败 %s`, err.Error()), nil)
 		return
 	}
-	sse.Send(fmt.Sprintf(`释放成功 `) + "\n")
+	sse.Send(`释放成功 ` + "\n")
 	gsgin.GinResponseSuccess(c, `释放成功`, ``)
 	return
 }

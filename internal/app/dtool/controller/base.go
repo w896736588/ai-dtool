@@ -51,7 +51,7 @@ func GetLANIP() string {
 	// 获取主机的所有网络接口
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		gstool.FmtPrintlnLogTime(`获取主机的所有网络接口失败:` + err.Error())
+		gstool.FmtPrintlnLogTime(`%s`, `获取主机的所有网络接口失败:`+err.Error())
 		return ""
 	}
 
