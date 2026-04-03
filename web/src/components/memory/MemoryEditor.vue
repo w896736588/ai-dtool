@@ -1090,6 +1090,9 @@ export default {
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #9fb39a #edf3e8;
   padding-right: 6px;
 }
 
@@ -1112,10 +1115,37 @@ export default {
   gap: 6px;
   max-height: 100%;
   overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #9fb39a #edf3e8;
   padding: 14px 12px;
   border: 1px solid var(--memory-toolbar-border-color);
   border-radius: 12px;
   background: linear-gradient(180deg, #fbfcf8 0%, #f6f8f2 100%);
+}
+
+.preview-renderer::-webkit-scrollbar,
+.preview-outline-card::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.preview-renderer::-webkit-scrollbar-track,
+.preview-outline-card::-webkit-scrollbar-track {
+  background: #edf3e8;
+  border-radius: 999px;
+}
+
+.preview-renderer::-webkit-scrollbar-thumb,
+.preview-outline-card::-webkit-scrollbar-thumb {
+  background: #9fb39a;
+  border: 2px solid #edf3e8;
+  border-radius: 999px;
+}
+
+.preview-renderer::-webkit-scrollbar-thumb:hover,
+.preview-outline-card::-webkit-scrollbar-thumb:hover {
+  background: #869c82;
 }
 
 .preview-outline-title {

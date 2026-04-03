@@ -160,16 +160,16 @@
               </div>
               <div class="next-step-tip">{{ nextStepHint }}</div>
             </div>
-            <div v-if="hasPendingCommandQueue" class="pending-command-panel">
-              <div class="pending-command-header">
-                <span class="pending-command-title">{{ pendingCommandTitle }}</span>
-                <span class="pending-command-count">{{ pendingCommandQueue.length }}</span>
-              </div>
-              <div class="pending-command-list">
-                <div
-                  v-for="item in pendingCommandQueue"
-                  :key="item.id"
-                  class="pending-command-item"
+              <div v-if="hasPendingCommandQueue" class="pending-command-panel">
+                <div class="pending-command-header">
+                  <span class="pending-command-title">{{ pendingCommandTitle }}</span>
+                  <span class="pending-command-count">{{ pendingCommandQueue.length }}</span>
+                </div>
+              <div class="pending-command-list pending-command-list--horizontal">
+                  <div
+                    v-for="item in pendingCommandQueue"
+                    :key="item.id"
+                    class="pending-command-item"
                 >
                   <span class="pending-command-text" :title="item.rawCommand">{{ item.rawCommand }}</span>
                   <pl-button
@@ -4717,12 +4717,14 @@ export default {
 }
 
 .pending-command-panel {
-  width: 260px;
-  flex-shrink: 0;
+  flex: 0 0 clamp(240px, 32vw, 360px);
+  max-width: clamp(240px, 32vw, 360px);
+  min-width: 240px;
   border: 1px solid #dfe8dc;
   border-radius: 10px;
   background: linear-gradient(180deg, #fbfdf8 0%, #f4f9f1 100%);
   padding: 10px;
+  overflow: hidden;
 }
 
 .pending-command-header {
@@ -4752,16 +4754,23 @@ export default {
 
 .pending-command-list {
   display: flex;
-  flex-direction: column;
   gap: 8px;
-  max-height: 120px;
-  overflow-y: auto;
+}
+
+.pending-command-list--horizontal {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .pending-command-item {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 0 0 168px;
+  min-width: 0;
   border: 1px solid #dbe7d6;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.9);
@@ -4780,9 +4789,9 @@ export default {
 }
 
 .pending-command-delete {
-  min-width: 52px;
+  min-width: 44px;
   height: 28px;
-  padding: 0 10px;
+  padding: 0 8px;
   border: 1px solid #f2b8b5;
   border-radius: 999px;
   background: #fff5f4;
@@ -4906,6 +4915,8 @@ export default {
 
   .pending-command-panel {
     width: 100%;
+    max-width: none;
+    min-width: 0;
   }
 }
 
