@@ -242,7 +242,7 @@ export default {
       if (_that.sse_distribute_id) {
         sseDistribute.UnRegisterReceive(_that.sse_distribute_id)
       }
-      _that.sse_distribute_id = sseDistribute.GetSseDistributeId(`git_${action}`)
+      _that.sse_distribute_id = sseDistribute.GetSseDistributeId(`git`)
       if (!_that.sseThrottleStringFunc) {
         _that.sseThrottleStringFunc = new Throttle_string(50, text => {
           _that.shellController.sshResult += text
