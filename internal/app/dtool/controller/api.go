@@ -526,6 +526,7 @@ func ApiCreateApi(c *gin.Context) {
 			updateData[key] = gstool.JsonEncode(value)
 		}
 	}
+	ensureCreateApiOptionalFieldsDefaults(updateData)
 	var err error
 	//处理请求参数空值
 	updateData[`query_params`], err = filterEmptyArrayMap(cast.ToString(updateData[`query_params`]), `field`, `请求参数格式错误`, 500)
@@ -584,6 +585,18 @@ func validateArrayItemTypes(items []map[string]any, errmsg string) error {
 		}
 	}
 	return nil
+}
+
+func ensureCreateApiOptionalFieldsDefaults(updateData map[string]any) {
+	if queryParams, exists := updateData[`query_params`]; !exists || queryParams == nil || cast.ToString(queryParams) == `` {
+		updateData[`query_params`] = `[]`
+	}
+	if headers, exists := updateData[`headers`]; !exists || headers == nil || cast.ToString(headers) == `` {
+		updateData[`headers`] = `{}`
+	}
+	if bodyForm, exists := updateData[`body_form`]; !exists || bodyForm == nil || cast.ToString(bodyForm) == `` {
+		updateData[`body_form`] = `[]`
+	}
 }
 
 func filterEmptyArrayMap(queryParams, fieldKey, errmsg string, max int) (string, error) {

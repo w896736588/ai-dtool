@@ -57,9 +57,12 @@
             />
           </div>
           <div v-else-if="item.type === 'integer'">
-            <el-input-number
-                v-model="item.value"
-                @blur="handleDataChange"
+            <el-input
+                :model-value="formatIntegerValue(item.value)"
+                inputmode="numeric"
+                placeholder="整数值"
+                @input="handleIntegerInput(idx, $event)"
+                @blur="handleIntegerBlur(idx)"
             />
           </div>
           <div v-else-if="item.type === 'json'">
@@ -111,16 +114,10 @@
 </template>
 
 <script>
-import { Delete, Plus, Edit } from '@element-plus/icons-vue'
 import Base from '@/utils/base.js'
 
 export default {
   name: 'KeyValueEditor',
-  components: {
-    Delete,
-    Plus,
-    Edit
-  },
   props: {
     list: {
       type: Array,
@@ -163,7 +160,7 @@ export default {
       // 根据类型重置值
       const item = this.list[index]
       if (item.type === 'integer') {
-        item.value = 0
+        item.value = '0'
       } else if (item.type === 'array(string)') {
         item.value = ''
       } else if (item.type === 'json') {
@@ -196,6 +193,27 @@ export default {
           .map(item => `${item.field}=${item.value}`)
           .join('\n')
       this.$emit('bulk-edit', this.bulkEditText)
+    },
+    formatIntegerValue(value) {
+      if (value === null || value === undefined) {
+        return ''
+      }
+      return String(value)
+    },
+    sanitizeIntegerValue(value) {
+      const text = String(value ?? '')
+      const hasLeadingMinus = text.trimStart().startsWith('-')
+      const digits = text.replace(/\D/g, '')
+      return hasLeadingMinus ? `-${digits}` : digits
+    },
+    handleIntegerInput(index, value) {
+      this.list[index].value = this.sanitizeIntegerValue(value)
+      this.handleDataChange()
+    },
+    handleIntegerBlur(index) {
+      const normalized = this.sanitizeIntegerValue(this.list[index].value)
+      this.list[index].value = normalized === '-' ? '' : normalized
+      this.handleDataChange()
     },
 
   }

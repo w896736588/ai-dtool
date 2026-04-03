@@ -83,9 +83,8 @@
                     {{ node.label }}
                   </span>
                   <span v-if="data.type === 'collection'" class="node-actions">
-                    <pl-button link type="primary" @click.stop="toggleCollection(data)">
-                      <el-dropdown>
-                      <pl-button link type="primary" @click.stop>
+                    <el-dropdown>
+                      <pl-button class="node-action-trigger" link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
                       </pl-button>
                       <template #dropdown>
@@ -95,12 +94,11 @@
                           <el-dropdown-item command="delete_collection" icon="Delete" @click="handleCollectionDelete(data)" style="color:red;">删除集合</el-dropdown-item>
                         </el-dropdown-menu>
                       </template>
-                      </el-dropdown>
-                    </pl-button>
+                    </el-dropdown>
                   </span>
                   <span v-else-if="data.type === 'api'" class="node-actions">
                     <el-dropdown>
-                      <pl-button link type="primary" @click.stop>
+                      <pl-button class="node-action-trigger" link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
                       </pl-button>
                       <template #dropdown>
@@ -115,7 +113,7 @@
                   </span>
                   <span v-else-if="data.type === 'folder'" class="node-actions">
                     <el-dropdown>
-                      <pl-button link type="primary" @click.stop>
+                      <pl-button class="node-action-trigger" link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
                       </pl-button>
                       <template #dropdown>
@@ -2148,9 +2146,17 @@ export default {
     },
 
     // 打开复制接口对话框
-    openCopyApiDialog(api) {
+    async openCopyApiDialog(api) {
+      let detail = null
+      try {
+        const detailResponse = await this.requestApi('ApisDetailByIds', { ids: [api.id] })
+        detail = Array.isArray(detailResponse.list) ? detailResponse.list[0] : null
+      } catch (error) {
+        this.$message.warning(error.message || '加载接口详情失败，将尝试复制当前已加载内容')
+      }
+      const copySource = detail || api
       // 复制API数据到复制对话框
-      this.dialogData.copyApi = JSON.parse(JSON.stringify(api))
+      this.dialogData.copyApi = JSON.parse(JSON.stringify(copySource))
       this.dialogData.copyApi.id = 0
       this.dialogData.copyApi.name = api.name + '-复制'
       this.dialogShow.copyApi = true
@@ -2503,14 +2509,44 @@ export default {
   white-space: nowrap;
   position: absolute;
   right: 0;
-  background: #fff;
   z-index: 1;
-  padding-left: 10px;
-  padding-right: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 4px;
+  padding-right: 2px;
 }
 
 .tree-node:hover .node-actions {
   opacity: 1;
+}
+
+.node-actions :deep(.el-dropdown) {
+  display: inline-flex;
+  align-items: center;
+}
+
+.node-action-trigger {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  color: #6f8c6d !important;
+}
+
+.node-action-trigger:hover,
+.node-action-trigger:focus-visible {
+  background: rgba(94, 130, 94, 0.12) !important;
+  color: #496c49 !important;
+}
+
+.node-action-trigger :deep(.el-icon) {
+  margin-right: 0 !important;
+  font-size: 14px;
 }
 
 .collection-list .el-tree-node__content {

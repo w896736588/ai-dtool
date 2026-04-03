@@ -401,6 +401,8 @@ export default {
       saveFeedbackTimers: {},
       saveFeedbackDurationMs: 1000,
       globalSaveShortcutBound: false,
+      routeFragmentHandled: false,
+      routeFragmentHandledPath: '',
     }
   },
   computed: {
@@ -467,11 +469,13 @@ export default {
     this.bindGlobalSaveShortcut()
     this.loadMemoryStatus()
     this.startStatusPolling()
+    this.tryOpenRouteFragmentOnEntry()
   },
   activated() {
     this.bindGlobalSaveShortcut()
     this.startStatusPolling()
     this.loadMemoryStatus()
+    this.tryOpenRouteFragmentOnEntry()
   },
   deactivated() {
     this.unbindGlobalSaveShortcut()
@@ -484,9 +488,8 @@ export default {
   },
   watch: {
     '$route.fullPath'() {
-      if (this.routeFragmentId > 0 && this.memoryConfigured) {
-        this.openRouteFragment()
-      }
+      this.routeFragmentHandled = false
+      this.tryOpenRouteFragmentOnEntry()
     },
   },
   methods: {
@@ -620,9 +623,7 @@ export default {
         this.loadTrashList()
         this.loadTagList()
       }
-      if (this.routeFragmentId > 0) {
-        this.openRouteFragment()
-      }
+      this.tryOpenRouteFragmentOnEntry()
     })
   },
     // loadFragmentList 加载左侧片段列表。
@@ -960,6 +961,25 @@ export default {
       if (fragmentId <= 0) {
         return
       }
+      this.openFragment(fragmentId)
+    },
+    // tryOpenRouteFragmentOnEntry 仅在当前路由首次进入时消费 fragment_id，避免轮询刷新反复切回指定片段。
+    tryOpenRouteFragmentOnEntry() {
+      if (!this.memoryConfigured) {
+        return
+      }
+      const currentPath = this.$route.fullPath || ''
+      if (this.routeFragmentHandled && this.routeFragmentHandledPath === currentPath) {
+        return
+      }
+      const fragmentId = this.routeFragmentId
+      if (fragmentId <= 0) {
+        this.routeFragmentHandled = true
+        this.routeFragmentHandledPath = currentPath
+        return
+      }
+      this.routeFragmentHandled = true
+      this.routeFragmentHandledPath = currentPath
       this.openFragment(fragmentId)
     },
     // upsertFragmentTab 新增或更新片段 tab。
