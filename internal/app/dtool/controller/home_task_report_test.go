@@ -6,6 +6,32 @@ import (
 	"time"
 )
 
+func TestMergeHomeTaskDailyReportTaskList_IncludesArchivedTasks(t *testing.T) {
+	activeTaskList := []map[string]any{
+		{
+			`id`:   1,
+			`name`: `进行中的任务`,
+		},
+	}
+	archivedTaskList := []map[string]any{
+		{
+			`id`:   2,
+			`name`: `已归档任务`,
+		},
+	}
+
+	got := mergeHomeTaskDailyReportTaskList(activeTaskList, archivedTaskList)
+	if len(got) != 2 {
+		t.Fatalf("mergeHomeTaskDailyReportTaskList() len = %d, want 2", len(got))
+	}
+	if got[0][`name`] != `进行中的任务` {
+		t.Fatalf("mergeHomeTaskDailyReportTaskList() first task = %v, want active task first", got[0][`name`])
+	}
+	if got[1][`name`] != `已归档任务` {
+		t.Fatalf("mergeHomeTaskDailyReportTaskList() second task = %v, want archived task appended", got[1][`name`])
+	}
+}
+
 func TestDefaultHomeTaskDailyReportPrompt_NotEmpty(t *testing.T) {
 	if strings.TrimSpace(defaultHomeTaskDailyReportPrompt()) == `` {
 		t.Fatalf("defaultHomeTaskDailyReportPrompt() returned empty text")

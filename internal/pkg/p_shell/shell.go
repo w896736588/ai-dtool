@@ -36,6 +36,7 @@ const getClientBusyWaitInterval = 100 * time.Millisecond
 
 var terminalBusyInspector = isTerminalBusy
 
+// canSendSse 判断当前 SSE 是否仍然可用，避免向空连接发送消息。
 func canSendSse(sse *p_sse.SseShell) bool {
 	return sse != nil && sse.Sse != nil
 }
@@ -44,6 +45,7 @@ type receiveBinder interface {
 	SetFuncReceiveMsg(func(string) string)
 }
 
+// makeReceiveHandler 根据格式化函数构造统一的终端消息转发逻辑。
 func makeReceiveHandler(sse *p_sse.SseShell, formatStream func(string) []string) func(string) string {
 	return func(msg string) string {
 		if formatStream != nil {
@@ -60,10 +62,12 @@ func makeReceiveHandler(sse *p_sse.SseShell, formatStream func(string) []string)
 	}
 }
 
+// bindReceiveHandler 为终端重新绑定消息接收函数，便于连接复用时切换 SSE。
 func bindReceiveHandler(target receiveBinder, sse *p_sse.SseShell, formatStream func(string) []string) {
 	target.SetFuncReceiveMsg(makeReceiveHandler(sse, formatStream))
 }
 
+// splitPoolKey 提取复合 key 的前缀部分，兼容旧调用方按前缀删除连接的逻辑。
 func splitPoolKey(uniqueKey string) string {
 	if uniqueKey == "" {
 		return ""
@@ -72,16 +76,19 @@ func splitPoolKey(uniqueKey string) string {
 	return keyList[0]
 }
 
+// resolvePoolKey 返回连接池 key。
+// 当前优先使用完整 shellClientId，避免同一 ssh 下不同业务面板误复用交互式终端。
 func resolvePoolKey(sshConfig map[string]any, shellClientId string) string {
+	if shellClientId != "" {
+		return shellClientId
+	}
 	if sshId := cast.ToString(sshConfig["id"]); sshId != "" {
 		return sshId
-	}
-	if key := splitPoolKey(shellClientId); key != "" {
-		return key
 	}
 	return shellClientId
 }
 
+// NewShell 初始化 Shell 管理器，并启动空闲连接清理协程。
 func NewShell(logPath string) *Shell {
 	log := gstool.NewSlog3(logPath, "shell")
 	_ = log.CleanOldLogs(2)
@@ -99,6 +106,7 @@ func NewShell(logPath string) *Shell {
 	return shell
 }
 
+// removeClientFromPoolLocked 在已持锁前提下，从指定池中移除目标连接并关闭它。
 func (h *Shell) removeClientFromPoolLocked(poolKey string, target *gsssh.SshTerminal) {
 	pool, ok := h.ShellClientPoolMap[poolKey]
 	if !ok || len(pool) == 0 {
@@ -128,6 +136,7 @@ func (h *Shell) removeClientFromPoolLocked(poolKey string, target *gsssh.SshTerm
 	}
 }
 
+// createShellClient 创建一个新的交互式 SSH 终端，并绑定断线与消息转发处理。
 func (h *Shell) createShellClient(sshConfig map[string]any, poolKey string, sse *p_sse.SseShell,
 	formatStream func(string) []string, promptKeywords []string, promptFunc func(string, io.WriteCloser, *ssh.Session) string) (*gsssh.SshTerminal, error) {
 	start := time.Now()
@@ -257,7 +266,8 @@ func (h *Shell) cleanupIdleClients() {
 	}
 }
 
-// GetClient returns a pooled shell client. Pool size is capped per sshId.
+// GetClient 获取一个可复用的交互式终端。
+// 同一 poolKey 下最多保留 maxShellPoolSize 个终端，若全部忙碌则短暂等待后返回错误。
 func (h *Shell) GetClient(sshConfig map[string]any, shellClientId string, sse *p_sse.SseShell,
 	formatStream func(string) []string, promptKeywords []string, promptFunc func(string, io.WriteCloser, *ssh.Session) string) (*gsssh.SshTerminal, error) {
 	start := time.Now()
@@ -329,6 +339,7 @@ func (h *Shell) GetClient(sshConfig map[string]any, shellClientId string, sse *p
 	}
 }
 
+// findIdleClientIndex 从连接池中按轮询顺序挑选一个当前空闲的终端。
 func findIdleClientIndex(pool []*gsssh.SshTerminal, next int) int {
 	if len(pool) == 0 {
 		return -1
@@ -378,7 +389,7 @@ func isTerminalBusy(gsShell *gsssh.SshTerminal) bool {
 	return true
 }
 
-// GetClientMarkdown keeps old one-to-one key behavior for markdown/sftp paths.
+// GetClientMarkdown 获取旧版一对一终端连接，供 markdown/sftp 等独占场景使用。
 func (h *Shell) GetClientMarkdown(sshConfig map[string]any, shellClientId string, sse *p_sse.SseShell) (*gsssh.SshTerminal, error) {
 	defer h.lock.Unlock()
 	h.lock.Lock()
@@ -432,10 +443,12 @@ func (h *Shell) GetClientMarkdown(sshConfig map[string]any, shellClientId string
 	return gsShell, nil
 }
 
+// SetSse 为指定终端绑定新的 SSE 接收器。
 func (h *Shell) SetSse(gsShell *gsssh.SshTerminal, sse *p_sse.SseShell) {
 	bindReceiveHandler(gsShell, sse, nil)
 }
 
+// GetSshOnce 返回一次性 SSH 客户端，适合不需要终端复用的场景。
 func (h *Shell) GetSshOnce(sshConfig map[string]any) (*gsssh.SshOnce, error) {
 	sshId := cast.ToString(sshConfig["id"])
 	if sshId == "" {
@@ -451,6 +464,7 @@ func (h *Shell) GetSshOnce(sshConfig map[string]any) (*gsssh.SshOnce, error) {
 	})), nil
 }
 
+// Exist 判断给定 key 对应的池连接或独占连接是否存在。
 func (h *Shell) Exist(uniqueKey string) bool {
 	defer h.lock.Unlock()
 	h.lock.Lock()
@@ -469,7 +483,7 @@ func (h *Shell) Exist(uniqueKey string) bool {
 	return false
 }
 
-// RmClient removes both pool clients and markdown client by key.
+// RmClient 按 key 移除连接，兼容删除整组池连接或单个独占连接。
 func (h *Shell) RmClient(uniqueKey string) {
 	defer h.lock.Unlock()
 	h.lock.Lock()
@@ -498,6 +512,7 @@ func (h *Shell) RmClient(uniqueKey string) {
 	}
 }
 
+// WalkShellList 遍历当前所有活跃终端，供外部统一查看或回收。
 func (h *Shell) WalkShellList(businessFunc func(uniqueKey string, gsShell *gsssh.SshTerminal)) {
 	defer h.lock.Unlock()
 	h.lock.Lock()
@@ -517,7 +532,7 @@ func (h *Shell) WalkShellList(businessFunc func(uniqueKey string, gsShell *gsssh
 	}
 }
 
-// ConnectionInfo contains shell connection metadata for UI.
+// ConnectionInfo 描述终端连接在 UI 中展示所需的元数据。
 type ConnectionInfo struct {
 	ShellClientId  string `json:"shell_client_id"`
 	CurrentCommand string `json:"current_command"`
@@ -527,6 +542,7 @@ type ConnectionInfo struct {
 	Type           string `json:"type"`
 }
 
+// getTerminalCurrentCommand 读取底层终端对象当前记录的命令文本。
 func getTerminalCurrentCommand(gsShell *gsssh.SshTerminal) string {
 	if gsShell == nil {
 		return ""
@@ -549,6 +565,7 @@ func getTerminalCurrentCommand(gsShell *gsssh.SshTerminal) string {
 	return strings.TrimSpace(field.String())
 }
 
+// getTerminalConnectMeta 生成连接建立时间及连接时长信息。
 func (h *Shell) getTerminalConnectMeta(gsShell *gsssh.SshTerminal, now int64) (string, int64) {
 	if gsShell == nil {
 		return "", 0
@@ -560,6 +577,7 @@ func (h *Shell) getTerminalConnectMeta(gsShell *gsssh.SshTerminal, now int64) (s
 	return gstool.TimeUnixToString(time.Unix(startTime, 0), "Y-m-d H:i:s"), now - startTime
 }
 
+// GetConnections 汇总当前池连接和独占连接，供连接面板展示。
 func (h *Shell) GetConnections() []ConnectionInfo {
 	defer h.lock.Unlock()
 	h.lock.Lock()

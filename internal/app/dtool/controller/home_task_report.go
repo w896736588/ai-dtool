@@ -79,6 +79,14 @@ func buildHomeTaskDailyReportUserPrompt(prompt string, taskList []map[string]any
 	return strings.TrimSpace(strings.Join(lineList, "\n")), nil
 }
 
+// mergeHomeTaskDailyReportTaskList 合并日报使用的任务列表，默认把已归档任务追加到未归档任务之后。
+func mergeHomeTaskDailyReportTaskList(activeTaskList, archivedTaskList []map[string]any) []map[string]any {
+	merged := make([]map[string]any, 0, len(activeTaskList)+len(archivedTaskList))
+	merged = append(merged, activeTaskList...)
+	merged = append(merged, archivedTaskList...)
+	return merged
+}
+
 // homeTaskDailyReportSystemPrompt 返回首页工作日报固定 system prompt。
 func homeTaskDailyReportSystemPrompt() string {
 	return homeTaskDailyReportSystemPromptText
