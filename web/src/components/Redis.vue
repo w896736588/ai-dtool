@@ -786,7 +786,9 @@ export default {
         _that.callRefresh(_that.filterKeysResult[0].CacheKey)
       }else{
         //清空右侧
-        _that.$refs.redisHashList.ShowList(_that.redisChooseId, '', {}, '', 0)
+        if (_that.$refs.redisHashList) {
+          _that.$refs.redisHashList.ShowList(_that.redisChooseId, '', {}, '', 0)
+        }
       }
     },
     //可用redis列表
@@ -920,11 +922,15 @@ export default {
           }
         }
         if (cache.cacheType === 'string') {
-          _that.$refs.redisHashList.ShowList(_that.redisChooseId, cache.cacheType, {
-            value: _that.transResponseData(data),
-          }, cache.cacheKey, responseSearch.Data.KeyTtl)
+          if (_that.$refs.redisHashList) {
+            _that.$refs.redisHashList.ShowList(_that.redisChooseId, cache.cacheType, {
+              value: _that.transResponseData(data),
+            }, cache.cacheKey, responseSearch.Data.KeyTtl)
+          }
         } else {
-          _that.$refs.redisHashList.ShowList(_that.redisChooseId, cache.cacheType, hashResult, cache.cacheKey, responseSearch.Data.KeyTtl, responseSearch.Data.Length, responseSearch.Data.Cursor, responseSearch.Data.IsMore)
+          if (_that.$refs.redisHashList) {
+            _that.$refs.redisHashList.ShowList(_that.redisChooseId, cache.cacheType, hashResult, cache.cacheKey, responseSearch.Data.KeyTtl, responseSearch.Data.Length, responseSearch.Data.Cursor, responseSearch.Data.IsMore)
+          }
         }
         //临时变量赋值 防止变动太频繁
         _that.cache = cache
@@ -973,7 +979,9 @@ export default {
             })
           }
         }
-        _that.$refs.redisHashList.ShowList(_that.redisChooseId, cache.cacheType, hashResult, cache.cacheKey, responseSearch.Data.KeyTtl, responseSearch.Data.Length, responseSearch.Data.Cursor, responseSearch.Data.IsMore)
+        if (_that.$refs.redisHashList) {
+          _that.$refs.redisHashList.ShowList(_that.redisChooseId, cache.cacheType, hashResult, cache.cacheKey, responseSearch.Data.KeyTtl, responseSearch.Data.Length, responseSearch.Data.Cursor, responseSearch.Data.IsMore)
+        }
         //临时变量赋值 防止变动太频繁
         _that.cache = cache
       })
@@ -1036,7 +1044,9 @@ export default {
     },
     //清空右侧的缓存显示内容
     cacheInit: function () {
-      this.$refs.redisHashList.ShowList(this.redisChooseId, '', [], '', 0)
+      if (this.$refs.redisHashList) {
+        this.$refs.redisHashList.ShowList(this.redisChooseId, '', [], '', 0)
+      }
     },
     delAll: function () {
       let _that = this

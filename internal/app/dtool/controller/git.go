@@ -14,10 +14,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gsssh"
+	"gitee.com/Sxiaobai/gs/v2/gstask"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
@@ -27,6 +29,92 @@ import (
 var (
 	cdCommand = `/var/www/`
 )
+
+const (
+	// sshPoolSize 连接池固定槽位数量
+	sshPoolSize = 5
+	// sshPoolCoolDown 连接使用后（含新建后）的冷却等待时间
+	sshPoolCoolDown = time.Second
+)
+
+// poolSlot 连接池单个槽位，管理一个 SSH 连接的生命周期和冷却状态。
+type poolSlot struct {
+	client        *gsssh.SshTerminal // SSH 客户端实例
+	shellClientId string             // 当前绑定的 client key（用于判断复用）
+	sshConfig     map[string]any     // 当前绑定的 SSH 配置
+	lastUsedAt    time.Time          // 最后释放/创建时间（用于冷却判断）
+	inUse         bool               // 是否正在被占用
+}
+
+// sshConnectionPool 固定大小 SSH 连接池，包含冷却等待机制。
+// 新建连接或复用连接释放后均需等待 sshPoolCoolDown 后才能再次分配。
+type sshConnectionPool struct {
+	slots [sshPoolSize]poolSlot
+	mu    sync.Mutex
+}
+
+// newSSHConnectionPool 创建一个空的 SSH 连接池。
+func newSSHConnectionPool() *sshConnectionPool {
+	return &sshConnectionPool{}
+}
+
+// Acquire 从连接池中获取一个可用的 SSH 客户端。
+// 规则：
+//   - 优先复用已有且 key 匹配的空闲连接（已过冷却期）
+//   - 无匹配时在空闲槽位上新建连接
+//   - 所有槽位忙或未冷却时轮询等待（100ms 间隔）
+//   - 新建连接的 lastUsedAt 设为 now，确保首次使用前也经过冷却期
+func (p *sshConnectionPool) Acquire(sshConfig map[string]any, shellClientId string, sse *p_sse.SseShell) (*gsssh.SshTerminal, error) {
+	for {
+		p.mu.Lock()
+		for i := range p.slots {
+			slot := &p.slots[i]
+			if slot.inUse {
+				continue
+			}
+			// 检查是否已过冷却期
+			if time.Since(slot.lastUsedAt) < sshPoolCoolDown {
+				continue
+			}
+			// 命中已有连接且 key 一致 → 直接复用
+			if slot.client != nil && slot.shellClientId == shellClientId {
+				slot.inUse = true
+				p.mu.Unlock()
+				return slot.client, nil
+			}
+			// 需要新建或重建连接
+			if slot.client != nil {
+				slot.client.CloseTerminal()
+			}
+			client, err := component.ShellClient.GetClient(sshConfig, shellClientId, sse, nil, nil, nil)
+			if err != nil {
+				p.mu.Unlock()
+				return nil, err
+			}
+			slot.client = client
+			slot.shellClientId = shellClientId
+			slot.sshConfig = sshConfig
+			slot.lastUsedAt = time.Now() // 新建后也设冷却起点
+			slot.inUse = true
+			p.mu.Unlock()
+			return client, nil
+		}
+		p.mu.Unlock()
+		// 所有槽位忙或未冷却，短暂等待重试
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// Release 释放指定索引的槽位并记录冷却起始时间。
+func (p *sshConnectionPool) Release(idx int) {
+	if idx < 0 || idx >= sshPoolSize {
+		return
+	}
+	p.mu.Lock()
+	p.slots[idx].inUse = false
+	p.slots[idx].lastUsedAt = time.Now()
+	p.mu.Unlock()
+}
 
 // GitCurrentBranch 查询目录的git分支
 func GitCurrentBranch(c *gin.Context) {
@@ -418,6 +506,7 @@ func filterGitListByExistingGroups(gitGroupList, gitList []map[string]any) []map
 	return filteredList
 }
 
+// 查询某个组当前的git分支和使用情况
 func GitGroupBranchList(c *gin.Context) {
 	reqMap := make(map[string]interface{})
 	if err := gsgin.GinPostBody(c, &reqMap); err != nil {
@@ -451,7 +540,7 @@ func GitGroupBranchList(c *gin.Context) {
 		})
 		return
 	}
-
+	//sse分发id
 	sseDistributeId := cast.ToString(reqMap[`sse_distribute_id`])
 	sse := &p_sse.SseShell{
 		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
@@ -588,6 +677,125 @@ func GitGroupBranchList(c *gin.Context) {
 		`summary_lines`: summaryLines,
 		`summary_text`:  summaryText,
 	})
+}
+
+// gitItemQueryResult querySingleGitItemBranchInfo 返回的复合结果
+type gitItemQueryResult struct {
+	ItemResult map[string]any // itemResult 完整字段
+	TableLine  string         // Markdown 表格行（含 usage 列）
+}
+
+// querySingleGitItemBranchInfo 查询单个 Git 项目的分支明细（供 gstask 并发调用）。
+// 通过连接池获取/释放 SSH 客户端，内部处理所有错误情况，始终返回非 nil Result。
+func querySingleGitItemBranchInfo(item map[string]any, sshConfig map[string]any, gitGroupId string, pool *sshConnectionPool) *gstask.Result {
+	itemName := cast.ToString(item[`name`])
+	itemPath := cast.ToString(item[`code_path`])
+	sshId := cast.ToString(item[`ssh_id`])
+
+	gstool.FmtPrintlnLogTime(`开始查询 %s %s`, item[`code_path`])
+
+	baseResult := &gitItemQueryResult{
+		ItemResult: map[string]any{
+			`id`:            cast.ToString(item[`id`]),
+			`name`:          itemName,
+			`code_path`:     itemPath,
+			`ssh_id`:        sshId,
+			`local_branch`:  `N/A`,
+			`remote_branch`: `N/A`,
+			`usage_status`:  `N/A`,
+			`usage_owners`:  []string{},
+			`ok`:            false,
+			`error`:         ``,
+		},
+	}
+
+	if itemPath == `` || sshId == `` {
+		baseResult.ItemResult[`error`] = `缺少 code_path 或 ssh_id 配置`
+		baseResult.TableLine = buildErrorTableLine(itemName, itemPath, baseResult.ItemResult)
+		return &gstask.Result{Result: baseResult, Err: nil}
+	}
+
+	if sshConfig == nil || len(sshConfig) == 0 {
+		baseResult.ItemResult[`error`] = `SSH配置不存在`
+		baseResult.TableLine = buildErrorTableLine(itemName, itemPath, baseResult.ItemResult)
+		return &gstask.Result{Result: baseResult, Err: nil}
+	}
+
+	uniqueKey := p_common.TBaseClient.GetCombineKey(
+		sshId,
+		`group_branch_`+gitGroupId+`_`+cast.ToString(item[`id`])+`_`+cast.ToString(time.Now().UnixNano()),
+	)
+	silentSse := &p_sse.SseShell{}
+
+	var slotIdx = -1
+	sshClient, clientErr := pool.Acquire(sshConfig, uniqueKey, silentSse)
+	if clientErr == nil {
+		slotIdx = acquireSlotIndex(pool, uniqueKey)
+		defer func() {
+			if slotIdx >= 0 {
+				pool.Release(slotIdx)
+			}
+		}()
+	}
+
+	if clientErr != nil {
+		baseResult.ItemResult[`error`] = clientErr.Error()
+		baseResult.TableLine = buildErrorTableLine(itemName, itemPath, baseResult.ItemResult)
+		return &gstask.Result{Result: baseResult, Err: nil}
+	}
+
+	if prepareErr := prepareGitOperationEnv(sshClient, itemPath); prepareErr != nil {
+		baseResult.ItemResult[`error`] = prepareErr.Error()
+		baseResult.TableLine = buildErrorTableLine(itemName, itemPath, baseResult.ItemResult)
+		return &gstask.Result{Result: baseResult, Err: nil}
+	}
+
+	branchInfo, queryErr := queryCurrentBranchInfo(sshClient, itemPath, 5*time.Second)
+	if queryErr != nil {
+		baseResult.ItemResult[`error`] = queryErr.Error()
+		baseResult.TableLine = buildErrorTableLine(itemName, itemPath, baseResult.ItemResult)
+		return &gstask.Result{Result: baseResult, Err: nil}
+	}
+
+	usageInfo := queryBranchUsageInfo(sshClient, itemPath, branchInfo, 8*time.Second)
+	baseResult.ItemResult[`local_branch`] = branchInfo.LocalBranch
+	baseResult.ItemResult[`remote_branch`] = branchInfo.RemoteBranch
+	baseResult.ItemResult[`usage_status`] = usageInfo.UsageDisplay
+	baseResult.ItemResult[`usage_owners`] = usageInfo.Owners
+	baseResult.ItemResult[`ok`] = true
+
+	baseResult.TableLine = fmt.Sprintf(
+		"| %s | %s | %s | %s |",
+		escapeMarkdownTableCell(itemName),
+		escapeMarkdownTableCell(itemPath),
+		escapeMarkdownTableCell(branchInfo.LocalBranch),
+		escapeMarkdownTableCell(branchInfo.RemoteBranch),
+	)
+	baseResult.TableLine = appendMarkdownTableUsageCell(baseResult.TableLine, cast.ToString(baseResult.ItemResult[`usage_status`]))
+
+	return &gstask.Result{Result: baseResult, Err: nil}
+}
+
+// buildErrorTableLine 构建错误状态的 Markdown 表格行。
+func buildErrorTableLine(itemName, itemPath string, itemResult map[string]any) string {
+	line := fmt.Sprintf(
+		"| %s | %s | %s | %s |",
+		escapeMarkdownTableCell(itemName),
+		escapeMarkdownTableCell(itemPath),
+		escapeMarkdownTableCell(`N/A`),
+		escapeMarkdownTableCell(`失败: `+cast.ToString(itemResult[`error`])),
+	)
+	return appendMarkdownTableUsageCell(line, cast.ToString(itemResult[`usage_status`]))
+}
+
+// acquireSlotIndex 根据 shellClientId 查找当前占用的槽位索引。
+func acquireSlotIndex(pool *sshConnectionPool, shellClientId string) int {
+	for i := range pool.slots {
+		if pool.slots[i].inUse && pool.slots[i].shellClientId == shellClientId {
+			return i
+		}
+	}
+	return -1
 }
 
 type GitCurrentBranchInfo struct {
