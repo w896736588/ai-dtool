@@ -286,7 +286,6 @@ func shellOut(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/shellOutErrorContext`, controller.ShellOutErrorContext)
 	tGin.GinPost(`/api/shellOutSearchContent`, controller.ShellOutSearchContent)
 	tGin.GinPost(`/api/shellOutCleanLog`, controller.ShellOutCleanLog)
-	tGin.GinPost(`/api/shellOutConnections`, controller.ShellOutGetConnections)
 	tGin.GinPost(`/api/shellOutReconnect`, controller.ShellOutReconnect)
 }
 
@@ -403,9 +402,12 @@ func apiUse(tGin *p_gin.Gin) {
 	})
 	openFunc := func(urlValues url.Values, stopC chan int, c *gin.Context) (*gsgin.Sse, error) {
 		clientId := urlValues.Get(`client_id`)
-		sseC := gsgin.SseGetByClientId(clientId)
-		if sseC != nil {
-			return nil, errors.New(`已存在链接`)
+		// shell_connections 使用固定client_id，允许后续连接复用（广播模式）
+		if clientId != define.SseShellConnections {
+			sseC := gsgin.SseGetByClientId(clientId)
+			if sseC != nil {
+				return nil, errors.New(`已存在链接`)
+			}
 		}
 		sse := gsgin.SseRegister(clientId, stopC, c)
 		//发送一个事件 前端才会建立连接

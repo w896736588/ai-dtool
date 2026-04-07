@@ -3,7 +3,9 @@ package controller
 import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
+	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_common"
+	"dev_tool/internal/pkg/p_define"
 	"dev_tool/internal/pkg/p_sse"
 	"errors"
 	"sort"
@@ -12,6 +14,7 @@ import (
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gsssh"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 )
@@ -25,6 +28,86 @@ type ShellConnectionView struct {
 	LastReceive    string `json:"last_receive"`
 	IdleSeconds    int64  `json:"idle_seconds"`
 	Type           string `json:"type"`
+}
+
+// ShellConnectionsBroadcaster Shell连接状态广播器
+type ShellConnectionsBroadcaster struct {
+	ticker *time.Ticker
+	stopC  chan struct{}
+}
+
+var ShellConnectionsBroadcasterInstance *ShellConnectionsBroadcaster
+
+// NewShellConnectionsBroadcaster 创建广播器并启动定时推送
+func NewShellConnectionsBroadcaster(interval time.Duration) *ShellConnectionsBroadcaster {
+	b := &ShellConnectionsBroadcaster{
+		ticker: time.NewTicker(interval),
+		stopC:  make(chan struct{}),
+	}
+	go b.run()
+	return b
+}
+
+// run 定时广播连接状态
+func (b *ShellConnectionsBroadcaster) run() {
+	for {
+		select {
+		case <-b.ticker.C:
+			b.Broadcast()
+		case <-b.stopC:
+			return
+		}
+	}
+}
+
+// Stop 停止广播
+func (b *ShellConnectionsBroadcaster) Stop() {
+	close(b.stopC)
+	b.ticker.Stop()
+}
+
+// Broadcast 广播当前所有Shell连接状态
+func (b *ShellConnectionsBroadcaster) Broadcast() {
+	sse := gsgin.SseGetByClientId(define.SseShellConnections)
+	if sse == nil {
+		return
+	}
+
+	// 获取p_shell.Shell类型的连接
+	shellConnections := component.ShellClient.GetConnections()
+
+	// 合并两种类型的连接
+	allConnections := make([]ShellConnectionView, 0, len(shellConnections))
+	for _, conn := range shellConnections {
+		allConnections = append(allConnections, ShellConnectionView{
+			ShellClientId:  conn.ShellClientId,
+			CurrentCommand: conn.CurrentCommand,
+			Status:         conn.Status,
+			ConnectTime:    conn.ConnectTime,
+			ConnectSeconds: conn.ConnectSeconds,
+			Type:           conn.Type,
+		})
+	}
+	sort.Slice(allConnections, func(i, j int) bool {
+		if allConnections[i].ConnectSeconds == allConnections[j].ConnectSeconds {
+			return allConnections[i].ShellClientId < allConnections[j].ShellClientId
+		}
+		return allConnections[i].ConnectSeconds < allConnections[j].ConnectSeconds
+	})
+
+	data := map[string]any{
+		`connections`: allConnections,
+		`total`:       len(allConnections),
+	}
+
+	err := sse.SendToChan(gstool.JsonEncode(p_define.SseData{
+		SseDistributeId: define.SseShellConnections,
+		Data:            data,
+		Type:            p_define.SseContentTypeConnections,
+	}))
+	if err != nil {
+		gstool.FmtPrintlnLogTime(`ShellConnections广播错误 %s`, err.Error())
+	}
 }
 
 func ShellOut(c *gin.Context) {
@@ -239,51 +322,6 @@ func ShellOutCleanLog(c *gin.Context) {
 	shellClientId := cast.ToString(reqMap[`shell_client_id`])
 	component.ShellOutClient.CleanLog(shellClientId)
 	gsgin.GinResponseSuccess(c, ``, nil)
-	return
-}
-
-func ShellOutGetConnections(c *gin.Context) {
-	// 获取ShellOut类型的连接
-	shellOutConnections := component.ShellOutClient.GetConnections()
-
-	// 获取p_shell.Shell类型的连接
-	shellConnections := component.ShellClient.GetConnections()
-
-	// 合并两种类型的连接
-	allConnections := make([]ShellConnectionView, 0, len(shellOutConnections)+len(shellConnections))
-	for _, conn := range shellOutConnections {
-		allConnections = append(allConnections, ShellConnectionView{
-			ShellClientId:  conn.ShellClientId,
-			CurrentCommand: conn.CurrentCommand,
-			Status:         conn.Status,
-			ConnectTime:    conn.ConnectTime,
-			ConnectSeconds: conn.ConnectSeconds,
-			LastReceive:    conn.LastReceive,
-			IdleSeconds:    conn.IdleSeconds,
-			Type:           conn.Type,
-		})
-	}
-	for _, conn := range shellConnections {
-		allConnections = append(allConnections, ShellConnectionView{
-			ShellClientId:  conn.ShellClientId,
-			CurrentCommand: conn.CurrentCommand,
-			Status:         conn.Status,
-			ConnectTime:    conn.ConnectTime,
-			ConnectSeconds: conn.ConnectSeconds,
-			Type:           conn.Type,
-		})
-	}
-	sort.Slice(allConnections, func(i, j int) bool {
-		if allConnections[i].ConnectSeconds == allConnections[j].ConnectSeconds {
-			return allConnections[i].ShellClientId < allConnections[j].ShellClientId
-		}
-		return allConnections[i].ConnectSeconds < allConnections[j].ConnectSeconds
-	})
-
-	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`connections`: allConnections,
-		`total`:       len(allConnections),
-	})
 	return
 }
 

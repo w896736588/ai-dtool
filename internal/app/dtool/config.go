@@ -4,6 +4,7 @@ import (
 	"dev_tool/internal/app/dtool/business"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
+	"dev_tool/internal/app/dtool/controller"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/plw"
 	"dev_tool/internal/app/dtool/variable"
@@ -430,11 +431,16 @@ func InitComponent() {
 			os.Exit(0)
 		}
 	}
-
+	// 启动Shell连接状态广播器，每5秒推送一次
+	controller.ShellConnectionsBroadcasterInstance = controller.NewShellConnectionsBroadcaster(5 * time.Second)
 }
 
 func Stop() {
 	fmt.Println(`停止`)
+	// 停止Shell连接状态广播器
+	if controller.ShellConnectionsBroadcasterInstance != nil {
+		controller.ShellConnectionsBroadcasterInstance.Stop()
+	}
 	task := gstask.NewTask()
 	for key, tGin := range component.TGins {
 		task.Add(gstask.CallbackFunc{

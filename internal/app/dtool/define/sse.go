@@ -1,8 +1,9 @@
 package define
 
 const (
-	SseAiCode = `ai_code` //废弃
-	SseGitLab = `gitlab`  //固定全局唯一
+	SseAiCode = `ai_code`                   //废弃
+	SseGitLab = `gitlab`                    //固定全局唯一
+	SseShellConnections = `shell_connections` //Shell连接状态推送
 )
 
 const (

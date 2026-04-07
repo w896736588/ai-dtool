@@ -525,6 +525,7 @@ import baseApi from '@/utils/base/base_api'
 import sshSet from '@/utils/base/ssh_set'
 import homeTaskApi from '@/utils/base/home_task'
 import memoryFragmentApi from '@/utils/base/memory_fragment'
+import sseDistribute from '@/utils/base/sse_distribute'
 const {
   HOME_DASHBOARD_PAGE_SWITCH_HOT_ZONE_WIDTH,
   isHomeDashboardPageSwitchHotZone,
@@ -578,8 +579,8 @@ const HOME_TASK_ACTION_COMMAND_ARCHIVE = 'archive'
 const HOME_TASK_ACTION_COMMAND_UNARCHIVE = 'unarchive'
 // HOME_TASK_DELETE_CONFIRM_* 统一任务删除确认文案，避免危险操作提示分散。
 const HOME_TASK_DELETE_CONFIRM_TITLE = '确认删除'
-const HOME_TASK_DELETE_CONFIRM_MESSAGE_PREFIX = '确定要删除任务“'
-const HOME_TASK_DELETE_CONFIRM_MESSAGE_SUFFIX = '”吗？该操作不可恢复。'
+const HOME_TASK_DELETE_CONFIRM_MESSAGE_PREFIX = '确定要删除任务"'
+const HOME_TASK_DELETE_CONFIRM_MESSAGE_SUFFIX = '"吗？该操作不可恢复。'
 const HOME_TASK_DELETE_SUCCESS_MESSAGE = '任务已删除'
 // HOME_TASK_EDIT_BUTTON_TEXT 统一定义任务编辑按钮文案。
 const HOME_TASK_EDIT_BUTTON_TEXT = '编辑任务'
@@ -740,10 +741,10 @@ export default {
       }
     })
     this.forceIp(false)
-    this.refreshSshConnections(false)
-    this.sshConnectionTimer = setInterval(() => {
-      this.refreshSshConnections(false)
-    }, SSH_CONNECTION_REFRESH_INTERVAL_MS)
+    // 注册Shell连接状态SSE监听
+    sseDistribute.RegisterReceive('shell_connections', function(data, type, distributeId) {
+      _that.handleSshConnectionsUpdate(data)
+    })
     this.loadHomeTaskFragmentOptions()
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
@@ -1178,40 +1179,26 @@ export default {
       }
       return ''
     },
+    // 处理SSE推送的Shell连接状态更新
+    handleSshConnectionsUpdate(data) {
+      if (!data || typeof data !== 'object') {
+        this.sshConnectionCount = 0
+        this.sshConnections = []
+        return
+      }
+      const list = Array.isArray(data.connections) ? data.connections : []
+      this.sshConnectionCount = data.total || list.length
+      this.sshConnections = list
+    },
+    // 刷新SSH连接状态（仅用于显示loading状态）
     refreshSshConnections(showLoading) {
       if (showLoading) {
         this.sshConnectionsLoading = true
+        // 关闭loading
+        setTimeout(() => {
+          this.sshConnectionsLoading = false
+        }, 500)
       }
-      const _that = this
-      sshSet.SshList(function (sshResponse) {
-        const sshNameMap = {}
-        if (sshResponse && sshResponse.ErrCode === 0 && Array.isArray(sshResponse.Data)) {
-          sshResponse.Data.forEach(item => {
-            sshNameMap[String(item.id)] = item.name || `#${item.id}`
-          })
-        }
-        sshSet.GetConnections(function (connResponse) {
-          if (_that.sshConnectionsLoading) {
-            _that.sshConnectionsLoading = false
-          }
-          if (!(connResponse && connResponse.ErrCode === 0)) {
-            _that.sshConnectionCount = 0
-            _that.sshConnections = []
-            return
-          }
-          const list = Array.isArray(connResponse.Data?.connections) ? connResponse.Data.connections : []
-          const normalized = list.map(conn => {
-            const shellClientId = String(conn.shell_client_id || '')
-            const sshId = shellClientId.split('#')[0]
-            return {
-              ...conn,
-              ssh_name: sshNameMap[sshId] || `#${sshId || '-'}`
-            }
-          })
-          _that.sshConnectionCount = normalized.length
-          _that.sshConnections = normalized
-        })
-      })
     },
     handleSelect(key, keyPath) {
       let _that = this
