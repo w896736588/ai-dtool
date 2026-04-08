@@ -377,7 +377,9 @@ export default {
         markdownLines.push('| --- | --- |');
         let apiUrl = this.formatApiUrl(api.url)
         markdownLines.push(`| 请求URL | \`${api.method}\` \`${apiUrl}\` |`);
-        markdownLines.push(`| 请求类型 | \`${api.content_type}\` |`);
+        if (this.hasBodyContent(api)) {
+          markdownLines.push(`| 请求类型 | \`${api.content_type}\` |`);
+        }
         markdownLines.push(`| 创建时间 | ${this.formatTimestamp(api.create_time)} |`);
         markdownLines.push('');
 

@@ -2,8 +2,10 @@
 import store from './base/store'
 import module from './module'
 import {globals} from '@/main'
+import apiHostRouter from './api_host_router.cjs'
 
 var ports = ["17170"]
+const ssePort = '17170'
 
 //登录拿到 unikey
 function BaseLogin(userName, password, okFunc) {
@@ -70,16 +72,25 @@ function BasePostForm(uri, params, callBack) {
 
 //拿到接口地址
 function GetApiHost() {
-    // if (process.env.NODE_ENV === 'production') {
-    //     return ''
-    // }
-    let port = GetRandPort()
+    let port = GetApiPort()
     return 'http://localhost:' + port
 }
 
+function GetSseApiHost() {
+    let port = GetSsePort()
+    return 'http://localhost:' + port
+}
+
+function GetApiPort() {
+    return apiHostRouter.getApiPort(ports, Math.random, ssePort)
+}
+
+function GetSsePort() {
+    return apiHostRouter.getSsePort(ports, Math.random, ssePort)
+}
+
 function GetRandPort() {
-    let randomIndex = Math.floor(Math.random() * ports.length);
-    return ports[randomIndex];
+    return GetApiPort()
 }
 
 //上面是mainCard 这个返回mainCard距离底部还剩余的高度px
@@ -181,12 +192,15 @@ export default {
     BasePost,
     BasePostForm,
     GetApiHost,
+    GetSseApiHost,
     Globals,
     GetDivHeight,
     GetDivHeight2,
     IsBase64,
     GenerateId,
     GetRandPort,
+    GetApiPort,
+    GetSsePort,
     Debounce,
     Ports,
     DisableSaveShortcut,

@@ -15,6 +15,8 @@ import (
 // sshConfig 由连接池持有并自动传入，工厂只需关注 shellClientId 的路由逻辑。
 type ClientFactory func(sshConfig map[string]any, shellClientId string) (*gsssh.SshTerminal, error)
 
+type ClientClose func(shellClientId string)
+
 const (
 	// DefaultPoolSize 连接池默认槽位数量
 	DefaultPoolSize = 5
@@ -41,6 +43,7 @@ func DefaultPoolConfig() PoolConfig {
 // poolSlot 连接池单个槽位，管理一个 SSH 连接的生命周期和冷却状态。
 type poolSlot struct {
 	client        *gsssh.SshTerminal // SSH 客户端实例
+	clientId      string             //shell client_id
 	shellClientId string             // 当前绑定的 client key（用于判断复用）
 	sshConfig     map[string]any     // 当前绑定的 SSH 配置
 	lastUsedAt    time.Time          // 最后释放/创建时间（用于冷却判断）
@@ -59,11 +62,12 @@ type ShellPool struct {
 	sshConfig map[string]any // 初始化时绑定的 SSH 配置（不可变）
 	slots     []poolSlot
 	factory   ClientFactory // 连接工厂函数（依赖注入）
+	close     ClientClose   //释放shell
 	mu        sync.Mutex
 }
 
 // NewShellPoolWithConfig 使用自定义配置创建 Shell 连接池。
-func NewShellPoolWithConfig(prefix string, sshConfig map[string]any, cfg PoolConfig, factory ClientFactory) *ShellPool {
+func NewShellPoolWithConfig(prefix string, sshConfig map[string]any, cfg PoolConfig, factory ClientFactory, close ClientClose) *ShellPool {
 	sshId := cast.ToString(sshConfig["id"])
 	if sshId == "" {
 		panic("[ShellPool:" + prefix + "] sshConfig id is empty on init")
@@ -80,22 +84,10 @@ func NewShellPoolWithConfig(prefix string, sshConfig map[string]any, cfg PoolCon
 		sshConfig: sshConfig,
 		slots:     make([]poolSlot, cfg.PoolSize),
 		factory:   factory,
+		close:     close,
 	}
 	gstool.FmtPrintlnLogTime("[ShellPool:%s] 初始化完成, sshId=%s, 槽位数=%d, 冷却时间=%v", prefix, sshId, cfg.PoolSize, cfg.CoolDown)
 	return pool
-}
-
-// Init 重置连接池，关闭并清空所有现有连接。
-func (h *ShellPool) Init() {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for i := range h.slots {
-		if h.slots[i].client != nil {
-			h.slots[i].client.CloseTerminal()
-		}
-		h.slots[i] = poolSlot{}
-	}
-	gstool.FmtPrintlnLogTime("[ShellPool:%s] 已重置所有槽位", h.prefix)
 }
 
 // GetOne 从连接池中获取一个可用的 SSH 客户端。
@@ -116,7 +108,7 @@ func (h *ShellPool) GetOne(timeout time.Duration) (*gsssh.SshTerminal, int, erro
 
 	for {
 		if !deadline.IsZero() && time.Now().After(deadline) {
-			return nil, -1, errors.New("[ShellPool:" + h.prefix + "] get connection timed out")
+			return nil, -1, errors.New("[ShellPool:" + h.prefix + "] 获取连接超时")
 		}
 
 		h.mu.Lock()
@@ -140,12 +132,15 @@ func (h *ShellPool) GetOne(timeout time.Duration) (*gsssh.SshTerminal, int, erro
 				h.mu.Unlock()
 				return nil, -1, errors.New("[ShellPool:" + h.prefix + "] client factory is nil")
 			}
-			client, err := h.factory(h.sshConfig, "")
+			shellClientId := "git_group_" + gstool.RandStringAll(10)
+			gstool.FmtPrintlnLogTime(`创建连接 %s`, shellClientId)
+			client, err := h.factory(h.sshConfig, shellClientId)
 			if err != nil {
 				h.mu.Unlock()
 				return nil, -1, err
 			}
 			slot.client = client
+			slot.clientId = shellClientId
 			slot.sshConfig = h.sshConfig
 			slot.lastUsedAt = time.Now()
 			slot.inUse = true
@@ -173,7 +168,12 @@ func (h *ShellPool) ReleaseByIndex(idx int) {
 
 // Close 关闭连接池中所有连接并释放资源。
 func (h *ShellPool) Close() {
-	h.Init()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := range h.slots {
+		h.close(h.slots[i].clientId)
+	}
+	h.slots = nil
 	gstool.FmtPrintlnLogTime("[ShellPool:%s] 已关闭", h.prefix)
 }
 

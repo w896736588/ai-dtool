@@ -12,7 +12,6 @@ import (
 	"io"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -506,6 +505,18 @@ func filterGitListByExistingGroups(gitGroupList, gitList []map[string]any) []map
 	return filteredList
 }
 
+// 推送一行
+func pushTableLine(name, codePath, localBranch, remoteBranch, use string, writeSummary func(string)) {
+	tableLine := fmt.Sprintf(
+		"| %s | %s | %s | %s |",
+		escapeMarkdownTableCell(name),
+		escapeMarkdownTableCell(codePath),
+		escapeMarkdownTableCell(localBranch),
+		escapeMarkdownTableCell(remoteBranch),
+	)
+	writeSummary(tableLine + "\n")
+}
+
 // 查询某个组当前的git分支和使用情况
 func GitGroupBranchList(c *gin.Context) {
 	reqMap := make(map[string]interface{})
@@ -559,8 +570,8 @@ func GitGroupBranchList(c *gin.Context) {
 	summaryLines := make([]string, 0, totalCount+4)
 	summaryLines = append(summaryLines, fmt.Sprintf("### Git分组 `%s` 分支总览", cast.ToString(groupInfo[`name`])))
 	summaryLines = append(summaryLines, "")
-	summaryLines = append(summaryLines, "| 名称 | 路径 | 当前分支 | 远程分支/错误 | 是否有人使用 |")
-	summaryLines = append(summaryLines, "| --- | --- | --- | --- | --- |")
+	summaryLines = append(summaryLines, "| 名称 | 路径 | 当前分支 | 远程分支 |")
+	summaryLines = append(summaryLines, "| --- | --- | --- | --- | ")
 	writeSummary("\n" + strings.Join(summaryLines, "\n") + "\n")
 	//初始化5个连接 以第一个的ssh作为基准
 	sshId := gitList[0][`ssh_id`]
@@ -574,11 +585,14 @@ func GitGroupBranchList(c *gin.Context) {
 		})
 		return
 	}
+	//构建连接池
 	pool := p_shell.NewShellPoolWithConfig(`git_group_`, sshConfig, p_shell.PoolConfig{
-		PoolSize: 5,
-		CoolDown: time.Second * 15,
+		PoolSize: totalCount,
+		CoolDown: time.Second * 5,
 	}, func(sshConfig map[string]any, shellClientId string) (*gsssh.SshTerminal, error) {
 		return component.ShellClient.GetClient(sshConfig, shellClientId, nil, nil, nil, nil)
+	}, func(shellClientId string) {
+		component.ShellClient.RmClient(shellClientId)
 	})
 	task := gstask.NewTask()
 	for _, item := range gitList {
@@ -593,8 +607,10 @@ func GitGroupBranchList(c *gin.Context) {
 				command.GitShowBranch()
 				command.Echo(`远程分支：`)
 				command.GitShowOriginBranch()
+				//获取到连接
 				client, index, cliErr := pool.GetOne(time.Second * 60)
 				if cliErr != nil {
+					pushTableLine(name, codePath, cliErr.Error(), ``, ``, writeSummary)
 					return &gstask.Result{
 						Result: map[string]any{
 							`name`:         name,
@@ -605,6 +621,7 @@ func GitGroupBranchList(c *gin.Context) {
 				result, getErr := client.RunCommandWait(command.GetCommand().ToStr(), time.Second*4)
 				if getErr != nil {
 					pool.ReleaseByIndex(index)
+					pushTableLine(name, codePath, getErr.Error(), ``, ``, writeSummary)
 					return &gstask.Result{
 						Result: map[string]any{
 							`name`:         name,
@@ -612,12 +629,16 @@ func GitGroupBranchList(c *gin.Context) {
 						},
 					}
 				}
+				//过滤掉执行的命令
 				ret := client.FilterCommand(result)
+				//过滤掉结尾标记
+				ret = client.FilterEndTip(ret)
+				//过滤掉特殊字符
 				ret = p_common.TBaseClient.FilterTerminalChars(ret)
 				//解析出本地和远程分支
 				splitRet := strings.Split(ret, "\n")
-				localBranch := ``
-				remoteBranch := ``
+				localBranch := `-`
+				remoteBranch := `-`
 				for indexSplit, split := range splitRet {
 					if split == `当前分支：` {
 						if len(splitRet) > indexSplit+1 {
@@ -630,9 +651,12 @@ func GitGroupBranchList(c *gin.Context) {
 						}
 					}
 				}
-				gstool.FmtPrintlnLogTime(`%#v`, splitRet)
-				gstool.FmtPrintlnLogTime(`%s 结果 %s %s`, name, localBranch, remoteBranch)
+				gstool.FmtPrintlnLogTime(`%s 运行结果 %#v`, name, splitRet)
+				gstool.FmtPrintlnLogTime(`%s 结果 本地：%s 远程：%s`, name, localBranch, remoteBranch)
+				//释放连接
 				pool.ReleaseByIndex(index)
+				//推送到前端
+				pushTableLine(name, codePath, localBranch, remoteBranch, ``, writeSummary)
 				return &gstask.Result{
 					Result: map[string]any{
 						`name`:          name,
@@ -661,234 +685,7 @@ func GitGroupBranchList(c *gin.Context) {
 		`summary_lines`: summaryLines,
 	})
 	return
-	// for _, item := range gitList {
-	// 	itemName := cast.ToString(item[`name`])
-	// 	itemPath := cast.ToString(item[`code_path`])
-	// 	sshId := cast.ToString(item[`ssh_id`])
 
-	// 	itemResult := map[string]any{
-	// 		`id`:            cast.ToString(item[`id`]),
-	// 		`name`:          itemName,
-	// 		`code_path`:     itemPath,
-	// 		`ssh_id`:        sshId,
-	// 		`local_branch`:  `N/A`,
-	// 		`remote_branch`: `N/A`,
-	// 		`usage_status`:  `N/A`,
-	// 		`usage_owners`:  []string{},
-	// 		`ok`:            false,
-	// 		`error`:         ``,
-	// 	}
-	// 	tableLine := ``
-	// 	if itemPath == `` || sshId == `` {
-	// 		itemResult[`error`] = `缺少 code_path 或 ssh_id 配置`
-	// 		tableLine = fmt.Sprintf(
-	// 			"| %s | %s | %s | %s |",
-	// 			escapeMarkdownTableCell(itemName),
-	// 			escapeMarkdownTableCell(itemPath),
-	// 			escapeMarkdownTableCell(`N/A`),
-	// 			escapeMarkdownTableCell(`失败: `+cast.ToString(itemResult[`error`])),
-	// 		)
-	// 	} else {
-	// 		sshConfig, sshErr := common.DbMain.GetSshConfig(sshId)
-	// 		if sshErr != nil || len(sshConfig) == 0 {
-	// 			itemResult[`error`] = `SSH配置不存在`
-	// 			tableLine = fmt.Sprintf(
-	// 				"| %s | %s | %s | %s |",
-	// 				escapeMarkdownTableCell(itemName),
-	// 				escapeMarkdownTableCell(itemPath),
-	// 				escapeMarkdownTableCell(`N/A`),
-	// 				escapeMarkdownTableCell(`失败: `+cast.ToString(itemResult[`error`])),
-	// 			)
-	// 		} else {
-	// 			uniqueKey := p_common.TBaseClient.GetCombineKey(
-	// 				sshId,
-	// 				`group_branch_`+cast.ToString(item[`id`]),
-	// 			)
-	// 			// 组内批量查询只保留汇总结果，避免每个项目的原始 shell 输出刷屏
-	// 			silentSse := &p_sse.SseShell{}
-	// 			sshClient, clientErr := component.ShellClient.GetClient(sshConfig, uniqueKey, silentSse, nil, nil, nil)
-	// 			if clientErr != nil {
-	// 				itemResult[`error`] = clientErr.Error()
-	// 				tableLine = fmt.Sprintf(
-	// 					"| %s | %s | %s | %s |",
-	// 					escapeMarkdownTableCell(itemName),
-	// 					escapeMarkdownTableCell(itemPath),
-	// 					escapeMarkdownTableCell(`N/A`),
-	// 					escapeMarkdownTableCell(`失败: `+cast.ToString(itemResult[`error`])),
-	// 				)
-	// 			} else if prepareErr := prepareGitOperationEnv(sshClient, itemPath); prepareErr != nil {
-	// 				// 复用统一预处理，避免分组查询单独实现认证方案。
-	// 				itemResult[`error`] = prepareErr.Error()
-	// 				tableLine = fmt.Sprintf(
-	// 					"| %s | %s | %s | %s |",
-	// 					escapeMarkdownTableCell(itemName),
-	// 					escapeMarkdownTableCell(itemPath),
-	// 					escapeMarkdownTableCell(`N/A`),
-	// 					escapeMarkdownTableCell(`失败: `+cast.ToString(itemResult[`error`])),
-	// 				)
-	// 			} else {
-	// 				branchInfo, queryErr := queryCurrentBranchInfo(sshClient, itemPath, 5*time.Second)
-	// 				if queryErr != nil {
-	// 					itemResult[`error`] = queryErr.Error()
-	// 					tableLine = fmt.Sprintf(
-	// 						"| %s | %s | %s | %s |",
-	// 						escapeMarkdownTableCell(itemName),
-	// 						escapeMarkdownTableCell(itemPath),
-	// 						escapeMarkdownTableCell(`N/A`),
-	// 						escapeMarkdownTableCell(`失败: `+cast.ToString(itemResult[`error`])),
-	// 					)
-	// 				} else {
-	// 					usageInfo := queryBranchUsageInfo(sshClient, itemPath, branchInfo, 8*time.Second)
-	// 					itemResult[`local_branch`] = branchInfo.LocalBranch
-	// 					itemResult[`remote_branch`] = branchInfo.RemoteBranch
-	// 					itemResult[`usage_status`] = usageInfo.UsageDisplay
-	// 					itemResult[`usage_owners`] = usageInfo.Owners
-	// 					itemResult[`ok`] = true
-	// 					tableLine = fmt.Sprintf(
-	// 						"| %s | %s | %s | %s |",
-	// 						escapeMarkdownTableCell(itemName),
-	// 						escapeMarkdownTableCell(itemPath),
-	// 						escapeMarkdownTableCell(branchInfo.LocalBranch),
-	// 						escapeMarkdownTableCell(branchInfo.RemoteBranch),
-	// 					)
-	// 				}
-	// 			}
-	// 		}
-	// 	}
-
-	// 	tableLine = appendMarkdownTableUsageCell(tableLine, cast.ToString(itemResult[`usage_status`]))
-	// 	writeSummary(tableLine + "\n")
-
-	// 	resultList = append(resultList, itemResult)
-	// 	summaryLines = append(summaryLines, tableLine)
-	// }
-	// summaryText := strings.Join(summaryLines, "\n")
-	// gsgin.GinResponseSuccess(c, ``, map[string]any{
-	// 	`git_group_id`:  gitGroupId,
-	// 	`group_name`:    cast.ToString(groupInfo[`name`]),
-	// 	`list`:          resultList,
-	// 	`summary_lines`: summaryLines,
-	// 	`summary_text`:  summaryText,
-	// })
-}
-
-// gitItemQueryResult querySingleGitItemBranchInfo 返回的复合结果
-type gitItemQueryResult struct {
-	ItemResult map[string]any // itemResult 完整字段
-	TableLine  string         // Markdown 表格行（含 usage 列）
-}
-
-// querySingleGitItemBranchInfo 查询单个 Git 项目的分支明细（供 gstask 并发调用）。
-// 通过连接池获取/释放 SSH 客户端，内部处理所有错误情况，始终返回非 nil Result。
-func querySingleGitItemBranchInfo(item map[string]any, sshConfig map[string]any, gitGroupId string, pool *sshConnectionPool) *gstask.Result {
-	itemName := cast.ToString(item[`name`])
-	itemPath := cast.ToString(item[`code_path`])
-	sshId := cast.ToString(item[`ssh_id`])
-
-	gstool.FmtPrintlnLogTime(`开始查询 %s %s`, item[`code_path`])
-
-	baseResult := &gitItemQueryResult{
-		ItemResult: map[string]any{
-			`id`:            cast.ToString(item[`id`]),
-			`name`:          itemName,
-			`code_path`:     itemPath,
-			`ssh_id`:        sshId,
-			`local_branch`:  `N/A`,
-			`remote_branch`: `N/A`,
-			`usage_status`:  `N/A`,
-			`usage_owners`:  []string{},
-			`ok`:            false,
-			`error`:         ``,
-		},
-	}
-
-	if itemPath == `` || sshId == `` {
-		baseResult.ItemResult[`error`] = `缺少 code_path 或 ssh_id 配置`
-		baseResult.TableLine = buildErrorTableLine(itemName, itemPath, baseResult.ItemResult)
-		return &gstask.Result{Result: baseResult, Err: nil}
-	}
-
-	if sshConfig == nil || len(sshConfig) == 0 {
-		baseResult.ItemResult[`error`] = `SSH配置不存在`
-		baseResult.TableLine = buildErrorTableLine(itemName, itemPath, baseResult.ItemResult)
-		return &gstask.Result{Result: baseResult, Err: nil}
-	}
-
-	uniqueKey := p_common.TBaseClient.GetCombineKey(
-		sshId,
-		`group_branch_`+gitGroupId+`_`+cast.ToString(item[`id`])+`_`+cast.ToString(time.Now().UnixNano()),
-	)
-	silentSse := &p_sse.SseShell{}
-
-	var slotIdx = -1
-	sshClient, clientErr := pool.Acquire(sshConfig, uniqueKey, silentSse)
-	if clientErr == nil {
-		slotIdx = acquireSlotIndex(pool, uniqueKey)
-		defer func() {
-			if slotIdx >= 0 {
-				pool.Release(slotIdx)
-			}
-		}()
-	}
-
-	if clientErr != nil {
-		baseResult.ItemResult[`error`] = clientErr.Error()
-		baseResult.TableLine = buildErrorTableLine(itemName, itemPath, baseResult.ItemResult)
-		return &gstask.Result{Result: baseResult, Err: nil}
-	}
-
-	if prepareErr := prepareGitOperationEnv(sshClient, itemPath); prepareErr != nil {
-		baseResult.ItemResult[`error`] = prepareErr.Error()
-		baseResult.TableLine = buildErrorTableLine(itemName, itemPath, baseResult.ItemResult)
-		return &gstask.Result{Result: baseResult, Err: nil}
-	}
-
-	branchInfo, queryErr := queryCurrentBranchInfo(sshClient, itemPath, 5*time.Second)
-	if queryErr != nil {
-		baseResult.ItemResult[`error`] = queryErr.Error()
-		baseResult.TableLine = buildErrorTableLine(itemName, itemPath, baseResult.ItemResult)
-		return &gstask.Result{Result: baseResult, Err: nil}
-	}
-
-	usageInfo := queryBranchUsageInfo(sshClient, itemPath, branchInfo, 8*time.Second)
-	baseResult.ItemResult[`local_branch`] = branchInfo.LocalBranch
-	baseResult.ItemResult[`remote_branch`] = branchInfo.RemoteBranch
-	baseResult.ItemResult[`usage_status`] = usageInfo.UsageDisplay
-	baseResult.ItemResult[`usage_owners`] = usageInfo.Owners
-	baseResult.ItemResult[`ok`] = true
-
-	baseResult.TableLine = fmt.Sprintf(
-		"| %s | %s | %s | %s |",
-		escapeMarkdownTableCell(itemName),
-		escapeMarkdownTableCell(itemPath),
-		escapeMarkdownTableCell(branchInfo.LocalBranch),
-		escapeMarkdownTableCell(branchInfo.RemoteBranch),
-	)
-	baseResult.TableLine = appendMarkdownTableUsageCell(baseResult.TableLine, cast.ToString(baseResult.ItemResult[`usage_status`]))
-
-	return &gstask.Result{Result: baseResult, Err: nil}
-}
-
-// buildErrorTableLine 构建错误状态的 Markdown 表格行。
-func buildErrorTableLine(itemName, itemPath string, itemResult map[string]any) string {
-	line := fmt.Sprintf(
-		"| %s | %s | %s | %s |",
-		escapeMarkdownTableCell(itemName),
-		escapeMarkdownTableCell(itemPath),
-		escapeMarkdownTableCell(`N/A`),
-		escapeMarkdownTableCell(`失败: `+cast.ToString(itemResult[`error`])),
-	)
-	return appendMarkdownTableUsageCell(line, cast.ToString(itemResult[`usage_status`]))
-}
-
-// acquireSlotIndex 根据 shellClientId 查找当前占用的槽位索引。
-func acquireSlotIndex(pool *sshConnectionPool, shellClientId string) int {
-	for i := range pool.slots {
-		if pool.slots[i].inUse && pool.slots[i].shellClientId == shellClientId {
-			return i
-		}
-	}
-	return -1
 }
 
 type GitCurrentBranchInfo struct {
@@ -930,166 +727,6 @@ func getGitOperationTimeout(operation string) time.Duration {
 	}
 }
 
-// queryCurrentBranchInfo 合并本地+远程分支查询为单次SSH命令，减少网络往返
-func queryCurrentBranchInfo(sshClient *gsssh.SshTerminal, codePath string, timeout time.Duration) (*GitCurrentBranchInfo, error) {
-	const branchSep = `__DT_BRANCH_SEP__`
-	combinedCmd := p_shell.NewCommand()
-	combinedCmd.Cd(codePath)
-	combinedCmd.Echo(`__DT_LOCAL_BRANCH_BEGIN__`)
-	combinedCmd.GitShowBranch()
-	combinedCmd.Echo(`__DT_LOCAL_BRANCH_END__`)
-	combinedCmd.Echo(`__DT_REMOTE_BRANCH_BEGIN__`)
-	combinedCmd.GitShowOriginBranch()
-	combinedCmd.Echo(`__DT_REMOTE_BRANCH_END__`)
-
-	combinedOutput, err := sshClient.RunCommandWait(combinedCmd.GetCommand().ToStr(), timeout)
-	if err != nil {
-		return nil, err
-	}
-	return parseCurrentBranchInfoFromCombinedOutput(combinedOutput), nil
-
-	lines := strings.Split(combinedOutput, "\n")
-	gstool.FmtPrintlnLogTime(`合并查询结果：%s`, gstool.JsonEncode(lines))
-
-	// 定位分隔符行（跳过首行命令回显）
-	sepIdx := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(p_common.TBaseClient.FilterTerminalChars(lines[i])) == branchSep {
-			sepIdx = i
-			break
-		}
-	}
-
-	// 解析本地分支：命令回显之后、分隔符之前的第一行
-	localBranch := ``
-	if sepIdx > 1 {
-		candidate := strings.TrimSpace(p_common.TBaseClient.FilterTerminalChars(lines[1]))
-		// 过滤掉终端提示符等噪声，避免把控制串当成本地分支
-		if !isBranchParseNoise(candidate) {
-			localBranch = candidate
-		}
-	} else if len(lines) > 1 {
-		candidate := strings.TrimSpace(p_common.TBaseClient.FilterTerminalChars(lines[1]))
-		// 过滤掉终端提示符等噪声，避免把控制串当成本地分支
-		if !isBranchParseNoise(candidate) {
-			localBranch = candidate
-		}
-	}
-
-	// 解析远程分支：分隔符之后第一个非空行
-	remoteBranch := ``
-	if sepIdx >= 0 {
-		for i := sepIdx + 1; i < len(lines); i++ {
-			cleaned := strings.TrimSpace(p_common.TBaseClient.FilterTerminalChars(lines[i]))
-			// 仅接受合法的远程分支行（如 "<sha>\trefs/heads/xxx"），
-			// 终端提示符/控制串等噪声直接跳过
-			if cleaned == `` || isBranchParseNoise(cleaned) || !isLikelyRemoteBranch(cleaned) {
-				continue
-			}
-			if cleaned != `` {
-				remoteBranch = cleaned
-				break
-			}
-		}
-	}
-
-	return &GitCurrentBranchInfo{
-		LocalBranch:  localBranch,
-		RemoteBranch: remoteBranch,
-		RawOutput:    buildCurrentBranchDisplayOutput(localBranch, remoteBranch),
-	}, nil
-}
-
-// parseCurrentBranchInfoFromCombinedOutput 解析组内批量查询使用的合并命令输出。
-// 这里统一复用带 begin/end 标记的分支解析逻辑，避免依赖脆弱的固定行号。
-func parseCurrentBranchInfoFromCombinedOutput(output string) *GitCurrentBranchInfo {
-	localBranch, remoteBranch := parseBranchFromCurrentBranchOutput(output)
-	return &GitCurrentBranchInfo{
-		LocalBranch:  localBranch,
-		RemoteBranch: remoteBranch,
-		RawOutput:    buildCurrentBranchDisplayOutput(localBranch, remoteBranch),
-	}
-}
-
-func runRemoteBranchQuery(sshClient *gsssh.SshTerminal, codePath string, timeout time.Duration) (string, error) {
-	remoteCommand := p_shell.NewCommand()
-	remoteCommand.Cd(codePath)
-	remoteCommand.Echo(`远程分支：`)
-	remoteCommand.GitShowOriginBranch()
-	return sshClient.RunCommandWait(remoteCommand.GetCommand().ToStr(), timeout)
-}
-
-func parseBranchFromCurrentBranchOutput(output string) (string, string) {
-	text := p_common.TBaseClient.FilterTerminalChars(output)
-	lines := strings.Split(text, "\n")
-	localBranch := ``
-	remoteBranch := ``
-	localBegin := false
-	localEnd := false
-	remoteBegin := false
-	remoteEnd := false
-
-	findNextValue := func(start int) string {
-		for i := start; i < len(lines); i++ {
-			line := strings.TrimSpace(lines[i])
-			if line == `` {
-				continue
-			}
-			if isBranchParseNoise(line) {
-				continue
-			}
-			if strings.Contains(line, `当前分支：`) || strings.Contains(line, `远程分支：`) {
-				continue
-			}
-			return line
-		}
-		return ``
-	}
-
-	for idx, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.Contains(trimmed, `__DT_LOCAL_BRANCH_BEGIN__`) {
-			localBegin = true
-			continue
-		}
-		if strings.Contains(trimmed, `__DT_LOCAL_BRANCH_END__`) {
-			localEnd = true
-			continue
-		}
-		if strings.Contains(trimmed, `__DT_REMOTE_BRANCH_BEGIN__`) {
-			remoteBegin = true
-			continue
-		}
-		if strings.Contains(trimmed, `__DT_REMOTE_BRANCH_END__`) {
-			remoteEnd = true
-			continue
-		}
-
-		if localBegin && !localEnd && localBranch == `` {
-			if isLikelyLocalBranch(trimmed) {
-				localBranch = trimmed
-				continue
-			}
-		}
-		if remoteBegin && !remoteEnd && remoteBranch == `` {
-			if isLikelyRemoteBranch(trimmed) {
-				remoteBranch = trimmed
-				continue
-			}
-		}
-
-		if strings.Contains(trimmed, `当前分支：`) && localBranch == `` {
-			localBranch = findNextValue(idx + 1)
-			continue
-		}
-		if strings.Contains(trimmed, `远程分支：`) && remoteBranch == `` {
-			remoteBranch = findNextValue(idx + 1)
-			continue
-		}
-	}
-	return localBranch, remoteBranch
-}
-
 func isBranchParseNoise(line string) bool {
 	if line == `` {
 		return true
@@ -1114,26 +751,6 @@ func isLikelyShellPrompt(line string) bool {
 		return false
 	}
 	return true
-}
-
-func isLikelyLocalBranch(line string) bool {
-	if isBranchParseNoise(line) {
-		return false
-	}
-	if strings.Contains(line, " ") || strings.Contains(line, "\t") {
-		return false
-	}
-	return true
-}
-
-func isLikelyRemoteBranch(line string) bool {
-	if isBranchParseNoise(line) {
-		return false
-	}
-	if strings.Contains(line, `refs/heads/`) {
-		return true
-	}
-	return false
 }
 
 // parseAllRemoteBranches 解析 git ls-remote --heads origin 输出
@@ -1208,214 +825,6 @@ func escapeMarkdownTableCell(value string) string {
 		return " "
 	}
 	return v
-}
-
-func normalizeRemoteBranchDisplay(value string) string {
-	v := strings.TrimSpace(value)
-	if v == "" || v == "N/A" {
-		return "N/A"
-	}
-	if strings.HasPrefix(v, "refs/heads/") {
-		return strings.TrimPrefix(v, "refs/heads/")
-	}
-	fields := strings.Fields(v)
-	if len(fields) >= 2 {
-		last := fields[len(fields)-1]
-		if strings.HasPrefix(last, "refs/heads/") {
-			return strings.TrimPrefix(last, "refs/heads/")
-		}
-		return last
-	}
-	return v
-}
-
-// queryBranchUsageInfo 先检查远程分支，再回退到最近 2 小时工作区文件属主。
-// queryBranchUsageInfo checks remote branch first, then falls back to recent workspace owners within 2 hours.
-func queryBranchUsageInfo(sshClient *gsssh.SshTerminal, codePath string, branchInfo *GitCurrentBranchInfo, timeout time.Duration) GitBranchUsageInfo {
-	// 关键判断 / Key decision: 本地分支不存在时，直接视为无人使用并返回统一占位符。
-	if strings.TrimSpace(branchInfo.LocalBranch) == "" {
-		return GitBranchUsageInfo{
-			UsageDisplay: gitBranchUsageNoneDisplay,
-			Owners:       []string{},
-		}
-	}
-
-	remoteBranch := normalizeRemoteBranchDisplay(branchInfo.RemoteBranch)
-	// 关键判断 / Key decision: 只要存在远程分支，就直接标记为“有人使用”。
-	if remoteBranch != "" && remoteBranch != "N/A" {
-		return GitBranchUsageInfo{
-			UsageDisplay: gitBranchUsageUsedDisplay,
-			Owners:       []string{},
-		}
-	}
-
-	owners, err := queryRecentWorkspaceOwners(sshClient, codePath, timeout)
-	if err != nil {
-		return GitBranchUsageInfo{
-			UsageDisplay: gitBranchUsageNoneDisplay,
-			Owners:       []string{},
-		}
-	}
-	return GitBranchUsageInfo{
-		UsageDisplay: buildBranchUsageDisplay(branchInfo.LocalBranch, remoteBranch, owners...),
-		Owners:       owners,
-	}
-}
-
-// queryRecentWorkspaceOwners 查询 git status 变更文件中最近 2 小时有改动的文件属主。
-// queryRecentWorkspaceOwners returns owners of changed files touched within the last 2 hours.
-func queryRecentWorkspaceOwners(sshClient *gsssh.SshTerminal, codePath string, timeout time.Duration) ([]string, error) {
-	statusCommand := p_shell.NewCommand()
-	statusCommand.Cd(codePath)
-	statusCommand.SetCommand(`git status --porcelain --untracked-files=all`)
-	statusOutput, err := sshClient.RunCommandWait(statusCommand.GetCommand().ToStr(), timeout)
-	if err != nil {
-		return nil, err
-	}
-
-	fileList := parseGitStatusEntries(statusOutput)
-	if len(fileList) == 0 {
-		return []string{}, nil
-	}
-
-	statCommand := p_shell.NewCommand()
-	statCommand.Cd(codePath)
-	statCommand.SetCommand(buildStatOwnersCommand(fileList))
-	statOutput, err := sshClient.RunCommandWait(statCommand.GetCommand().ToStr(), timeout)
-	if err != nil {
-		return nil, err
-	}
-	return parseRecentUsageOwners(statOutput, time.Now(), 2*time.Hour), nil
-}
-
-// parseGitStatusEntries 解析 git status --porcelain 的变更文件路径。
-// parseGitStatusEntries extracts changed file paths from git status --porcelain output.
-func parseGitStatusEntries(output string) []string {
-	lines := strings.Split(p_common.TBaseClient.FilterTerminalChars(output), "\n")
-	seen := make(map[string]struct{})
-	result := make([]string, 0, len(lines))
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || len(line) < 4 {
-			continue
-		}
-		pathPart := strings.TrimSpace(line[3:])
-		if pathPart == "" {
-			continue
-		}
-		// 重命名场景 / Rename case: 使用新路径判断最近活跃状态。
-		if strings.Contains(pathPart, " -> ") {
-			parts := strings.Split(pathPart, " -> ")
-			pathPart = strings.TrimSpace(parts[len(parts)-1])
-		}
-		pathPart = strings.Trim(pathPart, `"`)
-		if pathPart == "" {
-			continue
-		}
-		if _, exist := seen[pathPart]; exist {
-			continue
-		}
-		seen[pathPart] = struct{}{}
-		result = append(result, pathPart)
-	}
-	return result
-}
-
-// buildStatOwnersCommand 构造批量查询属主和 mtime 的 shell 命令。
-// buildStatOwnersCommand builds a shell command for querying owner and mtime in batch.
-func buildStatOwnersCommand(fileList []string) string {
-	commandList := make([]string, 0, len(fileList))
-	for _, filePath := range fileList {
-		quotedPath := quoteShellArg(filePath)
-		commandList = append(commandList, fmt.Sprintf(`[ -e %s ] && stat -c '%%U|%%Y|%%n' -- %s`, quotedPath, quotedPath))
-	}
-	return strings.Join(commandList, " ; ")
-}
-
-// parseRecentUsageOwners 过滤最近时间窗口内修改文件的属主。
-// parseRecentUsageOwners filters owners whose files were modified within the recent time window.
-func parseRecentUsageOwners(output string, now time.Time, recentWindow time.Duration) []string {
-	lines := strings.Split(p_common.TBaseClient.FilterTerminalChars(output), "\n")
-	ownerSet := make(map[string]struct{})
-	ownerList := make([]string, 0, len(lines))
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		parts := strings.SplitN(trimmed, "|", 3)
-		if len(parts) < 3 {
-			continue
-		}
-		owner := strings.TrimSpace(parts[0])
-		unixTS, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
-		if err != nil || owner == "" {
-			continue
-		}
-		modifiedAt := time.Unix(unixTS, 0)
-		// 关键判断 / Key decision: 仅保留最近 2 小时内的文件属主。
-		if now.Sub(modifiedAt) > recentWindow {
-			continue
-		}
-		if _, exist := ownerSet[owner]; exist {
-			continue
-		}
-		ownerSet[owner] = struct{}{}
-		ownerList = append(ownerList, owner)
-	}
-	sort.Strings(ownerList)
-	return ownerList
-}
-
-// buildBranchUsageDisplay 生成“是否有人使用”列的显示内容。
-// buildBranchUsageDisplay builds the display text for the usage column.
-func buildBranchUsageDisplay(localBranch, remoteBranch string, owners ...string) string {
-	// 关键判断 / Key decision: 没有本地分支时，统一展示为 "-"。
-	if strings.TrimSpace(localBranch) == "" {
-		return gitBranchUsageNoneDisplay
-	}
-	if normalized := normalizeRemoteBranchDisplay(remoteBranch); normalized != "" && normalized != "N/A" {
-		return gitBranchUsageUsedDisplay
-	}
-	if len(owners) > 0 {
-		return strings.Join(owners, ", ")
-	}
-	return gitBranchUsageNoneDisplay
-}
-
-// appendMarkdownTableUsageCell 为现有 Markdown 表格行追加“是否有人使用”列。
-// appendMarkdownTableUsageCell appends the usage column to an existing Markdown table row.
-func appendMarkdownTableUsageCell(line, usage string) string {
-	trimmedLine := strings.TrimRight(line, " ")
-	if strings.HasSuffix(trimmedLine, "|") {
-		trimmedLine = strings.TrimSuffix(trimmedLine, "|")
-	}
-	return trimmedLine + " | " + escapeMarkdownTableCell(usage) + " |"
-}
-
-// quoteShellArg 使用单引号安全转义 shell 参数。
-// quoteShellArg safely escapes a shell argument using single quotes.
-func quoteShellArg(value string) string {
-	return `'` + strings.ReplaceAll(value, `'`, `'"'"'`) + `'`
-}
-
-// buildCurrentBranchDisplayOutput 组装“当前分支”接口的展示输出。
-// buildCurrentBranchDisplayOutput builds display output for the current branch API.
-func buildCurrentBranchDisplayOutput(localBranch, remoteBranch string) string {
-	local := strings.TrimSpace(localBranch)
-	remote := strings.TrimSpace(remoteBranch)
-	if local == `` {
-		local = `N/A`
-	}
-	if remote == `` {
-		remote = `N/A`
-	}
-	return strings.Join([]string{
-		`当前分支：`,
-		local,
-		`远程分支：`,
-		remote,
-	}, "\n")
 }
 
 func CreateMerge(c *gin.Context) {

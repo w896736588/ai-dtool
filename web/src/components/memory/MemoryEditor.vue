@@ -6,8 +6,10 @@
           <div class="editor-body-toolbar-top">
             <div class="editor-body-toolbar-left">
               <el-input
+                ref="titleInput"
                 v-model="draftFragment.title"
                 class="title-input editor-toolbar-title-input"
+                :class="{ 'title-input--search-hit': titleSearchMatchCount > 0 }"
                 :placeholder="titlePlaceholderText"
                 @input="handleFormChange"
               />
@@ -122,19 +124,82 @@
               <span class="editor-save-time">{{ lastSaveLabelText }}{{ draftFragment.update_time_desc || emptyTimeText }}</span>
             </div>
           </div>
+          <div class="editor-search-row">
+            <div class="editor-search-main">
+              <el-input
+                v-model="searchQuery"
+                class="editor-search-input"
+                clearable
+                :placeholder="detailSearchPlaceholderText"
+                @input="handleSearchInput"
+                @keydown.enter.prevent="jumpToSearchMatch(1)"
+                @keydown.shift.enter.prevent="jumpToSearchMatch(-1)"
+                @keydown.esc.prevent="clearDetailSearch"
+                @clear="clearDetailSearch"
+              />
+              <span class="editor-search-summary">
+                {{ searchSummaryText }}
+              </span>
+            </div>
+            <div class="editor-search-actions">
+              <GitActionButton
+                variant="info"
+                :disabled="!hasSearchMatches"
+                @click="jumpToSearchMatch(-1)"
+              >
+                上一个
+              </GitActionButton>
+              <GitActionButton
+                variant="info"
+                :disabled="!hasSearchMatches"
+                @click="jumpToSearchMatch(1)"
+              >
+                下一个
+              </GitActionButton>
+              <GitActionButton
+                variant="info"
+                :disabled="!searchQuery"
+                @click="clearDetailSearch"
+              >
+                清空
+              </GitActionButton>
+            </div>
+          </div>
         </div>
       </div>
 
       <div v-if="contentEditMode" class="editor-body-content">
-        <div class="editor-scroll-shell">
-          <MdEditor
-            v-model="draftFragment.content"
-            preview-theme="github"
-            :toolbars="toolbars"
-            :style="editorContentStyle"
-            @onChange="handleFormChange"
-            @onBlur="handleFormChange"
-          />
+        <div class="editor-edit-layout" :class="{ 'editor-edit-layout--with-outline': hasOutline }">
+          <div ref="editorScrollShell" class="editor-scroll-shell">
+            <MdEditor
+              ref="editorRef"
+              v-model="draftFragment.content"
+              preview-theme="github"
+              :toolbars="toolbars"
+              :style="editorContentStyle"
+              @onChange="handleFormChange"
+              @onBlur="handleFormChange"
+            />
+          </div>
+          <aside v-if="hasOutline" class="preview-outline">
+            <div class="preview-outline-card">
+              <div class="preview-outline-title">目录</div>
+              <button
+                v-for="item in outlineItems"
+                :key="item.slug"
+                type="button"
+                class="preview-outline-item"
+                :class="{
+                  active: activeOutlineSlug === item.slug,
+                  'preview-outline-item--child': item.level > 1,
+                  'preview-outline-item--grandchild': item.level > 2,
+                }"
+                @click="scrollToOutline(item.slug)"
+              >
+                {{ item.text }}
+              </button>
+            </div>
+          </aside>
         </div>
       </div>
       <div v-else class="preview-body" :class="{ 'preview-body--with-outline': hasOutline }">
@@ -220,6 +285,11 @@ import DiffMarkdown from '@/components/base/diff_markwodn.vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
 const { buildMarkdownOutline } = require('@/utils/markdown_outline.cjs')
+const {
+  buildMemoryDetailSearchMatches,
+  getNextMemoryDetailMatchIndex,
+  normalizeActiveMatchIndex,
+} = require('@/utils/memory_detail_search.cjs')
 
 // STATUS_TAG_WARNING_TYPE 统一未保存状态标签类型，避免模板中散落硬编码。
 const STATUS_TAG_WARNING_TYPE = 'warning'
@@ -283,6 +353,12 @@ const TAG_SUGGESTION_VISIBLE_LIMIT = 12
 const TAG_SEPARATOR_PATTERN = /[，,]/
 // FULL_WIDTH_COMMA_KEY 统一定义全角逗号按键值，避免键盘判断散落硬编码。
 const FULL_WIDTH_COMMA_KEY = '，'
+// DETAIL_SEARCH_PLACEHOLDER_TEXT 统一定义详情内搜索输入框占位文案。
+const DETAIL_SEARCH_PLACEHOLDER_TEXT = '搜索标题和正文，Enter 下一个，Shift+Enter 上一个'
+// SEARCH_EMPTY_SUMMARY_TEXT 无关键字时的搜索提示。
+const SEARCH_EMPTY_SUMMARY_TEXT = '搜索范围：标题和正文'
+// SEARCH_NO_RESULT_TEXT 无匹配时的提示文案。
+const SEARCH_NO_RESULT_TEXT = '0 项匹配'
 
 export default {
   name: 'MemoryEditor',
@@ -341,6 +417,9 @@ export default {
       toolbarActionHistoryCommand: TOOLBAR_ACTION_HISTORY_COMMAND,
       toolbarActionDeleteCommand: TOOLBAR_ACTION_DELETE_COMMAND,
       moreActionsText: MORE_ACTIONS_TEXT,
+      detailSearchPlaceholderText: DETAIL_SEARCH_PLACEHOLDER_TEXT,
+      searchQuery: '',
+      currentSearchMatchIndex: -1,
       organizeResult: {
         content: '',
         model: '',
@@ -350,6 +429,7 @@ export default {
       tagInputFocused: false,
       highlightedTagIndex: 0,
       activeOutlineSlug: '',
+      editorScrollElement: null,
       draftFragment: {
         id: 0,
         title: '',
@@ -376,6 +456,9 @@ export default {
       ],
     }
   },
+  beforeUnmount() {
+    this.detachEditorScrollListener()
+  },
   watch: {
     // fragment.id 变化时重置本地草稿，避免旧数据残留。
     'fragment.id': {
@@ -398,6 +481,10 @@ export default {
     // contentEditMode 切回查看模式时重新同步目录锚点与高亮。
     contentEditMode() {
       this.schedulePreviewOutlineRefresh()
+    },
+    // searchMatches 变化后同步当前命中项索引与高亮。
+    searchMatches() {
+      this.syncSearchMatchState()
     },
   },
   computed: {
@@ -454,6 +541,39 @@ export default {
     hasOutline() {
       return this.outlineItems.length > 0
     },
+    // searchMatches 返回标题和正文的全部匹配项。
+    searchMatches() {
+      return buildMemoryDetailSearchMatches(
+        this.draftFragment.title,
+        this.draftFragment.content,
+        this.searchQuery
+      )
+    },
+    // hasSearchMatches 判断当前是否存在匹配项。
+    hasSearchMatches() {
+      return this.searchMatches.length > 0
+    },
+    // activeSearchMatch 返回当前激活的匹配项。
+    activeSearchMatch() {
+      if (!this.hasSearchMatches) {
+        return null
+      }
+      return this.searchMatches[normalizeActiveMatchIndex(this.searchMatches, this.currentSearchMatchIndex)]
+    },
+    // titleSearchMatchCount 返回标题命中数量，便于给标题输入框提供视觉提示。
+    titleSearchMatchCount() {
+      return this.searchMatches.filter(item => item.field === 'title').length
+    },
+    // searchSummaryText 显示当前命中位置与总数。
+    searchSummaryText() {
+      if (!String(this.searchQuery || '').trim()) {
+        return SEARCH_EMPTY_SUMMARY_TEXT
+      }
+      if (!this.hasSearchMatches) {
+        return SEARCH_NO_RESULT_TEXT
+      }
+      return `${normalizeActiveMatchIndex(this.searchMatches, this.currentSearchMatchIndex) + 1} / ${this.searchMatches.length}`
+    },
     // editorContentStyle 统一让 Markdown 编辑器撑满弹性容器。
     editorContentStyle() {
       return {
@@ -472,6 +592,7 @@ export default {
     },
     // resetDraft 根据当前 props 重置本地草稿。
     resetDraft(preserveEditMode) {
+      this.detachEditorScrollListener()
       this.contentEditMode = preserveEditMode ? this.contentEditMode : false
       this.organizeDialogVisible = false
       this.activeOutlineSlug = ''
@@ -481,6 +602,8 @@ export default {
         model: '',
         prompt: '',
       }
+      this.searchQuery = ''
+      this.currentSearchMatchIndex = -1
       this.draftFragment = {
         id: this.fragment.id,
         title: this.fragment.title || '',
@@ -502,19 +625,268 @@ export default {
     },
     // schedulePreviewOutlineRefresh 在预览 DOM 更新后重建标题锚点。
     schedulePreviewOutlineRefresh() {
-      if (this.contentEditMode) {
-        return
-      }
       this.$nextTick(() => {
         window.setTimeout(() => {
+          if (this.contentEditMode) {
+            this.attachEditorScrollListener()
+            this.syncActiveOutlineByEditorScroll()
+            return
+          }
           this.decoratePreviewHeadings()
+          this.decoratePreviewSearchMatches()
           this.syncActiveOutlineByScroll()
         }, 0)
       })
     },
+    // handleSearchInput 在输入关键字时切到第一项匹配并刷新高亮。
+    handleSearchInput() {
+      this.currentSearchMatchIndex = this.hasSearchMatches ? 0 : -1
+      this.$nextTick(() => {
+        this.applyActiveSearchMatch(true)
+      })
+    },
+    // syncSearchMatchState 在片段内容或关键字变化后矫正当前命中索引。
+    syncSearchMatchState() {
+      this.currentSearchMatchIndex = normalizeActiveMatchIndex(this.searchMatches, this.currentSearchMatchIndex)
+      this.$nextTick(() => {
+        this.applyActiveSearchMatch(false)
+      })
+    },
+    // clearDetailSearch 清空详情内搜索状态。
+    clearDetailSearch() {
+      this.searchQuery = ''
+      this.currentSearchMatchIndex = -1
+      this.$nextTick(() => {
+        this.clearPreviewSearchMarks()
+      })
+    },
+    // jumpToSearchMatch 切换到上一项或下一项搜索结果。
+    jumpToSearchMatch(step) {
+      if (!this.hasSearchMatches) {
+        return
+      }
+      this.currentSearchMatchIndex = getNextMemoryDetailMatchIndex(
+        this.searchMatches,
+        this.currentSearchMatchIndex,
+        step
+      )
+      this.$nextTick(() => {
+        this.applyActiveSearchMatch(true)
+      })
+    },
+    // applyActiveSearchMatch 把当前命中同步到标题输入框或正文预览区。
+    applyActiveSearchMatch(shouldScroll) {
+      if (!String(this.searchQuery || '').trim()) {
+        this.clearPreviewSearchMarks()
+        return
+      }
+      if (!this.contentEditMode) {
+        this.decoratePreviewSearchMatches()
+      }
+      if (!this.activeSearchMatch) {
+        return
+      }
+      if (this.activeSearchMatch.field === 'title') {
+        this.focusTitleSearchMatch()
+        return
+      }
+      if (!this.contentEditMode) {
+        this.scrollToActiveSearchMark(shouldScroll)
+      }
+    },
+    // clearPreviewSearchMarks 移除预览区内已有的搜索高亮。
+    clearPreviewSearchMarks() {
+      const previewBody = this.$refs.previewBody
+      if (!previewBody) {
+        return
+      }
+      const markList = previewBody.querySelectorAll('mark.memory-search-mark')
+      markList.forEach((mark) => {
+        const parent = mark.parentNode
+        if (!parent) {
+          return
+        }
+        parent.replaceChild(document.createTextNode(mark.textContent || ''), mark)
+        parent.normalize()
+      })
+    },
+    // decoratePreviewSearchMatches 给预览区正文添加关键词高亮。
+    decoratePreviewSearchMatches() {
+      const previewBody = this.$refs.previewBody
+      if (!previewBody) {
+        return
+      }
+      this.clearPreviewSearchMarks()
+      const normalizedQuery = String(this.searchQuery || '').trim()
+      if (!normalizedQuery) {
+        return
+      }
+      const previewRoot = previewBody.querySelector('.md-editor-preview')
+      if (!previewRoot) {
+        return
+      }
+      const lowerQuery = normalizedQuery.toLocaleLowerCase()
+      const walker = document.createTreeWalker(previewRoot, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          const parentTagName = node.parentElement ? node.parentElement.tagName : ''
+          if (!node.nodeValue || !node.nodeValue.trim()) {
+            return NodeFilter.FILTER_REJECT
+          }
+          if (parentTagName === 'SCRIPT' || parentTagName === 'STYLE' || parentTagName === 'MARK') {
+            return NodeFilter.FILTER_REJECT
+          }
+          return NodeFilter.FILTER_ACCEPT
+        },
+      })
+      const textNodeList = []
+      while (walker.nextNode()) {
+        textNodeList.push(walker.currentNode)
+      }
+      textNodeList.forEach((textNode) => {
+        const originalText = textNode.nodeValue || ''
+        const lowerText = originalText.toLocaleLowerCase()
+        let fromIndex = 0
+        let matchIndex = lowerText.indexOf(lowerQuery, fromIndex)
+        if (matchIndex === -1) {
+          return
+        }
+        const fragment = document.createDocumentFragment()
+        while (matchIndex !== -1) {
+          if (matchIndex > fromIndex) {
+            fragment.appendChild(document.createTextNode(originalText.slice(fromIndex, matchIndex)))
+          }
+          const mark = document.createElement('mark')
+          mark.className = 'memory-search-mark'
+          mark.textContent = originalText.slice(matchIndex, matchIndex + normalizedQuery.length)
+          fragment.appendChild(mark)
+          fromIndex = matchIndex + normalizedQuery.length
+          matchIndex = lowerText.indexOf(lowerQuery, fromIndex)
+        }
+        if (fromIndex < originalText.length) {
+          fragment.appendChild(document.createTextNode(originalText.slice(fromIndex)))
+        }
+        if (textNode.parentNode) {
+          textNode.parentNode.replaceChild(fragment, textNode)
+        }
+      })
+      this.syncActivePreviewSearchMark()
+    },
+    // syncActivePreviewSearchMark 高亮当前激活的正文命中项。
+    syncActivePreviewSearchMark() {
+      const previewBody = this.$refs.previewBody
+      if (!previewBody) {
+        return
+      }
+      const markList = Array.from(previewBody.querySelectorAll('mark.memory-search-mark'))
+      markList.forEach(mark => mark.classList.remove('memory-search-mark--active'))
+      if (!this.activeSearchMatch || this.activeSearchMatch.field !== 'content') {
+        return
+      }
+      const activeContentIndex = this.searchMatches
+        .slice(0, normalizeActiveMatchIndex(this.searchMatches, this.currentSearchMatchIndex) + 1)
+        .filter(item => item.field === 'content')
+        .length - 1
+      if (activeContentIndex < 0 || activeContentIndex >= markList.length) {
+        return
+      }
+      markList[activeContentIndex].classList.add('memory-search-mark--active')
+    },
+    // scrollToActiveSearchMark 把当前正文命中项滚动到可视区域。
+    scrollToActiveSearchMark(shouldScroll) {
+      const previewBody = this.$refs.previewBody
+      if (!previewBody) {
+        return
+      }
+      this.syncActivePreviewSearchMark()
+      if (!shouldScroll) {
+        return
+      }
+      const activeMark = previewBody.querySelector('mark.memory-search-mark--active')
+      if (!activeMark) {
+        return
+      }
+      previewBody.scrollTo({
+        top: Math.max(activeMark.offsetTop - 40, 0),
+        behavior: 'smooth',
+      })
+    },
+    // focusTitleSearchMatch 在当前命中位于标题时聚焦并选中标题输入框对应范围。
+    focusTitleSearchMatch() {
+      const titleInput = this.$refs.titleInput
+      const activeMatch = this.activeSearchMatch
+      if (!titleInput || !activeMatch || activeMatch.field !== 'title') {
+        return
+      }
+      if (typeof titleInput.focus === 'function') {
+        titleInput.focus()
+      }
+      const inputEl = titleInput.input
+      if (!inputEl || typeof inputEl.setSelectionRange !== 'function') {
+        return
+      }
+      inputEl.setSelectionRange(activeMatch.index, activeMatch.end)
+    },
     // buildOutlineHeadingDomId 返回渲染后标题使用的 DOM id。
     buildOutlineHeadingDomId(slug) {
       return `memory-fragment-heading-${slug}`
+    },
+    // getEditorView 返回 md-editor-v3 暴露的 CodeMirror EditorView。
+    getEditorView() {
+      const editorRef = this.$refs.editorRef
+      if (!editorRef || typeof editorRef.getEditorView !== 'function') {
+        return null
+      }
+      return editorRef.getEditorView()
+    },
+    // attachEditorScrollListener 在编辑模式下监听 CodeMirror 滚动容器，驱动目录高亮。
+    attachEditorScrollListener() {
+      const editorView = this.getEditorView()
+      const scrollElement = editorView && editorView.scrollDOM ? editorView.scrollDOM : null
+      if (!scrollElement) {
+        return
+      }
+      if (this.editorScrollElement === scrollElement) {
+        return
+      }
+      this.detachEditorScrollListener()
+      scrollElement.addEventListener('scroll', this.handleEditorScroll, { passive: true })
+      this.editorScrollElement = scrollElement
+    },
+    // detachEditorScrollListener 卸载旧的编辑器滚动监听，避免切换片段后重复绑定。
+    detachEditorScrollListener() {
+      if (!this.editorScrollElement) {
+        return
+      }
+      this.editorScrollElement.removeEventListener('scroll', this.handleEditorScroll)
+      this.editorScrollElement = null
+    },
+    // handleEditorScroll 在编辑模式滚动 textarea 时同步当前目录高亮。
+    handleEditorScroll() {
+      this.syncActiveOutlineByEditorScroll()
+    },
+    // scrollEditorToOutline 通过 EditorView 直接滚动到对应标题行。
+    scrollEditorToOutline(outlineItem) {
+      const editorView = this.getEditorView()
+      if (!editorView || !outlineItem) {
+        return
+      }
+      const lineNumber = Math.max(Number(outlineItem.lineNumber || 1), 1)
+      const targetLine = editorView.state.doc.line(Math.min(lineNumber, editorView.state.doc.lines))
+      const targetTop = editorView.lineBlockAt(targetLine.from).top
+      editorView.dispatch({
+        selection: { anchor: targetLine.from },
+        scrollIntoView: true,
+      })
+      if (editorView.scrollDOM && typeof editorView.scrollDOM.scrollTo === 'function') {
+        editorView.scrollDOM.scrollTo({
+          top: Math.max(targetTop - 12, 0),
+          behavior: 'smooth',
+        })
+      }
+      editorView.focus()
+      this.$nextTick(() => {
+        this.syncActiveOutlineByEditorScroll()
+      })
     },
     // decoratePreviewHeadings 给预览区标题写入稳定锚点，供目录点击跳转。
     decoratePreviewHeadings() {
@@ -534,6 +906,12 @@ export default {
     },
     // scrollToOutline 点击目录后滚动到对应标题位置。
     scrollToOutline(slug) {
+      const outlineItem = this.outlineItems.find(item => item.slug === slug)
+      if (this.contentEditMode) {
+        this.activeOutlineSlug = slug
+        this.scrollEditorToOutline(outlineItem)
+        return
+      }
       const previewBody = this.$refs.previewBody
       if (!previewBody) {
         return
@@ -574,6 +952,25 @@ export default {
         return currentHeading
       }, headingList[0])
       this.activeOutlineSlug = matchedHeading.dataset.outlineSlug || this.outlineItems[0].slug
+    },
+    // syncActiveOutlineByEditorScroll 根据编辑器滚动位置推导当前所在标题。
+    syncActiveOutlineByEditorScroll() {
+      const editorView = this.getEditorView()
+      if (!editorView || !editorView.scrollDOM || this.outlineItems.length === 0) {
+        if (this.contentEditMode) {
+          this.activeOutlineSlug = this.outlineItems[0] ? this.outlineItems[0].slug : ''
+        }
+        return
+      }
+      const topLineBlock = editorView.lineBlockAtHeight(editorView.scrollDOM.scrollTop)
+      const currentTopLine = editorView.state.doc.lineAt(topLineBlock.from).number
+      const matchedItem = this.outlineItems.reduce((currentItem, item) => {
+        if (Number(item.lineNumber || 0) <= currentTopLine + 1) {
+          return item
+        }
+        return currentItem
+      }, this.outlineItems[0])
+      this.activeOutlineSlug = matchedItem ? matchedItem.slug : ''
     },
     // handleToolbarActionCommand / 统一处理右侧下拉操作 / Dispatch commands from the toolbar dropdown.
     handleToolbarActionCommand(command) {
@@ -800,6 +1197,10 @@ export default {
   box-shadow: inset 0 0 0 1px rgba(205, 214, 198, 0.9);
 }
 
+.title-input--search-hit :deep(.el-input__wrapper) {
+  box-shadow: inset 0 0 0 1px rgba(230, 171, 46, 0.92);
+}
+
 .title-input :deep(.el-input__inner) {
   font-size: 18px;
   font-weight: 600;
@@ -968,6 +1369,49 @@ export default {
   width: 100%;
 }
 
+.editor-search-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.editor-search-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 420px;
+  flex-wrap: wrap;
+}
+
+.editor-search-input {
+  width: min(360px, 100%);
+}
+
+.editor-search-input :deep(.el-input__wrapper) {
+  min-height: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(211, 220, 204, 0.92);
+}
+
+.editor-search-summary {
+  color: #64715e;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.editor-search-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+
 .editor-title-meta-main {
   /* 中文注释：标签区负责吃掉剩余宽度，避免状态文案被长标签挤压。 */
   /* English comment: Let the tag area absorb remaining width so status text keeps its full label. */
@@ -1053,7 +1497,21 @@ export default {
   overflow: hidden;
 }
 
+.editor-edit-layout {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  gap: 18px;
+  padding: 18px 22px;
+  background: #fff;
+}
+
+.editor-edit-layout--with-outline {
+  align-items: stretch;
+}
+
 .editor-scroll-shell {
+  flex: 1;
   height: 100%;
   min-height: 0;
   overflow: auto;
@@ -1099,6 +1557,18 @@ export default {
 .preview-body :deep(.md-editor-preview) {
   font-size: 14px;
   color: #33422f;
+}
+
+.preview-body :deep(mark.memory-search-mark) {
+  padding: 0 2px;
+  border-radius: 4px;
+  background: #fff1a8;
+  color: inherit;
+}
+
+.preview-body :deep(mark.memory-search-mark--active) {
+  background: #f5bf46;
+  box-shadow: 0 0 0 1px rgba(212, 144, 27, 0.28);
 }
 
 .preview-outline {
@@ -1237,7 +1707,9 @@ export default {
   }
 
   .editor-title-meta-main,
-  .editor-title-status-group {
+  .editor-title-status-group,
+  .editor-search-main,
+  .editor-search-actions {
     width: 100%;
   }
 
@@ -1247,7 +1719,8 @@ export default {
 
   .editor-body-toolbar-main,
   .editor-body-toolbar-top,
-  .editor-body-toolbar {
+  .editor-body-toolbar,
+  .editor-search-row {
     flex-direction: column;
     align-items: stretch;
   }
@@ -1271,6 +1744,10 @@ export default {
   }
 
   .preview-body {
+    flex-direction: column;
+  }
+
+  .editor-edit-layout {
     flex-direction: column;
   }
 

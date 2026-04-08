@@ -20,7 +20,7 @@ function GetSseClientId(){
 function Create() {
     sseClientId = base.GenerateId(SseClientId)
     let params = 'client_id=' + sseClientId
-    let url = base.GetApiHost() + '/sse?' + params
+    let url = base.GetSseApiHost() + '/sse?' + params
     SseConn = new EventSource(url)
     //创建Shell连接状态SSE连接
     CreateShellConnectionsSse()
@@ -28,7 +28,7 @@ function Create() {
 
 //创建Shell连接状态SSE连接
 function CreateShellConnectionsSse(){
-    let url = base.GetApiHost() + '/sse?client_id=' + SseShellConnections
+    let url = base.GetSseApiHost() + '/sse?client_id=' + SseShellConnections
     ShellConnectionsSseConn = new EventSource(url)
     ShellConnectionsSseConn.onopen = function(event){
         console.log('ShellConnections SSE连接已建立')

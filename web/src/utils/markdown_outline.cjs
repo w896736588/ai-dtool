@@ -43,7 +43,7 @@ function buildMarkdownOutline(markdown) {
   const lineList = stripCodeFenceLines(markdown)
   const duplicateCountMap = {}
 
-  return lineList.reduce((outlineList, line) => {
+  return lineList.reduce((outlineList, line, index) => {
     const match = String(line || '').match(/^(#{1,3})\s+(.+?)\s*#*\s*$/)
     if (!match) {
       return outlineList
@@ -63,6 +63,7 @@ function buildMarkdownOutline(markdown) {
       level,
       text,
       slug: duplicateCount === 1 ? baseSlug : `${baseSlug}-${duplicateCount}`,
+      lineNumber: index + 1,
     })
     return outlineList
   }, [])

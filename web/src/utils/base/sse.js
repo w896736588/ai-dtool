@@ -12,7 +12,7 @@ function GetSseHost(clientId) {
     let url = ''
     let params = 'client_id=' + encodeURIComponent(clientId)
     //process.env.NODE_ENV === 'production'
-    url = base.GetApiHost() + '/sse?' + params
+    url = base.GetSseApiHost() + '/sse?' + params
     SseMap[clientId] = new EventSource(url)
     SseMsg[clientId] = ''
     return SseMap[clientId]
