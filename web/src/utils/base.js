@@ -4,7 +4,7 @@ import module from './module'
 import {globals} from '@/main'
 import apiHostRouter from './api_host_router.cjs'
 
-var ports = ["17170"]
+var ports = ["17170", "17171"]
 const ssePort = '17170'
 
 //登录拿到 unikey

@@ -668,20 +668,11 @@ func GitGroupBranchList(c *gin.Context) {
 			},
 		})
 	}
-	resultList := task.RunAll()
-	for _, result := range resultList {
-		if resultMap, ok := result.Result.(map[string]any); ok {
-			gstool.FmtPrintlnLogTime(`name %s  local %s`, resultMap[`name`], resultMap[`local_branch`])
-		} else {
-			gstool.FmtPrintlnLogTime(`name %s  local %s`, `faild`, `faild`)
-		}
-
-	}
+	_ = task.RunAll()
 	pool.Close()
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`git_group_id`:  gitGroupId,
 		`group_name`:    cast.ToString(groupInfo[`name`]),
-		`list`:          resultList,
 		`summary_lines`: summaryLines,
 	})
 	return
