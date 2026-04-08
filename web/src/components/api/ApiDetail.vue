@@ -186,9 +186,23 @@
 
     <el-drawer v-model="drawerHistoryShow" direction="rtl" size="60%">
       <div v-if="apiForm.last_result_data">
-        <h5 @click="copyUrl(apiForm.last_result_data.url)">{{ apiForm.method }} {{ apiForm.last_result_data.url }}</h5>
+        <div class="request-url-bar">
+          <div class="request-url-main">
+            <div class="request-url-text">{{ apiForm.method }} {{ apiForm.last_result_data.url }}</div>
+            <pl-button
+              class="request-url-copy-btn"
+              link
+              type="primary"
+              @click="copyUrl(apiForm.last_result_data.url)"
+            >
+              <el-icon><CopyDocument /></el-icon>
+            </pl-button>
+          </div>
+          <pl-button class="request-run-btn" type="success" :loading="executing" @click="handleExecute">
+            <el-icon><VideoPlay /></el-icon>执行
+          </pl-button>
+        </div>
         <div class="response-status">
-          <pl-button type="primary" :loading="executing" @click="handleExecute">执行</pl-button>
           <div style="color:green;font-size:14px;">状态: {{ apiForm.last_result_data.status }}</div>
           <div v-if="apiForm.last_result_data.errmsg" style="color:red;font-size:14px;">执行错误:
             {{ apiForm.last_result_data.errmsg }}
@@ -200,10 +214,12 @@
         <el-tabs v-model="responseActiveTab" class="detail-tabs" @tab-change="handleSave">
           <el-tab-pane label="返回结果" name="body">
             <div class="response-body-container">
-              <pl-button class="copy-btn" link style="margin-right:120px;" @click="copyTextToClipboard(apiForm.last_result_data.result)">
-                复制
-              </pl-button>
-              <pl-button v-if="isJsonResponse(apiForm.last_result_data.result)" class="copy-btn" link @click="takeToResult(apiForm.id , apiForm.last_result_data.result)">提取Json到文档</pl-button>
+              <div class="response-toolbar">
+                <pl-button class="response-toolbar-btn" @click="copyTextToClipboard(apiForm.last_result_data.result)">
+                  复制
+                </pl-button>
+                <pl-button v-if="isJsonResponse(apiForm.last_result_data.result)" class="response-toolbar-btn" type="info" @click="takeToResult(apiForm.id , apiForm.last_result_data.result)">提取Json到文档</pl-button>
+              </div>
               <pre v-if="isJsonResponse(apiForm.last_result_data.result)" class="response-body json-body">{{
                   formatJson(apiForm.last_result_data.result)
                 }}
@@ -246,7 +262,7 @@
 </template>
 
 <script>
-import {Link, Radio, RadioButton} from '@element-plus/icons-vue'
+import {Link, Radio, RadioButton, CopyDocument, VideoPlay} from '@element-plus/icons-vue'
 import KeyValueEditor from './KeyValueEditor.vue'
 import KeyValueView from './KeyValueView.vue'
 import typ from '@/utils/base/type'
@@ -254,6 +270,7 @@ import HeadersValueEditor from "@/components/api/HeadersValueEditor.vue"
 import ResponseTakeEditor from "@/components/api/ResponseTakeEditor.vue"
 import Api from '@/utils/base/api'
 import Copy from '@/utils/base/copy'
+import apiDetailParser from '@/utils/api_detail_parser.cjs'
 import JsonEditorVue from 'json-editor-vue3'
 import KeyDebounceDetector from '@/utils/base/keyup'
 import VariableManager from "@/components/api/VariableManager.vue";
@@ -270,7 +287,9 @@ export default {
     KeyValueView,
     HeadersValueEditor,
     JsonEditorVue,
-    ResponseTakeEditor
+    ResponseTakeEditor,
+    CopyDocument,
+    VideoPlay
   },
   props: {
     environment: {
@@ -492,22 +511,22 @@ export default {
       let _that = this
       _that.apiForm = JSON.parse(JSON.stringify(api))
       //headers处理
-      _that.apiForm.header_list = JSON.parse(_that.apiForm.headers)
+      _that.apiForm.header_list = apiDetailParser.parseApiObjectField(_that.apiForm.headers, {})
       if (!typ.IsObject(_that.apiForm.header_list)) {
         _that.apiForm.header_list = {}
       }
       //请求参数处理
-      _that.apiForm.query_params_data = JSON.parse(_that.apiForm.query_params)
+      _that.apiForm.query_params_data = apiDetailParser.parseApiArrayField(_that.apiForm.query_params, [])
       if (!typ.IsArray(_that.apiForm.query_params_data)) {
         _that.apiForm.query_params_data = []
       }
       //body_json处理
-      _that.apiForm.body_json_data = JSON.parse(_that.apiForm.body_json || '{}')
+      _that.apiForm.body_json_data = apiDetailParser.parseApiObjectField(_that.apiForm.body_json, {})
       if (!typ.IsObject(_that.apiForm.body_json_data)) {
         _that.apiForm.body_json_data = {}
       }
       //body_form处理
-      _that.apiForm.body_form_data = JSON.parse(_that.apiForm.body_form)
+      _that.apiForm.body_form_data = apiDetailParser.parseApiArrayField(_that.apiForm.body_form, [])
       if (!typ.IsArray(_that.apiForm.body_form_data)) {
         _that.apiForm.body_form_data = []
       }
@@ -515,17 +534,17 @@ export default {
       _that.apiForm.body_raw_data = _that.apiForm.body_raw || ''
       _that.ensureCodeType()
       //结果提取配置处理
-      _that.apiForm.response_take_data = JSON.parse(_that.apiForm.response_take)
+      _that.apiForm.response_take_data = apiDetailParser.parseApiArrayField(_that.apiForm.response_take, [])
       if (!typ.IsArray(_that.apiForm.response_take_data)) {
         _that.apiForm.response_take_data = []
       }
       //最后执行结果的处理
-      _that.apiForm.last_result_data = JSON.parse(_that.apiForm.last_result || '{}')
+      _that.apiForm.last_result_data = apiDetailParser.parseApiObjectField(_that.apiForm.last_result, {})
       if (!typ.IsObject(_that.apiForm.last_result_data)) {
         _that.apiForm.last_result_data = {}
       }
       //提取结果
-      _that.apiForm.take_result_data = JSON.parse(_that.apiForm.take_result || '[]')
+      _that.apiForm.take_result_data = apiDetailParser.parseApiArrayField(_that.apiForm.take_result, [])
       if (!typ.IsArray(_that.apiForm.take_result_data)) {
         _that.apiForm.take_result_data = []
       }
@@ -780,22 +799,97 @@ export default {
   padding: 10px 12px;
 }
 
+.request-url-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e6ece0;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f8fbf5 0%, #f3f8ef 100%);
+  box-shadow: 0 6px 16px rgba(84, 116, 84, 0.08);
+}
+
+.request-url-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.request-url-text {
+  color: #3f6f3f;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  word-break: break-all;
+  min-width: 0;
+}
+
+.request-url-copy-btn {
+  flex: 0 0 auto;
+  font-size: 15px;
+  padding: 0;
+}
+
+.request-run-btn {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border-color: #6ea46b;
+  background: linear-gradient(180deg, #7cbc76 0%, #659f61 100%);
+  box-shadow: 0 8px 18px rgba(101, 159, 97, 0.24);
+}
+
+.request-run-btn:hover,
+.request-run-btn:focus-visible {
+  border-color: #5d9758;
+  background: linear-gradient(180deg, #72b56d 0%, #5a9356 100%);
+}
+
 .response-time {
   color: #909399;
   font-size: 14px;
 }
 
 .response-body-container {
-  background: #2d2d2d;
-  color: #f8f8f2;
+  background: #eef3ea;
+  color: #2f3d32;
   padding: 16px;
-  border-radius: 8px;
-  border: 1px solid #2f3a2f;
+  border-radius: 12px;
+  border: 0;
   overflow: auto;
   flex: 1; /* 占据剩余空间 */
+  max-height: min(56vh, calc(100vh - 320px));
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 14px;
+  box-shadow: none;
+  scrollbar-width: auto;
+  scrollbar-color: #8ea88f #dbe7d8;
+}
 
+.response-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.response-toolbar-btn {
+  border-radius: 8px;
+  border-color: #b7c7bb;
+  background: rgba(255, 255, 255, 0.82);
+  color: #35543b;
+}
+
+.response-toolbar-btn:hover,
+.response-toolbar-btn:focus-visible {
+  border-color: #8fac95;
+  background: #ffffff;
+  color: #27422d;
 }
 
 .response-body {
@@ -803,6 +897,12 @@ export default {
   word-wrap: break-word;
   max-width: 100%;
   overflow-x: auto;
+  color: inherit;
+}
+
+.response-body-container :deep(pre.response-body) {
+  border: 0 !important;
+  border-radius: 0 !important;
 }
 
 .json-body {
@@ -1026,24 +1126,26 @@ export default {
 
 .response-body-container::-webkit-scrollbar,
 .body-editor::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 
 .response-body-container::-webkit-scrollbar-track,
 .body-editor::-webkit-scrollbar-track {
-  background: #444;
+  background: #dbe7d8;
+  border-radius: 999px;
 }
 
 .response-body-container::-webkit-scrollbar-thumb,
 .body-editor::-webkit-scrollbar-thumb {
-  background: #666;
-  border-radius: 3px;
+  background: #8ea88f;
+  border-radius: 999px;
+  border: 2px solid #dbe7d8;
 }
 
 .response-body-container::-webkit-scrollbar-thumb:hover,
 .body-editor::-webkit-scrollbar-thumb:hover {
-  background: #888;
+  background: #6f8f72;
 }
 
 .body-editor-json::-webkit-scrollbar,

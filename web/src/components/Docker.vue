@@ -94,20 +94,20 @@
             <div class="operation-block">
               <span class="operation-title">常用操作：</span>
               <div class="operation-buttons">
-                <pl-button class="operation-btn operation-btn-primary" size="small" plain @click="dialogServices(scope.row)">服务列表</pl-button>
-                <pl-button class="operation-btn operation-btn-primary" size="small" plain @click="status(scope.row)">运行状态</pl-button>
-                <pl-button class="operation-btn operation-btn-success" size="small" plain @click="start(scope.row)">启动（up -d）</pl-button>
-                <pl-button class="operation-btn operation-btn-success" size="small" plain @click="restart(scope.row)">重启（restart）</pl-button>
-                <pl-button class="operation-btn operation-btn-danger" size="small" plain @click="stop(scope.row)">停止(stop)</pl-button>
-                <pl-button class="operation-btn operation-btn-primary" size="small" plain @click="configShow(scope.row)">查看compose.yml</pl-button>
-                <pl-button class="operation-btn operation-btn-primary" size="small" plain @click="envShow(scope.row)">查看env</pl-button>
+                <pl-button size="small" type="primary" plain @click="dialogServices(scope.row)">服务列表</pl-button>
+                <pl-button size="small" type="primary" plain @click="status(scope.row)">运行状态</pl-button>
+                <pl-button size="small" type="success" plain @click="start(scope.row)">启动（up -d）</pl-button>
+                <pl-button size="small" type="success" plain @click="restart(scope.row)">重启（restart）</pl-button>
+                <pl-button size="small" type="warning" plain @click="stop(scope.row)">停止(stop)</pl-button>
+                <pl-button size="small" type="primary" plain @click="configShow(scope.row)">查看compose.yml</pl-button>
+                <pl-button size="small" type="primary" plain @click="envShow(scope.row)">查看env</pl-button>
               </div>
             </div>
             <div class="operation-block">
               <span class="operation-title">快速重启：</span>
               <div class="quick-actions">
                 <template v-for="item in scope.row.default_service_list" :key="`restart_${scope.row.id}_${item}`">
-                  <pl-button class="quick-action-btn quick-action-restart" size="small" plain @click="restart(scope.row , item)">{{ item }}</pl-button>
+                  <pl-button size="small" type="success" plain @click="restart(scope.row , item)">{{ item }}</pl-button>
                 </template>
               </div>
             </div>
@@ -115,7 +115,7 @@
               <span class="operation-title">快速停止：</span>
               <div class="quick-actions">
                 <template v-for="item in scope.row.default_service_list" :key="`stop_${scope.row.id}_${item}`">
-                  <pl-button class="quick-action-btn quick-action-stop" size="small" plain @click="stop(scope.row , item)">{{ item }}</pl-button>
+                  <pl-button size="small" type="warning" plain @click="stop(scope.row , item)">{{ item }}</pl-button>
                 </template>
               </div>
             </div>
@@ -183,8 +183,8 @@
         <el-table-column label="操作" min-width="220">
           <template #default="scope">
             <div class="operation-buttons">
-              <pl-button class="operation-btn" size="small" plain @click="showImageContainers(scope.row)">查看容器</pl-button>
-              <pl-button class="operation-btn operation-btn-danger" size="small" plain @click="confirmRemoveImage(scope.row)">移除镜像</pl-button>
+              <pl-button size="small" type="primary" plain @click="showImageContainers(scope.row)">查看容器</pl-button>
+              <pl-button size="small" type="danger" plain @click="confirmRemoveImage(scope.row)">移除镜像</pl-button>
             </div>
           </template>
         </el-table-column>
@@ -204,8 +204,8 @@
         <el-table-column label="操作" min-width="220">
           <template #default="scope">
             <div class="operation-buttons">
-              <pl-button class="operation-btn operation-btn-danger" size="small" plain @click="confirmStopContainer(scope.row)">停止</pl-button>
-              <pl-button class="operation-btn operation-btn-danger" size="small" plain @click="confirmRemoveContainer(scope.row)">移除</pl-button>
+              <pl-button size="small" type="warning" plain @click="confirmStopContainer(scope.row)">停止</pl-button>
+              <pl-button size="small" type="danger" plain @click="confirmRemoveContainer(scope.row)">移除</pl-button>
             </div>
           </template>
         </el-table-column>
@@ -1094,48 +1094,9 @@ export default {
   flex: 1;
 }
 
-.operation-btn {
-  min-height: 30px;
-  padding: 0 12px;
+.operation-buttons .el-button,
+.quick-actions .el-button {
   border-radius: 8px;
-  font-weight: 500;
-  transition: all 0.18s ease;
-}
-
-.operation-btn.operation-btn-primary {
-  border-color: #d8ded2;
-  color: #4f804f;
-  background: #f6f8f3;
-}
-
-.operation-btn.operation-btn-primary:hover {
-  background: #eef4ea;
-  border-color: #bfd1bf;
-  color: #3f6f3f;
-}
-
-.operation-btn.operation-btn-success {
-  border-color: #c1d9ba;
-  color: #356a35;
-  background: #edf6e9;
-}
-
-.operation-btn.operation-btn-success:hover {
-  border-color: #9fc49c;
-  color: #2d5a2d;
-  background: #e2f0dd;
-}
-
-.operation-btn.operation-btn-danger {
-  border-color: #e6c9be;
-  color: #9b523d;
-  background: #fcf4f1;
-}
-
-.operation-btn.operation-btn-danger:hover {
-  border-color: #d8ad9f;
-  color: #864434;
-  background: #f8e9e4;
 }
 
 .quick-actions {
@@ -1144,38 +1105,6 @@ export default {
   gap: 6px;
   flex-wrap: wrap;
   flex: 1;
-}
-
-.quick-action-btn {
-  min-height: 28px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 0 10px;
-}
-
-.quick-action-restart {
-  border-color: #b7d7b2;
-  color: #2f6e37;
-  background: #eff8ec;
-}
-
-.quick-action-restart:hover {
-  border-color: #93be8d;
-  color: #285e30;
-  background: #e3f2df;
-}
-
-.quick-action-stop {
-  border-color: #e8ccb9;
-  color: #965139;
-  background: #fff5ef;
-}
-
-.quick-action-stop:hover {
-  border-color: #deaf94;
-  color: #844530;
-  background: #feede3;
 }
 
 .dialog-toolbar {

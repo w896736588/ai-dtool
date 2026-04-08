@@ -641,7 +641,6 @@ export default {
         username: 'default',
         password: '111',
       },
-      menuKeyStore: 'lastMenuName.v2',
       menuName: '/Dashboard',
       minHeightMap: {},
       showShellMap: ['/Git', '/Consumer', '/WechatKefu'],
@@ -718,6 +717,7 @@ export default {
   watch: {
     // 当用户切回首页时主动刷新任务，避免跨页面停留后数据过期。
     '$route.path'(newPath) {
+      this.menuName = newPath || '/Dashboard'
       if (newPath !== HOME_ROUTE_DASHBOARD) {
         this.homeDashboardPageIndex = HOME_DASHBOARD_PAGE_COMMAND
         return
@@ -748,10 +748,7 @@ export default {
     this.loadHomeTaskFragmentOptions()
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
-    this.menuName = this.$helperStore.getStore(this.menuKeyStore)
-    if (!this.hideAppSidebar && this.$route.path !== this.menuName && this.menuName != null) {
-      this.$router.push(this.menuName)
-    }
+    this.menuName = this.$route.path || '/Dashboard'
     window.addEventListener('resize', function () {});
   },
   provide() {
@@ -1201,7 +1198,6 @@ export default {
       }
     },
     handleSelect(key, keyPath) {
-      let _that = this
       if (keyPath[0].indexOf('Doc-') >= 0) {
         return
       }
@@ -1209,7 +1205,6 @@ export default {
         return;
       }
       this.menuName = keyPath[0]
-      this.$helperStore.setStore(_that.menuKeyStore, this.menuName)
     },
   },
   beforeUnmount() {

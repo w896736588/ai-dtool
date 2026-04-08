@@ -7,67 +7,62 @@ const source = fs.readFileSync(dockerVuePath, 'utf8')
 
 const run = () => {
   assert.ok(
-    source.includes("import { RefreshRight, Search, Setting, View, Document, VideoPlay, VideoPause, Delete } from '@element-plus/icons-vue';"),
-    'Docker page should import the expected action button icons'
+    /<pl-button[^>]*size="small"[^>]*type="primary"[^>]*plain[^>]*@click="dialogServices\(scope\.row\)"[^>]*>服务列表<\/pl-button>/s.test(source),
+    'Service list button should use the same primary plain button semantics as Supervisor'
   )
 
   assert.ok(
-    /<pl-button[^>]*class="operation-btn operation-btn-primary"[^>]*>\s*<el-icon><View \/><\/el-icon>服务列表<\/pl-button>/s.test(source),
-    'Service list button should use the primary operation button style'
+    /<pl-button[^>]*size="small"[^>]*type="primary"[^>]*plain[^>]*@click="status\(scope\.row\)"[^>]*>运行状态<\/pl-button>/s.test(source),
+    'Runtime status button should use the same primary plain button semantics as Supervisor'
   )
 
   assert.ok(
-    /<pl-button[^>]*class="operation-btn operation-btn-primary"[^>]*>\s*<el-icon><Document \/><\/el-icon>运行状态<\/pl-button>/s.test(source),
-    'Runtime status button should use the primary operation button style'
+    /<pl-button[^>]*size="small"[^>]*type="success"[^>]*plain[^>]*@click="start\(scope\.row\)"[^>]*>启动（up -d）<\/pl-button>/s.test(source),
+    'Start button should use the success plain button semantics'
   )
 
   assert.ok(
-    /<pl-button[^>]*class="operation-btn operation-btn-success"[^>]*>\s*<el-icon><VideoPlay \/><\/el-icon>启动（up -d）<\/pl-button>/s.test(source),
-    'Start button should use the success operation button style'
+    /<pl-button[^>]*size="small"[^>]*type="success"[^>]*plain[^>]*@click="restart\(scope\.row\)"[^>]*>重启（restart）<\/pl-button>/s.test(source),
+    'Restart button should use the success plain button semantics'
   )
 
   assert.ok(
-    /<pl-button[^>]*class="operation-btn operation-btn-success"[^>]*>\s*<el-icon><RefreshRight \/><\/el-icon>重启（restart）<\/pl-button>/s.test(source),
-    'Restart button should use the success operation button style'
+    /<pl-button[^>]*size="small"[^>]*type="warning"[^>]*plain[^>]*@click="stop\(scope\.row\)"[^>]*>停止\(stop\)<\/pl-button>/s.test(source),
+    'Stop button should use the warning plain button semantics like Supervisor row actions'
   )
 
   assert.ok(
-    /<pl-button[^>]*class="operation-btn operation-btn-danger"[^>]*>\s*<el-icon><VideoPause \/><\/el-icon>停止\(stop\)<\/pl-button>/s.test(source),
-    'Stop button should use the danger operation button style'
+    /<pl-button[^>]*size="small"[^>]*type="primary"[^>]*plain[^>]*@click="configShow\(scope\.row\)"[^>]*>查看compose\.yml<\/pl-button>/s.test(source),
+    'View compose button should use the primary plain button semantics'
   )
 
   assert.ok(
-    /<pl-button[^>]*class="operation-btn operation-btn-primary"[^>]*>\s*<el-icon><Document \/><\/el-icon>查看compose\.yml<\/pl-button>/s.test(source),
-    'View compose button should use the primary operation button style'
+    /<pl-button[^>]*size="small"[^>]*type="primary"[^>]*plain[^>]*@click="envShow\(scope\.row\)"[^>]*>查看env<\/pl-button>/s.test(source),
+    'View env button should use the primary plain button semantics'
   )
 
   assert.ok(
-    /<pl-button[^>]*class="operation-btn operation-btn-primary"[^>]*>\s*<el-icon><Document \/><\/el-icon>查看env<\/pl-button>/s.test(source),
-    'View env button should use the primary operation button style'
+    /<pl-button[^>]*size="small"[^>]*type="success"[^>]*plain[^>]*@click="restart\(scope\.row , item\)"[^>]*>{{ item }}<\/pl-button>/s.test(source),
+    'Quick restart buttons should also reuse the success plain button style'
   )
 
   assert.ok(
-    source.includes('--pl-button-text-color: #ffffff;') &&
-    source.includes('--pl-button-hover-text-color: #ffffff;'),
-    'Docker primary operation buttons should stay white text'
+    /<pl-button[^>]*size="small"[^>]*type="warning"[^>]*plain[^>]*@click="stop\(scope\.row , item\)"[^>]*>{{ item }}<\/pl-button>/s.test(source),
+    'Quick stop buttons should also reuse the warning plain button style'
   )
 
   assert.ok(
-    source.includes('--pl-button-background-color: linear-gradient(180deg, #71af8d 0%, #5f9c7a 100%);'),
-    'Docker primary operation buttons should use the softer green gradient'
+    source.includes('.operation-buttons .el-button,') &&
+    source.includes('.quick-actions .el-button {') &&
+    source.includes('border-radius: 8px;'),
+    'Docker button wrapper styles should only keep the shared rounded-corner enhancement'
   )
 
   assert.ok(
-    source.includes('.operation-btn.operation-btn-primary {') &&
-    source.includes('background: linear-gradient(180deg, #71af8d 0%, #5f9c7a 100%) !important;') &&
-    source.includes('border-color: #5f9c7a !important;') &&
-    source.includes('color: #ffffff !important;'),
-    'Primary operation buttons should directly enforce the softer green gradient'
-  )
-
-  assert.ok(
-    source.includes('--pl-button-background-color: linear-gradient(180deg, #de6f6f 0%, #d65c5c 100%);'),
-    'Danger buttons should keep the red gradient'
+    !source.includes('.operation-btn.operation-btn-primary {') &&
+    !source.includes('.quick-action-restart {') &&
+    !source.includes('.quick-action-stop {'),
+    'Docker page should remove the old custom button color overrides'
   )
 
   console.log('docker_button_style tests passed')
