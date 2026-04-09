@@ -35,22 +35,31 @@ func (h *CSqlite) AIChatByModel(modelID int, systemPrompt, userPrompt string) (s
 	request.Header.Set(`Authorization`, `Bearer `+apiKey)
 	request.Header.Set(`Content-Type`, `application/json`)
 	client := &http.Client{Timeout: 120 * time.Second}
+	startTime := time.Now()
 	response, err := client.Do(request)
+	costTimeMs := time.Since(startTime).Milliseconds()
 	if err != nil {
+		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, 0, ``, err.Error(), costTimeMs)
 		return ``, nil, err
 	}
 	defer response.Body.Close()
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
+		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, ``, err.Error(), costTimeMs)
 		return ``, nil, err
 	}
 	if response.StatusCode >= 300 {
-		return ``, nil, errors.New(`AI 请求失败: ` + string(responseBody))
+		errMsg := `AI 请求失败: ` + string(responseBody)
+		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, string(responseBody), errMsg, costTimeMs)
+		return ``, nil, errors.New(errMsg)
 	}
 	content := p_common.ExtractOpenAiMessage(string(responseBody))
 	if strings.TrimSpace(content) == `` {
 		content = string(responseBody)
 	}
+	// 解析 token 使用量
+	inputTokens, outputTokens := h.extractTokenUsage(string(responseBody))
+	h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, string(responseBody), ``, costTimeMs, inputTokens, outputTokens)
 	return strings.TrimSpace(content), modelInfo, nil
 }
 
@@ -76,17 +85,23 @@ func (h *CSqlite) AIChatStreamByModel(modelID int, systemPrompt, userPrompt stri
 	request.Header.Set(`Authorization`, `Bearer `+apiKey)
 	request.Header.Set(`Content-Type`, `application/json`)
 	client := &http.Client{Timeout: 10 * time.Minute}
+	startTime := time.Now()
 	response, err := client.Do(request)
+	costTimeMs := time.Since(startTime).Milliseconds()
 	if err != nil {
+		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, 0, ``, err.Error(), costTimeMs)
 		return ``, nil, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode >= 300 {
 		responseBody, _ := io.ReadAll(response.Body)
-		return ``, nil, errors.New(`AI 请求失败: ` + string(responseBody))
+		errMsg := `AI 请求失败: ` + string(responseBody)
+		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, string(responseBody), errMsg, costTimeMs)
+		return ``, nil, errors.New(errMsg)
 	}
 	reader := bufio.NewReader(response.Body)
 	contentBuilder := strings.Builder{}
+	responseBodyBuilder := strings.Builder{}
 	for {
 		line, readErr := reader.ReadString('\n')
 		line = strings.TrimSpace(line)
@@ -98,6 +113,7 @@ func (h *CSqlite) AIChatStreamByModel(modelID int, systemPrompt, userPrompt stri
 			chunk := h.aiChatExtractStreamContent(payload)
 			if chunk != `` {
 				contentBuilder.WriteString(chunk)
+				responseBodyBuilder.WriteString(payload + "\n")
 				if onChunk != nil {
 					onChunk(chunk)
 				}
@@ -110,6 +126,8 @@ func (h *CSqlite) AIChatStreamByModel(modelID int, systemPrompt, userPrompt stri
 			return strings.TrimSpace(contentBuilder.String()), modelInfo, readErr
 		}
 	}
+	// 流式响应不单独计算 token，留待后续扩展
+	h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, responseBodyBuilder.String(), ``, costTimeMs, 0, 0)
 	return strings.TrimSpace(contentBuilder.String()), modelInfo, nil
 }
 
@@ -191,4 +209,115 @@ func joinAIRequestURL(baseURL, requestURI string) string {
 		requestURI = `/` + requestURI
 	}
 	return baseURL + requestURI
+}
+
+// logAIRequest 记录 AI 请求日志到日志库。
+func (h *CSqlite) logAIRequest(
+	modelInfo map[string]any,
+	requestURL, method string,
+	requestParams map[string]any,
+	requestHeaders map[string]string,
+	statusCode int,
+	responseBody, errMsg string,
+	costTimeMs int64,
+	inputTokens ...int,
+) {
+	// 提取可选的 token 参数
+	inputTk := 0
+	outputTk := 0
+	if len(inputTokens) >= 1 {
+		inputTk = inputTokens[0]
+	}
+	if len(inputTokens) >= 2 {
+		outputTk = inputTokens[1]
+	}
+
+	// 构建请求头（脱敏）
+	headers := make(map[string]string)
+	if requestHeaders != nil {
+		for k, v := range requestHeaders {
+			if strings.ToLower(k) == `authorization` {
+				// 脱敏 API Key
+				if len(v) > 10 {
+					v = v[:6] + `******` + v[len(v)-4:]
+				}
+			}
+			headers[k] = v
+		}
+	}
+
+	success := 1
+	if errMsg != `` {
+		success = 0
+	}
+
+	providerID := cast.ToInt(modelInfo[`provider_id`])
+	providerName := cast.ToString(modelInfo[`provider_name`])
+	modelID := cast.ToInt(modelInfo[`id`])
+	modelName := cast.ToString(modelInfo[`name`])
+	model := cast.ToString(modelInfo[`model`])
+	modelType := cast.ToString(modelInfo[`model_type`])
+	if modelType == `` {
+		modelType = `llm`
+	}
+	requestFormat := cast.ToString(modelInfo[`provider_type`])
+	if requestFormat == `` {
+		requestFormat = `openai`
+	}
+	baseURL := cast.ToString(modelInfo[`base_url`])
+
+	requestParamsJSON, _ := json.Marshal(requestParams)
+	headersJSON, _ := json.Marshal(headers)
+
+	logData := map[string]any{
+		`provider_id`:      providerID,
+		`provider_name`:    providerName,
+		`model_id`:         modelID,
+		`model_name`:       modelName,
+		`model`:            model,
+		`model_type`:       modelType,
+		`request_format`:   requestFormat,
+		`base_url`:         baseURL,
+		`request_url`:      requestURL,
+		`request_method`:   method,
+		`request_params`:   string(requestParamsJSON),
+		`request_headers`: string(headersJSON),
+		`response_status_code`: statusCode,
+		`response_body`:    responseBody,
+		`input_tokens`:    inputTk,
+		`output_tokens`:   outputTk,
+		`cost_time_ms`:    costTimeMs,
+		`success`:         success,
+		`error_message`:   errMsg,
+		`create_time`:     time.Now().Unix(),
+	}
+
+	// 异步写入日志，避免阻塞主流程
+	go func() {
+		if DbLog != nil && DbLog.Client != nil {
+			_, _ = DbLog.Client.QuickCreate(`tbl_ai_request_log`, logData).Exec()
+		}
+	}()
+}
+
+// extractTokenUsage 从 OpenAI 响应中提取 token 使用量。
+func (h *CSqlite) extractTokenUsage(responseBody string) (inputTokens, outputTokens int) {
+	if strings.TrimSpace(responseBody) == `` {
+		return 0, 0
+	}
+	dataMap := make(map[string]any)
+	if err := json.Unmarshal([]byte(responseBody), &dataMap); err != nil {
+		return 0, 0
+	}
+	usage, ok := dataMap[`usage`].(map[string]any)
+	if !ok {
+		return 0, 0
+	}
+	inputTokens = cast.ToInt(usage[`prompt_tokens`])
+	outputTokens = cast.ToInt(usage[`completion_tokens`])
+	// 如果 prompt_tokens 为 0，尝试使用 total_tokens
+	if inputTokens == 0 {
+		inputTokens = cast.ToInt(usage[`total_tokens`]) - outputTokens
+	}
+	return inputTokens, outputTokens
 }

@@ -156,8 +156,19 @@
                           </div>
                           <div v-if="task.memory_fragment_id > 0" class="home-task-card__memory">
                             <div class="home-task-card__memory-label">关联知识片段</div>
-                            <div class="home-task-card__memory-title">
-                              {{ task.memory_fragment?.title || `#${task.memory_fragment_id}` }}
+                            <!-- <div class="home-task-card__memory-title"> -->
+                              <!-- {{ task.memory_fragment?.title || `#${task.memory_fragment_id}` }} -->
+                            <!-- </div> -->
+                            <div v-if="task.memory_fragment?.content" class="home-task-card__memory-content">
+                              <pre class="memory-content-text">{{ getFragmentPreview(task.memory_fragment.content, task.id) }}</pre>
+                              <button
+                                v-if="isFragmentExpandable(task.memory_fragment.content)"
+                                type="button"
+                                class="memory-content-toggle"
+                                @click="toggleFragmentExpand(task.id)"
+                              >
+                                {{ homeTaskExpandedFragments[task.id] ? '收起' : '展开' }}
+                              </button>
                             </div>
                             <div v-if="Array.isArray(task.memory_fragment?.tags) && task.memory_fragment.tags.length > 0" class="home-task-card__memory-tags">
                               <el-tag
@@ -254,6 +265,17 @@
                             <div class="home-task-card__memory-label">关联知识片段</div>
                             <div class="home-task-card__memory-title">
                               {{ task.memory_fragment?.title || `#${task.memory_fragment_id}` }}
+                            </div>
+                            <div v-if="task.memory_fragment?.content" class="home-task-card__memory-content">
+                              <pre class="memory-content-text">{{ getFragmentPreview(task.memory_fragment.content, task.id) }}</pre>
+                              <button
+                                v-if="isFragmentExpandable(task.memory_fragment.content)"
+                                type="button"
+                                class="memory-content-toggle"
+                                @click="toggleFragmentExpand(task.id)"
+                              >
+                                {{ homeTaskExpandedFragments[task.id] ? '收起' : '展开' }}
+                              </button>
                             </div>
                             <div v-if="Array.isArray(task.memory_fragment?.tags) && task.memory_fragment.tags.length > 0" class="home-task-card__memory-tags">
                               <el-tag
@@ -692,6 +714,7 @@ export default {
       homeTaskFragmentOptions: [],
       homeTaskStatusOptions: HOME_TASK_STATUS_OPTIONS,
       homeTaskForm: createHomeTaskDefaultForm(),
+      homeTaskExpandedFragments: {},
     }
   },
   computed: {
@@ -1175,6 +1198,22 @@ export default {
         return 'info'
       }
       return ''
+    },
+    toggleFragmentExpand(taskId) {
+      this.homeTaskExpandedFragments[taskId] = !this.homeTaskExpandedFragments[taskId]
+    },
+    getFragmentPreview(content, taskId) {
+      const maxLength = 100
+      if (!content) return ''
+      const isExpanded = this.homeTaskExpandedFragments[taskId]
+      if (isExpanded || content.length <= maxLength) {
+        return content
+      }
+      return content.slice(0, maxLength) + '...'
+    },
+    isFragmentExpandable(content) {
+      const maxLength = 100
+      return content && content.length > maxLength
     },
     // 处理SSE推送的Shell连接状态更新
     handleSshConnectionsUpdate(data) {
@@ -1807,6 +1846,41 @@ export default {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
+}
+
+.home-task-card__memory-content {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #e0e6da;
+  border-radius: 8px;
+}
+
+.memory-content-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #4a5a48;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+}
+
+.memory-content-toggle {
+  margin-top: 8px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #5a8a5a;
+  background: #f0f5ee;
+  border: 1px solid #d4e0cf;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.memory-content-toggle:hover {
+  background: #e8f0e5;
+  border-color: #b8d4b0;
 }
 
 .home-task-dialog__footer {

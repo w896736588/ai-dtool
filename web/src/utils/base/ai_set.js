@@ -35,6 +35,11 @@ function AiModelTest(data , callBack){
     base.BasePost('/api/Set/AiModelTest', data, callBack)
 }
 
+// AiRequestLogList 查询 AI 请求日志列表
+function AiRequestLogList(data , callBack){
+    base.BasePost('/api/Set/AiRequestLogList', data || {}, callBack)
+}
+
 export default {
     AiProviderList,
     AiProviderAdd,
@@ -43,5 +48,6 @@ export default {
     AiModelAdd,
     AiModelDelete,
     AiModelTest,
+    AiRequestLogList,
 }
 

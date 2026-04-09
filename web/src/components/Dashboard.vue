@@ -20,7 +20,7 @@
                 <span class="fixed-command-desc">{{ cmd.desc }}</span>
               </button>
             </div>
-            <div v-if="topHistoryCommands.length > 0" class="history-command-section">
+            <!-- <div v-if="topHistoryCommands.length > 0" class="history-command-section">
               <div class="fixed-command-title">高频历史命令 TOP 10</div>
               <div class="history-command-list">
                 <div
@@ -44,7 +44,7 @@
                   </div>
                 </div>
               </div>
-            </div>
+            </div> -->
           </div>
           <p class="hint">输入 <kbd>/</kbd> 或直接输入命令（如 <kbd>git</kbd>），<kbd>Tab</kbd> 补全，<kbd>Space</kbd> 继续</p>
         </div>
@@ -4440,7 +4440,7 @@ export default {
 .process-text {
   margin: 0;
   padding: 10px 12px;
-  max-height: 240px;
+  max-height: 440px;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-word;

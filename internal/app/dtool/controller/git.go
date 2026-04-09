@@ -774,7 +774,7 @@ type GitBranchUsageInfo struct {
 
 const (
 	gitDefaultCommandTimeout    = 40 * time.Second
-	gitBranchChangeTimeout      = 5 * time.Minute
+	gitBranchChangeTimeout      = 10 * time.Minute
 	gitOperationBranchChange    = `branch_change`
 	gitOperationPull            = `pull`
 	gitOperationQuickCreate     = `quick_create_branch`

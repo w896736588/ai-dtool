@@ -21,13 +21,13 @@
                 <span>{{ MaskKey(scope.row.api_key) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="220">
+            <el-table-column label="操作" width="380">
               <template #default="scope">
                 <div class="set-op-group">
-                  <pl-button type="primary" link @click="ShowEditProvider(scope.row, false)">编辑</pl-button>
-                  <pl-button type="primary" link @click="ShowEditProvider(scope.row, true)">复制新增</pl-button>
-                  <pl-button type="primary" link @click="SwitchToModelTab(scope.row)">管理模型</pl-button>
-                  <pl-button link type="danger" @click="DeleteProvider(scope.row)">删除</pl-button>
+                  <pl-button size="small" type="success" plain @click="ShowEditProvider(scope.row, false)">编辑</pl-button>
+                  <pl-button size="small" type="success" plain @click="ShowEditProvider(scope.row, true)">复制新增</pl-button>
+                  <pl-button size="small" type="success" plain @click="SwitchToModelTab(scope.row)">管理模型</pl-button>
+                  <pl-button size="small" type="danger" plain @click="DeleteProvider(scope.row)">删除</pl-button>
                 </div>
               </template>
             </el-table-column>
@@ -67,21 +67,89 @@
                 <span>{{ BuildRequestUrl(scope.row.base_url, scope.row.uri) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="250">
+            <el-table-column label="操作" width="380">
               <template #default="scope">
                 <div class="set-op-group">
-                  <pl-button type="primary" link @click="ShowEditModel(scope.row, false)">编辑</pl-button>
-                  <pl-button type="primary" link @click="ShowEditModel(scope.row, true)">复制新增</pl-button>
+                  <pl-button size="small" type="success" plain @click="ShowEditModel(scope.row, false)">编辑</pl-button>
+                  <pl-button size="small" type="success" plain @click="ShowEditModel(scope.row, true)">复制新增</pl-button>
                   <pl-button
-                    type="primary"
-                    link
+                    size="small"
+                    type="success"
+                    plain
                     :loading="Number(state.testingModelId) === Number(scope.row.id)"
                     @click="TestModel(scope.row)"
                   >
                     测试
                   </pl-button>
-                  <pl-button link type="danger" @click="DeleteModel(scope.row)">删除</pl-button>
+                  <pl-button size="small" type="danger" plain @click="DeleteModel(scope.row)">删除</pl-button>
                 </div>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane label="请求日志" name="log">
+        <div class="set-config-actions log-actions">
+          <el-select
+            v-model="state.logProviderId"
+            style="width: 200px;"
+            placeholder="筛选服务商"
+            clearable
+            @change="LoadRequestLogList"
+          >
+            <template v-for="(provider, idx) in state.providerList" :key="idx">
+              <el-option :label="provider.name" :value="provider.id"/>
+            </template>
+          </el-select>
+          <el-select
+            v-model="state.logModelType"
+            style="width: 140px;"
+            placeholder="模型类型"
+            clearable
+            @change="LoadRequestLogList"
+          >
+            <el-option label="LLM" value="llm"/>
+            <el-option label="嵌入模型" value="embedding"/>
+          </el-select>
+          <pl-button @click="LoadRequestLogList">刷新</pl-button>
+        </div>
+
+        <div class="set-config-table-card">
+          <el-table :data="state.requestLogList" class="set-config-table" row-key="id" :max-height="500">
+            <el-table-column prop="id" label="#id" width="70"/>
+            <el-table-column prop="provider_name" label="服务商" min-width="120"/>
+            <el-table-column prop="model_name" label="模型" min-width="140">
+              <template #default="scope">
+                <div>
+                  <div>{{ scope.row.model_name || '-' }}</div>
+                  <div class="log-model-id">{{ scope.row.model }}</div>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="model_type" label="类型" width="90">
+              <template #default="scope">
+                <el-tag size="small" effect="light">{{ ModelTypeLabel(scope.row.model_type) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="input_tokens" label="输入Token" width="100" align="right"/>
+            <el-table-column prop="output_tokens" label="输出Token" width="100" align="right"/>
+            <el-table-column prop="cost_time_desc" label="耗时" width="90" align="right"/>
+            <el-table-column prop="response_status_code" label="状态" width="70" align="center">
+              <template #default="scope">
+                <el-tag
+                  size="small"
+                  :type="scope.row.success === 1 ? 'success' : 'danger'"
+                  effect="light"
+                >
+                  {{ scope.row.response_status_code || (scope.row.success === 1 ? '200' : 'err') }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="create_time_desc" label="时间" width="160"/>
+            <el-table-column label="操作" width="80" fixed="right">
+              <template #default="scope">
+                <pl-button size="small" type="success" plain @click="ShowRequestLogDetail(scope.row)">详情</pl-button>
               </template>
             </el-table-column>
           </el-table>
@@ -153,6 +221,37 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="state.dialogLogDetail" title="请求日志详情" width="700">
+      <el-descriptions :column="2" border size="small">
+        <el-descriptions-item label="服务商">{{ state.logDetail.provider_name || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="模型">{{ state.logDetail.model_name || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="模型标识">{{ state.logDetail.model || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="模型类型">{{ ModelTypeLabel(state.logDetail.model_type) }}</el-descriptions-item>
+        <el-descriptions-item label="输入Token">{{ state.logDetail.input_tokens || 0 }}</el-descriptions-item>
+        <el-descriptions-item label="输出Token">{{ state.logDetail.output_tokens || 0 }}</el-descriptions-item>
+        <el-descriptions-item label="耗时">{{ state.logDetail.cost_time_desc || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="状态码">{{ state.logDetail.response_status_code || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="请求地址" :span="2">{{ state.logDetail.request_url || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="时间" :span="2">{{ state.logDetail.create_time_desc || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="错误信息" :span="2">
+          <span v-if="state.logDetail.success === 1">-</span>
+          <span v-else class="error-text">{{ state.logDetail.error_message || '-' }}</span>
+        </el-descriptions-item>
+      </el-descriptions>
+
+      <el-divider content-position="left">请求参数</el-divider>
+      <pre class="json-preview">{{ FormatJson(state.logDetail.request_params) }}</pre>
+
+      <el-divider content-position="left">响应内容</el-divider>
+      <pre class="json-preview">{{ FormatJson(state.logDetail.response_body) }}</pre>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <pl-button @click="state.dialogLogDetail = false">关闭</pl-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -176,6 +275,12 @@ export default defineComponent({
       testingModelId: 0,
       editProvider: {},
       editModel: {},
+      // 请求日志相关
+      requestLogList: [],
+      logProviderId: null,
+      logModelType: '',
+      dialogLogDetail: false,
+      logDetail: {},
     })
 
     const MaskKey = function (key){
@@ -280,6 +385,8 @@ export default defineComponent({
     const HandleInnerTabChange = function (tabName){
       if(String(tabName) === 'model'){
         LoadModelList()
+      } else if(String(tabName) === 'log'){
+        LoadRequestLogList()
       }
     }
 
@@ -392,6 +499,44 @@ export default defineComponent({
       })
     }
 
+    const LoadRequestLogList = function (){
+      const params = {
+        limit: 100,
+      }
+      if(state.logProviderId){
+        params.provider_id = state.logProviderId
+      }
+      if(state.logModelType){
+        params.model_type = state.logModelType
+      }
+      aiSet.AiRequestLogList(params, function (response){
+        if(response.ErrCode === 0){
+          state.requestLogList = response.Data || []
+        }else{
+          instance.$helperNotify.error(response.ErrMsg)
+        }
+      })
+    }
+
+    const ShowRequestLogDetail = function (row){
+      state.logDetail = {...row}
+      state.dialogLogDetail = true
+    }
+
+    const FormatJson = function (str){
+      if(!str){
+        return ''
+      }
+      if(typeof str === 'object'){
+        return JSON.stringify(str, null, 2)
+      }
+      try{
+        return JSON.stringify(JSON.parse(str), null, 2)
+      }catch(e){
+        return String(str)
+      }
+    }
+
     LoadProviderList()
 
     return {
@@ -413,6 +558,9 @@ export default defineComponent({
       SaveModel,
       DeleteModel,
       TestModel,
+      LoadRequestLogList,
+      ShowRequestLogDetail,
+      FormatJson,
     }
   },
 })
@@ -456,12 +604,31 @@ export default defineComponent({
   color: #3f6f3f !important;
 }
 
-.set-config-page :deep(.el-button--primary.is-link) {
-  color: #4f804f !important;
+.log-actions {
+  margin-bottom: 10px;
+  gap: 10px;
 }
 
-.set-config-page :deep(.el-button--primary.is-link:hover) {
-  color: #3f6f3f !important;
+.log-model-id {
+  font-size: 12px;
+  color: #999;
 }
+
+.json-preview {
+  background: #f5f7fa;
+  padding: 12px;
+  border-radius: 4px;
+  max-height: 300px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.error-text {
+  color: #f56c6c;
+}
+
 </style>
 

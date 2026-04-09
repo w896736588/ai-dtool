@@ -830,6 +830,7 @@ func SetMemoryConfigGet(c *gin.Context) {
 		`db_name`:                           mainDBConfig.DBName,
 		`db_configured`:                     mainDBConfig.Dir != `` && mainDBConfig.DBName != ``,
 		`db_is_git_repo`:                    mainDBConfig.GitRepoEnabled,
+		`log_db_path`:                       component.EnvClient.LogDbConfig.DbPath,
 		`webkit_driver_path`:                component.ConfigViper.GetString(`path.webkit_driver_path`),
 		`webkit_data_path`:                  component.ConfigViper.GetString(`path.webkit_data_path`),
 		`webkit_download_path`:              component.ConfigViper.GetString(`path.webkit_download_path`),
@@ -928,6 +929,7 @@ func SetRuntimeConfigSave(c *gin.Context) {
 	setIniKey(baseSection, `dbPath`, strings.TrimSpace(cast.ToString(dataMap[`db_path`])))
 	setIniKey(baseSection, `dbFileName`, strings.TrimSpace(cast.ToString(dataMap[`db_file_name`])))
 	setIniKey(baseSection, `dbIsGitRepo`, cast.ToString(cast.ToBool(dataMap[`db_is_git_repo`])))
+	setIniKey(baseSection, `logDbPath`, strings.TrimSpace(cast.ToString(dataMap[`log_db_path`])))
 	setIniKey(baseSection, `memoryDbPath`, strings.TrimSpace(cast.ToString(dataMap[`memory_db_path`])))
 	setIniKey(baseSection, `memoryDbFileName`, strings.TrimSpace(cast.ToString(dataMap[`memory_db_file_name`])))
 	setIniKey(baseSection, `memoryDbIsGitRepo`, cast.ToString(cast.ToBool(dataMap[`memory_db_is_git_repo`])))

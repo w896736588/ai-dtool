@@ -245,6 +245,12 @@
       <div class="organize-dialog-layout">
         <div class="organize-dialog-summary">
           <div class="summary-item">
+            <span class="summary-label">整理状态</span>
+            <span class="summary-value">
+              {{ organizing ? '整理中，正在实时输出...' : '整理完成' }}
+            </span>
+          </div>
+          <div class="summary-item">
             <span class="summary-label">{{ organizeModelLabelText }}</span>
             <span class="summary-value">{{ organizeResult.model || emptyTimeText }}</span>
           </div>
@@ -263,6 +269,7 @@
         <div class="dialog-footer">
           <GitActionButton variant="info" @click="organizeDialogVisible = false">{{ cancelButtonText }}</GitActionButton>
           <GitActionButton
+            :disabled="organizing"
             :loading="applyingOrganizeResult"
             @click="applyOrganizeResult"
           >
@@ -284,6 +291,8 @@ import { Check, MagicStick, MoreFilled } from '@element-plus/icons-vue'
 import DiffMarkdown from '@/components/base/diff_markwodn.vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
+import base from '@/utils/base'
+import sseDistribute from '@/utils/base/sse_distribute'
 const { buildMarkdownOutline } = require('@/utils/markdown_outline.cjs')
 const {
   buildMemoryDetailSearchMatches,
@@ -425,6 +434,7 @@ export default {
         model: '',
         prompt: '',
       },
+      organizeSseDistributeId: '',
       tagInput: '',
       tagInputFocused: false,
       highlightedTagIndex: 0,
@@ -457,6 +467,7 @@ export default {
     }
   },
   beforeUnmount() {
+    this.unregisterOrganizeSse()
     this.detachEditorScrollListener()
   },
   watch: {
@@ -1113,33 +1124,64 @@ export default {
     },
     // handleOrganize 调用 AI 对当前最新内容执行整理。
     handleOrganize() {
+      if (this.organizing) {
+        return
+      }
       this.appendTag()
       if (!this.draftFragment.content || this.draftFragment.content.trim() === '') {
         this.$helperNotify.error(EMPTY_CONTENT_ERROR_TEXT)
         return
       }
+      this.unregisterOrganizeSse()
+      this.organizeResult = {
+        content: '',
+        model: '',
+        prompt: '',
+      }
+      this.organizeDialogVisible = true
+      this.organizeSseDistributeId = `${base.GenerateId('memory_organize')}_${this.draftFragment.id || 0}`
+      sseDistribute.RegisterReceive(this.organizeSseDistributeId, (msg) => {
+        const chunk = typeof msg === 'string' ? msg : String(msg || '')
+        if (chunk === '') {
+          return
+        }
+        this.organizeResult.content += chunk
+      })
       this.organizing = true
       MemoryFragmentApi.MemoryFragmentOrganize(
         this.draftFragment.id,
         this.draftFragment.title,
         this.draftFragment.content,
         this.draftFragment.tags || [],
+        this.organizeSseDistributeId,
         (response) => {
           this.organizing = false
+          this.unregisterOrganizeSse()
           if (response.ErrCode !== 0 || !response.Data) {
             if (response.ErrMsg) {
               this.$helperNotify.error(response.ErrMsg)
             }
+            if (!this.organizeResult.content) {
+              this.organizeDialogVisible = false
+            }
             return
           }
           this.organizeResult = {
-            content: response.Data.content || '',
+            content: response.Data.content || this.organizeResult.content || '',
             model: response.Data.model || '',
             prompt: response.Data.prompt || '',
           }
           this.organizeDialogVisible = true
         }
       )
+    },
+    // unregisterOrganizeSse 清理本次 AI 整理绑定的 SSE 回调，避免重复拼接旧流。
+    unregisterOrganizeSse() {
+      if (!this.organizeSseDistributeId) {
+        return
+      }
+      sseDistribute.UnRegisterReceive(this.organizeSseDistributeId)
+      this.organizeSseDistributeId = ''
     },
     // applyOrganizeResult 确认后把整理结果写回当前片段并持久化保存。
     applyOrganizeResult() {

@@ -39,7 +39,7 @@ app.config.globalProperties.$pageInit = {}
 import Axios from 'axios'
 import VueAxios from 'vue-axios'
 import SseDistribute from '@/utils/base/sse_distribute'
-Axios.defaults.timeout = 300000
+Axios.defaults.timeout = 600000
 Axios.defaults.baseURL = '/'
 Axios.defaults.headers.post['Content-Type'] = 'text/xml'
 // 添加请求拦截器

@@ -4,6 +4,7 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
+	"dev_tool/internal/pkg/p_sse"
 	"strings"
 	"time"
 
@@ -253,7 +254,17 @@ func MemoryFragmentOrganize(c *gin.Context) {
 	}
 	title := strings.TrimSpace(cast.ToString(dataMap[`title`]))
 	userPrompt := buildMemoryArrangeUserPrompt(prompt, title, content)
-	result, modelInfo, err := common.DbMain.AIChatByModel(modelID, memoryArrangeSystemPrompt(), userPrompt)
+	sseDistributeID := strings.TrimSpace(cast.ToString(dataMap[`sse_distribute_id`]))
+	sseShell := &p_sse.SseShell{
+		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
+		SseDistributeId: sseDistributeID,
+	}
+	result, modelInfo, err := common.DbMain.AIChatStreamByModel(modelID, memoryArrangeSystemPrompt(), userPrompt, func(chunk string) {
+		if strings.TrimSpace(sseDistributeID) == `` {
+			return
+		}
+		sseShell.Send(chunk)
+	})
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return

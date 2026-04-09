@@ -49,6 +49,14 @@
             </el-form-item>
           </el-form>
 
+          <el-divider content-position="left">[base] 日志库配置</el-divider>
+          <el-form label-width="150px">
+            <el-form-item label="logDbPath">
+              <el-input v-model="runtimeEditForm.log_db_path" placeholder="请输入日志库目录" />
+              <div class="config-item-help">日志库 sqlite 所在目录；未配置时默认使用与主库相同目录。</div>
+            </el-form-item>
+          </el-form>
+
           <el-divider content-position="left">[base] 记忆库配置</el-divider>
           <el-form label-width="150px">
             <el-form-item label="memoryDbPath">
@@ -110,6 +118,14 @@
                   同步
                 </GitActionButton>
               </div>
+            </el-descriptions-item>
+          </el-descriptions>
+
+          <el-divider content-position="left">[base] 日志库配置</el-divider>
+          <el-descriptions class="memory-config-display" :column="1" border>
+            <el-descriptions-item label="logDbPath">
+              <div class="config-value">{{ form.log_db_path || '未配置（默认与主库相同）' }}</div>
+              <div class="config-item-help">日志库 sqlite 所在目录；未配置时默认使用与主库相同目录。</div>
             </el-descriptions-item>
           </el-descriptions>
 
@@ -217,6 +233,7 @@ function createRuntimeEditForm() {
     db_path: '',
     db_file_name: '',
     db_is_git_repo: false,
+    log_db_path: '',
     memory_db_path: '',
     memory_db_file_name: '',
     memory_db_is_git_repo: false,
@@ -258,6 +275,7 @@ export default {
         db_name: '',
         db_is_git_repo: false,
         db_configured: false,
+        log_db_path: '',
         webkit_driver_path: '',
         webkit_data_path: '',
         webkit_download_path: '',
@@ -344,6 +362,7 @@ export default {
         db_path: this.form.db_dir || '',
         db_file_name: this.form.db_name || '',
         db_is_git_repo: !!this.form.db_is_git_repo,
+        log_db_path: this.form.log_db_path || '',
         memory_db_path: this.form.memory_dir || '',
         memory_db_file_name: this.form.memory_db_name || '',
         memory_db_is_git_repo: !!this.form.memory_db_is_git_repo,
@@ -362,6 +381,7 @@ export default {
         this.form.db_name = response.Data.db_name || ''
         this.form.db_is_git_repo = !!response.Data.db_is_git_repo
         this.form.db_configured = !!response.Data.db_configured
+        this.form.log_db_path = response.Data.log_db_path || ''
         this.form.webkit_driver_path = response.Data.webkit_driver_path || ''
         this.form.webkit_data_path = response.Data.webkit_data_path || ''
         this.form.webkit_download_path = response.Data.webkit_download_path || ''
@@ -394,6 +414,7 @@ export default {
         db_path: this.runtimeEditForm.db_path,
         db_file_name: this.runtimeEditForm.db_file_name,
         db_is_git_repo: this.runtimeEditForm.db_is_git_repo,
+        log_db_path: this.runtimeEditForm.log_db_path,
         memory_db_path: this.runtimeEditForm.memory_db_path,
         memory_db_file_name: this.runtimeEditForm.memory_db_file_name,
         memory_db_is_git_repo: this.runtimeEditForm.memory_db_is_git_repo,

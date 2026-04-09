@@ -26,6 +26,7 @@ func ReloadEditableRuntimeConfig() {
 	component.EnvClient.ConfigBase.DbFileName = component.ConfigViper.GetString(`base.dbFileName`)
 	component.EnvClient.ConfigBase.DbPath = component.ConfigViper.GetString(`base.dbPath`)
 	component.EnvClient.ConfigBase.DbIsGitRepo = component.ConfigViper.GetBool(`base.dbIsGitRepo`)
+	component.EnvClient.ConfigBase.LogDbPath = component.ConfigViper.GetString(`base.logDbPath`)
 	component.EnvClient.ConfigBase.MemoryDBPath = component.ConfigViper.GetString(`base.memoryDbPath`)
 	component.EnvClient.ConfigBase.MemoryDBName = component.ConfigViper.GetString(`base.memoryDbFileName`)
 	component.EnvClient.ConfigBase.MemoryDBIsGitRepo = component.ConfigViper.GetBool(`base.memoryDbIsGitRepo`)
@@ -58,7 +59,12 @@ func ReloadEditableRuntimeConfig() {
 		component.EnvClient.LogDbConfig = &define.DbConfig{}
 	}
 	component.EnvClient.LogDbConfig.DbName = buildRuntimeLogDBName(component.EnvClient.DbConfig.DbName)
-	component.EnvClient.LogDbConfig.DbPath = component.EnvClient.DbConfig.DbPath
+	// 日志库路径：优先使用独立的 logDbPath 配置，否则沿用主库路径。
+	if component.EnvClient.ConfigBase.LogDbPath != `` {
+		component.EnvClient.LogDbConfig.DbPath = common.ResolveDefaultDToolDir(component.EnvClient.ConfigBase.LogDbPath)
+	} else {
+		component.EnvClient.LogDbConfig.DbPath = component.EnvClient.DbConfig.DbPath
+	}
 
 	drive := `C`
 	if _, err := os.Stat(`D:\`); err == nil {

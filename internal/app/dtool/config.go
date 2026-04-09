@@ -279,10 +279,14 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	if component.EnvClient.ConfigBase.DbFileName != `` {
 		component.EnvClient.DbConfig.DbName = component.EnvClient.ConfigBase.DbFileName
 	}
-	// log 库默认与主库放在同一目录，便于统一管理。
+	// log 库默认与主库放在同一目录，但可以通过 logDbPath 单独配置。
+	logDbPath := component.EnvClient.ConfigBase.LogDbPath
+	if logDbPath == `` {
+		logDbPath = component.EnvClient.DbConfig.DbPath
+	}
 	component.EnvClient.LogDbConfig = &define.DbConfig{
 		DbName: buildLogDBName(component.EnvClient.DbConfig.DbName),
-		DbPath: component.EnvClient.DbConfig.DbPath,
+		DbPath: logDbPath,
 	}
 	//判断是否存在D盘如果没有那么就改为C盘
 	drive := ``

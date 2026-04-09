@@ -181,6 +181,7 @@ func enrichHomeTaskListWithMemoryFragment(list []map[string]any) {
 				`id`:      memoryFragmentID,
 				`title`:   `关联片段不存在`,
 				`tags`:    []string{},
+				`content`: ``,
 				`missing`: true,
 			}
 			continue
@@ -189,6 +190,7 @@ func enrichHomeTaskListWithMemoryFragment(list []map[string]any) {
 			`id`:      cast.ToInt(info[`id`]),
 			`title`:   cast.ToString(info[`title`]),
 			`tags`:    cast.ToStringSlice(info[`tags`]),
+			`content`: cast.ToString(info[`content`]),
 			`missing`: false,
 		}
 	}

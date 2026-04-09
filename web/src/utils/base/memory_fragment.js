@@ -80,12 +80,13 @@ function MemoryFragmentSearch(query, mode, selectedTags, limit, callBack) {
 }
 
 // MemoryFragmentOrganize 使用 AI 整理当前知识片段内容。
-function MemoryFragmentOrganize(id, title, content, tags, callBack) {
+function MemoryFragmentOrganize(id, title, content, tags, sseDistributeId, callBack) {
   base.BasePost('/api/MemoryFragmentOrganize', {
     id: id,
     title: title,
     content: content,
     tags: tags,
+    sse_distribute_id: sseDistributeId,
   }, callBack)
 }
 
