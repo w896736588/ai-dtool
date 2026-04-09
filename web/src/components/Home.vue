@@ -32,10 +32,10 @@
           <el-icon><Folder /></el-icon>
           <span>Git</span>
         </el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('tools')" index="/CommonActions" class="menu-item-common-actions">
-          <el-icon><ToolsIcon /></el-icon>
-          <span>常用操作</span>
-        </el-menu-item>
+        <!-- <el-menu-item v-if="checkModuleOpen('tools')" index="/CommonActions" class="menu-item-common-actions"> -->
+          <!-- <el-icon><ToolsIcon /></el-icon> -->
+          <!-- <span>常用操作</span> -->
+        <!-- </el-menu-item> -->
         <el-menu-item v-if="checkModuleOpen('login')" index="/Link">
           <el-icon><Link /></el-icon>
           <span>自定义网页</span>
