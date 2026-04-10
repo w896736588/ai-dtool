@@ -2,9 +2,9 @@ version: "3"
 
 tasks:
   run-server-company:
-    desc: Run web backend with company config
+    desc: Run web backend with company config via Air live reload
     cmds:
-      - go run ./cmd/dtool/main.go --ConfigFile=company
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ./script/run_server_company.ps1
 
   run-web-dev:
     desc: Run frontend dev server
@@ -15,9 +15,8 @@ tasks:
 
   run-dev-company:
     desc: Run frontend and backend for company environment
-    deps:
-      - run-web-dev
-      - run-server-company
+    cmds:
+      - task --parallel run-web-dev run-server-company
 
   build-frontend:
     desc: Build frontend dist assets

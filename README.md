@@ -31,6 +31,8 @@ go env -w GOPRIVATE=gitee.com
 go get -u gitee.com/Sxiaobai/gs/v2@latest
 # task安装
 go install github.com/go-task/task/v3/cmd/task@latest
+# air监听启动
+go install github.com/air-verse/air@latest
 ```
 
 ## 启动命令（task）
