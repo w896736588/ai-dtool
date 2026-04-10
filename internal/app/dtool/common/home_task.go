@@ -16,7 +16,7 @@ const (
 select id,name,task_status,memory_fragment_id,is_archived,start_time,last_operated_at,create_time,update_time
 from tbl_home_task
 where is_archived = ?
-order by last_operated_at desc, id desc`
+order by id desc`
 	// homeTaskDateLayout 用于只展示年月日格式。
 	homeTaskDateLayout = `Y-m-d`
 	// homeTaskDateTimeLayout 用于展示完整时间。

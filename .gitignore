@@ -23,3 +23,5 @@ web/test
 /.codex/docs/
 tmp/dtool.exe
 tmp/build-errors.log
+tmp/dtool.exe
+/tmp/
