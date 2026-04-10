@@ -3,11 +3,12 @@ function isMemoryFragmentTabName(tabName) {
 }
 
 function activateMemorySaveFeedback(currentState, fragmentId, now, durationMs) {
-  const normalizedId = String(Number(fragmentId || 0))
+  const rawId = String(fragmentId || '').trim()
   const startedAt = Number(now || 0)
-  if (normalizedId === '0' || normalizedId === 'NaN') {
+  if (!rawId || rawId === '0' || rawId === 'null' || rawId === 'undefined') {
     return { ...(currentState || {}) }
   }
+  const normalizedId = rawId
   const nextState = { ...(currentState || {}) }
   nextState[normalizedId] = {
     visible: true,
