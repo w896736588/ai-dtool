@@ -812,7 +812,9 @@ export default {
 
     const renderProcessMarkdown = (text) => {
       const raw = String(text || '')
-      const html = marked.parse(raw)
+      // 终端输出里常见 "~/path" 提示符，Markdown 会把 ~...~ 识别为删除线；先转义 ~ 防止误渲染。
+      const escapedRaw = raw.replace(/~/g, '\\~')
+      const html = marked.parse(escapedRaw)
       return DOMPurify.sanitize(html)
     }
 
@@ -4025,6 +4027,7 @@ export default {
     return {
       inputText,
       messages,
+      isExecuting,
       showCommands,
       isLoadingDynamic,
       filteredCommands,

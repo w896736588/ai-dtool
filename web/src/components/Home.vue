@@ -865,6 +865,18 @@ export default {
     },
     // isDashboardCommandRunning 判断首页命令区是否存在执行中的命令，执行中时滚轮不触发整屏切换。
     isDashboardCommandRunning() {
+      const dashboardRef = this.$refs.currentRef
+      const dashboardIsExecuting = dashboardRef?.isExecuting
+      if (dashboardIsExecuting === true) {
+        return true
+      }
+      if (
+        dashboardIsExecuting &&
+        typeof dashboardIsExecuting === 'object' &&
+        dashboardIsExecuting.value === true
+      ) {
+        return true
+      }
       if (!(this.$el instanceof HTMLElement)) {
         return false
       }
