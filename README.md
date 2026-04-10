@@ -35,24 +35,26 @@ go install github.com/go-task/task/v3/cmd/task@latest
 go install github.com/air-verse/air@latest
 ```
 
-## 启动命令（task）
-
-### Web 端（浏览器模式）
+## 开发时启动命令（task）
 
 ```bash
-# 后端
-task run-server-company
-
-# 前端
-task run-web-dev
+# 启动服务，启动后前端变更后都会自动热更新
+task dun-dev-company
 
 # 前端开发地址
 http://localhost:8080
 ```
+## 发布版启动命令
 
 ```bash
-# 打开已打包的网页版
+# windows
 网页版.bat
+
+# linux
+web.sh
+
+# macos
+web.command
 
 # 默认访问地址
 http://localhost:17170
