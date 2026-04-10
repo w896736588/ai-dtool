@@ -147,6 +147,15 @@ func LoadMemoryStore() error {
 
 	config := preparedMemoryStore.Config
 	memoryGit := preparedMemoryStore.MemoryGit
+	// if migrationReport, err := memory.MigrateNumericFragmentIDs(config.Dir); err != nil {
+	// 	return fmt.Errorf(`迁移旧数字知识片段ID失败 %w`, err)
+	// } else if component.DbMain != nil {
+	// 	// 启动时同步修正首页任务里的旧片段引用，避免数字文件改名后关联失效。
+	// 	// Repair home-task fragment references during boot so renamed legacy files do not break associations.
+	// 	if err = component.DbMain.ReplaceHomeTaskMemoryFragmentIDs(migrationReport.IDMap); err != nil {
+	// 		return fmt.Errorf(`同步首页任务知识片段ID失败 %w`, err)
+	// 	}
+	// }
 
 	memoryDB := memory.NewService(config.Dir)
 	component.MemoryRuntime.SetGitSyncer(memoryGit)

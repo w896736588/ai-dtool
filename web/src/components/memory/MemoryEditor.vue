@@ -308,6 +308,8 @@ const ORGANIZE_DIFF_TITLE_TEXT = '正文差异'
 const CONFIRM_WRITE_BUTTON_TEXT = '确认写入'
 // DELETE_CONFIRM_TITLE_TEXT 统一定义删除确认文案。
 const DELETE_CONFIRM_TITLE_TEXT = '确定删除这个片段吗？'
+// DELETE_CONFIRM_NAME_EMPTY_TEXT 统一定义删除确认时的片段名称兜底文案。
+const DELETE_CONFIRM_NAME_EMPTY_TEXT = '未命名片段'
 // EMPTY_CONTENT_ERROR_TEXT 统一定义空内容提示，避免散落硬编码。
 const EMPTY_CONTENT_ERROR_TEXT = '当前片段内容不能为空'
 // EMPTY_ORGANIZE_RESULT_ERROR_TEXT 统一定义空整理结果提示。
@@ -395,6 +397,7 @@ export default {
       organizeDiffTitleText: ORGANIZE_DIFF_TITLE_TEXT,
       confirmWriteButtonText: CONFIRM_WRITE_BUTTON_TEXT,
       deleteConfirmTitleText: DELETE_CONFIRM_TITLE_TEXT,
+      deleteConfirmNameEmptyText: DELETE_CONFIRM_NAME_EMPTY_TEXT,
       statusTagWarningType: STATUS_TAG_WARNING_TYPE,
       statusTagSuccessType: STATUS_TAG_SUCCESS_TYPE,
       toolbarActionHistoryCommand: TOOLBAR_ACTION_HISTORY_COMMAND,
@@ -999,15 +1002,38 @@ export default {
     },
     // confirmDeleteFromToolbar / 下拉删除前二次确认 / Ask for confirmation before deleting from dropdown.
     confirmDeleteFromToolbar() {
-      this.$confirm(this.deleteConfirmTitleText, this.deleteButtonText, {
+      this.$confirm(this.buildDeleteConfirmMessage(), this.deleteButtonText, {
         confirmButtonText: this.deleteButtonText,
         cancelButtonText: this.cancelButtonText,
         type: 'warning',
+        dangerouslyUseHTMLString: true,
+        center: true,
       })
         .then(() => {
           this.handleDelete()
         })
         .catch(() => {})
+    },
+    // buildDeleteConfirmMessage 生成删除确认弹窗 HTML，突出当前要删除的片段标题。
+    // Build the delete confirmation HTML and highlight the fragment title in the center.
+    buildDeleteConfirmMessage() {
+      const fragmentTitle = this.escapeDeleteConfirmText(this.draftFragment.title || this.deleteConfirmNameEmptyText)
+      return `
+        <div class="memory-delete-confirm">
+          <div class="memory-delete-confirm__desc">${this.deleteConfirmTitleText}</div>
+          <div class="memory-delete-confirm__name">${fragmentTitle}</div>
+        </div>
+      `
+    },
+    // escapeDeleteConfirmText 对删除确认中的动态标题做 HTML 转义，避免特殊字符破坏弹窗结构。
+    // Escape dynamic title text in the delete confirmation dialog to keep the HTML safe.
+    escapeDeleteConfirmText(text) {
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
     },
     // appendTag 将输入框内容转换为标签并去重。
     appendTag() {
@@ -1232,6 +1258,24 @@ export default {
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+:global(.memory-delete-confirm) {
+  text-align: center;
+}
+
+:global(.memory-delete-confirm__desc) {
+  color: #5f6758;
+  line-height: 1.6;
+}
+
+:global(.memory-delete-confirm__name) {
+  margin-top: 10px;
+  color: #c23b32;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.6;
+  word-break: break-word;
 }
 
 .title-input :deep(.el-input__wrapper) {

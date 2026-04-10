@@ -167,6 +167,28 @@ func (h *CSqlite) HomeTaskDelete(id int) error {
 	return nil
 }
 
+// ReplaceHomeTaskMemoryFragmentIDs 批量替换首页任务关联的知识片段 ID。 // Bulk replace memory fragment IDs referenced by home tasks.
+func (h *CSqlite) ReplaceHomeTaskMemoryFragmentIDs(idMap map[string]string) error {
+	if len(idMap) == 0 {
+		return nil
+	}
+	for oldID, newID := range idMap {
+		oldID = strings.TrimSpace(oldID)
+		newID = strings.TrimSpace(newID)
+		// 空值或无变化映射直接跳过，避免把无效值写回主库。 // Skip empty or unchanged mappings to avoid persisting invalid values.
+		if oldID == `` || newID == `` || oldID == newID {
+			continue
+		}
+		if _, err := h.Client.ExecBySql(`
+update tbl_home_task
+set memory_fragment_id = ?
+where memory_fragment_id = ?`, newID, oldID).Exec(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // fillHomeTaskTimeDescList 批量填充首页任务时间描述字段。
 func (h *CSqlite) fillHomeTaskTimeDescList(list []map[string]any) {
 	for _, item := range list {

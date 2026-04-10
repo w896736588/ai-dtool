@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/google/uuid"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -373,9 +373,8 @@ func (h *Service) getFragment(id string) (Fragment, bool) {
 
 func (h *Service) generateFragmentID() string {
 	for {
-		id := strconv.FormatInt(time.Now().UnixNano(), 10)
+		id := uuid.NewString()
 		if _, exists := h.getFragment(id); exists {
-			time.Sleep(time.Nanosecond)
 			continue
 		}
 		return id
@@ -441,26 +440,21 @@ func parseFrontMatter(content string) (FrontMatter, string, error) {
 
 func fragmentToMap(fragment Fragment) map[string]any {
 	result := map[string]any{
-		`id`:                fragmentIDForResponse(fragment.ID),
-		`file_id`:           fragment.ID,
-		`file_path`:         fragment.FilePath,
-		`title`:             fragment.Title,
-		`content`:           fragment.Content,
-		`tags`:              []string{},
-		`create_time`:       fragment.CreatedAt.Unix(),
-		`update_time`:       fragment.UpdatedAt.Unix(),
-		`create_time_desc`:  fragment.CreatedAt.Format(`2006-01-02 15:04:05`),
-		`update_time_desc`:  fragment.UpdatedAt.Format(`2006-01-02 15:04:05`),
-		`is_deleted`:        boolToInt(fragment.IsDeleted),
+		// 文件型片段 ID 属于不透明标识，即便全数字也必须按字符串返回，避免前端出现 JS 安全整数精度丢失。
+		// File-backed fragment IDs are opaque identifiers and must stay strings to avoid JS safe-integer precision loss.
+		`id`:               fragment.ID,
+		`file_id`:          fragment.ID,
+		`file_path`:        fragment.FilePath,
+		`title`:            fragment.Title,
+		`content`:          fragment.Content,
+		`tags`:             []string{},
+		`create_time`:      fragment.CreatedAt.Unix(),
+		`update_time`:      fragment.UpdatedAt.Unix(),
+		`create_time_desc`: fragment.CreatedAt.Format(`2006-01-02 15:04:05`),
+		`update_time_desc`: fragment.UpdatedAt.Format(`2006-01-02 15:04:05`),
+		`is_deleted`:       boolToInt(fragment.IsDeleted),
 	}
 	return result
-}
-
-func fragmentIDForResponse(id string) any {
-	if value, err := strconv.ParseInt(id, 10, 64); err == nil {
-		return value
-	}
-	return id
 }
 
 func normalizeID(id any) string {

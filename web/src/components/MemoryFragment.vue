@@ -63,7 +63,10 @@
           @click="openFragment(item.id)"
         >
           <div class="sidebar-item-main">
-            <div class="sidebar-item-title">{{ item.title }}</div>
+            <div class="sidebar-item-title-row">
+              <div class="sidebar-item-title">{{ item.title }}</div>
+              <span v-if="activeFragmentId === item.id" class="sidebar-item-active-badge">当前</span>
+            </div>
           </div>
           <div v-if="item.file_path || item.update_time_desc" class="sidebar-item-meta">
             <span
@@ -199,11 +202,17 @@
                       恢复
                     </GitActionButton>
                     <el-popconfirm
-                      title="确定彻底删除这个片段吗？"
+                      popper-class="memory-fragment-delete-popconfirm"
                       confirm-button-text="彻底删除"
                       cancel-button-text="取消"
                       @confirm="handleFragmentHardDelete(item.id)"
                     >
+                      <template #default>
+                        <div class="delete-popconfirm-content">
+                          <div class="delete-popconfirm-desc">确定彻底删除这个片段吗？</div>
+                          <div class="delete-popconfirm-name">{{ item.title || '未命名片段' }}</div>
+                        </div>
+                      </template>
                       <template #reference>
                         <GitActionButton variant="danger" compact>彻底删除</GitActionButton>
                       </template>
@@ -1149,6 +1158,28 @@ export default {
   align-items: flex-start;
 }
 
+:global(.memory-fragment-delete-popconfirm) {
+  max-width: 320px;
+}
+
+.delete-popconfirm-content {
+  text-align: center;
+}
+
+.delete-popconfirm-desc {
+  color: #5f6758;
+  line-height: 1.6;
+}
+
+.delete-popconfirm-name {
+  margin-top: 10px;
+  color: #c23b32;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
 .sidebar-item {
   position: relative;
   isolation: isolate;
@@ -1219,6 +1250,31 @@ export default {
   background: #f2f8ec;
 }
 
+.sidebar-item:hover {
+  border-color: #d9e7d3;
+  background: #f5faef;
+}
+
+.sidebar-item.active {
+  border-color: #93b88a;
+  background: linear-gradient(135deg, #f1f8e8 0%, #e6f3da 100%);
+  box-shadow: 0 14px 26px rgba(83, 122, 72, 0.16);
+  transform: translateX(4px);
+}
+
+.sidebar-item.active::after {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #5f9754 0%, #78b66c 100%);
+  box-shadow: 0 0 0 1px rgba(95, 151, 84, 0.08);
+  z-index: 1;
+}
+
 .sidebar-item-main {
   position: relative;
   z-index: 1;
@@ -1226,6 +1282,12 @@ export default {
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
+}
+
+.sidebar-item-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .sidebar-item-title {
@@ -1237,6 +1299,25 @@ export default {
   font-size: 14px;
   color: #32402f;
   line-height: 1.5;
+}
+
+.sidebar-item.active .sidebar-item-title {
+  color: #1f301d;
+  font-weight: 600;
+}
+
+.sidebar-item-active-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(72, 127, 61, 0.12);
+  color: #3f6d37;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .sidebar-item.is-updated-3d .sidebar-item-title {
@@ -1300,6 +1381,10 @@ export default {
   font-size: 12px;
   margin-left: auto;
   white-space: nowrap;
+}
+
+.sidebar-item.active .sidebar-item-time {
+  color: #55704f;
 }
 
 .sidebar-item.is-updated-3d .sidebar-item-time {

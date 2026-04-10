@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	gitee.com/Sxiaobai/gs/v2 v2.0.57
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-viper/encoding/ini v0.1.1
 	github.com/pion/stun v0.6.1
@@ -15,6 +16,7 @@ require (
 	github.com/tidwall/gjson v1.18.0
 	golang.org/x/crypto v0.49.0
 	gopkg.in/ini.v1 v1.67.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -28,7 +30,6 @@ require (
 	github.com/easierway/concurrent_map v1.0.0 // indirect
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/forgoer/openssl v1.6.0 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.11 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
@@ -98,5 +99,4 @@ require (
 	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
