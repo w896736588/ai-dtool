@@ -61,11 +61,7 @@
           <el-form label-width="150px">
             <el-form-item label="memoryDbPath">
               <el-input v-model="runtimeEditForm.memory_db_path" placeholder="请输入记忆库目录" />
-              <div class="config-item-help">记忆库 sqlite 所在目录；未配置时记忆库不会初始化。</div>
-            </el-form-item>
-            <el-form-item label="memoryDbFileName">
-              <el-input v-model="runtimeEditForm.memory_db_file_name" placeholder="请输入记忆库文件名" />
-              <div class="config-item-help">记忆库 sqlite 文件名，会和 memoryDbPath 组合成完整路径。</div>
+              <div class="config-item-help">记忆库 Markdown 根目录；未配置时记忆库不会初始化。</div>
             </el-form-item>
             <el-form-item label="memoryDbIsGitRepo">
               <el-switch v-model="runtimeEditForm.memory_db_is_git_repo" />
@@ -73,7 +69,7 @@
             </el-form-item>
             <el-form-item label="memoryDbAutoPushDelayMinutes">
               <el-input-number v-model="runtimeEditForm.memory_db_auto_push_delay_minutes" :min="0" :step="1" />
-              <div class="config-item-help">知识库内容写入 sqlite 后，延迟多少分钟自动 git commit + push；0 表示关闭自动 push。</div>
+              <div class="config-item-help">知识片段写入本地 Markdown 后，延迟多少分钟自动 git commit + push；0 表示关闭自动 push。</div>
             </el-form-item>
           </el-form>
 
@@ -133,11 +129,7 @@
           <el-descriptions class="memory-config-display" :column="1" border>
             <el-descriptions-item label="memoryDbPath">
               <div class="config-value">{{ form.memory_dir || '未配置，请在配置文件中设置' }}</div>
-              <div class="config-item-help">记忆库 sqlite 所在目录；未配置时记忆库不会初始化。</div>
-            </el-descriptions-item>
-            <el-descriptions-item label="memoryDbFileName">
-              <div class="config-value">{{ form.memory_db_name || '未配置，请在配置文件中设置' }}</div>
-              <div class="config-item-help">记忆库 sqlite 文件名，会和 memoryDbPath 组合成完整路径。</div>
+              <div class="config-item-help">记忆库 Markdown 根目录；未配置时记忆库不会初始化。</div>
             </el-descriptions-item>
             <el-descriptions-item label="memoryDbIsGitRepo">
               <div class="config-value">{{ boolText(form.memory_db_is_git_repo) }}</div>
@@ -155,7 +147,7 @@
             </el-descriptions-item>
             <el-descriptions-item label="memoryDbAutoPushDelayMinutes">
               <div class="config-value">{{ form.memory_db_auto_push_delay_minutes }}</div>
-              <div class="config-item-help">知识库内容写入 sqlite 后，延迟多少分钟自动 git commit + push；0 表示关闭自动 push。</div>
+              <div class="config-item-help">知识片段写入本地 Markdown 后，延迟多少分钟自动 git commit + push；0 表示关闭自动 push。</div>
             </el-descriptions-item>
           </el-descriptions>
 
@@ -179,7 +171,7 @@
         <el-alert
           :closable="false"
           type="info"
-          title="保存后会写回当前 ini 文件并重新读取配置；如果修改了数据库路径、文件名或 git 仓库开关，建议重启应用让数据库连接和启动流程完全生效。"
+          title="保存后会写回当前 ini 文件并重新读取配置；如果修改了数据库路径或 git 仓库开关，建议重启应用让数据库连接和启动流程完全生效。"
         />
       </template>
 
@@ -235,7 +227,6 @@ function createRuntimeEditForm() {
     db_is_git_repo: false,
     log_db_path: '',
     memory_db_path: '',
-    memory_db_file_name: '',
     memory_db_is_git_repo: false,
     memory_db_auto_push_delay_minutes: 1,
     webkit_driver_path: '',
@@ -280,7 +271,6 @@ export default {
         webkit_data_path: '',
         webkit_download_path: '',
         memory_dir: '',
-        memory_db_name: '',
         memory_db_is_git_repo: false,
         memory_db_auto_push_delay_minutes: 1,
         memory_db_configured: false,
@@ -317,7 +307,7 @@ export default {
         return `未检测到主库配置，请在 ${configFile} 的 [base] 节点中配置 dbPath 和 dbFileName。`
       }
       if (!this.form.memory_db_configured) {
-        return `未检测到记忆库配置，请在 ${configFile} 的 [base] 节点中配置 memoryDbPath 和 memoryDbFileName。`
+        return `未检测到记忆库配置，请在 ${configFile} 的 [base] 节点中配置 memoryDbPath。`
       }
       return `当前主库、记忆库和路径配置均来自 ${configFile} 的 [base] 与 [path] 节点。`
     },
@@ -364,7 +354,6 @@ export default {
         db_is_git_repo: !!this.form.db_is_git_repo,
         log_db_path: this.form.log_db_path || '',
         memory_db_path: this.form.memory_dir || '',
-        memory_db_file_name: this.form.memory_db_name || '',
         memory_db_is_git_repo: !!this.form.memory_db_is_git_repo,
         memory_db_auto_push_delay_minutes: Number(this.form.memory_db_auto_push_delay_minutes ?? 1),
         webkit_driver_path: this.form.webkit_driver_path || '',
@@ -386,7 +375,6 @@ export default {
         this.form.webkit_data_path = response.Data.webkit_data_path || ''
         this.form.webkit_download_path = response.Data.webkit_download_path || ''
         this.form.memory_dir = response.Data.memory_dir || ''
-        this.form.memory_db_name = response.Data.memory_db_name || ''
         this.form.memory_db_is_git_repo = !!response.Data.memory_db_is_git_repo
         this.form.memory_db_auto_push_delay_minutes = Number(response.Data.memory_db_auto_push_delay_minutes ?? 1)
         this.form.memory_db_configured = !!response.Data.memory_db_configured
@@ -416,7 +404,6 @@ export default {
         db_is_git_repo: this.runtimeEditForm.db_is_git_repo,
         log_db_path: this.runtimeEditForm.log_db_path,
         memory_db_path: this.runtimeEditForm.memory_db_path,
-        memory_db_file_name: this.runtimeEditForm.memory_db_file_name,
         memory_db_is_git_repo: this.runtimeEditForm.memory_db_is_git_repo,
         memory_db_auto_push_delay_minutes: Number(this.runtimeEditForm.memory_db_auto_push_delay_minutes || 0),
         webkit_driver_path: this.runtimeEditForm.webkit_driver_path,

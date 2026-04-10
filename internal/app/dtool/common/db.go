@@ -392,7 +392,8 @@ func (h *CSqlite) MemoryFragmentInfo(id int) (map[string]any, error) {
 	one[`tags`] = tags
 	one[`create_time_desc`] = h.memoryFragmentFormatTime(cast.ToInt64(one[`create_time`]))
 	one[`update_time_desc`] = h.memoryFragmentFormatTime(cast.ToInt64(one[`update_time`]))
-	one[`index_status_desc`] = h.memoryFragmentIndexStatusDesc(cast.ToString(one[`index_status`]))
+	delete(one, `index_status`)
+	delete(one, `index_version`)
 	return one, nil
 }
 
@@ -697,7 +698,8 @@ group by f.id`
 		rowCopy[`tags`] = tags
 		rowCopy[`create_time_desc`] = h.memoryFragmentFormatTime(cast.ToInt64(row[`create_time`]))
 		rowCopy[`update_time_desc`] = h.memoryFragmentFormatTime(cast.ToInt64(row[`update_time`]))
-		rowCopy[`index_status_desc`] = h.memoryFragmentIndexStatusDesc(cast.ToString(row[`index_status`]))
+		delete(rowCopy, `index_status`)
+		delete(rowCopy, `index_version`)
 		rowCopy[`score`] = score
 		resultRows = append(resultRows, searchRow{
 			row:   rowCopy,
@@ -816,7 +818,8 @@ func (h *CSqlite) memoryFragmentFillDisplayFields(list []map[string]any) {
 		list[i][`tags`] = tags
 		list[i][`create_time_desc`] = h.memoryFragmentFormatTime(cast.ToInt64(list[i][`create_time`]))
 		list[i][`update_time_desc`] = h.memoryFragmentFormatTime(cast.ToInt64(list[i][`update_time`]))
-		list[i][`index_status_desc`] = h.memoryFragmentIndexStatusDesc(cast.ToString(list[i][`index_status`]))
+		delete(list[i], `index_status`)
+		delete(list[i], `index_version`)
 	}
 }
 
@@ -828,17 +831,6 @@ func (h *CSqlite) memoryFragmentFormatTime(unixTime int64) string {
 	return gstool.TimeUnixToString(time.Unix(unixTime, 0), `Y-m-d H:i:s`)
 }
 
-// memoryFragmentIndexStatusDesc 返回索引状态描述。
-func (h *CSqlite) memoryFragmentIndexStatusDesc(status string) string {
-	switch status {
-	case `success`:
-		return `索引成功`
-	case `failed`:
-		return `索引失败`
-	default:
-		return `待索引`
-	}
-}
 
 // memoryFragmentNormalizeTags 规范化标签列表。
 func (h *CSqlite) memoryFragmentNormalizeTags(tags []string) []string {

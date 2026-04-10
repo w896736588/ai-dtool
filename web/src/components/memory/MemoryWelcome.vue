@@ -43,7 +43,6 @@
               <div class="fragment-title">{{ item.title }}</div>
               <div class="fragment-meta">
                 <span>{{ item.update_time_desc || '-' }}</span>
-                <span>{{ item.index_status_desc || '待索引' }}</span>
               </div>
             </div>
             <div v-if="item.tags && item.tags.length > 0" class="fragment-tags">

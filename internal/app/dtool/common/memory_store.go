@@ -2,7 +2,6 @@ package common
 
 import (
 	"errors"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -12,7 +11,7 @@ import (
 const MemorySyncCommitMessage = `chore: sync memory db`
 const DefaultMemoryAutoPushDelayMinutes = 1
 
-var ErrMemoryNotConfigured = errors.New(`请先在配置文件中配置记忆库目录和数据库名`)
+var ErrMemoryNotConfigured = errors.New(`请先在配置文件中配置记忆库目录`)
 
 type MemoryConfig struct {
 	Dir                  string `json:"memory_dir"`
@@ -45,7 +44,7 @@ func (h *timeTimer) Stop() bool {
 type MemoryStore struct {
 	mu           sync.RWMutex
 	config       MemoryConfig
-	db           *CSqlite
+	db           MemoryFragmentStore
 	timer        stoppableTimer
 	dirty        bool
 	nextPushTime int64
@@ -53,6 +52,20 @@ type MemoryStore struct {
 	lastPushErr  string
 	afterFunc    func(time.Duration, func()) stoppableTimer
 	gitSyncer    memoryGitSyncer
+}
+
+// MemoryFragmentStore 定义知识片段运行时存储接口。
+type MemoryFragmentStore interface {
+	MemoryFragmentList(limit int) ([]map[string]any, error)
+	MemoryFragmentTrashList(limit int) ([]map[string]any, error)
+	MemoryFragmentInfo(id any) (map[string]any, error)
+	MemoryFragmentSave(id any, title, content string, tags []string) (map[string]any, error)
+	MemoryFragmentSoftDelete(id any) (int64, error)
+	MemoryFragmentRestore(id any) (int64, error)
+	MemoryFragmentHardDelete(id any) error
+	MemoryFragmentHistoryList(id any) ([]map[string]any, error)
+	MemoryFragmentTagList() ([]map[string]any, error)
+	MemoryFragmentSearch(mode, query string, selectedTags []string, limit int) ([]map[string]any, error)
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -69,7 +82,7 @@ func (h *MemoryStore) SetGitSyncer(syncer memoryGitSyncer) {
 	h.gitSyncer = syncer
 }
 
-func (h *MemoryStore) Configure(config MemoryConfig, db *CSqlite) {
+func (h *MemoryStore) Configure(config MemoryConfig, db MemoryFragmentStore) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.config = config
@@ -94,7 +107,7 @@ func (h *MemoryStore) Config() MemoryConfig {
 	return h.config
 }
 
-func (h *MemoryStore) DB() *CSqlite {
+func (h *MemoryStore) DB() MemoryFragmentStore {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.db
@@ -121,7 +134,7 @@ func (h *MemoryStore) LastPushError() string {
 func (h *MemoryStore) IsConfigured() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return h.config.Dir != `` && h.config.DBName != `` && h.db != nil
+	return h.config.Dir != `` && h.db != nil
 }
 
 func (h *MemoryStore) EnsureConfigured() error {
@@ -134,7 +147,7 @@ func (h *MemoryStore) EnsureConfigured() error {
 func (h *MemoryStore) ScheduleSync() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.config.Dir == `` || h.config.DBName == `` {
+	if h.config.Dir == `` {
 		return
 	}
 	h.dirty = true
@@ -167,9 +180,9 @@ func (h *MemoryStore) SyncNow() error {
 	h.nextPushTime = 0
 	h.mu.Unlock()
 
-	if config.Dir == `` || config.DBName == `` {
+	if config.Dir == `` {
 		h.setLastPushError(ErrMemoryNotConfigured.Error())
-		gstool.FmtPrintlnLogTime(`记忆库同步失败：配置不完整 dir=%s db=%s`, config.Dir, config.DBName)
+		gstool.FmtPrintlnLogTime(`记忆库同步失败：配置不完整 dir=%s`, config.Dir)
 		return ErrMemoryNotConfigured
 	}
 	if !config.IsGitRepo {
@@ -178,26 +191,30 @@ func (h *MemoryStore) SyncNow() error {
 		h.dirty = false
 		h.lastPushErr = ``
 		h.mu.Unlock()
-		gstool.FmtPrintlnLogTime(`记忆库未启用 git 仓库同步，跳过 push dir=%s file=%s`, config.Dir, config.DBName)
+		gstool.FmtPrintlnLogTime(`记忆库未启用 git 仓库同步，跳过 push dir=%s`, config.Dir)
 		return nil
 	}
 	if !dirty {
 		// 没有脏数据时不需要触发 git push。 // Skip git push when there are no pending changes.
-		gstool.FmtPrintlnLogTime(`记忆库当前没有待同步变更，跳过 push dir=%s file=%s`, config.Dir, filepath.Base(config.DBPath))
+		gstool.FmtPrintlnLogTime(`记忆库当前没有待同步变更，跳过 push dir=%s`, config.Dir)
 		return nil
 	}
 	if syncer == nil {
 		err := errors.New(`memory git syncer not set`)
 		h.setLastPushError(err.Error())
-		gstool.FmtPrintlnLogTime(`记忆库同步失败：git syncer 未设置 dir=%s file=%s`, config.Dir, filepath.Base(config.DBPath))
+		gstool.FmtPrintlnLogTime(`记忆库同步失败：git syncer 未设置 dir=%s`, config.Dir)
 		return err
 	}
 
-	gstool.FmtPrintlnLogTime(`记忆库开始检查变更并执行 push dir=%s file=%s`, config.Dir, filepath.Base(config.DBPath))
-	hasChanges, err := syncer.HasFileChanges(config.Dir, filepath.Base(config.DBPath))
+	target := `.`
+	if config.DBPath != `` {
+		target = config.DBPath
+	}
+	gstool.FmtPrintlnLogTime(`记忆库开始检查变更并执行 push dir=%s target=%s`, config.Dir, target)
+	hasChanges, err := syncer.HasFileChanges(config.Dir, target)
 	if err != nil {
 		h.setLastPushError(err.Error())
-		gstool.FmtPrintlnLogTime(`记忆库检查变更失败 dir=%s file=%s err=%s`, config.Dir, filepath.Base(config.DBPath), err.Error())
+		gstool.FmtPrintlnLogTime(`记忆库检查变更失败 dir=%s target=%s err=%s`, config.Dir, target, err.Error())
 		return err
 	}
 	if !hasChanges {
@@ -205,22 +222,22 @@ func (h *MemoryStore) SyncNow() error {
 		h.dirty = false
 		h.lastPushErr = ``
 		h.mu.Unlock()
-		gstool.FmtPrintlnLogTime(`记忆库未检测到文件变更，跳过 push dir=%s file=%s`, config.Dir, filepath.Base(config.DBPath))
+		gstool.FmtPrintlnLogTime(`记忆库未检测到文件变更，跳过 push dir=%s target=%s`, config.Dir, target)
 		return nil
 	}
-	if err = syncer.AddFile(config.Dir, filepath.Base(config.DBPath)); err != nil {
+	if err = syncer.AddFile(config.Dir, target); err != nil {
 		h.setLastPushError(err.Error())
-		gstool.FmtPrintlnLogTime(`记忆库 add 失败 dir=%s file=%s err=%s`, config.Dir, filepath.Base(config.DBPath), err.Error())
+		gstool.FmtPrintlnLogTime(`记忆库 add 失败 dir=%s target=%s err=%s`, config.Dir, target, err.Error())
 		return err
 	}
-	if err = syncer.Commit(config.Dir, filepath.Base(config.DBPath), MemorySyncCommitMessage); err != nil {
+	if err = syncer.Commit(config.Dir, target, MemorySyncCommitMessage); err != nil {
 		h.setLastPushError(err.Error())
-		gstool.FmtPrintlnLogTime(`记忆库 commit 失败 dir=%s file=%s err=%s`, config.Dir, filepath.Base(config.DBPath), err.Error())
+		gstool.FmtPrintlnLogTime(`记忆库 commit 失败 dir=%s target=%s err=%s`, config.Dir, target, err.Error())
 		return err
 	}
 	if err = syncer.Push(config.Dir); err != nil {
 		h.setLastPushError(err.Error())
-		gstool.FmtPrintlnLogTime(`记忆库 push 失败 dir=%s file=%s err=%s`, config.Dir, filepath.Base(config.DBPath), err.Error())
+		gstool.FmtPrintlnLogTime(`记忆库 push 失败 dir=%s target=%s err=%s`, config.Dir, target, err.Error())
 		return err
 	}
 
@@ -229,7 +246,7 @@ func (h *MemoryStore) SyncNow() error {
 	h.lastPushTime = time.Now().Unix()
 	h.lastPushErr = ``
 	h.mu.Unlock()
-	gstool.FmtPrintlnLogTime(`记忆库 push 成功 dir=%s file=%s`, config.Dir, filepath.Base(config.DBPath))
+	gstool.FmtPrintlnLogTime(`记忆库 push 成功 dir=%s target=%s`, config.Dir, target)
 	return nil
 }
 

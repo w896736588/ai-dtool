@@ -835,8 +835,8 @@ func SetMemoryConfigGet(c *gin.Context) {
 		`webkit_data_path`:                  component.ConfigViper.GetString(`path.webkit_data_path`),
 		`webkit_download_path`:              component.ConfigViper.GetString(`path.webkit_download_path`),
 		`memory_dir`:                        memoryConfig.Dir,
-		`memory_db_name`:                    memoryConfig.DBName,
-		`memory_db_configured`:              memoryConfig.Dir != `` && memoryConfig.DBName != ``,
+		`memory_db_name`:                    ``,
+		`memory_db_configured`:              memoryConfig.Dir != ``,
 		`memory_db_is_git_repo`:             memoryConfig.GitRepoEnabled,
 		`memory_db_auto_push_delay_minutes`: memoryConfig.AutoPushDelayMinutes,
 		`memory_config_file`:                memoryConfigFilePath(),
@@ -931,7 +931,6 @@ func SetRuntimeConfigSave(c *gin.Context) {
 	setIniKey(baseSection, `dbIsGitRepo`, cast.ToString(cast.ToBool(dataMap[`db_is_git_repo`])))
 	setIniKey(baseSection, `logDbPath`, strings.TrimSpace(cast.ToString(dataMap[`log_db_path`])))
 	setIniKey(baseSection, `memoryDbPath`, strings.TrimSpace(cast.ToString(dataMap[`memory_db_path`])))
-	setIniKey(baseSection, `memoryDbFileName`, strings.TrimSpace(cast.ToString(dataMap[`memory_db_file_name`])))
 	setIniKey(baseSection, `memoryDbIsGitRepo`, cast.ToString(cast.ToBool(dataMap[`memory_db_is_git_repo`])))
 	setIniKey(baseSection, `memoryDbAutoPushDelayMinutes`, cast.ToString(cast.ToInt(dataMap[`memory_db_auto_push_delay_minutes`])))
 	setIniKey(pathSection, `webkit_driver_path`, strings.TrimSpace(cast.ToString(dataMap[`webkit_driver_path`])))

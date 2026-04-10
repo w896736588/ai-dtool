@@ -25,7 +25,6 @@ function MemoryFragmentSave(id, title, content, tags, callBack) {
     id: id,
     title: title,
     content: content,
-    tags: tags,
   }, callBack)
 }
 
@@ -64,17 +63,11 @@ function MemoryFragmentHistoryList(id, callBack) {
   }, callBack)
 }
 
-// MemoryFragmentTagList 查询可用标签列表。
-function MemoryFragmentTagList(callBack) {
-  base.BasePost('/api/MemoryFragmentTagList', {}, callBack)
-}
-
 // MemoryFragmentSearch 搜索知识片段。
 function MemoryFragmentSearch(query, mode, selectedTags, limit, callBack) {
   base.BasePost('/api/MemoryFragmentSearch', {
     query: query,
     mode: mode,
-    selected_tags: selectedTags,
     limit: limit,
   }, callBack)
 }
@@ -85,9 +78,13 @@ function MemoryFragmentOrganize(id, title, content, tags, sseDistributeId, callB
     id: id,
     title: title,
     content: content,
-    tags: tags,
     sse_distribute_id: sseDistributeId,
   }, callBack)
+}
+
+// MemoryFragmentTagList 查询可用标签列表。
+function MemoryFragmentTagList(callBack) {
+  callBack({ ErrCode: 0, Data: [] })
 }
 
 export default {

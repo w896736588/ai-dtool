@@ -250,7 +250,6 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 		DbPath:                       viper.GetString(`base.dbPath`),
 		DbIsGitRepo:                  viper.GetBool(`base.dbIsGitRepo`),
 		MemoryDBPath:                 viper.GetString(`base.memoryDbPath`),
-		MemoryDBName:                 viper.GetString(`base.memoryDbFileName`),
 		MemoryDBIsGitRepo:            viper.GetBool(`base.memoryDbIsGitRepo`),
 		MemoryDBAutoPushDelayMinutes: common.DefaultMemoryAutoPushDelayMinutes,
 		WebPath:                      viper.GetString(`base.webPath`),

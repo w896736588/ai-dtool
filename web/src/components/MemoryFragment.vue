@@ -39,35 +39,6 @@
             <el-radio-button label="semantic">智能检索</el-radio-button>
           </el-radio-group>
         </div>
-        <div class="tag-filter-row">
-          <div class="tag-filter-head">
-            <span class="tag-filter-label">标签筛选</span>
-            <pl-button
-              v-if="showTagFilterToggle"
-              class="tag-filter-toggle"
-              link
-              @click="toggleTagFilterExpanded"
-            >
-              {{ tagFilterToggleText }}
-            </pl-button>
-          </div>
-          <div
-            class="tag-filter-list"
-            :class="{ collapsed: !tagFilterExpanded }"
-            :style="tagFilterListStyle"
-          >
-            <button
-              v-for="tag in tagList"
-              :key="tag.tag_name"
-              class="filter-chip"
-              :class="{ active: selectedTags.includes(tag.tag_name) }"
-              @click="toggleTag(tag.tag_name)"
-            >
-              <span>{{ tag.tag_name }}</span>
-              <span class="filter-count">{{ tag.use_count }}</span>
-            </button>
-          </div>
-        </div>
         <div class="search-actions">
           <pl-button type="primary" @click="submitSearch">
             <el-icon><Search /></el-icon>
@@ -90,17 +61,20 @@
         >
           <div class="sidebar-item-main">
             <div class="sidebar-item-title">{{ item.title }}</div>
-            <div class="sidebar-item-time">{{ item.update_time_desc || '-' }}</div>
           </div>
-          <div v-if="item.tags && item.tags.length > 0" class="sidebar-item-tags">
-            <el-tag
-              v-for="tag in item.tags.slice(0, 3)"
-              :key="tag"
-              size="small"
-              effect="plain"
+          <div v-if="item.file_path || item.update_time_desc" class="sidebar-item-meta">
+            <span
+              v-if="item.file_path"
+              class="sidebar-item-copy"
+              role="button"
+              tabindex="0"
+              @click.stop="copyFragmentPath(item.file_path)"
+              @keydown.enter.stop.prevent="copyFragmentPath(item.file_path)"
+              @keydown.space.stop.prevent="copyFragmentPath(item.file_path)"
             >
-              {{ tag }}
-            </el-tag>
+              复制文件地址
+            </span>
+            <div class="sidebar-item-time">{{ item.update_time_desc || '-' }}</div>
           </div>
           <div v-if="saveFeedbackMap[item.id]" class="sidebar-item-check" aria-hidden="true">
             <el-icon><Check /></el-icon>
@@ -137,14 +111,13 @@
             <MemoryWelcome
               :recent-list="fragmentList"
               :search-results="[]"
-              :tag-list="tagList"
+              :tag-list="[]"
               :selected-tags="[]"
               :query="''"
               :loading="false"
               :configured="memoryConfigured"
               @open-fragment="openFragment"
               @create-fragment="createFragment"
-              @toggle-tag="toggleTag"
               @clear-filter="clearFilter"
               @go-memory-setting="goMemorySetting"
             />
@@ -163,21 +136,9 @@
                   <div class="search-result-title">搜索结果</div>
                   <div class="search-result-desc">
                     <span v-if="submittedSearchQuery">关键词：{{ submittedSearchQuery }}</span>
-                    <span v-if="submittedSelectedTags.length > 0">标签：{{ submittedSelectedTags.join('、') }}</span>
                     <span>模式：{{ submittedSearchMode === 'semantic' ? '智能检索' : '全文检索' }}</span>
                     <span>命中：{{ searchResults.length }}</span>
                   </div>
-                </div>
-                <div v-if="submittedSelectedTags.length > 0" class="search-result-tags">
-                  <el-tag
-                    v-for="tag in submittedSelectedTags"
-                    :key="tag"
-                    size="small"
-                    closable
-                    @close="toggleSubmittedTag(tag)"
-                  >
-                    {{ tag }}
-                  </el-tag>
                 </div>
               </div>
 
@@ -210,16 +171,6 @@
                     >
                       还有 {{ getSearchSnippetMoreCount(item) }} 个匹配片段...
                     </div>
-                  </div>
-                  <div v-if="item.tags && item.tags.length > 0" class="search-result-item-tags">
-                    <el-tag
-                      v-for="tag in item.tags.slice(0, 5)"
-                      :key="tag"
-                      size="small"
-                      effect="plain"
-                    >
-                      {{ tag }}
-                    </el-tag>
                   </div>
                 </button>
               </div>
@@ -259,16 +210,6 @@
                     <div class="search-result-item-title">{{ item.title || '未命名片段' }}</div>
                     <div class="search-result-item-time">{{ item.update_time_desc || '-' }}</div>
                   </div>
-                  <div v-if="item.tags && item.tags.length > 0" class="search-result-item-tags">
-                    <el-tag
-                      v-for="tag in item.tags.slice(0, 5)"
-                      :key="tag"
-                      size="small"
-                      effect="plain"
-                    >
-                      {{ tag }}
-                    </el-tag>
-                  </div>
                   <div class="trash-result-actions">
                     <GitActionButton variant="info" compact @click="handleFragmentRestore(item.id)">
                       恢复
@@ -303,7 +244,7 @@
               :ref="(el) => setEditorRef(tab.name, el)"
               :fragment="tab.fragment"
               :saved-fragment="tab.savedFragment"
-              :available-tags="availableTagNames"
+              :available-tags="[]"
               @change="syncTabDirty(tab.name, $event)"
               @saved="handleFragmentSaved(tab.name, $event)"
               @deleted="handleFragmentDeleted"
@@ -378,23 +319,19 @@ export default {
     return {
       fragmentList: [],
       trashList: [],
-      tagList: [],
       searchResults: [],
       searchQuery: '',
       searchMode: KEYWORD_SEARCH_MODE,
-      selectedTags: [],
-      tagFilterExpanded: false,
       searchTabVisible: false,
       trashTabVisible: false,
       submittedSearchQuery: '',
       submittedSearchMode: KEYWORD_SEARCH_MODE,
-      submittedSelectedTags: [],
       activeTab: HOME_TAB_NAME,
       fragmentTabs: [],
       searchLoading: false,
       trashLoading: false,
       historyDialogVisible: false,
-      historyFragmentId: 0,
+      historyFragmentId: '',
       memoryConfigured: true,
       memoryGitRepoEnabled: false,
       nextPushTime: 0,
@@ -417,46 +354,22 @@ export default {
     // activeFragmentId 返回当前激活的片段 id。
     activeFragmentId() {
       const tab = this.fragmentTabs.find(item => item.name === this.activeTab)
-      return tab ? tab.fragment.id : 0
+      return tab ? this.normalizeFragmentId(tab.fragment.id) : ''
     },
     // routeFragmentId 返回路由中指定的片段 id。
     routeFragmentId() {
-      return Number(this.$route.query.fragment_id || 0)
+      return this.normalizeFragmentId(this.$route.query.fragment_id)
     },
     // searchTabLabel 返回搜索结果标签名称。
     searchTabLabel() {
       if (this.submittedSearchQuery.trim() !== '') {
         return `搜索结果: ${this.submittedSearchQuery}`
       }
-      if (this.submittedSelectedTags.length > 0) {
-        return `搜索结果: ${this.submittedSelectedTags.join('、')}`
-      }
       return '搜索结果'
     },
     // trashTabLabel 返回回收站标签名称。
     trashTabLabel() {
       return `回收站${this.trashList.length > 0 ? ` (${this.trashList.length})` : ''}`
-    },
-    // availableTagNames 返回编辑器可用的已有标签名称列表。
-    availableTagNames() {
-      return this.tagList.map(item => item.tag_name)
-    },
-    // showTagFilterToggle 判断左侧标签筛选区是否需要展示展开入口。
-    showTagFilterToggle() {
-      return this.tagList.length >= TAG_FILTER_TOGGLE_MIN_COUNT
-    },
-    // tagFilterListStyle 统一生成标签筛选区在不同状态下的高度样式。
-    tagFilterListStyle() {
-      if (this.tagFilterExpanded) {
-        return {}
-      }
-      return {
-        maxHeight: `${TAG_FILTER_COLLAPSED_MAX_HEIGHT}px`
-      }
-    },
-    // tagFilterToggleText 返回左侧标签筛选区的展开文案。
-    tagFilterToggleText() {
-      return this.tagFilterExpanded ? '收起标签' : `展开标签（${this.tagList.length}）`
     },
     // pushStatusLabel 返回记忆库 push 状态标签，优先展示下一次 push。
     pushStatusLabel() {
@@ -560,8 +473,8 @@ export default {
       this.saveFeedbackTimers = {}
     },
     triggerFragmentSaveFeedback(fragmentId) {
-      const normalizedId = Number(fragmentId || 0)
-      if (normalizedId <= 0) {
+      const normalizedId = this.normalizeFragmentId(fragmentId)
+      if (!normalizedId) {
         return
       }
       if (this.saveFeedbackTimers[normalizedId]) {
@@ -612,6 +525,18 @@ export default {
       const durationText = hours > 0 ? `${hours}小时${minutes}分钟` : `${minutes}分钟`
       return direction === 'future' ? `${durationText}后` : `${durationText}前`
     },
+    // copyFragmentPath 复制知识片段所属文件路径。
+    async copyFragmentPath(filePath) {
+      if (!filePath || !navigator.clipboard) {
+        return
+      }
+      try {
+        await navigator.clipboard.writeText(filePath)
+        this.$helperNotify.success('复制地址成功')
+      } catch (error) {
+        this.$helperNotify.error('复制地址失败')
+      }
+    },
     loadMemoryStatus(needReloadLists = true) {
       MemoryFragmentApi.MemoryFragmentStatus((response) => {
         this.statusNowTick = Math.floor(Date.now() / 1000)
@@ -624,7 +549,6 @@ export default {
         if (!this.memoryConfigured) {
           this.fragmentList = []
           this.trashList = []
-          this.tagList = []
           this.searchResults = []
           this.fragmentTabs = []
           this.activeTab = HOME_TAB_NAME
@@ -633,11 +557,10 @@ export default {
           this.lastPushTime = 0
           return
         }
-      if (needReloadLists) {
-        this.loadFragmentList()
-        this.loadTrashList()
-        this.loadTagList()
-      }
+        if (needReloadLists) {
+          this.loadFragmentList()
+          this.loadTrashList()
+        }
       this.tryOpenRouteFragmentOnEntry()
     })
   },
@@ -661,20 +584,8 @@ export default {
         this.trashList = Array.isArray(response.Data) ? response.Data : []
       })
     },
-    // loadTagList 加载标签筛选列表。
-    loadTagList() {
-      if (!this.memoryConfigured) {
-        return
-      }
-      MemoryFragmentApi.MemoryFragmentTagList((response) => {
-        this.tagList = Array.isArray(response.Data) ? response.Data : []
-        if (!this.showTagFilterToggle) {
-          this.tagFilterExpanded = false
-        }
-      })
-    },
     // runSearch 根据指定条件执行搜索。
-    runSearch(query, mode, selectedTags) {
+    runSearch(query, mode) {
       if (!this.memoryConfigured) {
         return
       }
@@ -682,7 +593,7 @@ export default {
       MemoryFragmentApi.MemoryFragmentSearch(
         query,
         mode,
-        selectedTags,
+        [],
         50,
         (response) => {
           this.searchLoading = false
@@ -692,16 +603,15 @@ export default {
     },
     // submitSearch 提交当前搜索条件并打开搜索结果 tab。
     submitSearch() {
-      if (this.searchQuery.trim() === '' && this.selectedTags.length === 0) {
+      if (this.searchQuery.trim() === '') {
         this.clearFilter()
         return
       }
       this.submittedSearchQuery = this.searchQuery.trim()
       this.submittedSearchMode = this.searchMode
-      this.submittedSelectedTags = [...this.selectedTags]
       this.searchTabVisible = true
       this.activeTab = SEARCH_TAB_NAME
-      this.runSearch(this.submittedSearchQuery, this.submittedSearchMode, this.submittedSelectedTags)
+      this.runSearch(this.submittedSearchQuery, this.submittedSearchMode)
     },
     // escapeHtml 对文本做 HTML 转义，避免高亮时插入原始标签。
     escapeHtml(text) {
@@ -717,7 +627,7 @@ export default {
       if (!this.searchTabVisible) {
         return
       }
-      this.runSearch(this.submittedSearchQuery, this.submittedSearchMode, this.submittedSelectedTags)
+      this.runSearch(this.submittedSearchQuery, this.submittedSearchMode)
     },
     // handleSearchClear 处理搜索输入框清空。
     handleSearchClear() {
@@ -727,39 +637,13 @@ export default {
     clearFilter() {
       this.searchQuery = ''
       this.searchMode = KEYWORD_SEARCH_MODE
-      this.selectedTags = []
       this.submittedSearchQuery = ''
       this.submittedSearchMode = KEYWORD_SEARCH_MODE
-      this.submittedSelectedTags = []
       this.searchTabVisible = false
       this.searchResults = []
       if (this.activeTab === SEARCH_TAB_NAME) {
         this.activeTab = HOME_TAB_NAME
       }
-    },
-    // toggleTag 切换左侧待提交的标签筛选条件。
-    toggleTag(tagName) {
-      if (this.selectedTags.includes(tagName)) {
-        this.selectedTags = this.selectedTags.filter(item => item !== tagName)
-      } else {
-        this.selectedTags = [...this.selectedTags, tagName]
-      }
-    },
-    // toggleSubmittedTag 在搜索结果页中切换标签并重新搜索。
-    toggleSubmittedTag(tagName) {
-      if (this.submittedSelectedTags.includes(tagName)) {
-        this.submittedSelectedTags = this.submittedSelectedTags.filter(item => item !== tagName)
-      } else {
-        this.submittedSelectedTags = [...this.submittedSelectedTags, tagName]
-      }
-      this.selectedTags = [...this.submittedSelectedTags]
-      this.searchTabVisible = true
-      this.activeTab = SEARCH_TAB_NAME
-      this.rerunSubmittedSearch()
-    },
-    // toggleTagFilterExpanded 切换左侧标签筛选区的展开状态。
-    toggleTagFilterExpanded() {
-      this.tagFilterExpanded = !this.tagFilterExpanded
     },
     // getSearchSnippet 生成搜索结果中的命中文本片段。
     getSearchSnippet(item) {
@@ -803,19 +687,14 @@ export default {
         keywordMap[normalizedKeyword] = true
         keywords.push(keyword)
       })
-      this.submittedSelectedTags.forEach((item) => {
-        const keyword = item.trim()
-        const normalizedKeyword = keyword.toLowerCase()
-        if (keyword === '' || keywordMap[normalizedKeyword]) {
-          return
-        }
-        keywordMap[normalizedKeyword] = true
-        keywords.push(keyword)
-      })
-      return keywords
+        return keywords
     },
     // getSearchSnippetList 生成最多 3 条搜索命中片段。
     getSearchSnippetList(item) {
+      const serverSnippets = Array.isArray(item.search_snippets) ? item.search_snippets.filter(Boolean) : []
+      if (serverSnippets.length > 0) {
+        return serverSnippets.slice(0, 3)
+      }
       const sourceText = (item.content_text || item.content || '').replace(/\s+/g, ' ').trim()
       if (sourceText === '') {
         return ['无正文内容']
@@ -862,6 +741,9 @@ export default {
     },
     // getSearchSnippetMoreCount 返回未展示的命中片段数量。
     getSearchSnippetMoreCount(item) {
+      if (Array.isArray(item.search_snippets) && item.search_snippets.length > 0) {
+        return Math.max(0, item.search_snippets.length - 3)
+      }
       const sourceText = (item.content_text || item.content || '').replace(/\s+/g, ' ').trim()
       if (sourceText === '') {
         return 0
@@ -920,7 +802,6 @@ export default {
           return
         }
         this.loadFragmentList()
-        this.loadTagList()
         this.upsertFragmentTab(response.Data, true)
       })
     },
@@ -973,7 +854,7 @@ export default {
         return
       }
       const fragmentId = this.routeFragmentId
-      if (fragmentId <= 0) {
+      if (!fragmentId) {
         return
       }
       this.openFragment(fragmentId)
@@ -988,7 +869,7 @@ export default {
         return
       }
       const fragmentId = this.routeFragmentId
-      if (fragmentId <= 0) {
+      if (!fragmentId) {
         this.routeFragmentHandled = true
         this.routeFragmentHandledPath = currentPath
         return
@@ -1020,15 +901,20 @@ export default {
     // normalizeFragment 统一片段对象结构。
     normalizeFragment(fragment) {
       return {
-        id: fragment.id,
+        id: this.normalizeFragmentId(fragment.id || fragment.file_id),
         title: fragment.title || '',
         content: fragment.content || '',
-        tags: Array.isArray(fragment.tags) ? [...fragment.tags] : [],
-        index_status: fragment.index_status || 'pending',
-        index_status_desc: fragment.index_status_desc || '待索引',
+        file_path: fragment.file_path || '',
         update_time_desc: fragment.update_time_desc || '',
         create_time_desc: fragment.create_time_desc || '',
       }
+    },
+    normalizeFragmentId(id) {
+      const text = String(id || '').trim()
+      if (!text || text === '0' || text === 'null' || text === 'undefined') {
+        return ''
+      }
+      return text
     },
     // cloneFragment 克隆片段对象。
     cloneFragment(fragment) {
@@ -1055,7 +941,6 @@ export default {
       this.triggerFragmentSaveFeedback(target.fragment.id)
       this.loadFragmentList()
       this.loadTrashList()
-      this.loadTagList()
       this.rerunSubmittedSearch()
     },
     // handleFragmentDeleted 删除片段后清理 tab 和列表。
@@ -1063,7 +948,6 @@ export default {
       this.fragmentTabs = this.fragmentTabs.filter(item => item.fragment.id !== fragmentId)
       this.loadFragmentList()
       this.loadTrashList()
-      this.loadTagList()
       this.rerunSubmittedSearch()
       if (this.activeTab === `fragment-${fragmentId}`) {
         this.activeTab = 'home'
@@ -1077,7 +961,6 @@ export default {
         }
         this.loadFragmentList()
         this.loadTrashList()
-        this.loadTagList()
         this.rerunSubmittedSearch()
       })
     },
@@ -1090,7 +973,6 @@ export default {
         this.fragmentTabs = this.fragmentTabs.filter(item => item.fragment.id !== fragmentId)
         this.loadFragmentList()
         this.loadTrashList()
-        this.loadTagList()
         this.rerunSubmittedSearch()
         if (this.activeTab === `fragment-${fragmentId}`) {
           this.activeTab = this.trashTabVisible ? TRASH_TAB_NAME : HOME_TAB_NAME
@@ -1284,21 +1166,72 @@ export default {
   position: relative;
   z-index: 1;
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
 }
 
 .sidebar-item-title {
   flex: 1;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  font-weight:500;
   font-size: 14px;
-  font-weight: 600;
   color: #32402f;
   line-height: 1.5;
+}
+
+.sidebar-item-meta {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.sidebar-item-copy {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #eef5e9;
+  color: #56714f;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sidebar-item-copy:focus-visible {
+  outline: 2px solid rgba(63, 154, 84, 0.35);
+  outline-offset: 2px;
 }
 
 .sidebar-item-time {
   color: #7b8576;
   font-size: 12px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.sidebar-item-path {
+  position: relative;
+  z-index: 1;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed #e0e6dc;
+}
+
+.sidebar-item-path-text {
+  display: block;
+  font-size: 11px;
+  color: #8a9582;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

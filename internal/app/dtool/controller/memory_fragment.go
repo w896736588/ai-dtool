@@ -20,6 +20,18 @@ func MemoryFragmentStatus(c *gin.Context) {
 	nextPushTime := component.MemoryRuntime.NextPushTime()
 	lastPushTime := component.MemoryRuntime.LastPushTime()
 	lastPushError := component.MemoryRuntime.LastPushError()
+	indexReady := false
+	fragmentCount := 0
+	trashCount := 0
+	if runtimeStore, ok := component.MemoryRuntime.DB().(interface {
+		IndexReady() bool
+		FragmentCount() int
+		TrashCount() int
+	}); ok {
+		indexReady = runtimeStore.IndexReady()
+		fragmentCount = runtimeStore.FragmentCount()
+		trashCount = runtimeStore.TrashCount()
+	}
 	nextPushTimeDesc := `-`
 	lastPushTimeDesc := `-`
 	if nextPushTime > 0 {
@@ -31,10 +43,12 @@ func MemoryFragmentStatus(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`configured`:              component.MemoryRuntime.IsConfigured(),
 		`memory_dir`:              config.Dir,
-		`memory_db_name`:          config.DBName,
 		`git_repo_enabled`:        config.GitRepoEnabled,
 		`is_git_repo`:             config.IsGitRepo,
 		`auto_push_delay_minutes`: config.AutoPushDelayMinutes,
+		`index_ready`:             indexReady,
+		`fragment_count`:          fragmentCount,
+		`trash_count`:             trashCount,
 		`next_push_time`:          nextPushTime,
 		`next_push_time_desc`:     nextPushTimeDesc,
 		`last_push_time`:          lastPushTime,
@@ -67,11 +81,12 @@ func MemoryFragmentInfo(c *gin.Context) {
 	}
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToInt(dataMap[`id`]) <= 0 {
+	fragmentID := strings.TrimSpace(cast.ToString(dataMap[`id`]))
+	if fragmentID == `` || fragmentID == `0` {
 		gsgin.GinResponseError(c, `片段id不能为空`, nil)
 		return
 	}
-	info, err := memoryDB.MemoryFragmentInfo(cast.ToInt(dataMap[`id`]))
+	info, err := memoryDB.MemoryFragmentInfo(fragmentID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -88,7 +103,7 @@ func MemoryFragmentSave(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	info, err := memoryDB.MemoryFragmentSave(
-		cast.ToInt(dataMap[`id`]),
+		cast.ToString(dataMap[`id`]),
 		cast.ToString(dataMap[`title`]),
 		cast.ToString(dataMap[`content`]),
 		memoryFragmentParseTags(dataMap[`tags`]),
@@ -109,11 +124,12 @@ func MemoryFragmentDelete(c *gin.Context) {
 	}
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToInt(dataMap[`id`]) <= 0 {
+	fragmentID := strings.TrimSpace(cast.ToString(dataMap[`id`]))
+	if fragmentID == `` || fragmentID == `0` {
 		gsgin.GinResponseError(c, `片段id不能为空`, nil)
 		return
 	}
-	_, err := memoryDB.MemoryFragmentSoftDelete(cast.ToInt(dataMap[`id`]))
+	_, err := memoryDB.MemoryFragmentSoftDelete(fragmentID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -146,11 +162,12 @@ func MemoryFragmentRestore(c *gin.Context) {
 	}
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToInt(dataMap[`id`]) <= 0 {
+	fragmentID := strings.TrimSpace(cast.ToString(dataMap[`id`]))
+	if fragmentID == `` || fragmentID == `0` {
 		gsgin.GinResponseError(c, `片段id不能为空`, nil)
 		return
 	}
-	_, err := memoryDB.MemoryFragmentRestore(cast.ToInt(dataMap[`id`]))
+	_, err := memoryDB.MemoryFragmentRestore(fragmentID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -167,11 +184,12 @@ func MemoryFragmentHardDelete(c *gin.Context) {
 	}
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToInt(dataMap[`id`]) <= 0 {
+	fragmentID := strings.TrimSpace(cast.ToString(dataMap[`id`]))
+	if fragmentID == `` || fragmentID == `0` {
 		gsgin.GinResponseError(c, `片段id不能为空`, nil)
 		return
 	}
-	if err := memoryDB.MemoryFragmentHardDelete(cast.ToInt(dataMap[`id`])); err != nil {
+	if err := memoryDB.MemoryFragmentHardDelete(fragmentID); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
@@ -187,11 +205,12 @@ func MemoryFragmentHistoryList(c *gin.Context) {
 	}
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToInt(dataMap[`id`]) <= 0 {
+	fragmentID := strings.TrimSpace(cast.ToString(dataMap[`id`]))
+	if fragmentID == `` || fragmentID == `0` {
 		gsgin.GinResponseError(c, `片段id不能为空`, nil)
 		return
 	}
-	list, err := memoryDB.MemoryFragmentHistoryList(cast.ToInt(dataMap[`id`]))
+	list, err := memoryDB.MemoryFragmentHistoryList(fragmentID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -277,7 +296,7 @@ func MemoryFragmentOrganize(c *gin.Context) {
 	})
 }
 
-func memoryDBOrResponse(c *gin.Context) (*common.CSqlite, bool) {
+func memoryDBOrResponse(c *gin.Context) (common.MemoryFragmentStore, bool) {
 	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
 		gsgin.GinResponseError(c, err.Error(), map[string]any{
 			`configured`: false,

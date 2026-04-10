@@ -13,23 +13,45 @@
                 :placeholder="titlePlaceholderText"
                 @input="handleFormChange"
               />
+              <div class="editor-title-inline-meta">
+                <el-tag
+                  size="small"
+                  :type="dirty ? statusTagWarningType : statusTagSuccessType"
+                  effect="light"
+                >
+                  {{ dirty ? unsavedStatusText : savedStatusText }}
+                </el-tag>
+                <span class="editor-save-time">{{ lastSaveLabelText }}{{ draftFragment.update_time_desc || emptyTimeText }}</span>
+              </div>
             </div>
             <div class="editor-body-toolbar-right">
               <div class="editor-body-actions">
                 <GitActionButton
                   variant="info"
+                  compact
                   :class="{ 'mode-button-active': !contentEditMode }"
                   @click="setContentEditMode(false)"
                 >
                   {{ previewButtonText }}
                 </GitActionButton>
                 <GitActionButton
+                  compact
                   :class="{ 'mode-button-active': contentEditMode }"
                   @click="setContentEditMode(true)"
                 >
                   {{ editButtonText }}
                 </GitActionButton>
-                <GitActionButton :loading="saving" @click="handleSave">
+                <GitActionButton
+                  variant="info"
+                  compact
+                  @click="handleCopyContent"
+                >
+                  <template #icon>
+                    <el-icon><CopyDocument /></el-icon>
+                  </template>
+                  {{ copyContentButtonText }}
+                </GitActionButton>
+                <GitActionButton compact :loading="saving" @click="handleSave">
                   <template #icon>
                     <el-icon><Check /></el-icon>
                   </template>
@@ -37,6 +59,7 @@
                 </GitActionButton>
                 <GitActionButton
                   variant="warning"
+                  compact
                   :loading="organizing"
                   @click="handleOrganize"
                 >
@@ -67,64 +90,7 @@
               </div>
             </div>
           </div>
-          <div class="editor-title-meta-row">
-            <div class="editor-title-meta-main">
-              <div v-if="visibleEditorTags.length > 0" class="editor-inline-tags editor-title-tags">
-                <el-tag
-                  v-for="tag in visibleEditorTags"
-                  :key="tag"
-                  size="small"
-                  closable
-                  @close="removeTag(tag)"
-                >
-                  {{ tag }}
-                </el-tag>
-                <el-tag v-if="hiddenEditorTagCount > 0" size="small" effect="plain">
-                  +{{ hiddenEditorTagCount }}
-                </el-tag>
-              </div>
-              <div class="tag-input-wrap editor-tag-input-wrap">
-                <el-input
-                  v-model="tagInput"
-                  class="tag-input tag-input-compact"
-                  :placeholder="tagInputPlaceholderText"
-                  @focus="handleTagInputFocus"
-                  @input="handleTagInputChange"
-                  @keydown.enter.prevent="handleTagEnter"
-                  @keydown.down.prevent="moveTagSuggestion(1)"
-                  @keydown.up.prevent="moveTagSuggestion(-1)"
-                  @keydown.esc.prevent="closeTagSuggestionPanel"
-                  @keydown="handleTagKeydown"
-                  @blur="handleTagInputBlur"
-                />
-                <div v-if="showTagSuggestionPanel" class="tag-suggestion-dropdown">
-                  <button
-                    v-for="(tag, index) in filteredAvailableTags"
-                    :key="tag"
-                    class="tag-suggestion-option"
-                    :class="{ active: index === highlightedTagIndex }"
-                    @mousedown.prevent="selectExistingTag(tag)"
-                  >
-                    {{ tag }}
-                  </button>
-                  <div v-if="showTagCreateHint" class="tag-suggestion-empty">
-                    回车创建标签 “{{ normalizedTagInput }}”
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="editor-title-status-group">
-              <el-tag
-                size="small"
-                :type="dirty ? statusTagWarningType : statusTagSuccessType"
-                effect="light"
-              >
-                {{ dirty ? unsavedStatusText : savedStatusText }}
-              </el-tag>
-              <span class="editor-save-time">{{ lastSaveLabelText }}{{ draftFragment.update_time_desc || emptyTimeText }}</span>
-            </div>
-          </div>
-          <div class="editor-search-row">
+            <div class="editor-search-row">
             <div class="editor-search-main">
               <el-input
                 v-model="searchQuery"
@@ -287,7 +253,7 @@
 <script>
 import { MdEditor, MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
-import { Check, MagicStick, MoreFilled } from '@element-plus/icons-vue'
+import { Check, CopyDocument, DocumentCopy, MagicStick, MoreFilled } from '@element-plus/icons-vue'
 import DiffMarkdown from '@/components/base/diff_markwodn.vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
@@ -348,6 +314,10 @@ const EMPTY_CONTENT_ERROR_TEXT = '当前片段内容不能为空'
 const EMPTY_ORGANIZE_RESULT_ERROR_TEXT = '整理结果为空，无法写入'
 // ORGANIZE_SUCCESS_TEXT 统一定义整理写回成功提示。
 const ORGANIZE_SUCCESS_TEXT = 'AI整理结果已写入'
+// COPY_PATH_BUTTON_TEXT 统一定义复制文件地址按钮文案。
+const COPY_PATH_BUTTON_TEXT = '复制文件地址'
+// COPY_CONTENT_BUTTON_TEXT 统一定义复制完整内容按钮文案。
+const COPY_CONTENT_BUTTON_TEXT = '复制'
 // INLINE_TAG_VISIBLE_LIMIT / 内容区右侧最多展示的标签数量 / Max visible inline tags beside content actions.
 const INLINE_TAG_VISIBLE_LIMIT = 5
 // TOOLBAR_ACTION_HISTORY_COMMAND / 工具栏下拉历史记录命令 / Dropdown command for history action.
@@ -372,10 +342,12 @@ const SEARCH_NO_RESULT_TEXT = '0 项匹配'
 export default {
   name: 'MemoryEditor',
   components: {
-    MdEditor,
-    MdPreview,
-    Check,
-    MagicStick,
+      MdEditor,
+      MdPreview,
+      Check,
+      CopyDocument,
+      DocumentCopy,
+      MagicStick,
     MoreFilled,
     DiffMarkdown,
     GitActionButton,
@@ -408,6 +380,8 @@ export default {
       unsavedStatusText: UNSAVED_STATUS_TEXT,
       savedStatusText: SAVED_STATUS_TEXT,
       lastSaveLabelText: LAST_SAVE_LABEL_TEXT,
+      copyPathButtonText: COPY_PATH_BUTTON_TEXT,
+      copyContentButtonText: COPY_CONTENT_BUTTON_TEXT,
       historyButtonText: HISTORY_BUTTON_TEXT,
       deleteButtonText: DELETE_BUTTON_TEXT,
       saveButtonText: SAVE_BUTTON_TEXT,
@@ -444,6 +418,7 @@ export default {
         id: 0,
         title: '',
         content: '',
+        file_path: '',
         tags: [],
         update_time_desc: '',
       },
@@ -598,6 +573,7 @@ export default {
       return {
         title: fragment.title || '',
         content: fragment.content || '',
+        file_path: fragment.file_path || '',
         tags: Array.isArray(fragment.tags) ? [...fragment.tags].sort() : [],
       }
     },
@@ -619,8 +595,8 @@ export default {
         id: this.fragment.id,
         title: this.fragment.title || '',
         content: this.fragment.content || '',
+        file_path: this.fragment.file_path || '',
         tags: Array.isArray(this.fragment.tags) ? [...this.fragment.tags] : [],
-        index_status: this.fragment.index_status || 'pending',
         update_time_desc: this.fragment.update_time_desc || '',
         create_time_desc: this.fragment.create_time_desc || '',
       }
@@ -629,6 +605,33 @@ export default {
     // handleFormChange 在编辑后向父组件同步状态。
     handleFormChange() {
       this.$emit('change', JSON.parse(JSON.stringify(this.draftFragment)))
+    },
+    // copyFilePath 复制当前片段实际文件路径。
+    async copyFilePath() {
+      if (!this.draftFragment.file_path || !navigator.clipboard) {
+        return
+      }
+      try {
+        await navigator.clipboard.writeText(this.draftFragment.file_path)
+        this.$helperNotify.success(this.copyPathButtonText + '成功')
+      } catch (error) {
+        this.$helperNotify.error(this.copyPathButtonText + '失败')
+      }
+    },
+    // handleCopyContent 复制当前片段的完整内容（标题+正文）。
+    async handleCopyContent() {
+      if (!navigator.clipboard) {
+        return
+      }
+      const title = this.draftFragment.title || ''
+      const content = this.draftFragment.content || ''
+      const fullContent = title + '\n\n' + content
+      try {
+        await navigator.clipboard.writeText(fullContent)
+        this.$helperNotify.success(this.copyContentButtonText + '成功')
+      } catch (error) {
+        this.$helperNotify.error(this.copyContentButtonText + '失败')
+      }
     },
     // setContentEditMode 切换正文查看或编辑模式。
     setContentEditMode(editMode) {
@@ -1232,8 +1235,8 @@ export default {
 }
 
 .title-input :deep(.el-input__wrapper) {
-  min-height: 34px;
-  height: 34px;
+  min-height: 30px;
+  height: 30px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: inset 0 0 0 1px rgba(205, 214, 198, 0.9);
@@ -1244,8 +1247,8 @@ export default {
 }
 
 .title-input :deep(.el-input__inner) {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 400;
   color: var(--memory-toolbar-text-primary);
 }
 
@@ -1375,13 +1378,16 @@ export default {
 .editor-body-toolbar-left {
   display: flex;
   align-items: center;
+  gap: 12px;
   min-width: 0;
   flex: 1;
+  flex-wrap: wrap;
 }
 
 .editor-toolbar-title-input {
   max-width: 520px;
   width: 100%;
+  flex: 1 1 320px;
 }
 
 .editor-body-toolbar-right {
@@ -1399,16 +1405,6 @@ export default {
   height: 28px;
   border-radius: 999px;
   padding-inline: 10px;
-}
-
-.editor-title-meta-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  flex-wrap: wrap;
-  width: 100%;
 }
 
 .editor-search-row {
@@ -1454,33 +1450,12 @@ export default {
   flex: 0 0 auto;
 }
 
-.editor-title-meta-main {
-  /* 中文注释：标签区负责吃掉剩余宽度，避免状态文案被长标签挤压。 */
-  /* English comment: Let the tag area absorb remaining width so status text keeps its full label. */
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  flex: 1 1 420px;
-  flex-wrap: wrap;
-}
-
-.editor-title-tags {
-  display: flex;
-  gap: 8px;
-  min-width: 0;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-}
-
-.editor-title-status-group {
-  /* 中文注释：状态区禁止压缩，确保“已保存”和时间始终完整可见。 */
-  /* English comment: Keep the status area from shrinking so saved label and timestamp stay readable. */
+.editor-title-inline-meta {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
-  flex: 0 0 auto;
+  flex: 1 1 260px;
   flex-wrap: wrap;
 }
 
@@ -1492,12 +1467,7 @@ export default {
   flex-shrink: 0;
 }
 
-.editor-tag-input-wrap {
-  width: min(220px, 100%);
-  flex: 0 1 220px;
-}
-
-.editor-title-status-group :deep(.el-tag) {
+.editor-title-inline-meta :deep(.el-tag) {
   flex-shrink: 0;
 }
 
@@ -1748,15 +1718,10 @@ export default {
     width: 100%;
   }
 
-  .editor-title-meta-main,
-  .editor-title-status-group,
+  .editor-title-inline-meta,
   .editor-search-main,
   .editor-search-actions {
     width: 100%;
-  }
-
-  .editor-title-status-group {
-    justify-content: flex-start;
   }
 
   .editor-body-toolbar-main,
