@@ -18,6 +18,8 @@ const createScrollableElement = ({
 
 const run = () => {
   const {
+    HOME_DASHBOARD_PAGE_SWITCH_HOT_ZONE_WIDTH,
+    findBlockingScrollableAncestor,
     shouldBlockHomeDashboardPageSwitch,
     isHomeDashboardPageSwitchHotZone,
   } = loadWheelModule()
@@ -79,6 +81,37 @@ const run = () => {
     '非可滚动区域的滚轮事件应该继续交给首页翻页逻辑处理'
   )
 
+  const dashboardMessageList = createScrollableElement({
+    clientHeight: 720,
+    scrollHeight: 1320,
+    scrollTop: 200,
+    parentElement: rootElement,
+  })
+  const processPanel = createScrollableElement({
+    clientHeight: 240,
+    scrollHeight: 840,
+    scrollTop: 180,
+    parentElement: dashboardMessageList,
+  })
+  const processMarkdownLine = {
+    parentElement: processPanel,
+  }
+  const ordinaryMessageLine = {
+    parentElement: dashboardMessageList,
+  }
+
+  assert.strictEqual(
+    findBlockingScrollableAncestor(processMarkdownLine, 48, rootElement),
+    processPanel,
+    '执行过程输出框存在更内层滚动时，应优先识别该滚动容器'
+  )
+
+  assert.strictEqual(
+    findBlockingScrollableAncestor(ordinaryMessageLine, 48, rootElement),
+    dashboardMessageList,
+    '普通消息区域没有更内层滚动时，应回退到首页消息列表滚动容器'
+  )
+
   assert.strictEqual(
     isHomeDashboardPageSwitchHotZone(980, { left: 0, right: 1000 }),
     true,
@@ -86,9 +119,15 @@ const run = () => {
   )
 
   assert.strictEqual(
+    HOME_DASHBOARD_PAGE_SWITCH_HOT_ZONE_WIDTH,
+    300,
+    '首页强制翻页热区应保持在最右侧 300px，命中后可直接切屏'
+  )
+
+  assert.strictEqual(
     isHomeDashboardPageSwitchHotZone(760, { left: 0, right: 1000 }),
-    false,
-    '鼠标离开首页最右侧 200px 热区后，不应命中强制翻页热区'
+    true,
+    '鼠标位于首页最右侧 300px 热区内时，应命中强制翻页热区'
   )
 
   console.log('home_dashboard_wheel tests passed')

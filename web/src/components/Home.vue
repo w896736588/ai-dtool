@@ -558,8 +558,8 @@ import sseDistribute from '@/utils/base/sse_distribute'
 const { mergeHomeTaskFragmentOptions } = require('@/utils/home_task_fragment_options.cjs')
 const {
   HOME_DASHBOARD_PAGE_SWITCH_HOT_ZONE_WIDTH,
+  resolveHomeDashboardPageSwitchBlocker,
   isHomeDashboardPageSwitchHotZone,
-  shouldBlockHomeDashboardPageSwitch,
 } = require('@/utils/home_dashboard_wheel.cjs')
 import Tools from "@/components/Tools.vue";
 import Markdown from '@/components/Markdown.vue'
@@ -894,8 +894,8 @@ export default {
       const currentTarget = event.currentTarget
       const currentTargetRect = currentTarget instanceof HTMLElement ? currentTarget.getBoundingClientRect() : null
       const isRightHotZone = isHomeDashboardPageSwitchHotZone(event.clientX, currentTargetRect, HOME_DASHBOARD_PAGE_SWITCH_HOT_ZONE_WIDTH)
-      // 命中首页最右侧热区时，优先允许整屏翻页，不再被命令区全宽滚动容器拦截。
-      if (!isRightHotZone && shouldBlockHomeDashboardPageSwitch(event.target, deltaY, currentTarget)) {
+      const blockingScrollableAncestor = resolveHomeDashboardPageSwitchBlocker(event.target, deltaY, currentTarget)
+      if (!isRightHotZone && blockingScrollableAncestor) {
         return
       }
       if (this.homeDashboardPageIndex === HOME_DASHBOARD_PAGE_COMMAND) {

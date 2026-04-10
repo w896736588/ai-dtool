@@ -18,6 +18,12 @@ const run = () => {
     'Wheel switching from command page should be blocked while command execution is running'
   )
 
+  assert.ok(
+    /const blockingScrollableAncestor = resolveHomeDashboardPageSwitchBlocker\(event\.target, deltaY, currentTarget\)/.test(source) &&
+      /if \(!isRightHotZone && blockingScrollableAncestor\) \{\s*return\s*\}/.test(source),
+    'Hot-zone page switching should keep absolute priority while non-hot-zone wheel events remain blocked by inner scroll containers'
+  )
+
   console.log('home_dashboard_execution_wheel_guard tests passed')
 }
 
