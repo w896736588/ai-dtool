@@ -33,7 +33,7 @@ func HomeTaskList(c *gin.Context) {
 func HomeTaskSave(c *gin.Context) {
 	request := _struct.HomeTaskSaveRequest{}
 	_ = gsgin.GinPostBody(c, &request)
-	memoryFragmentID, err := ensureHomeTaskMemoryFragment(request)
+	memoryFragmentID, err := ensureHomeTaskMemoryFragment(request.ID, request.Name, normalizeHomeTaskMemoryFragmentID(request.MemoryFragmentID))
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -137,31 +137,49 @@ func HomeTaskDailyReportGenerate(c *gin.Context) {
 	})
 }
 
-func ensureHomeTaskMemoryFragment(request _struct.HomeTaskSaveRequest) (int, error) {
-	taskName := strings.TrimSpace(request.Name)
+func ensureHomeTaskMemoryFragment(taskID int, taskName string, memoryFragmentID string) (string, error) {
+	taskName = strings.TrimSpace(taskName)
 	if taskName == `` {
-		return 0, gstool.Error(`任务名称不能为空`)
+		return ``, gstool.Error(`任务名称不能为空`)
 	}
 	if component.MemoryRuntime == nil {
-		return 0, common.ErrMemoryNotConfigured
+		return ``, common.ErrMemoryNotConfigured
 	}
 	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
-		return 0, err
+		return ``, err
 	}
 	memoryDB := component.MemoryRuntime.DB()
-	memoryFragmentID := request.MemoryFragmentID
-	if memoryFragmentID > 0 {
+	if memoryFragmentID != `` {
 		if _, infoErr := memoryDB.MemoryFragmentInfo(memoryFragmentID); infoErr != nil {
-			return 0, infoErr
+			return ``, infoErr
 		}
 		return memoryFragmentID, nil
 	}
+	if !shouldAutoCreateHomeTaskMemoryFragment(taskID, memoryFragmentID) {
+		return ``, nil
+	}
 	fragmentInfo, saveErr := memoryDB.MemoryFragmentSave(0, taskName, "# "+taskName+"\n\n", []string{`需求`})
 	if saveErr != nil {
-		return 0, saveErr
+		return ``, saveErr
 	}
 	component.MemoryRuntime.ScheduleSync()
-	return cast.ToInt(fragmentInfo[`id`]), nil
+	fragmentID := strings.TrimSpace(cast.ToString(fragmentInfo[`file_id`]))
+	if fragmentID == `` || fragmentID == `0` {
+		return ``, gstool.Error(`自动创建知识片段失败`)
+	}
+	return fragmentID, nil
+}
+
+func shouldAutoCreateHomeTaskMemoryFragment(taskID int, memoryFragmentID string) bool {
+	return taskID <= 0 && strings.TrimSpace(memoryFragmentID) == ``
+}
+
+func normalizeHomeTaskMemoryFragmentID(raw any) string {
+	idText := strings.TrimSpace(cast.ToString(raw))
+	if idText == `` || idText == `0` {
+		return ``
+	}
+	return idText
 }
 
 func enrichHomeTaskListWithMemoryFragment(list []map[string]any) {
@@ -170,8 +188,9 @@ func enrichHomeTaskListWithMemoryFragment(list []map[string]any) {
 	}
 	memoryDB := component.MemoryRuntime.DB()
 	for _, item := range list {
-		memoryFragmentID := cast.ToInt(item[`memory_fragment_id`])
-		if memoryFragmentID <= 0 {
+		memoryFragmentID := normalizeHomeTaskMemoryFragmentID(item[`memory_fragment_id`])
+		item[`memory_fragment_id`] = memoryFragmentID
+		if memoryFragmentID == `` {
 			item[`memory_fragment`] = map[string]any{}
 			continue
 		}
@@ -179,6 +198,7 @@ func enrichHomeTaskListWithMemoryFragment(list []map[string]any) {
 		if infoErr != nil {
 			item[`memory_fragment`] = map[string]any{
 				`id`:      memoryFragmentID,
+				`file_id`: memoryFragmentID,
 				`title`:   `关联片段不存在`,
 				`tags`:    []string{},
 				`content`: ``,
@@ -187,7 +207,8 @@ func enrichHomeTaskListWithMemoryFragment(list []map[string]any) {
 			continue
 		}
 		item[`memory_fragment`] = map[string]any{
-			`id`:      cast.ToInt(info[`id`]),
+			`id`:      info[`id`],
+			`file_id`: cast.ToString(info[`file_id`]),
 			`title`:   cast.ToString(info[`title`]),
 			`tags`:    cast.ToStringSlice(info[`tags`]),
 			`content`: cast.ToString(info[`content`]),

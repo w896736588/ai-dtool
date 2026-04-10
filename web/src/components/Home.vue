@@ -147,9 +147,20 @@
                               <div class="home-task-card__meta">
                                 <span>开始时间：{{ task.start_time_desc || '-' }}</span>
                                 <span>最后操作：{{ task.last_operated_at_desc || '-' }}</span>
-                                 <el-tag size="small" effect="light" :type="getHomeTaskStatusTagType(task.task_status)">
-                              {{ task.task_status }}
-                            </el-tag>
+                                <span class="home-task-card__status-group">
+                                  <el-tag size="small" effect="light" :type="getHomeTaskStatusTagType(task.task_status)">
+                                    {{ task.task_status }}
+                                  </el-tag>
+                                  <el-tag
+                                    v-if="hasHomeTaskMemoryFragment(task)"
+                                    size="small"
+                                    effect="plain"
+                                    class="home-task-memory-link-tag"
+                                    @click.stop="openHomeTaskMemoryFragment(task)"
+                                  >
+                                    {{ getHomeTaskMemoryTagText(task) }}
+                                  </el-tag>
+                                </span>
                               </div>
                             </div>
                             <div class="home-task-card__actions">
@@ -191,14 +202,6 @@
                               </GitActionButton>
                               <GitActionButton
                                 compact
-                                variant="warning"
-                                :disabled="isHomeTaskBusy(task.id) || Number(task.memory_fragment_id || 0) <= 0"
-                                @click="openHomeTaskMemoryFragment(task)"
-                              >
-                                编辑知识片段
-                              </GitActionButton>
-                              <GitActionButton
-                                compact
                                 variant="danger"
                                 :loading="isHomeTaskBusy(task.id, HOME_TASK_OPERATE_DELETE)"
                                 :disabled="isHomeTaskBusy(task.id) && !isHomeTaskBusy(task.id, HOME_TASK_OPERATE_DELETE)"
@@ -213,7 +216,7 @@
                             <!-- <div class="home-task-card__memory-title"> -->
                               <!-- {{ task.memory_fragment?.title || `#${task.memory_fragment_id}` }} -->
                             <!-- </div> -->
-                            <div v-if="task.memory_fragment_id > 0 && task.memory_fragment?.content" class="home-task-card__memory-content">
+                            <!-- <div v-if="hasHomeTaskMemoryFragment(task) && task.memory_fragment?.content" class="home-task-card__memory-content">
                               <pre class="memory-content-text">{{ getFragmentPreview(task.memory_fragment.content, task.id) }}</pre>
                               <button
                                 v-if="isFragmentExpandable(task.memory_fragment.content)"
@@ -223,7 +226,7 @@
                               >
                                 {{ homeTaskExpandedFragments[task.id] ? '收起' : '展开' }}
                               </button>
-                            </div>
+                            </div> -->
                             <!-- <div v-if="Array.isArray(task.memory_fragment?.tags) && task.memory_fragment.tags.length > 0" class="home-task-card__memory-tags">
                               <el-tag
                                 v-for="tag in task.memory_fragment.tags"
@@ -258,11 +261,22 @@
                                 <span>最后操作：{{ task.last_operated_at_desc || '-' }}</span>
                               </div>
                             </div>
-                            <el-tag size="small" effect="light" :type="getHomeTaskStatusTagType(task.task_status)">
-                              {{ task.task_status }}
-                            </el-tag>
+                            <div class="home-task-card__status-group">
+                              <el-tag size="small" effect="light" :type="getHomeTaskStatusTagType(task.task_status)">
+                                {{ task.task_status }}
+                              </el-tag>
+                              <el-tag
+                                v-if="hasHomeTaskMemoryFragment(task)"
+                                size="small"
+                                effect="plain"
+                                class="home-task-memory-link-tag"
+                                @click.stop="openHomeTaskMemoryFragment(task)"
+                              >
+                                {{ getHomeTaskMemoryTagText(task) }}
+                              </el-tag>
+                            </div>
                           </div>
-                          <div v-if="task.memory_fragment_id > 0" class="home-task-card__memory">
+                          <div v-if="hasHomeTaskMemoryFragment(task)" class="home-task-card__memory">
                             <div class="home-task-card__memory-label">关联知识片段</div>
                             <div class="home-task-card__memory-title">
                               {{ task.memory_fragment?.title || `#${task.memory_fragment_id}` }}
@@ -325,14 +339,6 @@
                               @click="editHomeTask(task)"
                             >
                               {{ HOME_TASK_EDIT_BUTTON_TEXT }}
-                            </GitActionButton>
-                            <GitActionButton
-                              compact
-                              variant="warning"
-                              :disabled="isHomeTaskBusy(task.id) || Number(task.memory_fragment_id || 0) <= 0"
-                              @click="openHomeTaskMemoryFragment(task)"
-                            >
-                              编辑知识片段
                             </GitActionButton>
                             <GitActionButton
                               compact
@@ -549,6 +555,7 @@ import sshSet from '@/utils/base/ssh_set'
 import homeTaskApi from '@/utils/base/home_task'
 import memoryFragmentApi from '@/utils/base/memory_fragment'
 import sseDistribute from '@/utils/base/sse_distribute'
+const { mergeHomeTaskFragmentOptions } = require('@/utils/home_task_fragment_options.cjs')
 const {
   HOME_DASHBOARD_PAGE_SWITCH_HOT_ZONE_WIDTH,
   isHomeDashboardPageSwitchHotZone,
@@ -621,6 +628,8 @@ const HOME_DASHBOARD_PAGE_COMMAND = 0
 const HOME_DASHBOARD_PAGE_TASK = 1
 // HOME_DASHBOARD_PAGE_TOTAL 表示首页双屏总页数。
 const HOME_DASHBOARD_PAGE_TOTAL = 2
+// HOME_DASHBOARD_RUNNING_SELECTOR 用于识别首页命令面板是否仍有执行中的任务标记。
+const HOME_DASHBOARD_RUNNING_SELECTOR = '.message-list .command-status-running, .message-list .result-line-running'
 // HOME_DASHBOARD_WHEEL_SWITCH_THRESHOLD 控制翻屏触发的滚轮阈值，避免轻微触控板抖动误切屏。
 const HOME_DASHBOARD_WHEEL_SWITCH_THRESHOLD = 24
 // HOME_DASHBOARD_ANIMATION_DURATION_MS 与 CSS 动画时长保持一致。
@@ -654,7 +663,7 @@ function createHomeTaskDefaultForm() {
     name: '',
     task_status: HOME_TASK_STATUS_TODO,
     start_date: getTodayDateText(),
-    memory_fragment_id: null,
+    memory_fragment_id: '',
   }
 }
 
@@ -854,6 +863,13 @@ export default {
       }
       this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
     },
+    // isDashboardCommandRunning 判断首页命令区是否存在执行中的命令，执行中时滚轮不触发整屏切换。
+    isDashboardCommandRunning() {
+      if (!(this.$el instanceof HTMLElement)) {
+        return false
+      }
+      return !!this.$el.querySelector(HOME_DASHBOARD_RUNNING_SELECTOR)
+    },
     // handleDashboardWheel 只在首页双屏区域接管滚轮，实现整屏切换。
     handleDashboardWheel(event) {
       if (!this.isDashboardRoute || this.homeDashboardAnimating) {
@@ -871,6 +887,9 @@ export default {
         return
       }
       if (this.homeDashboardPageIndex === HOME_DASHBOARD_PAGE_COMMAND) {
+        if (!isRightHotZone && this.isDashboardCommandRunning()) {
+          return
+        }
         if (deltaY > 0) {
           event.preventDefault()
           this.switchHomeDashboardPage(HOME_DASHBOARD_PAGE_TASK)
@@ -941,34 +960,18 @@ export default {
     resetHomeTaskForm() {
       this.homeTaskForm = createHomeTaskDefaultForm()
     },
-    loadHomeTaskFragmentOptions() {
+    loadHomeTaskFragmentOptions(selectedFragment = null) {
       this.homeTaskFragmentLoading = true
       memoryFragmentApi.MemoryFragmentList(200, (response) => {
         this.homeTaskFragmentLoading = false
         if (!(response && response.ErrCode === 0 && Array.isArray(response.Data))) {
           return
         }
-        this.homeTaskFragmentOptions = response.Data.map((item) => ({
-          id: Number(item.id || 0),
-          title: String(item.title || '').trim() || `#${item.id}`,
-          tags: Array.isArray(item.tags) ? item.tags : [],
-        })).filter((item) => item.id > 0)
+        this.homeTaskFragmentOptions = mergeHomeTaskFragmentOptions(response.Data, selectedFragment)
       })
     },
     ensureHomeTaskFragmentOption(fragment) {
-      const fragmentId = Number(fragment?.id || 0)
-      if (fragmentId <= 0) {
-        return
-      }
-      const exists = this.homeTaskFragmentOptions.some((item) => Number(item.id || 0) === fragmentId)
-      if (exists) {
-        return
-      }
-      this.homeTaskFragmentOptions.unshift({
-        id: fragmentId,
-        title: String(fragment.title || '').trim() || `#${fragmentId}`,
-        tags: Array.isArray(fragment.tags) ? fragment.tags : [],
-      })
+      this.homeTaskFragmentOptions = mergeHomeTaskFragmentOptions(this.homeTaskFragmentOptions, fragment)
     },
     buildHomeTaskFragmentOptionLabel(fragment) {
       const tagText = Array.isArray(fragment?.tags) && fragment.tags.length > 0 ? ` [${fragment.tags.join('、')}]` : ''
@@ -1012,8 +1015,8 @@ export default {
         }
         this.$helperNotify.success(HOME_TASK_DAILY_REPORT_SUCCESS_MESSAGE)
         // 生成成功后打开日报所属的知识片段
-        const fragmentId = Number(response.Data?.memory_fragment?.id || 0)
-        if (fragmentId > 0) {
+        const fragmentId = this.normalizeHomeTaskMemoryFragmentId(response.Data?.memory_fragment?.file_id || response.Data?.memory_fragment?.id)
+        if (fragmentId) {
           this.openMemoryFragmentById(fragmentId)
         }
       })
@@ -1036,20 +1039,21 @@ export default {
     },
     editHomeTask(task) {
       this.ensureHomeTaskFragmentOption(task.memory_fragment)
+      const fragmentID = this.normalizeHomeTaskMemoryFragmentId(task?.memory_fragment?.file_id || task?.memory_fragment_id)
       this.homeTaskForm = {
         id: Number(task.id || 0),
         name: task.name || '',
         task_status: task.task_status || HOME_TASK_STATUS_TODO,
         start_date: task.start_time_desc || getTodayDateText(),
-        memory_fragment_id: Number(task.memory_fragment_id || 0) || null,
+        memory_fragment_id: fragmentID,
       }
-      this.loadHomeTaskFragmentOptions()
+      this.loadHomeTaskFragmentOptions(task.memory_fragment)
       this.homeTaskDialogVisible = true
     },
     // openHomeTaskMemoryFragment 在新页卡中打开单独的知识片段详情页。
     openHomeTaskMemoryFragment(task) {
-      const fragmentId = Number(task?.memory_fragment_id || 0)
-      if (fragmentId <= 0) {
+      const fragmentId = this.normalizeHomeTaskMemoryFragmentId(task?.memory_fragment?.file_id || task?.memory_fragment_id)
+      if (!fragmentId) {
         this.$helperNotify.error('当前任务还没有关联知识片段')
         return
       }
@@ -1061,6 +1065,28 @@ export default {
         },
       })
       window.open(routeInfo.href, '_blank')
+    },
+    // getHomeTaskMemoryTagText 生成任务状态右侧的知识片段标签文案。
+    getHomeTaskMemoryTagText(task) {
+      const fragmentId = this.normalizeHomeTaskMemoryFragmentId(task?.memory_fragment?.file_id || task?.memory_fragment_id)
+      if (!fragmentId) {
+        return ''
+      }
+      const fragmentTitle = String(task?.memory_fragment?.title || '').trim()
+      const displayTitle = fragmentTitle || `#${fragmentId}`
+      return `已关联知识片段 "${displayTitle}"`
+    },
+    // normalizeHomeTaskMemoryFragmentId 统一规范任务关联知识片段ID，避免数字转换导致 UUID 丢失。
+    normalizeHomeTaskMemoryFragmentId(rawId) {
+      const fragmentId = String(rawId || '').trim()
+      if (!fragmentId || fragmentId === '0') {
+        return ''
+      }
+      return fragmentId
+    },
+    // hasHomeTaskMemoryFragment 判断任务是否已关联知识片段。
+    hasHomeTaskMemoryFragment(task) {
+      return this.normalizeHomeTaskMemoryFragmentId(task?.memory_fragment?.file_id || task?.memory_fragment_id) !== ''
     },
     // saveHomeTask 保存表单任务，新增和编辑共用同一个入口。
     saveHomeTask() {
@@ -1079,7 +1105,7 @@ export default {
         name: taskName,
         task_status: this.homeTaskForm.task_status,
         start_time: this.convertHomeTaskDateToUnix(this.homeTaskForm.start_date),
-        memory_fragment_id: Number(this.homeTaskForm.memory_fragment_id || 0),
+        memory_fragment_id: String(this.homeTaskForm.memory_fragment_id || '').trim(),
       }, (response) => {
         this.homeTaskSaving = false
         this.homeTaskOperatingType = ''
@@ -1913,6 +1939,20 @@ export default {
   margin-top: 6px;
   font-size: 12px;
   color: #70806b;
+}
+
+.home-task-card__status-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-task-memory-link-tag {
+  cursor: pointer;
+  max-width: min(100%, 320px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .home-task-card__actions {

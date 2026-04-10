@@ -16,7 +16,8 @@ func TestHomeTaskSaveCreatesTaskWithLastOperateTime(t *testing.T) {
 	db := newHomeTaskTestDB(t)
 
 	startTime := time.Date(2026, 3, 23, 0, 0, 0, 0, time.Local).Unix()
-	info, err := db.HomeTaskSave(0, `任务A`, define.HomeTaskStatusTodo, startTime, 12)
+	fragmentID := `6da2b5cd-6f93-442d-80ce-d28dce02dfb1`
+	info, err := db.HomeTaskSave(0, `任务A`, define.HomeTaskStatusTodo, startTime, fragmentID)
 	if err != nil {
 		t.Fatalf("HomeTaskSave() error = %v", err)
 	}
@@ -27,8 +28,8 @@ func TestHomeTaskSaveCreatesTaskWithLastOperateTime(t *testing.T) {
 	if cast.ToString(info[`task_status`]) != define.HomeTaskStatusTodo {
 		t.Fatalf("task_status = %q, want %q", cast.ToString(info[`task_status`]), define.HomeTaskStatusTodo)
 	}
-	if cast.ToInt(info[`memory_fragment_id`]) != 12 {
-		t.Fatalf("memory_fragment_id = %d, want %d", cast.ToInt(info[`memory_fragment_id`]), 12)
+	if cast.ToString(info[`memory_fragment_id`]) != fragmentID {
+		t.Fatalf("memory_fragment_id = %q, want %q", cast.ToString(info[`memory_fragment_id`]), fragmentID)
 	}
 	if cast.ToInt64(info[`start_time`]) != startTime {
 		t.Fatalf("start_time = %d, want %d", cast.ToInt64(info[`start_time`]), startTime)
@@ -46,7 +47,7 @@ func TestHomeTaskStatusQuickUpdateSetsStartTimeWhenRunning(t *testing.T) {
 
 	db := newHomeTaskTestDB(t)
 
-	info, err := db.HomeTaskSave(0, `任务B`, define.HomeTaskStatusTodo, 0, 0)
+	info, err := db.HomeTaskSave(0, `任务B`, define.HomeTaskStatusTodo, 0, ``)
 	if err != nil {
 		t.Fatalf("HomeTaskSave() error = %v", err)
 	}
@@ -78,7 +79,7 @@ func TestHomeTaskSaveDefaultsStartTimeToTodayWhenMissing(t *testing.T) {
 	now := time.Now()
 	expectedStartTime := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
 
-	info, err := db.HomeTaskSave(0, `任务D`, define.HomeTaskStatusTodo, 0, 0)
+	info, err := db.HomeTaskSave(0, `任务D`, define.HomeTaskStatusTodo, 0, ``)
 	if err != nil {
 		t.Fatalf("HomeTaskSave() error = %v", err)
 	}
@@ -96,7 +97,7 @@ func TestHomeTaskDeleteRemovesTask(t *testing.T) {
 
 	db := newHomeTaskTestDB(t)
 
-	info, err := db.HomeTaskSave(0, `任务C`, define.HomeTaskStatusTodo, 0, 0)
+	info, err := db.HomeTaskSave(0, `任务C`, define.HomeTaskStatusTodo, 0, ``)
 	if err != nil {
 		t.Fatalf("HomeTaskSave() error = %v", err)
 	}
@@ -125,7 +126,7 @@ CREATE TABLE "tbl_home_task" (
   "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   "name" TEXT NOT NULL DEFAULT '',
   "task_status" TEXT NOT NULL DEFAULT '',
-  "memory_fragment_id" INTEGER NOT NULL DEFAULT 0,
+  "memory_fragment_id" TEXT NOT NULL DEFAULT '',
   "is_archived" INTEGER NOT NULL DEFAULT 0,
   "start_time" INTEGER NOT NULL DEFAULT 0,
   "last_operated_at" INTEGER NOT NULL DEFAULT 0,

@@ -1,6 +1,9 @@
 package api
 
-import "testing"
+import (
+	"net/http"
+	"testing"
+)
 
 func TestMergeHeadersWithFolderDefaults(t *testing.T) {
 	// 中文注释：目录默认请求头应先加载，接口请求头再覆盖同名键。
@@ -26,5 +29,21 @@ func TestMergeHeadersWithFolderDefaults(t *testing.T) {
 	}
 	if len(got) != 3 {
 		t.Fatalf("len(got) = %d, want 3", len(got))
+	}
+}
+
+func TestCollectResponseHeaders(t *testing.T) {
+	headers := http.Header{}
+	headers.Add("Content-Type", "text/html; charset=utf-8")
+	headers.Add("Set-Cookie", "a=1")
+	headers.Add("Set-Cookie", "b=2")
+
+	got := collectResponseHeaders(headers)
+
+	if got["Content-Type"] != "text/html; charset=utf-8" {
+		t.Fatalf("Content-Type = %q, want text/html; charset=utf-8", got["Content-Type"])
+	}
+	if got["Set-Cookie"] != "a=1; b=2" {
+		t.Fatalf("Set-Cookie = %q, want joined values", got["Set-Cookie"])
 	}
 }

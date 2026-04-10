@@ -215,20 +215,41 @@
           <el-tab-pane label="返回结果" name="body">
             <div class="response-body-container">
               <div class="response-toolbar">
-                <pl-button class="response-toolbar-btn" @click="copyTextToClipboard(apiForm.last_result_data.result)">
+                <pl-button class="response-toolbar-btn" @click="copyTextToClipboard(responseResultText)">
                   复制
                 </pl-button>
-                <pl-button v-if="isJsonResponse(apiForm.last_result_data.result)" class="response-toolbar-btn" type="info" @click="takeToResult(apiForm.id , apiForm.last_result_data.result)">提取Json到文档</pl-button>
+                <pl-button
+                    v-if="isJsonResponse(responseResultText)"
+                    class="response-toolbar-btn"
+                    type="info"
+                    @click="takeToResult(apiForm.id , responseResultText)"
+                >
+                  提取Json到文档
+                </pl-button>
+                <el-radio-group v-model="responseViewMode" class="detail-segmented response-view-mode" size="small">
+                  <el-radio-button value="auto">自动</el-radio-button>
+                  <el-radio-button value="json">JSON</el-radio-button>
+                  <el-radio-button value="html">HTML预览</el-radio-button>
+                  <el-radio-button value="raw">原始</el-radio-button>
+                </el-radio-group>
               </div>
-              <pre v-if="isJsonResponse(apiForm.last_result_data.result)" class="response-body json-body">{{
-                  formatJson(apiForm.last_result_data.result)
-                }}
-                  </pre>
-              <pre v-else class="response-body">{{ apiForm.last_result_data.result }}</pre>
+              <pre v-if="resolvedResponseViewMode === 'json'" class="response-body json-body">{{
+                  formatJson(responseResultText)
+                }}</pre>
+              <iframe
+                  v-else-if="resolvedResponseViewMode === 'html'"
+                  class="response-html-preview"
+                  :srcdoc="sanitizedResponseHtml"
+                  sandbox=""
+              />
+              <pre v-else class="response-body">{{ responseResultText }}</pre>
             </div>
           </el-tab-pane>
           <el-tab-pane label="请求头" name="headers">
-            <key-value-view :data="apiForm.last_result_data.headers" />
+            <key-value-view :data="requestHeadersData" />
+          </el-tab-pane>
+          <el-tab-pane label="返回头" name="responseHeaders">
+            <key-value-view :data="responseHeadersData" />
           </el-tab-pane>
           <el-tab-pane
               v-if="apiForm.last_result_data.body_forms && apiForm.last_result_data.body_forms.length > 0"
@@ -308,6 +329,7 @@ export default {
       },
       configActiveTab: 'body', // 默认显示请求头标签页
       responseActiveTab: 'body',
+      responseViewMode: 'auto',
       headerSuggestions: [
         'Content-Type',
         'Authorization',
@@ -346,6 +368,30 @@ export default {
       set(value) {
         this.apiForm.env_id = parseInt(value) || 0
       }
+    },
+    responseResultText() {
+      return this.normalizeResponseBody(this.apiForm?.last_result_data?.result)
+    },
+    resolvedResponseViewMode() {
+      return this.resolveResponseViewMode(
+          this.responseViewMode,
+          this.responseResultText,
+          this.responseHeadersData
+      )
+    },
+    sanitizedResponseHtml() {
+      if (this.resolvedResponseViewMode !== 'html') {
+        return ''
+      }
+      return this.sanitizeHtmlForPreview(this.responseResultText)
+    },
+    requestHeadersData() {
+      return this.normalizeHeadersData(
+          this.apiForm?.last_result_data?.request_headers || this.apiForm?.last_result_data?.headers
+      )
+    },
+    responseHeadersData() {
+      return this.normalizeHeadersData(this.apiForm?.last_result_data?.response_headers)
     },
   },
   expose: ['InitApiDetail', 'handleExecute'],
@@ -559,6 +605,7 @@ export default {
       let _that = this
       _that.drawerHistoryShow = true
       _that.mainActiveTab = 'response'
+      _that.responseViewMode = 'auto'
     },
     handleExecute() {
       let _that = this
@@ -572,6 +619,7 @@ export default {
         _that.apiForm.last_result_data = res.Data
         _that.apiForm.last_result = JSON.stringify(res.Data)
         _that.responseActiveTab = 'body'
+        _that.responseViewMode = 'auto'
         _that.mainActiveTab = 'response'
         _that.drawerHistoryShow = true
       })
@@ -602,12 +650,138 @@ export default {
     },
 
     // 检查响应体是否为JSON格式
-    isJsonResponse(body) {
+    normalizeResponseBody(body) {
+      if (body === null || body === undefined) {
+        return ''
+      }
+      if (typeof body === 'string') {
+        return body
+      }
       try {
-        JSON.parse(body)
-        return true
-      } catch (e) {
+        return JSON.stringify(body, null, 2)
+      } catch (error) {
+        return String(body)
+      }
+    },
+    normalizeHeadersData(headers) {
+      if (!typ.IsObject(headers)) {
+        return {}
+      }
+      return headers
+    },
+    isJsonResponse(body) {
+      const text = this.normalizeResponseBody(body).trim()
+      if (text === '') {
         return false
+      }
+      try {
+        JSON.parse(text)
+        return true
+      } catch (error) {
+        return false
+      }
+    },
+    isHtmlResponse(body) {
+      const text = this.normalizeResponseBody(body).trim()
+      if (text === '') {
+        return false
+      }
+      return /<!doctype\s+html|<html[\s>]|<head[\s>]|<body[\s>]|<[a-z][\s\S]*>/i.test(text)
+    },
+    getHeaderValue(headers, key) {
+      if (!typ.IsObject(headers)) {
+        return ''
+      }
+      const target = String(key || '').toLowerCase()
+      const headerKey = Object.keys(headers).find((item) => item.toLowerCase() === target)
+      if (!headerKey) {
+        return ''
+      }
+      const value = headers[headerKey]
+      if (value === null || value === undefined) {
+        return ''
+      }
+      return String(value)
+    },
+    resolveResponseViewMode(selectedMode, body, headers) {
+      if (selectedMode !== 'auto') {
+        return selectedMode
+      }
+      const contentType = this.getHeaderValue(headers, 'content-type').toLowerCase()
+      const bodyIsJson = this.isJsonResponse(body)
+      const bodyIsHtml = this.isHtmlResponse(body)
+
+      if (bodyIsHtml && !bodyIsJson) {
+        return 'html'
+      }
+      if (bodyIsJson && !bodyIsHtml) {
+        return 'json'
+      }
+
+      if ((contentType.includes('text/html') || contentType.includes('application/xhtml+xml')) && this.isHtmlResponse(body)) {
+        return 'html'
+      }
+      if ((contentType.includes('application/json') || contentType.includes('+json')) && this.isJsonResponse(body)) {
+        return 'json'
+      }
+
+      if (bodyIsHtml) {
+        return 'html'
+      }
+      if (bodyIsJson) {
+        return 'json'
+      }
+      return 'raw'
+    },
+    escapeHtml(text) {
+      return String(text)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;')
+    },
+    buildPreviewDocument(bodyContent, headContent = '') {
+      return `<!doctype html><html><head><meta charset="utf-8">${headContent}<style>html,body{margin:0;padding:0;background:#fff;}body{padding:12px;box-sizing:border-box;word-break:break-word;}img,video,canvas,svg{max-width:100%;height:auto;}</style></head><body>${bodyContent}</body></html>`
+    },
+    sanitizeHtmlForPreview(html) {
+      const text = this.normalizeResponseBody(html)
+      if (text.trim() === '') {
+        return this.buildPreviewDocument('<div>Empty response.</div>')
+      }
+      if (typeof DOMParser === 'undefined') {
+        return this.buildPreviewDocument(`<pre>${this.escapeHtml(text)}</pre>`)
+      }
+      try {
+        const parser = new DOMParser()
+        const doc = parser.parseFromString(text, 'text/html')
+        const forbiddenSelectors = ['script', 'iframe', 'object', 'embed', 'base', 'meta[http-equiv="refresh"]']
+        forbiddenSelectors.forEach((selector) => {
+          doc.querySelectorAll(selector).forEach((node) => node.remove())
+        })
+
+        doc.querySelectorAll('*').forEach((element) => {
+          Array.from(element.attributes).forEach((attribute) => {
+            const attrName = attribute.name.toLowerCase()
+            const attrValue = attribute.value || ''
+            if (attrName.startsWith('on') || attrName === 'srcdoc') {
+              element.removeAttribute(attribute.name)
+              return
+            }
+            if (['href', 'src', 'xlink:href'].includes(attrName) && /^\s*javascript:/i.test(attrValue)) {
+              element.removeAttribute(attribute.name)
+              return
+            }
+            if (attrName === 'style' && /expression\s*\(/i.test(attrValue)) {
+              element.removeAttribute(attribute.name)
+            }
+          })
+        })
+        const headContent = doc.head ? doc.head.innerHTML : ''
+        const bodyContent = doc.body ? doc.body.innerHTML : this.escapeHtml(text)
+        return this.buildPreviewDocument(bodyContent, headContent)
+      } catch (error) {
+        return this.buildPreviewDocument(`<pre>${this.escapeHtml(text)}</pre>`)
       }
     },
     takeToResult(id , jsonResult) {
@@ -874,8 +1048,13 @@ export default {
 .response-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.response-view-mode {
+  margin-left: auto;
 }
 
 .response-toolbar-btn {
@@ -898,6 +1077,14 @@ export default {
   max-width: 100%;
   overflow-x: auto;
   color: inherit;
+}
+
+.response-html-preview {
+  width: 100%;
+  min-height: 360px;
+  border: 1px solid #d8e4d5;
+  border-radius: 10px;
+  background: #fff;
 }
 
 .response-body-container :deep(pre.response-body) {
@@ -1219,6 +1406,10 @@ export default {
 
   .api-actions {
     justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .response-view-mode {
     margin-left: 0;
   }
 

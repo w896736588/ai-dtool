@@ -55,7 +55,7 @@ func (h *CSqlite) HomeTaskRow(id int) (map[string]any, error) {
 }
 
 // HomeTaskSave 保存首页任务。
-func (h *CSqlite) HomeTaskSave(id int, name, taskStatus string, startTime int64, memoryFragmentID int) (map[string]any, error) {
+func (h *CSqlite) HomeTaskSave(id int, name, taskStatus string, startTime int64, memoryFragmentID string) (map[string]any, error) {
 	now := time.Now().Unix()
 	name = strings.TrimSpace(name)
 	taskStatus = strings.TrimSpace(taskStatus)
