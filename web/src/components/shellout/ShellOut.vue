@@ -31,17 +31,16 @@
         </div>
       </el-popover>
       <pl-button
-          :disabled="getErrorCount(urlParams.id) === 0"
           size="small"
           type="danger"
-          @click="showErrorDialog(urlParams.id)"
+          @click="showAlertRulesDialog(urlParams.id)"
       >
         {{ getErrorCount(urlParams.id) }} 个告警
       </pl-button>
       <pl-button
           size="small"
           type="info"
-          @click="showFilterDialog(urlParams.id)"
+          @click="showFilterRulesDialog(urlParams.id)"
       >
         {{ getFilterCount(urlParams.id) }} 次过滤
       </pl-button>
@@ -159,16 +158,63 @@
       </template>
     </el-dialog>
 
-    <!-- 过滤信息弹窗 -->
+    <!-- 告警规则列表弹窗 -->
     <el-dialog
-        v-model="filterDialogVisible"
-        :title="`规则过滤列表`"
+        v-model="alertRulesDialogVisible"
+        :title="`告警规则触发列表 - ${currentErrorTabName}`"
         width="80%"
     >
-      <el-table :data="getFilterList()" style="width: 100%">
-        <el-table-column label="规则" prop="name" width="220"/>
-        <el-table-column label="匹配内容" prop="pattern"/>
-        <el-table-column label="过滤次数" prop="number" width="120"/>
+      <el-table :data="getAlertRulesList()" style="width: 100%" stripe>
+        <el-table-column label="触发次数" prop="triggerCount" width="100" align="center" sortable :default-sort="{prop: 'triggerCount', order: 'descending'}">
+          <template #default="scope">
+            <el-tag type="danger" size="small">{{ scope.row.triggerCount }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="规则名称" prop="name" min-width="180" show-overflow-tooltip />
+        <el-table-column label="匹配方式" width="100" align="center">
+          <template #default="scope">
+            <span class="match-type-text">{{ scope.row.matchType }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="匹配内容" prop="pattern" min-width="200" show-overflow-tooltip />
+        <el-table-column label="告警级别" width="100" align="center">
+          <template #default="scope">
+            <el-tag :type="getAlertLevelType(scope.row.level)" size="small">{{ scope.row.level || 'warning' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="分类" prop="category" width="120" show-overflow-tooltip />
+        <el-table-column label="操作" width="120" fixed="right" align="center">
+          <template #default="scope">
+            <pl-button type="primary" link size="small" @click="viewAlertRuleDetails(scope.row)">查看详情</pl-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
+    <!-- 过滤规则列表弹窗 -->
+    <el-dialog
+        v-model="filterRulesDialogVisible"
+        :title="`过滤规则触发列表 - ${currentErrorTabName}`"
+        width="80%"
+    >
+      <el-table :data="getFilterRulesList()" style="width: 100%" stripe>
+        <el-table-column label="触发次数" prop="triggerCount" width="100" align="center" sortable :default-sort="{prop: 'triggerCount', order: 'descending'}">
+          <template #default="scope">
+            <el-tag type="info" size="small">{{ scope.row.triggerCount }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="规则名称" prop="name" min-width="180" show-overflow-tooltip />
+        <el-table-column label="匹配方式" width="100" align="center">
+          <template #default="scope">
+            <span class="match-type-text">{{ scope.row.matchType }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="匹配内容" prop="pattern" min-width="200" show-overflow-tooltip />
+        <el-table-column label="操作" width="120" fixed="right" align="center">
+          <template #default="scope">
+            <pl-button type="primary" link size="small" @click="viewFilterRuleDetails(scope.row)">查看详情</pl-button>
+          </template>
+        </el-table-column>
       </el-table>
     </el-dialog>
 
@@ -301,6 +347,8 @@ export default {
       // 错误弹窗相关
       errorDialogVisible: false,
       filterDialogVisible: false,
+      alertRulesDialogVisible: false,
+      filterRulesDialogVisible: false,
       currentErrorTabId: '',
       currentErrorTabName: '',
 
@@ -687,6 +735,118 @@ export default {
       let _that = this
       _that.currentErrorTabId = tabId
       _that.filterDialogVisible = true
+    },
+    // 显示告警规则列表弹窗
+    showAlertRulesDialog(tabId) {
+      let _that = this
+      _that.currentErrorTabId = tabId
+      const tabConfig = _that.getTabConfigById(tabId)
+      _that.currentErrorTabName = tabConfig ? tabConfig.name : '未知标签'
+      _that.alertRulesDialogVisible = true
+    },
+    // 显示过滤规则列表弹窗
+    showFilterRulesDialog(tabId) {
+      let _that = this
+      _that.currentErrorTabId = tabId
+      const tabConfig = _that.getTabConfigById(tabId)
+      _that.currentErrorTabName = tabConfig ? tabConfig.name : '未知标签'
+      _that.filterRulesDialogVisible = true
+    },
+    // 获取告警规则列表（带触发次数）
+    getAlertRulesList() {
+      let _that = this
+      const tabId = _that.currentErrorTabId
+      const alerts = Array.isArray(_that.errorMapList[tabId]) ? _that.errorMapList[tabId] : []
+      const alertRules = _that.getRuleItemsByType(tabId, 'alert')
+      
+      // 统计每个规则的触发次数
+      const triggerCountMap = {}
+      alerts.forEach((item) => {
+        const ruleName = item.rule_name || '未命名规则'
+        triggerCountMap[ruleName] = (triggerCountMap[ruleName] || 0) + 1
+      })
+      
+      // 构建规则列表，包含触发次数
+      const rulesList = alertRules.map((rule) => {
+        const ruleName = rule.name || '未命名规则'
+        return {
+          id: rule.id,
+          name: ruleName,
+          pattern: rule.pattern || '',
+          matchType: rule.match_type === 'regex' ? '正则匹配' : '包含文字',
+          level: rule.config_json ? JSON.parse(rule.config_json).level : 'warning',
+          category: rule.config_json ? JSON.parse(rule.config_json).category : '',
+          triggerCount: triggerCountMap[ruleName] || 0,
+          isEnabled: Number(rule.is_enabled) === 1
+        }
+      })
+      
+      // 按触发次数降序排列
+      return rulesList.sort((a, b) => b.triggerCount - a.triggerCount)
+    },
+    // 获取过滤规则列表（带触发次数）
+    getFilterRulesList() {
+      let _that = this
+      const tabId = _that.currentErrorTabId
+      const filterMap = _that.filterMapList[tabId] || {}
+      const dropRules = _that.getRuleItemsByType(tabId, 'drop')
+      const dropRuleMap = _that.getRuleItemMapByType(tabId, 'drop')
+      
+      // 构建规则列表，包含触发次数
+      const rulesList = dropRules.map((rule) => {
+        const ruleName = rule.name || '未命名规则'
+        return {
+          id: rule.id,
+          name: ruleName,
+          pattern: rule.pattern || '',
+          matchType: rule.match_type === 'regex' ? '正则匹配' : '包含文字',
+          triggerCount: filterMap[ruleName] || 0,
+          isEnabled: Number(rule.is_enabled) === 1
+        }
+      })
+      
+      // 按触发次数降序排列
+      return rulesList.sort((a, b) => b.triggerCount - a.triggerCount)
+    },
+    // 获取告警级别对应的标签类型
+    getAlertLevelType(level) {
+      if (level === 'error') return 'danger'
+      if (level === 'warning') return 'warning'
+      return 'info'
+    },
+    // 查看告警规则详情
+    viewAlertRuleDetails(rule) {
+      this.$alert(
+        `<div style="max-height: 400px; overflow-y: auto;">
+          <p><strong>规则名称：</strong>${rule.name}</p>
+          <p><strong>触发次数：</strong>${rule.triggerCount}</p>
+          <p><strong>匹配方式：</strong>${rule.matchType}</p>
+          <p><strong>匹配内容：</strong><code style="background: #f5f7fa; padding: 2px 6px; border-radius: 4px;">${rule.pattern}</code></p>
+          <p><strong>告警级别：</strong>${rule.level || 'warning'}</p>
+          ${rule.category ? `<p><strong>分类：</strong>${rule.category}</p>` : ''}
+        </div>`,
+        '规则详情',
+        {
+          dangerouslyUseHTMLString: true,
+          confirmButtonText: '关闭'
+        }
+      )
+    },
+    // 查看过滤规则详情
+    viewFilterRuleDetails(rule) {
+      this.$alert(
+        `<div style="max-height: 400px; overflow-y: auto;">
+          <p><strong>规则名称：</strong>${rule.name}</p>
+          <p><strong>触发次数：</strong>${rule.triggerCount}</p>
+          <p><strong>匹配方式：</strong>${rule.matchType}</p>
+          <p><strong>匹配内容：</strong><code style="background: #f5f7fa; padding: 2px 6px; border-radius: 4px;">${rule.pattern}</code></p>
+        </div>`,
+        '规则详情',
+        {
+          dangerouslyUseHTMLString: true,
+          confirmButtonText: '关闭'
+        }
+      )
     },
     // 清空错误
     clearErrors(tabId) {
@@ -1572,6 +1732,22 @@ pre {
 :deep(.search-dialog .el-dialog__body) {
   padding: 20px !important;
   background: #f5f7fa;
+}
+
+/* 规则列表弹窗表格样式 */
+.match-type-text {
+  color: #606050;
+  font-size: 13px;
+}
+
+:deep(.el-table .el-table__header th) {
+  background: #f7f7f2;
+  color: #606050;
+  font-weight: 600;
+}
+
+:deep(.el-table .el-table__row:hover > td) {
+  background-color: #f3f7ef !important;
 }
 
 // Search statistics badge

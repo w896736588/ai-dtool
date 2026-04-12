@@ -1,44 +1,46 @@
 <template>
   <div class="rule-set-page">
-    <div class="rule-set-header">
-      <div>
-        <h3 class="rule-set-title">终端规则</h3>
-        <p class="rule-set-desc">先定义一套规则，再让终端输出任务选择它。过滤日志用于隐藏噪音，错误告警用于抓取异常信息。</p>
-      </div>
-      <div class="rule-set-header__actions">
+    <div class="page-header">
+      <div class="header-content">
+        <div class="header-left">
+          <svg class="header-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 6H20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M4 12H20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M4 18H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <h3>终端规则管理</h3>
+        </div>
         <pl-button type="primary" @click="openRuleSetDialog()">新增规则集</pl-button>
       </div>
+      <p class="header-desc">先定义一套规则，再让终端输出任务选择它。过滤日志用于隐藏噪音，错误告警用于抓取异常信息。</p>
     </div>
 
-    <div class="rule-set-tips">
-      <div class="rule-set-tips__title">怎么理解这几个概念</div>
-      <div class="rule-set-tips__item">过滤日志：命中后这条日志不再显示，适合心跳、定时打印、无意义轮询。</div>
-      <div class="rule-set-tips__item">错误告警：命中后进入告警列表，适合报错、异常、超时、中断等重要日志。</div>
-      <div class="rule-set-tips__item">命中后停止后续匹配：这条日志命中当前规则后，不再继续套用下面的规则。</div>
+    <div class="config-table-card">
+      <el-table :data="ruleSetList" style="width: 100%" class="config-table" stripe>
+        <el-table-column prop="id" label="#" width="60" align="center" />
+        <el-table-column prop="name" label="名称" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="description" label="说明" min-width="200" show-overflow-tooltip />
+        <el-table-column label="状态" width="90" align="center">
+          <template #default="scope">
+            <el-tag :type="scope.row.is_enabled ? 'success' : 'info'" size="small">
+              {{ scope.row.is_enabled ? '启用' : '停用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="rule_item_count" label="规则数" width="90" align="center" />
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="scope">
+            <div class="action-buttons">
+              <pl-button type="primary" link size="small" @click="openRuleSetDialog(scope.row)">编辑</pl-button>
+              <pl-button type="danger" link size="small" @click="removeRuleSet(scope.row)">删除</pl-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
     </div>
 
-    <el-table :data="ruleSetList" border style="width: 100%">
-      <el-table-column prop="id" label="#ID" width="80" />
-      <el-table-column prop="name" label="名称" min-width="180" />
-      <el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip />
-      <el-table-column label="状态" width="100">
-        <template #default="scope">
-          <el-tag :type="scope.row.is_enabled ? 'success' : 'info'" effect="light">
-            {{ scope.row.is_enabled ? '启用' : '停用' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="rule_item_count" label="规则数" width="100" />
-      <el-table-column label="操作" width="220">
-        <template #default="scope">
-          <pl-button type="primary" link @click="openRuleSetDialog(scope.row)">编辑</pl-button>
-          <pl-button type="danger" link @click="removeRuleSet(scope.row)">删除</pl-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <el-dialog v-model="ruleSetDialogVisible" :title="ruleSetForm.id ? '编辑规则集' : '新增规则集'" width="80%" destroy-on-close>
-      <el-form label-width="100px" class="rule-set-form">
+    <el-dialog v-model="ruleSetDialogVisible" :title="ruleSetForm.id ? '编辑规则集' : '新增规则集'" width="80%" destroy-on-close class="edit-dialog">
+      <el-form label-width="100px" class="edit-form">
         <el-form-item label="名称">
           <el-input v-model="ruleSetForm.name" placeholder="例如：PHP 服务日志规则" />
         </el-form-item>
@@ -60,30 +62,30 @@
       </div>
 
       <div v-if="ruleSetForm.rule_items.length === 0" class="rule-empty-state">
-        当前还没有规则，可以先新增一条“过滤日志”或“错误告警”。
+        当前还没有规则，可以先新增一条"过滤日志"或"错误告警"。
       </div>
 
-      <el-table v-else :data="ruleSetForm.rule_items" border class="rule-item-table" max-height="400">
-        <el-table-column label="#" width="70">
+      <el-table v-else :data="ruleSetForm.rule_items" class="config-table" stripe max-height="400">
+        <el-table-column label="#" width="60" align="center">
           <template #default="scope">
             {{ scope.$index + 1 }}
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="规则名称" min-width="180" show-overflow-tooltip />
-        <el-table-column label="规则用途" width="120">
+        <el-table-column prop="name" label="规则名称" min-width="160" show-overflow-tooltip />
+        <el-table-column label="规则用途" width="110" align="center">
           <template #default="scope">
-            <el-tag :type="scope.row.rule_type === 'alert' ? 'danger' : 'info'" effect="light">
+            <el-tag :type="scope.row.rule_type === 'alert' ? 'danger' : 'info'" size="small">
               {{ getRuleTypeLabel(scope.row.rule_type) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="匹配方式" width="120">
+        <el-table-column label="匹配方式" width="100" align="center">
           <template #default="scope">
-            {{ getMatchTypeLabel(scope.row.match_type) }}
+            <span class="match-type-text">{{ getMatchTypeLabel(scope.row.match_type) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="pattern" label="要匹配的内容" min-width="220" show-overflow-tooltip />
-        <el-table-column label="状态" width="90">
+        <el-table-column prop="pattern" label="要匹配的内容" min-width="200" show-overflow-tooltip />
+        <el-table-column label="状态" width="80" align="center">
           <template #default="scope">
             <el-switch
               v-model="scope.row.is_enabled"
@@ -91,11 +93,13 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="scope">
-            <pl-button type="primary" link @click="openRuleItemDialog(scope.row, scope.$index)">编辑</pl-button>
-            <pl-button type="success" link @click="copyRuleItem(scope.row)">复制新增</pl-button>
-            <pl-button type="danger" link @click="removeRuleItem(scope.$index)">删除</pl-button>
+            <div class="action-buttons">
+              <pl-button type="primary" link size="small" @click="openRuleItemDialog(scope.row, scope.$index)">编辑</pl-button>
+              <pl-button type="success" link size="small" @click="copyRuleItem(scope.row)">复制</pl-button>
+              <pl-button type="danger" link size="small" @click="removeRuleItem(scope.$index)">删除</pl-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -491,52 +495,82 @@ export default {
 </script>
 
 <style scoped>
+@import "@/css/set_module_unified.css";
+
 .rule-set-page {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  padding: 0;
 }
 
-.rule-set-header {
+.page-header {
+  background: #fff;
+  border: 1px solid #e8e8e0;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.header-content {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  margin-bottom: 8px;
 }
 
-.rule-set-header__actions {
+.header-left {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.rule-set-title {
+.header-icon {
+  width: 22px;
+  height: 22px;
+  color: #5a8a5a;
+}
+
+.header-left h3 {
+  color: #4a4a4a;
   margin: 0;
-  color: #324132;
-}
-
-.rule-set-desc {
-  margin: 6px 0 0;
-  color: #6f7f6f;
-  line-height: 1.6;
-}
-
-.rule-set-tips {
-  padding: 14px 16px;
-  border-radius: 12px;
-  border: 1px solid #d9e6d8;
-  background: linear-gradient(135deg, #f8fcf7 0%, #edf7ec 100%);
-}
-
-.rule-set-tips__title {
+  font-size: 18px;
   font-weight: 600;
-  color: #365137;
-  margin-bottom: 8px;
 }
 
-.rule-set-tips__item {
-  color: #566d57;
-  line-height: 1.7;
+.header-desc {
+  color: #7a7a6a;
+  margin: 0;
+  font-size: 13px;
+}
+
+.config-table-card {
+  background: #fff;
+  border: 1px solid #e8e8e0;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.config-table {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.config-table :deep(.el-table__header th) {
+  background: #f7f7f2;
+  color: #606050;
+  font-weight: 600;
+}
+
+.config-table :deep(.el-table__row:hover > td) {
+  background-color: #f3f7ef !important;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.match-type-text {
+  color: #606050;
+  font-size: 13px;
 }
 
 .rule-item-toolbar {
@@ -601,9 +635,30 @@ export default {
   color: #7a8b79;
 }
 
+.edit-form :deep(.el-input__wrapper),
+.edit-form :deep(.el-select .el-input__wrapper) {
+  border-radius: 8px;
+}
+
+/* Switch 绿色统一风格 */
+:deep(.el-switch.is-checked .el-switch__core) {
+  background-color: #5a8a5a;
+  border-color: #5a8a5a;
+}
+
+:deep(.el-switch.is-checked .el-switch__core .el-switch__action) {
+  color: #5a8a5a;
+}
+
+:deep(.el-switch .el-switch__core) {
+  border-color: #c8d7c7;
+}
+
 @media (max-width: 900px) {
-  .rule-set-header {
+  .header-content {
     flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
   }
 
   .rule-item-grid {
