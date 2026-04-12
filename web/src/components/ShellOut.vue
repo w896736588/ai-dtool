@@ -11,11 +11,19 @@
         <span>终端输出管理</span>
       </div>
       <div class="control-row">
-        <el-select v-model="chooseGroupId" class="group-select" placeholder="筛选分组" @change="chooseGroupIdChange" clearable>
+        <div class="view-switch">
+          <pl-button :type="currentView === 'task' ? 'primary' : 'default'" @click="switchView('task')">
+            终端输出
+          </pl-button>
+          <pl-button :type="currentView === 'rule' ? 'primary' : 'default'" @click="switchView('rule')">
+            规则管理
+          </pl-button>
+        </div>
+        <el-select v-if="currentView === 'task'" v-model="chooseGroupId" class="group-select" placeholder="筛选分组" @change="chooseGroupIdChange" clearable>
           <el-option key="0" label="全部" value="-1" />
           <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="String(g.id)" />
         </el-select>
-        <div class="action-buttons">
+        <div v-if="currentView === 'task'" class="action-buttons">
           <pl-button type="primary" @click="createTab">
             <el-icon><Plus /></el-icon>创建
           </pl-button>
@@ -28,6 +36,7 @@
         </div>
         <!-- 本地搜索框 -->
         <el-input
+          v-if="currentView === 'task'"
           v-model="localSearchKey"
           placeholder="搜索名称/命令，空格多条件"
           class="search-input"
@@ -40,8 +49,10 @@
       </div>
     </div>
 
+    <shell_out_rule v-if="currentView === 'rule'" ref="shellOutRuleRef" />
+
     <!-- execution-grid 使用卡片网格承载任务，减少宽屏场景下的空白。 / Use a card grid so wide screens feel denser and easier to scan. -->
-    <div v-if="filteredTabConfigList.length > 0" class="execution-grid">
+    <div v-else-if="filteredTabConfigList.length > 0" class="execution-grid">
       <div v-for="tab in filteredTabConfigList" :key="tab.id" class="execution-card">
         <div class="card-header">
           <div class="card-info">
@@ -114,6 +125,11 @@
             <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="g.id" />
           </el-select>
         </el-form-item>
+        <el-form-item label="规则集">
+          <el-select v-model="editTabConfigData.rule_set_id" clearable placeholder="不启用规则" style="width: 100%">
+            <el-option v-for="ruleSet in ruleSetList" :key="ruleSet.id" :label="ruleSet.name" :value="ruleSet.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="命令" prop="command" :rules="[{ required: true, message: '请输入命令', trigger: 'blur' }]">
           <el-input v-model="editTabConfigData.command" placeholder="输入要执行的命令" type="textarea" :rows="4" clearable />
         </el-form-item>
@@ -129,12 +145,6 @@
     <!-- 分组管理弹窗 -->
     <el-dialog v-model="groupDialog" title="分组管理" width="70%" class="group-dialog">
       <Group
-        :extra1Title="'过滤正则'"
-        :extra1Type="'textarea'"
-        :extra2Title="'错误捕获正则'"
-        :extra2Type="'textarea'"
-        :extra3Title="'排除捕获的错误'"
-        :extra3Type="'textarea'"
         :groupTitle="'终端输出'"
         :groupType="groupType"
         @update="groupUpdate">
@@ -154,6 +164,8 @@ import {ref, onMounted} from 'vue'
 import copy from '@/utils/base/copy'
 import Init from "@/utils/base/set_init";
 import shellOut from "@/utils/base/shell_out"
+import shellOutRule from "@/utils/base/shell_out_rule"
+import shell_out_rule from '@/components/set/shell_out_rule.vue'
 import format from "@/utils/base/format";
 import shellResult from "@/components/shell/result_div.vue";
 import type from "@/utils/base/type"
@@ -170,6 +182,7 @@ const StoreChooseShellOutKey = 'shell_out_choose_shell_group'
 export default {
   components: {
     shellResult,
+    shell_out_rule,
     Group,
     Plus,
     FolderOpened,
@@ -195,12 +208,15 @@ export default {
       groupDialog: false,
       shellOutDialog: false,
       sshList: [],
+      ruleSetList: [],
+      currentView: 'task',
       chooseGroupId: '',
       //编辑 能够编辑的项
       editTabConfigData: {
         id: 0,
         ssh_id: '',
         group_id: '',
+        rule_set_id: '',
         command: '',
         name: '',
       },
@@ -222,6 +238,7 @@ export default {
     });
     shell.calculateShellDivHeight(_that)
     _that.getGroupList()
+    _that.loadRuleSetList()
     _that.getFullPageParams()
     //如果是单独展示的页面 里面返回的就是传参的
     _that.chooseGroupId = _that.getStoreGroupId()
@@ -236,6 +253,9 @@ export default {
   computed: {
     // filteredTabConfigList 统一收敛分组和搜索过滤，模板只负责渲染。 / Centralize group and search filtering so the template stays clean.
     filteredTabConfigList() {
+      if (this.currentView !== 'task') {
+        return []
+      }
       return this.tabConfigList.filter((tab) => {
         if (!this.getExecutionInfo(tab.id)) {
           return false
@@ -249,6 +269,14 @@ export default {
     },
   },
   methods: {
+    switchView(viewName) {
+      this.currentView = viewName
+      if (viewName === 'rule') {
+        this.$nextTick(() => {
+          this.$refs.shellOutRuleRef && this.$refs.shellOutRuleRef.loadRuleSetList && this.$refs.shellOutRuleRef.loadRuleSetList()
+        })
+      }
+    },
     // Local search filter
     matchSearch: function (tab) {
       let _that = this
@@ -363,6 +391,7 @@ export default {
       _that.editTabConfigData.command = ''
       _that.editTabConfigData.ssh_id = ''
       _that.editTabConfigData.group_id = ''
+      _that.editTabConfigData.rule_set_id = ''
     },
     chooseGroupIdChange: function () {
       let _that = this
@@ -383,6 +412,15 @@ export default {
         if (res.ErrCode === 0) {
           _that.sshList = res.Data
           _that.loadShellOuts()
+        }
+      })
+    },
+    // loadRuleSetList 加载可选规则集，让输出任务能直接绑定日志处理策略。 // Load rule sets so each shell-out task can choose one log-processing profile.
+    loadRuleSetList() {
+      let _that = this
+      shellOutRule.ShellOutRuleSetList({}, function (response) {
+        if (response.ErrCode === 0) {
+          _that.ruleSetList = Array.isArray(response.Data) ? response.Data : []
         }
       })
     },
@@ -446,7 +484,8 @@ export default {
           _that.$helperNotify.success('编辑成功')
           //重新启动命令
           if (_that.editTabConfigData.command !== oldTabConfig.command ||
-              _that.editTabConfigData.ssh_id !== oldTabConfig.ssh_id) {
+              _that.editTabConfigData.ssh_id !== oldTabConfig.ssh_id ||
+              parseInt(_that.editTabConfigData.rule_set_id || 0) !== parseInt(oldTabConfig.rule_set_id || 0)) {
             _that.stopByTabId(oldTabConfig.id, function () {
               _that.startByTabId(oldTabConfig.id)
             })
@@ -457,6 +496,7 @@ export default {
               _that.tabConfigList[i].name = _that.editTabConfigData.name
               _that.tabConfigList[i].group_id = _that.editTabConfigData.group_id
               _that.tabConfigList[i].ssh_id = _that.editTabConfigData.ssh_id
+              _that.tabConfigList[i].rule_set_id = _that.editTabConfigData.rule_set_id
             }
           }
           _that.cleanEditTabConfigData()
@@ -469,6 +509,7 @@ export default {
       _that.editTabConfigData.ssh_id = ''
       _that.editTabConfigData.name = ''
       _that.editTabConfigData.group_id = ''
+      _that.editTabConfigData.rule_set_id = ''
       _that.editTabConfigData.id = ''
       _that.shellOutDialog = false
     },
@@ -493,6 +534,7 @@ export default {
         name: _that.editTabConfigData.name,
         is_run: _that.urlParams.id ? 0 : 1,
         group_id: _that.editTabConfigData.group_id,
+        rule_set_id: _that.editTabConfigData.rule_set_id,
       }
       // 调接口
       shell.ShellOutStart(tabConfig, (res) => {
@@ -518,6 +560,7 @@ export default {
       _that.editTabConfigData.ssh_id = tabConfig.ssh_id
       _that.editTabConfigData.name = tabConfig.name
       _that.editTabConfigData.group_id = tabConfig.group_id
+      _that.editTabConfigData.rule_set_id = tabConfig.rule_set_id || ''
       _that.shellOutDialog = true
     },
     showEditTabConfig: function (tabId) {
@@ -528,6 +571,7 @@ export default {
       _that.editTabConfigData.ssh_id = tabConfig.ssh_id
       _that.editTabConfigData.name = tabConfig.name
       _that.editTabConfigData.group_id = tabConfig.group_id
+      _that.editTabConfigData.rule_set_id = tabConfig.rule_set_id || ''
       _that.shellOutDialog = true
     },
     // 移除标签页
@@ -604,6 +648,12 @@ export default {
   flex-wrap: wrap;
 }
 
+.view-switch {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .group-select {
   width: 220px;
 }
@@ -647,7 +697,7 @@ export default {
 
 .execution-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, 500px);
+  grid-template-columns: repeat(auto-fit, 400px);
   gap: 14px;
   justify-content: space-evenly;
 }
@@ -718,7 +768,7 @@ export default {
 
 .card-meta-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 

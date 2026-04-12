@@ -2,6 +2,9 @@
   <div class="shell-console">
     <div id="mainCard" ref="mainCard" v-if="parseInt(urlParams.id) !== 0 && getExecutionInfo(urlParams.id)" class="execution-info" style="display: flex; align-items: center; gap: 8px;">
       <h4>{{urlParams.title}}</h4>
+      <el-tag size="small" effect="light" type="success">
+        规则集：{{ getRuleSetName(urlParams.id) }}
+      </el-tag>
       <el-popover
           placement="top-start"
           trigger="click"
@@ -33,14 +36,14 @@
           type="danger"
           @click="showErrorDialog(urlParams.id)"
       >
-        {{ getErrorCount(urlParams.id) }} 个错误
+        {{ getErrorCount(urlParams.id) }} 个告警
       </pl-button>
       <pl-button
           size="small"
           type="info"
           @click="showFilterDialog(urlParams.id)"
       >
-        {{ getFilterCount(urlParams.id) }} 个过滤
+        {{ getFilterCount(urlParams.id) }} 次过滤
       </pl-button>
       <pl-button
           :disabled="getErrorCount(urlParams.id) === 0"
@@ -105,7 +108,7 @@
     <!-- Error list dialog -->
     <el-dialog
         v-model="errorDialogVisible"
-        :title="`错误列表 - ${currentErrorTabName}`"
+        :title="`告警列表 - ${currentErrorTabName}`"
         width="80%"
     >
       <div class="error-list">
@@ -117,7 +120,11 @@
         >
           <div class="error-header">
             <span class="error-time">{{ error.time }}</span>
-            <el-tag type="danger" size="small" effect="plain">Error</el-tag>
+            <div class="error-tag-group">
+              <el-tag :type="getErrorTagType(error.level)" size="small" effect="plain">{{ error.level || 'warning' }}</el-tag>
+              <el-tag v-if="error.rule_name" type="info" size="small" effect="plain">{{ error.rule_name }}</el-tag>
+              <el-tag v-if="error.category" size="small" effect="plain">{{ error.category }}</el-tag>
+            </div>
           </div>
           <div class="error-content">
             <span style="line-height:1.6" v-html="highlightErrors(error.error_line)"></span>
@@ -137,7 +144,7 @@
         </div>
         <div v-if="activeTabId > 0 && errorMapList[activeTabId].length === 0" class="no-errors">
           <div class="no-data-icon">✅</div>
-          <div>暂无错误信息</div>
+          <div>暂无告警信息</div>
         </div>
       </div>
       <template #footer>
@@ -147,7 +154,7 @@
             type="danger"
             @click="clearErrors(activeTabId)"
         >
-          清空错误
+          清空告警
         </pl-button>
       </template>
     </el-dialog>
@@ -155,12 +162,12 @@
     <!-- 过滤信息弹窗 -->
     <el-dialog
         v-model="filterDialogVisible"
-        :title="`过滤列表`"
+        :title="`规则过滤列表`"
         width="80%"
     >
       <el-table :data="getFilterList()" style="width: 100%">
-        <el-table-column label="名称" prop="name" width="200"/>
-        <el-table-column label="正则" prop="key"/>
+        <el-table-column label="规则" prop="name" width="220"/>
+        <el-table-column label="匹配内容" prop="pattern"/>
         <el-table-column label="过滤次数" prop="number" width="120"/>
       </el-table>
     </el-dialog>
@@ -233,9 +240,7 @@
         title="分组"
         width="80%"
     >
-      <Group :extra1Title="'过滤正则'" :extra1Type="'textarea'"
-             :extra2Title="'错误捕获正则'" :extra2Type="'textarea'"
-             :extra3Title="'排除捕获的错误'" :extra3Type="'textarea'" :groupTitle="'终端输出'" :groupType="groupType" @update="groupUpdate"></Group>
+      <Group :groupTitle="'终端输出'" :groupType="groupType" @update="groupUpdate"></Group>
     </el-dialog>
   </div>
 </template>
@@ -250,6 +255,7 @@ import {ref, onMounted, nextTick} from 'vue'
 import copy from '@/utils/base/copy'
 import Init from "@/utils/base/set_init";
 import shellOut from "@/utils/base/shell_out"
+import shellOutRule from "@/utils/base/shell_out_rule"
 import format from "@/utils/base/format";
 import shellResult from "@/components/shell/result_div.vue";
 import type from "@/utils/base/type"
@@ -259,7 +265,6 @@ import store from "@/utils/base/store"
 import sseDistribute from "@/utils/base/sse_distribute";
 import {Throttle_string} from "@/utils/base/throttle_string"
 import {useRoute} from 'vue-router';
-import Typ from "@/utils/base/type";
 
 
 const StoreChooseGroupIdKey = 'shell_out_choose_group_id'
@@ -277,12 +282,15 @@ export default {
       },
       groupDialog: false,
       sshList: [],
+      ruleSetList: [],
+      ruleSetInfoMap: {},
       chooseGroupId: '',
       //编辑 能够编辑的项
       editTabConfigData: {
         id: 0,
         ssh_id: '',
         group_id: '',
+        rule_set_id: '',
         command: '',
         name: '',
       },
@@ -325,6 +333,7 @@ export default {
       shell.calculateShellDivHeight(_that)
     } , 1000)
     _that.getGroupList()
+    _that.loadRuleSetList()
     _that.getFullPageParams()
     //如果是单独展示的页面 里面返回的就是传参的
     _that.chooseGroupId = _that.getStoreGroupId()
@@ -359,16 +368,46 @@ export default {
       if (!_that.filterMapList[_that.activeTabId]) {
         return []
       }
+      const dropRuleMap = _that.getRuleItemMapByType(_that.activeTabId, 'drop')
       for (let i in _that.filterMapList[_that.activeTabId]) {
-        let keyParams = i.split('#')
         let number = _that.filterMapList[_that.activeTabId][i]
+        const ruleItem = dropRuleMap[i] || {}
         filters.push({
-          name: keyParams[0],
+          name: ruleItem.name || i,
           number: number,
-          key: keyParams[1]
+          pattern: ruleItem.pattern || i,
         })
       }
+      filters.sort((a, b) => b.number - a.number)
       return filters
+    },
+    // loadRuleSetList 预加载规则集列表，终端详情页据此解析当前绑定关系。 // Preload rule-set metadata so the shell detail page can resolve the bound rule set quickly.
+    loadRuleSetList() {
+      let _that = this
+      shellOutRule.ShellOutRuleSetList({}, function (response) {
+        if (response.ErrCode !== 0) {
+          return
+        }
+        _that.ruleSetList = Array.isArray(response.Data) ? response.Data : []
+      })
+    },
+    // ensureRuleSetInfo 按需拉取规则集详情，避免页面初始化时把所有规则项全量加载。 // Load rule-set details on demand instead of fetching every nested rule item up front.
+    ensureRuleSetInfo(ruleSetId) {
+      let _that = this
+      const currentRuleSetId = parseInt(ruleSetId)
+      if (currentRuleSetId <= 0 || _that.ruleSetInfoMap[currentRuleSetId]) {
+        return
+      }
+      shellOutRule.ShellOutRuleSetInfo({id: currentRuleSetId}, function (response) {
+        if (response.ErrCode !== 0) {
+          return
+        }
+        const items = Array.isArray(response.Data?.rule_items) ? response.Data.rule_items : []
+        _that.ruleSetInfoMap[currentRuleSetId] = {
+          rule_set: response.Data?.rule_set || {},
+          rule_items: items,
+        }
+      })
     },
     getStoreGroupId: function () {
       let _that = this
@@ -500,13 +539,85 @@ export default {
         }
       })
     },
-    getCurrentGroupConfig: function () {
-      let _that = this
-      for (let i in _that.groupList) {
-        if (parseInt(_that.chooseGroupId) === parseInt(_that.groupList[i].id)) {
-          return _that.groupList[i]
-        }
+    getRuleSetName(tabId) {
+      const tabConfig = this.getTabConfigById(tabId)
+      if (!tabConfig || parseInt(tabConfig.rule_set_id) <= 0) {
+        return '未启用规则'
       }
+      const ruleSet = this.ruleSetList.find(item => parseInt(item.id) === parseInt(tabConfig.rule_set_id))
+      return ruleSet ? ruleSet.name : `规则集#${tabConfig.rule_set_id}`
+    },
+    getCurrentRuleSet(tabId) {
+      const tabConfig = this.getTabConfigById(tabId)
+      if (!tabConfig || parseInt(tabConfig.rule_set_id) <= 0) {
+        return null
+      }
+      this.ensureRuleSetInfo(tabConfig.rule_set_id)
+      return this.ruleSetInfoMap[parseInt(tabConfig.rule_set_id)] || null
+    },
+    getRuleItemsByType(tabId, ruleType) {
+      const currentRuleSet = this.getCurrentRuleSet(tabId)
+      if (!currentRuleSet || !Array.isArray(currentRuleSet.rule_items)) {
+        return []
+      }
+      return currentRuleSet.rule_items.filter(item => item.rule_type === ruleType && Number(item.is_enabled) === 1)
+    },
+    getRuleItemMapByType(tabId, ruleType) {
+      const result = {}
+      this.getRuleItemsByType(tabId, ruleType).forEach((item) => {
+        if (!item || !item.name) {
+          return
+        }
+        result[item.name] = item
+      })
+      return result
+    },
+    getHighlightKeywords(tabId) {
+      const alertRules = this.getRuleItemsByType(tabId, 'alert')
+      return alertRules
+          .map(item => item.pattern)
+          .filter(item => typeof item === 'string' && item.trim() !== '')
+    },
+    getTopFilterRule(tabId) {
+      const filterList = this.getFilterList()
+      if (parseInt(this.activeTabId) !== parseInt(tabId)) {
+        const filterMap = this.filterMapList[tabId] || {}
+        const dropRuleMap = this.getRuleItemMapByType(tabId, 'drop')
+        const tabFilters = Object.keys(filterMap).map((key) => ({
+          name: dropRuleMap[key]?.name || key,
+          number: filterMap[key],
+        })).sort((a, b) => b.number - a.number)
+        if (tabFilters.length === 0) {
+          return '暂无过滤命中'
+        }
+        return `${tabFilters[0].name} ${tabFilters[0].number} 次`
+      }
+      if (filterList.length === 0) {
+        return '暂无过滤命中'
+      }
+      return `${filterList[0].name} ${filterList[0].number} 次`
+    },
+    getTopAlertRule(tabId) {
+      const alerts = Array.isArray(this.errorMapList[tabId]) ? this.errorMapList[tabId] : []
+      if (alerts.length === 0) {
+        return '暂无告警命中'
+      }
+      const counter = {}
+      alerts.forEach((item) => {
+        const key = item.rule_name || '未命名规则'
+        counter[key] = (counter[key] || 0) + 1
+      })
+      const topRuleName = Object.keys(counter).sort((a, b) => counter[b] - counter[a])[0]
+      return `${topRuleName} ${counter[topRuleName]} 条`
+    },
+    getErrorTagType(level) {
+      if (level === 'error') {
+        return 'danger'
+      }
+      if (level === 'warning') {
+        return 'warning'
+      }
+      return 'info'
     },
     // Highlight error keywords
     highlightErrors(text, keywords) {
@@ -515,21 +626,7 @@ export default {
       }
       let _that = this
       if (keywords === undefined) {
-        keywords = []
-        let groupConfig = _that.getCurrentGroupConfig()
-        if (!groupConfig || !groupConfig.extra_2) {
-          return text
-        }
-        let extra2 = groupConfig.extra_2
-        let regexErrors = extra2.split("\n")
-        for (let i in regexErrors) {
-          let regex = regexErrors[i]
-          let regexParams = regex.split('#')
-          if (regexParams.length === 2) {
-            regex = regexParams[1]
-          }
-          keywords.push(regex)
-        }
+        keywords = _that.getHighlightKeywords(_that.activeTabId)
       }
       
       // Filter out non-string and empty keywords
@@ -562,7 +659,7 @@ export default {
       if (parseInt(tabId) === 0) {
         return 0
       }
-      return _that.errorMapList[tabId].length
+      return Array.isArray(_that.errorMapList[tabId]) ? _that.errorMapList[tabId].length : 0
     },
     // 获取过滤数量
     getFilterCount(tabId) {
@@ -571,8 +668,9 @@ export default {
         return 0
       }
       let total = 0
-      for (let i in _that.filterMapList[tabId]) {
-        total += _that.filterMapList[tabId][i]
+      const filterMap = _that.filterMapList[tabId] || {}
+      for (let i in filterMap) {
+        total += filterMap[i]
       }
       return total
     },
@@ -599,26 +697,13 @@ export default {
       }, function () {
       })
       _that.errorMapList[tabId] = []
-      _that.initFilterMap(tabId, tabConfig.group_id)
       _that.$forceUpdate() // 强制更新以刷新界面
       _that.updateErrorTotal()
     },
-    initFilterMap: function (tabId, groupId) {
-      let _that = this
-      for (let i in _that.groupList) {
-        if (parseInt(groupId) === parseInt(_that.groupList[i].id)) {
-          let extra1 = _that.groupList[i].extra_1
-          if(!Typ.IsString(extra1)){
-            continue
-          }
-          let regexErrors = extra1.split("\n")
-          for (let i in regexErrors) {
-            let regex = regexErrors[i]
-            _that.filterMapList[tabId] = _that.filterMapList[tabId] || {};
-            _that.filterMapList[tabId][regex] = _that.filterMapList[tabId][regex] || 0;
-          }
-        }
-      }
+    // resetRuleRuntimeState 每次创建、停止或重启时重置前端运行态，避免残留上一次统计。 // Reset per-tab runtime state on create/stop/restart so rule counters never leak across sessions.
+    resetRuleRuntimeState(tabId) {
+      this.filterMapList[tabId] = {}
+      this.errorMapList[tabId] = []
     },
     updateErrorTotal: function () {
       let _that = this
@@ -717,9 +802,9 @@ export default {
       let _that = this
       const sse_distribute_id = sseDistribute.GetSseDistributeId(tabId)
       _that.scrollMap[tabId] = true
-      _that.errorMapList[tabId] = []
-      _that.initFilterMap(tabId, item.group_id)
+      _that.resetRuleRuntimeState(tabId)
       _that.contentMapList[tabId] = ''
+      _that.ensureRuleSetInfo(item.rule_set_id)
 
       item.sse_distribute_id = sse_distribute_id
       _that.registerReceiveMsg(tabId)
@@ -756,9 +841,7 @@ export default {
               _that.tabConfigList[i].is_run = 0
               _that.tabConfigList[i].shell_client_id = ''
               _that.contentMapList[tabId] = ''
-              _that.initFilterMap(tabId, _that.tabConfigList[i].group_id)
-              _that.errorMapList[tabId] = []
-              _that.initFilterMap(tabId, _that.tabConfigList[i].group_id)
+              _that.resetRuleRuntimeState(tabId)
               _that.$forceUpdate()
             }
           }
@@ -780,9 +863,7 @@ export default {
               _that.tabConfigList[i].is_run = 0
               _that.tabConfigList[i].shell_client_id = ''
               _that.contentMapList[tabId] = ''
-              _that.initFilterMap(tabId, _that.tabConfigList[i].group_id)
-              _that.errorMapList[tabId] = []
-              _that.initFilterMap(tabId, _that.tabConfigList[i].group_id)
+              _that.resetRuleRuntimeState(tabId)
               _that.$forceUpdate()
             }
           }
@@ -818,7 +899,8 @@ export default {
           _that.$helperNotify.success('编辑成功')
           //重新启动命令
           if (_that.editTabConfigData.command !== oldTabConfig.command ||
-              _that.editTabConfigData.ssh_id !== oldTabConfig.ssh_id) {
+              _that.editTabConfigData.ssh_id !== oldTabConfig.ssh_id ||
+              parseInt(_that.editTabConfigData.rule_set_id || 0) !== parseInt(oldTabConfig.rule_set_id || 0)) {
             _that.stopByTabId(oldTabConfig.id, function () {
               _that.startByTabId(oldTabConfig.id)
             })
@@ -829,8 +911,10 @@ export default {
               _that.tabConfigList[i].name = _that.editTabConfigData.name
               _that.tabConfigList[i].group_id = _that.editTabConfigData.group_id
               _that.tabConfigList[i].ssh_id = _that.editTabConfigData.ssh_id
+              _that.tabConfigList[i].rule_set_id = _that.editTabConfigData.rule_set_id
             }
           }
+          _that.ensureRuleSetInfo(_that.editTabConfigData.rule_set_id)
           _that.cleanEditTabConfigData()
         }
       })
@@ -841,6 +925,7 @@ export default {
       _that.editTabConfigData.ssh_id = ''
       _that.editTabConfigData.name = ''
       _that.editTabConfigData.group_id = ''
+      _that.editTabConfigData.rule_set_id = ''
       _that.editTabConfigData.id = ''
     },
     // 执行命令
@@ -864,6 +949,7 @@ export default {
         name: _that.editTabConfigData.name,
         is_run: _that.urlParams.id ? 0 : 1,
         group_id: _that.editTabConfigData.group_id,
+        rule_set_id: _that.editTabConfigData.rule_set_id,
       }
       // 调接口
       shell.ShellOutStart(tabConfig, (res) => {
@@ -872,12 +958,12 @@ export default {
         let shellClientId = res.Data.shell_client_id
         tabConfig.sse_distribute_id = sse_distribute_id
         _that.scrollMap[tabId] = true
-        _that.errorMapList[tabId] = []
-        _that.initFilterMap(tabId, tabConfig.group_id)
+        _that.resetRuleRuntimeState(tabId)
         _that.contentMapList[tabId] = ''
         _that.activeTabId = tabId
         tabConfig.shell_client_id = shellClientId
         tabConfig.id = tabId
+        _that.ensureRuleSetInfo(tabConfig.rule_set_id)
         _that.tabConfigList.push(tabConfig)
 
         //创建sse
@@ -897,6 +983,7 @@ export default {
           command: tabConfig.command,
           id: tabConfig.id,
           group_id: tabConfig.group_id,
+          rule_set_id: tabConfig.rule_set_id,
           is_run: _that.urlParams.id ? 0 : 1,
         }, function (res) {
           if (res.ErrCode !== 0) {
@@ -1025,6 +1112,46 @@ export default {
       color: #5c6370;
     }
   }
+}
+
+.rule-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.rule-summary-card {
+  padding: 16px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ffffff 0%, #f7fafc 100%);
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+}
+
+.rule-summary-card__label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.rule-summary-card__value {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.rule-summary-card__desc {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.error-tag-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 // 命令弹窗样式

@@ -19,6 +19,22 @@ import (
 	"github.com/spf13/cast"
 )
 
+var (
+	// getShellOutComponentFunc 允许测试替换 SSH 初始化，聚焦持久化断言。 // Allows tests to bypass SSH setup and focus on persistence assertions.
+	getShellOutComponentFunc = getShellOutComponent
+	// shellOutRunCommandFunc 允许测试跳过真实终端执行。 // Allows tests to skip real terminal execution during controller coverage.
+	shellOutRunCommandFunc = func(client any, command string) error {
+		if client == nil {
+			return nil
+		}
+		terminalClient, ok := client.(*gsssh.SshTerminal)
+		if !ok || terminalClient == nil {
+			return nil
+		}
+		return terminalClient.RunCommand(command)
+	}
+)
+
 type ShellConnectionView struct {
 	ShellClientId  string `json:"shell_client_id"`
 	CurrentCommand string `json:"current_command"`
@@ -146,22 +162,23 @@ func BindShellConnectionsSSE(sse *gsgin.Sse, stopC chan int, interval time.Durat
 }
 
 func ShellOut(c *gin.Context) {
-	reqMap, client, shellClientId, err := getShellOutComponent(c)
+	reqMap, client, shellClientId, err := getShellOutComponentFunc(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	command := cast.ToString(reqMap[`command`])
-	_ = client.RunCommand(command)
+	_ = shellOutRunCommandFunc(client, command)
 	id, err := common.DbMain.Client.QuickCreate(`tbl_shell_out`, map[string]any{
-		`command`:         command,
+		`command`:        command,
 		`shell_client_id`: shellClientId,
-		`name`:            cast.ToString(reqMap[`name`]),
-		`group_id`:        reqMap[`group_id`],
-		`is_run`:          1,
-		`ssh_id`:          cast.ToString(reqMap[`ssh_id`]),
-		`create_time`:     time.Now().Unix(),
-		`update_time`:     time.Now().Unix(),
+		`name`:           cast.ToString(reqMap[`name`]),
+		`group_id`:       reqMap[`group_id`],
+		`rule_set_id`:    cast.ToInt(reqMap[`rule_set_id`]),
+		`is_run`:         1,
+		`ssh_id`:         cast.ToString(reqMap[`ssh_id`]),
+		`create_time`:    time.Now().Unix(),
+		`update_time`:    time.Now().Unix(),
 	}).Exec()
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -188,6 +205,7 @@ func ShellOutEdit(c *gin.Context) {
 		`command`:     cast.ToString(reqMap[`command`]),
 		`ssh_id`:      cast.ToInt(reqMap[`ssh_id`]),
 		`group_id`:    reqMap[`group_id`],
+		`rule_set_id`: cast.ToInt(reqMap[`rule_set_id`]),
 		`update_time`: time.Now().Unix(),
 	}).Exec()
 	if err != nil {
@@ -254,6 +272,7 @@ func ShellOutSetSeeId(c *gin.Context) {
 	sshId := cast.ToString(dataMap[`ssh_id`])
 	command := cast.ToString(dataMap[`command`])
 	groupId := cast.ToInt(dataMap[`group_id`])
+	ruleSetID := cast.ToInt(dataMap[`rule_set_id`])
 	if groupId == 0 {
 		gsgin.GinResponseError(c, `组id不能为空`, nil)
 		return
@@ -262,7 +281,7 @@ func ShellOutSetSeeId(c *gin.Context) {
 		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
 		SseDistributeId: cast.ToString(dataMap[`sse_distribute_id`]),
 	}
-	err = component.ShellOutClient.SetClientSseId(shellClientId, sshId, sse, command, groupId, func(s string) []string {
+	err = component.ShellOutClient.SetClientSseId(shellClientId, sshId, sse, command, groupId, ruleSetID, func(s string) []string {
 		return []string{p_common.TBaseClient.FilterTerminalChars(s)}
 	})
 	if err != nil {
@@ -391,6 +410,7 @@ func getShellOutComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTer
 		return nil, nil, ``, errors.New(`缺少ssh_id参数`)
 	}
 	groupId := cast.ToInt(dataMap[`group_id`])
+	ruleSetID := cast.ToInt(dataMap[`rule_set_id`])
 	sshConfig, _ := common.DbMain.GetSshConfig(sshId)
 	shellClientId := p_common.TBaseClient.GetUnique(`shell_out_`)
 	sse := &p_sse.SseShell{
@@ -398,7 +418,7 @@ func getShellOutComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTer
 		SseDistributeId: cast.ToString(dataMap[`sse_distribute_id`]),
 	}
 
-	shellOut, _, sshClientErr := component.ShellOutClient.GetClient(sshConfig, shellClientId, sse, groupId, nil)
+	shellOut, _, sshClientErr := component.ShellOutClient.GetClient(sshConfig, shellClientId, sse, groupId, ruleSetID, nil)
 	if sshClientErr != nil {
 		return nil, nil, ``, sshClientErr
 	}

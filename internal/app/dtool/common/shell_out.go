@@ -1,14 +1,12 @@
 package common
 
 import (
-	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_common"
 	"dev_tool/internal/pkg/p_define"
 	"dev_tool/internal/pkg/p_sse"
 	"errors"
 	"fmt"
 	"reflect"
-	"regexp"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -33,12 +31,15 @@ type ShellOut struct {
 	Client             *gsssh.SshTerminal
 	Sse                *p_sse.SseShell
 	errorList          []ErrorBlock   // 最终归档的错误块
+	alertEvents        []ShellOutAlertEvent
 	remainContents     []string       // 保留的内容(替换后的)
 	sourceContents     []SourceLine   // 原本内容（带行号）
 	searchReadContents map[string]any //已经搜索过的内容
 	regexFiltersTips   map[string]int //过滤正则数量统计
 	startTime          int64          //启动时间
 	groupId            int            //分组id
+	ruleSetId          int            //规则集id
+	ruleItems          []ShellOutRuleItem
 	breakTimer         *time.Ticker
 	lastReceiveTime    int64
 	pendingMsg         string // Buffer for incomplete log lines
@@ -49,6 +50,9 @@ type ErrorBlock struct {
 	ErrorLine  string `json:"error_line"`
 	LineNumber int64  `json:"line_number"` // 错误行的行号
 	Time       string `json:"time"`
+	RuleName   string `json:"rule_name"`
+	Level      string `json:"level"`
+	Category   string `json:"category"`
 }
 
 // LineContext 行上下文（带行号）
@@ -65,13 +69,9 @@ type SourceLine struct {
 
 // TShellOut 管理多个 ShellOut
 type TShellOut struct {
-	ShellOutMap       map[string]*ShellOut
-	lock              sync.Mutex
-	log               *gstool.GsSlog
-	GroupRegexFilters map[int][]string //过滤规则
-	GroupRegexErrors  map[int][]string //错误规则
-	GroupNoErrors     map[int][]string //错误再次排除规则
-	GroupConfigLock   sync.Mutex
+	ShellOutMap map[string]*ShellOut
+	lock        sync.Mutex
+	log         *gstool.GsSlog
 }
 
 // NewTShellOut 构造函数
@@ -79,38 +79,19 @@ func NewTShellOut(logPath string) *TShellOut {
 	log := gstool.NewSlog3(logPath, `shell_wait`)
 	_ = log.CleanOldLogs(2)
 	shellOut := &TShellOut{
-		ShellOutMap:       make(map[string]*ShellOut),
-		log:               log,
-		GroupRegexFilters: make(map[int][]string),
-		GroupRegexErrors:  make(map[int][]string),
-		GroupNoErrors:     make(map[int][]string),
+		ShellOutMap: make(map[string]*ShellOut),
+		log:         log,
 	}
 	return shellOut
 }
 
 func (h *TShellOut) InitGroupConfigs() {
-	h.GroupConfigLock.Lock()
-	defer h.GroupConfigLock.Unlock()
-	all, allErr := DbMain.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
-		`type`: define.GroupTypeShellOut,
-	}).All()
-	if allErr != nil {
-		gstool.FmtPrintlnLogTime(`获取ssh配置错误 %s`, allErr.Error())
-		return
-	}
-	for _, item := range all {
-		groupId := cast.ToInt(item[`id`])
-		extra1 := cast.ToString(item[`extra_1`])
-		extra2 := cast.ToString(item[`extra_2`])
-		extra3 := cast.ToString(item[`extra_3`])
-		h.GroupRegexFilters[groupId] = strings.Split(extra1, "\n")
-		h.GroupRegexErrors[groupId] = strings.Split(extra2, "\n")
-		h.GroupNoErrors[groupId] = strings.Split(extra3, "\n")
-	}
+	// 壳分组不再承载日志规则，新架构下这里保留空实现以避免初始化链路报错。
+	// Shell-out groups no longer own log rules, so keep this as a no-op during the migration window.
 }
 
 // GetClient 获取或新建 ssh 客户端
-func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId string, sse *p_sse.SseShell, groupId int,
+func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId string, sse *p_sse.SseShell, groupId int, ruleSetID int,
 	formatStream func(string) []string) (*ShellOut, bool, error) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
@@ -153,6 +134,9 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId string, ss
 		regexFiltersTips:   map[string]int{},
 		startTime:          time.Now().Unix(),
 		groupId:            groupId,
+		ruleSetId:          ruleSetID,
+		ruleItems:          []ShellOutRuleItem{},
+		alertEvents:        []ShellOutAlertEvent{},
 		errorList:          make([]ErrorBlock, 0),
 		remainContents:     make([]string, 0),
 		sourceContents:     make([]SourceLine, 0),
@@ -161,22 +145,33 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId string, ss
 		lastReceiveTime:    time.Now().Unix(),
 		pendingMsg:         ``,
 	}
+	ruleItems, loadRuleErr := h.LoadRuleItems(ruleSetID)
+	if loadRuleErr != nil {
+		return nil, false, loadRuleErr
+	}
+	shellOut.ruleItems = ruleItems
 	h.SetReceiveMsg(shellOut, formatStream)
 	h.ShellOutMap[shellClientId] = shellOut
 	return shellOut, false, nil
 }
 
 // SetClientSseId 设置 sse 推送 & 错误检测
-func (h *TShellOut) SetClientSseId(shellClientId, sshId string, sse *p_sse.SseShell, command string, groupId int,
+func (h *TShellOut) SetClientSseId(shellClientId, sshId string, sse *p_sse.SseShell, command string, groupId int, ruleSetID int,
 	formatStream func(string) []string) error {
 
 	sshConfig, _ := DbMain.GetSshConfig(sshId)
-	shellOut, exist, err := h.GetClient(sshConfig, shellClientId, sse, groupId, formatStream)
+	shellOut, exist, err := h.GetClient(sshConfig, shellClientId, sse, groupId, ruleSetID, formatStream)
 	if err != nil {
 		return err
 	}
 	shellOut.groupId = groupId
+	shellOut.ruleSetId = ruleSetID
 	shellOut.Sse = sse
+	ruleItems, loadRuleErr := h.LoadRuleItems(ruleSetID)
+	if loadRuleErr != nil {
+		return loadRuleErr
+	}
+	shellOut.ruleItems = ruleItems
 	h.SetReceiveMsg(shellOut, formatStream)
 	if !exist {
 		go func() {
@@ -186,35 +181,17 @@ func (h *TShellOut) SetClientSseId(shellClientId, sshId string, sse *p_sse.SseSh
 			}
 		}()
 		return nil
-	} else {
+ } else {
 		remainLen := len(shellOut.remainContents)
 		if remainLen > MaxSendLength {
-			h.SendMsg(shellOut, strings.Join(shellOut.remainContents[(remainLen-MaxSendLength):], "\n"))
+			h.SendMsg(shellOut, strings.Join(shellOut.remainContents[(remainLen-MaxSendLength):], ""))
 		} else {
-			h.SendMsg(shellOut, strings.Join(shellOut.remainContents, "\n"))
+			h.SendMsg(shellOut, strings.Join(shellOut.remainContents, ""))
 		}
 		h.SendErrList(shellOut)
 		h.SendFilterList(shellOut)
 	}
 	return nil
-}
-
-func (h *TShellOut) GetRegexFilters(shellOut *ShellOut) []string {
-	h.GroupConfigLock.Lock()
-	defer h.GroupConfigLock.Unlock()
-	return h.GroupRegexFilters[shellOut.groupId]
-}
-
-func (h *TShellOut) GetRegexErrors(shellOut *ShellOut) []string {
-	h.GroupConfigLock.Lock()
-	defer h.GroupConfigLock.Unlock()
-	return h.GroupRegexErrors[shellOut.groupId]
-}
-
-func (h *TShellOut) GetNoErrors(shellOut *ShellOut) []string {
-	h.GroupConfigLock.Lock()
-	defer h.GroupConfigLock.Unlock()
-	return h.GroupNoErrors[shellOut.groupId]
 }
 
 func (h *TShellOut) CleanErrors(shellClientId string) {
@@ -225,6 +202,7 @@ func (h *TShellOut) CleanErrors(shellClientId string) {
 		return
 	}
 	shellOut.errorList = make([]ErrorBlock, 0)
+	shellOut.alertEvents = make([]ShellOutAlertEvent, 0)
 }
 
 func (h *TShellOut) Delete(shellClientId string) {
@@ -292,12 +270,8 @@ func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, formatStream func(string) 
 				shellOut.sourceContents = shellOut.sourceContents[MaxSourceLength:]
 			}
 
-			// Error detection
-			h.RegexError(shellOut, line, lineNumber)
-
-			// Filter processing
-			boolFilter := h.RegexFilter(shellOut, line)
-			if boolFilter {
+			ruleResult := h.ApplyRuleItems(shellOut, line, lineNumber)
+			if ruleResult.Dropped {
 				continue
 			}
 
@@ -335,93 +309,47 @@ func (h *TShellOut) timeBreakSsh(shellOut *ShellOut) {
 	}
 }
 
-func (h *TShellOut) RegexError(shellOut *ShellOut, msg string, lineNumber int64) {
-	noErrors := h.GetNoErrors(shellOut)
-	for _, regexError := range h.GetRegexErrors(shellOut) {
-		if regexError == `` {
-			continue
-		}
-		if strings.TrimSpace(regexError) == `` {
-			continue
-		}
-		regexParams := strings.Split(regexError, `#`)
-		if len(regexParams) == 2 {
-			regexError = regexParams[1]
-		}
-		var re = regexp.MustCompile(regexError)
-		if re.MatchString(msg) {
-			//再次过滤
-			for _, noError := range noErrors {
-				if strings.Contains(msg, noError) {
-					continue
-				}
-			}
-			block := ErrorBlock{
-				ErrorLine:  msg,
-				LineNumber: lineNumber,
-				Time:       gstool.TimeNowUnixToString(``),
-			}
-			shellOut.errorList = append(shellOut.errorList, block)
-			h.SendErr(shellOut, block)
-		}
-	}
-}
-
-func (h *TShellOut) RegexFilter(shellOut *ShellOut, msg string) bool {
-	boolFilter := false
-	split := `#`
-	for _, regexFilter := range h.GetRegexFilters(shellOut) {
-		if regexFilter == `` {
-			continue
-		}
-		if strings.TrimSpace(regexFilter) == `` {
-			continue
-		}
-		name := ``
-		regexParams := strings.Split(regexFilter, split)
-		if len(regexParams) == 2 {
-			regexFilter = regexParams[1]
-			name = regexParams[0]
-		}
-		var re = regexp.MustCompile(regexFilter)
-		if re.MatchString(msg) {
-			boolFilter = true
-			unikey := name + split + regexFilter
-			if gstool.MapKeyExist(&shellOut.regexFiltersTips, regexFilter) {
-				shellOut.regexFiltersTips[unikey] += 1
-			} else {
-				shellOut.regexFiltersTips[unikey] = 1
-			}
-			h.SendFilter(shellOut, unikey)
-			break
-		}
-	}
-	return boolFilter
-}
-
 func (h *TShellOut) SendMsg(shellOut *ShellOut, msg string) {
 	msg = strings.Replace(msg, `\n`, "\n", -1)
+	if shellOut == nil || shellOut.Sse == nil {
+		return
+	}
 	shellOut.Sse.Send(msg)
 }
 
 func (h *TShellOut) SendEvent(shellOut *ShellOut, eventType, msg string) {
 	msg = strings.Replace(msg, `\n`, "\n", -1)
+	if shellOut == nil || shellOut.Sse == nil {
+		return
+	}
 	shellOut.Sse.Send(msg)
 }
 
 func (h *TShellOut) SendErrList(shellOut *ShellOut) {
+	if shellOut == nil || shellOut.Sse == nil {
+		return
+	}
 	shellOut.Sse.Send(shellOut.errorList, p_define.SseContentTypeErrorList)
 }
 
 func (h *TShellOut) SendFilterList(shellOut *ShellOut) {
+	if shellOut == nil || shellOut.Sse == nil {
+		return
+	}
 	shellOut.Sse.Send(shellOut.regexFiltersTips, p_define.SseContentTypeFilterList)
 }
 
 func (h *TShellOut) SendFilter(shellOut *ShellOut, msg string) {
+	if shellOut == nil || shellOut.Sse == nil {
+		return
+	}
 	shellOut.Sse.Send(msg, p_define.SseContentTypeFilter)
 }
 
 func (h *TShellOut) SendErr(shellOut *ShellOut, err ErrorBlock) {
+	if shellOut == nil || shellOut.Sse == nil {
+		return
+	}
 	shellOut.Sse.Send(err, p_define.SseContentTypeError)
 }
 
@@ -606,7 +534,7 @@ func (h *TShellOut) Reconnect(shellClientId string) error {
 	sse := &p_sse.SseShell{}
 
 	// 获取新的客户端
-	shellOut, _, err := h.GetClient(sshConfig, shellClientId, sse, groupId, nil)
+	shellOut, _, err := h.GetClient(sshConfig, shellClientId, sse, groupId, 0, nil)
 	if err != nil {
 		return fmt.Errorf("重新建立连接失败: %s", err.Error())
 	}
