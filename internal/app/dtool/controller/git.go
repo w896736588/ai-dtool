@@ -116,7 +116,7 @@ func (p *sshConnectionPool) Release(idx int) {
 
 // GitCurrentBranch 查询目录的git分支
 func GitCurrentBranch(c *gin.Context) {
-	reqMap, _, sse, err := getGitComponent(c)
+	reqMap, sshClient, _, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -126,13 +126,8 @@ func GitCurrentBranch(c *gin.Context) {
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
 		return
 	}
-	sshConfig, sshConfigErr := common.DbMain.GetSshConfig(reqMap[`ssh_id`])
-	if sshConfigErr != nil {
-		gsgin.GinResponseError(c, sshConfigErr.Error(), nil)
-		return
-	}
-	// 当前分支查询不需要展示 prepare 阶段输出，使用一次性命令静默准备环境。
-	if prepareErr := prepareGitOperationEnvOnce(sshConfig, codePath); prepareErr != nil {
+	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
@@ -143,17 +138,7 @@ func GitCurrentBranch(c *gin.Context) {
 	command.GitShowBranch()
 	command.Echo(`远程分支：`)
 	command.GitShowOriginBranch()
-	result, runErr := runSSHCommandOnce(sshConfig, command.GetCommand().ToStr())
-	if runErr != nil {
-		gsgin.GinResponseError(c, runErr.Error(), nil)
-		return
-	}
-	if sse != nil {
-		sse.Send(result)
-		if !strings.HasSuffix(result, "\n") {
-			sse.Send("\n")
-		}
-	}
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), time.Second*4)
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
@@ -179,17 +164,14 @@ func GitChangeBranch(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
-	sshConfig, sshConfigErr := common.DbMain.GetSshConfig(reqMap[`ssh_id`])
-	if sshConfigErr != nil {
-		gsgin.GinResponseError(c, sshConfigErr.Error(), nil)
-		return
-	}
-	currentBranch, getBranchErr := getGitCurrentBranchOnce(sshConfig, codePath)
-	if getBranchErr != nil {
-		gsgin.GinResponseError(c, getBranchErr.Error(), nil)
-		return
-	}
+	command1 := p_shell.NewCommand()
+	command1.Init()
+	//command.Sudo()
+	command1.Cd(codePath)
+	command1.GitShowBranch()
+	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), getGitOperationTimeout(gitOperationBranchChange))
 	gstool.FmtPrintlnLogTime(`获取当前分支为：%q`, currentBranch)
+	currentBranch = CleanBranchName(currentBranch)
 	gstool.FmtPrintlnLogTime(`当前分支 %#v`, currentBranch)
 
 	command := p_shell.NewCommand()
@@ -235,16 +217,13 @@ func GitChangeBranchRemote(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
-	sshConfig, sshConfigErr := common.DbMain.GetSshConfig(reqMap[`ssh_id`])
-	if sshConfigErr != nil {
-		gsgin.GinResponseError(c, sshConfigErr.Error(), nil)
-		return
-	}
-	currentBranch, getBranchErr := getGitCurrentBranchOnce(sshConfig, codePath)
-	if getBranchErr != nil {
-		gsgin.GinResponseError(c, getBranchErr.Error(), nil)
-		return
-	}
+	command1 := p_shell.NewCommand()
+	command1.Init()
+	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
+	command1.Cd(codePath)
+	command1.GitShowBranch()
+	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), getGitOperationTimeout(gitOperationBranchChange))
+	currentBranch = CleanBranchName(currentBranch)
 
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
@@ -322,17 +301,12 @@ func GitRemoteBranchList(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
-	sshConfig, sshConfigErr := common.DbMain.GetSshConfig(reqMap[`ssh_id`])
-	if sshConfigErr != nil {
-		gsgin.GinResponseError(c, sshConfigErr.Error(), nil)
-		return
-	}
 
 	command := p_shell.NewCommand()
 	command.Cd(codePath)
 	command.GitFetch()
 	command.GitShowAllOriginBranches()
-	result, runErr := runSSHCommandOnce(sshConfig, command.GetCommand().ToStr())
+	result, runErr := sshClient.RunCommandWait(command.GetCommand().ToStr(), getGitOperationTimeout(gitOperationPull))
 	if runErr != nil {
 		gsgin.GinResponseError(c, runErr.Error(), nil)
 		return
@@ -442,22 +416,13 @@ func QueryStatus(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
-	sshConfig, sshConfigErr := common.DbMain.GetSshConfig(reqMap[`ssh_id`])
-	if sshConfigErr != nil {
-		gsgin.GinResponseError(c, sshConfigErr.Error(), nil)
-		return
-	}
 
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
 	command.GitStatus()
 
-	result, runErr := runSSHCommandOnce(sshConfig, command.GetCommand().ToStr())
-	if runErr != nil {
-		gsgin.GinResponseError(c, runErr.Error(), nil)
-		return
-	}
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
@@ -478,21 +443,12 @@ func GitCommitLog(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
-	sshConfig, sshConfigErr := common.DbMain.GetSshConfig(reqMap[`ssh_id`])
-	if sshConfigErr != nil {
-		gsgin.GinResponseError(c, sshConfigErr.Error(), nil)
-		return
-	}
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
 	command.GitCommitLog()
 
-	result, runErr := runSSHCommandOnce(sshConfig, command.GetCommand().ToStr())
-	if runErr != nil {
-		gsgin.GinResponseError(c, runErr.Error(), nil)
-		return
-	}
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
@@ -954,21 +910,12 @@ func CreateMerge(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
-	sshConfig, sshConfigErr := common.DbMain.GetSshConfig(reqMap[`ssh_id`])
-	if sshConfigErr != nil {
-		gsgin.GinResponseError(c, sshConfigErr.Error(), nil)
-		return
-	}
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
 	command.GitCommitLog()
 
-	result, runErr := runSSHCommandOnce(sshConfig, command.GetCommand().ToStr())
-	if runErr != nil {
-		gsgin.GinResponseError(c, runErr.Error(), nil)
-		return
-	}
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
@@ -1053,7 +1000,7 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal
 
 // GitSetSafeLog 设置项目安全
 func GitSetSafeLog(c *gin.Context) {
-	reqMap, _, _, err := getGitComponent(c)
+	reqMap, sshClient, _, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -1063,21 +1010,12 @@ func GitSetSafeLog(c *gin.Context) {
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
 		return
 	}
-	sshConfig, sshConfigErr := common.DbMain.GetSshConfig(reqMap[`ssh_id`])
-	if sshConfigErr != nil {
-		gsgin.GinResponseError(c, sshConfigErr.Error(), nil)
-		return
-	}
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
 	command.GitSetSafe(codePath)
 
-	result, runErr := runSSHCommandOnce(sshConfig, command.GetCommand().ToStr())
-	if runErr != nil {
-		gsgin.GinResponseError(c, runErr.Error(), nil)
-		return
-	}
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
@@ -1093,20 +1031,11 @@ func GitSaveCredentials(c *gin.Context) {
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
 		return
 	}
-	sshConfig, sshConfigErr := common.DbMain.GetSshConfig(reqMap[`ssh_id`])
-	if sshConfigErr != nil {
-		gsgin.GinResponseError(c, sshConfigErr.Error(), nil)
-		return
-	}
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
 	command.SetCommand(`grep -i -E '^\[credential\]|^[[:space:]]*helper[[:space:]]*=[[:space:]]*store' .git/config`)
-	result, runErr := runSSHCommandOnce(sshConfig, command.GetCommand().ToStr())
-	if runErr != nil {
-		gsgin.GinResponseError(c, runErr.Error(), nil)
-		return
-	}
+	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 4*time.Second)
 	if strings.Contains(result, `store`) && strings.Contains(result, `credential`) {
 		sse.Send(`已存在设置，不再新增` + "\n")
 	} else {
@@ -1123,14 +1052,6 @@ func GitSaveCredentials(c *gin.Context) {
 // prepareGitOperationEnv 统一执行 Git 的 SSH 前置环境处理。
 // 先设置 safe.directory，再确保 .git/config 存在 credential.store，避免操作进入交互认证。
 // prepareGitOperationEnv 设置safe.directory并确保credential store已配置（合并为单次SSH命令）
-func buildPrepareGitOperationEnvCommand(codePath string) *p_shell.Command {
-	cmd := p_shell.NewCommand()
-	cmd.Cd(codePath)
-	cmd.GitSetSafe(codePath)
-	cmd.SetCommand(`grep -qi '\[credential\]' .git/config 2>/dev/null && grep -qi 'helper.*=.*store' .git/config 2>/dev/null || printf '[credential]\nhelper = store\n' >> .git/config`)
-	return cmd
-}
-
 func prepareGitOperationEnv(sshClient *gsssh.SshTerminal, codePath string) error {
 	if sshClient == nil {
 		return errors.New(`ssh client 为空`)
@@ -1139,17 +1060,11 @@ func prepareGitOperationEnv(sshClient *gsssh.SshTerminal, codePath string) error
 		return errors.New(`git未配置目录`)
 	}
 
-	_, err := sshClient.RunCommandWait(buildPrepareGitOperationEnvCommand(codePath).GetCommand().ToStr(), 6*time.Second)
-	return err
-}
-
-func prepareGitOperationEnvOnce(sshConfig map[string]any, codePath string) error {
-	if len(sshConfig) == 0 {
-		return errors.New(`ssh config 为空`)
-	}
-	if codePath == `` {
-		return errors.New(`git未配置目录`)
-	}
-	_, err := runSSHCommandOnce(sshConfig, buildPrepareGitOperationEnvCommand(codePath).GetCommand().ToStr())
+	// 合并为单次SSH命令：设置safe.directory + 检查credential store，不存在则追加
+	cmd := p_shell.NewCommand()
+	cmd.Cd(codePath)
+	cmd.GitSetSafe(codePath)
+	cmd.SetCommand(`grep -qi '\[credential\]' .git/config 2>/dev/null && grep -qi 'helper.*=.*store' .git/config 2>/dev/null || printf '[credential]\nhelper = store\n' >> .git/config`)
+	_, err := sshClient.RunCommandWait(cmd.GetCommand().ToStr(), 6*time.Second)
 	return err
 }
