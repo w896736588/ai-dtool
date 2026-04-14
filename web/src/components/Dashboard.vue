@@ -154,8 +154,9 @@
                 @focus="handleFocus"
               />
             </div>
-            <pl-button class="send-btn" type="primary" :disabled="!canSubmitCommand" @click="executeCommand">
-              <span class="send-icon">→</span>
+            <pl-button class="send-btn" :class="{ 'send-btn--executing': isExecuting }" type="primary" :disabled="!canSubmitCommand" @click="executeCommand">
+              <span v-if="isExecuting" class="send-icon send-icon--spinning">↻</span>
+              <span v-else class="send-icon">→</span>
             </pl-button>
               </div>
               <div class="next-step-tip">{{ nextStepHint }}</div>
@@ -4908,6 +4909,26 @@ export default {
   color: #fff;
   font-size: 16px;
   font-weight: bold;
+  display: inline-block;
+}
+
+.send-icon--spinning {
+  animation: send-spin 0.8s linear infinite;
+}
+
+@keyframes send-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.send-btn--executing {
+  background: linear-gradient(135deg, #5a9e5a 0%, #6bb86b 100%) !important;
+  animation: send-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes send-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(120, 180, 120, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(120, 180, 120, 0); }
 }
 
 /* 滚动条样式 */

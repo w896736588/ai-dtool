@@ -3,7 +3,7 @@ module dev_tool
 go 1.26.1
 
 require (
-	gitee.com/Sxiaobai/gs/v2 v2.0.58-0.20260414103105-186f5fd431d2
+	gitee.com/Sxiaobai/gs/v2 v2.0.58-0.20260414142145-ba3c2293dd31
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-viper/encoding/ini v0.1.1
