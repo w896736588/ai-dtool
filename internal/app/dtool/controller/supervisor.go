@@ -68,13 +68,13 @@ func SupervisorStopAll(c *gin.Context) {
 }
 
 func SupervisorStatusList(c *gin.Context) {
-	reqMap, sshClient, err := getSupervisorComponent(c)
+	reqMap, sshConfig, err := getRequestDataAndSSHConfig(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	dockerName := cast.ToString(reqMap[`docker_name`])
-	statusRet, statusRetErr := getConsumerStatus(dockerName, sshClient)
+	statusRet, statusRetErr := getConsumerStatusOnce(dockerName, sshConfig)
 	if statusRetErr != nil {
 		gsgin.GinResponseError(c, statusRetErr.Error(), nil)
 		return
@@ -96,6 +96,22 @@ func getConsumerStatus(dockerName string, sshClient *gsssh.SshTerminal) ([]strin
 		xkfStatusRet, _ := sshClient.RunCommandWait(xkfStatusCommand.GetCommand().ToStr(), 40*time.Second)
 		retMsgList = append(retMsgList, xkfStatusRet)
 	}
+	return retMsgList, nil
+}
+
+func getConsumerStatusOnce(dockerName string, sshConfig map[string]any) ([]string, error) {
+	retMsgList := make([]string, 0, 1)
+	command := p_shell.NewCommand().Sudo()
+	if dockerName == `` {
+		command.ConsumerStatus()
+	} else {
+		command.DockerExecConsumerStatus(dockerName)
+	}
+	ret, err := runSSHCommandOnce(sshConfig, command.GetCommand().ToStr())
+	if err != nil {
+		return nil, err
+	}
+	retMsgList = append(retMsgList, ret)
 	return retMsgList, nil
 }
 
@@ -175,9 +191,9 @@ func SupervisorStop(c *gin.Context) {
 func SupervisorConfList(c *gin.Context) {
 	allStart := time.Now()
 	gstool.FmtPrintlnLogTime(`[SupervisorConfList] start sse_client_id=%s`, c.GetHeader(`SseClientId`))
-	reqMap, sshClient, err := getSupervisorComponent(c)
+	reqMap, sshConfig, err := getRequestDataAndSSHConfig(c)
 	if err != nil {
-		gstool.FmtPrintlnLogTime(`[SupervisorConfList] getSupervisorComponent error=%s`, err.Error())
+		gstool.FmtPrintlnLogTime(`[SupervisorConfList] getRequestDataAndSSHConfig error=%s`, err.Error())
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
@@ -188,10 +204,8 @@ func SupervisorConfList(c *gin.Context) {
 	configListCommand.ConsumerConfigList(dockerName)
 	commandText := configListCommand.GetCommand().ToStr()
 	gstool.FmtPrintlnLogTime(`[SupervisorConfList] run begin ssh_id=%s docker_name=%s command=%s`, sshId, dockerName, commandText)
-	runStart := time.Now()
-	ret, runErr := sshClient.RunCommandWait(commandText, 40*time.Second)
-	gstool.FmtPrintlnLogTime(`[SupervisorConfList] run end ssh_id=%s cost_ms=%d ret_len=%d err=%v`,
-		sshId, time.Since(runStart).Milliseconds(), len(ret), runErr)
+
+	ret, runErr := runSSHCommandOnce(sshConfig, commandText)
 	if runErr != nil {
 		gsgin.GinResponseError(c, runErr.Error(), nil)
 		return

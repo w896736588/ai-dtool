@@ -81,7 +81,7 @@ func applyDockerComposeSshNames(composeList []map[string]any, sshList []map[stri
 }
 
 func DockerComposeServices(c *gin.Context) {
-	data, sshClient, err := getDockerComponent(c)
+	data, sshConfig, err := getRequestDataAndSSHConfig(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -104,7 +104,11 @@ func DockerComposeServices(c *gin.Context) {
 	command1.Sudo()
 	command1.Cd(path.Dir(composeYmlPath))
 	command1.DockerComposeServices(cast.ToString(one[`docker_cmd`]), envFile)
-	result1, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	result1, runErr := runSSHCommandOnce(sshConfig, command1.GetCommand().ToStr())
+	if runErr != nil {
+		gsgin.GinResponseError(c, runErr.Error(), nil)
+		return
+	}
 	services := parseDockerComposeServiceNames(result1)
 	list := make([]map[string]any, 0)
 	for _, v := range services {
@@ -119,13 +123,17 @@ func DockerComposeServices(c *gin.Context) {
 }
 
 func DockerComposeConfigShow(c *gin.Context) {
-	data, sshClient, err := getDockerComponent(c)
+	data, sshConfig, err := getRequestDataAndSSHConfig(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	catCommand := p_shell.NewCommand().Sudo().Cat(cast.ToString(data[`config_path`]))
-	ret, _ := sshClient.RunCommandWait(catCommand.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	ret, runErr := runSSHCommandOnce(sshConfig, catCommand.GetCommand().ToStr())
+	if runErr != nil {
+		gsgin.GinResponseError(c, runErr.Error(), nil)
+		return
+	}
 	retMsgList := make([]string, 0)
 	retMsgList = append(retMsgList, ret)
 	gsgin.GinResponseSuccess(c, ``, strings.Join(retMsgList, gsdefine.Enter))
@@ -161,7 +169,7 @@ func DockerComposeRestart(c *gin.Context) {
 }
 
 func DockerComposeStatus(c *gin.Context) {
-	data, sshClient, err := getDockerComponent(c)
+	data, sshConfig, err := getRequestDataAndSSHConfig(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -184,7 +192,11 @@ func DockerComposeStatus(c *gin.Context) {
 	command.Sudo()
 	command.Cd(path.Dir(composeYmlPath))
 	command.DockerComposeStatus(cast.ToString(one[`docker_cmd`]), envFile)
-	status, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	status, runErr := runSSHCommandOnce(sshConfig, command.GetCommand().ToStr())
+	if runErr != nil {
+		gsgin.GinResponseError(c, runErr.Error(), nil)
+		return
+	}
 	headers := []string{`服务名`, `CPU 使用率`, `内存用量 / 内存上限`, `内存使用率`, `网络收发流量`, `磁盘块设备读写量`}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`status`:  ParseStats(status),
@@ -337,7 +349,7 @@ func DockerContainerLogTruncate(c *gin.Context) {
 }
 
 func DockerImageList(c *gin.Context) {
-	_, sshClient, err := getDockerComponent(c)
+	_, sshConfig, err := getRequestDataAndSSHConfig(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -345,14 +357,18 @@ func DockerImageList(c *gin.Context) {
 	command := p_shell.NewCommand()
 	command.Sudo()
 	command.DockerImageList()
-	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	result, runErr := runSSHCommandOnce(sshConfig, command.GetCommand().ToStr())
+	if runErr != nil {
+		gsgin.GinResponseError(c, runErr.Error(), nil)
+		return
+	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`list`: parseDockerImageRows(result),
 	})
 }
 
 func DockerImageContainers(c *gin.Context) {
-	data, sshClient, err := getDockerComponent(c)
+	data, sshConfig, err := getRequestDataAndSSHConfig(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -365,7 +381,11 @@ func DockerImageContainers(c *gin.Context) {
 	command := p_shell.NewCommand()
 	command.Sudo()
 	command.DockerImageContainers(imageRef)
-	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	result, runErr := runSSHCommandOnce(sshConfig, command.GetCommand().ToStr())
+	if runErr != nil {
+		gsgin.GinResponseError(c, runErr.Error(), nil)
+		return
+	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`list`: parseDockerContainerRows(result),
 	})

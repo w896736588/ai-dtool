@@ -251,10 +251,12 @@ func (h *Command) Append(fileName, content string) *Command {
 }
 
 func (h *Command) ConsumerConfigList(dockerName string) *Command {
+	// 用 for 循环替代 awk system()：避免 PTY 模式下子进程输出时序不稳定导致结果丢失
+	listCmd := `for f in *.conf; do [ -f "$f" ] && echo "$f---$(head -n 1 "$f")"; done`
 	if dockerName == `` {
-		h.SetCommand(fmt.Sprintf(`%scd /etc/supervisor/conf.d/; ls | grep '\.conf$' | awk '{printf ""$1"---"; system("head -n 1 "$1)}'`, h.sudo))
+		h.SetCommand(fmt.Sprintf(`%scd /etc/supervisor/conf.d/; %s`, h.sudo, listCmd))
 	} else {
-		h.SetCommand(fmt.Sprintf(`%scd /var/www/dockerfiles/dev_test/docker_volumes/supervisor/etc/supervisor/conf.d; ls | grep '\.conf$' | awk '{printf ""$1"---"; system("head -n 1 "$1)}'`, h.sudo))
+		h.SetCommand(fmt.Sprintf(`%scd /var/www/dockerfiles/dev_test/docker_volumes/supervisor/etc/supervisor/conf.d; %s`, h.sudo, listCmd))
 	}
 	return h
 }
