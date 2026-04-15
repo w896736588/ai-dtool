@@ -81,6 +81,27 @@ func (h *CSqlite) AsyncTaskInfo(id int) (map[string]any, error) {
 	return info, nil
 }
 
+// AsyncTaskLatestPendingByType 查询指定类型最新的 pending 异步任务。 // Load the newest pending async task for the given type.
+func (h *CSqlite) AsyncTaskLatestPendingByType(taskType string) (map[string]any, error) {
+	taskType = strings.TrimSpace(taskType)
+	if taskType == `` {
+		return nil, errors.New(`任务类型不能为空`)
+	}
+	list, err := h.Client.QueryBySql(`
+select id,task_type,task_status,title,source_id,request_payload,result_payload,error_message,create_time,start_time,finish_time,update_time
+from tbl_async_task
+where task_type = ? and task_status = ?
+order by id desc
+limit 1`, taskType, AsyncTaskStatusPending).All()
+	if err != nil {
+		return nil, err
+	}
+	if len(list) == 0 {
+		return nil, nil
+	}
+	return list[0], nil
+}
+
 // AsyncTaskMarkRunning 标记任务进入运行中。 // AsyncTaskMarkRunning marks the task as running.
 func (h *CSqlite) AsyncTaskMarkRunning(id int) error {
 	return h.asyncTaskUpdateStatus(id, AsyncTaskStatusRunning, map[string]any{
@@ -116,6 +137,13 @@ func (h *CSqlite) AsyncTaskMarkFinal(id int, status string) error {
 	})
 }
 
+// AsyncTaskUpdateRequestPayload 更新任务请求参数，供可恢复任务刷新调度信息。 // Update request payload so resumable tasks can refresh schedule metadata.
+func (h *CSqlite) AsyncTaskUpdateRequestPayload(id int, requestPayload string) error {
+	return h.asyncTaskUpdateStatus(id, ``, map[string]any{
+		`request_payload`: requestPayload,
+	})
+}
+
 // AsyncTaskDelete 删除异步任务记录。 // AsyncTaskDelete removes the async task record.
 func (h *CSqlite) AsyncTaskDelete(id int) error {
 	if id <= 0 {
@@ -137,6 +165,10 @@ func (h *CSqlite) AsyncTaskSummary(limit int) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	pendingCount, err := h.asyncTaskCountByStatus(AsyncTaskStatusPending)
+	if err != nil {
+		return nil, err
+	}
 	runningCount, err := h.asyncTaskCountByStatus(AsyncTaskStatusRunning)
 	if err != nil {
 		return nil, err
@@ -151,6 +183,7 @@ func (h *CSqlite) AsyncTaskSummary(limit int) (map[string]any, error) {
 	}
 	return map[string]any{
 		`list`:                list,
+		`pending_count`:       pendingCount,
 		`running_count`:       runningCount,
 		`await_confirm_count`: awaitConfirmCount,
 		`failed_count`:        failedCount,
@@ -168,8 +201,10 @@ func (h *CSqlite) asyncTaskUpdateStatus(id int, status string, extra map[string]
 		return err
 	}
 	updateData := map[string]any{
-		`task_status`: status,
 		`update_time`: time.Now().Unix(),
+	}
+	if strings.TrimSpace(status) != `` {
+		updateData[`task_status`] = status
 	}
 	for key, value := range extra {
 		updateData[key] = value

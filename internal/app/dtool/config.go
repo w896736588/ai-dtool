@@ -180,6 +180,8 @@ func initComponent(appName, ConfigFile string) {
 	component.EnvClient = &define.Env{}
 	component.TGins = make([]*p_gin.Gin, 0)
 	component.MemoryRuntime = common.NewMemoryStore()
+	component.MainDBAutoSyncRuntime = common.NewMainDBAutoSync()
+	component.MainDBAutoSyncRuntime.OnStatusChange = controller.BroadcastAsyncTasksUpdate
 	component.RedisClient = &p_db.TRedis{RedisClientMap: make(map[string]*gsdb.GsRedis)}
 	component.RedisClient.PingAll(common.GetCall())
 	component.MysqlClient = &p_db.TMysql{MysqlClientMap: make(map[string]*gsdb.GsMysql)}
@@ -249,10 +251,14 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 		DbFileName:                   viper.GetString(`base.dbFileName`),
 		DbPath:                       viper.GetString(`base.dbPath`),
 		DbIsGitRepo:                  viper.GetBool(`base.dbIsGitRepo`),
+		DbAutoPushDelayMinutes:       common.DefaultMainDBAutoPushDelayMinutes,
 		MemoryDBPath:                 viper.GetString(`base.memoryDbPath`),
 		MemoryDBIsGitRepo:            viper.GetBool(`base.memoryDbIsGitRepo`),
 		MemoryDBAutoPushDelayMinutes: common.DefaultMemoryAutoPushDelayMinutes,
 		WebPath:                      viper.GetString(`base.webPath`),
+	}
+	if viper.IsSet(`base.dbAutoPushDelayMinutes`) {
+		component.EnvClient.ConfigBase.DbAutoPushDelayMinutes = viper.GetInt(`base.dbAutoPushDelayMinutes`)
 	}
 	if viper.IsSet(`base.memoryDbAutoPushDelayMinutes`) {
 		component.EnvClient.ConfigBase.MemoryDBAutoPushDelayMinutes = viper.GetInt(`base.memoryDbAutoPushDelayMinutes`)
@@ -308,6 +314,10 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	if component.EnvClient.SmartLinkConfig.RunMode == `` {
 		component.EnvClient.SmartLinkConfig.RunMode = define.SmartLinkRunModeServer
 	}
+	// 默认客户端版本
+	if component.EnvClient.SmartLinkConfig.ClientVersion == `` {
+		component.EnvClient.SmartLinkConfig.ClientVersion = `1.0.0`
+	}
 	//创建目录
 	_ = gstool.DirCreatePath(component.EnvClient.LogPath)
 	_ = gstool.DirCreatePath(component.EnvClient.DbConfig.DbPath)
@@ -349,6 +359,7 @@ func initSqlite() {
 	if err = business.LoadMemoryStore(); err != nil {
 		panic(err.Error())
 	}
+	business.StartMainDBAutoSync()
 	component.ShellOutClient.InitGroupConfigs()
 }
 
@@ -474,6 +485,7 @@ func Stop() {
 	if err := component.MemoryRuntime.SyncNow(); err != nil && !errors.Is(err, common.ErrMemoryNotConfigured) {
 		gstool.FmtPrintlnLogTime(`记忆库关闭前同步失败 %s`, err.Error())
 	}
+	business.StopMainDBAutoSync()
 	if err := business.SyncMainDBStoreOnShutdown(); err != nil {
 		gstool.FmtPrintlnLogTime(`主库关闭前同步失败 %s`, err.Error())
 	}

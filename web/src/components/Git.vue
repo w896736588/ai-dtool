@@ -440,10 +440,14 @@ export default {
     changeGitGroup: function () {
       let _that = this
       git.GitLocalSetLastGroupId(_that.chooseGroupId)
-      if (_that.gitConfigList.length === 0) {
+      // 从当前分组中找到第一个 Git 配置，而不是直接取全局第一个
+      let firstGitInGroup = _that.gitConfigList.find(function (item) {
+        return parseInt(item.git_group_id) === parseInt(_that.chooseGroupId)
+      })
+      if (!firstGitInGroup) {
         return
       }
-      _that.ChangeGit(_that.gitConfigList[0])
+      _that.ChangeGit(firstGitInGroup)
     },
     queryCurrentBranch: function () {
       let _that = this

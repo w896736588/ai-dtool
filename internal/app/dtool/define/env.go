@@ -4,6 +4,7 @@ type Base struct {
 	DbFileName                   string // 主库 db file name / main database file name
 	DbPath                       string // 主库目录 db directory / main database directory
 	DbIsGitRepo                  bool   // 主库是否按 git 仓库处理 main db git repo flag / whether main db should be treated as a git repository
+	DbAutoPushDelayMinutes       int    // 主库自动同步延迟分钟数 main db auto push delay minutes / auto-push interval for main database
 	LogDbPath                    string // 日志库目录 log db directory / log database directory
 	MemoryDBPath                 string // 记忆库目录 memory db directory / memory database directory
 	MemoryDBName                 string // 记忆库文件名 memory db file name / memory database file name
@@ -23,8 +24,8 @@ type WebConfig struct {
 }
 
 type SmartLinkConfig struct {
-	RunMode           SmartLinkRunMode // 运行模式 run mode / execution mode
-	ClientVersion     string           // 客户端版本要求 client version / required client version
+	RunMode       SmartLinkRunMode // 运行模式 run mode / execution mode
+	ClientVersion string           // 客户端版本要求 client version / required client version
 }
 
 type Env struct {

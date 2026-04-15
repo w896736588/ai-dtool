@@ -23,6 +23,8 @@ const (
 	asyncTaskTypeHomeTaskDailyReport = `home_task_daily_report`
 	// asyncTaskTypeMemoryFragmentArrange 标识知识片段整理异步任务。 // asyncTaskTypeMemoryFragmentArrange identifies the memory fragment arrange async task.
 	asyncTaskTypeMemoryFragmentArrange = `memory_fragment_arrange`
+	// asyncTaskTypeMainDBSync 标识主库自动同步任务。 // asyncTaskTypeMainDBSync identifies the main db auto sync task.
+	asyncTaskTypeMainDBSync = `main_db_sync`
 
 	// asyncTaskActionSaveDailyReport 表示保存日报到知识片段。 // asyncTaskActionSaveDailyReport means saving the report as a memory fragment.
 	asyncTaskActionSaveDailyReport = `save_daily_report`

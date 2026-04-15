@@ -54,6 +54,7 @@ var DataBaseUp DataBaseUpRunner
 var VariableClient VariableRuntime
 var ShellOutClient *common.TShellOut
 var MemoryRuntime *common.MemoryStore
+var MainDBAutoSyncRuntime *common.MainDBAutoSync
 var EnvClient *define.Env
 var ConfigViper *viper.Viper
 var GsLog *gstool.GsSlog

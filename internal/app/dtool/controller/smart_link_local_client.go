@@ -74,10 +74,13 @@ func SmartLinkClientStatus(c *gin.Context) {
 	clientVersion := cast.ToString(client["client_version"])
 	now := time.Now().Unix()
 	isConnected := (now - lastSeen) < 30
+	versionMatch := clientVersion == cfg.ClientVersion
 	clientStatus := define.SmartLinkClientStatus(cast.ToString(client["status"]))
 
 	if !isConnected {
 		clientStatus = define.SmartLinkClientStatusOffline
+	} else if !versionMatch {
+		clientStatus = define.SmartLinkClientStatusVersionMismatch
 	}
 
 	gsgin.GinResponseSuccess(c, "", map[string]any{
@@ -85,7 +88,7 @@ func SmartLinkClientStatus(c *gin.Context) {
 		"client_status":        clientStatus,
 		"client_name":          cast.ToString(client["client_name"]),
 		"client_version":       clientVersion,
-		"client_version_match": clientVersion == cfg.ClientVersion,
+		"client_version_match": versionMatch,
 		"client_last_seen_at":  lastSeen,
 		"client_os":            cast.ToString(client["os"]),
 		"client_arch":          cast.ToString(client["arch"]),
@@ -127,10 +130,13 @@ func buildSmartLinkClientStatusPayload() map[string]any {
 	clientVersion := cast.ToString(client["client_version"])
 	now := time.Now().Unix()
 	isConnected := (now - lastSeen) < 30
+	versionMatch := clientVersion == cfg.ClientVersion
 	clientStatus := define.SmartLinkClientStatus(cast.ToString(client["status"]))
 
 	if !isConnected {
 		clientStatus = define.SmartLinkClientStatusOffline
+	} else if !versionMatch {
+		clientStatus = define.SmartLinkClientStatusVersionMismatch
 	}
 
 	return map[string]any{
@@ -138,7 +144,7 @@ func buildSmartLinkClientStatusPayload() map[string]any {
 		"client_status":        clientStatus,
 		"client_name":          cast.ToString(client["client_name"]),
 		"client_version":       clientVersion,
-		"client_version_match": clientVersion == cfg.ClientVersion,
+		"client_version_match": versionMatch,
 		"client_last_seen_at":  lastSeen,
 		"client_os":            cast.ToString(client["os"]),
 		"client_arch":          cast.ToString(client["arch"]),

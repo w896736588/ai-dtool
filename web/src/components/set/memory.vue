@@ -132,6 +132,26 @@
               <div class="config-item-help">开启后主库在使用前会 git pull，关闭程序时会自动 push。</div>
             </div>
           </el-descriptions-item>
+          <el-descriptions-item label="dbAutoPushDelayMinutes">
+            <div class="config-item-wrapper">
+              <template v-if="editingItem.key === 'db_auto_push_delay_minutes'">
+                <div class="config-edit-row">
+                  <el-input-number v-model="editingItem.value" :min="0" :step="1" />
+                  <div class="config-edit-actions">
+                    <GitActionButton compact size="small" :loading="saving" @click="saveItem('base', 'dbAutoPushDelayMinutes', editingItem.value)">保存</GitActionButton>
+                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="config-display-row">
+                  <div class="config-value">{{ form.db_auto_push_delay_minutes }} 分钟</div>
+                  <GitActionButton compact size="small" @click="startEdit('db_auto_push_delay_minutes', form.db_auto_push_delay_minutes)">编辑</GitActionButton>
+                </div>
+              </template>
+              <div class="config-item-help">主库数据变更后，延迟多少分钟自动 git commit + push；0 表示关闭自动 push，默认 10 分钟。</div>
+            </div>
+          </el-descriptions-item>
         </el-descriptions>
 
         <!-- [base] 日志库配置 -->
@@ -432,6 +452,7 @@ export default {
         db_dir: '',
         db_name: '',
         db_is_git_repo: false,
+        db_auto_push_delay_minutes: 10,
         db_configured: false,
         log_db_path: '',
         webkit_driver_path: '',
@@ -529,6 +550,7 @@ export default {
         this.form.db_dir = response.Data.db_dir || ''
         this.form.db_name = response.Data.db_name || ''
         this.form.db_is_git_repo = !!response.Data.db_is_git_repo
+        this.form.db_auto_push_delay_minutes = Number(response.Data.db_auto_push_delay_minutes ?? 10)
         this.form.db_configured = !!response.Data.db_configured
         this.form.log_db_path = response.Data.log_db_path || ''
         this.form.webkit_driver_path = response.Data.webkit_driver_path || ''

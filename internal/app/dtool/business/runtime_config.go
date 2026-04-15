@@ -26,6 +26,10 @@ func ReloadEditableRuntimeConfig() {
 	component.EnvClient.ConfigBase.DbFileName = component.ConfigViper.GetString(`base.dbFileName`)
 	component.EnvClient.ConfigBase.DbPath = component.ConfigViper.GetString(`base.dbPath`)
 	component.EnvClient.ConfigBase.DbIsGitRepo = component.ConfigViper.GetBool(`base.dbIsGitRepo`)
+	component.EnvClient.ConfigBase.DbAutoPushDelayMinutes = common.DefaultMainDBAutoPushDelayMinutes
+	if component.ConfigViper.IsSet(`base.dbAutoPushDelayMinutes`) {
+		component.EnvClient.ConfigBase.DbAutoPushDelayMinutes = component.ConfigViper.GetInt(`base.dbAutoPushDelayMinutes`)
+	}
 	component.EnvClient.ConfigBase.LogDbPath = component.ConfigViper.GetString(`base.logDbPath`)
 	component.EnvClient.ConfigBase.MemoryDBPath = component.ConfigViper.GetString(`base.memoryDbPath`)
 	component.EnvClient.ConfigBase.MemoryDBIsGitRepo = component.ConfigViper.GetBool(`base.memoryDbIsGitRepo`)

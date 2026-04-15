@@ -845,6 +845,7 @@ func SetMemoryConfigGet(c *gin.Context) {
 		`db_name`:                           mainDBConfig.DBName,
 		`db_configured`:                     mainDBConfig.Dir != `` && mainDBConfig.DBName != ``,
 		`db_is_git_repo`:                    mainDBConfig.GitRepoEnabled,
+		`db_auto_push_delay_minutes`:        business.ReadMainDBAutoSyncConfig().AutoSyncMinutes,
 		`log_db_path`:                       component.EnvClient.LogDbConfig.DbPath,
 		`webkit_driver_path`:                component.ConfigViper.GetString(`path.webkit_driver_path`),
 		`webkit_data_path`:                  component.ConfigViper.GetString(`path.webkit_data_path`),
@@ -985,11 +986,11 @@ func SetRuntimeConfigSave(c *gin.Context) {
 	needRelogin := safeChanged && newSafePassword != ``
 
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`config_file`:   configFile,
-		`reloaded`:      true,
-		`need_restart`:  true,
-		`safe_changed`:  safeChanged,
-		`need_relogin`:  needRelogin,
+		`config_file`:  configFile,
+		`reloaded`:     true,
+		`need_restart`: true,
+		`safe_changed`: safeChanged,
+		`need_relogin`: needRelogin,
 	})
 }
 
@@ -1036,12 +1037,20 @@ func SetRuntimeConfigItemSave(c *gin.Context) {
 		// 更新内存中的配置
 		component.EnvClient.SmartLinkConfig.RunMode = define.SmartLinkRunMode(value)
 		needRestart = false
+	case `client_version`:
+		value := strings.TrimSpace(cast.ToString(configValue))
+		setIniKey(section, configKey, value)
+		component.EnvClient.SmartLinkConfig.ClientVersion = value
+		needRestart = false
 	case `db_path`, `dbFileName`, `logDbPath`, `memoryDbPath`:
 		setIniKey(section, configKey, strings.TrimSpace(cast.ToString(configValue)))
 		needRestart = true
 	case `db_is_git_repo`, `memoryDbIsGitRepo`:
 		setIniKey(section, configKey, cast.ToString(cast.ToBool(configValue)))
 		needRestart = true
+	case `dbAutoPushDelayMinutes`:
+		setIniKey(section, configKey, cast.ToString(cast.ToInt(configValue)))
+		needRestart = false
 	case `memoryDbAutoPushDelayMinutes`:
 		setIniKey(section, configKey, cast.ToString(cast.ToInt(configValue)))
 		needRestart = false

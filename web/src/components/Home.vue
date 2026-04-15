@@ -88,8 +88,34 @@
           :class="[getAsyncTaskEntryClassName(), { 'async-task-entry--running': hasRunningAsyncTask() }]"
           @click="openAsyncTaskDialog"
         >
-          <span class="footer-action__title">
-            任务 {{ asyncTaskSummary.await_confirm_count || 0 }}/{{ asyncTaskSummary.running_count || 0 }}
+          <span class="footer-action__title async-task-entry__title">
+            <span class="async-task-entry__label">任务</span>
+            <span class="async-task-entry__summary">
+              <span
+                class="async-task-entry__badge async-task-entry__badge--running"
+                :title="getAsyncTaskCounterDescription('running')"
+              >
+                运行中 {{ asyncTaskSummary.running_count || 0 }}
+              </span>
+              <span
+                class="async-task-entry__badge async-task-entry__badge--pending"
+                :title="getAsyncTaskCounterDescription('pending')"
+              >
+                准备中 {{ asyncTaskSummary.pending_count || 0 }}
+              </span>
+              <span
+                class="async-task-entry__badge async-task-entry__badge--await-confirm"
+                :title="getAsyncTaskCounterDescription('await_confirm')"
+              >
+                待处理 {{ asyncTaskSummary.await_confirm_count || 0 }}
+              </span>
+              <span
+                class="async-task-entry__badge async-task-entry__badge--failed"
+                :title="getAsyncTaskCounterDescription('failed')"
+              >
+                失败 {{ asyncTaskSummary.failed_count || 0 }}
+              </span>
+            </span>
             <span v-if="hasRunningAsyncTask()" class="async-task-entry__spinner" aria-hidden="true"></span>
           </span>
         </button>
@@ -483,8 +509,10 @@
     class="async-task-dialog"
   >
     <div class="async-task-toolbar">
-      <el-tag type="warning" effect="light">待处理 {{ asyncTaskSummary.await_confirm_count || 0 }}</el-tag>
-      <el-tag type="info" effect="light">运行中 {{ asyncTaskSummary.running_count || 0 }}</el-tag>
+      <el-tag type="success" effect="light" :title="getAsyncTaskCounterDescription('running')">运行中 {{ asyncTaskSummary.running_count || 0 }}</el-tag>
+      <el-tag type="info" effect="light" :title="getAsyncTaskCounterDescription('pending')">准备中 {{ asyncTaskSummary.pending_count || 0 }}</el-tag>
+      <el-tag type="warning" effect="light" :title="getAsyncTaskCounterDescription('await_confirm')">待处理 {{ asyncTaskSummary.await_confirm_count || 0 }}</el-tag>
+      <el-tag type="danger" effect="light" :title="getAsyncTaskCounterDescription('failed')">失败 {{ asyncTaskSummary.failed_count || 0 }}</el-tag>
       <el-tag effect="plain">列表 {{ asyncTaskList.length }}</el-tag>
     </div>
     <div class="async-task-layout">
@@ -542,6 +570,13 @@
               :new-text="asyncTaskDetail.result_payload_map?.arranged_content || ''"
               title="正文差异"
             />
+          </div>
+          <div v-else-if="asyncTaskDetail.task_type === ASYNC_TASK_TYPE_MAIN_DB_SYNC" class="async-task-detail__content">
+            <div class="async-task-detail__section-title">任务说明</div>
+            <div class="async-task-detail__note">{{ getAsyncTaskDescription(asyncTaskDetail) }}</div>
+            <div v-if="getAsyncTaskScheduledTime(asyncTaskDetail)" class="async-task-detail__sub-meta">
+              预计同步时间 {{ getAsyncTaskScheduledTime(asyncTaskDetail) }}
+            </div>
           </div>
           <div class="async-task-detail__actions">
             <GitActionButton
@@ -752,6 +787,7 @@ const ASYNC_TASK_ACTION_OVERWRITE_MEMORY_FRAGMENT = 'overwrite_memory_fragment'
 const ASYNC_TASK_ACTION_DISCARD = 'discard'
 // ASYNC_TASK_STATUS_* 统一定义异步任务状态常量。
 const ASYNC_TASK_STATUS_AWAIT_CONFIRM = 'await_confirm'
+const ASYNC_TASK_STATUS_PENDING = 'pending'
 const ASYNC_TASK_STATUS_RUNNING = 'running'
 const ASYNC_TASK_STATUS_FAILED = 'failed'
 const ASYNC_TASK_STATUS_CONFIRMED = 'confirmed'
@@ -759,6 +795,7 @@ const ASYNC_TASK_STATUS_REJECTED = 'rejected'
 // ASYNC_TASK_TYPE_* 统一定义异步任务类型常量。
 const ASYNC_TASK_TYPE_DAILY_REPORT = 'home_task_daily_report'
 const ASYNC_TASK_TYPE_MEMORY_ARRANGE = 'memory_fragment_arrange'
+const ASYNC_TASK_TYPE_MAIN_DB_SYNC = 'main_db_sync'
 // HOME_TASK_ACTION_COMMAND_STATUS_PREFIX 标识状态切换指令前缀。
 const HOME_TASK_ACTION_COMMAND_STATUS_PREFIX = 'status:'
 // HOME_DASHBOARD_PAGE_* 标识首页双屏结构中的页索引。
@@ -843,8 +880,10 @@ export default {
       ASYNC_TASK_ACTION_OVERWRITE_MEMORY_FRAGMENT,
       ASYNC_TASK_ACTION_DISCARD,
       ASYNC_TASK_STATUS_AWAIT_CONFIRM,
+      ASYNC_TASK_STATUS_PENDING,
       ASYNC_TASK_TYPE_DAILY_REPORT,
       ASYNC_TASK_TYPE_MEMORY_ARRANGE,
+      ASYNC_TASK_TYPE_MAIN_DB_SYNC,
       HOME_TASK_TAB_ACTIVE,
       HOME_TASK_TAB_ARCHIVED,
       HOME_TASK_ARCHIVED_NO,
@@ -888,6 +927,7 @@ export default {
       asyncTaskNotifiedStateMap: {},
       asyncTaskNotificationPermissionRequested: false,
       asyncTaskSummary: {
+        pending_count: 0,
         await_confirm_count: 0,
         running_count: 0,
         failed_count: 0,
@@ -1268,6 +1308,8 @@ export default {
     },
     // openAsyncTaskDialog 打开异步任务弹窗，并刷新摘要与详情。
     openAsyncTaskDialog() {
+      this.asyncTaskSelectedId = 0
+      this.asyncTaskDetail = {}
       this.asyncTaskDialogVisible = true
       this.loadAsyncTaskSummary(true)
     },
@@ -1286,6 +1328,7 @@ export default {
         this.processAsyncTaskNotifications(list)
         this.asyncTaskList = list
         this.asyncTaskSummary = {
+          pending_count: Number(response.Data.pending_count || 0),
           await_confirm_count: Number(response.Data.await_confirm_count || 0),
           running_count: Number(response.Data.running_count || 0),
           failed_count: Number(response.Data.failed_count || 0),
@@ -1388,11 +1431,16 @@ export default {
     },
     // normalizeAsyncTaskDetail 解析详情里的 JSON 字段，方便模板直接读取结果内容。
     normalizeAsyncTaskDetail(task) {
-      const normalizedTask = { ...(task || {}), result_payload_map: {} }
+      const normalizedTask = { ...(task || {}), result_payload_map: {}, request_payload_map: {} }
       try {
         normalizedTask.result_payload_map = JSON.parse(String(normalizedTask.result_payload || '{}'))
       } catch (error) {
         normalizedTask.result_payload_map = {}
+      }
+      try {
+        normalizedTask.request_payload_map = JSON.parse(String(normalizedTask.request_payload || '{}'))
+      } catch (error) {
+        normalizedTask.request_payload_map = {}
       }
       return normalizedTask
     },
@@ -1448,6 +1496,9 @@ export default {
       if (taskType === ASYNC_TASK_TYPE_MEMORY_ARRANGE) {
         return '知识片段整理'
       }
+      if (taskType === ASYNC_TASK_TYPE_MAIN_DB_SYNC) {
+        return '主库同步'
+      }
       return '异步任务'
     },
     // getAsyncTaskStatusText 统一格式化异步任务状态文案。
@@ -1455,6 +1506,9 @@ export default {
       const normalizedStatus = String(taskStatus || '')
       if (normalizedStatus === ASYNC_TASK_STATUS_AWAIT_CONFIRM) {
         return '待处理'
+      }
+      if (normalizedStatus === ASYNC_TASK_STATUS_PENDING) {
+        return '准备中'
       }
       if (normalizedStatus === ASYNC_TASK_STATUS_RUNNING) {
         return '运行中'
@@ -1476,8 +1530,11 @@ export default {
       if (normalizedStatus === ASYNC_TASK_STATUS_AWAIT_CONFIRM) {
         return 'warning'
       }
-      if (normalizedStatus === ASYNC_TASK_STATUS_RUNNING) {
+      if (normalizedStatus === ASYNC_TASK_STATUS_PENDING) {
         return 'info'
+      }
+      if (normalizedStatus === ASYNC_TASK_STATUS_RUNNING) {
+        return 'success'
       }
       if (normalizedStatus === ASYNC_TASK_STATUS_FAILED) {
         return 'danger'
@@ -1501,6 +1558,10 @@ export default {
       if (awaitConfirmCount > 0) {
         return 'await-confirm'
       }
+      const pendingCount = Number(this.asyncTaskSummary.pending_count || 0)
+      if (pendingCount > 0) {
+        return 'pending'
+      }
       const runningCount = Number(this.asyncTaskSummary.running_count || 0)
       // 失败和待处理都没有时，执行中优先展示柔和绿色。 // Show the soft green running state only when failed and await-confirm are both absent.
       if (runningCount > 0) {
@@ -1517,10 +1578,45 @@ export default {
       if (state === 'await-confirm') {
         return 'async-task-entry--await-confirm'
       }
+      if (state === 'pending') {
+        return 'async-task-entry--pending'
+      }
       if (state === 'running') {
         return 'async-task-entry--active'
       }
       return 'async-task-entry--idle'
+    },
+    // getAsyncTaskCounterDescription 返回任务汇总指标的悬停说明。 // Return hover descriptions for async task summary counters.
+    getAsyncTaskCounterDescription(type) {
+      if (type === 'running') {
+        return '后台任务正在执行中'
+      }
+      if (type === 'pending') {
+        return '已检测到变更，等待延迟时间后自动开始执行'
+      }
+      if (type === 'await_confirm') {
+        return '任务已产出结果，等待你确认或进一步处理'
+      }
+      if (type === 'failed') {
+        return '任务执行失败，请打开异步任务查看原因'
+      }
+      return '异步任务汇总'
+    },
+    getAsyncTaskDescription(task) {
+      let desc = String(task?.request_payload_map?.task_description || '').trim()
+      if (
+        String(task?.task_type || '') === ASYNC_TASK_TYPE_MAIN_DB_SYNC &&
+        String(task?.task_status || '') === ASYNC_TASK_STATUS_CONFIRMED
+      ) {
+        const finishTime = this.formatAsyncTaskTime(task?.finish_time)
+        if (finishTime && finishTime !== '-') {
+          desc += '，已于 ' + finishTime + ' 同步完成'
+        }
+      }
+      return desc
+    },
+    getAsyncTaskScheduledTime(task) {
+      return String(task?.request_payload_map?.schedule?.scheduled_at_desc || '').trim()
     },
     // formatAsyncTaskTime 统一格式化异步任务时间戳。
     formatAsyncTaskTime(unixTime) {
@@ -1839,6 +1935,7 @@ export default {
       this.processAsyncTaskNotifications(list)
       this.asyncTaskList = list
       this.asyncTaskSummary = {
+        pending_count: Number(data.pending_count || 0),
         await_confirm_count: Number(data.await_confirm_count || 0),
         running_count: Number(data.running_count || 0),
         failed_count: Number(data.failed_count || 0),
@@ -2330,6 +2427,11 @@ export default {
   color: #7a5c33;
 }
 
+.async-task-entry--pending {
+  background: linear-gradient(180deg, #eaf2ff 0%, #dbe8ff 100%);
+  color: #3d5f92;
+}
+
 .async-task-entry--failed {
   background: linear-gradient(180deg, #fbeaea 0%, #f4d9d9 100%);
   color: #835252;
@@ -2354,6 +2456,58 @@ export default {
   margin-top: 2px;
   font-size: 11px;
   opacity: 0.78;
+}
+
+.async-task-entry__title {
+  width: 100%;
+}
+
+.async-task-entry__label {
+  display: block;
+}
+
+.async-task-entry__summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.async-task-entry__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1.4;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.async-task-entry__badge--running {
+  color: #2d6a3f;
+  background: rgba(222, 243, 228, 0.95);
+  border-color: rgba(106, 170, 122, 0.28);
+}
+
+.async-task-entry__badge--pending {
+  color: #2f5ca8;
+  background: rgba(224, 236, 255, 0.98);
+  border-color: rgba(98, 139, 215, 0.28);
+}
+
+.async-task-entry__badge--await-confirm {
+  color: #9a5b08;
+  background: rgba(253, 236, 205, 0.98);
+  border-color: rgba(220, 155, 63, 0.3);
+}
+
+.async-task-entry__badge--failed {
+  color: #b13c3c;
+  background: rgba(252, 225, 225, 0.98);
+  border-color: rgba(208, 101, 101, 0.3);
 }
 
 .async-task-entry__spinner {
@@ -2474,6 +2628,21 @@ export default {
   max-height: 420px;
   overflow: auto;
   min-height: 220px;
+}
+
+.async-task-detail__note {
+  padding: 12px 14px;
+  border: 1px solid #e4ebf3;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f6f9ff 0%, #eef4ff 100%);
+  color: #41597e;
+  line-height: 1.7;
+}
+
+.async-task-detail__sub-meta {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #667891;
 }
 
 .async-task-detail__actions {
