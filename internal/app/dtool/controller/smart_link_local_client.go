@@ -4,7 +4,9 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
+	"dev_tool/internal/app/dtool/plw"
 	"dev_tool/internal/pkg/p_define"
+	"fmt"
 	"strings"
 	"time"
 
@@ -249,10 +251,15 @@ func AgentRegister(c *gin.Context) {
 		"client_id": clientID,
 	}).One()
 
+	// 生成 agent_token（第一阶段：简单使用 client_id + 时间戳）
+	agentToken := fmt.Sprintf("%s_%d", clientID, now)
+
 	if len(existing) == 0 {
 		clientData["create_time"] = now
+		clientData["agent_token"] = agentToken
 		_, _ = common.DbMain.Client.QuickCreate("tbl_smart_link_client", clientData).Exec()
 	} else {
+		clientData["agent_token"] = agentToken
 		_, _ = common.DbMain.Client.QuickUpdate("tbl_smart_link_client", map[string]any{
 			"client_id": clientID,
 		}, clientData).Exec()
@@ -266,6 +273,7 @@ func AgentRegister(c *gin.Context) {
 		"required_client_version": cfg.ClientVersion,
 		"server_time":             now,
 		"version_match":           clientVersion == cfg.ClientVersion,
+		"agent_token":             agentToken,
 	})
 }
 
@@ -296,76 +304,7 @@ func AgentHeartbeat(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, "", nil)
 }
 
-// AgentTaskPull 客户端拉取任务
-func AgentTaskPull(c *gin.Context) {
-	clientID := c.Query("client_id")
-	if clientID == "" {
-		gsgin.GinResponseError(c, "client_id不能为空", nil)
-		return
-	}
-
-	task, _ := common.DbMain.Client.QueryBySql(`
-		SELECT * FROM tbl_smart_link_task 
-		WHERE client_id = ? AND status = ?
-		ORDER BY create_time ASC 
-		LIMIT 1
-	`, clientID, define.SmartLinkTaskStatusPending).One()
-
-	if len(task) == 0 {
-		gsgin.GinResponseSuccess(c, "", nil)
-		return
-	}
-
-	now := time.Now().Unix()
-	_, _ = common.DbMain.Client.QuickUpdate("tbl_smart_link_task", map[string]any{
-		"id": cast.ToInt(task["id"]),
-	}, map[string]any{
-		"status":      define.SmartLinkTaskStatusRunning,
-		"start_time":  now,
-		"update_time": now,
-	}).Exec()
-
-	gsgin.GinResponseSuccess(c, "", map[string]any{
-		"task_id":       cast.ToString(task["task_id"]),
-		"smart_link_id": cast.ToInt(task["smart_link_id"]),
-		"label":         cast.ToString(task["label"]),
-		"run_params":    cast.ToString(task["request_payload"]),
-		"created_at":    cast.ToInt64(task["create_time"]),
-	})
-}
-
-// AgentTaskReport 客户端回传任务结果
-func AgentTaskReport(c *gin.Context) {
-	var req map[string]any
-	if err := gsgin.GinPostBody(c, &req); err != nil {
-		gsgin.GinResponseError(c, "请求参数错误", nil)
-		return
-	}
-
-	taskID := cast.ToString(req["task_id"])
-	status := cast.ToString(req["status"])
-	now := time.Now().Unix()
-
-	updateData := map[string]any{
-		"status":         status,
-		"log_text":       cast.ToString(req["log_append"]),
-		"result_payload": cast.ToString(req["result_payload"]),
-		"error_message":  cast.ToString(req["error_message"]),
-		"update_time":    now,
-	}
-
-	if status == "success" || status == "failed" || status == "cancelled" {
-		updateData["finish_time"] = now
-	}
-
-	_, _ = common.DbMain.Client.QuickUpdate("tbl_smart_link_task", map[string]any{
-		"task_id": taskID,
-	}, updateData).Exec()
-
-	gsgin.GinResponseSuccess(c, "", nil)
-}
-
-// SmartLinkTaskCreate 创建本地执行任务
+// SmartLinkTaskCreate 创建本地执行任务（通过 WebSocket 下发给 Agent）
 func SmartLinkTaskCreate(c *gin.Context) {
 	var req map[string]any
 	if err := gsgin.GinPostBody(c, &req); err != nil {
@@ -419,35 +358,77 @@ func SmartLinkTaskCreate(c *gin.Context) {
 		return
 	}
 
-	// 创建任务
-	taskID := "task_" + cast.ToString(now) + "_" + cast.ToString(req["smart_link_id"])
 	clientID := cast.ToString(client["client_id"])
 
-	requestPayload := ""
-	if req["run_params"] != nil {
-		requestPayload = cast.ToString(req["run_params"])
+	// 检查 WebSocket 连接是否存在
+	conn := GlobalAgentWsManager.GetConnection(clientID)
+	if conn == nil {
+		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_WS_NOT_CONNECTED", nil)
+		return
 	}
 
-	_, err := common.DbMain.Client.QuickCreate("tbl_smart_link_task", map[string]any{
-		"task_id":         taskID,
-		"client_id":       clientID,
-		"smart_link_id":   cast.ToInt(req["smart_link_id"]),
-		"label":           cast.ToString(req["label"]),
-		"status":          define.SmartLinkTaskStatusPending,
-		"run_mode":        define.SmartLinkRunModeLocalClient,
-		"request_payload": requestPayload,
-		"create_time":     now,
-		"update_time":     now,
-	}).Exec()
+	// 构建 PlaywrightRunParams（服务端查数据库构造完整参数）
+	id := cast.ToInt(req["smart_link_id"])
+	label := cast.ToString(req["label"])
+	userName := cast.ToString(req["user_name"])
+	password := cast.ToString(req["password"])
+	openType := cast.ToInt(req["open_type"])
+	openNum := cast.ToInt(req["open_num"])
+	replaceList := make(map[string]string)
 
-	if err != nil {
-		gsgin.GinResponseError(c, "创建任务失败: "+err.Error(), nil)
+	runParams, runParamsErr := plw.GetRunParams(id, label, userName, password, openType, openNum, replaceList)
+	if runParamsErr != nil {
+		gsgin.GinResponseError(c, "构建运行参数失败: "+runParamsErr.Error(), nil)
+		return
+	}
+
+	// 生成任务 ID 和 SSE 分发 ID
+	taskID := "task_" + cast.ToString(now) + "_" + cast.ToString(id)
+	sseDistributeId := cast.ToString(req["sse_distribute_id"])
+	if sseDistributeId == "" {
+		sseDistributeId = "smart_link_run_" + cast.ToString(now)
+	}
+
+	// 创建任务记录到数据库（用于状态追踪）
+	_, createErr := common.DbMain.Client.QuickCreate("tbl_smart_link_task", map[string]any{
+		"task_id":       taskID,
+		"client_id":     clientID,
+		"smart_link_id": id,
+		"label":         label,
+		"status":        define.SmartLinkTaskStatusPending,
+		"run_mode":      define.SmartLinkRunModeLocalClient,
+		"create_time":   now,
+		"update_time":   now,
+	}).Exec()
+	if createErr != nil {
+		gsgin.GinResponseError(c, "创建任务失败: "+createErr.Error(), nil)
+		return
+	}
+
+	// 通过 WebSocket 下发任务给 Agent
+	agentRunParams := BuildAgentRunParams(runParams)
+	wsMsg := define.AgentWsMessage{
+		Type:            define.AgentWsMsgTaskExecute,
+		ClientID:        clientID,
+		TaskID:          taskID,
+		SseDistributeId: sseDistributeId,
+		Data: define.AgentTaskExecuteData{
+			TaskID:          taskID,
+			SseDistributeId: sseDistributeId,
+			ClientID:        clientID,
+			RunParams:       agentRunParams,
+		},
+	}
+
+	if sendErr := GlobalAgentWsManager.Send(clientID, wsMsg); sendErr != nil {
+		gsgin.GinResponseError(c, "下发任务到Agent失败: "+sendErr.Error(), nil)
 		return
 	}
 
 	gsgin.GinResponseSuccess(c, "", map[string]any{
-		"task_id":   taskID,
-		"client_id": clientID,
-		"status":    define.SmartLinkTaskStatusPending,
+		"task_id":           taskID,
+		"client_id":         clientID,
+		"status":            define.SmartLinkTaskStatusPending,
+		"sse_distribute_id": sseDistributeId,
 	})
 }

@@ -341,8 +341,7 @@ func smartLink(tGin *p_gin.Gin) {
 	tGin.GinGet(`/api/agent/download`, controller.AgentDownload)
 	tGin.GinPost(`/api/agent/register`, controller.AgentRegister)
 	tGin.GinPost(`/api/agent/heartbeat`, controller.AgentHeartbeat)
-	tGin.GinGet(`/api/agent/task/pull`, controller.AgentTaskPull)
-	tGin.GinPost(`/api/agent/task/report`, controller.AgentTaskReport)
+	tGin.GinGet(`/api/agent/ws`, controller.AgentWs)
 	//执行逻辑
 	tGin.GinPost(`/api/SmartProcessList`, controller.SmartProcessList)
 	tGin.GinPost(`/api/SmartProcessAdd`, controller.SmartProcessAdd)

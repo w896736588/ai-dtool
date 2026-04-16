@@ -1,13 +1,16 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
+	"dev_tool/internal/app/dtool/component"
+	"dev_tool/internal/app/dtool/define"
+	"dev_tool/internal/pkg/p_common"
+	"dev_tool/internal/pkg/p_js"
 	"fmt"
-	"net/http"
 	"os"
-	"os/exec"
+	"os/signal"
+	"path/filepath"
 	"runtime"
+	"syscall"
 	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gstool"
@@ -15,240 +18,169 @@ import (
 
 var defaultServerURL = "http://localhost:17170"
 
-// Config 客户端配置
+// Config Agent 配置
 type Config struct {
-	ServerURL         string
-	ClientID          string
-	ClientVersion     string
-	HeartbeatInterval time.Duration
-	TaskPollInterval  time.Duration
+	ServerURL     string
+	ClientID      string
+	ClientVersion string
 }
 
-// Agent 本地客户端代理
-type Agent struct {
-	config     Config
-	httpClient *http.Client
-	stopChan   chan bool
-}
-
-// NewAgent 创建新代理
-func NewAgent(cfg Config) *Agent {
-	return &Agent{
-		config:     cfg,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
-		stopChan:   make(chan bool),
+func main() {
+	// 从环境变量读取配置
+	serverURL := os.Getenv("DTOOL_SERVER_URL")
+	if serverURL == "" {
+		serverURL = defaultServerURL
 	}
-}
-
-// Register 向服务端注册
-func (a *Agent) Register() error {
-	data := map[string]any{
-		"client_id":      a.config.ClientID,
-		"client_version": a.config.ClientVersion,
-		"hostname":       getHostname(),
-		"os":             runtime.GOOS,
-		"arch":           runtime.GOARCH,
-		"user_name":      getUsername(),
-		"token":          "", // 第一版不强制鉴权
+	clientID := os.Getenv("DTOOL_CLIENT_ID")
+	if clientID == "" {
+		hostname, _ := os.Hostname()
+		clientID = fmt.Sprintf("client_%s_%d", hostname, time.Now().Unix())
+	}
+	clientVersion := os.Getenv("DTOOL_CLIENT_VERSION")
+	if clientVersion == "" {
+		clientVersion = "2.0.0"
 	}
 
-	resp, err := a.post("/api/agent/register", data)
-	if err != nil {
-		return fmt.Errorf("请求注册接口失败: %w", err)
+	cfg := Config{
+		ServerURL:     serverURL,
+		ClientID:      clientID,
+		ClientVersion: clientVersion,
 	}
 
-	errCode := 0
-	if v, ok := resp["ErrCode"]; ok && v != nil {
-		switch val := v.(type) {
-		case float64:
-			errCode = int(val)
-		case int:
-			errCode = val
-		}
-	}
-	if errCode != 0 {
-		errMsg := "未知错误"
-		if resp["ErrMsg"] != nil {
-			errMsg = fmt.Sprintf("%v", resp["ErrMsg"])
-		}
-		return fmt.Errorf("服务端返回错误: %s (错误码: %d)", errMsg, errCode)
-	}
+	fmt.Printf("dtool-agent 启动\n")
+	fmt.Printf("服务端地址: %s\n", cfg.ServerURL)
+	fmt.Printf("客户端ID: %s\n", cfg.ClientID)
+	fmt.Printf("版本: %s\n", cfg.ClientVersion)
 
-	fmt.Printf("注册成功，服务端要求版本: %v\n", resp["Data"].(map[string]any)["required_client_version"])
-	return nil
-}
-
-// Heartbeat 发送心跳
-func (a *Agent) Heartbeat() error {
-	data := map[string]any{
-		"client_id":       a.config.ClientID,
-		"client_version":  a.config.ClientVersion,
-		"status":          "online",
-		"hostname":        getHostname(),
-		"current_task_id": "",
-	}
-
-	_, err := a.post("/api/agent/heartbeat", data)
-	return err
-}
-
-// PollTask 轮询任务
-func (a *Agent) PollTask() error {
-	url := fmt.Sprintf("%s/api/agent/task/pull?client_id=%s", a.config.ServerURL, a.config.ClientID)
-	resp, err := a.httpClient.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	var result map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return err
-	}
-
-	if result["ErrCode"] != 0 {
-		return fmt.Errorf("拉取任务失败: %v", result["ErrMsg"])
-	}
-
-	data := result["Data"]
-	if data == nil {
-		return nil // 没有任务
-	}
-
-	taskData := data.(map[string]any)
-	taskID := taskData["task_id"].(string)
-
-	fmt.Printf("收到任务: %s\n", taskID)
-
-	// 执行任务
-	go a.executeTask(taskID, taskData)
-	return nil
-}
-
-// executeTask 执行任务
-func (a *Agent) executeTask(taskID string, taskData map[string]any) {
-	fmt.Printf("开始执行任务: %s\n", taskID)
-
-	// 上报任务开始
-	a.reportTask(taskID, "running", "", "")
-
-	// 检查 Node.js 和 Playwright 环境
-	if !a.checkRuntime() {
-		a.reportTask(taskID, "failed", "", "Node.js 或 Playwright 环境检查失败")
+	// 初始化最小组件
+	if err := initComponents(); err != nil {
+		fmt.Printf("组件初始化失败: %s\n", err.Error())
 		return
 	}
 
-	// 解析运行参数
-	runParams := taskData["run_params"].(string)
+	// 创建 WebSocket 客户端
+	wsClient := NewWsClient(cfg)
+	// 创建任务执行器
+	taskRunner := NewTaskRunner(wsClient)
 
-	// 执行任务（调用 Playwright）
-	logOutput, err := a.runPlaywright(runParams)
-
-	if err != nil {
-		a.reportTask(taskID, "failed", logOutput, err.Error())
-	} else {
-		a.reportTask(taskID, "success", logOutput, "")
-	}
-}
-
-// checkRuntime 检查运行环境
-func (a *Agent) checkRuntime() bool {
-	// 检查 Node.js
-	cmd := exec.Command("node", "--version")
-	if err := cmd.Run(); err != nil {
-		fmt.Println("Node.js 未安装")
-		return false
-	}
-	return true
-}
-
-// runPlaywright 运行 Playwright
-func (a *Agent) runPlaywright(runParams string) (string, error) {
-	// 这里简化处理，实际应该调用 Playwright 执行
-	// 第一版可以先输出日志
-	output := fmt.Sprintf("执行参数: %s\n", runParams)
-
-	// TODO: 实现真正的 Playwright 调用
-	// 可以使用 exec.Command 调用 node 脚本
-
-	return output, nil
-}
-
-// reportTask 上报任务结果
-func (a *Agent) reportTask(taskID, status, logText, errorMsg string) error {
-	data := map[string]any{
-		"task_id":        taskID,
-		"status":         status,
-		"log_append":     logText,
-		"result_payload": "{}",
-		"error_message":  errorMsg,
-	}
-
-	_, err := a.post("/api/agent/task/report", data)
-	return err
-}
-
-// post 发送 POST 请求
-func (a *Agent) post(path string, data map[string]any) (map[string]any, error) {
-	jsonData, _ := json.Marshal(data)
-	url := a.config.ServerURL + path
-
-	resp, err := a.httpClient.Post(url, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var result map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-// Run 启动代理
-func (a *Agent) Run() {
-	fmt.Printf("dtool-agent 启动\n")
-	fmt.Printf("服务端地址: %s\n", a.config.ServerURL)
-	fmt.Printf("客户端ID: %s\n", a.config.ClientID)
-	fmt.Printf("版本: %s\n", a.config.ClientVersion)
+	wsClient.SetTaskHandler(taskRunner.HandleTask)
 
 	// 注册
-	if err := a.Register(); err != nil {
-		gstool.FmtPrintlnLogTime(`注册失败 %s`, err.Error())
+	registerResp, err := wsClient.Register()
+	if err != nil {
+		fmt.Printf("注册失败: %s\n", err.Error())
+		return
+	}
+	// 从 Data 中提取详细信息
+	if data, ok := registerResp["Data"].(map[string]any); ok {
+		fmt.Printf("注册成功，服务端版本要求: %v, agent_token: %v\n",
+			data["required_client_version"], data["agent_token"])
+	} else {
+		fmt.Printf("注册成功（原始响应）: %+v\n", registerResp)
+	}
+
+	// 连接 WebSocket
+	if err := wsClient.Connect(); err != nil {
+		fmt.Printf("WebSocket连接失败: %s\n", err.Error())
 		return
 	}
 
-	// 启动心跳和任务轮询
-	ticker := time.NewTicker(a.config.HeartbeatInterval)
-	taskTicker := time.NewTicker(a.config.TaskPollInterval)
+	// 环境准备（异步）
+	go prepareRuntime(wsClient)
 
-	defer ticker.Stop()
-	defer taskTicker.Stop()
+	// 等待退出信号
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	<-sigChan
 
-	for {
-		select {
-		case <-ticker.C:
-			if err := a.Heartbeat(); err != nil {
-				fmt.Printf("心跳失败: %v\n", err)
-			}
-		case <-taskTicker.C:
-			if err := a.PollTask(); err != nil {
-				fmt.Printf("拉取任务失败: %v\n", err)
-			}
-		case <-a.stopChan:
-			return
+	fmt.Println("正在关闭...")
+	wsClient.Close()
+}
+
+// initComponents 初始化 Agent 最小组件
+func initComponents() error {
+	// Agent 根目录
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("获取用户目录失败: %w", err)
+	}
+	agentRootDir := filepath.Join(homeDir, ".dtool", "agent")
+
+	// 初始化 EnvClient
+	component.EnvClient = &define.Env{
+		RootPath:           agentRootDir,
+		AppName:            "dtool-agent",
+		LogPath:            filepath.Join(agentRootDir, "logs"),
+		NodePath:           "node",
+		WebkitDriverPath:   filepath.Join(agentRootDir, "webkit_driver"),
+		WebkitDataPath:     filepath.Join(agentRootDir, "webkit_data"),
+		WebkitDownloadPath: filepath.Join(agentRootDir, "webkit_download"),
+	}
+
+	// 创建必要目录
+	dirs := []string{
+		component.EnvClient.LogPath,
+		component.EnvClient.WebkitDriverPath,
+		component.EnvClient.WebkitDataPath,
+		component.EnvClient.WebkitDownloadPath,
+	}
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("创建目录失败 %s: %w", dir, err)
 		}
 	}
+
+	// 初始化 TBaseClient
+	p_common.TBaseClient = &p_common.TBase{
+		StartMillUnix: time.Now().UnixMilli(),
+		LogPath:       component.EnvClient.LogPath,
+	}
+
+	// 初始化 PlaywrightClient
+	component.PlaywrightClient = component.NewTPlaywright()
+	component.PlaywrightClient.LockFileFullPath = filepath.Join(agentRootDir, "playwright.RunLock")
+
+	// 初始化 TJasClient（通过嵌入的 JS 文件）
+	p_common.TJasClient = &p_common.TJas{
+		JsData: map[string]string{
+			"p_js/tip.js":    p_js.TipJS,
+			"p_js/info.js":   p_js.InfoJS,
+			"p_js/delete.js": p_js.DeleteJS,
+		},
+	}
+
+	gstool.FmtPrintlnLogTime(`Agent组件初始化完成`)
+	return nil
 }
 
-// Stop 停止代理
-func (a *Agent) Stop() {
-	close(a.stopChan)
+// prepareRuntime 异步准备运行环境
+func prepareRuntime(wsClient *WsClient) {
+	// 检测 Node.js
+	if !component.PlaywrightClient.EnsureNodeRuntime() {
+		gstool.FmtPrintlnLogTime(`未检测到 Node.js，请安装后重启 Agent`)
+		wsClient.SendStatus("preparing_runtime")
+		return
+	}
+	gstool.FmtPrintlnLogTime(`Node.js 检测通过: %s`, component.EnvClient.NodePath)
+
+	// 检查并更新 Playwright 核心
+	// Agent 模式下使用空 SSE（不需要向前端输出安装进度）
+	wsClient.SendStatus("preparing_runtime")
+	component.PlaywrightClient.SmartCheckAndUpdate(nil)
+
+	// 等待浏览器核心就绪
+	for i := 0; i < 60; i++ {
+		if component.PlaywrightClient.Pw != nil {
+			gstool.FmtPrintlnLogTime(`Playwright 浏览器核心已就绪`)
+			wsClient.SendStatus("online")
+			return
+		}
+		time.Sleep(2 * time.Second)
+	}
+	gstool.FmtPrintlnLogTime(`Playwright 浏览器核心初始化超时`)
+	wsClient.SendStatus("error")
 }
 
-// 辅助函数
 func getHostname() string {
 	hostname, _ := os.Hostname()
 	return hostname
@@ -262,31 +194,10 @@ func getUsername() string {
 	return username
 }
 
-func main() {
-	// 从环境变量或命令行参数读取配置
-	serverURL := os.Getenv("DTOOL_SERVER_URL")
-	if serverURL == "" {
-		serverURL = defaultServerURL
-	}
+func getOs() string {
+	return runtime.GOOS
+}
 
-	clientID := os.Getenv("DTOOL_CLIENT_ID")
-	if clientID == "" {
-		clientID = fmt.Sprintf("client_%s_%d", getHostname(), time.Now().Unix())
-	}
-
-	clientVersion := os.Getenv("DTOOL_CLIENT_VERSION")
-	if clientVersion == "" {
-		clientVersion = "1.0.0"
-	}
-
-	config := Config{
-		ServerURL:         serverURL,
-		ClientID:          clientID,
-		ClientVersion:     clientVersion,
-		HeartbeatInterval: 5 * time.Second,
-		TaskPollInterval:  3 * time.Second,
-	}
-
-	agent := NewAgent(config)
-	agent.Run()
+func getArch() string {
+	return runtime.GOARCH
 }
