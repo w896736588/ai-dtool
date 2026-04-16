@@ -3,6 +3,7 @@ package api
 import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
+	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_curl"
 	"errors"
 	"net/http"
@@ -44,6 +45,7 @@ type Result struct {
 	RequestHeaders  map[string]string `json:"request_headers"`  //请求头
 	ResponseHeaders map[string]string `json:"response_headers"` //返回头
 	BodyForms       []map[string]any  `json:"body_forms"`       //提交的Form
+	BodyRaw         string            `json:"body_raw"`         //请求体（application/json / text/plain / raw）
 	ResponseTake    []ResponseTake    `json:"response_take"`    //返回参数的提取
 	RequestTime     string            `json:"request_time"`     //发起请求时间
 }
@@ -160,6 +162,7 @@ func (h *Api) Run() error {
 	if h.CurlStruct.Method == http.MethodPost {
 		if h.CurlStruct.ContentType == `application/json` {
 			h.Result.Url = h.CurlStruct.Url
+			h.Result.BodyRaw = h.CurlStruct.BodyJson
 			cli = gshttp.PostJson(h.CurlStruct.Url).BodyStr(h.CurlStruct.BodyJson)
 		} else if h.CurlStruct.ContentType == `application/x-www-form-urlencoded` {
 			h.Result.Url = h.CurlStruct.Url
@@ -175,6 +178,15 @@ func (h *Api) Run() error {
 			if err != nil {
 				return err
 			}
+		} else if h.CurlStruct.ContentType == define.ContentTypeText || h.CurlStruct.ContentType == define.ContentTypeRaw {
+			h.Result.Url = h.CurlStruct.Url
+			h.Result.BodyRaw = h.CurlStruct.BodyRaw
+			contentType := h.CurlStruct.ContentType
+			if contentType == define.ContentTypeRaw {
+				contentType = `application/octet-stream`
+			}
+			h.CurlStruct.Headers[`Content-Type`] = contentType
+			cli = gshttp.PostJson(h.CurlStruct.Url).BodyStr(h.CurlStruct.BodyRaw)
 		} else {
 			return errors.New(`不支持的请求类型`)
 		}

@@ -14,4 +14,5 @@ type ApiDefine struct {
 	QueryParams string            `json:"query_params"`
 	BodyForm    []p_curl.KeyValue `json:"body_form"` // application/x-www-form-urlencoded
 	BodyJson    string            `json:"body_json"` // application/json
+	BodyRaw     string            `json:"body_raw"`  // text/plain 或 raw
 }

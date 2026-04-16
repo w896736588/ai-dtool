@@ -542,6 +542,7 @@ export default {
           content_type: "",
           body_form: "[]",
           body_json: {},
+          body_raw: '',
           curlData: '',
         },
         copyApi: {
@@ -558,6 +559,7 @@ export default {
           content_type: "",
           body_form: {},
           body_json: {},
+          body_raw: '',
         },
         moveApi: {
           api_id: '',
@@ -2054,7 +2056,11 @@ export default {
       }
       _that.dialogData.createApi.folder_id = _that.selectedItem.id
       _that.dialogData.createApi.collection_id = _that.selectedItem.collection_id
-      Api.CreateApi(_that.dialogData.createApi, function (res) {
+      const createApiParams = { ..._that.dialogData.createApi }
+      if (createApiParams.body_json && typeof createApiParams.body_json === 'object') {
+        createApiParams.body_json = JSON.stringify(createApiParams.body_json)
+      }
+      Api.CreateApi(createApiParams, function (res) {
         _that.endDialogSubmit('createApi')
         _that.dialogShow.createApi = false
         if (res.ErrCode !== 0) {
@@ -2076,6 +2082,9 @@ export default {
       console.log('更新api', api)
       // 实现接口更新逻辑
       let _that = this
+      const bodyJsonStr = api.body_json_data && typeof api.body_json_data === 'object'
+        ? JSON.stringify(api.body_json_data)
+        : api.body_json_data
       Api.CreateApi({
         id: api.id,
         folder_id: api.folder_id,
@@ -2089,7 +2098,8 @@ export default {
         query_params: api.query_params_data,
         content_type: api.content_type,
         body_form: api.body_form_data,
-        body_json: api.body_json_data,
+        body_json: bodyJsonStr,
+        body_raw: api.body_raw_data,
         env_id: api.env_id,
         response_take: api.response_take_data,
         take_result: api.take_result_data,
@@ -2291,7 +2301,11 @@ export default {
       if (_that.beginDialogSubmit('copyApi')) {
         return
       }
-      Api.CreateApi(_that.dialogData.copyApi, function (res) {
+      const copyApiParams = { ..._that.dialogData.copyApi }
+      if (copyApiParams.body_json && typeof copyApiParams.body_json === 'object') {
+        copyApiParams.body_json = JSON.stringify(copyApiParams.body_json)
+      }
+      Api.CreateApi(copyApiParams, function (res) {
         _that.endDialogSubmit('copyApi')
         _that.dialogShow.copyApi = false
         if (res.ErrCode !== 0) {

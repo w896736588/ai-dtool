@@ -516,16 +516,18 @@ func ApiCreateApi(c *gin.Context) {
 		dataMap[`content_type`] = parsed.CurlStruct.ContentType
 		dataMap[`body_form`] = parsed.CurlStruct.BodyForm
 		dataMap[`body_json`] = parsed.CurlStruct.BodyJson
+		dataMap[`body_raw`] = parsed.CurlStruct.BodyRaw
 
 	}
 	updateData = gstool.MapTakeKeys(&dataMap, []string{`folder_id`, `collection_id`, `name`, `method`, `url`,
-		`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`,
+		`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`, `body_raw`,
 		`env_id`, `response_take`, `take_result`, `take_result_desc`})
 	for key, value := range updateData {
 		if gstool.ArrayExistValue(&[]string{reflect.Array.String(), reflect.Map.String(), reflect.Slice.String()}, gstool.ReflectGetType(value).String()) {
 			updateData[key] = gstool.JsonEncode(value)
 		}
 	}
+	gstool.FmtPrintlnLogTime(`保存后 %s`, gstool.JsonEncode(updateData))
 	ensureCreateApiOptionalFieldsDefaults(updateData)
 	var err error
 	//处理请求参数空值
@@ -556,11 +558,16 @@ func ApiCreateApi(c *gin.Context) {
 		}
 		id = newId
 	} else {
+		gstool.FmtPrintlnLogTime(`最终更新的数据 %s`, gstool.JsonEncode(updateData))
 		updateData[`update_time`] = time.Now().Unix()
-		_, _ = common.DbMain.Client.QuickUpdate(`tbl_api`,
+		_, err = common.DbMain.Client.QuickUpdate(`tbl_api`,
 			map[string]any{
 				`id`: dataMap[`id`],
 			}, updateData).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, `更新失败 `+err.Error(), nil)
+			return
+		}
 		id = dataMap[`id`]
 	}
 	info, _ := common.DbMain.Client.QuickQuery(`tbl_api`, `*`, map[string]any{
@@ -922,7 +929,7 @@ func processApiItem(c *gin.Context, collectionId, folderId int, apiData map[stri
 		// 直接从JSON数据创建
 		updateData = gstool.MapTakeKeys(&apiData, []string{
 			`folder_id`, `collection_id`, `name`, `method`, `url`,
-			`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`,
+			`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`, `body_raw`,
 			`env_id`, `response_take`, `take_result`, `take_result_desc`,
 		})
 		updateData[`folder_id`] = folderId
@@ -1036,9 +1043,9 @@ func ApiMoveApi(c *gin.Context) {
 	_, err := common.DbMain.Client.QuickUpdate(`tbl_api`, map[string]any{
 		`id`: apiId,
 	}, map[string]any{
-		`folder_id`:      newFolderId,
-		`collection_id`:  folderCollectionId,
-		`update_time`:    time.Now().Unix(),
+		`folder_id`:     newFolderId,
+		`collection_id`: folderCollectionId,
+		`update_time`:   time.Now().Unix(),
 	}).Exec()
 
 	if err != nil {

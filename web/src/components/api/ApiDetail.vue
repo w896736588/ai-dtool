@@ -706,6 +706,30 @@ export default {
       this.apiForm.desc = result
     },
     handleSave() {
+      // 当请求体类型为 application/json 时，校验 body_json_data 是否为合法 JSON
+      if (this.apiForm.method === 'POST' && this.apiForm.content_type === 'application/json') {
+        const bodyJsonData = this.apiForm.body_json_data
+        // json-editor-vue3 在内容不合法时可能返回 undefined、空字符串或解析失败的对象
+        if (bodyJsonData === undefined || bodyJsonData === null || bodyJsonData === '') {
+          this.$message.error('请求体JSON格式错误，请检查输入内容是否为合法的JSON')
+          return
+        }
+        // 尝试序列化，验证是否能正确转为 JSON 字符串
+        try {
+          const jsonStr = typeof bodyJsonData === 'object' ? JSON.stringify(bodyJsonData) : String(bodyJsonData)
+          if (!jsonStr || jsonStr.trim() === '') {
+            this.$message.error('请求体JSON格式错误，请检查输入内容是否为合法的JSON')
+            return
+          }
+          // 如果是字符串，尝试解析验证
+          if (typeof bodyJsonData === 'string') {
+            JSON.parse(bodyJsonData)
+          }
+        } catch (e) {
+          this.$message.error('请求体JSON格式错误，请检查输入内容是否为合法的JSON')
+          return
+        }
+      }
       this.$emit('update', {
         ...this.apiForm
       })

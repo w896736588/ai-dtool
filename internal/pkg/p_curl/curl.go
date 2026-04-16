@@ -105,6 +105,15 @@ func (h *CurlRun) GetGsHttpClient() (*gshttp.Client, error) {
 		return gshttp.PostMultiForm(h.ParseConfig.Url).
 			BodyStr(h.ParseConfig.Body).
 			Headers(h.ParseConfig.Headers), nil
+	} else if h.ParseConfig.ContentType == define.ContentTypeText || h.ParseConfig.ContentType == define.ContentTypeRaw {
+		contentType := h.ParseConfig.ContentType
+		if contentType == define.ContentTypeRaw {
+			contentType = `application/octet-stream`
+		}
+		h.ParseConfig.Headers[`Content-Type`] = contentType
+		return gshttp.PostJson(h.ParseConfig.Url).
+			BodyStr(h.ParseConfig.Body).
+			Headers(h.ParseConfig.Headers), nil
 	} else if h.ParseConfig.Method == http.MethodGet {
 		return gshttp.Get(h.ParseConfig.Url).
 			Headers(h.ParseConfig.Headers), nil
