@@ -216,27 +216,92 @@
 - `id` 不存在或为 0：创建
 - `id` 存在：更新
 
-常用参数：
+#### 参数说明
 
-- `id`
-- `folder_id`
-- `collection_id`
-- `name`
-- `method`
-- `url`
-- `protocol`
-- `desc`
-- `headers`
-- `query_params`
-- `content_type`
-- `body_form`
-- `body_json`
-- `env_id`
-- `response_take`
-- `take_result`
-- `take_result_desc`
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | int | 接口 ID，更新时必传 |
+| `folder_id` | int | 目标文件夹 ID |
+| `collection_id` | int | 目标集合 ID |
+| `name` | string | 接口名称 |
+| `method` | string | 请求方法：GET / POST |
+| `url` | string | 请求 URL，可含环境变量如 `$Url$/v1/login` |
+| `protocol` | string | 协议：http / https |
+| `desc` | string | 接口描述 |
+| `headers` | object | 请求头，键值对 `{"Content-Type":"application/json"}` |
+| `query_params` | array | URL 查询参数数组，见下方字段格式 |
+| `content_type` | string | 请求体类型，**必须根据后端控制器实际代码判断**，见下方对照表 |
+| `body_form` | array | 表单参数数组（用于 form-urlencoded / multipart），见下方字段格式 |
+| `body_json` | string | JSON 请求体字符串（用于 application/json） |
+| `body_raw` | string | 原始请求体（用于 text/plain / raw） |
+| `env_id` | int | 环境变量 ID |
+| `response_take` | array | 返回参数提取定义，**必须填写**，见下方格式 |
+| `take_result` | string | 上次运行提取结果（系统自动管理） |
+| `take_result_desc` | string | 提取结果描述 |
 
-创建示例：
+#### query_params / body_form 中每项的字段格式
+
+```json
+{
+  "field": "username",
+  "type": "string",
+  "value": "demo",
+  "description": "用户名"
+}
+```
+
+**type 字段只接受以下值（严禁使用其他值）：**
+
+| 规范值 | 含义 | 错误写法（会被后端拒绝） |
+|---|---|---|
+| `string` | 字符串 | - |
+| **`integer`** | 整数 | ~~`int`~~ (后端会报错) |
+| `float` | 浮点数 | - |
+| **`boolean`** | 布尔值 | 也接受 `bool`，推荐统一用 `boolean` |
+| `file` | 文件上传 | - |
+
+> **重要**：type 写成 `int` 会导致后端报错 `"type 仅支持 integer，不支持 int"`，接口无法创建。`bool` 和 `boolean` 均可正常使用，推荐统一用 `boolean`。
+
+#### content_type 判断规则（必须根据后端 Go 控制器代码决定）
+
+**不得默认所有 POST 都是 `application/json`**，必须先阅读后端控制器源码再决定：
+
+| 后端控制器代码写法 | content_type 值 | 请求体字段 |
+|---|---|---|
+| `gsgin.GinPostBody(c, &dataMap)` 或 `c.BindJSON()` | `application/json` | `body_json` |
+| `c.PostForm("key")` 或 `c.DefaultPostForm("key")` | `application/x-www-form-urlencoded` | `body_form` |
+| `c.MultipartForm()` 或涉及文件上传 | `multipart/form-data` | `body_form` |
+| 纯文本/二进制请求体 | `text/plain` 或 `raw` | `body_raw` |
+| GET 请求 | 不设置或留空 | 无 |
+
+#### response_take 格式（必须填写，描述接口返回字段含义）
+
+```json
+[
+  {
+    "description": "状态码，0表示成功",
+    "item_key": "",
+    "value": "res.code",
+    "take_value": ""
+  },
+  {
+    "description": "用户认证令牌",
+    "item_key": "Token",
+    "value": "res.data.token",
+    "take_value": ""
+  },
+  {
+    "description": "用户唯一ID",
+    "item_key": "",
+    "value": "res.data.user_id",
+    "take_value": ""
+  }
+]
+```
+
+> **禁止留空 response_take**，至少要描述返回结构中的核心字段。
+
+#### 创建示例（application/json 类型）
 
 ```json
 {
@@ -246,18 +311,52 @@
   "method": "POST",
   "url": "$Url$/v1/login",
   "protocol": "https",
-  "desc": "登录接口",
+  "desc": "用户登录接口，返回认证令牌",
   "headers": {
     "Content-Type": "application/json"
   },
   "query_params": [],
   "content_type": "application/json",
   "body_form": [],
-  "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}"
+  "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}",
+  "response_take": [
+    {"description": "状态码，0表示成功", "item_key": "", "value": "res.code", "take_value": ""},
+    {"description": "提示信息", "item_key": "", "value": "res.msg", "take_value": ""},
+    {"description": "认证令牌", "item_key": "Token", "value": "res.data.token", "take_value": ""}
+  ]
 }
 ```
 
-更新示例：
+#### 创建示例（form-urlencoded 类型）
+
+```json
+{
+  "folder_id": 12,
+  "collection_id": 1,
+  "name": "提交表单",
+  "method": "POST",
+  "url": "$Url$/v1/submit",
+  "protocol": "https",
+  "desc": "提交表单数据",
+  "headers": {
+    "Content-Type": "application/x-www-form-urlencoded"
+  },
+  "query_params": [],
+  "content_type": "application/x-www-form-urlencoded",
+  "body_form": [
+    {"field": "title", "type": "string", "value": "测试标题", "description": "标题"},
+    {"field": "count", "type": "integer", "value": "10", "description": "数量"},
+    {"field": "enabled", "type": "boolean", "value": "true", "description": "是否启用"}
+  ],
+  "body_json": "",
+  "response_take": [
+    {"description": "状态码", "item_key": "", "value": "res.code", "take_value": ""},
+    {"description": "提交结果ID", "item_key": "", "value": "res.data.id", "take_value": ""}
+  ]
+}
+```
+
+#### 更新示例
 
 ```json
 {
@@ -268,14 +367,19 @@
   "method": "POST",
   "url": "$Url$/v1/login",
   "protocol": "https",
-  "desc": "登录接口-更新",
+  "desc": "用户登录接口，返回认证令牌",
   "headers": {
     "Content-Type": "application/json"
   },
   "query_params": [],
   "content_type": "application/json",
   "body_form": [],
-  "body_json": "{\"username\":\"demo\",\"password\":\"new-password\"}"
+  "body_json": "{\"username\":\"demo\",\"password\":\"new-password\"}",
+  "response_take": [
+    {"description": "状态码，0表示成功", "item_key": "", "value": "res.code", "take_value": ""},
+    {"description": "提示信息", "item_key": "", "value": "res.msg", "take_value": ""},
+    {"description": "认证令牌", "item_key": "Token", "value": "res.data.token", "take_value": ""}
+  ]
 }
 ```
 
@@ -460,13 +564,22 @@ JSON 结构：
           "headers": {
             "Content-Type": "application/json"
           },
-          "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}"
+          "query_params": [],
+          "content_type": "application/json",
+          "body_form": [],
+          "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}",
+          "response_take": [
+            {"description": "状态码，0表示成功", "item_key": "", "value": "res.code", "take_value": ""},
+            {"description": "认证令牌", "item_key": "Token", "value": "res.data.token", "take_value": ""}
+          ]
         }
       ]
     }
   ]
 }
 ```
+
+> **批量导入同样需要遵守上述所有约束**：type 只能用 `integer`（不能用 `int`），推荐统一用 `boolean`（`bool` 也可），必须根据后端代码判断 content_type，必须填写 response_take。
 
 注意：
 
@@ -538,7 +651,7 @@ curl -X POST "http://localhost:17170/api/CreateDir" \
 ```bash
 curl -X POST "http://localhost:17170/api/CreateApi" \
   -H "Content-Type: application/json" \
-  -d "{\"folder_id\":12,\"collection_id\":1,\"name\":\"用户登录\",\"method\":\"POST\",\"url\":\"$Url$/v1/login\",\"protocol\":\"https\"}"
+  -d "{\"folder_id\":12,\"collection_id\":1,\"name\":\"用户登录\",\"method\":\"POST\",\"url\":\"$Url$/v1/login\",\"protocol\":\"https\",\"query_params\":[],\"content_type\":\"application/json\",\"body_form\":[],\"body_json\":\"{\\\"username\\\":\\\"demo\\\",\\\"password\\\":\\\"123456\\\"}\",\"response_take\":[{\"description\":\"状态码\",\"item_key\":\"\",\"value\":\"res.code\",\"take_value\":\"\"},{\"description\":\"认证令牌\",\"item_key\":\"Token\",\"value\":\"res.data.token\",\"take_value\":\"\"}]}"
 ```
 
 ### 7. 批量导入

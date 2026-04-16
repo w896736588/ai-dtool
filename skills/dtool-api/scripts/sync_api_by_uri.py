@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-按 URI 在 dtool 接口开发模块中执行“导入或更新”。
+按 URI 在 dtool 接口开发模块中执行"导入或更新"。
 
 输入 JSON 示例：
 {
@@ -16,13 +16,25 @@
       "protocol": "https",
       "desc": "登录接口",
       "headers": {"Content-Type": "application/json"},
-      "query_params": [],
+      "query_params": [
+        {"field": "version", "type": "string", "value": "v1", "description": "版本号"}
+      ],
       "content_type": "application/json",
       "body_form": [],
-      "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}"
+      "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}",
+      "body_raw": "",
+      "response_take": [
+        {"description": "状态码，0表示成功", "item_key": "", "value": "res.code", "take_value": ""},
+        {"description": "认证令牌", "item_key": "Token", "value": "res.data.token", "take_value": ""}
+      ]
     }
   ]
 }
+
+注意：
+- type 字段只接受: string / integer / float / boolean / file (禁止使用 int；bool 和 boolean 均可，推荐 boolean)
+- content_type 必须根据后端控制器实际代码判断，不得默认 application/json
+- response_take 必须填写，描述接口返回字段含义
 """
 
 from __future__ import annotations
@@ -118,9 +130,11 @@ def build_create_api_payload(
         "desc": api_item.get("desc", ""),
         "headers": api_item.get("headers", {}),
         "query_params": api_item.get("query_params", []),
-        "content_type": api_item.get("content_type", "application/json"),
+        "content_type": api_item.get("content_type", ""),
         "body_form": api_item.get("body_form", []),
         "body_json": api_item.get("body_json", ""),
+        "body_raw": api_item.get("body_raw", ""),
+        "response_take": api_item.get("response_take", []),
     }
     if api_item.get("env_id"):
         payload["env_id"] = api_item["env_id"]

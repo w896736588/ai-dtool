@@ -89,6 +89,68 @@ description: Use when operating the dtool 接口开发模块 and the task involv
 
 这样可以减少无关字段，提高交互稳定性。
 
+## 接口创建 / 导入的强制约束
+
+创建或更新接口（`/api/CreateApi`、`/api/ApiBatchImport`）时，必须严格遵守以下规则：
+
+### 1. 必须完整定义请求参数
+
+- **禁止只定义接口而不设置请求参数**。每个接口都必须根据后端控制器的实际代码，完整填写 `query_params`、`body_form` 或 `body_json`。
+- 如果接口有 URL 查询参数，必须在 `query_params` 中逐一定义。
+- 如果是 POST 请求，必须根据后端控制器实际接收方式，填写 `body_form` 或 `body_json`。
+- 即便接口暂时没有参数，也必须传空数组 `[]` 或空字符串 `""`，不得省略字段。
+
+### 2. 参数类型必须使用规范名称
+
+`query_params` 和 `body_form` 中每项的 `type` 字段只接受以下值：
+
+| 规范值 | 含义 | 禁止使用的旧值 |
+|---|---|---|
+| `string` | 字符串 | - |
+| `integer` | 整数 | **禁止使用 `int`**，后端会直接拒绝 |
+| `float` | 浮点数 | - |
+| `boolean` | 布尔值 | 也接受 `bool`，推荐统一用 `boolean` |
+| `file` | 文件上传 | - |
+
+**如果 type 写成 `int`，后端会报错并拒绝写入。`bool` 和 `boolean` 均可正常使用，推荐统一用 `boolean`。**
+
+### 3. POST 请求的 content_type 必须根据后端控制器代码判断
+
+不得默认将所有 POST 请求的 `content_type` 设为 `application/json`。必须根据后端 Go 控制器代码实际接收参数的方式来决定：
+
+| 后端控制器写法 | 对应的 content_type | 请求数据字段 |
+|---|---|---|
+| `gsgin.GinPostBody(c, &dataMap)` 或 `c.BindJSON()` | `application/json` | `body_json` |
+| `c.PostForm("key")` 或 `c.DefaultPostForm()` | `application/x-www-form-urlencoded` | `body_form` |
+| `c.MultipartForm()` 或文件上传场景 | `multipart/form-data` | `body_form` |
+| 纯文本/二进制请求体 | `text/plain` 或 `raw` | `body_raw` |
+
+**判断步骤**：
+1. 先阅读后端控制器的源码，确认它如何读取请求参数
+2. 根据实际代码确定 `content_type` 和对应的请求数据字段
+3. 如果无法确定，优先询问用户
+
+### 4. 必须设置结果字段备注（response_take）
+
+每个接口都必须设置 `response_take`（返回参数提取定义），用于描述接口返回结果中各字段的含义。
+
+`response_take` 格式为 JSON 数组，每项包含：
+- `description`：字段含义描述（必填）
+- `item_key`：对应的环境变量 key（如不需要可留空）
+- `value`：JSON 路径（如 `res.data.token`）
+- `take_value`：留空即可，运行时自动填充
+
+示例：
+```json
+[
+  {"description": "状态码，0表示成功", "item_key": "", "value": "res.code", "take_value": ""},
+  {"description": "用户令牌", "item_key": "Token", "value": "res.data.token", "take_value": ""},
+  {"description": "用户ID", "item_key": "", "value": "res.data.user_id", "take_value": ""}
+]
+```
+
+**禁止在生成接口时留空 response_take**，至少要定义返回结构中的核心字段及其中文描述。
+
 ## 失败反馈要求
 
 接口调用失败时，必须返回：
