@@ -616,7 +616,6 @@ func ApiCreateApi(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, info)
 }
 
-const normalizedIntegerType = `integer
 const normalizedIntegerType = `integer`
 
 // validateArrayItemTypes 中文：校验数组参数项中的类型字段，禁止继续写入旧的 int 类型名。 English: Validate array item types and reject the legacy int type name.
