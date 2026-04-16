@@ -92,29 +92,24 @@
             <span class="async-task-entry__label">任务</span>
             <span class="async-task-entry__summary">
               <span
-                class="async-task-entry__badge async-task-entry__badge--running"
+                class="async-task-entry__digit async-task-entry__digit--running"
                 :title="getAsyncTaskCounterDescription('running')"
-              >
-                运行中 {{ asyncTaskSummary.running_count || 0 }}
-              </span>
+              >{{ asyncTaskSummary.running_count || 0 }}</span>
+              <span class="async-task-entry__slash">/</span>
               <span
-                class="async-task-entry__badge async-task-entry__badge--pending"
+                class="async-task-entry__digit async-task-entry__digit--pending"
                 :title="getAsyncTaskCounterDescription('pending')"
-              >
-                准备中 {{ asyncTaskSummary.pending_count || 0 }}
-              </span>
+              >{{ asyncTaskSummary.pending_count || 0 }}</span>
+              <span class="async-task-entry__slash">/</span>
               <span
-                class="async-task-entry__badge async-task-entry__badge--await-confirm"
+                class="async-task-entry__digit async-task-entry__digit--await-confirm"
                 :title="getAsyncTaskCounterDescription('await_confirm')"
-              >
-                待处理 {{ asyncTaskSummary.await_confirm_count || 0 }}
-              </span>
+              >{{ asyncTaskSummary.await_confirm_count || 0 }}</span>
+              <span class="async-task-entry__slash">/</span>
               <span
-                class="async-task-entry__badge async-task-entry__badge--failed"
+                class="async-task-entry__digit async-task-entry__digit--failed"
                 :title="getAsyncTaskCounterDescription('failed')"
-              >
-                失败 {{ asyncTaskSummary.failed_count || 0 }}
-              </span>
+              >{{ asyncTaskSummary.failed_count || 0 }}</span>
             </span>
             <span v-if="hasRunningAsyncTask()" class="async-task-entry__spinner" aria-hidden="true"></span>
           </span>
@@ -1586,19 +1581,19 @@ export default {
       }
       return 'async-task-entry--idle'
     },
-    // getAsyncTaskCounterDescription 返回任务汇总指标的悬停说明。 // Return hover descriptions for async task summary counters.
+    // getAsyncTaskCounterDescription 返回任务汇总指标的悬停说明，附带当前数量。 // Return hover descriptions with current count for async task summary counters.
     getAsyncTaskCounterDescription(type) {
       if (type === 'running') {
-        return '后台任务正在执行中'
+        return '运行中: ' + (this.asyncTaskSummary.running_count || 0)
       }
       if (type === 'pending') {
-        return '已检测到变更，等待延迟时间后自动开始执行'
+        return '准备中: ' + (this.asyncTaskSummary.pending_count || 0)
       }
       if (type === 'await_confirm') {
-        return '任务已产出结果，等待你确认或进一步处理'
+        return '待处理: ' + (this.asyncTaskSummary.await_confirm_count || 0)
       }
       if (type === 'failed') {
-        return '任务执行失败，请打开异步任务查看原因'
+        return '失败: ' + (this.asyncTaskSummary.failed_count || 0)
       }
       return '异步任务汇总'
     },
@@ -2467,47 +2462,43 @@ export default {
 }
 
 .async-task-entry__summary {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px;
+  display: inline-flex;
+  align-items: baseline;
   margin-top: 6px;
 }
 
-.async-task-entry__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 6px;
-  border-radius: 999px;
-  font-size: 10px;
+.async-task-entry__digit {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
   line-height: 1.4;
-  border: 1px solid transparent;
   white-space: nowrap;
+  cursor: help;
 }
 
-.async-task-entry__badge--running {
+.async-task-entry__digit--running {
   color: #2d6a3f;
-  background: rgba(222, 243, 228, 0.95);
-  border-color: rgba(106, 170, 122, 0.28);
 }
 
-.async-task-entry__badge--pending {
+.async-task-entry__digit--pending {
   color: #2f5ca8;
-  background: rgba(224, 236, 255, 0.98);
-  border-color: rgba(98, 139, 215, 0.28);
 }
 
-.async-task-entry__badge--await-confirm {
+.async-task-entry__digit--await-confirm {
   color: #9a5b08;
-  background: rgba(253, 236, 205, 0.98);
-  border-color: rgba(220, 155, 63, 0.3);
 }
 
-.async-task-entry__badge--failed {
+.async-task-entry__digit--failed {
   color: #b13c3c;
-  background: rgba(252, 225, 225, 0.98);
-  border-color: rgba(208, 101, 101, 0.3);
+}
+
+.async-task-entry__slash {
+  display: inline-block;
+  margin: 0 1px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #8a8d83;
+  line-height: 1.4;
 }
 
 .async-task-entry__spinner {
