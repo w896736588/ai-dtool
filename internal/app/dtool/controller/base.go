@@ -52,9 +52,13 @@ func BaseLogin(c *gin.Context) {
 
 	// 检查是否启用了密码保护
 	if !tokenManager.IsEnabled() {
-		gsgin.GinResponseError(c, `未启用后台密码保护`, map[string]any{
-			`enabled`: false,
-			`token`:   ``,
+		gsgin.GinResponseSuccess(c, `未启用密码保护，无需登录`, map[string]any{
+			`enabled`:        false,
+			`token`:          ``,
+			`expire_minutes`: tokenManager.GetExpireMinutes(),
+			`expire_at`:      0,
+			`ports`:          strings.Split(component.ConfigViper.GetString(`run.ports`), `,`),
+			`local_ip`:       GetLANIP(),
 		})
 		return
 	}
