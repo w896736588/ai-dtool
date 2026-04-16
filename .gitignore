@@ -29,3 +29,4 @@ tmp/dtool.exe
 *_test.go
 *_test.py
 *.test.cjs
+/dtool.exe

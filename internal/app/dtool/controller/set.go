@@ -5,6 +5,7 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -1042,12 +1043,24 @@ func SetRuntimeConfigItemSave(c *gin.Context) {
 		setIniKey(section, configKey, value)
 		component.EnvClient.SmartLinkConfig.ClientVersion = value
 		needRestart = false
-	case `db_path`, `dbFileName`, `logDbPath`, `memoryDbPath`:
+	case `db_path`:
 		setIniKey(section, configKey, strings.TrimSpace(cast.ToString(configValue)))
-		needRestart = true
-	case `db_is_git_repo`, `memoryDbIsGitRepo`:
+		needRestart = false
+	case `dbFileName`:
+		setIniKey(section, configKey, strings.TrimSpace(cast.ToString(configValue)))
+		needRestart = false
+	case `logDbPath`:
+		setIniKey(section, configKey, strings.TrimSpace(cast.ToString(configValue)))
+		needRestart = false
+	case `memoryDbPath`:
+		setIniKey(section, configKey, strings.TrimSpace(cast.ToString(configValue)))
+		needRestart = false
+	case `db_is_git_repo`:
 		setIniKey(section, configKey, cast.ToString(cast.ToBool(configValue)))
-		needRestart = true
+		needRestart = false
+	case `memoryDbIsGitRepo`:
+		setIniKey(section, configKey, cast.ToString(cast.ToBool(configValue)))
+		needRestart = false
 	case `dbAutoPushDelayMinutes`:
 		setIniKey(section, configKey, cast.ToString(cast.ToInt(configValue)))
 		needRestart = false
@@ -1097,6 +1110,28 @@ func SetRuntimeConfigItemSave(c *gin.Context) {
 		_ = component.ConfigViper.ReadInConfig()
 	}
 	business.ReloadEditableRuntimeConfig()
+
+	// 热重载分发：根据配置项 key 调用对应热重载函数
+	var hotReloadErr error
+	switch configKey {
+	case `db_path`, `dbFileName`:
+		hotReloadErr = business.HotReloadMainDB(configKey)
+	case `logDbPath`:
+		hotReloadErr = business.HotReloadLogDB()
+	case `memoryDbPath`, `memoryDbIsGitRepo`:
+		hotReloadErr = business.HotReloadMemoryDB()
+	case `db_is_git_repo`:
+		hotReloadErr = business.HotReloadDBGitFlag()
+	case `dbAutoPushDelayMinutes`:
+		hotReloadErr = business.HotReloadAutoSyncDelay()
+	case `memoryDbAutoPushDelayMinutes`:
+		hotReloadErr = business.HotReloadMemoryAutoSyncDelay()
+	}
+
+	if hotReloadErr != nil {
+		gsgin.GinResponseError(c, fmt.Sprintf(`配置已保存但热重载失败: %s`, hotReloadErr.Error()), nil)
+		return
+	}
 
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`config_file`:  configFile,

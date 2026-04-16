@@ -101,6 +101,27 @@ func (h *MemoryStore) Reset() {
 	h.Configure(MemoryConfig{}, nil)
 }
 
+// UpdateConfigPreserveState 仅更新配置和防抖计时器，保留 db/dirty/lastPushTime/lastPushErr 等运行状态。
+// 适用于仅修改自动同步间隔等配置参数时使用，避免重置已有的待同步数据。
+func (h *MemoryStore) UpdateConfigPreserveState(config MemoryConfig) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.config = config
+	// 如果当前有未触发的定时器，用新间隔重建
+	if h.timer != nil && h.dirty {
+		h.timer.Stop()
+		if config.AutoPushDelayMinutes > 0 {
+			h.nextPushTime = time.Now().Add(time.Duration(config.AutoPushDelayMinutes) * time.Minute).Unix()
+			h.timer = h.afterFunc(time.Duration(config.AutoPushDelayMinutes)*time.Minute, func() {
+				_ = h.SyncNow()
+			})
+		} else {
+			h.timer = nil
+			h.nextPushTime = 0
+		}
+	}
+}
+
 func (h *MemoryStore) Config() MemoryConfig {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
