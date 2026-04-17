@@ -1,25 +1,26 @@
 ﻿<template>
   <div class="memory-page">
-    <aside v-if="memoryConfigured" class="memory-sidebar">
+    <aside v-if="memoryConfigured && !sidebarCollapsed" class="memory-sidebar">
       <div class="sidebar-header">
-        <div class="sidebar-header-actions">
+        <span v-show="!sidebarCollapsed" class="sidebar-title">知识片段</span>
+        <div v-show="!sidebarCollapsed" class="sidebar-header-actions">
+          <pl-button type="primary" plain size="small" @click="createFragment">
+            <el-icon><Plus /></el-icon>
+            新建
+          </pl-button>
           <GitActionButton variant="warning" compact @click="openTrashTab">
             <template #icon>
               <el-icon><Delete /></el-icon>
             </template>
             回收站
           </GitActionButton>
-          <pl-button type="primary" plain @click="createFragment">
-            <el-icon><Plus /></el-icon>
-            新建片段
-          </pl-button>
-          <pl-button plain @click="openSettingsDialog">
+          <pl-button plain size="small" @click="openSettingsDialog">
             设置
           </pl-button>
         </div>
       </div>
 
-      <div class="search-card sidebar-search-card">
+      <div v-show="!sidebarCollapsed" class="search-card sidebar-search-card">
         <div class="search-row">
           <el-input
             v-model="searchQuery"
@@ -48,7 +49,7 @@
         </div>
       </div>
 
-      <el-scrollbar class="sidebar-scroll">
+      <el-scrollbar v-show="!sidebarCollapsed" class="sidebar-scroll">
         <button
           v-for="item in fragmentList"
           :key="sidebarItemKey(item)"
@@ -89,7 +90,7 @@
         </button>
       </el-scrollbar>
 
-      <div v-if="memoryGitRepoEnabled" class="sidebar-footer">
+      <div v-if="memoryGitRepoEnabled && !sidebarCollapsed" class="sidebar-footer">
         <div class="sidebar-footer-row">
           <span class="sidebar-footer-label">{{ pushStatusLabel }}</span>
           <span class="sidebar-footer-value">{{ pushStatusDesc }}</span>
@@ -100,6 +101,10 @@
         </div>
       </div>
     </aside>
+
+    <button v-if="memoryConfigured" class="sidebar-collapse-btn" :title="sidebarCollapsed ? '展开列表' : '收起列表'" @click="toggleSidebar">
+      <el-icon :size="12"><component :is="sidebarCollapsed ? 'DArrowRight' : 'DArrowLeft'" /></el-icon>
+    </button>
 
     <section class="memory-main">
       <div class="workspace-card">
@@ -269,7 +274,7 @@
 </template>
 
 <script>
-import { Check, Delete, Plus, Search } from '@element-plus/icons-vue'
+import { Check, DArrowLeft, DArrowRight, Delete, Plus, Search } from '@element-plus/icons-vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
 import MemoryEditor from '@/components/memory/MemoryEditor.vue'
 import MemoryHistoryDialog from '@/components/memory/MemoryHistoryDialog.vue'
@@ -308,6 +313,8 @@ export default {
   name: 'MemoryFragment',
   components: {
     Check,
+    DArrowLeft,
+    DArrowRight,
     Delete,
     Plus,
     Search,
@@ -350,6 +357,7 @@ export default {
       globalSaveShortcutBound: false,
       routeFragmentHandled: false,
       routeFragmentHandledPath: '',
+      sidebarCollapsed: false,
     }
   },
   computed: {
@@ -427,6 +435,10 @@ export default {
     },
   },
   methods: {
+    // toggleSidebar 切换左侧列表的折叠/展开状态。
+    toggleSidebar() {
+      this.sidebarCollapsed = !this.sidebarCollapsed
+    },
     // registerMemoryFragmentUpdatesSse 注册知识片段实时同步推送。
     registerMemoryFragmentUpdatesSse() {
       sseDistribute.RegisterReceive(MEMORY_FRAGMENT_UPDATES_DISTRIBUTE_ID, (data) => {
@@ -1187,7 +1199,7 @@ export default {
 
 .memory-page {
   display: flex;
-  gap: 14px;
+  gap: 4px;
   height: calc(100vh - 40px);
   min-height: 680px;
 }
@@ -1208,18 +1220,39 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  padding: 16px;
+  gap: 8px;
+  padding: 12px 14px;
   border-bottom: 1px solid #ecece4;
   background: #f7f7f2;
+}
+
+.sidebar-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 32px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  background: #fff;
+  color: #bbb;
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: center;
+  transition: color 0.15s, border-color 0.15s;
+  padding: 0;
+}
+
+.sidebar-collapse-btn:hover {
+  color: #5f7d56;
+  border-color: #5f7d56;
 }
 
 .sidebar-header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .sidebar-title {
