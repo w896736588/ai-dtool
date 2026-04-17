@@ -3,7 +3,6 @@ package controller
 import (
 	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -17,7 +16,6 @@ type AgentClientInfo struct {
 	Os            string
 	Arch          string
 	UserName      string
-	AgentToken    string
 	Status        define.SmartLinkClientStatus
 	LastSeenTime  int64
 	RegisterTime  int64
@@ -34,8 +32,8 @@ var GlobalClientRegistry = &AgentClientRegistry{
 	clients: make(map[string]*AgentClientInfo),
 }
 
-// Register 注册或更新客户端信息，返回 agent_token
-func (r *AgentClientRegistry) Register(info *AgentClientInfo) string {
+// Register 注册或更新客户端信息
+func (r *AgentClientRegistry) Register(info *AgentClientInfo) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -49,26 +47,16 @@ func (r *AgentClientRegistry) Register(info *AgentClientInfo) string {
 		info.RegisterTime = now
 	}
 
-	// 生成 agent_token
-	info.AgentToken = fmt.Sprintf("%s_%d", info.ClientID, now)
-
 	r.clients[info.ClientID] = info
-	return info.AgentToken
 }
 
-// GetByToken 通过 clientID 和 agent_token 验证客户端
-func (r *AgentClientRegistry) GetByToken(clientID, token string) (*AgentClientInfo, bool) {
+// Get 通过 clientID 查找已注册的客户端
+func (r *AgentClientRegistry) Get(clientID string) (*AgentClientInfo, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	info, ok := r.clients[clientID]
-	if !ok {
-		return nil, false
-	}
-	if info.AgentToken != token {
-		return nil, false
-	}
-	return info, true
+	return info, ok
 }
 
 // UpdateHeartbeat 更新心跳时间和状态

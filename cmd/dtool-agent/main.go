@@ -73,8 +73,7 @@ func main() {
 	}
 	// 从 Data 中提取详细信息
 	if data, ok := registerResp["Data"].(map[string]any); ok {
-		fmt.Printf("注册成功，服务端版本要求: %v, agent_token: %v\n",
-			data["required_client_version"], data["agent_token"])
+		fmt.Printf("注册成功，服务端版本要求: %v\n", data["required_client_version"])
 	} else {
 		fmt.Printf("注册成功（原始响应）: %+v\n", registerResp)
 	}

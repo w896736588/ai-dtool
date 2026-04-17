@@ -18,7 +18,6 @@ type WsClient struct {
 	config      Config
 	conn        *websocket.Conn
 	mu          sync.Mutex
-	agentToken  string
 	taskHandler func(msg define.AgentWsMessage)
 	stopChan    chan struct{}
 	reconnectMu sync.Mutex
@@ -37,7 +36,7 @@ func (w *WsClient) SetTaskHandler(handler func(msg define.AgentWsMessage)) {
 	w.taskHandler = handler
 }
 
-// Register 向服务端注册并获取 agent_token
+// Register 向服务端注册
 func (w *WsClient) Register() (map[string]any, error) {
 	data := map[string]any{
 		"client_id":      w.config.ClientID,
@@ -46,7 +45,6 @@ func (w *WsClient) Register() (map[string]any, error) {
 		"os":             getOs(),
 		"arch":           getArch(),
 		"user_name":      getUsername(),
-		"token":          "",
 	}
 
 	resp, err := w.post("/api/agent/register", data)
@@ -71,13 +69,6 @@ func (w *WsClient) Register() (map[string]any, error) {
 		return nil, fmt.Errorf("服务端返回错误: %s (错误码: %d)", errMsg, errCode)
 	}
 
-	// 保存 agent_token
-	if data, ok := resp["Data"].(map[string]any); ok {
-		if token, ok := data["agent_token"].(string); ok {
-			w.agentToken = token
-		}
-	}
-
 	return resp, nil
 }
 
@@ -92,10 +83,10 @@ func (w *WsClient) connectWithRetry() error {
 	maxBackoff := 30 * time.Second
 
 	for {
-		url := fmt.Sprintf("%s/api/agent/ws?client_id=%s&agent_token=%s",
-			w.wsURL(), w.config.ClientID, w.agentToken)
+		url := fmt.Sprintf("%s/api/agent/ws?client_id=%s",
+			w.wsURL(), w.config.ClientID)
 
-		gstool.FmtPrintlnLogTime(`正在连接WebSocket url=%s agent_token=%s`, url, w.agentToken)
+		gstool.FmtPrintlnLogTime(`正在连接WebSocket url=%s`, url)
 
 		conn, resp, err := websocket.DefaultDialer.Dial(url, nil)
 		if err == nil {

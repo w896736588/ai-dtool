@@ -114,9 +114,8 @@ func (c *AgentWsConnection) Close() {
 // AgentWs 处理 Agent WebSocket 连接
 func AgentWs(c *gin.Context) {
 	clientID := c.Query("client_id")
-	agentToken := c.Query("agent_token")
 
-	gstool.FmtPrintlnLogTime(`AgentWs 请求 client_id=%s agent_token=%s remote=%s`, clientID, agentToken, c.Request.RemoteAddr)
+	gstool.FmtPrintlnLogTime(`AgentWs 请求 client_id=%s remote=%s`, clientID, c.Request.RemoteAddr)
 
 	if clientID == "" {
 		gstool.FmtPrintlnLogTime(`AgentWs 拒绝: client_id为空`)
@@ -124,18 +123,11 @@ func AgentWs(c *gin.Context) {
 		return
 	}
 
-	// 校验 agent_token
-	if agentToken == "" {
-		gstool.FmtPrintlnLogTime(`AgentWs 拒绝: agent_token为空 client_id=%s`, clientID)
-		c.JSON(http.StatusOK, map[string]any{"ErrCode": 1, "ErrMsg": "agent_token不能为空"})
-		return
-	}
-
-	// 从内存验证客户端是否已注册且 token 匹配
-	_, found := GlobalClientRegistry.GetByToken(clientID, agentToken)
+	// 验证客户端是否已注册
+	_, found := GlobalClientRegistry.Get(clientID)
 	if !found {
-		gstool.FmtPrintlnLogTime(`AgentWs 拒绝: 客户端未注册或token无效 client_id=%s`, clientID)
-		c.JSON(http.StatusOK, map[string]any{"ErrCode": 1, "ErrMsg": "客户端未注册或token无效"})
+		gstool.FmtPrintlnLogTime(`AgentWs 拒绝: 客户端未注册 client_id=%s`, clientID)
+		c.JSON(http.StatusOK, map[string]any{"ErrCode": 1, "ErrMsg": "客户端未注册"})
 		return
 	}
 

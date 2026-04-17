@@ -215,7 +215,7 @@ func AgentRegister(c *gin.Context) {
 		UserName:      cast.ToString(req["user_name"]),
 		Status:        define.SmartLinkClientStatusOnline,
 	}
-	agentToken := GlobalClientRegistry.Register(info)
+	GlobalClientRegistry.Register(info)
 
 	// 客户端注册后主动推送状态变更
 	go BroadcastSmartLinkClientStatusUpdate()
@@ -225,7 +225,6 @@ func AgentRegister(c *gin.Context) {
 		"required_client_version": cfg.ClientVersion,
 		"server_time":             now,
 		"version_match":           clientVersion == cfg.ClientVersion,
-		"agent_token":             agentToken,
 	})
 }
 
