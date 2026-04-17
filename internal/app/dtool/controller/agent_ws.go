@@ -123,15 +123,7 @@ func AgentWs(c *gin.Context) {
 		return
 	}
 
-	// 验证客户端是否已注册
-	_, found := GlobalClientRegistry.Get(clientID)
-	if !found {
-		gstool.FmtPrintlnLogTime(`AgentWs 拒绝: 客户端未注册 client_id=%s`, clientID)
-		c.JSON(http.StatusOK, map[string]any{"ErrCode": 1, "ErrMsg": "客户端未注册"})
-		return
-	}
-
-	gstool.FmtPrintlnLogTime(`AgentWs 校验通过，准备升级 client_id=%s`, clientID)
+	gstool.FmtPrintlnLogTime(`AgentWs 准备升级 client_id=%s`, clientID)
 
 	// 升级为 WebSocket
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)

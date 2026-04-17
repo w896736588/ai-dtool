@@ -192,60 +192,6 @@ func BroadcastSmartLinkClientStatusUpdate() {
 	}
 }
 
-// AgentRegister 客户端注册
-func AgentRegister(c *gin.Context) {
-	var req map[string]any
-	if err := gsgin.GinPostBody(c, &req); err != nil {
-		gsgin.GinResponseError(c, "请求参数错误: "+err.Error(), nil)
-		return
-	}
-
-	cfg := getSmartLinkConfig()
-	clientID := cast.ToString(req["client_id"])
-	clientVersion := cast.ToString(req["client_version"])
-	now := time.Now().Unix()
-
-	info := &AgentClientInfo{
-		ClientID:      clientID,
-		ClientName:    cast.ToString(req["hostname"]),
-		ClientVersion: clientVersion,
-		HostName:      cast.ToString(req["hostname"]),
-		Os:            cast.ToString(req["os"]),
-		Arch:          cast.ToString(req["arch"]),
-		UserName:      cast.ToString(req["user_name"]),
-		Status:        define.SmartLinkClientStatusOnline,
-	}
-	GlobalClientRegistry.Register(info)
-
-	// 客户端注册后主动推送状态变更
-	go BroadcastSmartLinkClientStatusUpdate()
-
-	gsgin.GinResponseSuccess(c, "", map[string]any{
-		"accepted":                true,
-		"required_client_version": cfg.ClientVersion,
-		"server_time":             now,
-		"version_match":           clientVersion == cfg.ClientVersion,
-	})
-}
-
-// AgentHeartbeat 客户端心跳
-func AgentHeartbeat(c *gin.Context) {
-	var req map[string]any
-	if err := gsgin.GinPostBody(c, &req); err != nil {
-		gsgin.GinResponseError(c, "请求参数错误", nil)
-		return
-	}
-
-	clientID := cast.ToString(req["client_id"])
-	status := define.SmartLinkClientStatus(cast.ToString(req["status"]))
-	GlobalClientRegistry.UpdateHeartbeat(clientID, status)
-
-	// 心跳后主动推送状态变更
-	go BroadcastSmartLinkClientStatusUpdate()
-
-	gsgin.GinResponseSuccess(c, "", nil)
-}
-
 // SmartLinkTaskCreate 创建本地执行任务（通过 WebSocket 下发给 Agent）
 func SmartLinkTaskCreate(c *gin.Context) {
 	var req map[string]any

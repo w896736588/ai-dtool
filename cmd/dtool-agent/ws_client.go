@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
@@ -34,42 +32,6 @@ func NewWsClient(cfg Config) *WsClient {
 // SetTaskHandler 设置任务消息处理器
 func (w *WsClient) SetTaskHandler(handler func(msg define.AgentWsMessage)) {
 	w.taskHandler = handler
-}
-
-// Register 向服务端注册
-func (w *WsClient) Register() (map[string]any, error) {
-	data := map[string]any{
-		"client_id":      w.config.ClientID,
-		"client_version": w.config.ClientVersion,
-		"hostname":       getHostname(),
-		"os":             getOs(),
-		"arch":           getArch(),
-		"user_name":      getUsername(),
-	}
-
-	resp, err := w.post("/api/agent/register", data)
-	if err != nil {
-		return nil, fmt.Errorf("请求注册接口失败: %w", err)
-	}
-
-	errCode := 0
-	if v, ok := resp["ErrCode"]; ok && v != nil {
-		switch val := v.(type) {
-		case float64:
-			errCode = int(val)
-		case int:
-			errCode = val
-		}
-	}
-	if errCode != 0 {
-		errMsg := "未知错误"
-		if resp["ErrMsg"] != nil {
-			errMsg = fmt.Sprintf("%v", resp["ErrMsg"])
-		}
-		return nil, fmt.Errorf("服务端返回错误: %s (错误码: %d)", errMsg, errCode)
-	}
-
-	return resp, nil
 }
 
 // Connect 建立 WebSocket 连接
@@ -302,23 +264,4 @@ func (w *WsClient) wsURL() string {
 		return "wss://" + url[8:]
 	}
 	return "ws://" + url
-}
-
-// post 发送 HTTP POST 请求
-func (w *WsClient) post(path string, data map[string]any) (map[string]any, error) {
-	jsonData, _ := json.Marshal(data)
-	url := w.config.ServerURL + path
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var result map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-	return result, nil
 }

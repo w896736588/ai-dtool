@@ -72,14 +72,21 @@ func (r *AgentClientRegistry) UpdateHeartbeat(clientID string, status define.Sma
 	info.Status = status
 }
 
-// UpdateHelloInfo 通过 agent_hello 消息更新客户端系统信息
+// UpdateHelloInfo 通过 agent_hello 消息更新客户端系统信息，若不存在则自动注册
 func (r *AgentClientRegistry) UpdateHelloInfo(clientID string, data define.AgentHelloData) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	now := time.Now().Unix()
+
 	info, ok := r.clients[clientID]
 	if !ok {
-		return
+		// 自动注册：hello 消息携带的信息足够完成注册
+		info = &AgentClientInfo{
+			ClientID:     clientID,
+			RegisterTime: now,
+		}
+		r.clients[clientID] = info
 	}
 	info.ClientVersion = data.ClientVersion
 	info.HostName = data.Hostname
@@ -87,6 +94,7 @@ func (r *AgentClientRegistry) UpdateHelloInfo(clientID string, data define.Agent
 	info.Os = data.Os
 	info.Arch = data.Arch
 	info.UserName = data.UserName
+	info.LastSeenTime = now
 }
 
 // SetStatus 仅更新状态

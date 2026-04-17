@@ -65,20 +65,7 @@ func main() {
 
 	wsClient.SetTaskHandler(taskRunner.HandleTask)
 
-	// 注册
-	registerResp, err := wsClient.Register()
-	if err != nil {
-		fmt.Printf("注册失败: %s\n", err.Error())
-		return
-	}
-	// 从 Data 中提取详细信息
-	if data, ok := registerResp["Data"].(map[string]any); ok {
-		fmt.Printf("注册成功，服务端版本要求: %v\n", data["required_client_version"])
-	} else {
-		fmt.Printf("注册成功（原始响应）: %+v\n", registerResp)
-	}
-
-	// 连接 WebSocket
+	// 连接 WebSocket（hello 消息会自动完成注册）
 	if err := wsClient.Connect(); err != nil {
 		fmt.Printf("WebSocket连接失败: %s\n", err.Error())
 		return
