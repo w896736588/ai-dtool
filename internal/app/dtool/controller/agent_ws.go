@@ -124,35 +124,22 @@ func AgentWs(c *gin.Context) {
 		return
 	}
 
-	// 校验 agent_token（第一阶段简单校验：token 非空且在数据库中能找到该客户端）
+	// 校验 agent_token
 	if agentToken == "" {
 		gstool.FmtPrintlnLogTime(`AgentWs 拒绝: agent_token为空 client_id=%s`, clientID)
 		c.JSON(http.StatusOK, map[string]any{"ErrCode": 1, "ErrMsg": "agent_token不能为空"})
 		return
 	}
 
-	// 验证客户端是否已注册
-	client, dbErr := common.DbMain.Client.QueryBySql(
-		"SELECT * FROM tbl_smart_link_client WHERE client_id = ?", clientID,
-	).One()
-	if dbErr != nil {
-		gstool.FmtPrintlnLogTime(`AgentWs DB查询错误 client_id=%s err=%s`, clientID, dbErr.Error())
-	}
-	if len(client) == 0 {
-		gstool.FmtPrintlnLogTime(`AgentWs 拒绝: 客户端未注册 client_id=%s`, clientID)
-		c.JSON(http.StatusOK, map[string]any{"ErrCode": 1, "ErrMsg": "客户端未注册"})
+	// 从内存验证客户端是否已注册且 token 匹配
+	_, found := GlobalClientRegistry.GetByToken(clientID, agentToken)
+	if !found {
+		gstool.FmtPrintlnLogTime(`AgentWs 拒绝: 客户端未注册或token无效 client_id=%s`, clientID)
+		c.JSON(http.StatusOK, map[string]any{"ErrCode": 1, "ErrMsg": "客户端未注册或token无效"})
 		return
 	}
 
-	// 验证 token（第一阶段：简单校验 token 字段等于 client_id + 时间戳 hash）
-	storedToken := cast.ToString(client["agent_token"])
-	if storedToken != "" && storedToken != agentToken {
-		gstool.FmtPrintlnLogTime(`AgentWs 拒绝: token不匹配 stored=%s provided=%s`, storedToken, agentToken)
-		c.JSON(http.StatusOK, map[string]any{"ErrCode": 1, "ErrMsg": "agent_token无效"})
-		return
-	}
-
-	gstool.FmtPrintlnLogTime(`AgentWs 校验通过，准备升级 client_id=%s stored_token=%s`, clientID, storedToken)
+	gstool.FmtPrintlnLogTime(`AgentWs 校验通过，准备升级 client_id=%s`, clientID)
 
 	// 升级为 WebSocket
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -165,21 +152,17 @@ func AgentWs(c *gin.Context) {
 	GlobalAgentWsManager.Register(clientID, conn)
 	gstool.FmtPrintlnLogTime(`Agent WebSocket连接建立 client_id=%s`, clientID)
 
-	// 更新数据库中的客户端状态
-	now := time.Now().Unix()
-	_, _ = common.DbMain.Client.QuickUpdate("tbl_smart_link_client", map[string]any{
-		"client_id": clientID,
-	}, map[string]any{
-		"status":         define.SmartLinkClientStatusOnline,
-		"last_seen_time": now,
-		"update_time":    now,
-	}).Exec()
+	// 更新内存中的客户端状态为在线
+	GlobalClientRegistry.SetStatus(clientID, define.SmartLinkClientStatusOnline)
 	go BroadcastSmartLinkClientStatusUpdate()
 
 	// 读消息循环
 	defer func() {
 		GlobalAgentWsManager.Unregister(clientID)
 		conn.Close()
+		// 标记客户端为离线并广播
+		GlobalClientRegistry.SetOffline(clientID)
+		go BroadcastSmartLinkClientStatusUpdate()
 		gstool.FmtPrintlnLogTime(`Agent WebSocket连接断开 client_id=%s`, clientID)
 	}()
 
@@ -221,40 +204,25 @@ func AgentWs(c *gin.Context) {
 func handleAgentHello(clientID string, msg define.AgentWsMessage) {
 	gstool.FmtPrintlnLogTime(`Agent hello client_id=%s data=%v`, clientID, msg.Data)
 
-	// 更新心跳时间
-	now := time.Now().Unix()
-	_, _ = common.DbMain.Client.QuickUpdate("tbl_smart_link_client", map[string]any{
-		"client_id": clientID,
-	}, map[string]any{
-		"status":         define.SmartLinkClientStatusOnline,
-		"last_seen_time": now,
-		"update_time":    now,
-	}).Exec()
+	// 更新内存中的客户端系统信息和状态
+	helloData := parseAgentHelloData(msg.Data)
+	GlobalClientRegistry.UpdateHelloInfo(clientID, helloData)
+	GlobalClientRegistry.SetStatus(clientID, define.SmartLinkClientStatusOnline)
 	go BroadcastSmartLinkClientStatusUpdate()
 }
 
 // handleAgentHeartbeat 处理心跳消息
 func handleAgentHeartbeat(clientID string, msg define.AgentWsMessage) {
-	// 更新心跳时间
-	now := time.Now().Unix()
-	updateData := map[string]any{
-		"last_seen_time": now,
-		"update_time":    now,
-	}
+	status := define.SmartLinkClientStatusOnline
 
 	// 如果有心跳数据，更新运行时状态
 	if data, ok := msg.Data.(map[string]any); ok {
-		if runtimeReady, ok := data["runtime_ready"].(bool); ok && runtimeReady {
-			updateData["status"] = define.SmartLinkClientStatusOnline
-		}
 		if currentTaskID, ok := data["current_task_id"].(string); ok && currentTaskID != "" {
-			updateData["status"] = define.SmartLinkClientStatusRunning
+			status = define.SmartLinkClientStatusRunning
 		}
 	}
 
-	_, _ = common.DbMain.Client.QuickUpdate("tbl_smart_link_client", map[string]any{
-		"client_id": clientID,
-	}, updateData).Exec()
+	GlobalClientRegistry.UpdateHeartbeat(clientID, status)
 	go BroadcastSmartLinkClientStatusUpdate()
 }
 

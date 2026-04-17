@@ -6,7 +6,6 @@ import (
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/plw"
 	"dev_tool/internal/pkg/p_define"
-	"fmt"
 	"strings"
 	"time"
 
@@ -15,6 +14,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 )
+
+// getSmartLinkConfig 获取 SmartLink 配置（带默认值）
+func getSmartLinkConfig() *define.SmartLinkConfig {
+	cfg := component.EnvClient.SmartLinkConfig
+	if cfg == nil {
+		return &define.SmartLinkConfig{
+			RunMode:       define.SmartLinkRunModeServer,
+			ClientVersion: "1.0.0",
+		}
+	}
+	return cfg
+}
 
 // SmartLinkRuntimeConfig 获取自定义网页运行时配置
 func SmartLinkRuntimeConfig(c *gin.Context) {
@@ -42,23 +53,10 @@ func SmartLinkRuntimeConfig(c *gin.Context) {
 
 // SmartLinkClientStatus 获取本地客户端状态
 func SmartLinkClientStatus(c *gin.Context) {
-	cfg := component.EnvClient.SmartLinkConfig
-	if cfg == nil {
-		cfg = &define.SmartLinkConfig{
-			RunMode:       define.SmartLinkRunModeServer,
-			ClientVersion: "1.0.0",
-		}
-	}
+	cfg := getSmartLinkConfig()
 
-	client, queryErr := common.DbMain.Client.QueryBySql(`
-		SELECT * FROM tbl_smart_link_client 
-		ORDER BY last_seen_time DESC 
-	`).One()
-	if queryErr != nil {
-		gstool.FmtPrintlnLogTime(`SmartLinkClientStatus 查询失败: %s`, queryErr.Error())
-	}
-
-	if len(client) == 0 {
+	info := GlobalClientRegistry.GetLatest()
+	if info == nil {
 		gsgin.GinResponseSuccess(c, "", map[string]any{
 			"client_connected":     false,
 			"client_status":        define.SmartLinkClientStatusOffline,
@@ -72,12 +70,9 @@ func SmartLinkClientStatus(c *gin.Context) {
 		return
 	}
 
-	lastSeen := cast.ToInt64(client["last_seen_time"])
-	clientVersion := cast.ToString(client["client_version"])
-	now := time.Now().Unix()
-	isConnected := (now - lastSeen) < 30
-	versionMatch := clientVersion == cfg.ClientVersion
-	clientStatus := define.SmartLinkClientStatus(cast.ToString(client["status"]))
+	isConnected := GlobalAgentWsManager.GetConnection(info.ClientID) != nil
+	versionMatch := info.ClientVersion == cfg.ClientVersion
+	clientStatus := info.Status
 
 	if !isConnected {
 		clientStatus = define.SmartLinkClientStatusOffline
@@ -88,34 +83,21 @@ func SmartLinkClientStatus(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, "", map[string]any{
 		"client_connected":     isConnected,
 		"client_status":        clientStatus,
-		"client_name":          cast.ToString(client["client_name"]),
-		"client_version":       clientVersion,
+		"client_name":          info.ClientName,
+		"client_version":       info.ClientVersion,
 		"client_version_match": versionMatch,
-		"client_last_seen_at":  lastSeen,
-		"client_os":            cast.ToString(client["os"]),
-		"client_arch":          cast.ToString(client["arch"]),
+		"client_last_seen_at":  info.LastSeenTime,
+		"client_os":            info.Os,
+		"client_arch":          info.Arch,
 	})
 }
 
 // buildSmartLinkClientStatusPayload 构建客户端状态快照数据。
 func buildSmartLinkClientStatusPayload() map[string]any {
-	cfg := component.EnvClient.SmartLinkConfig
-	if cfg == nil {
-		cfg = &define.SmartLinkConfig{
-			RunMode:       define.SmartLinkRunModeServer,
-			ClientVersion: "1.0.0",
-		}
-	}
+	cfg := getSmartLinkConfig()
 
-	client, queryErr := common.DbMain.Client.QueryBySql(`
-		SELECT * FROM tbl_smart_link_client 
-		ORDER BY last_seen_time DESC 
-	`).One()
-	if queryErr != nil {
-		gstool.FmtPrintlnLogTime(`buildSmartLinkClientStatusPayload 查询失败: %s`, queryErr.Error())
-	}
-
-	if len(client) == 0 {
+	info := GlobalClientRegistry.GetLatest()
+	if info == nil {
 		return map[string]any{
 			"client_connected":     false,
 			"client_status":        define.SmartLinkClientStatusOffline,
@@ -128,12 +110,9 @@ func buildSmartLinkClientStatusPayload() map[string]any {
 		}
 	}
 
-	lastSeen := cast.ToInt64(client["last_seen_time"])
-	clientVersion := cast.ToString(client["client_version"])
-	now := time.Now().Unix()
-	isConnected := (now - lastSeen) < 30
-	versionMatch := clientVersion == cfg.ClientVersion
-	clientStatus := define.SmartLinkClientStatus(cast.ToString(client["status"]))
+	isConnected := GlobalAgentWsManager.GetConnection(info.ClientID) != nil
+	versionMatch := info.ClientVersion == cfg.ClientVersion
+	clientStatus := info.Status
 
 	if !isConnected {
 		clientStatus = define.SmartLinkClientStatusOffline
@@ -144,12 +123,12 @@ func buildSmartLinkClientStatusPayload() map[string]any {
 	return map[string]any{
 		"client_connected":     isConnected,
 		"client_status":        clientStatus,
-		"client_name":          cast.ToString(client["client_name"]),
-		"client_version":       clientVersion,
+		"client_name":          info.ClientName,
+		"client_version":       info.ClientVersion,
 		"client_version_match": versionMatch,
-		"client_last_seen_at":  lastSeen,
-		"client_os":            cast.ToString(client["os"]),
-		"client_arch":          cast.ToString(client["arch"]),
+		"client_last_seen_at":  info.LastSeenTime,
+		"client_os":            info.Os,
+		"client_arch":          info.Arch,
 	}
 }
 
@@ -221,49 +200,22 @@ func AgentRegister(c *gin.Context) {
 		return
 	}
 
-	cfg := component.EnvClient.SmartLinkConfig
-	if cfg == nil {
-		cfg = &define.SmartLinkConfig{
-			RunMode:       define.SmartLinkRunModeServer,
-			ClientVersion: "1.0.0",
-		}
-	}
-
+	cfg := getSmartLinkConfig()
 	clientID := cast.ToString(req["client_id"])
 	clientVersion := cast.ToString(req["client_version"])
 	now := time.Now().Unix()
 
-	clientData := map[string]any{
-		"client_id":        clientID,
-		"client_name":      cast.ToString(req["hostname"]),
-		"client_version":   clientVersion,
-		"required_version": cfg.ClientVersion,
-		"status":           define.SmartLinkClientStatusOnline,
-		"host_name":        cast.ToString(req["hostname"]),
-		"os":               cast.ToString(req["os"]),
-		"arch":             cast.ToString(req["arch"]),
-		"user_name":        cast.ToString(req["user_name"]),
-		"last_seen_time":   now,
-		"update_time":      now,
+	info := &AgentClientInfo{
+		ClientID:      clientID,
+		ClientName:    cast.ToString(req["hostname"]),
+		ClientVersion: clientVersion,
+		HostName:      cast.ToString(req["hostname"]),
+		Os:            cast.ToString(req["os"]),
+		Arch:          cast.ToString(req["arch"]),
+		UserName:      cast.ToString(req["user_name"]),
+		Status:        define.SmartLinkClientStatusOnline,
 	}
-
-	existing, _ := common.DbMain.Client.QuickQuery("tbl_smart_link_client", "*", map[string]any{
-		"client_id": clientID,
-	}).One()
-
-	// 生成 agent_token（第一阶段：简单使用 client_id + 时间戳）
-	agentToken := fmt.Sprintf("%s_%d", clientID, now)
-
-	if len(existing) == 0 {
-		clientData["create_time"] = now
-		clientData["agent_token"] = agentToken
-		_, _ = common.DbMain.Client.QuickCreate("tbl_smart_link_client", clientData).Exec()
-	} else {
-		clientData["agent_token"] = agentToken
-		_, _ = common.DbMain.Client.QuickUpdate("tbl_smart_link_client", map[string]any{
-			"client_id": clientID,
-		}, clientData).Exec()
-	}
+	agentToken := GlobalClientRegistry.Register(info)
 
 	// 客户端注册后主动推送状态变更
 	go BroadcastSmartLinkClientStatusUpdate()
@@ -285,18 +237,9 @@ func AgentHeartbeat(c *gin.Context) {
 		return
 	}
 
-	now := time.Now().Unix()
-	updateData := map[string]any{
-		"client_version": cast.ToString(req["client_version"]),
-		"status":         cast.ToString(req["status"]),
-		"host_name":      cast.ToString(req["hostname"]),
-		"last_seen_time": now,
-		"update_time":    now,
-	}
-
-	_, _ = common.DbMain.Client.QuickUpdate("tbl_smart_link_client", map[string]any{
-		"client_id": cast.ToString(req["client_id"]),
-	}, updateData).Exec()
+	clientID := cast.ToString(req["client_id"])
+	status := define.SmartLinkClientStatus(cast.ToString(req["status"]))
+	GlobalClientRegistry.UpdateHeartbeat(clientID, status)
 
 	// 心跳后主动推送状态变更
 	go BroadcastSmartLinkClientStatusUpdate()
@@ -312,13 +255,7 @@ func SmartLinkTaskCreate(c *gin.Context) {
 		return
 	}
 
-	cfg := component.EnvClient.SmartLinkConfig
-	if cfg == nil {
-		cfg = &define.SmartLinkConfig{
-			RunMode:       define.SmartLinkRunModeServer,
-			ClientVersion: "1.0.0",
-		}
-	}
+	cfg := getSmartLinkConfig()
 
 	// 检查运行模式
 	if cfg.RunMode != define.SmartLinkRunModeLocalClient {
@@ -326,46 +263,31 @@ func SmartLinkTaskCreate(c *gin.Context) {
 		return
 	}
 
-	// 检查客户端状态
-	client, _ := common.DbMain.Client.QueryBySql(`
-		SELECT * FROM tbl_smart_link_client 
-		ORDER BY last_seen_time DESC 
-		LIMIT 1
-	`).One()
-
-	if len(client) == 0 {
+	// 从内存检查客户端状态
+	info := GlobalClientRegistry.GetLatest()
+	if info == nil {
 		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_OFFLINE", nil)
 		return
 	}
 
-	lastSeen := cast.ToInt64(client["last_seen_time"])
-	clientVersion := cast.ToString(client["client_version"])
-	now := time.Now().Unix()
-
-	if (now - lastSeen) >= 30 {
+	// 通过 WebSocket 连接判断是否在线
+	isConnected := GlobalAgentWsManager.GetConnection(info.ClientID) != nil
+	if !isConnected {
 		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_OFFLINE", nil)
 		return
 	}
 
-	if clientVersion != cfg.ClientVersion {
+	if info.ClientVersion != cfg.ClientVersion {
 		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_VERSION_MISMATCH", nil)
 		return
 	}
 
-	clientStatus := define.SmartLinkClientStatus(cast.ToString(client["status"]))
-	if clientStatus == define.SmartLinkClientStatusPreparingRuntime {
+	if info.Status == define.SmartLinkClientStatusPreparingRuntime {
 		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_PREPARING_RUNTIME", nil)
 		return
 	}
 
-	clientID := cast.ToString(client["client_id"])
-
-	// 检查 WebSocket 连接是否存在
-	conn := GlobalAgentWsManager.GetConnection(clientID)
-	if conn == nil {
-		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_WS_NOT_CONNECTED", nil)
-		return
-	}
+	clientID := info.ClientID
 
 	// 构建 PlaywrightRunParams（服务端查数据库构造完整参数）
 	id := cast.ToInt(req["smart_link_id"])
@@ -383,6 +305,7 @@ func SmartLinkTaskCreate(c *gin.Context) {
 	}
 
 	// 生成任务 ID 和 SSE 分发 ID
+	now := time.Now().Unix()
 	taskID := "task_" + cast.ToString(now) + "_" + cast.ToString(id)
 	sseDistributeId := cast.ToString(req["sse_distribute_id"])
 	if sseDistributeId == "" {
