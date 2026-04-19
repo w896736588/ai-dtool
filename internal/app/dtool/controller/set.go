@@ -848,9 +848,6 @@ func SetMemoryConfigGet(c *gin.Context) {
 		`db_is_git_repo`:                    mainDBConfig.GitRepoEnabled,
 		`db_auto_push_delay_minutes`:        business.ReadMainDBAutoSyncConfig().AutoSyncMinutes,
 		`log_db_path`:                       component.EnvClient.LogDbConfig.DbPath,
-		`webkit_driver_path`:                component.ConfigViper.GetString(`path.webkit_driver_path`),
-		`webkit_data_path`:                  component.ConfigViper.GetString(`path.webkit_data_path`),
-		`webkit_download_path`:              component.ConfigViper.GetString(`path.webkit_download_path`),
 		`memory_dir`:                        memoryConfig.Dir,
 		`memory_db_name`:                    ``,
 		`memory_db_configured`:              memoryConfig.Dir != ``,
@@ -947,7 +944,6 @@ func SetRuntimeConfigSave(c *gin.Context) {
 	oldSafePassword := component.ConfigViper.GetString(`safe.password`)
 
 	baseSection := cfg.Section(`base`)
-	pathSection := cfg.Section(`path`)
 	safeSection := cfg.Section(`safe`)
 
 	setIniKey(baseSection, `dbPath`, strings.TrimSpace(cast.ToString(dataMap[`db_path`])))
@@ -957,9 +953,6 @@ func SetRuntimeConfigSave(c *gin.Context) {
 	setIniKey(baseSection, `memoryDbPath`, strings.TrimSpace(cast.ToString(dataMap[`memory_db_path`])))
 	setIniKey(baseSection, `memoryDbIsGitRepo`, cast.ToString(cast.ToBool(dataMap[`memory_db_is_git_repo`])))
 	setIniKey(baseSection, `memoryDbAutoPushDelayMinutes`, cast.ToString(cast.ToInt(dataMap[`memory_db_auto_push_delay_minutes`])))
-	setIniKey(pathSection, `webkit_driver_path`, strings.TrimSpace(cast.ToString(dataMap[`webkit_driver_path`])))
-	setIniKey(pathSection, `webkit_data_path`, strings.TrimSpace(cast.ToString(dataMap[`webkit_data_path`])))
-	setIniKey(pathSection, `webkit_download_path`, strings.TrimSpace(cast.ToString(dataMap[`webkit_download_path`])))
 
 	// 保存 safe 配置
 	newSafePassword := strings.TrimSpace(cast.ToString(dataMap[`safe_password`]))
@@ -1066,9 +1059,6 @@ func SetRuntimeConfigItemSave(c *gin.Context) {
 		needRestart = false
 	case `memoryDbAutoPushDelayMinutes`:
 		setIniKey(section, configKey, cast.ToString(cast.ToInt(configValue)))
-		needRestart = false
-	case `webkit_driver_path`, `webkit_data_path`, `webkit_download_path`:
-		setIniKey(section, configKey, strings.TrimSpace(cast.ToString(configValue)))
 		needRestart = false
 	case `password`:
 		oldSafePassword := component.ConfigViper.GetString(`safe.password`)

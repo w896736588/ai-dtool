@@ -256,71 +256,6 @@
           </el-descriptions-item>
         </el-descriptions>
 
-        <!-- [path] 路径配置 -->
-        <el-divider content-position="left">[path] 路径配置</el-divider>
-        <el-descriptions class="memory-config-display" :column="1" border>
-          <el-descriptions-item label="webkit_driver_path">
-            <div class="config-item-wrapper">
-              <template v-if="editingItem.key === 'webkit_driver_path'">
-                <div class="config-edit-row">
-                  <el-input v-model="editingItem.value" placeholder="请输入 webkit driver 目录" style="flex: 1" />
-                  <div class="config-edit-actions">
-                    <GitActionButton compact size="small" :loading="saving" @click="saveItem('path', 'webkit_driver_path', editingItem.value)">保存</GitActionButton>
-                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
-                  </div>
-                </div>
-              </template>
-              <template v-else>
-                <div class="config-display-row">
-                  <div class="config-value">{{ form.webkit_driver_path || '未配置，请在配置文件中设置' }}</div>
-                  <GitActionButton compact size="small" @click="startEdit('webkit_driver_path', form.webkit_driver_path)">编辑</GitActionButton>
-                </div>
-              </template>
-              <div class="config-item-help">Playwright WebKit 驱动目录，支持使用 {DRIVE} 占位符。</div>
-            </div>
-          </el-descriptions-item>
-          <el-descriptions-item label="webkit_data_path">
-            <div class="config-item-wrapper">
-              <template v-if="editingItem.key === 'webkit_data_path'">
-                <div class="config-edit-row">
-                  <el-input v-model="editingItem.value" placeholder="请输入 webkit 数据目录" style="flex: 1" />
-                  <div class="config-edit-actions">
-                    <GitActionButton compact size="small" :loading="saving" @click="saveItem('path', 'webkit_data_path', editingItem.value)">保存</GitActionButton>
-                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
-                  </div>
-                </div>
-              </template>
-              <template v-else>
-                <div class="config-display-row">
-                  <div class="config-value">{{ form.webkit_data_path || '未配置，请在配置文件中设置' }}</div>
-                  <GitActionButton compact size="small" @click="startEdit('webkit_data_path', form.webkit_data_path)">编辑</GitActionButton>
-                </div>
-              </template>
-              <div class="config-item-help">浏览器运行数据目录，支持使用 {DRIVE} 占位符。</div>
-            </div>
-          </el-descriptions-item>
-          <el-descriptions-item label="webkit_download_path">
-            <div class="config-item-wrapper">
-              <template v-if="editingItem.key === 'webkit_download_path'">
-                <div class="config-edit-row">
-                  <el-input v-model="editingItem.value" placeholder="请输入下载目录" style="flex: 1" />
-                  <div class="config-edit-actions">
-                    <GitActionButton compact size="small" :loading="saving" @click="saveItem('path', 'webkit_download_path', editingItem.value)">保存</GitActionButton>
-                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
-                  </div>
-                </div>
-              </template>
-              <template v-else>
-                <div class="config-display-row">
-                  <div class="config-value">{{ form.webkit_download_path || '未配置，请在配置文件中设置' }}</div>
-                  <GitActionButton compact size="small" @click="startEdit('webkit_download_path', form.webkit_download_path)">编辑</GitActionButton>
-                </div>
-              </template>
-              <div class="config-item-help">Playwright 文件下载目录，支持使用 {DRIVE} 占位符。</div>
-            </div>
-          </el-descriptions-item>
-        </el-descriptions>
-
         <!-- [safe] 安全登录配置 -->
         <el-divider content-position="left">[safe] 安全登录配置</el-divider>
         <el-descriptions class="memory-config-display" :column="1" border>
@@ -455,9 +390,6 @@ export default {
         db_auto_push_delay_minutes: 10,
         db_configured: false,
         log_db_path: '',
-        webkit_driver_path: '',
-        webkit_data_path: '',
-        webkit_download_path: '',
         memory_dir: '',
         memory_db_is_git_repo: false,
         memory_db_auto_push_delay_minutes: 1,
@@ -553,9 +485,6 @@ export default {
         this.form.db_auto_push_delay_minutes = Number(response.Data.db_auto_push_delay_minutes ?? 10)
         this.form.db_configured = !!response.Data.db_configured
         this.form.log_db_path = response.Data.log_db_path || ''
-        this.form.webkit_driver_path = response.Data.webkit_driver_path || ''
-        this.form.webkit_data_path = response.Data.webkit_data_path || ''
-        this.form.webkit_download_path = response.Data.webkit_download_path || ''
         this.form.memory_dir = response.Data.memory_dir || ''
         this.form.memory_db_is_git_repo = !!response.Data.memory_db_is_git_repo
         this.form.memory_db_auto_push_delay_minutes = Number(response.Data.memory_db_auto_push_delay_minutes ?? 1)

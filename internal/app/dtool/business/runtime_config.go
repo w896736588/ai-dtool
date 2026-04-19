@@ -4,7 +4,6 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -69,13 +68,10 @@ func ReloadEditableRuntimeConfig() {
 		component.EnvClient.LogDbConfig.DbPath = component.EnvClient.DbConfig.DbPath
 	}
 
-	drive := `C`
-	if _, err := os.Stat(`D:\`); err == nil {
-		drive = `D`
-	}
-	component.EnvClient.WebkitDriverPath = common.ResolvePlaywrightPath(component.ConfigViper.GetString(`path.webkit_driver_path`), `webkit_driver`, drive)
-	component.EnvClient.WebkitDataPath = common.ResolvePlaywrightPath(component.ConfigViper.GetString(`path.webkit_data_path`), `webkit_data`, drive)
-	component.EnvClient.WebkitDownloadPath = common.ResolvePlaywrightPath(component.ConfigViper.GetString(`path.webkit_download_path`), `webkit_download`, drive)
+	// Playwright 路径统一默认到 ~/.dtool/server，不再从配置文件读取
+	component.EnvClient.WebkitDriverPath,
+		component.EnvClient.WebkitDataPath,
+		component.EnvClient.WebkitDownloadPath = common.ResolvePlaywrightPaths(`server`)
 }
 
 // buildRuntimeLogDBName 基于主库文件名生成 log 库文件名。 // Build log db file name from the main database file name.

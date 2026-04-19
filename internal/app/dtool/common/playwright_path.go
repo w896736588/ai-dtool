@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 )
 
 const (
@@ -28,20 +26,19 @@ func ResolveDefaultDToolDir(configValue string) string {
 	return filepath.Join(homeDir, defaultDToolDirName)
 }
 
-// ResolvePlaywrightPath 解析 Playwright 目录配置，空值时回落到 ~/.dtool。 // Resolves Playwright path config and falls back to ~/.dtool when unset.
-func ResolvePlaywrightPath(configValue, defaultLeafDir, drive string) string {
-	trimmedValue := strings.TrimSpace(configValue)
-	if trimmedValue != `` {
-		// 仅在显式配置时替换盘符占位符，保持现有 {DRIVE} 语义。 // Replace the drive placeholder only for explicit config values to preserve existing semantics.
-		return gstool.SReplaces(trimmedValue, map[string]string{
-			`{DRIVE}`: drive,
-		})
-	}
+// ResolvePlaywrightPaths 返回 Playwright 所需的三个默认目录，统一存放于 ~/.dtool/{subDir} 下。 // Returns default Playwright directories under ~/.dtool/{subDir}.
+func ResolvePlaywrightPaths(subDir string) (driverPath, dataPath, downloadPath string) {
+	base := resolveDToolSubDir(subDir)
+	return filepath.Join(base, `webkit_driver`),
+		filepath.Join(base, `webkit_data`),
+		filepath.Join(base, `webkit_download`)
+}
 
+// resolveDToolSubDir 解析 ~/.dtool/{subDir} 路径。 // Resolves ~/.dtool/{subDir}.
+func resolveDToolSubDir(subDir string) string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(homeDir) == `` {
-		// 无法获取家目录时退回当前工作目录下的 .dtool，避免返回空路径。 // Fall back to the current workspace-local .dtool path when the home directory is unavailable.
-		return filepath.Join(defaultDToolDirName, defaultLeafDir)
+		return filepath.Join(defaultDToolDirName, subDir)
 	}
-	return filepath.Join(homeDir, defaultDToolDirName, defaultLeafDir)
+	return filepath.Join(homeDir, defaultDToolDirName, subDir)
 }

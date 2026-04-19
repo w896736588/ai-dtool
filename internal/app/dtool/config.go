@@ -294,18 +294,10 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 		DbName: buildLogDBName(component.EnvClient.DbConfig.DbName),
 		DbPath: logDbPath,
 	}
-	//判断是否存在D盘如果没有那么就改为C盘
-	drive := ``
-	drivePath := string(`D`) + ":\\"
-	_, err := os.Stat(drivePath)
-	if err == nil {
-		drive = `D`
-	} else {
-		drive = `C`
-	}
-	component.EnvClient.WebkitDriverPath = common.ResolvePlaywrightPath(viper.GetString(`path.webkit_driver_path`), `webkit_driver`, drive)
-	component.EnvClient.WebkitDataPath = common.ResolvePlaywrightPath(viper.GetString(`path.webkit_data_path`), `webkit_data`, drive)
-	component.EnvClient.WebkitDownloadPath = common.ResolvePlaywrightPath(viper.GetString(`path.webkit_download_path`), `webkit_download`, drive)
+	// Playwright 路径统一默认到 ~/.dtool/server
+	component.EnvClient.WebkitDriverPath,
+		component.EnvClient.WebkitDataPath,
+		component.EnvClient.WebkitDownloadPath = common.ResolvePlaywrightPaths(`server`)
 	// 自定义网页配置
 	component.EnvClient.SmartLinkConfig = &define.SmartLinkConfig{
 		RunMode:       define.SmartLinkRunMode(viper.GetString(`smart_link.run_mode`)),
