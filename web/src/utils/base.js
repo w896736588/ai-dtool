@@ -6,6 +6,11 @@ import {globals} from '@/main'
 const DEV_PORT = '17170'
 const SAFE_TOKEN_KEY = 'safe_token'
 
+// 获取服务端注入的配置（Go模板渲染时注入）
+function GetServerConfig() {
+    return window.__SERVER_CONFIG__ || null
+}
+
 // 获取 safe token
 function GetSafeToken() {
     return store.getStore(SAFE_TOKEN_KEY) || ''
@@ -138,7 +143,9 @@ function isDev() {
 // 生产环境：使用相对路径（同域）
 function GetApiHost() {
     if (isDev()) {
-        return 'http://localhost:' + DEV_PORT
+        const config = GetServerConfig()
+        const port = (config && config.port) ? config.port : DEV_PORT
+        return 'http://localhost:' + port
     }
     return ''  // 生产环境返回空字符串，使用相对路径
 }
@@ -146,7 +153,9 @@ function GetApiHost() {
 // 获取 SSE API 地址
 function GetSseApiHost() {
     if (isDev()) {
-        return 'http://localhost:' + DEV_PORT
+        const config = GetServerConfig()
+        const port = (config && config.port) ? config.port : DEV_PORT
+        return 'http://localhost:' + port
     }
     return ''  // 生产环境返回空字符串，使用相对路径
 }
@@ -252,6 +261,7 @@ export default {
     BasePostForm,
     GetApiHost,
     GetSseApiHost,
+    GetServerConfig,
     GetSafeToken,
     SetSafeToken,
     ClearSafeToken,

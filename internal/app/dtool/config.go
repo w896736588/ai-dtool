@@ -13,8 +13,10 @@ import (
 	"dev_tool/internal/pkg/p_gin"
 	"dev_tool/internal/pkg/p_shell"
 	"dev_tool/internal/pkg/p_sse"
+	"encodin
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"os"
 	"path/filepath"
@@ -416,7 +418,11 @@ func initGin() {
 			tGin.GinStatic(`/css`, component.EnvClient.WebConfig.WebPath+`/css`)
 			tGin.GinLoadHTMLFiles(component.EnvClient.WebConfig.WebPath + `/index.html`)
 			tGin.GinGet(`/`, func(context *gin.Context) {
-				context.HTML(200, `index.html`, nil)
+				cfg, _ := json.Marshal(map[string]string{
+					"port": port,
+					"host": host,
+				})
+				context.HTML(200, `index.html`, gin.H{"serverConfig": template.JS(string(cfg))})
 			})
 		}
 		tGin.IsRun = true
