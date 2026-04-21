@@ -57,6 +57,10 @@ func main() {
 		fmt.Printf("组件初始化失败: %s\n", err.Error())
 		return
 	}
+	if err := ensurePlaywrightLockAvailable(); err != nil {
+		fmt.Printf("Agent 已在其他终端处理中，当前启动已退出: %s\n", err.Error())
+		return
+	}
 
 	// 创建 WebSocket 客户端
 	wsClient := NewWsClient(cfg)
@@ -186,4 +190,22 @@ func getOs() string {
 
 func getArch() string {
 	return runtime.GOARCH
+}
+
+// ensurePlaywrightLockAvailable 启动前检查 Playwright 运行锁是否正被其他进程持有。
+func ensurePlaywrightLockAvailable() error {
+	if component.PlaywrightClient == nil || component.PlaywrightClient.LockFileFullPath == `` {
+		return nil
+	}
+	if !gstool.FileIsExisted(component.PlaywrightClient.LockFileFullPath) {
+		return nil
+	}
+	lockFile, err := component.TryLockFileNonBlocking(component.PlaywrightClient.LockFileFullPath)
+	if err != nil {
+		if component.IsPlaywrightLockBusyError(err) {
+			return fmt.Errorf(`%s 正被其他进程占用`, component.PlaywrightClient.LockFileFullPath)
+		}
+		return err
+	}
+	return component.ReleaseLockedFile(lockFile)
 }
