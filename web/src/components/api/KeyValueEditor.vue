@@ -1,5 +1,6 @@
 ﻿<template>
   <div class="kv-table">
+    <div class="kv-table-scroll">
     <table class="kv-table-inner">
       <thead>
       <tr>
@@ -105,6 +106,7 @@
       </tr>
       </tbody>
     </table>
+    </div>
 
     <div class="footer" style="margin: 10px;">
       <pl-button type="primary" plain size="small" class="add-rule-btn" @click="addItem">+ 添加参数</pl-button>
@@ -227,6 +229,33 @@ export default {
   border-radius: 10px;
   background: #fff;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.kv-table-scroll {
+  overflow-y: auto;
+  max-height: calc(100vh - 440px);
+  scrollbar-width: thin;
+  scrollbar-color: #8ea88f #dbe7d8;
+}
+
+.kv-table-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.kv-table-scroll::-webkit-scrollbar-track {
+  background: #f0f5ee;
+  border-radius: 999px;
+}
+
+.kv-table-scroll::-webkit-scrollbar-thumb {
+  background: #a8c4a8;
+  border-radius: 999px;
+}
+
+.kv-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: #8aaa8a;
 }
 
 .kv-table-inner {
@@ -246,6 +275,9 @@ export default {
   font-weight: 600;
   font-size: 14px;
   color: #4e594a;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .col-key { width: 25%; }
