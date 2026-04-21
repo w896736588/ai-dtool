@@ -47,6 +47,7 @@ type MainDBAutoSync struct {
 	debounceTimer stoppableTimer
 	lastSyncTime  int64
 	lastSyncErr   string
+	nextSyncTime  int64
 	// syncMu 防止并发 git 操作（避免 index.lock 冲突）。 // Prevent concurrent git operations to avoid index.lock conflicts.
 	syncMu sync.Mutex
 	// pendingTaskID 记录当前防抖窗口对应的异步任务 id，避免重复创建任务。 // Track the async task id for the current debounce window and avoid duplicates.
@@ -219,6 +220,7 @@ func (h *MainDBAutoSync) ScheduleSync() {
 	h.debounceTimer = h.afterFunc(delay, func() {
 		_ = h.syncWithAsyncTask()
 	})
+	h.nextSyncTime = scheduledAt
 	h.mu.Unlock()
 
 	gstool.FmtPrintlnLogTime(`主库自动同步已排期，%d 分钟后执行 scheduled_at=%d`, config.AutoSyncMinutes, scheduledAt)
@@ -243,6 +245,13 @@ func (h *MainDBAutoSync) LastSyncError() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.lastSyncErr
+}
+
+// NextSyncTime 返回下次同步的 unix 时间戳，0 表示未排期。
+func (h *MainDBAutoSync) NextSyncTime() int64 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.nextSyncTime
 }
 
 // watchEvents 消费 fsnotify 事件，过滤出主库 db 文件的变更并触发防抖。
@@ -405,6 +414,7 @@ func (h *MainDBAutoSync) syncNow() error {
 	h.mu.Lock()
 	h.lastSyncTime = time.Now().Unix()
 	h.lastSyncErr = ``
+	h.nextSyncTime = 0
 	h.mu.Unlock()
 
 	gstool.FmtPrintlnLogTime(`主库自动同步成功 dir=%s file=%s`, config.Dir, fileName)
@@ -427,6 +437,9 @@ func (h *MainDBAutoSync) setLastSyncError(message string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.lastSyncErr = message
+	if message != `` {
+		h.nextSyncTime = 0
+	}
 }
 
 // notifyStatusChange 安全调用 OnStatusChange 回调。
@@ -688,6 +701,7 @@ func (h *MainDBAutoSync) scheduleRecoveredTask(config MainDBAutoSyncConfig, sche
 	h.debounceTimer = h.afterFunc(delay, func() {
 		_ = h.syncWithAsyncTask()
 	})
+	h.nextSyncTime = scheduledAt
 	h.mu.Unlock()
 	gstool.FmtPrintlnLogTime(`主库自动同步恢复排期 task_id=%d delay_ms=%d`, h.pendingTaskID, delay.Milliseconds())
 }

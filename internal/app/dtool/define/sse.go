@@ -10,6 +10,7 @@ const (
 	SseSafeAuthRequired      = `safe_auth_required`       //安全认证失效通知
 	SseSmartLinkClientStatus = `smart_link_client_status` //本地客户端状态推送
 	SseApiDataChange         = `api_data_change`          //API数据变更推送
+	SseGitPendingStatus      = `git_pending_status`       //Git待提交状态及倒计时推送
 )
 
 const (

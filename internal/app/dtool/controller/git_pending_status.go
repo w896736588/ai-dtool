@@ -4,9 +4,13 @@ import (
 	"dev_tool/internal/app/dtool/business"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
+	"dev_tool/internal/app/dtool/define"
+	"dev_tool/internal/pkg/p_define"
 	"path/filepath"
+	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 )
 
@@ -59,4 +63,76 @@ func GitPendingStatus(c *gin.Context) {
 		`main_db_pending`: mainDBPending,
 		`memory_pending`:  memoryPending,
 	})
+}
+
+// buildGitPendingStatusPayload 构造 Git 待提交状态及倒计时数据。
+func buildGitPendingStatusPayload() map[string]any {
+	gitSyncer := business.NewMemoryGit()
+	mainConfig := business.ReadMainDBConfig()
+	memoryConfig := business.ReadMemoryConfigFromINI()
+	mainDBPending, memoryPending := detectGitPendingStatus(gitSyncer, mainConfig, memoryConfig, component.EnvClient != nil && component.EnvClient.DbConfig != nil)
+
+	// 中文注释：从运行时组件读取排期时间，无需再次执行 git status。
+	var mainDBNextPush int64
+	var mainDBInterval int
+	if component.MainDBAutoSyncRuntime != nil {
+		mainDBNextPush = component.MainDBAutoSyncRuntime.NextSyncTime()
+		mainDBInterval = component.MainDBAutoSyncRuntime.Config().AutoSyncMinutes * 60
+	}
+
+	var memoryNextPush int64
+	var memoryInterval int
+	if component.MemoryRuntime != nil {
+		memoryNextPush = component.MemoryRuntime.NextPushTime()
+		memoryInterval = component.MemoryRuntime.Config().AutoPushDelayMinutes * 60
+	}
+
+	return map[string]any{
+		`main_db_pending`:   mainDBPending,
+		`memory_pending`:    memoryPending,
+		`main_db_next_push`: mainDBNextPush,
+		`memory_next_push`:  memoryNextPush,
+		`main_db_interval`:  mainDBInterval,
+		`memory_interval`:   memoryInterval,
+	}
+}
+
+// sendGitPendingStatusSnapshot 向指定 SSE 连接发送一次 Git 待提交状态快照。
+func sendGitPendingStatusSnapshot(sse *gsgin.Sse) {
+	if sse == nil {
+		return
+	}
+	data := buildGitPendingStatusPayload()
+	err := sse.SendToChan(gstool.JsonEncode(p_define.SseData{
+		SseDistributeId: define.SseGitPendingStatus,
+		Data:            data,
+		Type:            p_define.SseContentTypeMsg,
+	}))
+	if err != nil {
+		gstool.FmtPrintlnLogTime(`GitPendingStatus广播错误 %s`, err.Error())
+	}
+}
+
+// BindGitPendingStatusSSE 为普通 SSE client 绑定 Git 待提交状态推送。
+func BindGitPendingStatusSSE(sse *gsgin.Sse, stopC chan int, interval time.Duration) {
+	if sse == nil {
+		return
+	}
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+	// 建连后立即推一次，避免前端初次打开时要等下一个周期。
+	sendGitPendingStatusSnapshot(sse)
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				sendGitPendingStatusSnapshot(sse)
+			case <-stopC:
+				return
+			}
+		}
+	}()
 }

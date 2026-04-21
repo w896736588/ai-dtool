@@ -47,7 +47,9 @@
         <el-menu-item v-if="checkModuleOpen('memory_fragment')" index="/MemoryFragment">
           <el-icon><Memo /></el-icon>
           <span>知识片段</span>
-          <span v-if="gitPendingStatus.memoryPending" class="menu-badge-dot"></span>
+          <div v-if="gitPendingStatus.memoryPending" class="menu-countdown-bar">
+            <div class="menu-countdown-bar__fill" :style="{ width: memoryCountdownPercent + '%' }"></div>
+          </div>
         </el-menu-item>
         <el-menu-item v-if="checkModuleOpen('docker')" index="/Docker">
           <el-icon><Box /></el-icon>
@@ -64,7 +66,9 @@
         <el-menu-item index="/Set" class="menu-item-settings">
           <el-icon><Setting /></el-icon>
           <span>配置</span>
-          <span v-if="gitPendingStatus.mainDBPending" class="menu-badge-dot"></span>
+          <div v-if="gitPendingStatus.mainDBPending" class="menu-countdown-bar">
+            <div class="menu-countdown-bar__fill" :style="{ width: mainDBCountdownPercent + '%' }"></div>
+          </div>
         </el-menu-item>
       </el-menu>
 
@@ -938,8 +942,13 @@ export default {
       gitPendingStatus: {
         mainDBPending: false,
         memoryPending: false,
+        mainDBNextPush: 0,
+        memoryNextPush: 0,
+        mainDBInterval: 600,
+        memoryInterval: 60,
       },
-      gitPendingTimer: null,
+      countdownNow: Math.floor(Date.now() / 1000),
+      countdownTimer: null,
     }
   },
   computed: {
@@ -960,6 +969,24 @@ export default {
     // homeTaskDialogTitle 统一控制新增和编辑弹窗标题。
     homeTaskDialogTitle() {
       return this.homeTaskForm.id > 0 ? '编辑任务' : '新增任务'
+    },
+    // memoryCountdownPercent 计算记忆库倒计时进度百分比（0~100）。
+    memoryCountdownPercent() {
+      if (!this.gitPendingStatus.memoryPending || !this.gitPendingStatus.memoryNextPush || !this.gitPendingStatus.memoryInterval) return 0
+      const remain = this.gitPendingStatus.memoryNextPush - this.countdownNow
+      const total = this.gitPendingStatus.memoryInterval
+      if (remain <= 0) return 100
+      const pct = Math.round((1 - remain / total) * 100)
+      return Math.max(0, Math.min(100, pct))
+    },
+    // mainDBCountdownPercent 计算主库倒计时进度百分比（0~100）。
+    mainDBCountdownPercent() {
+      if (!this.gitPendingStatus.mainDBPending || !this.gitPendingStatus.mainDBNextPush || !this.gitPendingStatus.mainDBInterval) return 0
+      const remain = this.gitPendingStatus.mainDBNextPush - this.countdownNow
+      const total = this.gitPendingStatus.mainDBInterval
+      if (remain <= 0) return 100
+      const pct = Math.round((1 - remain / total) * 100)
+      return Math.max(0, Math.min(100, pct))
     },
   },
   watch: {
@@ -996,6 +1023,10 @@ export default {
     sseDistribute.RegisterReceive('safe_auth_required', function(data) {
       _that.handleSafeAuthRequired(data)
     })
+    // 注册 Git 待提交状态 SSE 监听（替代轮询）
+    sseDistribute.RegisterReceive('git_pending_status', function(data) {
+      _that.handleGitPendingStatusUpdate(data)
+    })
     this.loadHomeTaskFragmentOptions()
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
@@ -1006,9 +1037,10 @@ export default {
     if (this.$eventBus) {
       this.$eventBus.on('safe_auth_required', this.showSafeLogin)
     }
-    // 启动 git 待提交状态定时检测
-    this.checkGitPendingStatus()
-    this.gitPendingTimer = setInterval(this.checkGitPendingStatus, 10000)
+    // 启动倒计时每秒更新
+    this.countdownTimer = setInterval(function() {
+      _that.countdownNow = Math.floor(Date.now() / 1000)
+    }, 1000)
   },
   provide() {
     return {
@@ -1017,15 +1049,15 @@ export default {
     };
   },
   methods: {
-    // 检测主库和记忆库是否有待 commit 的 git 变更
-    checkGitPendingStatus: function () {
-      let _that = this
-      memoryFragmentApi.GitPendingStatus(function (response) {
-        if (response.ErrCode === 0 && response.Data) {
-          _that.gitPendingStatus.mainDBPending = !!response.Data.main_db_pending
-          _that.gitPendingStatus.memoryPending = !!response.Data.memory_pending
-        }
-      })
+    // 处理 SSE 推送的 Git 待提交状态数据
+    handleGitPendingStatusUpdate: function (data) {
+      if (!data) return
+      this.gitPendingStatus.mainDBPending = !!data.main_db_pending
+      this.gitPendingStatus.memoryPending = !!data.memory_pending
+      this.gitPendingStatus.mainDBNextPush = data.main_db_next_push || 0
+      this.gitPendingStatus.memoryNextPush = data.memory_next_push || 0
+      this.gitPendingStatus.mainDBInterval = data.main_db_interval || 600
+      this.gitPendingStatus.memoryInterval = data.memory_interval || 60
     },
     OpenNewBlank: function () {
       window.open(window.location.href, '_blank');
@@ -2005,9 +2037,9 @@ export default {
       clearInterval(this.sshConnectionTimer)
       this.sshConnectionTimer = null
     }
-    if (this.gitPendingTimer) {
-      clearInterval(this.gitPendingTimer)
-      this.gitPendingTimer = null
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer)
+      this.countdownTimer = null
     }
   },
   components: {
@@ -2413,18 +2445,22 @@ export default {
   box-shadow: 0 0 10px rgba(255, 214, 107, 0.7);
 }
 
-/* Git 待提交变更红点 */
-.menu-badge-dot {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  min-width: 12px;
-  border-radius: 50%;
-  background: #f56c6c;
-  margin-left: 4px;
-  vertical-align: middle;
-  flex-shrink: 0;
-  box-shadow: 0 0 6px rgba(245, 108, 108, 0.6);
+/* Git 待提交变更倒计时进度条 */
+.menu-countdown-bar {
+  position: absolute;
+  bottom: 2px;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(111, 142, 103, 0.12);
+  overflow: hidden;
+}
+.menu-countdown-bar__fill {
+  height: 100%;
+  border-radius: 1px;
+  background: linear-gradient(90deg, #6f8e67 0%, #89a27c 100%);
+  transition: width 1s linear;
 }
 
 .sidebar-menu .el-menu-item span {
