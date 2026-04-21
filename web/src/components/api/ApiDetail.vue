@@ -48,7 +48,6 @@
             <el-radio-button value="application/json">application/json</el-radio-button>
             <el-radio-button value="application/x-www-form-urlencoded">x-www-form-urlencoded</el-radio-button>
             <el-radio-button value="multipart/form-data">multipart/form-data</el-radio-button>
-            <el-radio-button value="text/plain">text/plain</el-radio-button>
             <el-radio-button value="raw">Raw</el-radio-button>
           </el-radio-group>
 
@@ -61,12 +60,12 @@
             </div>
             <key-value-editor @update="handleSaveBodyFormData" :list="apiForm.body_form_data"/>
           </div>
-          <div v-else-if="['text/plain', 'raw'].includes(apiForm.content_type)" class="body-editor">
+          <div v-else-if="apiForm.content_type === 'raw'" class="body-editor body-editor-raw">
             <el-input
                 v-model="apiForm.body_raw_data"
-                :rows="Number(6)"
                 placeholder="输入原始数据"
                 type="textarea"
+                :autosize="{ minRows: 12, maxRows: 40 }"
                 @blur="handleBlurSave"
             />
           </div>
@@ -1087,6 +1086,11 @@ export default {
   border-color: #8db28a;
   box-shadow: 0 0 0 3px rgba(122, 166, 118, 0.16);
   background: linear-gradient(180deg, #fbfdf9 0%, #f6faf3 100%);
+}
+
+.body-editor-raw {
+  max-height: calc(100vh - 340px);
+  overflow-y: auto;
 }
 
 .empty-body {
