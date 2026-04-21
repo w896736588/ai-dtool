@@ -223,22 +223,46 @@ func (h *TVariable) PreConnSsh(sshId int, sshUniqueKey, sftpUniqueKey string, ss
 	}
 
 	if component.ShellClient.Exist(sshUniqueKey) && component.ShellClient.Exist(sftpUniqueKey) {
+		if sse != nil {
+			sse.Send(" [ssh] 连接已存在，直接复用: " + sshUniqueKey + "\n")
+		}
 		return nil
 	}
 	//初始化连接
+	if sse != nil {
+		sse.Send(" [ssh] 正在初始化SSH连接: sshId=" + cast.ToString(sshId) + "\n")
+	}
 	sshConfig, sshConfigErr := call.GetSshConfig(sshId)
 	if sshConfigErr != nil {
+		if sse != nil {
+			sse.Send(" [ssh] 获取SSH配置失败: " + sshConfigErr.Error() + "\n")
+		}
 		return sshConfigErr
 	}
 	//ssh
+	if sse != nil {
+		sse.Send(" [ssh] 建立终端连接(run): " + cast.ToString(sshConfig["host"]) + ":" + cast.ToString(sshConfig["port"]) + "\n")
+	}
 	_, sshClientErr := component.ShellClient.GetClientMarkdown(sshConfig, sshUniqueKey, sse)
 	if sshClientErr != nil {
+		if sse != nil {
+			sse.Send(" [ssh] 终端连接(run)建立失败: " + sshClientErr.Error() + "\n")
+		}
 		return sshClientErr
 	}
 	//sftp
+	if sse != nil {
+		sse.Send(" [ssh] 建立终端连接(sftp): " + cast.ToString(sshConfig["host"]) + ":" + cast.ToString(sshConfig["port"]) + "\n")
+	}
 	_, sftpClientErr := component.ShellClient.GetClientMarkdown(sshConfig, sftpUniqueKey, sse)
 	if sftpClientErr != nil {
+		if sse != nil {
+			sse.Send(" [ssh] 终端连接(sftp)建立失败: " + sftpClientErr.Error() + "\n")
+		}
 		return sftpClientErr
+	}
+	if sse != nil {
+		sse.Send(" [ssh] SSH连接初始化完成\n")
 	}
 	return nil
 }

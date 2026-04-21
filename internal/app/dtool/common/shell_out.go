@@ -30,7 +30,7 @@ type ShellOut struct {
 	ShellClientId      string
 	Client             *gsssh.SshTerminal
 	Sse                *p_sse.SseShell
-	errorList          []ErrorBlock   // 最终归档的错误块
+	errorList          []ErrorBlock // 最终归档的错误块
 	alertEvents        []ShellOutAlertEvent
 	remainContents     []string       // 保留的内容(替换后的)
 	sourceContents     []SourceLine   // 原本内容（带行号）
@@ -101,7 +101,13 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId string, ss
 		return nil, false, errors.New(`ssh配置错误，GetClient ` + cast.ToString(debug.Stack()))
 	}
 	if shellOut, ok := h.ShellOutMap[shellClientId]; ok && shellOut != nil {
+		if sse != nil {
+			sse.Send(" [shell_out] 复用已有连接: " + shellClientId + "\n")
+		}
 		return shellOut, true, nil
+	}
+	if sse != nil {
+		sse.Send(" [shell_out] 创建新连接: " + shellClientId + " → " + cast.ToString(sshConfig["host"]) + ":" + cast.ToString(sshConfig["port"]) + "\n")
 	}
 	gsShell := gsssh.NewSshTerminal(gsssh.NewSsh(&gsssh.SshConfig{
 		Name:     "",
@@ -123,7 +129,13 @@ func (h *TShellOut) GetClient(sshConfig map[string]any, shellClientId string, ss
 
 	if err := gsShell.RunCommand(`pwd`); err != nil {
 		gstool.FmtPrintlnLogTime(`shell out 执行失败 %s`, err.Error())
+		if sse != nil {
+			sse.Send(" [shell_out] 连接建立失败: " + err.Error() + "\n")
+		}
 		return nil, false, err
+	}
+	if sse != nil {
+		sse.Send(" [shell_out] SSH连接建立成功\n")
 	}
 
 	// 新建 ShellOut
@@ -181,7 +193,7 @@ func (h *TShellOut) SetClientSseId(shellClientId, sshId string, sse *p_sse.SseSh
 			}
 		}()
 		return nil
- } else {
+	} else {
 		remainLen := len(shellOut.remainContents)
 		if remainLen > MaxSendLength {
 			h.SendMsg(shellOut, strings.Join(shellOut.remainContents[(remainLen-MaxSendLength):], ""))

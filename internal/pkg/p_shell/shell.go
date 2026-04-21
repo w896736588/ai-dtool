@@ -112,6 +112,7 @@ func (h *Shell) cleanupIdleClients() {
 	h.lock.Unlock()
 
 	for _, client := range idleClients {
+		h.log.Infof("清理空闲连接")
 		client.CloseTerminal()
 	}
 }
@@ -130,10 +131,16 @@ func (h *Shell) GetClient(sshConfig map[string]any, shellClientId string, sse *p
 		h.ShellClientLastUsed[client] = time.Now().Unix()
 		bindReceiveHandler(client, sse, formatStream)
 		h.lock.Unlock()
+		if canSendSse(sse) {
+			sse.Send(" [ssh] 复用已有连接: " + shellClientId + "\n")
+		}
 		return client, nil
 	}
 	h.lock.Unlock()
 
+	if canSendSse(sse) {
+		sse.Send(" [ssh] 创建新连接: " + shellClientId + "\n")
+	}
 	client, err := h.createShellClient(sshConfig, shellClientId, sse, formatStream, promptKeywords, promptFunc)
 	if err != nil {
 		return nil, err
@@ -168,9 +175,18 @@ func (h *Shell) createShellClient(sshConfig map[string]any, shellClientId string
 
 	gsShell.SetPtyConfig(gsssh.PtyConfig{Echo: 1})
 	gsShell.SetMaxBufferSize(2 * 1024 * 1024)
+	if canSendSse(sse) {
+		sse.Send(" [ssh] 正在建立SSH连接 " + cast.ToString(sshConfig["host"]) + ":" + cast.ToString(sshConfig["port"]) + "\n")
+	}
 	_, err := gsShell.RunCommandWait("pwd", 40*time.Second)
 	if err != nil {
+		if canSendSse(sse) {
+			sse.Send(" [ssh] 连接建立失败: " + err.Error() + "\n")
+		}
 		return nil, err
+	}
+	if canSendSse(sse) {
+		sse.Send(" [ssh] SSH连接建立成功\n")
 	}
 
 	bindReceiveHandler(gsShell, sse, formatStream)
