@@ -24,6 +24,7 @@ web/test
 tmp/dtool.exe
 tmp/build-errors.log
 tmp/dtool.exe
+*.exe
 /tmp/
 *_test.js
 *_test.go
