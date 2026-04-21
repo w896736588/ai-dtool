@@ -325,7 +325,6 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 func initPlaywright() {
 	//初始化playwright
 	component.PlaywrightClient = component.NewTPlaywright()
-	component.PlaywrightClient.LockFileFullPath = filepath.Join(component.EnvClient.RootPath, `playwright.RunLock`)
 	plw.InitPageActiveTime()
 	if !component.PlaywrightClient.EnsureNodeRuntime() {
 		gstool.FmtPrintlnLogTime(`未检测到 Node.js，跳过 Playwright 初始化，等待用户安装后再使用自定义网页`)

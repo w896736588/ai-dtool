@@ -434,17 +434,11 @@ func SmartLinkPlaywrightVersion(c *gin.Context) {
 	}
 	//是否在安装中
 	isInstall := 0
-	if gstool.FileIsExisted(component.PlaywrightClient.LockFileFullPath) {
-		content, _ := gstool.FileGetContent(component.PlaywrightClient.LockFileFullPath)
-		if content == `` {
-			sse.Send(`核心正在安装中` + "\n")
-			isInstall = 1
-		} else {
-			sse.Send(`核心正在安装中` + "\n")
-			isInstall = 1
-		}
+	if component.PlaywrightClient.IsInstalling() {
+		sse.Send(`核心正在安装中` + "\n")
+		isInstall = 1
 	} else {
-		sse.Send(`当前未处于安装中，下次启动会重新安装核心` + "\n")
+		sse.Send(`当前未处于安装中` + "\n")
 	}
 	gsgin.GinResponseSuccess(c, pw.Version, map[string]any{
 		`is_install`: isInstall,

@@ -6,7 +6,6 @@
 /.idea/*
 /playwright.lock
 build/
-/playwright.RunLock
 /upload
 /test/*
 web/dist/

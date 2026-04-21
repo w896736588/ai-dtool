@@ -10,8 +10,11 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
+
+	"github.com/shirou/gopsutil/v3/process"
 
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 )
@@ -57,8 +60,8 @@ func main() {
 		fmt.Printf("组件初始化失败: %s\n", err.Error())
 		return
 	}
-	if err := ensurePlaywrightLockAvailable(); err != nil {
-		fmt.Printf("Agent 已在其他终端处理中，当前启动已退出: %s\n", err.Error())
+	if err := ensureAgentProcessUnique(); err != nil {
+		fmt.Printf("检测到同名进程: %s\n", err.Error())
 		return
 	}
 
@@ -128,7 +131,6 @@ func initComponents() error {
 
 	// 初始化 PlaywrightClient
 	component.PlaywrightClient = component.NewTPlaywright()
-	component.PlaywrightClient.LockFileFullPath = filepath.Join(agentRootDir, "playwright.RunLock")
 
 	// 初始化 TJasClient（通过嵌入的 JS 文件）
 	p_common.TJasClient = &p_common.TJas{
@@ -192,20 +194,41 @@ func getArch() string {
 	return runtime.GOARCH
 }
 
-// ensurePlaywrightLockAvailable 启动前检查 Playwright 运行锁是否正被其他进程持有。
-func ensurePlaywrightLockAvailable() error {
-	if component.PlaywrightClient == nil || component.PlaywrightClient.LockFileFullPath == `` {
-		return nil
-	}
-	if !gstool.FileIsExisted(component.PlaywrightClient.LockFileFullPath) {
-		return nil
-	}
-	lockFile, err := component.TryLockFileNonBlocking(component.PlaywrightClient.LockFileFullPath)
+// ensureAgentProcessUnique 启动前检查是否有同名 agent 进程已在运行。
+func ensureAgentProcessUnique() error {
+	processes, err := process.Processes()
 	if err != nil {
-		if component.IsPlaywrightLockBusyError(err) {
-			return fmt.Errorf(`%s 正被其他进程占用`, component.PlaywrightClient.LockFileFullPath)
-		}
-		return err
+		fmt.Printf("警告：无法获取进程列表: %s\n", err.Error())
+		return nil
 	}
-	return component.ReleaseLockedFile(lockFile)
+	currentPid := os.Getpid()
+	agentName := "dtool-agent"
+	for _, p := range processes {
+		if p.Pid == int32(currentPid) {
+			continue
+		}
+		cmdline, cmdErr := p.Cmdline()
+		if cmdErr != nil {
+			continue
+		}
+		if isAgentProcess(cmdline, agentName) {
+			return fmt.Errorf("检测到已有 agent 进程运行中 (PID: %d)", p.Pid)
+		}
+	}
+	return nil
+}
+
+// isAgentProcess 判断命令行是否为 dtool-agent 进程
+func isAgentProcess(cmdline, agentName string) bool {
+	cmdline = strings.TrimSpace(cmdline)
+	if cmdline == "" {
+		return false
+	}
+	parts := strings.Fields(cmdline)
+	if len(parts) == 0 {
+		return false
+	}
+	exe := strings.ToLower(filepath.Base(parts[0]))
+	exe = strings.TrimSuffix(exe, ".exe")
+	return exe == strings.ToLower(agentName)
 }

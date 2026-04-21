@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/playwright-community/playwright-go"
@@ -25,8 +26,9 @@ type TPlaywright struct {
 	// pw
 	Pw  *playwright.Playwright
 	Log *gstool.GsSlog
-	// 文件
-	LockFileFullPath string
+	// 安装并发保护
+	installMu    sync.Mutex
+	isInstalling int32
 }
 
 var lookPathFunc = exec.LookPath
@@ -178,18 +180,6 @@ func (h *TPlaywright) AddTipMsg(page *playwright.Page, tip string) {
 
 func (h *TPlaywright) SmartCheckAndUpdate(sse *p_sse.SseShell) {
 	gstool.FmtPrintlnLogTime(`检查并更新核心`)
-	if gstool.FileIsExisted(h.LockFileFullPath) {
-		lockFile, lockErr := h.TryAcquireInstallLock()
-		if lockErr != nil {
-			if IsPlaywrightLockBusyError(lockErr) {
-				gstool.FmtPrintlnLogTime(`浏览器核心正在安装中，跳过本次重复安装`)
-				return
-			}
-			gstool.FmtPrintlnLogTime(`检查浏览器核心锁失败 %s`, lockErr.Error())
-			return
-		}
-		_ = ReleaseLockedFile(lockFile)
-	}
 	version, versionErr := newDriverVersionFunc()
 	if versionErr != nil {
 		gstool.FmtPrintlnLogTime(`获取浏览器核心版本失败 %s`, versionErr.Error())
@@ -215,27 +205,27 @@ func (h *TPlaywright) InitPlaywright() {
 
 func (h *TPlaywright) Install(sse *p_sse.SseShell, version string) {
 	_ = version
-	lockFile, lockErr := h.TryAcquireInstallLock()
-	if lockErr != nil {
-		if IsPlaywrightLockBusyError(lockErr) {
+	if !h.installMu.TryLock() {
+		if sse != nil {
 			sse.Send(`浏览器核心正在安装中，跳过本次重复安装` + "\n")
-			return
 		}
-		sse.Send(fmt.Sprintf(`获取浏览器核心安装锁失败 %s`, lockErr.Error()) + "\n")
 		return
 	}
-	defer func() {
-		_ = ReleaseLockedFile(lockFile)
-		_ = gstool.FileDelete(h.LockFileFullPath)
-	}()
-	sse.Send(`开始安装浏览器核心(只安装chrome),大约几分钟时间` + "\n")
-	// 安装锁用于避免并发重复安装，安装结束后删除，方便下次启动重新安装更新。
-	_ = h.WriteInstallLockContent(lockFile, `installing`)
+	defer h.installMu.Unlock()
+	atomic.StoreInt32(&h.isInstalling, 1)
+	defer atomic.StoreInt32(&h.isInstalling, 0)
+	if sse != nil {
+		sse.Send(`开始安装浏览器核心(只安装chrome),大约几分钟时间` + "\n")
+	}
 	err := playwrightInstallRunOptionsFunc()
 	if err != nil {
-		sse.Send(fmt.Sprintf(`安装浏览器核心失败 %s`, err.Error()) + "\n")
+		if sse != nil {
+			sse.Send(fmt.Sprintf(`安装浏览器核心失败 %s`, err.Error()) + "\n")
+		}
 	} else {
-		sse.Send(`安装完成` + "\n")
+		if sse != nil {
+			sse.Send(`安装完成` + "\n")
+		}
 		initPlaywrightBrowserFunc(h)
 	}
 }
@@ -256,24 +246,7 @@ func (h *TPlaywright) ValueClean(value string) string {
 	})
 }
 
-// TryAcquireInstallLock 尝试获取浏览器核心安装锁，成功时由调用方负责释放。
-func (h *TPlaywright) TryAcquireInstallLock() (*os.File, error) {
-	return TryLockFileNonBlocking(h.LockFileFullPath)
-}
-
-// WriteInstallLockContent 将安装状态写入已加锁的锁文件，避免重新打开文件破坏锁语义。
-func (h *TPlaywright) WriteInstallLockContent(lockFile *os.File, content string) error {
-	if lockFile == nil {
-		return fmt.Errorf(`lock file is nil`)
-	}
-	if truncateErr := lockFile.Truncate(0); truncateErr != nil {
-		return truncateErr
-	}
-	if _, seekErr := lockFile.Seek(0, 0); seekErr != nil {
-		return seekErr
-	}
-	if _, writeErr := lockFile.WriteString(content); writeErr != nil {
-		return writeErr
-	}
-	return lockFile.Sync()
+// IsInstalling 返回当前是否正在安装浏览器核心。
+func (h *TPlaywright) IsInstalling() bool {
+	return atomic.LoadInt32(&h.isInstalling) == 1
 }
