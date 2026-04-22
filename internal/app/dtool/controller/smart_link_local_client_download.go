@@ -2,6 +2,7 @@ package controller
 
 import (
 	"archive/zip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,9 @@ type agentDownloadSpec struct {
 	FileName string
 	IsZip    bool
 }
+
+// buildAgentDownloadBinaryFunc 允许测试替换下载构建逻辑，避免单测真实编译二进制。
+var buildAgentDownloadBinaryFunc = buildAgentDownloadBinary
 
 // resolveAgentDownloadSpec 根据 os 查询参数解析目标平台，避免下载请求打到未知平台。
 // resolveAgentDownloadSpec maps the os query parameter to a supported download target.
@@ -156,16 +160,30 @@ func createZipFile(zipPath, entryName, sourcePath string) error {
 func AgentDownload(c *gin.Context) {
 	spec, ok := resolveAgentDownloadSpec(c.Query("os"))
 	if !ok {
-		gsgin.GinResponseError(c, "unsupported os, expected windows, darwin or linux", nil)
+		respondAgentDownloadError(c, http.StatusBadRequest, "unsupported os, expected windows, darwin or linux")
 		return
 	}
 
-	binaryPath, err := buildAgentDownloadBinary(spec, buildAgentDefaultServerURL(c.Request))
+	binaryPath, err := buildAgentDownloadBinaryFunc(spec, buildAgentDefaultServerURL(c.Request))
 	if err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
+		respondAgentDownloadError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	c.Header("Content-Type", "application/octet-stream")
 	c.FileAttachment(binaryPath, spec.FileName)
+}
+
+// respondAgentDownloadError 返回结构化 JSON 错误，避免前端把错误文本误存成 exe。
+func respondAgentDownloadError(c *gin.Context, statusCode int, errMsg string) {
+	c.Header("Content-Type", "application/json; charset=utf-8")
+	c.Status(statusCode)
+	c.Writer.WriteHeaderNow()
+
+	responseBody, _ := json.Marshal(map[string]any{
+		"ErrCode": gsgin.CodeError,
+		"ErrMsg":  errMsg,
+		"Data":    nil,
+	})
+	_, _ = c.Writer.Write(responseBody)
 }

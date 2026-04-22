@@ -71,4 +71,7 @@ task package-linux -- 20260101
 
 # macOS Web 发行包
 task package-macos -- 20260101
+
+# 后台执行
+nohup ./dtool --ConfigFile=space >> /var/log/space.$(date +%Y%m%d).log 2>&1 &
 ```

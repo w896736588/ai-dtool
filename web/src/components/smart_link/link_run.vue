@@ -640,6 +640,32 @@ export default {
       document.body.removeChild(linkElement)
       window.URL.revokeObjectURL(downloadUrl)
     },
+    // parseClientDownloadError 尝试从下载响应中解析结构化错误，避免把错误页保存成可执行文件。
+    parseClientDownloadError: async function (response) {
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase()
+      if (contentType.includes('application/json')) {
+        const result = await response.json()
+        return result && result.ErrMsg ? result.ErrMsg : '下载地址不可用'
+      }
+
+      const responseText = await response.text()
+      const trimmedText = String(responseText || '').trim()
+      if (trimmedText.startsWith('{') && trimmedText.includes('"ErrCode"')) {
+        try {
+          const result = JSON.parse(trimmedText)
+          if (result && result.ErrMsg) {
+            return result.ErrMsg
+          }
+        } catch (error) {
+          // 保留原始文本兜底，避免 JSON 解析失败时吞掉错误信息。
+        }
+      }
+
+      if (trimmedText) {
+        return trimmedText
+      }
+      return '下载地址不可用'
+    },
     // 下载客户端
     downloadClient: function (os) {
       let url = this.runtimeConfig.download_urls[os]
@@ -650,9 +676,9 @@ export default {
         )
           .then(async (response) => {
             const contentType = String(response.headers.get('content-type') || '')
-            if (contentType.includes('application/json')) {
-              const result = await response.json()
-              throw new Error(result.ErrMsg || '下载地址不可用')
+            if (!response.ok || contentType.includes('application/json') || contentType.includes('text/plain')) {
+              const errorMessage = await this.parseClientDownloadError(response)
+              throw new Error(errorMessage)
             }
             const downloadBlob = await response.blob()
             const fileName = this.resolveClientDownloadFileName(os, response.headers.get('content-disposition'))
