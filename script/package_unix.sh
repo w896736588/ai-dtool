@@ -98,6 +98,7 @@ go_build_target -ldflags "-s -w" -o "${PACKAGE_DIR}/${WEB_BIN}" ./cmd/dtool
 
 write_step "[3/5] Copy runtime assets"
 mkdir -p "${PACKAGE_DIR}/config/dtool"
+mkdir -p "${PACKAGE_DIR}/web/dist"
 cp "${ROOT_DIR}/go.mod" "${PACKAGE_DIR}/go.mod"
 cp "${ROOT_DIR}/config/dtool/company.ini" "${PACKAGE_DIR}/config/dtool/config.ini"
 copy_if_exists "${ROOT_DIR}/config/dtool/frog.db" "${PACKAGE_DIR}/config/dtool/frog.db" "config/dtool/frog.db"
