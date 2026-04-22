@@ -301,10 +301,8 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 		component.EnvClient.WebkitDownloadPath = common.ResolvePlaywrightPaths(`server`)
 	// 自定义网页配置
 	component.EnvClient.SmartLinkConfig = &define.SmartLinkConfig{
-		RunMode:            define.SmartLinkRunMode(viper.GetString(`smart_link.run_mode`)),
-		ClientVersion:      viper.GetString(`smart_link.client_version`),
-		DownloadWindowsURL: strings.TrimSpace(viper.GetString(`smart_link.download_windows_url`)),
-		DownloadMacOSURL:   strings.TrimSpace(viper.GetString(`smart_link.download_macos_url`)),
+		RunMode:       define.SmartLinkRunMode(viper.GetString(`smart_link.run_mode`)),
+		ClientVersion: viper.GetString(`smart_link.client_version`),
 	}
 	// 默认值为 server
 	if component.EnvClient.SmartLinkConfig.RunMode == `` {

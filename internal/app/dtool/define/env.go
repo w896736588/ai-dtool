@@ -24,10 +24,8 @@ type WebConfig struct {
 }
 
 type SmartLinkConfig struct {
-	RunMode            SmartLinkRunMode // 运行模式 run mode / execution mode
-	ClientVersion      string           // 客户端版本要求 client version / required client version
-	DownloadWindowsURL string           // Windows 客户端下载链接 windows download url / direct Windows client download url
-	DownloadMacOSURL   string           // macOS 客户端下载链接 macOS download url / direct macOS client download url
+	RunMode       SmartLinkRunMode // 运行模式 run mode / execution mode
+	ClientVersion string           // 客户端版本要求 client version / required client version
 }
 
 type Env struct {

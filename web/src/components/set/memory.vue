@@ -55,46 +55,6 @@
               <div class="config-item-help">自定义网页运行模式：server(服务端执行) 或 local_client(本地客户端执行)</div>
             </div>
           </el-descriptions-item>
-          <el-descriptions-item label="download_windows_url">
-            <div class="config-item-wrapper">
-              <template v-if="editingItem.key === 'download_windows_url'">
-                <div class="config-edit-row">
-                  <el-input v-model="editingItem.value" placeholder="请输入 Windows 客户端下载链接" style="flex: 1" />
-                  <div class="config-edit-actions">
-                    <GitActionButton compact size="small" @click="saveItem('smart_link', 'download_windows_url', editingItem.value)">保存</GitActionButton>
-                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
-                  </div>
-                </div>
-              </template>
-              <template v-else>
-                <div class="config-display-row">
-                  <div class="config-value">{{ form.download_windows_url || '未配置，请在配置文件中设置' }}</div>
-                  <GitActionButton compact size="small" @click="startEdit('download_windows_url', form.download_windows_url)">编辑</GitActionButton>
-                </div>
-              </template>
-              <div class="config-item-help">Windows 客户端固定下载地址，前端会直接打开这个链接，不再经过服务端中转下载。</div>
-            </div>
-          </el-descriptions-item>
-          <el-descriptions-item label="download_macos_url">
-            <div class="config-item-wrapper">
-              <template v-if="editingItem.key === 'download_macos_url'">
-                <div class="config-edit-row">
-                  <el-input v-model="editingItem.value" placeholder="请输入 macOS 客户端下载链接" style="flex: 1" />
-                  <div class="config-edit-actions">
-                    <GitActionButton compact size="small" @click="saveItem('smart_link', 'download_macos_url', editingItem.value)">保存</GitActionButton>
-                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
-                  </div>
-                </div>
-              </template>
-              <template v-else>
-                <div class="config-display-row">
-                  <div class="config-value">{{ form.download_macos_url || '未配置，请在配置文件中设置' }}</div>
-                  <GitActionButton compact size="small" @click="startEdit('download_macos_url', form.download_macos_url)">编辑</GitActionButton>
-                </div>
-              </template>
-              <div class="config-item-help">macOS 客户端固定下载地址，前端会直接打开这个链接，不再经过服务端中转下载。</div>
-            </div>
-          </el-descriptions-item>
         </el-descriptions>
 
         <!-- [base] 主库配置 -->
@@ -421,8 +381,6 @@ export default {
         home_task_daily_report_prompt: DEFAULT_HOME_TASK_DAILY_REPORT_PROMPT,
         safe_password: '',
         run_mode: 'server',
-        download_windows_url: '',
-        download_macos_url: '',
       },
       RUNTIME_DATABASE_SYNC_TARGET_MAIN,
       RUNTIME_DATABASE_SYNC_TARGET_MEMORY,
@@ -517,8 +475,6 @@ export default {
         this.form.home_task_daily_report_prompt = response.Data.home_task_daily_report_prompt || DEFAULT_HOME_TASK_DAILY_REPORT_PROMPT
         this.form.safe_password = response.Data.safe_password || ''
         this.form.run_mode = response.Data.run_mode || 'server'
-        this.form.download_windows_url = response.Data.download_windows_url || ''
-        this.form.download_macos_url = response.Data.download_macos_url || ''
       })
     },
     // startEdit 开始编辑单个配置项。 // Start editing a single config item.

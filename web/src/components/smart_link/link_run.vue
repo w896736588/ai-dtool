@@ -10,8 +10,8 @@
     <template #title>{{ clientStatusTitle }}</template>
     <div>{{ clientStatusMessage }}</div>
     <div v-if="runtimeConfig.run_mode === 'local_client' && !clientStatus.client_connected" style="margin-top: 8px;">
-      <el-button type="primary" size="small" @click="downloadClient('windows')">下载 Windows 客户端</el-button>
-      <el-button type="primary" size="small" @click="downloadClient('macos')">下载 macOS 客户端</el-button>
+      <el-button type="primary" size="small" :loading="isClientDownloadBusy('windows')" @click="downloadClient('windows')">{{ getClientDownloadButtonText('windows') }}</el-button>
+      <el-button type="primary" size="small" :loading="isClientDownloadBusy('macos')" @click="downloadClient('macos')">{{ getClientDownloadButtonText('macos') }}</el-button>
       <el-button size="small" @click="refreshClientStatus">刷新状态</el-button>
     </div>
   </el-alert>
@@ -418,6 +418,22 @@ export default {
         client_os: '',
         client_arch: ''
       },
+      clientDownloadStates: {
+        windows: {
+          status: 'idle',
+          text: '下载 Windows 客户端',
+          progress: 0,
+          jobId: '',
+          timerId: null,
+        },
+        macos: {
+          status: 'idle',
+          text: '下载 macOS 客户端',
+          progress: 0,
+          jobId: '',
+          timerId: null,
+        },
+      },
     }
   },
   computed: {
@@ -468,6 +484,8 @@ export default {
   },
   beforeUnmount() {
     sseDistribute.UnRegisterReceive('smart_link_client_status')
+    this.clearClientDownloadPoll('windows')
+    this.clearClientDownloadPoll('macos')
   },
   activated() {
     if (Init.GetIsInit('smart_link') === true) {
@@ -609,21 +627,209 @@ export default {
         .catch(() => {})
       _that.$message.success('状态已刷新')
     },
-    // 下载客户端
-    downloadClient: function (platform) {
-      const downloadUrlMap = {
-        windows: this.runtimeConfig.download_windows_url,
-        macos: this.runtimeConfig.download_macos_url,
+    // getClientDownloadDefaultText 返回不同平台下载按钮的默认文案。
+    // getClientDownloadDefaultText returns the default download button label for each platform.
+    getClientDownloadDefaultText: function (platform) {
+      return platform === 'windows' ? '下载 Windows 客户端' : '下载 macOS 客户端'
+    },
+    // getClientDownloadButtonText 根据当前任务状态展示实时进度文案。
+    // getClientDownloadButtonText renders live task progress text for the download button.
+    getClientDownloadButtonText: function (platform) {
+      const state = this.clientDownloadStates[platform]
+      if (!state || !state.text) {
+        return this.getClientDownloadDefaultText(platform)
       }
-      let url = String(downloadUrlMap[platform] || '').trim()
-      if (!url) {
-        this.$message.error('下载地址不可用')
+      return state.text
+    },
+    // isClientDownloadBusy 判断当前平台是否处于编译或下载中。
+    // isClientDownloadBusy reports whether the platform-specific download task is active.
+    isClientDownloadBusy: function (platform) {
+      const state = this.clientDownloadStates[platform]
+      if (!state) return false
+      return ['pending', 'building', 'ready', 'downloading'].includes(state.status)
+    },
+    // setClientDownloadState 更新按钮展示状态，避免模板里散落复杂判断。
+    // setClientDownloadState updates the per-platform button state so template logic stays simple.
+    setClientDownloadState: function (platform, status, text, progress, extras) {
+      const currentState = this.clientDownloadStates[platform]
+      if (!currentState) return
+      this.clientDownloadStates[platform] = {
+        ...currentState,
+        ...(extras || {}),
+        status: status || currentState.status,
+        text: text || currentState.text,
+        progress: typeof progress === 'number' ? progress : currentState.progress,
+      }
+    },
+    clearClientDownloadPoll: function (platform) {
+      const state = this.clientDownloadStates[platform]
+      if (!state || !state.timerId) return
+      clearTimeout(state.timerId)
+      this.clientDownloadStates[platform].timerId = null
+    },
+    // resolveClientBuildHost 解析需要注入到客户端里的默认服务端地址。
+    // resolveClientBuildHost resolves the server host that should be embedded into the downloaded client.
+    resolveClientBuildHost: function () {
+      const apiHost = String(base.GetApiHost() || '').trim()
+      if (apiHost) {
+        return apiHost
+      }
+      if (window && window.location && window.location.origin) {
+        return window.location.origin
+      }
+      return ''
+    },
+    // scheduleClientBuildStatusPoll 统一管理轮询节奏，避免重复 setTimeout 叠加。
+    // scheduleClientBuildStatusPoll centralizes polling cadence so repeated setTimeout calls do not stack.
+    scheduleClientBuildStatusPoll: function (platform, jobId) {
+      this.clearClientDownloadPoll(platform)
+      this.clientDownloadStates[platform].timerId = setTimeout(() => {
+        this.pollClientBuildStatus(platform, jobId)
+      }, 800)
+    },
+    // pollClientBuildStatus 轮询后端编译任务状态，并驱动按钮文案实时变化。
+    // pollClientBuildStatus polls backend build progress and drives the live button label updates.
+    pollClientBuildStatus: function (platform, jobId) {
+      const _that = this
+      fetch(
+        buildRuntimeApiUrl(base.GetApiHost(), `/api/smart-link/client-build/status?job_id=${encodeURIComponent(jobId)}`),
+        buildRuntimeRequestOptions(base.GetSafeToken())
+      )
+        .then(res => res.json())
+        .then(data => {
+          if (data.ErrCode !== 0 || !data.Data) {
+            throw new Error(data.ErrMsg || '获取编译状态失败')
+          }
+          const statusData = data.Data
+          const progressText = statusData.message || _that.getClientDownloadDefaultText(platform)
+          _that.setClientDownloadState(platform, statusData.status, `${progressText}${statusData.progress >= 0 ? ` (${statusData.progress}%)` : ''}`, statusData.progress, {
+            jobId,
+          })
+          // 失败后立即停止轮询，避免错误提示和状态更新重复触发。
+          // Stop polling immediately on failure so error toasts and state transitions do not repeat.
+          if (statusData.status === 'failed') {
+            _that.clearClientDownloadPoll(platform)
+            _that.$message.error(statusData.error || statusData.message || '编译失败')
+            return
+          }
+          // 任务 ready 后切到二进制下载；completed 兜底兼容后端已提前结束的状态。
+          // Switch to binary download when ready; completed is kept as a fallback for already-finished backend states.
+          if (statusData.status === 'ready' || statusData.status === 'completed') {
+            _that.clearClientDownloadPoll(platform)
+            _that.downloadBuiltClient(platform, jobId, statusData.file_name)
+            return
+          }
+          _that.scheduleClientBuildStatusPoll(platform, jobId)
+        })
+        .catch(err => {
+          _that.clearClientDownloadPoll(platform)
+          _that.setClientDownloadState(platform, 'failed', '编译失败', 100)
+          _that.$message.error(err.message || '获取编译状态失败')
+        })
+    },
+    // downloadBuiltClient 下载已编译好的二进制文件，并触发浏览器保存。
+    // downloadBuiltClient downloads the compiled binary artifact and triggers the browser save flow.
+    downloadBuiltClient: function (platform, jobId, fallbackFileName) {
+      const _that = this
+      const requestUrl = buildDownloadUrlWithToken(
+        buildRuntimeApiUrl(base.GetApiHost(), `/api/smart-link/client-build/download/${encodeURIComponent(jobId)}`),
+        base.GetSafeToken()
+      )
+      const xhr = new XMLHttpRequest()
+      xhr.open('GET', requestUrl, true)
+      xhr.responseType = 'blob'
+      if (base.GetSafeToken()) {
+        xhr.setRequestHeader('Token', base.GetSafeToken())
+      }
+      _that.setClientDownloadState(platform, 'downloading', '正在下载客户端', 100, { jobId })
+      xhr.onprogress = function (event) {
+        // 浏览器能提供长度时展示实时百分比，否则退化为通用“正在下载”文案。
+        // Show live percentage when the browser exposes content length, otherwise fall back to a generic downloading message.
+        if (event.lengthComputable && event.total > 0) {
+          const percent = Math.min(100, Math.round((event.loaded / event.total) * 100))
+          _that.setClientDownloadState(platform, 'downloading', `正在下载客户端 (${percent}%)`, 100, { jobId })
+          return
+        }
+        _that.setClientDownloadState(platform, 'downloading', '正在下载客户端', 100, { jobId })
+      }
+      xhr.onload = function () {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          _that.setClientDownloadState(platform, 'failed', '下载失败', 100, { jobId })
+          _that.$message.error('客户端下载失败')
+          return
+        }
+        const headerFileName = xhr.getResponseHeader('X-Download-Filename')
+        const fileName = headerFileName || fallbackFileName || _that.getClientDownloadDefaultText(platform)
+        const blobUrl = window.URL.createObjectURL(xhr.response)
+        const a = document.createElement('a')
+        a.href = blobUrl
+        a.download = fileName
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        window.URL.revokeObjectURL(blobUrl)
+        _that.setClientDownloadState(platform, 'completed', '下载完成', 100, { jobId })
+        setTimeout(() => {
+          _that.setClientDownloadState(platform, 'idle', _that.getClientDownloadDefaultText(platform), 0, { jobId: '' })
+        }, 2000)
+      }
+      xhr.onerror = function () {
+        _that.setClientDownloadState(platform, 'failed', '下载失败', 100, { jobId })
+        _that.$message.error('客户端下载失败')
+      }
+      xhr.send()
+    },
+    // downloadClient 创建编译任务并开始轮询，是按钮点击后的主入口。
+    // downloadClient creates the build job and starts polling; it is the main button click entry point.
+    downloadClient: function (platform) {
+      const _that = this
+      // 未知平台直接拦截，避免前端状态机和后端参数校验出现双重噪音。
+      // Reject unknown platforms early so both the frontend state machine and backend validation stay clean.
+      if (!_that.clientDownloadStates[platform]) {
+        _that.$message.error('不支持的客户端平台')
         return
       }
-      // downloadClient 下载客户端时将当前登录 token 带到地址栏，便于新标签页直接通过后端鉴权。
-      url = buildDownloadUrlWithToken(url, base.GetSafeToken())
-      window.open(url, '_blank')
-      this.$message.success('已打开客户端下载链接')
+      // 正在编译或下载时不重复提交，避免产生多个并发任务抢占同一个按钮状态。
+      // Do not submit again while a job is active, otherwise concurrent tasks would fight over one button state.
+      if (_that.isClientDownloadBusy(platform)) {
+        return
+      }
+      const host = _that.resolveClientBuildHost()
+      // host 会编译进客户端，因此拿不到有效地址时必须直接终止。
+      // host is compiled into the client, so the flow must stop if no valid server address can be resolved.
+      if (!host) {
+        _that.$message.error('当前服务端地址不可用')
+        return
+      }
+      _that.setClientDownloadState(platform, 'pending', '准备编译参数 (5%)', 5, { jobId: '' })
+      fetch(
+        buildRuntimeApiUrl(base.GetApiHost(), '/api/smart-link/client-build/start'),
+        buildRuntimeRequestOptions(base.GetSafeToken(), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            platform,
+            host,
+          })
+        })
+      )
+        .then(res => res.json())
+        .then(data => {
+          if (data.ErrCode !== 0 || !data.Data) {
+            throw new Error(data.ErrMsg || '创建编译任务失败')
+          }
+          const jobId = data.Data.job_id
+          _that.setClientDownloadState(platform, data.Data.status || 'pending', `${data.Data.message || '准备编译参数'} (${data.Data.progress || 0}%)`, data.Data.progress || 0, {
+            jobId,
+          })
+          _that.scheduleClientBuildStatusPoll(platform, jobId)
+        })
+        .catch(err => {
+          _that.setClientDownloadState(platform, 'failed', '编译失败', 100)
+          _that.$message.error(err.message || '创建编译任务失败')
+        })
     },
     smartLinkRun: function (smartLinkIndex, linkIndex) {
       let _that = this
