@@ -20,16 +20,9 @@ type TDataBaseUp struct {
 	databaseDesc string
 }
 
-// log 库中的 smart link 最近使用目录表名。
-const logSmartLinkLastTableName = `tbl_smart_link_last`
-
 // NewTDataBaseUp 改为显式注入依赖，避免 business 反向依赖 component。
 func NewTDataBaseUp(db *common.CSqlite, databaseUpPath string) *TDataBaseUp {
 	return newDatabaseUp(db, databaseUpPath, `tbl_database_up`)
-}
-
-func NewMemoryDataBaseUp(db *common.CSqlite, databaseUpPath string) *TDataBaseUp {
-	return newDatabaseUp(db, databaseUpPath, `tbl_memory_database_up`)
 }
 
 // NewLogDataBaseUp 创建 log 库迁移执行器，沿用历史 tbl_log_database_up 记录表避免重复迁移。
