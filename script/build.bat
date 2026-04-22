@@ -9,10 +9,9 @@ cd /d "%~dp0.."
 set "ROOT_DIR=%cd%"
 set "BUILD_DIR=%ROOT_DIR%\build"
 
-for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "TS=%%i"
-set "STAGE_DIR=%BUILD_DIR%\release_%TS%"
+set "STAGE_DIR=%BUILD_DIR%\release"
 set "PKG_DIR=%STAGE_DIR%\package"
-set "ZIP_FILE=%BUILD_DIR%\dtool_release_%TS%.zip"
+set "ZIP_FILE=%BUILD_DIR%\dtool_release.zip"
 
 where go >nul 2>nul
 if errorlevel 1 (

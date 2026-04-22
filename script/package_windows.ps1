@@ -22,10 +22,9 @@ function Assert-PathExists {
 
 $RootDir = Split-Path -Parent $PSScriptRoot
 $BuildDir = Join-Path $RootDir "build"
-$Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$StageDir = Join-Path $BuildDir "release_windows_$Timestamp"
+$StageDir = Join-Path $BuildDir "release_windows"
 $PackageDir = Join-Path $StageDir "package"
-$ZipFile = Join-Path $BuildDir "dtool_release_windows_$Timestamp.zip"
+$ZipFile = Join-Path $BuildDir "dtool_release_windows.zip"
 $FrontendDistDir = Join-Path $RootDir "web/dist"
 $WebExe = Join-Path $BuildDir "dtool.exe"
 
