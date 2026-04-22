@@ -660,7 +660,7 @@ func (h *MemoryStore) restorePendingTask() {
 	}
 	taskID, payload, err := loadPendingTask(config)
 	if err != nil {
-		gstool.FmtPrintlnLogTime(`记忆库自动同步恢复待处理任务失败 dir=%s err=%s`, config.Dir, err.Error())
+		gstool.FmtPrintlnLogTime(`记忆库自动同步恢复待处理任务失败 dir=%s dbPath=%s dbName=%s err=%s`, config.Dir, config.DBPath, config.DBName, err.Error())
 		return
 	}
 	if taskID <= 0 || strings.TrimSpace(payload) == `` {
