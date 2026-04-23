@@ -44,18 +44,27 @@ type receiveBinder interface {
 	SetFuncReceiveMsg(func(string) string)
 }
 
+// terminalOutputFilter 复用底层 SSH 终端的输出清洗能力，优先过滤 shell prompt。
+type terminalOutputFilter interface {
+	FilterEndTip(string) string
+}
+
 // makeReceiveHandler 根据格式化函数构造统一的终端消息转发逻辑。
-func makeReceiveHandler(sse *p_sse.SseShell, formatStream func(string) []string) func(string) string {
+func makeReceiveHandler(sse *p_sse.SseShell, outputFilter terminalOutputFilter, formatStream func(string) []string) func(string) string {
 	return func(msg string) string {
+		displayMsg := filterTerminalOutputForDisplay(outputFilter, msg)
+		if displayMsg == `` {
+			return msg
+		}
 		if formatStream != nil {
-			msgList := formatStream(msg)
+			msgList := formatStream(displayMsg)
 			for _, line := range msgList {
-				if canSendSse(sse) {
+				if line != `` && canSendSse(sse) {
 					sse.Send(line)
 				}
 			}
 		} else if canSendSse(sse) {
-			sse.Send(msg)
+			sse.Send(displayMsg)
 		}
 		return msg
 	}
@@ -63,7 +72,8 @@ func makeReceiveHandler(sse *p_sse.SseShell, formatStream func(string) []string)
 
 // bindReceiveHandler 为终端重新绑定消息接收函数，便于连接复用时切换 SSE。
 func bindReceiveHandler(target receiveBinder, sse *p_sse.SseShell, formatStream func(string) []string) {
-	target.SetFuncReceiveMsg(makeReceiveHandler(sse, formatStream))
+	outputFilter, _ := target.(terminalOutputFilter)
+	target.SetFuncReceiveMsg(makeReceiveHandler(sse, outputFilter, formatStream))
 }
 
 // NewShell 初始化 Shell 管理器，并启动空闲连接清理协程。
@@ -249,6 +259,14 @@ func (h *Shell) GetClientMarkdown(sshConfig map[string]any, shellClientId string
 // SetSse 为指定终端绑定新的 SSE 接收器。
 func (h *Shell) SetSse(gsShell *gsssh.SshTerminal, sse *p_sse.SseShell) {
 	bindReceiveHandler(gsShell, sse, nil)
+}
+
+// filterTerminalOutputForDisplay 过滤交互式终端提示符，避免 SSE 输出混入 user@host:path$。
+func filterTerminalOutputForDisplay(outputFilter terminalOutputFilter, msg string) string {
+	if outputFilter == nil || msg == `` {
+		return msg
+	}
+	return outputFilter.FilterEndTip(msg)
 }
 
 // GetSshOnce 返回一次性 SSH 客户端，适合不需要终端复用的场景。
