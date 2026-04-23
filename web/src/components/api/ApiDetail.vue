@@ -1250,13 +1250,21 @@ export default {
 }
 
 .result-field-desc-panel {
-  max-height: min(62vh, calc(100vh - 260px));
+  height: calc(100vh - 260px);
+  max-height: calc(100vh - 260px);
   min-height: 320px;
   overflow: auto;
   border: 1px solid #dbe7d8;
   border-radius: 12px;
   background: #fdfefd;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+@supports (height: 100dvh) {
+  .result-field-desc-panel {
+    height: calc(100dvh - 260px);
+    max-height: calc(100dvh - 260px);
+  }
 }
 
 .result-field-desc-table {
