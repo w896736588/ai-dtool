@@ -40,6 +40,9 @@
                 />
               </div>
             </el-popover>
+            <pl-button class="toolbar-btn toolbar-btn-mini" size="small" type="success" plain @click="copyApiHostAndToken">
+              <el-icon><CopyDocument /></el-icon>复制API地址
+            </pl-button>
           </div>
         </div>
         <div class="collection-list">
@@ -439,13 +442,14 @@
 </template>
 
 <script>
-import {FolderOpened, Folder, Document, More, Plus, QuestionFilled, Tools} from '@element-plus/icons-vue'
+import {FolderOpened, Folder, Document, More, Plus, QuestionFilled, Tools, CopyDocument} from '@element-plus/icons-vue'
 import CollectionBasicInfo from './api/CollectionBasicInfo'
 import CollectionEnvironment from './api/CollectionEnvironment'
 import FolderDetail from './api/FolderDetail'
 import ApiDetail from './api/ApiDetail'
 import Markdown from '@/components/Markdown.vue'
 import Api from '@/utils/base/api'
+import Base from '@/utils/base'
 import ArrayUtil from '@/utils/base/array'
 import KeyDebounceDetector from "@/utils/base/keyup"
 import store from "@/utils/base/store";
@@ -461,6 +465,7 @@ export default {
     Plus,
     QuestionFilled,
     Tools,
+    CopyDocument,
     CollectionBasicInfo,
     CollectionEnvironment,
     FolderDetail,
@@ -1871,6 +1876,17 @@ export default {
       } finally {
         document.body.removeChild(input)
       }
+    },
+    copyApiHostAndToken() {
+      const apiHost = Base.GetApiHost()
+      const token = Base.GetSafeToken()
+      const lines = []
+      lines.push('API Host: ' + apiHost)
+      if (token) {
+        lines.push('Token: ' + token)
+      }
+      const text = lines.join('\n')
+      this.copyText(text, 'API地址和Token已复制')
     },
     async buildMoveApiFolderOptions(api) {
       this.moveApiFolderOptionsLoading = true
