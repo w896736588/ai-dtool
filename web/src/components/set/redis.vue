@@ -48,8 +48,8 @@
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100" align="center">
           <template #default="scope">
-            <el-tag :type="scope.row.status === 'connected' ? 'success' : 'danger'" size="small">
-              {{ scope.row.status === 'connected' ? '已连接' : '未连接' }}
+            <el-tag :type="scope.row.status === 'success' ? 'success' : 'danger'" size="small">
+              {{ scope.row.status === 'success' ? '已连接' : '未连接' }}
             </el-tag>
           </template>
         </el-table-column>

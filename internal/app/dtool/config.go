@@ -303,6 +303,7 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	component.EnvClient.SmartLinkConfig = &define.SmartLinkConfig{
 		RunMode:       define.SmartLinkRunMode(viper.GetString(`smart_link.run_mode`)),
 		ClientVersion: viper.GetString(`smart_link.client_version`),
+		SourcePath:    strings.TrimSpace(viper.GetString(`smart_link.source_path`)),
 	}
 	// 默认值为 server
 	if component.EnvClient.SmartLinkConfig.RunMode == `` {

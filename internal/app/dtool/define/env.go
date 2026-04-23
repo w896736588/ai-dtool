@@ -26,6 +26,7 @@ type WebConfig struct {
 type SmartLinkConfig struct {
 	RunMode       SmartLinkRunMode // 运行模式 run mode / execution mode
 	ClientVersion string           // 客户端版本要求 client version / required client version
+	SourcePath    string           // 源代码目录 source path / Go source code root for cross-compilation
 }
 
 type Env struct {

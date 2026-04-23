@@ -292,6 +292,29 @@ func SmartLinkClientBuildDownload(c *gin.Context) {
 	job.UpdatedAt = time.Now().Unix()
 }
 
+// resolveAgentSourcePath 确定编译 dtool-agent 时使用的源代码目录。
+// 优先使用配置文件中的 source_path；若未配置则回退到 GOMOD 环境变量所在目录；最终兜底为 RootPath。
+// resolveAgentSourcePath determines the Go source root for building dtool-agent.
+// It prefers the configured source_path, falls back to GOMOD, and finally defaults to RootPath.
+func resolveAgentSourcePath() string {
+	cfg := component.EnvClient.SmartLinkConfig
+	if cfg != nil && cfg.SourcePath != "" {
+		if _, err := os.Stat(filepath.Join(cfg.SourcePath, "go.mod")); err == nil {
+			return cfg.SourcePath
+		}
+	}
+	// 通过 go env GOMOD 推导源代码目录
+	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
+	if err == nil {
+		gomodPath := strings.TrimSpace(string(out))
+		if gomodPath != "" && gomodPath != "/dev/null" {
+			return filepath.Dir(gomodPath)
+		}
+	}
+	// 兜底使用 RootPath
+	return component.EnvClient.RootPath
+}
+
 // runAgentBuildJob 在后台执行交叉编译，并把阶段进度回写到任务仓库。
 // runAgentBuildJob performs the cross-compilation in background and writes progress back to the job store.
 func runAgentBuildJob(job *agentBuildJob, spec agentDownloadSpec) {
@@ -306,8 +329,9 @@ func runAgentBuildJob(job *agentBuildJob, spec agentDownloadSpec) {
 	outputPath := filepath.Join(outputDir, spec.FileName)
 	job.setProgress(agentBuildStatusBuilding, 35, "正在编译客户端")
 
+	sourcePath := resolveAgentSourcePath()
 	buildCommand := exec.Command("go", "build", "-trimpath", "-ldflags", buildAgentBuildLdflags(job.Host, getSmartLinkConfig().ClientVersion), "-o", outputPath, "./cmd/dtool-agent")
-	buildCommand.Dir = component.EnvClient.RootPath
+	buildCommand.Dir = sourcePath
 	// 固定 GOARCH=amd64 和 CGO_ENABLED=0，降低跨平台编译对宿主环境依赖。
 	// Keep GOARCH=amd64 and CGO_ENABLED=0 fixed to reduce host-environment coupling during cross compilation.
 	buildCommand.Env = append(os.Environ(),
