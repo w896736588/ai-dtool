@@ -132,7 +132,9 @@ description: Use when operating the dtool 接口开发模块 and the task involv
 
 ### 4. 必须设置结果字段备注（response_take）
 
-每个接口都必须设置 `response_take`（返回参数提取定义），用于描述接口返回结果中各字段的含义。
+每个接口都必须设置 `response_take`（结果字段备注），用于描述接口返回结果中各字段的含义。
+
+返回结果字段描述、字段含义、示例等备注内容必须写入 `response_take` 数组结构，不得写入 `take_result`（结果提取）。
 
 `response_take` 格式为 JSON 数组，每项包含：
 - `description`：字段含义描述（必填）

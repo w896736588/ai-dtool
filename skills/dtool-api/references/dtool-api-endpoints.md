@@ -218,26 +218,32 @@
 
 #### 参数说明
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `id` | int | 接口 ID，更新时必传 |
-| `folder_id` | int | 目标文件夹 ID |
-| `collection_id` | int | 目标集合 ID |
-| `name` | string | 接口名称 |
-| `method` | string | 请求方法：GET / POST |
-| `url` | string | 请求 URL，可含环境变量如 `$Url$/v1/login` |
-| `protocol` | string | 协议：http / https |
-| `desc` | string | 接口描述 |
-| `headers` | object | 请求头，键值对 `{"Content-Type":"application/json"}` |
-| `query_params` | array | URL 查询参数数组，见下方字段格式 |
-| `content_type` | string | 请求体类型，**必须根据后端控制器实际代码判断**，见下方对照表 |
+| 字段 | 类型 | 说明                                             |
+|---|---|------------------------------------------------|
+| `id` | int | 接口 ID，更新时必传                                    |
+| `folder_id` | int | 目标文件夹 ID                                       |
+| `collection_id` | int | 目标集合 ID                                        |
+| `name` | string | 接口名称                                           |
+| `method` | string | 请求方法：GET / POST                                |
+| `url` | string | 请求 URL，可含环境变量如 `$Url$/v1/login`                |
+| `protocol` | string | 协议：http / https                                |
+| `desc` | string | 接口描述                                           |
+| `headers` | object | 请求头，键值对 `{"Content-Type":"application/json"}`  |
+| `query_params` | array | URL 查询参数数组，见下方字段格式                             |
+| `content_type` | string | 请求体类型，**必须根据后端控制器实际代码判断**，见下方对照表               |
 | `body_form` | array | 表单参数数组（用于 form-urlencoded / multipart），见下方字段格式 |
-| `body_json` | string | JSON 请求体字符串（用于 application/json） |
-| `body_raw` | string | 原始请求体（用于 text/plain / raw） |
-| `env_id` | int | 环境变量 ID |
-| `response_take` | array | 返回参数提取定义，**必须填写**，见下方格式 |
-| `take_result` | string | 上次运行提取结果（系统自动管理） |
-| `take_result_desc` | string | 提取结果描述 |
+| `body_json` | string | JSON 请求体字符串（用于 application/json）               |
+| `body_raw` | string | 原始请求体（用于 text/plain / raw）                     |
+| `env_id` | int | 环境变量 ID                                        |
+| `response_take` | array | 结果字段备注，**必须填写**，用于写入返回字段描述、字段含义、示例等备注结构，见下方格式  |
+| `take_result` | string | 不需要处理                                          |
+| `take_result_desc` | string | 不需要处理                                          |
+
+#### 返回结果字段写入规则
+
+- 返回字段描述、字段含义、示例等备注内容必须写入 `response_take` 数组结构。
+- `take_result` 对应“结果提取”，只保存运行提取结果或系统管理内容，不用于写入字段备注。
+- 生成或更新接口时，禁止把返回字段描述写入 `take_result`。
 
 #### query_params / body_form 中每项的字段格式
 
