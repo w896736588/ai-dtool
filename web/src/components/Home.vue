@@ -679,7 +679,7 @@
 
   <SettingsDialog
     v-model="homeTaskReportSettingsDialogVisible"
-    title="工作日报 AI 设置"
+    title="任务清单设置"
     width="80%"
     @closed="refreshHomeTaskReportSettings"
   >

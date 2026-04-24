@@ -846,6 +846,16 @@ func SetMemoryConfigGet(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	tapdSmartLinkID, err := homeTaskConfigValue(define.HomeTaskConfigTapdSmartLinkID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	tapdLinkLabel, err := homeTaskConfigValue(define.HomeTaskConfigTapdLinkLabel)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`db_dir`:                            mainDBConfig.Dir,
 		`db_name`:                           mainDBConfig.DBName,
@@ -863,6 +873,8 @@ func SetMemoryConfigGet(c *gin.Context) {
 		`home_task_daily_report_prompt`:     dailyReportPrompt,
 		`home_task_daily_report_model_id`:   cast.ToInt(dailyReportModelID),
 		`home_task_fragment_prompt`:         fragmentPrompt,
+		`home_task_tapd_smart_link_id`:      cast.ToInt(tapdSmartLinkID),
+		`home_task_tapd_link_label`:         tapdLinkLabel,
 		`safe_password`:                     component.ConfigViper.GetString(`safe.password`),
 		`run_mode`:                          component.EnvClient.SmartLinkConfig.RunMode,
 		`client_version`:                    component.EnvClient.SmartLinkConfig.ClientVersion,
@@ -925,6 +937,16 @@ func SetMemoryConfigSave(c *gin.Context) {
 	}
 	homeTaskFragmentPrompt := strings.TrimSpace(cast.ToString(dataMap[`home_task_fragment_prompt`]))
 	if err := common.DbMain.HomeTaskConfigSave(`任务知识片段提示词`, define.HomeTaskConfigFragmentPrompt, homeTaskFragmentPrompt, `新建任务时自动创建知识片段的提示词模板`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskTapdSmartLinkID := cast.ToString(cast.ToInt(dataMap[`home_task_tapd_smart_link_id`]))
+	if err := common.DbMain.HomeTaskConfigSave(`TAPD自定义网页ID`, define.HomeTaskConfigTapdSmartLinkID, homeTaskTapdSmartLinkID, `TAPD登录页所选自定义网页ID`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskTapdLinkLabel := strings.TrimSpace(cast.ToString(dataMap[`home_task_tapd_link_label`]))
+	if err := common.DbMain.HomeTaskConfigSave(`TAPD链接标签`, define.HomeTaskConfigTapdLinkLabel, homeTaskTapdLinkLabel, `TAPD登录页所选链接的label`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
