@@ -2,6 +2,7 @@ package define
 
 // AgentWsMessageType Agent <-> Server WebSocket 消息类型
 type AgentWsMessageType string
+type AgentTaskType string
 
 const (
 	// Server -> Agent
@@ -15,6 +16,11 @@ const (
 	AgentWsMsgTaskStatus AgentWsMessageType = "task_status"     // 阶段状态
 	AgentWsMsgTaskLog    AgentWsMessageType = "task_log"        // 实时日志
 	AgentWsMsgTaskResult AgentWsMessageType = "task_result"     // 最终结果
+)
+
+const (
+	AgentTaskTypePlaywrightRun    AgentTaskType = "playwright_run"
+	AgentTaskTypeScrapeToMarkdown AgentTaskType = "scrape_to_markdown"
 )
 
 // AgentWsMessage 统一 WebSocket 消息结构
@@ -53,12 +59,21 @@ type AgentRunParams struct {
 	ShowCookies         any               `json:"show_cookies"` // 原样传递，agent 侧反序列化
 }
 
+type AgentTaskScrapeConfig struct {
+	JumpURL     string `json:"jump_url"`
+	CssSelector string `json:"css_selector"`
+	WaitSeconds int    `json:"wait_seconds"`
+}
+
 // AgentTaskExecuteData task_execute 消息的 data 结构
 type AgentTaskExecuteData struct {
-	TaskID          string         `json:"task_id"`
-	SseDistributeId string         `json:"sse_distribute_id"`
-	ClientID        string         `json:"client_id"`
-	RunParams       AgentRunParams `json:"run_params"`
+	TaskID          string                `json:"task_id"`
+	SseDistributeId string                `json:"sse_distribute_id"`
+	ClientID        string                `json:"client_id"`
+	TaskType        AgentTaskType         `json:"task_type,omitempty"`
+	SafeToken       string                `json:"safe_token,omitempty"`
+	RunParams       AgentRunParams        `json:"run_params"`
+	ScrapeConfig    AgentTaskScrapeConfig `json:"scrape_config,omitempty"`
 }
 
 // AgentTaskLogData task_log 消息的 data 结构
@@ -77,6 +92,13 @@ type AgentTaskResultData struct {
 	Status       string `json:"status"`
 	ErrorMessage string `json:"error_message,omitempty"`
 	FinishTime   int64  `json:"finish_time,omitempty"`
+	DownloadURL  string `json:"download_url,omitempty"`
+	FileName     string `json:"file_name,omitempty"`
+}
+
+type AgentTaskResultFileUploadResponse struct {
+	DownloadURL string `json:"download_url"`
+	FileName    string `json:"file_name"`
 }
 
 // AgentHelloData agent_hello 消息的 data 结构

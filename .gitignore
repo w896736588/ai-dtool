@@ -22,7 +22,6 @@ web/test
 /.codex/docs/
 tmp/dtool.exe
 tmp/build-errors.log
-tmp/dtool.exe
 *.exe
 /tmp/
 *_test.js
@@ -30,3 +29,5 @@ tmp/dtool.exe
 *_test.py
 *.test.cjs
 /dtool.exe
+/skills/dtool-api.zip
+/web/download/*

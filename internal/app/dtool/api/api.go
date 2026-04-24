@@ -200,7 +200,7 @@ func (h *Api) Run() error {
 	h.Result.Headers = h.Result.RequestHeaders
 	h.Result.ResponseHeaders = map[string]string{}
 	startMill := time.Now().UnixMilli()
-	cli.Request(20)
+	cli.Request(300)
 	if cli.ErrInfo() != nil {
 		h.Result.Millisecond = time.Now().UnixMilli() - startMill
 		h.Result.Errmsg = cli.ErrInfo().Error()

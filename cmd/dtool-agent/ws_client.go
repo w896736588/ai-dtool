@@ -1,15 +1,50 @@
 package main
 
 import (
+	"bytes"
 	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	neturl "net/url"
+	"strings"
 	"sync"
 	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gorilla/websocket"
 )
+
+func buildScrapeResultUploadRequest(endpoint, taskID, fileName string, content []byte, safeToken string) (*http.Request, error) {
+	body := bytes.NewBuffer(nil)
+	writer := multipart.NewWriter(body)
+	if err := writer.WriteField("task_id", taskID); err != nil {
+		return nil, err
+	}
+	fileWriter, err := writer.CreateFormFile("file", fileName)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = fileWriter.Write(content); err != nil {
+		return nil, err
+	}
+	if err = writer.Close(); err != nil {
+		return nil, err
+	}
+
+	request, err := http.NewRequest(http.MethodPost, endpoint, body)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	if strings.TrimSpace(safeToken) != "" {
+		request.Header.Set("Token", strings.TrimSpace(safeToken))
+	}
+	return request, nil
+}
 
 // WsClient WebSocket 客户端
 type WsClient struct {
@@ -139,6 +174,7 @@ func (w *WsClient) readLoop() {
 
 		switch msg.Type {
 		case define.AgentWsMsgTaskExecute:
+			gstool.FmtPrintlnLogTime(`收到服务端任务下发 type=%s task_id=%s sse_distribute_id=%s`, msg.Type, msg.TaskID, msg.SseDistributeId)
 			if w.taskHandler != nil {
 				go w.taskHandler(msg)
 			}
@@ -182,12 +218,14 @@ func (w *WsClient) Send(msg define.AgentWsMessage) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.conn == nil {
+		gstool.FmtPrintlnLogTime(`发送消息被跳过，WebSocket未连接 type=%s task_id=%s`, msg.Type, msg.TaskID)
 		return nil
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return err
 	}
+	gstool.FmtPrintlnLogTime(`发送消息到服务端 type=%s task_id=%s sse_distribute_id=%s`, msg.Type, msg.TaskID, msg.SseDistributeId)
 	return w.conn.WriteMessage(websocket.TextMessage, data)
 }
 
@@ -231,17 +269,63 @@ func (w *WsClient) SendTaskStatus(taskID, sseDistributeId, status string) {
 
 // SendTaskResult 发送任务最终结果
 func (w *WsClient) SendTaskResult(taskID, sseDistributeId, status, errMsg string) {
+	w.SendTaskResultData(taskID, sseDistributeId, define.AgentTaskResultData{
+		Status:       status,
+		ErrorMessage: errMsg,
+		FinishTime:   time.Now().Unix(),
+	})
+}
+
+// SendTaskResultData 发送带扩展结果字段的任务最终结果。
+func (w *WsClient) SendTaskResultData(taskID, sseDistributeId string, result define.AgentTaskResultData) {
 	w.Send(define.AgentWsMessage{
 		Type:            define.AgentWsMsgTaskResult,
 		ClientID:        w.config.ClientID,
 		TaskID:          taskID,
 		SseDistributeId: sseDistributeId,
-		Data: define.AgentTaskResultData{
-			Status:       status,
-			ErrorMessage: errMsg,
-			FinishTime:   time.Now().Unix(),
-		},
+		Data:            result,
 	})
+}
+
+// UploadScrapeResultFile 上传抓取任务 ZIP 结果文件到服务端。
+func (w *WsClient) UploadScrapeResultFile(taskID, fileName string, content []byte, safeToken string) (*define.AgentTaskResultFileUploadResponse, error) {
+	gstool.FmtPrintlnLogTime(`开始上传抓取结果文件 task_id=%s file_name=%s size=%d token_set=%t`, taskID, fileName, len(content), strings.TrimSpace(safeToken) != "")
+	endpoint, err := neturl.Parse(strings.TrimRight(w.config.ServerURL, "/") + "/api/smart-link/task/result-file")
+	if err != nil {
+		return nil, err
+	}
+	gstool.FmtPrintlnLogTime(`抓取结果上传目标 task_id=%s endpoint=%s`, taskID, endpoint.String())
+	request, err := buildScrapeResultUploadRequest(endpoint.String(), taskID, fileName, content, safeToken)
+	if err != nil {
+		return nil, err
+	}
+	client := &http.Client{Timeout: 60 * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	gstool.FmtPrintlnLogTime(`抓取结果上传响应 task_id=%s status=%d body_len=%d`, taskID, response.StatusCode, len(responseBody))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("upload result file status=%d body=%s", response.StatusCode, string(responseBody))
+	}
+	result := struct {
+		ErrCode int                                      `json:"ErrCode"`
+		ErrMsg  string                                   `json:"ErrMsg"`
+		Data    define.AgentTaskResultFileUploadResponse `json:"Data"`
+	}{}
+	if err = json.Unmarshal(responseBody, &result); err != nil {
+		return nil, err
+	}
+	if result.ErrCode != 0 {
+		return nil, errors.New(result.ErrMsg)
+	}
+	gstool.FmtPrintlnLogTime(`抓取结果上传完成 task_id=%s saved_file_name=%s download_url=%s`, taskID, result.Data.FileName, result.Data.DownloadURL)
+	return &result.Data, nil
 }
 
 // Close 关闭连接

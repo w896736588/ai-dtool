@@ -291,10 +291,11 @@ func handleAgentTaskResult(msg define.AgentWsMessage) {
 	resultData, _ := msg.Data.(map[string]any)
 
 	updateData := map[string]any{
-		"status":        cast.ToString(resultData["status"]),
-		"error_message": cast.ToString(resultData["error_message"]),
-		"update_time":   now,
-		"finish_time":   now,
+		"status":         cast.ToString(resultData["status"]),
+		"error_message":  cast.ToString(resultData["error_message"]),
+		"result_payload": gstool.JsonEncode(resultData),
+		"update_time":    now,
+		"finish_time":    now,
 	}
 
 	_, _ = common.DbMain.Client.QuickUpdate("tbl_smart_link_task", map[string]any{

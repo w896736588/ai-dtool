@@ -3,6 +3,7 @@ package main
 import (
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
+	"dev_tool/internal/app/dtool/plw"
 	"dev_tool/internal/pkg/p_common"
 	"dev_tool/internal/pkg/p_js"
 	"fmt"
@@ -132,6 +133,8 @@ func initComponents() error {
 
 	// 初始化 PlaywrightClient
 	component.PlaywrightClient = component.NewTPlaywright()
+	// Agent 模式也需要初始化页面活跃时间容器，避免首次任务写入 nil map。
+	plw.InitPageActiveTime()
 
 	// 初始化 TJasClient（通过嵌入的 JS 文件）
 	p_common.TJasClient = &p_common.TJas{
