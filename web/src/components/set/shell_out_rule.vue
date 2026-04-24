@@ -365,7 +365,15 @@ export default {
       this.saveRuleSetWithItems()
     },
     removeRuleItem(index) {
-      this.ruleSetForm.rule_items.splice(index, 1)
+      const itemName = this.ruleSetForm.rule_items[index]?.name || ''
+      this.$confirm(`确定删除规则"${itemName}"吗？`, '确认删除', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }).then(() => {
+        this.ruleSetForm.rule_items.splice(index, 1)
+        this.saveRuleSetWithItems()
+      }).catch(() => {})
     },
     copyRuleItem(row) {
       const copiedItem = { ...row, id: 0, name: row.name + '_副本' }
@@ -387,10 +395,13 @@ export default {
       }
       return true
     },
-    // saveRuleSet 只保存规则集基础信息（名称、说明、启用状态），不保存规则列表 // Save only the rule set basic info (name, description, is_enabled), not the rule items
+    // saveRuleSet 保存规则集基础信息及规则列表，关闭编辑弹窗。 // Save the rule set and its rule items, then close the dialog.
     saveRuleSet() {
       if (!String(this.ruleSetForm.name || '').trim()) {
         this.$helperNotify.error('规则集名称不能为空')
+        return
+      }
+      if (!this.validateRuleItems()) {
         return
       }
       const payload = {
@@ -399,7 +410,18 @@ export default {
         description: this.ruleSetForm.description,
         is_enabled: this.ruleSetForm.is_enabled ? 1 : 0,
         match_mode: this.ruleSetForm.match_mode,
-        rule_items: [],
+        rule_items: this.ruleSetForm.rule_items.map((item) => ({
+          id: item.id || 0,
+          name: item.name,
+          rule_type: item.rule_type,
+          match_type: item.match_type,
+          pattern: item.pattern,
+          exclude_pattern: item.exclude_pattern,
+          priority: Number(item.priority || 0),
+          is_enabled: item.is_enabled ? 1 : 0,
+          stop_on_match: item.stop_on_match ? 1 : 0,
+          config_json: buildRuleConfig(item),
+        })),
       }
       shellOutRule.ShellOutRuleSetSave(payload, (response) => {
         if (response.ErrCode !== 0) {
@@ -445,6 +467,7 @@ export default {
           return
         }
         this.loadRuleSetList()
+        this.$helperNotify.success('保存成功')
       })
     },
     // toggleRuleItemEnabled 切换规则启用状态并即时保存 // Toggle rule item enabled status and save immediately
