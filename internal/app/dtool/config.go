@@ -184,6 +184,8 @@ func initComponent(appName, ConfigFile string) {
 	component.MemoryRuntime.OnStatusChange = controller.BroadcastAsyncTasksUpdate
 	component.MainDBAutoSyncRuntime = common.NewMainDBAutoSync()
 	component.MainDBAutoSyncRuntime.OnStatusChange = controller.BroadcastAsyncTasksUpdate
+	component.CronScheduler = common.NewCronScheduler()
+	component.CronScheduler.SetTaskFunc(controller.CronDailyReportGenerate)
 	component.RedisClient = &p_db.TRedis{RedisClientMap: make(map[string]*gsdb.GsRedis)}
 	component.RedisClient.PingAll(common.GetCall())
 	component.MysqlClient = &p_db.TMysql{MysqlClientMap: make(map[string]*gsdb.GsMysql)}
@@ -354,6 +356,7 @@ func initSqlite() {
 		panic(err.Error())
 	}
 	business.StartMainDBAutoSync()
+	business.StartCronScheduler()
 	component.ShellOutClient.InitGroupConfigs()
 }
 
@@ -488,6 +491,7 @@ func Stop() {
 	} else if err := component.MemoryRuntime.SyncNow(); err != nil && !errors.Is(err, common.ErrMemoryNotConfigured) {
 		gstool.FmtPrintlnLogTime(`记忆库关闭前同步失败 %s`, err.Error())
 	}
+	business.StopCronScheduler()
 	business.StopMainDBAutoSync()
 	if err := business.SyncMainDBStoreOnShutdown(); err != nil {
 		gstool.FmtPrintlnLogTime(`主库关闭前同步失败 %s`, err.Error())

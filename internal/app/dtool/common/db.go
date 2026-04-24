@@ -328,6 +328,63 @@ func (h *CSqlite) SetGlobalValue(name, key, value, desc string) error {
 	return err
 }
 
+// CronTaskByType 按 type 查询单条定时任务。
+func (h *CSqlite) CronTaskByType(taskType string) (map[string]any, error) {
+	return h.Client.QuickQuery(`tbl_cron_task`, `*`, map[string]any{
+		`type`: taskType,
+	}).Order(`id asc`).One()
+}
+
+// CronTaskList 查询所有定时任务。
+func (h *CSqlite) CronTaskList() ([]map[string]any, error) {
+	return h.Client.QuickQuery(`tbl_cron_task`, `*`, nil).Order(`id asc`).All()
+}
+
+// CronTaskSave 保存定时任务配置（按 type upsert）。
+func (h *CSqlite) CronTaskSave(taskType, name string, enabled int, triggerTime string) error {
+	now := time.Now().Unix()
+	one, err := h.Client.QuickQuery(`tbl_cron_task`, `*`, map[string]any{
+		`type`: taskType,
+	}).Order(`id asc`).One()
+	if err != nil && !DbRowMissing(err) {
+		return err
+	}
+	updateData := map[string]any{
+		`name`:         name,
+		`type`:         taskType,
+		`enabled`:      enabled,
+		`trigger_time`: triggerTime,
+		`update_time`:  now,
+	}
+	if cast.ToInt(one[`id`]) > 0 {
+		_, err = h.Client.QuickUpdate(`tbl_cron_task`, map[string]any{
+			`id`: one[`id`],
+		}, updateData).Exec()
+		return err
+	}
+	updateData[`create_time`] = now
+	_, err = h.Client.QuickCreate(`tbl_cron_task`, updateData).Exec()
+	return err
+}
+
+// CronTaskUpdateLastTriggerTime 更新定时任务最后触发时间。
+func (h *CSqlite) CronTaskUpdateLastTriggerTime(taskType string) error {
+	now := time.Now().Unix()
+	_, err := h.Client.QuickUpdate(`tbl_cron_task`, map[string]any{
+		`type`: taskType,
+	}, map[string]any{
+		`last_trigger_time`: now,
+		`update_time`:       now,
+	}).Exec()
+	return err
+}
+
+// DbRowMissing 判断数据库查询是否因行不存在而报错。
+func DbRowMissing(err error) bool {
+	errText := strings.ToLower(err.Error())
+	return strings.Contains(errText, `not found`) || strings.Contains(errText, `no rows`)
+}
+
 func (h *CSqlite) CmdList(variableId any) ([]map[string]any, error) {
 	return h.Client.QuickQuery(`tbl_variable_cmd`, `*`, map[string]any{
 		`variable_id`: variableId,
@@ -830,7 +887,6 @@ func (h *CSqlite) memoryFragmentFormatTime(unixTime int64) string {
 	}
 	return gstool.TimeUnixToString(time.Unix(unixTime, 0), `Y-m-d H:i:s`)
 }
-
 
 // memoryFragmentNormalizeTags 规范化标签列表。
 func (h *CSqlite) memoryFragmentNormalizeTags(tags []string) []string {

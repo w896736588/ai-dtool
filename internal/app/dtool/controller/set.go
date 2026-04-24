@@ -1313,6 +1313,46 @@ func SetAccountGroupAdd(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
+// SetCronConfigGet 返回定时任务配置。 // Return scheduled task settings.
+func SetCronConfigGet(c *gin.Context) {
+	one, err := common.DbMain.CronTaskByType(define.CronTaskTypeDailyReport)
+	if err != nil && !common.DbRowMissing(err) {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`cron_daily_report_enabled`: cast.ToInt(one[`enabled`]),
+		`cron_daily_report_time`:    strings.TrimSpace(cast.ToString(one[`trigger_time`])),
+	})
+}
+
+// SetCronConfigSave 保存定时任务配置并热重载调度器。 // Save scheduled task settings and hot-reload the scheduler.
+func SetCronConfigSave(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	enabled := cast.ToInt(dataMap[`cron_daily_report_enabled`])
+	triggerTime := strings.TrimSpace(cast.ToString(dataMap[`cron_daily_report_time`]))
+	if enabled == 1 {
+		if triggerTime == `` {
+			gsgin.GinResponseError(c, `启用定时任务时触发时间不能为空`, nil)
+			return
+		}
+		if _, err := time.Parse(`15:04`, triggerTime); err != nil {
+			gsgin.GinResponseError(c, `时间格式无效，请使用 HH:MM 格式`, nil)
+			return
+		}
+	}
+	if err := common.DbMain.CronTaskSave(define.CronTaskTypeDailyReport, `AI 生成工作日报`, enabled, triggerTime); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if err := business.HotReloadCronScheduler(); err != nil {
+		gsgin.GinResponseError(c, fmt.Sprintf(`配置已保存但热重载失败: %s`, err.Error()), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
 func SetAccountGroupDelete(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)

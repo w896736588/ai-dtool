@@ -243,6 +243,21 @@ func HotReloadMemoryAutoSyncDelay() error {
 	return nil
 }
 
+// HotReloadCronScheduler 热重载定时任务调度器（定时任务配置变更时使用）。
+func HotReloadCronScheduler() error {
+	hotReloadMu.Lock()
+	defer hotReloadMu.Unlock()
+
+	enabled, triggerTime, err := readCronConfig()
+	if err != nil {
+		return fmt.Errorf(`读取定时任务配置失败 %w`, err)
+	}
+	component.CronScheduler.Configure(enabled, triggerTime)
+
+	gstool.FmtPrintlnLogTime(`定时任务热重载成功 enabled=%v time=%s`, enabled, triggerTime)
+	return nil
+}
+
 // NeedsLogDBReload 判断配置项是否会导致 log 库需要联动切换。
 func NeedsLogDBReload(changedKey string) bool {
 	if changedKey == `dbFileName` {

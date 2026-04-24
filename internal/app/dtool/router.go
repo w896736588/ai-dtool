@@ -248,6 +248,8 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/RuntimeConfigSave`, controller.SetRuntimeConfigSave)
 	tGin.GinPost(`/api/Set/RuntimeDatabaseGitSync`, controller.SetRuntimeDatabaseGitSync)
 	tGin.GinPost(`/api/Set/RuntimeConfigItemSave`, controller.SetRuntimeConfigItemSave)
+	tGin.GinPost(`/api/Set/CronConfigGet`, controller.SetCronConfigGet)
+	tGin.GinPost(`/api/Set/CronConfigSave`, controller.SetCronConfigSave)
 }
 
 func setStar(tGin *p_gin.Gin) {
