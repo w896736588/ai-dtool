@@ -831,17 +831,17 @@ func SetMemoryConfigGet(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	dailyReportPrompt, err := memoryConfigValue(define.GlobalHomeTaskDailyReportPrompt)
+	dailyReportPrompt, err := homeTaskConfigValue(define.HomeTaskConfigDailyReportPrompt)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	dailyReportModelID, err := memoryConfigValue(define.GlobalHomeTaskDailyReportModelID)
+	dailyReportModelID, err := homeTaskConfigValue(define.HomeTaskConfigDailyReportModelID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	fragmentPrompt, err := memoryConfigValue(define.GlobalHomeTaskFragmentPrompt)
+	fragmentPrompt, err := homeTaskConfigValue(define.HomeTaskConfigFragmentPrompt)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -916,16 +916,16 @@ func SetMemoryConfigSave(c *gin.Context) {
 			return
 		}
 	}
-	if err := common.DbMain.SetGlobalValue(`工作日报提示词`, define.GlobalHomeTaskDailyReportPrompt, homeTaskDailyReportPrompt, `首页任务工作日报 AI 提示词`); err != nil {
+	if err := common.DbMain.HomeTaskConfigSave(`工作日报提示词`, define.HomeTaskConfigDailyReportPrompt, homeTaskDailyReportPrompt, `首页任务工作日报 AI 提示词`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	if err := common.DbMain.SetGlobalValue(`工作日报模型`, define.GlobalHomeTaskDailyReportModelID, cast.ToString(homeTaskDailyReportModelID), `首页任务工作日报所用模型 id`); err != nil {
+	if err := common.DbMain.HomeTaskConfigSave(`工作日报模型`, define.HomeTaskConfigDailyReportModelID, cast.ToString(homeTaskDailyReportModelID), `首页任务工作日报所用模型 id`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	homeTaskFragmentPrompt := strings.TrimSpace(cast.ToString(dataMap[`home_task_fragment_prompt`]))
-	if err := common.DbMain.SetGlobalValue(`任务知识片段提示词`, define.GlobalHomeTaskFragmentPrompt, homeTaskFragmentPrompt, `新建任务时自动创建知识片段的提示词模板`); err != nil {
+	if err := common.DbMain.HomeTaskConfigSave(`任务知识片段提示词`, define.HomeTaskConfigFragmentPrompt, homeTaskFragmentPrompt, `新建任务时自动创建知识片段的提示词模板`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
@@ -1206,6 +1206,17 @@ func memoryConfigFilePath() string {
 		configFileName += `.ini`
 	}
 	return filepath.Join(component.EnvClient.ConfigPath, configFileName)
+}
+
+func homeTaskConfigValue(key string) (string, error) {
+	value, err := common.DbMain.HomeTaskConfigValue(key)
+	if err != nil {
+		if common.DbRowMissing(err) {
+			return ``, nil
+		}
+		return ``, err
+	}
+	return value, nil
 }
 
 func memoryConfigValue(key string) (string, error) {

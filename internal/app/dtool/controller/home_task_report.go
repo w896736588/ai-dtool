@@ -94,8 +94,8 @@ func homeTaskDailyReportSystemPrompt() string {
 
 // homeTaskDailyReportConfig 读取并校验首页工作日报配置。
 func homeTaskDailyReportConfig() (int, string, error) {
-	modelIDText, err := common.DbMain.GlobalValue(define.GlobalHomeTaskDailyReportModelID)
-	if err != nil && !memoryConfigValueMissing(err) {
+	modelIDText, err := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigDailyReportModelID)
+	if err != nil && !common.DbRowMissing(err) {
 		return 0, "", err
 	}
 	modelID := cast.ToInt(modelIDText)
@@ -109,8 +109,8 @@ func homeTaskDailyReportConfig() (int, string, error) {
 	if strings.ToLower(cast.ToString(modelInfo["model_type"])) != "llm" {
 		return 0, "", errors.New(homeTaskDailyReportModelTypeError)
 	}
-	prompt, err := common.DbMain.GlobalValue(define.GlobalHomeTaskDailyReportPrompt)
-	if err != nil && !memoryConfigValueMissing(err) {
+	prompt, err := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigDailyReportPrompt)
+	if err != nil && !common.DbRowMissing(err) {
 		return 0, "", err
 	}
 	prompt = strings.TrimSpace(prompt)

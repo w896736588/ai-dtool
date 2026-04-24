@@ -174,7 +174,7 @@ func shouldAutoCreateHomeTaskMemoryFragment(taskID int, memoryFragmentID string)
 
 func buildHomeTaskFragmentContent(taskName string, tapdUrl string, apiHost string, apiToken string) string {
 	content := "# " + taskName + "\n\n"
-	promptTemplate, _ := common.DbMain.GlobalValue(define.GlobalHomeTaskFragmentPrompt)
+	promptTemplate, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigFragmentPrompt)
 	promptTemplate = strings.TrimSpace(promptTemplate)
 	if promptTemplate == `` {
 		return content
