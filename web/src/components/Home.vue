@@ -2043,11 +2043,19 @@ export default {
       if (this.asyncTaskSelectedId) {
         const activeTask = list.find(item => Number(item.id) === Number(this.asyncTaskSelectedId))
         if (activeTask) {
-          // 更新当前详情中的状态字段，保持其他数据不变
+          // 当 result_payload 发生变化时重新解析，避免任务完成后详情内容仍为空
+          let resultPayloadMap = this.asyncTaskDetail.result_payload_map || {}
+          if (activeTask.result_payload !== this.asyncTaskDetail.result_payload) {
+            try {
+              resultPayloadMap = JSON.parse(String(activeTask.result_payload || '{}'))
+            } catch (e) {
+              resultPayloadMap = {}
+            }
+          }
           this.asyncTaskDetail = {
             ...this.asyncTaskDetail,
             ...activeTask,
-            result_payload_map: this.asyncTaskDetail.result_payload_map || {}
+            result_payload_map: resultPayloadMap
           }
         }
       }
