@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var pageActives map[string]_struct.PageActiveTime
+var pageActives = make(map[string]_struct.PageActiveTime)
 var pageActivesLock sync.RWMutex
 var pageActivesLoopOnce sync.Once
 
@@ -48,17 +48,17 @@ func NewPageActiveTime() *PageActiveTime {
 
 func (h *PageActiveTime) Add(page *playwright.Page, autoCloseSecond int) {
 	go func() {
-		// Add 入口做兜底，避免外部漏调初始化时直接触发 panic。
-		ensurePageActivesInitialized()
 		pageActivesLock.Lock()
 		defer pageActivesLock.Unlock()
+		if pageActives == nil {
+			pageActives = make(map[string]_struct.PageActiveTime)
+		}
 		pageActives[(*page).URL()] = _struct.PageActiveTime{
 			ActiveTime:      time.Now(),
 			AutoCloseSecond: autoCloseSecond,
 			Page:            page,
 		}
 	}()
-
 }
 
 // ensurePageActivesInitialized 确保活跃页 map 已初始化，避免写入 nil map。

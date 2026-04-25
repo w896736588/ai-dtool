@@ -190,6 +190,80 @@ func buildAbsoluteDownloadURL(c *gin.Context, downloadPath string) string {
 	return scheme + "://" + host + downloadURL.RequestURI()
 }
 
+// dispatchScrapeTaskAndAwait 派发抓取任务给 Agent 并同步等待结果，不依赖 gin.Context。
+func dispatchScrapeTaskAndAwait(smartLinkID int, label, jumpURL, cssSelector string, waitSeconds int) (define.AgentTaskResultFileUploadResponse, error) {
+	cfg := getSmartLinkConfig()
+	if cfg.RunMode != define.SmartLinkRunModeLocalClient {
+		return define.AgentTaskResultFileUploadResponse{}, errors.New("当前运行模式不是本地客户端模式")
+	}
+
+	info := GlobalClientRegistry.GetLatest()
+	if info == nil || GlobalAgentWsManager.GetConnection(info.ClientID) == nil {
+		return define.AgentTaskResultFileUploadResponse{}, errors.New("SMART_LINK_CLIENT_OFFLINE")
+	}
+	if info.ClientVersion != cfg.ClientVersion {
+		return define.AgentTaskResultFileUploadResponse{}, errors.New("SMART_LINK_CLIENT_VERSION_MISMATCH")
+	}
+	if info.Status == define.SmartLinkClientStatusPreparingRuntime {
+		return define.AgentTaskResultFileUploadResponse{}, errors.New("SMART_LINK_CLIENT_PREPARING_RUNTIME")
+	}
+
+	runParams, runParamsErr := plw.GetRunParams(smartLinkID, label, "", "", 0, 1, make(map[string]string))
+	if runParamsErr != nil {
+		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("构建运行参数失败: %w", runParamsErr)
+	}
+
+	now := time.Now().Unix()
+	taskID := "scrape_task_" + cast.ToString(now) + "_" + cast.ToString(smartLinkID)
+	sseDistributeID := "smart_link_scrape_" + cast.ToString(now)
+
+	taskData := define.AgentTaskExecuteData{
+		TaskID:          taskID,
+		SseDistributeId: sseDistributeID,
+		ClientID:        info.ClientID,
+		TaskType:        define.AgentTaskTypeScrapeToMarkdown,
+		SafeToken:       "",
+		RunParams:       BuildAgentRunParams(runParams),
+		ScrapeConfig: define.AgentTaskScrapeConfig{
+			JumpURL:     jumpURL,
+			CssSelector: cssSelector,
+			WaitSeconds: waitSeconds,
+		},
+	}
+
+	_, createErr := common.DbMain.Client.QuickCreate("tbl_smart_link_task", map[string]any{
+		"task_id":         taskID,
+		"client_id":       info.ClientID,
+		"smart_link_id":   smartLinkID,
+		"label":           label,
+		"status":          define.SmartLinkTaskStatusPending,
+		"run_mode":        define.SmartLinkRunModeLocalClient,
+		"request_payload": buildScrapeTaskRequestPayload(taskData),
+		"create_time":     now,
+		"update_time":     now,
+	}).Exec()
+	if createErr != nil {
+		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("创建任务失败: %w", createErr)
+	}
+
+	wsMsg := define.AgentWsMessage{
+		Type:            define.AgentWsMsgTaskExecute,
+		ClientID:        info.ClientID,
+		TaskID:          taskID,
+		SseDistributeId: sseDistributeID,
+		Data:            taskData,
+	}
+	if sendErr := GlobalAgentWsManager.Send(info.ClientID, wsMsg); sendErr != nil {
+		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("下发任务到Agent失败: %w", sendErr)
+	}
+
+	resultFile, waitErr := waitForSmartLinkTaskResult(taskID, smartLinkScrapeTaskTimeout, querySmartLinkTaskByID)
+	if waitErr != nil {
+		return define.AgentTaskResultFileUploadResponse{}, waitErr
+	}
+	return resultFile, nil
+}
+
 // SmartLinkScrapeToMarkdown 创建抓取 Markdown 任务并下发给本地 Agent。
 func SmartLinkScrapeToMarkdown(c *gin.Context) {
 	reqMap := make(map[string]any)
@@ -206,112 +280,19 @@ func SmartLinkScrapeToMarkdown(c *gin.Context) {
 	}
 	gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][03] 收到抓取请求 %s`, summarizeSmartLinkScrapeRequest(req))
 
-	cfg := getSmartLinkConfig()
-	if cfg.RunMode != define.SmartLinkRunModeLocalClient {
-		gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][04] 运行模式不匹配 run_mode=%s`, cfg.RunMode)
-		gsgin.GinResponseError(c, "当前运行模式不是本地客户端模式", nil)
-		return
-	}
-
-	info := GlobalClientRegistry.GetLatest()
-	if info == nil || GlobalAgentWsManager.GetConnection(info.ClientID) == nil {
-		gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][05] 客户端离线 client_info_nil=%t`, info == nil)
-		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_OFFLINE", nil)
-		return
-	}
-	if info.ClientVersion != cfg.ClientVersion {
-		gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][06] 客户端版本不匹配 client_id=%s client_version=%s required_version=%s`, info.ClientID, info.ClientVersion, cfg.ClientVersion)
-		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_VERSION_MISMATCH", nil)
-		return
-	}
-	if info.Status == define.SmartLinkClientStatusPreparingRuntime {
-		gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][07] 客户端运行环境准备中 client_id=%s`, info.ClientID)
-		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_PREPARING_RUNTIME", nil)
-		return
-	}
-
-	runParams, runParamsErr := plw.GetRunParams(req.SmartLinkID, req.Label, req.UserName, req.Password, req.OpenType, req.OpenNum, make(map[string]string))
-	if runParamsErr != nil {
-		gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][08] 构建运行参数失败 smart_link_id=%d label=%s err=%s`, req.SmartLinkID, req.Label, runParamsErr.Error())
-		gsgin.GinResponseError(c, "构建运行参数失败: "+runParamsErr.Error(), nil)
-		return
-	}
-	gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][09] 构建运行参数成功 task_link=%s combine_type=%d process_count=%d client_id=%s`, runParams.Link, runParams.CombineType, len(runParams.ProcessList), info.ClientID)
-
-	now := time.Now().Unix()
-	taskID := "scrape_task_" + cast.ToString(now) + "_" + cast.ToString(req.SmartLinkID)
-	sseDistributeID := req.SseDistributeId
-	if sseDistributeID == "" {
-		sseDistributeID = "smart_link_scrape_" + cast.ToString(now)
-	}
-
-	taskData := define.AgentTaskExecuteData{
-		TaskID:          taskID,
-		SseDistributeId: sseDistributeID,
-		ClientID:        info.ClientID,
-		TaskType:        define.AgentTaskTypeScrapeToMarkdown,
-		SafeToken:       extractSafeTokenFromRequest(c),
-		RunParams:       BuildAgentRunParams(runParams),
-		ScrapeConfig: define.AgentTaskScrapeConfig{
-			JumpURL:     req.JumpURL,
-			CssSelector: req.CssSelector,
-			WaitSeconds: req.WaitSeconds,
-		},
-	}
-	gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][09a] 抓取任务鉴权信息 token_set=%t`, taskData.SafeToken != "")
-
-	_, createErr := common.DbMain.Client.QuickCreate("tbl_smart_link_task", map[string]any{
-		"task_id":         taskID,
-		"client_id":       info.ClientID,
-		"smart_link_id":   req.SmartLinkID,
-		"label":           req.Label,
-		"status":          define.SmartLinkTaskStatusPending,
-		"run_mode":        define.SmartLinkRunModeLocalClient,
-		"request_payload": buildScrapeTaskRequestPayload(taskData),
-		"create_time":     now,
-		"update_time":     now,
-	}).Exec()
-	if createErr != nil {
-		gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][10] 创建任务失败 task_id=%s client_id=%s err=%s`, taskID, info.ClientID, createErr.Error())
-		gsgin.GinResponseError(c, "创建任务失败: "+createErr.Error(), nil)
-		return
-	}
-	gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][11] 创建任务成功 task_id=%s client_id=%s sse_distribute_id=%s`, taskID, info.ClientID, sseDistributeID)
-
-	wsMsg := define.AgentWsMessage{
-		Type:            define.AgentWsMsgTaskExecute,
-		ClientID:        info.ClientID,
-		TaskID:          taskID,
-		SseDistributeId: sseDistributeID,
-		Data:            taskData,
-	}
-	if sendErr := GlobalAgentWsManager.Send(info.ClientID, wsMsg); sendErr != nil {
-		gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][12] 下发任务失败 task_id=%s client_id=%s err=%s`, taskID, info.ClientID, sendErr.Error())
-		gsgin.GinResponseError(c, "下发任务到Agent失败: "+sendErr.Error(), nil)
-		return
-	}
-	gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][13] 下发任务成功 task_id=%s client_id=%s task_type=%s`, taskID, info.ClientID, define.AgentTaskTypeScrapeToMarkdown)
-
-	resultFile, waitErr := waitForSmartLinkTaskResult(taskID, smartLinkScrapeTaskTimeout, querySmartLinkTaskByID)
-	if waitErr != nil {
-		gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][14] 等待任务完成失败 task_id=%s err=%s`, taskID, waitErr.Error())
-		gsgin.GinResponseError(c, waitErr.Error(), map[string]any{
-			"task_id":           taskID,
-			"client_id":         info.ClientID,
-			"sse_distribute_id": sseDistributeID,
-		})
+	resultFile, dispatchErr := dispatchScrapeTaskAndAwait(req.SmartLinkID, req.Label, req.JumpURL, req.CssSelector, req.WaitSeconds)
+	if dispatchErr != nil {
+		errMsg := dispatchErr.Error()
+		gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][04] 派发抓取任务失败 err=%s`, errMsg)
+		gsgin.GinResponseError(c, errMsg, nil)
 		return
 	}
 	resultFile.DownloadURL = buildAbsoluteDownloadURL(c, resultFile.DownloadURL)
-	gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][15] 等待任务完成成功 task_id=%s download_url=%s file_name=%s`, taskID, resultFile.DownloadURL, resultFile.FileName)
+	gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][15] 等待任务完成成功 download_url=%s file_name=%s`, resultFile.DownloadURL, resultFile.FileName)
 
 	gsgin.GinResponseSuccess(c, "", map[string]any{
-		"task_id":           taskID,
-		"client_id":         info.ClientID,
-		"status":            define.SmartLinkTaskStatusSuccess,
-		"sse_distribute_id": sseDistributeID,
-		"download_url":      resultFile.DownloadURL,
-		"file_name":         resultFile.FileName,
+		"download_url": resultFile.DownloadURL,
+		"file_name":    resultFile.FileName,
 	})
 }
 

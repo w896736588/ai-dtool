@@ -79,6 +79,19 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="CSS选择器">
+          <el-input
+            v-model="form.home_task_tapd_css_selector"
+            placeholder="如 .content-wrapper 或 #main"
+          />
+        </el-form-item>
+        <el-form-item label="等待秒数">
+          <el-input-number
+            v-model="form.home_task_tapd_wait_seconds"
+            :min="1"
+            :max="30"
+          />
+        </el-form-item>
         <el-form-item>
           <pl-button type="primary" @click="saveTapdConfig">保存 TAPD 登录页配置</pl-button>
         </el-form-item>
@@ -110,6 +123,8 @@ export default {
         home_task_fragment_prompt: '',
         home_task_tapd_smart_link_id: null,
         home_task_tapd_link_label: '',
+        home_task_tapd_css_selector: '',
+        home_task_tapd_wait_seconds: 3,
       },
     }
   },
@@ -167,6 +182,8 @@ export default {
         this.form.home_task_fragment_prompt = response.Data.home_task_fragment_prompt || ''
         this.form.home_task_tapd_smart_link_id = response.Data.home_task_tapd_smart_link_id || null
         this.form.home_task_tapd_link_label = response.Data.home_task_tapd_link_label || ''
+        this.form.home_task_tapd_css_selector = response.Data.home_task_tapd_css_selector || ''
+        this.form.home_task_tapd_wait_seconds = response.Data.home_task_tapd_wait_seconds || 3
       })
     },
     saveConfig() {
@@ -178,6 +195,8 @@ export default {
         home_task_fragment_prompt: this.form.home_task_fragment_prompt,
         home_task_tapd_smart_link_id: this.form.home_task_tapd_smart_link_id,
         home_task_tapd_link_label: this.form.home_task_tapd_link_label,
+        home_task_tapd_css_selector: this.form.home_task_tapd_css_selector,
+        home_task_tapd_wait_seconds: this.form.home_task_tapd_wait_seconds,
       }
       set.MemoryConfigSave(payload, (response) => {
         if (response.ErrCode === 0) {
@@ -195,6 +214,8 @@ export default {
         home_task_fragment_prompt: this.form.home_task_fragment_prompt,
         home_task_tapd_smart_link_id: this.form.home_task_tapd_smart_link_id,
         home_task_tapd_link_label: this.form.home_task_tapd_link_label,
+        home_task_tapd_css_selector: this.form.home_task_tapd_css_selector,
+        home_task_tapd_wait_seconds: this.form.home_task_tapd_wait_seconds,
       }
       set.MemoryConfigSave(payload, (response) => {
         if (response.ErrCode === 0) {

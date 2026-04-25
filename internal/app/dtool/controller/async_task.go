@@ -25,11 +25,15 @@ const (
 	asyncTaskTypeMemoryFragmentArrange = `memory_fragment_arrange`
 	// asyncTaskTypeMainDBSync 标识主库自动同步任务。 // asyncTaskTypeMainDBSync identifies the main db auto sync task.
 	asyncTaskTypeMainDBSync = `main_db_sync`
+	// asyncTaskTypeHomeTaskTapdScrape 标识首页 TAPD 网页抓取异步任务。
+	asyncTaskTypeHomeTaskTapdScrape = `home_task_tapd_scrape`
 
 	// asyncTaskActionSaveDailyReport 表示保存日报到知识片段。 // asyncTaskActionSaveDailyReport means saving the report as a memory fragment.
 	asyncTaskActionSaveDailyReport = `save_daily_report`
 	// asyncTaskActionOverwriteMemoryFragment 表示用整理结果覆盖知识片段。 // asyncTaskActionOverwriteMemoryFragment means overwriting the memory fragment with arranged content.
 	asyncTaskActionOverwriteMemoryFragment = `overwrite_memory_fragment`
+	// asyncTaskActionOverwriteFragmentWithScrape 表示用抓取结果更新知识片段。
+	asyncTaskActionOverwriteFragmentWithScrape = `overwrite_fragment_with_scrape`
 	// asyncTaskActionDiscard 表示丢弃结果。 // asyncTaskActionDiscard means discarding the async result.
 	asyncTaskActionDiscard = `discard`
 )
@@ -44,6 +48,9 @@ var buildAsyncHomeTaskDailyReportResult = defaultBuildAsyncHomeTaskDailyReportRe
 
 // buildAsyncMemoryArrangeResult 允许测试替换知识片段整理结果构建过程。 // buildAsyncMemoryArrangeResult allows tests to replace the memory arrange result builder.
 var buildAsyncMemoryArrangeResult = defaultBuildAsyncMemoryArrangeResult
+
+// buildAsyncHomeTaskTapdScrapeResultFn 允许测试替换 TAPD 网页抓取结果构建过程。
+var buildAsyncHomeTaskTapdScrapeResultFn = buildAsyncHomeTaskTapdScrapeResult
 
 // AsyncTaskList 查询异步任务列表与汇总。 // AsyncTaskList returns async task summary plus recent items.
 func AsyncTaskList(c *gin.Context) {
@@ -199,6 +206,50 @@ func AsyncTaskAction(c *gin.Context) {
 		updatedInfo[`memory_fragment`] = memoryInfo
 		// 中文注释：任务状态变化，主动推送更新。
 		// English comment: Task status changed, broadcast update.
+		BroadcastAsyncTasksUpdate()
+		gsgin.GinResponseSuccess(c, ``, updatedInfo)
+		return
+	case asyncTaskActionOverwriteFragmentWithScrape:
+		resultMap, parseErr := asyncTaskDecodePayload(cast.ToString(info[`result_payload`]))
+		if parseErr != nil {
+			gsgin.GinResponseError(c, parseErr.Error(), nil)
+			return
+		}
+		if strings.TrimSpace(cast.ToString(info[`task_type`])) != asyncTaskTypeHomeTaskTapdScrape {
+			gsgin.GinResponseError(c, `异步任务类型不支持抓取覆盖`, nil)
+			return
+		}
+		memoryDB, memoryOk := memoryDBOrResponse(c)
+		if !memoryOk {
+			return
+		}
+		fragmentID := cast.ToString(resultMap[`fragment_id`])
+		existingInfo, existingErr := memoryDB.MemoryFragmentInfo(fragmentID)
+		if existingErr != nil {
+			gsgin.GinResponseError(c, existingErr.Error(), nil)
+			return
+		}
+		markdown := cast.ToString(resultMap[`markdown`])
+		existingTitle := cast.ToString(existingInfo[`title`])
+		existingTags := cast.ToStringSlice(existingInfo[`tags`])
+		memoryInfo, saveErr := memoryDB.MemoryFragmentSave(
+			fragmentID,
+			existingTitle,
+			markdown,
+			existingTags,
+		)
+		if saveErr != nil {
+			gsgin.GinResponseError(c, saveErr.Error(), nil)
+			return
+		}
+		component.MemoryRuntime.ScheduleSync()
+		broadcastMemoryFragmentUpsert(memoryInfo)
+		if err = db.AsyncTaskMarkFinal(request.ID, common.AsyncTaskStatusConfirmed); err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+		updatedInfo, _ := db.AsyncTaskInfo(request.ID)
+		updatedInfo[`memory_fragment`] = memoryInfo
 		BroadcastAsyncTasksUpdate()
 		gsgin.GinResponseSuccess(c, ``, updatedInfo)
 		return
@@ -387,4 +438,56 @@ func defaultBuildAsyncMemoryArrangeResult(title, content string) (map[string]any
 		`model_id`:         modelID,
 		`model`:            cast.ToString(modelInfo[`model`]),
 	}, nil
+}
+
+// buildAsyncHomeTaskTapdScrapeResult 构建首页 TAPD 网页抓取异步任务结果。
+func buildAsyncHomeTaskTapdScrapeResult(tapdURL, memoryFragmentID string) (map[string]any, error) {
+	smartLinkIDStr, err := homeTaskConfigValue(define.HomeTaskConfigTapdSmartLinkID)
+	if err != nil {
+		return nil, fmt.Errorf("读取 TAPD 自定义网页配置失败: %w", err)
+	}
+	smartLinkID := cast.ToInt(smartLinkIDStr)
+	if smartLinkID <= 0 {
+		return nil, fmt.Errorf("TAPD 自定义网页未配置")
+	}
+
+	linkLabel, err := homeTaskConfigValue(define.HomeTaskConfigTapdLinkLabel)
+	if err != nil {
+		return nil, fmt.Errorf("读取 TAPD 链接标签配置失败: %w", err)
+	}
+	if strings.TrimSpace(linkLabel) == "" {
+		return nil, fmt.Errorf("TAPD 链接标签未配置")
+	}
+
+	cssSelector, err := homeTaskConfigValue(define.HomeTaskConfigTapdCssSelector)
+	if err != nil {
+		return nil, fmt.Errorf("读取 TAPD CSS 选择器配置失败: %w", err)
+	}
+	if strings.TrimSpace(cssSelector) == "" {
+		return nil, fmt.Errorf("TAPD CSS 选择器未配置")
+	}
+
+	waitSecondsStr, err := homeTaskConfigValue(define.HomeTaskConfigTapdWaitSeconds)
+	if err != nil {
+		return nil, fmt.Errorf("读取 TAPD 等待秒数配置失败: %w", err)
+	}
+	waitSeconds := cast.ToInt(waitSecondsStr)
+	if waitSeconds <= 0 {
+		waitSeconds = defaultSmartLinkScrapeWaitSeconds
+	}
+	if waitSeconds > maxSmartLinkScrapeWaitSeconds {
+		waitSeconds = maxSmartLinkScrapeWaitSeconds
+	}
+
+	resultFile, dispatchErr := dispatchScrapeTaskAndAwait(smartLinkID, linkLabel, tapdURL, cssSelector, waitSeconds)
+	if dispatchErr != nil {
+		return nil, dispatchErr
+	}
+
+	zipResult, zipErr := processScrapeZipResult(resultFile.DownloadURL, memoryFragmentID)
+	if zipErr != nil {
+		return nil, zipErr
+	}
+
+	return zipResult, nil
 }

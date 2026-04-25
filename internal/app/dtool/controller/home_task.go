@@ -47,6 +47,30 @@ func HomeTaskSave(c *gin.Context) {
 		return
 	}
 	enrichHomeTaskListWithMemoryFragment([]map[string]any{info})
+
+	// 新建任务且指定了 tapd_url 时，自动创建 TAPD 网页抓取异步任务。
+	if strings.TrimSpace(request.TapdUrl) != `` && request.ID <= 0 && strings.TrimSpace(memoryFragmentID) != `` {
+		taskName := strings.TrimSpace(request.Name)
+		_, asyncErr := createAsyncTask(
+			asyncTaskTypeHomeTaskTapdScrape,
+			"抓取TAPD网页: "+taskName,
+			cast.ToString(info[`id`]),
+			map[string]any{
+				`tapd_url`:           request.TapdUrl,
+				`memory_fragment_id`: memoryFragmentID,
+				`task_name`:          taskName,
+			},
+			func(asyncTaskID int) {
+				runAsyncTaskAndPersistResult(asyncTaskID, func() (map[string]any, error) {
+					return buildAsyncHomeTaskTapdScrapeResultFn(request.TapdUrl, memoryFragmentID)
+				})
+			},
+		)
+		if asyncErr != nil {
+			gstool.FmtPrintlnLogTime(`[HomeTaskSave] 创建 TAPD 抓取异步任务失败 err=%s`, asyncErr.Error())
+		}
+	}
+
 	gsgin.GinResponseSuccess(c, ``, info)
 }
 

@@ -517,6 +517,7 @@ export default {
     },
     // handleRemoteDeletedFragment 同步处理远端删除的片段。
     handleRemoteDeletedFragment(fragmentId) {
+      this.fragmentList = this.fragmentList.filter(item => this.normalizeFragmentId(item.id || item.file_id) !== fragmentId)
       this.fragmentTabs = this.fragmentTabs.filter(item => this.normalizeFragmentId(item.fragment.id) !== fragmentId)
       if (this.activeTab === `fragment-${fragmentId}`) {
         this.activeTab = ''
@@ -1121,6 +1122,7 @@ export default {
     // handleFragmentDeleted 删除片段后清理 tab 和列表。
     handleFragmentDeleted(fragmentId) {
       this.fragmentTabs = this.fragmentTabs.filter(item => item.fragment.id !== fragmentId)
+      this.fragmentList = this.fragmentList.filter(item => this.normalizeFragmentId(item.id || item.file_id) !== fragmentId)
       this.loadFragmentList()
       this.loadTrashList()
       this.rerunSubmittedSearch()

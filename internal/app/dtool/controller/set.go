@@ -856,6 +856,16 @@ func SetMemoryConfigGet(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	tapdCssSelector, err := homeTaskConfigValue(define.HomeTaskConfigTapdCssSelector)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	tapdWaitSeconds, err := homeTaskConfigValue(define.HomeTaskConfigTapdWaitSeconds)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`db_dir`:                            mainDBConfig.Dir,
 		`db_name`:                           mainDBConfig.DBName,
@@ -875,6 +885,8 @@ func SetMemoryConfigGet(c *gin.Context) {
 		`home_task_fragment_prompt`:         fragmentPrompt,
 		`home_task_tapd_smart_link_id`:      cast.ToInt(tapdSmartLinkID),
 		`home_task_tapd_link_label`:         tapdLinkLabel,
+		`home_task_tapd_css_selector`:       tapdCssSelector,
+		`home_task_tapd_wait_seconds`:       cast.ToInt(tapdWaitSeconds),
 		`safe_password`:                     component.ConfigViper.GetString(`safe.password`),
 		`run_mode`:                          component.EnvClient.SmartLinkConfig.RunMode,
 		`client_version`:                    component.EnvClient.SmartLinkConfig.ClientVersion,
@@ -947,6 +959,16 @@ func SetMemoryConfigSave(c *gin.Context) {
 	}
 	homeTaskTapdLinkLabel := strings.TrimSpace(cast.ToString(dataMap[`home_task_tapd_link_label`]))
 	if err := common.DbMain.HomeTaskConfigSave(`TAPD链接标签`, define.HomeTaskConfigTapdLinkLabel, homeTaskTapdLinkLabel, `TAPD登录页所选链接的label`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskTapdCssSelector := strings.TrimSpace(cast.ToString(dataMap[`home_task_tapd_css_selector`]))
+	if err := common.DbMain.HomeTaskConfigSave(`TAPD抓取CSS选择器`, define.HomeTaskConfigTapdCssSelector, homeTaskTapdCssSelector, `TAPD网页抓取区域CSS选择器`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskTapdWaitSeconds := cast.ToString(cast.ToInt(dataMap[`home_task_tapd_wait_seconds`]))
+	if err := common.DbMain.HomeTaskConfigSave(`TAPD抓取等待秒数`, define.HomeTaskConfigTapdWaitSeconds, homeTaskTapdWaitSeconds, `TAPD网页抓取前等待秒数`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}

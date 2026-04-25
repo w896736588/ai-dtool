@@ -548,6 +548,37 @@
               title="正文差异"
             />
           </div>
+          <div v-else-if="asyncTaskDetail.task_type === ASYNC_TASK_TYPE_TAPD_SCRAPE" class="async-task-detail__content">
+            <div class="async-task-detail__section-title">
+              抓取内容预览
+              <div class="async-task-detail__view-toggle">
+                <GitActionButton
+                  variant="info"
+                  compact
+                  :class="{ 'mode-button-active': tapdScrapeViewMode === 'preview' }"
+                  @click="tapdScrapeViewMode = 'preview'"
+                >
+                  查看
+                </GitActionButton>
+                <GitActionButton
+                  compact
+                  :class="{ 'mode-button-active': tapdScrapeViewMode === 'source' }"
+                  @click="tapdScrapeViewMode = 'source'"
+                >
+                  源码
+                </GitActionButton>
+              </div>
+            </div>
+            <MarkdownRenderer
+              v-if="tapdScrapeViewMode === 'preview'"
+              :source="asyncTaskDetail.result_payload_map?.markdown || ''"
+              class="async-task-detail__markdown"
+            />
+            <pre v-else class="async-task-detail__pre">{{ asyncTaskDetail.result_payload_map?.markdown || '' }}</pre>
+            <div v-if="asyncTaskDetail.result_payload_map?.image_count > 0" class="async-task-detail__sub-meta">
+              包含 {{ asyncTaskDetail.result_payload_map?.image_count }} 张图片
+            </div>
+          </div>
           <div
             v-else-if="asyncTaskDetail.task_type === ASYNC_TASK_TYPE_MAIN_DB_SYNC || asyncTaskDetail.task_type === ASYNC_TASK_TYPE_MEMORY_DB_SYNC"
             class="async-task-detail__content"
@@ -574,6 +605,14 @@
               @click="runAsyncTaskAction(ASYNC_TASK_ACTION_OVERWRITE_MEMORY_FRAGMENT)"
             >
               覆盖原文
+            </GitActionButton>
+            <GitActionButton
+              v-if="asyncTaskDetail.task_status === ASYNC_TASK_STATUS_AWAIT_CONFIRM && asyncTaskDetail.task_type === ASYNC_TASK_TYPE_TAPD_SCRAPE"
+              compact
+              :loading="asyncTaskActing"
+              @click="runAsyncTaskAction(ASYNC_TASK_ACTION_OVERWRITE_FRAGMENT_WITH_SCRAPE)"
+            >
+              更新到知识片段
             </GitActionButton>
             <GitActionButton
               v-if="asyncTaskDetail.task_status === ASYNC_TASK_STATUS_AWAIT_CONFIRM"
@@ -714,6 +753,7 @@ import GitActionButton from "@/components/base/GitActionButton.vue";
 import SettingsDialog from '@/components/base/SettingsDialog.vue'
 import HomeTaskReportSetting from '@/components/set/home_task_report.vue'
 import DiffMarkdown from '@/components/base/diff_markwodn.vue'
+import MarkdownRenderer from '@/components/base/markdown.vue'
 import { 
   HomeFilled,
   Coin,
@@ -772,6 +812,7 @@ const HOME_TASK_DAILY_REPORT_FAILED_MESSAGE = '工作日报生成失败'
 // ASYNC_TASK_ACTION_* 统一定义异步任务动作常量。
 const ASYNC_TASK_ACTION_SAVE_DAILY_REPORT = 'save_daily_report'
 const ASYNC_TASK_ACTION_OVERWRITE_MEMORY_FRAGMENT = 'overwrite_memory_fragment'
+const ASYNC_TASK_ACTION_OVERWRITE_FRAGMENT_WITH_SCRAPE = 'overwrite_fragment_with_scrape'
 const ASYNC_TASK_ACTION_DISCARD = 'discard'
 // ASYNC_TASK_STATUS_* 统一定义异步任务状态常量。
 const ASYNC_TASK_STATUS_AWAIT_CONFIRM = 'await_confirm'
@@ -785,6 +826,7 @@ const ASYNC_TASK_TYPE_DAILY_REPORT = 'home_task_daily_report'
 const ASYNC_TASK_TYPE_MEMORY_ARRANGE = 'memory_fragment_arrange'
 const ASYNC_TASK_TYPE_MAIN_DB_SYNC = 'main_db_sync'
 const ASYNC_TASK_TYPE_MEMORY_DB_SYNC = 'memory_db_sync'
+const ASYNC_TASK_TYPE_TAPD_SCRAPE = 'home_task_tapd_scrape'
 // HOME_TASK_ACTION_COMMAND_STATUS_PREFIX 标识状态切换指令前缀。
 const HOME_TASK_ACTION_COMMAND_STATUS_PREFIX = 'status:'
 // HOME_DASHBOARD_PAGE_* 标识首页双屏结构中的页索引。
@@ -868,6 +910,7 @@ export default {
       sshConnectionTimer: null,
       ASYNC_TASK_ACTION_SAVE_DAILY_REPORT,
       ASYNC_TASK_ACTION_OVERWRITE_MEMORY_FRAGMENT,
+      ASYNC_TASK_ACTION_OVERWRITE_FRAGMENT_WITH_SCRAPE,
       ASYNC_TASK_ACTION_DISCARD,
       ASYNC_TASK_STATUS_AWAIT_CONFIRM,
       ASYNC_TASK_STATUS_PENDING,
@@ -875,6 +918,7 @@ export default {
       ASYNC_TASK_TYPE_MEMORY_ARRANGE,
       ASYNC_TASK_TYPE_MAIN_DB_SYNC,
       ASYNC_TASK_TYPE_MEMORY_DB_SYNC,
+      ASYNC_TASK_TYPE_TAPD_SCRAPE,
       HOME_TASK_TAB_ACTIVE,
       HOME_TASK_TAB_ARCHIVED,
       HOME_TASK_ARCHIVED_NO,
@@ -915,6 +959,8 @@ export default {
       asyncTaskSelectedId: 0,
       asyncTaskList: [],
       asyncTaskDetail: {},
+      // tapdScrapeViewMode 控制 TAPD 抓取预览的显示模式：preview 为渲染查看，source 为源码。
+      tapdScrapeViewMode: 'preview',
       asyncTaskNotifiedStateMap: {},
       asyncTaskNotificationPermissionRequested: false,
       asyncTaskSummary: {
@@ -1458,6 +1504,8 @@ export default {
       if (taskId <= 0) {
         return
       }
+      // 切换任务时重置预览模式为渲染查看。
+      this.tapdScrapeViewMode = 'preview'
       this.asyncTaskSelectedId = taskId
       asyncTaskApi.AsyncTaskInfo(taskId, (response) => {
         if (!(response && response.ErrCode === 0 && response.Data)) {
@@ -1495,7 +1543,7 @@ export default {
         }
         this.asyncTaskDetail = this.normalizeAsyncTaskDetail(response.Data)
         this.loadAsyncTaskSummary(false)
-        if (action === ASYNC_TASK_ACTION_SAVE_DAILY_REPORT || action === ASYNC_TASK_ACTION_OVERWRITE_MEMORY_FRAGMENT) {
+        if (action === ASYNC_TASK_ACTION_SAVE_DAILY_REPORT || action === ASYNC_TASK_ACTION_OVERWRITE_MEMORY_FRAGMENT || action === ASYNC_TASK_ACTION_OVERWRITE_FRAGMENT_WITH_SCRAPE) {
           // 中文注释：首页任务卡片会内嵌知识片段摘要，这里立即刷新避免覆盖原文后还显示旧内容。
           // English comment: Home task cards embed fragment previews, so refresh right away after async writes.
           this.refreshAllHomeTaskList()
@@ -1538,6 +1586,9 @@ export default {
       }
       if (taskType === ASYNC_TASK_TYPE_MEMORY_DB_SYNC) {
         return '记忆库同步'
+      }
+      if (taskType === ASYNC_TASK_TYPE_TAPD_SCRAPE) {
+        return 'TAPD网页抓取'
       }
       return '异步任务'
     },
@@ -2048,6 +2099,7 @@ export default {
     HomeTaskReportSetting,
     Markdown,
     DiffMarkdown,
+    MarkdownRenderer,
     Tools,
     Clipboard,
   },
@@ -2693,6 +2745,26 @@ export default {
   max-height: 420px;
   overflow: auto;
   min-height: 220px;
+}
+
+/* TAPD 抓取预览：查看/源码切换按钮区 */
+.async-task-detail__view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 12px;
+  vertical-align: middle;
+}
+
+/* 查看模式下 MarkdownRenderer 容器样式 */
+.async-task-detail__markdown {
+  max-height: 420px;
+  min-height: 220px;
+}
+
+/* section-title 内嵌切换按钮时用 flex 水平排列 */
+.async-task-detail__section-title:has(.async-task-detail__view-toggle) {
+  display: flex;
+  align-items: center;
 }
 
 .async-task-detail__note {

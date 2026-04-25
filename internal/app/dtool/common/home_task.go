@@ -13,7 +13,7 @@ import (
 const (
 	// homeTaskListQuerySQL 用于查询首页任务列表。
 	homeTaskListQuerySQL = `
-select id,name,task_status,memory_fragment_id,is_archived,start_time,last_operated_at,create_time,update_time
+select id,name,task_status,memory_fragment_id,is_archived,start_time,last_operated_at,create_time,update_time,tapd_url
 from tbl_home_task
 where is_archived = ?
 order by id desc`
