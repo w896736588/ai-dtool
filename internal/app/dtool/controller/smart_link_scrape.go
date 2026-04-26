@@ -190,6 +190,29 @@ func buildAbsoluteDownloadURL(c *gin.Context, downloadPath string) string {
 	return scheme + "://" + host + downloadURL.RequestURI()
 }
 
+// getFirstAccountFromSmartLink 根据 smartLinkID 和 label 找到对应 link 的 account_list 配置，
+// 取关联账号组中的第一个账号返回。
+func getFirstAccountFromSmartLink(smartLinkID int, label string) (string, string) {
+	smartLink, err := common.DbMain.Client.QueryBySql(`select links from tbl_smart_link where id = ?`, smartLinkID).One()
+	if err != nil || len(smartLink) == 0 {
+		return "", ""
+	}
+	linkList := make([]map[string]any, 0)
+	if decodeErr := gstool.JsonDecode(cast.ToString(smartLink["links"]), &linkList); decodeErr != nil {
+		return "", ""
+	}
+	for _, link := range linkList {
+		if cast.ToString(link["label"]) == label {
+			accountList := getAccountListByName(link)
+			if len(accountList) > 0 {
+				return accountList[0]["user_name"], accountList[0]["password"]
+			}
+			break
+		}
+	}
+	return "", ""
+}
+
 // dispatchScrapeTaskAndAwait 派发抓取任务给 Agent 并同步等待结果，不依赖 gin.Context。
 func dispatchScrapeTaskAndAwait(smartLinkID int, label, jumpURL, cssSelector string, waitSeconds int) (define.AgentTaskResultFileUploadResponse, error) {
 	cfg := getSmartLinkConfig()
@@ -208,7 +231,10 @@ func dispatchScrapeTaskAndAwait(smartLinkID int, label, jumpURL, cssSelector str
 		return define.AgentTaskResultFileUploadResponse{}, errors.New("SMART_LINK_CLIENT_PREPARING_RUNTIME")
 	}
 
-	runParams, runParamsErr := plw.GetRunParams(smartLinkID, label, "", "", 0, 1, make(map[string]string))
+	// 从 smart_link 的 links 中找到对应 label，再通过 account_list 关联的账号组取第一个账号。
+	accountUserName, accountPassword := getFirstAccountFromSmartLink(smartLinkID, label)
+
+	runParams, runParamsErr := plw.GetRunParams(smartLinkID, label, accountUserName, accountPassword, 0, 1, make(map[string]string))
 	if runParamsErr != nil {
 		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("构建运行参数失败: %w", runParamsErr)
 	}
