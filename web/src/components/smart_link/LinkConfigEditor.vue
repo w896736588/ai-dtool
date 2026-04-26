@@ -6,26 +6,30 @@
         <GitActionButton compact size="small" @click="openCreateLinkDialog">新增链接</GitActionButton>
       </div>
 
+      <el-input
+        v-if="linkItems.length > 0"
+        v-model="linkSearchKeyword"
+        placeholder="搜索链接名称或地址"
+        clearable
+        prefix-icon="Search"
+        class="link-search-input"
+      />
       <div v-if="linkItems.length === 0" class="editor-empty">暂无链接，请先新增一条。</div>
       <div v-else class="link-list">
-        <div v-for="(item, index) in linkItems" :key="item.uid" class="link-list-item">
+        <div v-for="(item, index) in filteredLinkItems" :key="item.uid" class="link-list-item">
           <div class="link-list-item__main">
             <div class="link-list-item__title">
               <span class="link-list-item__index">#{{ index + 1 }}</span>
               <span>{{ item.label || '未命名链接' }}</span>
             </div>
             <div class="link-list-item__meta">{{ item.link || '未配置链接地址' }}</div>
-            <div class="link-list-item__desc">
-              <span>账号分组：{{ item.account_group_name || '未选择' }}</span>
-              <span>Cookie：{{ item.cookie ? '已配置' : '未配置' }}</span>
-              <span>请求头：{{ hasHeaders(item.headers) ? '已配置' : '未配置' }}</span>
-            </div>
           </div>
           <div class="link-list-item__actions">
-            <GitActionButton compact size="small" @click="openEditLinkDialog(index)">编辑</GitActionButton>
-            <GitActionButton compact size="small" variant="danger" @click="removeLinkItem(index)">删除</GitActionButton>
+            <GitActionButton compact size="small" @click="openEditLinkDialog(item._originalIndex)">编辑</GitActionButton>
+            <GitActionButton compact size="small" variant="danger" @click="removeLinkItem(item._originalIndex)">删除</GitActionButton>
           </div>
         </div>
+        <div v-if="filteredLinkItems.length === 0 && linkItems.length > 0" class="editor-empty">无匹配结果。</div>
       </div>
     </div>
 
@@ -216,6 +220,7 @@ export default {
     return {
       accountGroupOptions: [],
       linkItems: [],
+      linkSearchKeyword: '',
       linkItemDialogVisible: false,
       editingLinkIndex: -1,
       linkItemDraft: createLinkItem(),
@@ -224,6 +229,21 @@ export default {
       syncingFromParent: false,
       lastEditorPayloadSignature: '',
     }
+  },
+  computed: {
+    filteredLinkItems() {
+      const keyword = this.linkSearchKeyword.trim().toLowerCase()
+      if (!keyword) {
+        return this.linkItems.map((item, index) => ({ ...item, _originalIndex: index }))
+      }
+      return this.linkItems
+        .map((item, index) => ({ ...item, _originalIndex: index }))
+        .filter(item => {
+          const label = (item.label || '').toLowerCase()
+          const link = (item.link || '').toLowerCase()
+          return label.includes(keyword) || link.includes(keyword)
+        })
+    },
   },
   mounted() {
     // 加载账号分组选项 / Load account group options for the single-select field.
@@ -242,10 +262,6 @@ export default {
     filterItems: { deep: true, handler() { this.emitChange() } },
   },
   methods: {
-    hasHeaders(headersValue) {
-      const normalizedHeaders = typeof headersValue === 'string' ? headersValue.trim() : JSON.stringify(headersValue || {})
-      return normalizedHeaders !== '' && normalizedHeaders !== '{}'
-    },
     // 解析旧配置中的账号组占位符 / Parse persisted placeholder format into group name.
     parseAccountGroupName(accountListValue) {
       const rawValue = String(accountListValue || '').trim()
@@ -402,10 +418,16 @@ export default {
 .editor-empty { color: #7a8776; font-size: 13px; }
 .filter-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 
+.link-search-input {
+  margin-bottom: 12px;
+}
+
 .link-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .link-list-item {
@@ -442,14 +464,6 @@ export default {
   margin-bottom: 8px;
   color: #556351;
   word-break: break-all;
-}
-
-.link-list-item__desc {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  color: #7a8776;
-  font-size: 12px;
 }
 
 .link-list-item__actions {
