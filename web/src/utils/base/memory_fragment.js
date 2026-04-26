@@ -98,6 +98,13 @@ function MemoryFragmentImageUpload(file, callBack) {
   base.BasePostForm('/api/MemoryFragmentImageUpload', form, callBack)
 }
 
+// MemoryFragmentBatchInfoByPaths 批量按文件路径查询片段摘要（id + title）。
+function MemoryFragmentBatchInfoByPaths(paths, callBack) {
+  base.BasePost('/api/MemoryFragmentBatchInfoByPaths', {
+    paths: paths,
+  }, callBack)
+}
+
 export default {
   GitPendingStatus,
   MemoryFragmentStatus,
@@ -113,4 +120,5 @@ export default {
   MemoryFragmentSearch,
   MemoryFragmentOrganize,
   MemoryFragmentImageUpload,
+  MemoryFragmentBatchInfoByPaths,
 }

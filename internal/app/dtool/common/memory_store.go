@@ -93,6 +93,7 @@ type MemoryFragmentStore interface {
 	MemoryFragmentHistoryList(id any) ([]map[string]any, error)
 	MemoryFragmentTagList() ([]map[string]any, error)
 	MemoryFragmentSearch(mode, query string, selectedTags []string, limit int) ([]map[string]any, error)
+	MemoryFragmentBatchInfoByPaths(paths []string) []map[string]any
 }
 
 func NewMemoryStore() *MemoryStore {

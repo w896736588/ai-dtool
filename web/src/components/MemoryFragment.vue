@@ -30,12 +30,14 @@
               <el-icon><Search /></el-icon>
             </template>
           </el-input>
-        </div>
-        <div class="search-mode-row">
-          <el-radio-group v-model="searchMode" size="small">
-            <el-radio-button label="keyword">全文检索</el-radio-button>
-            <el-radio-button label="semantic">智能检索</el-radio-button>
-          </el-radio-group>
+          <el-switch
+            v-model="searchModeSemantic"
+            inline-prompt
+            active-text="智能"
+            inactive-text="全文"
+            class="search-mode-switch"
+            @change="handleSearchModeSwitch"
+          />
         </div>
         <div class="search-actions">
           <pl-button type="primary" size="small" @click="submitSearch">
@@ -328,6 +330,7 @@ export default {
       searchResults: [],
       searchQuery: '',
       searchMode: KEYWORD_SEARCH_MODE,
+      searchModeSemantic: false,
       searchTabVisible: false,
       trashTabVisible: false,
       submittedSearchQuery: '',
@@ -804,10 +807,15 @@ export default {
     handleSearchClear() {
       this.searchQuery = ''
     },
+    // handleSearchModeSwitch 处理搜索模式 switch 切换。
+    handleSearchModeSwitch(semantic) {
+      this.searchMode = semantic ? SEMANTIC_SEARCH_MODE : KEYWORD_SEARCH_MODE
+    },
     // clearFilter 清空左侧搜索条件，并关闭结果 tab。
     clearFilter() {
       this.searchQuery = ''
       this.searchMode = KEYWORD_SEARCH_MODE
+      this.searchModeSemantic = false
       this.submittedSearchQuery = ''
       this.submittedSearchMode = KEYWORD_SEARCH_MODE
       this.searchTabVisible = false
@@ -1673,8 +1681,14 @@ export default {
 }
 
 .sidebar-search-card .search-row {
-  flex-direction: column;
-  align-items: stretch;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-search-card .search-row :deep(.el-input) {
+  flex: 1;
+  min-width: 0;
 }
 
 .sidebar-search-card .tag-filter-row {
@@ -1682,26 +1696,12 @@ export default {
   align-items: stretch;
 }
 
-.sidebar-search-card .search-mode-row {
-  margin-top: 10px;
-  display: flex;
-  justify-content: center;
+.search-mode-switch {
+  flex-shrink: 0;
+  --el-switch-on-color: #5f7d56;
 }
 
 /* 搜索模式切换按钮自定义样式 - 绿色主题 */
-.search-mode-row :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
-  background-color: #5f7d56;
-  border-color: #5f7d56;
-  box-shadow: -1px 0 0 0 #5f7d56;
-}
-
-.search-mode-row :deep(.el-radio-button__inner:hover) {
-  color: #5f7d56;
-}
-
-.search-mode-row :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner:hover) {
-  color: #fff;
-}
 
 .sidebar-search-card .tag-filter-label {
   min-width: 0;
@@ -1983,7 +1983,6 @@ export default {
     width: 100%;
   }
 
-  .sidebar-search-card .search-row,
   .tag-filter-row,
   .search-actions {
     flex-direction: column;

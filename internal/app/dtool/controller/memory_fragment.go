@@ -105,6 +105,25 @@ func BindMemoryFragmentStatusSSE(sse *gsgin.Sse, stopC chan int, interval time.D
 	}()
 }
 
+// MemoryFragmentBatchInfoByPaths 批量按文件路径查询片段摘要。
+func MemoryFragmentBatchInfoByPaths(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	pathsRaw, _ := dataMap[`paths`].([]any)
+	paths := make([]string, 0, len(pathsRaw))
+	for _, p := range pathsRaw {
+		if s, ok := p.(string); ok {
+			paths = append(paths, s)
+		}
+	}
+	results := memoryDB.MemoryFragmentBatchInfoByPaths(paths)
+	gsgin.GinResponseSuccess(c, ``, results)
+}
+
 // MemoryFragmentList 查询知识片段列表。
 func MemoryFragmentList(c *gin.Context) {
 	memoryDB, ok := memoryDBOrResponse(c)

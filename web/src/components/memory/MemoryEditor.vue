@@ -146,6 +146,7 @@
               ref="previewBody"
               class="preview-renderer"
               @scroll="handlePreviewScroll"
+              @click="handleFragmentLinkClick"
             >
               <MdPreview
                 :model-value="draftFragment.content"
@@ -160,6 +161,7 @@
           ref="previewBody"
           class="preview-renderer"
           @scroll="handlePreviewScroll"
+          @click="handleFragmentLinkClick"
         >
           <MdPreview
             :model-value="draftFragment.content"
@@ -415,6 +417,7 @@ export default {
       activeOutlineSlug: '',
       editorScrollElement: null,
       previewScrollSyncRafId: 0,
+      fragmentPathCache: {},
       draftFragment: {
         id: 0,
         title: '',
@@ -464,6 +467,10 @@ export default {
     },
     // outlineItems 变化后刷新预览区标题锚点。
     outlineItems() {
+      this.schedulePreviewOutlineRefresh()
+    },
+    // draftFragment.content 变化后重新扫描知识片段路径链接。
+    'draftFragment.content'() {
       this.schedulePreviewOutlineRefresh()
     },
     // contentEditMode 切回查看模式时重新同步目录锚点与高亮。
@@ -648,6 +655,7 @@ export default {
           }
           this.decoratePreviewHeadings()
           this.decoratePreviewSearchMatches()
+          this.decorateFragmentPathLinks()
           if (this.contentEditMode) {
             this.syncPreviewScrollByEditor()
             this.syncActiveOutlineByEditorScroll()
@@ -656,6 +664,102 @@ export default {
           this.syncActiveOutlineByScroll()
         }, 0)
       })
+    },
+    // decorateFragmentPathLinks 扫描预览区文本，将知识片段文件路径替换为蓝色可点击的笔记标题。
+    decorateFragmentPathLinks() {
+      const previewBody = this.$refs.previewBody
+      if (!previewBody) return
+      const previewEl = previewBody.querySelector('.md-editor-preview')
+      if (!previewEl) return
+
+      const pathRegex = /[A-Za-z]:[\\/][^\s（）()]*[\\/]fragments[\\/]\d{4}[\\/]\d{4}-\d{2}[\\/][\w-]+\.md(?:（[^）]+）|\([^)]+\))?/g
+      const paths = []
+      const walker = document.createTreeWalker(previewEl, NodeFilter.SHOW_TEXT)
+      const textNodes = []
+      while (walker.nextNode()) {
+        const node = walker.currentNode
+        if (node.textContent && pathRegex.test(node.textContent)) {
+          textNodes.push(node)
+          pathRegex.lastIndex = 0
+          let m
+          while ((m = pathRegex.exec(node.textContent)) !== null) {
+            const raw = m[0]
+            const pathMatch = raw.match(/([A-Za-z]:[\\/][^\s（）()]*[\\/]fragments[\\/]\d{4}[\\/]\d{4}-\d{2}[\\/][\w-]+\.md)/)
+            if (pathMatch && !paths.includes(pathMatch[1])) {
+              paths.push(pathMatch[1])
+            }
+          }
+        }
+        pathRegex.lastIndex = 0
+      }
+      if (paths.length === 0) return
+
+      const replaceNodes = (pathMap) => {
+        const replaceRegex = /[A-Za-z]:[\\/][^\s（）()]*[\\/]fragments[\\/]\d{4}[\\/]\d{4}-\d{2}[\\/][\w-]+\.md(?:（[^）]+）|\([^)]+\))?/g
+        for (const node of textNodes) {
+          if (!node.parentNode) continue
+          const text = node.textContent
+          replaceRegex.lastIndex = 0
+          if (!replaceRegex.test(text)) continue
+          replaceRegex.lastIndex = 0
+          const frag = document.createDocumentFragment()
+          let lastIndex = 0
+          let match
+          while ((match = replaceRegex.exec(text)) !== null) {
+            const raw = match[0]
+            const pathMatch = raw.match(/([A-Za-z]:[\\/][^\s（）()]*[\\/]fragments[\\/]\d{4}[\\/]\d{4}-\d{2}[\\/][\w-]+\.md)/)
+            if (!pathMatch) continue
+            const info = pathMap[pathMatch[1]]
+            if (match.index > lastIndex) {
+              frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)))
+            }
+            const span = document.createElement('span')
+            span.className = 'fragment-path-link'
+            span.setAttribute('data-fragment-id', info ? info.id : '')
+            span.setAttribute('data-fragment-path', pathMatch[1])
+            span.textContent = info ? info.title : raw
+            frag.appendChild(span)
+            lastIndex = match.index + raw.length
+          }
+          if (lastIndex < text.length) {
+            frag.appendChild(document.createTextNode(text.slice(lastIndex)))
+          }
+          node.parentNode.replaceChild(frag, node)
+        }
+      }
+
+      // 所有路径均已缓存 → 同步替换，避免异步回调时 DOM 已被重新渲染
+      const uncachedPaths = paths.filter(p => !this.fragmentPathCache[p])
+      if (uncachedPaths.length === 0) {
+        replaceNodes(this.fragmentPathCache)
+        return
+      }
+
+      MemoryFragmentApi.MemoryFragmentBatchInfoByPaths(paths, (res) => {
+        if (!res || res.ErrCode !== 0 || !Array.isArray(res.Data)) return
+        for (const item of res.Data) {
+          this.fragmentPathCache[item.file_path] = item
+        }
+        replaceNodes(this.fragmentPathCache)
+      })
+    },
+    // handleFragmentLinkClick 处理预览区片段链接点击，新窗口打开对应知识片段。
+    handleFragmentLinkClick(event) {
+      const link = event.target.closest('.fragment-path-link')
+      if (!link) return
+      const fragmentId = link.getAttribute('data-fragment-id')
+      if (!fragmentId) {
+        this.$helperNotify.warning('未找到对应的知识片段')
+        return
+      }
+      const routeInfo = this.$router.resolve({
+        path: '/MemoryFragment',
+        query: {
+          fragment_id: String(fragmentId),
+          hide_menu: '1',
+        },
+      })
+      window.open(routeInfo.href, '_blank')
     },
     // handleSearchInput 在输入关键字时切到第一项匹配并刷新高亮。
     handleSearchInput() {
@@ -1670,6 +1774,19 @@ export default {
 .preview-body :deep(mark.memory-search-mark--active) {
   background: #f5bf46;
   box-shadow: 0 0 0 1px rgba(212, 144, 27, 0.28);
+}
+
+.preview-body :deep(.fragment-path-link),
+.editor-preview-shell :deep(.fragment-path-link) {
+  color: #409eff;
+  cursor: pointer;
+  text-decoration-style: dashed;
+  font-weight: bold;
+}
+.preview-body :deep(.fragment-path-link:hover),
+.editor-preview-shell :deep(.fragment-path-link:hover) {
+  color: #66b1ff;
+  text-decoration-style: solid;
 }
 
 .preview-outline {

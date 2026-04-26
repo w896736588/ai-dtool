@@ -720,6 +720,27 @@ func (h *Service) getFragmentByPath(path string) (Fragment, bool) {
 	return fragment, exists
 }
 
+// MemoryFragmentBatchInfoByPaths 批量按文件路径查询片段摘要（id + title）。
+func (h *Service) MemoryFragmentBatchInfoByPaths(paths []string) []map[string]any {
+	results := make([]map[string]any, 0, len(paths))
+	for _, p := range paths {
+		p = strings.TrimSpace(p)
+		if p == `` {
+			continue
+		}
+		fragment, ok := h.getFragmentByPath(p)
+		if !ok || fragment.IsDeleted {
+			continue
+		}
+		results = append(results, map[string]any{
+			`file_path`: fragment.FilePath,
+			`id`:        fragment.ID,
+			`title`:     fragment.Title,
+		})
+	}
+	return results
+}
+
 func uniqueStrings(items []string) []string {
 	if len(items) == 0 {
 		return []string{}
