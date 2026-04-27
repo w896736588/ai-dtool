@@ -35,6 +35,7 @@ type PlaywrightRunParams struct {
 	ResponseUrls        []*_struct.ProcessResponseUrl                    //注册等待请求完成
 	ShowCookies         []ShowCookie                                     //信息提取
 	StopEchoTips        bool                                             //是否停止输出执行过程到sse 当大模型正在回复时，不需要再将执行过程输出到sse
+	SmartLinkLastStore  SmartLinkLastStore                               //目录历史存储，服务端用DB，agent通过接口代理实现
 }
 
 type ShowCookie struct {

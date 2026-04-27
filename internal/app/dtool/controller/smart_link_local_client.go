@@ -250,6 +250,13 @@ func SmartLinkTaskCreate(c *gin.Context) {
 		sseDistributeId = "smart_link_run_" + cast.ToString(now)
 	}
 
+	tokenManager := getSafeTokenManager()
+	safeToken, _, tokenErr := tokenManager.GenerateToken()
+	if tokenErr != nil {
+		gsgin.GinResponseError(c, "生成token失败: "+tokenErr.Error(), nil)
+		return
+	}
+
 	// 创建任务记录到数据库（用于状态追踪）
 	_, createErr := common.DbMain.Client.QuickCreate("tbl_smart_link_task", map[string]any{
 		"task_id":       taskID,
@@ -277,6 +284,7 @@ func SmartLinkTaskCreate(c *gin.Context) {
 			TaskID:          taskID,
 			SseDistributeId: sseDistributeId,
 			ClientID:        clientID,
+			SafeToken:       safeToken,
 			RunParams:       agentRunParams,
 		},
 	}

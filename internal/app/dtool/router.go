@@ -354,6 +354,7 @@ func smartLink(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/smart-link/task/create`, controller.SmartLinkTaskCreate)
 	tGin.GinPost(`/api/smart-link/scrape-to-markdown`, controller.SmartLinkScrapeToMarkdown)
 	tGin.GinPost(`/api/smart-link/task/result-file`, controller.SmartLinkTaskResultFileUpload)
+	tGin.GinPost(`/api/smart-link/agent/last-user-data`, controller.SmartLinkLastForAgent)
 	tGin.GinGet(`/api/agent/ws`, controller.AgentWs)
 	//执行逻辑
 	tGin.GinPost(`/api/SmartProcessList`, controller.SmartProcessList)

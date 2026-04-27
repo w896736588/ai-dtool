@@ -101,6 +101,33 @@ type AgentTaskResultFileUploadResponse struct {
 	FileName    string `json:"file_name"`
 }
 
+// AgentSmartLinkLastAction 表示 agent 请求服务端代操作历史目录记录的动作。
+type AgentSmartLinkLastAction string
+
+const (
+	// AgentSmartLinkLastActionGetLast 查询用户在某域名上次使用的目录索引。
+	AgentSmartLinkLastActionGetLast AgentSmartLinkLastAction = "get_last"
+	// AgentSmartLinkLastActionExists 判断某域名是否已占用指定目录索引。
+	AgentSmartLinkLastActionExists AgentSmartLinkLastAction = "exists"
+	// AgentSmartLinkLastActionUpsert 记录本次任务实际使用的目录索引。
+	AgentSmartLinkLastActionUpsert AgentSmartLinkLastAction = "upsert"
+)
+
+// AgentSmartLinkLastRequest 是 agent 访问历史目录代理接口的请求体。
+type AgentSmartLinkLastRequest struct {
+	Action        AgentSmartLinkLastAction `json:"action"`
+	SmartLinkID   int                      `json:"smart_link_id,omitempty"`
+	UserName      string                   `json:"user_name,omitempty"`
+	Domain        string                   `json:"domain"`
+	UserDataIndex int                      `json:"user_data_index,omitempty"`
+}
+
+// AgentSmartLinkLastResponse 是历史目录代理接口的响应数据。
+type AgentSmartLinkLastResponse struct {
+	UserDataIndex int  `json:"user_data_index,omitempty"`
+	Exists        bool `json:"exists,omitempty"`
+}
+
 // AgentHelloData agent_hello 消息的 data 结构
 type AgentHelloData struct {
 	ClientVersion string `json:"client_version"`

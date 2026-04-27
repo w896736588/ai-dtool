@@ -132,7 +132,7 @@ func (t *TaskRunner) executeTask(taskData define.AgentTaskExecuteData) {
 		Scheme:              taskData.RunParams.Scheme,
 		LocatorTimeout:      taskData.RunParams.LocatorTimeout,
 		GetPageTimeout:      taskData.RunParams.GetPageTimeout,
-		LastIndexLabel:      "", // Agent 模式下置空，避免 DB 依赖
+		LastIndexLabel:      taskData.RunParams.LastIndexLabel,
 		LinkId:              taskData.RunParams.LinkId,
 		DownloadFinds:       taskData.RunParams.DownloadFinds,
 		AutoCloseSecond:     taskData.RunParams.AutoCloseSecond,
@@ -142,6 +142,8 @@ func (t *TaskRunner) executeTask(taskData define.AgentTaskExecuteData) {
 		ListenCurls:         nil, // Agent 不需要拦截请求功能，nil map 对 range 安全
 		FilterUris:          taskData.RunParams.FilterUris,
 		ShowCookies:         showCookies,
+		// Agent 不连接配置库；历史目录索引通过服务端接口查询和写入。
+		SmartLinkLastStore: newAgentSmartLinkLastStore(t.wsClient.config.ServerURL, taskData.SafeToken),
 	}
 
 	// 普通任务与抓取任务统一走相同的数据目录策略，确保登录态来源一致。
