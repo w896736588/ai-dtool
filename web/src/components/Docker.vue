@@ -12,6 +12,7 @@
       </div>
       <div class="control-row">
         <el-select v-model="chooseSshId" placeholder="选择环境" @change="changeSsh" class="env-select">
+          <el-option key="__all__" label="全部" :value="0"></el-option>
           <el-option v-for="(value) in sshList" :key="value.name" :label="value.name" :value="value.id">
           </el-option>
         </el-select>
@@ -62,7 +63,7 @@
     </div>
 
     <div class="compose-table-card">
-      <el-table :data="composeList" :row-class-name="getColumnColor" class="compose-table">
+      <el-table :data="composeList" :row-class-name="getColumnColor" class="compose-table" height="calc(100vh - 220px)">
         <el-table-column label="名称" sortable width="200">
           <template #default="scope">
             <div class="name-cell">
@@ -79,41 +80,19 @@
             </div>
           </template>
         </el-table-column>
+        <el-table-column v-if="!chooseSshId" label="环境" sortable width="120">
+          <template #default="scope">
+            <span v-html="scope.row.ssh_name"></span>
+          </template>
+        </el-table-column>
         <el-table-column label="位置" sortable width="260">
           <template #default="scope">
             <code class="path-text" v-html="scope.row.compose_yml_path"></code>
           </template>
         </el-table-column>
-        <el-table-column label="env file" sortable width="260">
-          <template #default="scope">
-            <code class="path-text" v-html="scope.row.env_file"></code>
-          </template>
-        </el-table-column>
         <el-table-column fixed="right" label="操作" min-width="360">
           <template #default="scope">
-            <div class="operation-block">
-              <span class="operation-title">项目操作：</span>
-              <div class="operation-buttons">
-                <el-dropdown @command="(command) => handleComposeRowActionCommand(scope.row, command)">
-                  <pl-button size="small" type="primary" plain class="operation-dropdown-trigger">
-                    更多操作
-                    <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-                  </pl-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item :command="COMPOSE_ROW_ACTION_SERVICE_LIST">服务列表</el-dropdown-item>
-                      <el-dropdown-item :command="COMPOSE_ROW_ACTION_STATUS">运行状态</el-dropdown-item>
-                      <el-dropdown-item :command="COMPOSE_ROW_ACTION_SHOW_CONFIG" divided>查看 compose.yml</el-dropdown-item>
-                      <el-dropdown-item :command="COMPOSE_ROW_ACTION_SHOW_ENV">查看 env</el-dropdown-item>
-                      <el-dropdown-item :command="COMPOSE_ROW_ACTION_RESTART" divided>重启（restart）</el-dropdown-item>
-                      <el-dropdown-item :command="COMPOSE_ROW_ACTION_STOP">停止（stop）</el-dropdown-item>
-                      <el-dropdown-item :command="COMPOSE_ROW_ACTION_START">启动（up -d）</el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-              </div>
-            </div>
-            <div class="operation-block">
+            <div v-if="scope.row.default_service_list && scope.row.default_service_list.length" class="operation-block">
               <span class="operation-title">快速重启：</span>
               <div class="quick-actions">
                 <template v-for="item in scope.row.default_service_list" :key="`restart_${scope.row.id}_${item}`">
@@ -121,7 +100,7 @@
                 </template>
               </div>
             </div>
-            <div class="operation-block">
+            <div v-if="scope.row.default_service_list && scope.row.default_service_list.length" class="operation-block">
               <span class="operation-title">快速停止：</span>
               <div class="quick-actions">
                 <template v-for="item in scope.row.default_service_list" :key="`stop_${scope.row.id}_${item}`">
@@ -129,6 +108,27 @@
                 </template>
               </div>
             </div>
+          </template>
+        </el-table-column>
+        <el-table-column fixed="right" label="更多操作" width="120">
+          <template #default="scope">
+            <el-dropdown @command="(command) => handleComposeRowActionCommand(scope.row, command)">
+              <pl-button size="small" type="primary" plain class="operation-dropdown-trigger">
+                更多操作
+                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </pl-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_SERVICE_LIST">服务列表</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_STATUS">运行状态</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_SHOW_CONFIG" divided>查看 compose.yml</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_SHOW_ENV">查看 env</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_RESTART" divided>重启（restart）</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_STOP">停止（stop）</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_START">启动（up -d）</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -298,7 +298,7 @@ export default {
       imageContainerLoading: false,
       currentImageRow: {},
       //选中的环境
-      chooseSshId: '',
+      chooseSshId: 0,
       chooseComposeeConfig: {},
       //是否显示所有的消费者
       showAllSupervisor: false,
@@ -345,16 +345,7 @@ export default {
       if (response.ErrCode === 0) {
         _that.sshList = response.Data
         if (_that.sshList.length > 0) {
-          _that.chooseSshId = parseInt(_that.getLastSshId())
-          let exist = false
-          for (let i in _that.sshList) {
-            if (parseInt(_that.sshList[i]['id']) === parseInt(_that.chooseSshId)) {
-              exist = true
-            }
-          }
-          if (!exist) {
-            _that.chooseSshId = '' + _that.sshList[0]['id']
-          }
+          _that.chooseSshId = _that.getLastSshId()
           _that.changeSsh()
         }
       }
@@ -607,10 +598,11 @@ export default {
     refreshServices : function (row){
       let _that = this
       _that.prepareActionSse('services_refresh')
+      let sshId = _that.getSshId(_that.dialogServiceConfig)
       //优先从缓存拿
-      let servicesKey = 'docker_services_' + _that.chooseSshId + '_' + _that.dialogServiceConfig.id
+      let servicesKey = 'docker_services_' + sshId + '_' + _that.dialogServiceConfig.id
       let data = {
-        ssh_id: _that.chooseSshId,
+        ssh_id: sshId,
         id: _that.dialogServiceConfig.id,
         sse_distribute_id: _that.sse_distribute_id,
       }
@@ -627,13 +619,14 @@ export default {
       let _that = this
       _that.dialogServiceConfig = row
       _that.shellController.isRunning = true
+      let sshId = _that.getSshId(row)
       let data = {
-        ssh_id: _that.chooseSshId,
+        ssh_id: sshId,
         id: row.id,
         sse_distribute_id: _that.sse_distribute_id,
       }
       //优先从缓存拿
-      let servicesKey = 'docker_services_' + _that.chooseSshId + '_' + row.id
+      let servicesKey = 'docker_services_' + sshId + '_' + row.id
       let services =store.getStore(servicesKey)
       if(type.IsString(services)){
         _that.shellController.isRunning = false
@@ -656,18 +649,19 @@ export default {
     getLastSshId: function () {
       let _that = this
       let chooseSshId = _that.$helperStore.getStore('dockerChooseSshId')
-      if (chooseSshId === null || chooseSshId === undefined || isNaN(chooseSshId)) {
-        chooseSshId = 0
+      if (chooseSshId === null || chooseSshId === undefined || chooseSshId === '' || isNaN(chooseSshId)) {
+        return 0
       }
-      if (chooseSshId === 0 && _that.composeList.length > 0) {
-        return _that.composeList[0].id
+      chooseSshId = parseInt(chooseSshId)
+      if (chooseSshId === 0) {
+        return 0
       }
-      for (let i in _that.composeList) {
-        if (parseInt(_that.composeList[i].id) === parseInt(chooseSshId)) {
-          chooseSshId = _that.composeList[i].id
+      for (let i in _that.sshList) {
+        if (parseInt(_that.sshList[i].id) === chooseSshId) {
+          return chooseSshId
         }
       }
-      return chooseSshId
+      return 0
     },
     //获取列背景颜色
     getColumnColor: function (value) {
@@ -691,7 +685,7 @@ export default {
       _that.shellController.isRunning = true
       _that.prepareActionSse('restart')
       let data = {
-        ssh_id: _that.chooseSshId,
+        ssh_id: _that.getSshId(value),
         id: value.id,
         sse_distribute_id: _that.sse_distribute_id,
         service: service,
@@ -708,7 +702,7 @@ export default {
       _that.shellController.isRunning = true
       _that.prepareActionSse('stop')
       let data = {
-        ssh_id: _that.chooseSshId,
+        ssh_id: _that.getSshId(value),
         id: value.id,
         sse_distribute_id: _that.sse_distribute_id,
         service : service,
@@ -725,7 +719,7 @@ export default {
       _that.shellController.isRunning = true
       _that.prepareActionSse('start')
       let data = {
-        ssh_id: _that.chooseSshId,
+        ssh_id: _that.getSshId(value),
         id: value.id,
         sse_distribute_id: _that.sse_distribute_id,
         service : service,
@@ -742,7 +736,7 @@ export default {
       _that.shellController.isRunning = true
       _that.prepareActionSse('status')
       let data = {
-        ssh_id: _that.chooseSshId,
+        ssh_id: _that.getSshId(value),
         id: value.id,
         sse_distribute_id: _that.sse_distribute_id,
       }
@@ -761,7 +755,7 @@ export default {
       _that.prepareActionSse('show_compose')
       let data = {
         config_path: value.compose_yml_path,
-        ssh_id: _that.chooseSshId,
+        ssh_id: _that.getSshId(value),
         sse_distribute_id: _that.sse_distribute_id,
       }
       compose.DockerComposeConfigShow(data, function (response) {
@@ -785,7 +779,7 @@ export default {
       }
       let data = {
         config_path: envFile,
-        ssh_id: _that.chooseSshId,
+        ssh_id: _that.getSshId(value),
         sse_distribute_id: _that.sse_distribute_id,
       }
       compose.DockerComposeConfigShow(data, function (response) {
@@ -800,9 +794,6 @@ export default {
     },
     getComposeList: function () {
       let _that = this
-      if (!_that.chooseSshId) {
-        return
-      }
       _that.shellController.isRunning = true
       _that.prepareActionSse('compose_list')
       compose.DockerComposeList({ssh_id: _that.chooseSshId, sse_distribute_id: _that.sse_distribute_id}, function (response) {
@@ -820,6 +811,9 @@ export default {
             _that.shellController.isRunning = false
           }
       )
+    },
+    getSshId: function (row) {
+      return parseInt(this.chooseSshId) || row.ssh_id
     },
     //选择代码环境
     changeSsh: function () {
@@ -1086,6 +1080,14 @@ export default {
   font-size: 14px;
   border-radius: 10px;
   overflow: hidden;
+}
+
+.compose-table :deep(.el-scrollbar__bar) {
+  display: block !important;
+}
+.compose-table :deep(.el-scrollbar__wrap) {
+  scrollbar-width: thin !important;
+  -ms-overflow-style: auto !important;
 }
 
 .compose-table :deep(.el-table__header th) {

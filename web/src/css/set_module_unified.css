@@ -48,6 +48,18 @@
   overflow: hidden;
 }
 
+.set-config-table :deep(.el-scrollbar__bar) {
+  display: block !important;
+}
+.set-config-table :deep(.el-scrollbar__wrap) {
+  scrollbar-width: thin !important;
+  -ms-overflow-style: auto !important;
+}
+
+.set-config-search {
+  max-width: 300px;
+}
+
 .set-config-table :deep(.el-table__header th) {
   background: #f7f7f2;
   color: #606050;
