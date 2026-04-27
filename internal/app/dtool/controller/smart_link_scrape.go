@@ -243,12 +243,18 @@ func dispatchScrapeTaskAndAwait(smartLinkID int, label, jumpURL, cssSelector str
 	taskID := "scrape_task_" + cast.ToString(now) + "_" + cast.ToString(smartLinkID)
 	sseDistributeID := "smart_link_scrape_" + cast.ToString(now)
 
+	tokenManager := getSafeTokenManager()
+	safeToken, _, tokenErr := tokenManager.GenerateToken()
+	if tokenErr != nil {
+		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("生成token失败: %w", tokenErr)
+	}
+
 	taskData := define.AgentTaskExecuteData{
 		TaskID:          taskID,
 		SseDistributeId: sseDistributeID,
 		ClientID:        info.ClientID,
 		TaskType:        define.AgentTaskTypeScrapeToMarkdown,
-		SafeToken:       "",
+		SafeToken:       safeToken,
 		RunParams:       BuildAgentRunParams(runParams),
 		ScrapeConfig: define.AgentTaskScrapeConfig{
 			JumpURL:     jumpURL,

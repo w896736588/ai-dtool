@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """
@@ -23,9 +23,9 @@
       "body_form": [],
       "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}",
       "body_raw": "",
-      "response_take": [
-        {"description": "状态码，0表示成功", "item_key": "", "value": "res.code", "take_value": ""},
-        {"description": "认证令牌", "item_key": "Token", "value": "res.data.token", "take_value": ""}
+      "take_result": [
+        {"key": "code", "type": "number", "desc": "状态码，0表示成功"},
+        {"key": "data.token", "type": "string", "desc": "认证令牌"}
       ]
     }
   ]
@@ -34,7 +34,7 @@
 注意：
 - type 字段只接受: string / integer / float / boolean / file (禁止使用 int；bool 和 boolean 均可，推荐 boolean)
 - content_type 必须根据后端控制器实际代码判断，不得默认 application/json
-- response_take 必须填写，描述接口返回字段含义
+- take_result 必须填写，描述接口返回字段含义
 - base-url 和 Token 必须由用户提供，所有请求都会携带 Header: Token
 """
 
@@ -135,7 +135,7 @@ def build_create_api_payload(
         "body_form": api_item.get("body_form", []),
         "body_json": api_item.get("body_json", ""),
         "body_raw": api_item.get("body_raw", ""),
-        "response_take": api_item.get("response_take", []),
+        "take_result": api_item.get("take_result", []),
     }
     if api_item.get("env_id"):
         payload["env_id"] = api_item["env_id"]

@@ -45,7 +45,7 @@ description: Use when operating the dtool 接口开发模块 and the task involv
 4. 从 diff 中确认以下信息后，再开始写接口文档：
    - 是否新增接口、修改 URI、修改 method、修改请求参数、修改响应字段
    - 后端控制器实际如何接收参数，以决定 `content_type`、`query_params`、`body_form`、`body_json`、`body_raw`
-   - 返回结构里哪些字段需要写入 `response_take`
+   - 返回结构里哪些字段需要写入 `take_result`
 5. 如果变更里同时包含非接口文件，优先聚焦接口语义变更，不要把纯样式、dist、构建产物误当成接口改动
 6. 在没有确认 diff 之前，不得直接假设接口文档需要新增或修改
 
@@ -152,28 +152,27 @@ description: Use when operating the dtool 接口开发模块 and the task involv
 2. 根据实际代码确定 `content_type` 和对应的请求数据字段
 3. 如果无法确定，优先询问用户
 
-### 4. 必须设置结果字段备注（response_take）
+### 4. 必须设置结果字段备注（take_result）
 
-每个接口都必须设置 `response_take`（结果字段备注），用于描述接口返回结果中各字段的含义。
+每个接口都必须设置 `take_result`（结果字段备注），用于描述接口返回结果中各字段的含义。
 
-返回结果字段描述、字段含义、示例等备注内容必须写入 `response_take` 数组结构，不得写入 `take_result`（结果提取）。
+返回结果字段描述、字段含义、示例等备注内容必须写入 `take_result` 数组结构。
 
-`response_take` 格式为 JSON 数组，每项包含：
-- `description`：字段含义描述（必填）
-- `item_key`：对应的环境变量 key（如不需要可留空）
-- `value`：JSON 路径（如 `res.data.token`）
-- `take_value`：留空即可，运行时自动填充
+`take_result` 格式为 JSON 数组，每项包含：
+- `key`：返回字段路径（必填，如 `code`、`data.token`）
+- `type`：字段类型（必填，如 `string`、`number`、`boolean`、`object`、`array`）
+- `desc`：字段含义描述（必填）
 
 示例：
 ```json
 [
-  {"description": "状态码，0表示成功", "item_key": "", "value": "res.code", "take_value": ""},
-  {"description": "用户令牌", "item_key": "Token", "value": "res.data.token", "take_value": ""},
-  {"description": "用户ID", "item_key": "", "value": "res.data.user_id", "take_value": ""}
+  {"key": "code", "type": "number", "desc": "状态码，0表示成功"},
+  {"key": "data.token", "type": "string", "desc": "用户令牌"},
+  {"key": "data.user_id", "type": "number", "desc": "用户ID"}
 ]
 ```
 
-**禁止在生成接口时留空 response_take**，至少要定义返回结构中的核心字段及其中文描述。
+**禁止在生成接口时留空 take_result**，至少要定义返回结构中的核心字段及其中文描述。
 
 ## 失败反馈要求
 

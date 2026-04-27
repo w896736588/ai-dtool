@@ -236,15 +236,14 @@
 | `body_json` | string | JSON 请求体字符串（用于 application/json）               |
 | `body_raw` | string | 原始请求体（用于 text/plain / raw）                     |
 | `env_id` | int | 环境变量 ID                                        |
-| `response_take` | array | 结果字段备注，**必须填写**，用于写入返回字段描述、字段含义、示例等备注结构，见下方格式  |
-| `take_result` | string | 不需要处理                                          |
+| `take_result` | array | 结果字段备注，**必须填写**，用于写入返回字段描述、字段含义、示例等备注结构，见下方格式  |
 | `take_result_desc` | string | 不需要处理                                          |
 
 #### 返回结果字段写入规则
 
-- 返回字段描述、字段含义、示例等备注内容必须写入 `response_take` 数组结构。
-- `take_result` 对应“结果提取”，只保存运行提取结果或系统管理内容，不用于写入字段备注。
-- 生成或更新接口时，禁止把返回字段描述写入 `take_result`。
+- 返回字段描述、字段含义、示例等备注内容必须写入 `take_result` 数组结构。
+- 生成或更新接口时，返回字段描述只能写入 `take_result`。
+- `take_result_desc` 不需要处理。
 
 #### query_params / body_form 中每项的字段格式
 
@@ -281,32 +280,29 @@
 | 纯文本/二进制请求体 | `text/plain` 或 `raw` | `body_raw` |
 | GET 请求 | 不设置或留空 | 无 |
 
-#### response_take 格式（必须填写，描述接口返回字段含义）
+#### take_result 格式（必须填写，描述接口返回字段含义）
 
 ```json
 [
   {
-    "description": "状态码，0表示成功",
-    "item_key": "",
-    "value": "res.code",
-    "take_value": ""
+    "key": "code",
+    "type": "number",
+    "desc": "状态码，0表示成功"
   },
   {
-    "description": "用户认证令牌",
-    "item_key": "Token",
-    "value": "res.data.token",
-    "take_value": ""
+    "key": "data.token",
+    "type": "string",
+    "desc": "用户认证令牌"
   },
   {
-    "description": "用户唯一ID",
-    "item_key": "",
-    "value": "res.data.user_id",
-    "take_value": ""
+    "key": "data.user_id",
+    "type": "number",
+    "desc": "用户唯一ID"
   }
 ]
 ```
 
-> **禁止留空 response_take**，至少要描述返回结构中的核心字段。
+> **禁止留空 take_result**，至少要描述返回结构中的核心字段。
 
 #### 创建示例（application/json 类型）
 
@@ -326,10 +322,10 @@
   "content_type": "application/json",
   "body_form": [],
   "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}",
-  "response_take": [
-    {"description": "状态码，0表示成功", "item_key": "", "value": "res.code", "take_value": ""},
-    {"description": "提示信息", "item_key": "", "value": "res.msg", "take_value": ""},
-    {"description": "认证令牌", "item_key": "Token", "value": "res.data.token", "take_value": ""}
+  "take_result": [
+    {"key": "code", "type": "number", "desc": "状态码，0表示成功"},
+    {"key": "msg", "type": "string", "desc": "提示信息"},
+    {"key": "data.token", "type": "string", "desc": "认证令牌"}
   ]
 }
 ```
@@ -356,9 +352,9 @@
     {"field": "enabled", "type": "boolean", "value": "true", "description": "是否启用"}
   ],
   "body_json": "",
-  "response_take": [
-    {"description": "状态码", "item_key": "", "value": "res.code", "take_value": ""},
-    {"description": "提交结果ID", "item_key": "", "value": "res.data.id", "take_value": ""}
+  "take_result": [
+    {"key": "code", "type": "number", "desc": "状态码"},
+    {"key": "data.id", "type": "number", "desc": "提交结果ID"}
   ]
 }
 ```
@@ -382,10 +378,10 @@
   "content_type": "application/json",
   "body_form": [],
   "body_json": "{\"username\":\"demo\",\"password\":\"new-password\"}",
-  "response_take": [
-    {"description": "状态码，0表示成功", "item_key": "", "value": "res.code", "take_value": ""},
-    {"description": "提示信息", "item_key": "", "value": "res.msg", "take_value": ""},
-    {"description": "认证令牌", "item_key": "Token", "value": "res.data.token", "take_value": ""}
+  "take_result": [
+    {"key": "code", "type": "number", "desc": "状态码，0表示成功"},
+    {"key": "msg", "type": "string", "desc": "提示信息"},
+    {"key": "data.token", "type": "string", "desc": "认证令牌"}
   ]
 }
 ```
@@ -575,9 +571,9 @@ JSON 结构：
           "content_type": "application/json",
           "body_form": [],
           "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}",
-          "response_take": [
-            {"description": "状态码，0表示成功", "item_key": "", "value": "res.code", "take_value": ""},
-            {"description": "认证令牌", "item_key": "Token", "value": "res.data.token", "take_value": ""}
+          "take_result": [
+            {"key": "code", "type": "number", "desc": "状态码，0表示成功"},
+            {"key": "data.token", "type": "string", "desc": "认证令牌"}
           ]
         }
       ]
@@ -586,7 +582,7 @@ JSON 结构：
 }
 ```
 
-> **批量导入同样需要遵守上述所有约束**：type 只能用 `integer`（不能用 `int`），推荐统一用 `boolean`（`bool` 也可），必须根据后端代码判断 content_type，必须填写 response_take。
+> **批量导入同样需要遵守上述所有约束**：type 只能用 `integer`（不能用 `int`），推荐统一用 `boolean`（`bool` 也可），必须根据后端代码判断 content_type，必须填写 take_result。
 
 注意：
 
@@ -658,7 +654,7 @@ curl -X POST "http://localhost:17170/api/CreateDir" \
 ```bash
 curl -X POST "http://localhost:17170/api/CreateApi" \
   -H "Content-Type: application/json" \
-  -d "{\"folder_id\":12,\"collection_id\":1,\"name\":\"用户登录\",\"method\":\"POST\",\"url\":\"$Url$/v1/login\",\"protocol\":\"https\",\"query_params\":[],\"content_type\":\"application/json\",\"body_form\":[],\"body_json\":\"{\\\"username\\\":\\\"demo\\\",\\\"password\\\":\\\"123456\\\"}\",\"response_take\":[{\"description\":\"状态码\",\"item_key\":\"\",\"value\":\"res.code\",\"take_value\":\"\"},{\"description\":\"认证令牌\",\"item_key\":\"Token\",\"value\":\"res.data.token\",\"take_value\":\"\"}]}"
+  -d "{\"folder_id\":12,\"collection_id\":1,\"name\":\"用户登录\",\"method\":\"POST\",\"url\":\"$Url$/v1/login\",\"protocol\":\"https\",\"query_params\":[],\"content_type\":\"application/json\",\"body_form\":[],\"body_json\":\"{\\\"username\\\":\\\"demo\\\",\\\"password\\\":\\\"123456\\\"}\",\"take_result\":[{\"key\":\"code\",\"type\":\"number\",\"desc\":\"状态码\"},{\"key\":\"data.token\",\"type\":\"string\",\"desc\":\"认证令牌\"}]}"
 ```
 
 ### 7. 批量导入
