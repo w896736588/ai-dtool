@@ -20,6 +20,7 @@ import (
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/playwright-community/playwright-go"
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 type ScrapeImageResource struct {
@@ -240,10 +241,60 @@ func buildMarkdownImageReplacements(resource ScrapeImageResource, localPath stri
 	return replacements
 }
 
+func setHTMLAttr(node *html.Node, key, value string) {
+	for i := range node.Attr {
+		if strings.EqualFold(strings.TrimSpace(node.Attr[i].Key), key) {
+			node.Attr[i].Val = value
+			return
+		}
+	}
+	node.Attr = append(node.Attr, html.Attribute{Key: key, Val: value})
+}
+
+// normalizeHTMLImageSources makes markdown conversion use each image node's best
+// lazy-loaded source instead of a shared placeholder src.
+func normalizeHTMLImageSources(htmlText string) (string, error) {
+	contextNode := &html.Node{Type: html.ElementNode, DataAtom: atom.Div, Data: "div"}
+	nodes, err := html.ParseFragment(strings.NewReader(htmlText), contextNode)
+	if err != nil {
+		return "", err
+	}
+	var walk func(node *html.Node)
+	walk = func(node *html.Node) {
+		if node == nil {
+			return
+		}
+		if node.Type == html.ElementNode && strings.EqualFold(node.Data, "img") {
+			rawCandidateURLs := collectRawImageCandidateURLs(node)
+			if len(rawCandidateURLs) > 0 {
+				setHTMLAttr(node, "src", rawCandidateURLs[0])
+			}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	for _, node := range nodes {
+		walk(node)
+	}
+
+	buffer := bytes.NewBuffer(nil)
+	for _, node := range nodes {
+		if err := html.Render(buffer, node); err != nil {
+			return "", err
+		}
+	}
+	return buffer.String(), nil
+}
+
 // convertHTMLToMarkdown 将抓取到的 HTML 统一转为 Markdown。
 func convertHTMLToMarkdown(htmlText string) (string, error) {
 	converter := md.NewConverter("", true, nil)
-	return converter.ConvertString(htmlText)
+	normalizedHTML, err := normalizeHTMLImageSources(htmlText)
+	if err != nil {
+		return "", err
+	}
+	return converter.ConvertString(normalizedHTML)
 }
 
 // buildImageFileName 按下载顺序和响应类型生成稳定文件名。
@@ -267,8 +318,8 @@ func buildImageFileName(index int, contentType, rawURL string) string {
 	return fmt.Sprintf("image_%03d%s", index, ext)
 }
 
-// buildScrapeZip 打包 Markdown 与图片资源，供 Agent 上传回服务端。
-func buildScrapeZip(markdown string, imageFiles map[string][]byte) ([]byte, error) {
+// buildScrapeZip 打包 HTML、Markdown 与图片资源，供 Agent 上传回服务端。
+func buildScrapeZip(markdown, htmlText string, imageFiles map[string][]byte) ([]byte, error) {
 	buffer := bytes.NewBuffer(nil)
 	zipWriter := zip.NewWriter(buffer)
 
@@ -277,6 +328,14 @@ func buildScrapeZip(markdown string, imageFiles map[string][]byte) ([]byte, erro
 		return nil, err
 	}
 	if _, err = contentWriter.Write([]byte(markdown)); err != nil {
+		return nil, err
+	}
+
+	htmlWriter, err := zipWriter.Create("content.html")
+	if err != nil {
+		return nil, err
+	}
+	if _, err = htmlWriter.Write([]byte(htmlText)); err != nil {
 		return nil, err
 	}
 
@@ -438,7 +497,7 @@ func RunScrapeToMarkdown(runParams *PlaywrightRunParams, scrapeConfig define.Age
 	}
 	markdown = rewriteMarkdownImageLinks(markdown, replacements)
 	logScrapeMarkdownStep(log, runParams, "转换Markdown", "HTML转Markdown成功 markdown_len=%d", len(markdown))
-	zipBytes, err := buildScrapeZip(markdown, imageFiles)
+	zipBytes, err := buildScrapeZip(markdown, htmlText, imageFiles)
 	if err != nil {
 		logScrapeMarkdownStep(log, runParams, "打包ZIP", "打包失败 err=%s", err.Error())
 		return nil, err

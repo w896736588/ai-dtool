@@ -109,17 +109,18 @@ func toolRouter(tGin *p_gin.Gin) {
 
 // 基础接口
 func baseRouter(tGin *p_gin.Gin) {
-	tGin.GinPost(`/api/BaseLogin`, controller.BaseLogin)                       //Safe 登录
-	tGin.GinPost(`/api/BaseLoginStatus`, controller.BaseLoginStatus)           //Safe 登录状态检查
-	tGin.GinPost(`/api/BaseRegisterService`, controller.BaseRegisterService)   //注册各类服务 CheckUnikeyExist
-	tGin.GinPost(`/api/BaseCheckUnikeyExist`, controller.BaseCheckUnikeyExist) //检查unikey是否已经登录注册
-	tGin.GinPost(`/api/BaseSshList`, controller.BaseSshList)                   //ssh列表
-	tGin.GinPost(`/api/Ip`, controller.Ip)                                     //外网IP
-	tGin.GinPost(`/api/GetLocalIP`, controller.GetLocalIP)                     //局域网IP
-	tGin.GinPost(`/api/Upload`, controller.Upload)                             //上传文件
-	tGin.GinGet(`/api/download/:name`, controller.DownloadWebFile)             //下载 web/download 目录文件
-	tGin.GinGet(`/web/download/:name`, controller.DownloadWebFile)             //兼容 web/download 直链下载
-	tGin.GinGet(`/memory/images/:name`, controller.MemoryFragmentImageServe)   //记忆库图片静态服务
+	tGin.GinPost(`/api/BaseLogin`, controller.BaseLogin)                             //Safe 登录
+	tGin.GinPost(`/api/BaseLoginStatus`, controller.BaseLoginStatus)                 //Safe 登录状态检查
+	tGin.GinPost(`/api/BaseRegisterService`, controller.BaseRegisterService)         //注册各类服务 CheckUnikeyExist
+	tGin.GinPost(`/api/BaseCheckUnikeyExist`, controller.BaseCheckUnikeyExist)       //检查unikey是否已经登录注册
+	tGin.GinPost(`/api/BaseSshList`, controller.BaseSshList)                         //ssh列表
+	tGin.GinPost(`/api/Ip`, controller.Ip)                                           //外网IP
+	tGin.GinPost(`/api/GetLocalIP`, controller.GetLocalIP)                           //局域网IP
+	tGin.GinPost(`/api/Upload`, controller.Upload)                                   //上传文件
+	tGin.GinPost(`/api/MemoryFragmentShareInfo`, controller.MemoryFragmentShareInfo) //知识片段分享只读详情
+	tGin.GinGet(`/api/download/:name`, controller.DownloadWebFile)                   //下载 web/download 目录文件
+	tGin.GinGet(`/web/download/:name`, controller.DownloadWebFile)                   //兼容 web/download 直链下载
+	tGin.GinGet(`/memory/images/:name`, controller.MemoryFragmentImageServe)         //记忆库图片静态服务
 }
 
 // redis相关
@@ -282,6 +283,7 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/MemoryFragmentTagList`, controller.MemoryFragmentTagList)
 	tGin.GinPost(`/api/MemoryFragmentSearch`, controller.MemoryFragmentSearch)
 	tGin.GinPost(`/api/MemoryFragmentOrganize`, controller.MemoryFragmentOrganize)
+	tGin.GinPost(`/api/MemoryFragmentShareCreate`, controller.MemoryFragmentShareCreate)
 	tGin.GinPost(`/api/MemoryFragmentImageUpload`, controller.MemoryFragmentImageUpload)
 	tGin.GinPost(`/api/MemoryFragmentBatchInfoByPaths`, controller.MemoryFragmentBatchInfoByPaths)
 	tGin.GinPost(`/api/AsyncTaskList`, controller.AsyncTaskList)

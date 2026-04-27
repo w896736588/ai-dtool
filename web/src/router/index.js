@@ -134,6 +134,12 @@ const router = createRouter({
       meta: { keepAlive: false },
     },
     {
+      path: '/MemoryFragmentShare',
+      name: 'memory-fragment-share',
+      component: () => import('../components/memory/MemoryFragmentShare.vue'),
+      meta: { keepAlive: false },
+    },
+    {
       path: '/fullpage',
       name: 'fullpage',
       mode: 'hash', // 使用 hash 模式 / Use hash mode for local routes.

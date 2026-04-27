@@ -20,37 +20,63 @@
             </div>
             <div class="editor-body-toolbar-right">
               <div class="editor-body-actions">
-                <GitActionButton
-                  variant="info"
-                  compact
-                  :class="{ 'mode-button-active': !contentEditMode }"
-                  @click="setContentEditMode(false)"
-                >
-                  {{ previewButtonText }}
-                </GitActionButton>
-                <GitActionButton
-                  compact
-                  :class="{ 'mode-button-active': contentEditMode }"
-                  @click="setContentEditMode(true)"
-                >
-                  {{ editButtonText }}
-                </GitActionButton>
-                <GitActionButton
-                  variant="info"
-                  compact
-                  @click="handleCopyContent"
-                >
-                  <template #icon>
+                <el-tooltip :content="previewButtonText" placement="top">
+                  <GitActionButton
+                    variant="info"
+                    compact
+                    class="toolbar-icon-button"
+                    :class="{ 'mode-button-active': !contentEditMode }"
+                    :aria-label="previewButtonText"
+                    @click="setContentEditMode(false)"
+                  >
+                    <el-icon><View /></el-icon>
+                  </GitActionButton>
+                </el-tooltip>
+                <el-tooltip :content="editButtonText" placement="top">
+                  <GitActionButton
+                    compact
+                    class="toolbar-icon-button"
+                    :class="{ 'mode-button-active': contentEditMode }"
+                    :aria-label="editButtonText"
+                    @click="setContentEditMode(true)"
+                  >
+                    <el-icon><Edit /></el-icon>
+                  </GitActionButton>
+                </el-tooltip>
+                <el-tooltip :content="copyContentButtonText" placement="top">
+                  <GitActionButton
+                    variant="info"
+                    compact
+                    class="toolbar-icon-button"
+                    :aria-label="copyContentButtonText"
+                    @click="handleCopyContent"
+                  >
                     <el-icon><CopyDocument /></el-icon>
-                  </template>
-                  {{ copyContentButtonText }}
-                </GitActionButton>
-                <GitActionButton compact :loading="saving" @click="handleSave">
-                  <template #icon>
+                  </GitActionButton>
+                </el-tooltip>
+                <el-tooltip :content="saveButtonText" placement="top">
+                  <GitActionButton
+                    compact
+                    class="toolbar-icon-button"
+                    :loading="saving"
+                    :aria-label="saveButtonText"
+                    @click="handleSave"
+                  >
                     <el-icon><Check /></el-icon>
-                  </template>
-                  {{ saveButtonText }}
-                </GitActionButton>
+                  </GitActionButton>
+                </el-tooltip>
+                <el-tooltip :content="shareButtonText" placement="top">
+                  <GitActionButton
+                    variant="info"
+                    compact
+                    class="toolbar-icon-button"
+                    :loading="sharing"
+                    :aria-label="shareButtonText"
+                    @click="handleShareLink"
+                  >
+                    <el-icon><Share /></el-icon>
+                  </GitActionButton>
+                </el-tooltip>
                 <GitActionButton
                   variant="warning"
                   compact
@@ -242,7 +268,7 @@
 <script>
 import { MdEditor, MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
-import { Check, CopyDocument, DocumentCopy, MagicStick, MoreFilled } from '@element-plus/icons-vue'
+import { Check, CopyDocument, Edit, MagicStick, MoreFilled, Share, View } from '@element-plus/icons-vue'
 import DiffMarkdown from '@/components/base/diff_markwodn.vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
@@ -277,6 +303,8 @@ const HISTORY_BUTTON_TEXT = '历史记录'
 const DELETE_BUTTON_TEXT = '删除'
 // SAVE_BUTTON_TEXT 统一定义保存按钮文案。
 const SAVE_BUTTON_TEXT = '保存'
+// SHARE_BUTTON_TEXT 统一定义分享链接按钮文案。
+const SHARE_BUTTON_TEXT = '分享链接'
 // CANCEL_BUTTON_TEXT 统一定义取消按钮文案。
 const CANCEL_BUTTON_TEXT = '取消'
 // PREVIEW_BUTTON_TEXT 统一定义预览按钮文案。
@@ -337,9 +365,11 @@ export default {
       MdPreview,
       Check,
       CopyDocument,
-      DocumentCopy,
+      Edit,
       MagicStick,
-    MoreFilled,
+      MoreFilled,
+      Share,
+      View,
     DiffMarkdown,
     GitActionButton,
   },
@@ -371,6 +401,7 @@ export default {
   data() {
     return {
       saving: false,
+      sharing: false,
       organizing: false,
       applyingOrganizeResult: false,
       contentEditMode: false,
@@ -386,6 +417,7 @@ export default {
       historyButtonText: HISTORY_BUTTON_TEXT,
       deleteButtonText: DELETE_BUTTON_TEXT,
       saveButtonText: SAVE_BUTTON_TEXT,
+      shareButtonText: SHARE_BUTTON_TEXT,
       cancelButtonText: CANCEL_BUTTON_TEXT,
       previewButtonText: PREVIEW_BUTTON_TEXT,
       editButtonText: EDIT_BUTTON_TEXT,
@@ -641,6 +673,56 @@ export default {
       } catch (error) {
         this.$helperNotify.error(this.copyContentButtonText + '失败')
       }
+    },
+    // handleShareLink 创建 24 小时只读分享链接并复制到剪贴板。
+    handleShareLink() {
+      if (this.sharing) {
+        return
+      }
+      if (!this.draftFragment.id) {
+        this.$helperNotify.error('请先保存片段后再分享')
+        return
+      }
+      this.sharing = true
+      MemoryFragmentApi.MemoryFragmentShareCreate(this.draftFragment.id, async (response) => {
+        this.sharing = false
+        if (response.ErrCode !== 0 || !response.Data || !response.Data.token) {
+          if (response.ErrMsg) {
+            this.$helperNotify.error(response.ErrMsg)
+          }
+          return
+        }
+        const shareUrl = this.buildShareUrl(response.Data.token)
+        try {
+          await this.writeClipboard(shareUrl)
+          this.$helperNotify.success('分享链接已复制，24小时内有效')
+        } catch (error) {
+          this.$helperNotify.error('分享链接复制失败')
+        }
+      })
+    },
+    // buildShareUrl 基于当前访问地址生成前端 hash 分享链接。
+    buildShareUrl(token) {
+      const baseUrl = window.location.origin + window.location.pathname
+      return `${baseUrl}#/MemoryFragmentShare?token=${encodeURIComponent(token)}`
+    },
+    // writeClipboard 复制文本，兼容不支持 navigator.clipboard 的浏览器环境。
+    writeClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text)
+      }
+      return new Promise((resolve, reject) => {
+        const textarea = document.createElement('textarea')
+        textarea.value = text
+        textarea.setAttribute('readonly', 'readonly')
+        textarea.style.position = 'fixed'
+        textarea.style.left = '-9999px'
+        document.body.appendChild(textarea)
+        textarea.select()
+        const ok = document.execCommand('copy')
+        document.body.removeChild(textarea)
+        ok ? resolve() : reject(new Error('copy failed'))
+      })
     },
     // setContentEditMode 切换正文查看或编辑模式。
     setContentEditMode(editMode) {
@@ -1661,6 +1743,31 @@ export default {
   gap: 8px;
   flex-wrap: wrap;
   flex-shrink: 0;
+}
+
+.toolbar-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  line-height: 1;
+}
+
+.toolbar-icon-button :deep(span) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.toolbar-icon-button :deep(.el-icon) {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1;
 }
 
 .editor-action-trigger {
