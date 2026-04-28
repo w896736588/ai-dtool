@@ -1,375 +1,821 @@
 # AI 自动化测试方案
 
-> 目标：从任务清单的 `tapd_url` 出发，自动生成需求 MD → AI 解析需求生成测试计划 → 自动执行测试 → 验证接口是否符合需求
+> 目标：从任务清单中的 `tapd_url` 出发，自动抓取需求文档 MD，结合开发执行文档、当前分支代码变更、接口定义与只读数据库信息，生成可执行测试计划，执行接口测试，并保留每次测试历史记录与覆盖检查结果。
 
 ---
 
 ## 一、背景与目标
 
-### 1.1 现状
+### 1.1 当前基础能力
 
-当前项目（dtool）已有完整的开发工具链：
+当前项目已经具备较完整的自动化底座：
 
-- 任务清单支持 `tapd_url`，可自动抓取 TAPD 需求页并转为 MD
-- 内置 Playwright 浏览器自动化（Smart Link + Agent 模式）
-- 内置接口开发模块，支持接口定义、环境管理、接口执行（`/api/ApiRun`）
-- `dtool-agent` 可通过 WebSocket 远程执行 Playwright 任务
+- 任务清单支持 `tapd_url`，可自动抓取 TAPD 页面并转为 Markdown
+- 已有知识片段能力，可承载需求文档、开发执行文档等 MD 内容
+- 已有异步任务体系 `async_task`，适合承接长流程 AI 编排任务
+- 已有接口开发模块，支持接口定义、环境管理、接口执行 ` /api/ApiRun`
+- 已有分支变更检测脚本 `show-branch-diff`
+- 已集成 Smart Link / Playwright / dtool-agent，可作为后续 UI 辅助能力
+- 项目已具备 MySQL 配置，可为测试编排 Agent 提供只读数据库查询能力
 
-### 1.2 目标
+### 1.2 第一阶段目标
 
-在 AI 完成接口开发后，自动完成以下闭环：
+第一阶段聚焦 `API-only` 主链路，不做自动修复，先把“需求是否实现”和“接口是否可用”两件事做扎实。
 
+目标闭环如下：
+
+```text
+tapd_url
+-> 抓取需求 MD
+-> 生成开发执行 MD
+-> 生成覆盖检查结果
+-> 生成可执行测试计划
+-> 执行接口测试
+-> 输出测试报告
+-> 保留历史记录，供人工或外部 AI 修复后再次回归
 ```
-tapd_url → 抓取需求MD → AI解析需求 → 生成测试计划 → 自动执行测试 → 输出测试报告
-```
 
-验证维度：
-1. **接口正确性** — 接口是否按需求正常工作（状态码、返回结构、业务逻辑）
-2. **需求符合度** — 接口行为是否符合需求 MD 中描述的预期
+### 1.3 验证维度
+
+系统需要同时回答 3 个问题：
+
+1. 需求 MD 中描述的功能是否已经在当前实现中落地
+2. 已落地的接口是否符合需求预期
+3. 当前测试过程与测试结果是否可回溯、可重跑、可复盘
 
 ---
 
-## 二、现有能力盘点
+## 二、最终方案定位
 
-| 能力 | 状态 | 关键模块 |
-|---|---|---|
-| TAPD → MD 抓取 | ✅ 已实现 | `home_task.go` → 异步任务 → `scrape_markdown.go` |
-| Playwright 浏览器操作 | ✅ 已实现 | `plw/` 包，支持 click/input/wait/提取/判断 等 15+ 操作 |
-| API 执行器 | ✅ 已实现 | `/api/ApiRun`，返回完整响应 |
-| API 定义管理 | ✅ 已实现 | `/api/CreateApi`、`/api/Apis`、`/api/ApisDetailByIds` |
-| 环境管理 | ✅ 已实现 | `/api/CollectionEnvs`、`/api/CreateCollectionEnv` |
-| 浏览器 Session 管理 | ✅ 已实现 | `context_page.go`，BrowserContext 持久化 |
-| Agent 远程执行 | ✅ 已实现 | `dtool-agent` 通过 WebSocket 接收并执行任务 |
-| 分支变更检测 | ✅ 已实现 | `show-branch-diff` 脚本 |
-| 知识片段/MD 存储 | ✅ 已实现 | `memory/service.go`，文件系统 + YAML frontmatter |
+### 2.1 采用路线
+
+采用 `方案 1：轻编排方案`，但按长期可扩展的边界设计：
+
+- 前端新增任务工作流程页，挂到任务清单
+- 后端复用现有 `async_task + /api/ApiRun + 知识片段 + diff 脚本`
+- 新增轻量工作流数据表与测试历史表
+- 第四个 Tab 只做“接口测试与覆盖检查”，不做自动修复
+- 修复动作由人工或外部 AI 单独完成，再回到系统重新执行测试
+
+### 2.2 第一期不做的事情
+
+为了控制复杂度，第一期明确不做：
+
+- 自动修复代码
+- 直接写数据库造测试数据
+- Playwright 主导的 E2E 自动测试
+- 复杂审批流
+- 大规模回归平台化能力
+
+### 2.3 数据库工具边界
+
+测试编排 Agent 可以调用数据库工具，但严格限定为只读。
+
+允许：
+
+- 查询表结构
+- 查询字段类型、主键、索引
+- 查询少量样本数据
+- 校验接口执行前后的数据库结果
+
+禁止：
+
+- 直接 `insert / update / delete`
+- 绕过业务接口直接补业务数据
+- 为了测试方便修改生产语义数据
+
+前置造数原则：
+
+1. 优先调用当前代码中已经存在的业务接口准备数据
+2. 如果找不到合适接口，则记录为 `阻塞项`
+3. 阻塞项需要在页面中明确展示，而不是悄悄跳过
 
 ---
 
-## 三、整体架构
+## 三、产品形态：任务工作流程页
 
+### 3.1 入口
+
+在任务清单中为每个任务新增 `工作流程` 按钮，点击进入：
+
+```text
+/task-workflow/:taskId
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        AI 编排层（新增）                          │
-│  ┌───────────┐  ┌──────────────┐  ┌────────────┐  ┌──────────┐ │
-│  │ MD 需求    │  │ 测试计划生成  │  │ 测试执行    │  │ 结果验证  │ │
-│  │ 解析器    │→ │ 引擎         │→ │ 引擎        │→ │ & 报告   │ │
-│  └───────────┘  └──────────────┘  └────────────┘  └──────────┘ │
-└──────────┬──────────────┬──────────────┬───────────────────────┘
-           │              │              │
-     ┌─────▼─────┐  ┌─────▼─────┐  ┌────▼────┐
-     │ 知识片段   │  │ API Runner │  │ Playwright│
-     │ /MD 存储   │  │ /api/ApiRun│  │ Smart Link│
-     │ (已有)     │  │ (已有)     │  │ + Agent   │
-     └───────────┘  └───────────┘  └──────────┘
+
+### 3.2 页面顶部信息
+
+页面头部建议显示：
+
+- 任务名称
+- 任务状态
+- TAPD 链接
+- 需求文档更新时间
+- 开发执行更新时间
+- 最近测试时间
+- 最近测试结果
+- 当前分支
+- 基线分支
+
+### 3.3 四个 Tab 的定义
+
+#### Tab 1：需求文档 MD
+
+用途：
+
+- 展示 TAPD 抓取后的需求片段
+- 支持 `预览 / 源码` 切换
+- 支持查看最近抓取时间
+
+#### Tab 2：开发执行 MD
+
+用途：
+
+- 任务创建时自动生成一个新的知识片段
+- 供 AI 或人工写入开发方案、接口补充说明、实施记录
+- 作为后续生成覆盖分析与测试计划的重要输入
+
+建议默认模板：
+
+```md
+# 开发执行说明
+
+## 需求摘要
+
+## 开发方案
+
+## 涉及接口
+
+## 数据影响
+
+## 风险与限制
+
+## 实施记录
 ```
+
+#### Tab 3：测试接口计划
+
+用途：
+
+- 展示 AI 生成的可执行测试计划
+- 底层主数据为 `test_plan.json`
+- 页面负责把结构化计划渲染为可读摘要
+
+推荐按钮：
+
+- `生成覆盖分析`
+- `生成测试计划`
+- `查看计划 JSON`
+
+推荐展示内容：
+
+- 覆盖需求点列表
+- 关联接口列表
+- 前置条件
+- 测试用例列表
+- 疑问项
+- 阻塞项
+
+#### Tab 4：接口测试与覆盖检查
+
+用途：
+
+- 执行覆盖检查
+- 执行接口测试
+- 查看测试历史
+- 支持按历史记录重跑
+- 明确列出需求未实现项、疑问项、阻塞项
+
+推荐按钮：
+
+- `执行覆盖检查`
+- `执行接口测试`
+- `执行覆盖检查+接口测试`
+- `按历史记录重跑`
+- `查看历史记录`
+
+推荐展示内容：
+
+- 当前执行阶段与进度
+- 实时日志
+- 覆盖检查结果
+- 本次测试结果
+- 历史执行记录
 
 ---
 
-## 四、分阶段实施方案
+## 四、整体架构
 
-### Phase 1：API 级别自动化测试
+### 4.1 核心思路
 
-**定位：** 纯 API 测试，不涉及浏览器操作，复用现有接口执行能力。
+第一阶段采用“当前项目内置测试编排能力 + 外部大模型推理”的组合方式：
 
-#### 4.1.1 流程
+- `dtool` 负责：任务、页面、状态、异步任务、接口执行、知识片段、历史记录
+- `测试编排 Agent` 负责：解析上下文、生成覆盖分析、生成测试计划、归纳失败结果
+- `大模型` 负责：推理与结构化输出
 
+### 4.2 推荐流程
+
+```text
+任务清单
+-> 工作流程页
+-> 需求文档 MD
+-> 开发执行 MD
+-> 覆盖检查
+-> 测试计划生成
+-> 接口测试执行
+-> 数据库只读校验
+-> 测试报告
+-> 历史记录
 ```
-1. 获取需求 MD（从知识片段或直接读取）
-2. AI 解析 MD，提取：
-   - 涉及的接口列表（路径、方法）
-   - 每个接口的请求参数（正常值、边界值、异常值）
-   - 每个接口的期望返回（状态码、字段结构、业务规则）
-3. AI 生成测试用例集（JSON 结构）
-4. 调用 /api/ApiRun 逐条执行测试用例
-5. AI 对比实际返回 vs 期望返回，判定通过/失败
-6. 汇总生成测试报告
+
+### 4.3 Playwright 的定位
+
+第一期中，Playwright 不作为主测试执行器，只作为辅助信息采集器。
+
+适用场景：
+
+- 自动登录系统
+- 辅助识别页面功能对应的接口
+- 抓取页面触发的接口请求样例
+- 帮助 AI 理解某些功能入口
+
+不建议第一期承担：
+
+- 主接口测试执行
+- 主覆盖判断
+- 主测试结果判定
+
+---
+
+## 五、后端数据设计
+
+### 5.1 工作流主表 `tbl_task_workflow`
+
+一条任务对应一条工作流主记录。
+
+建议字段：
+
+- `id`
+- `home_task_id`
+- `status`
+- `current_stage`
+- `requirement_fragment_id`
+- `dev_plan_fragment_id`
+- `latest_plan_run_id`
+- `latest_test_run_id`
+- `base_branch`
+- `feature_branch`
+- `last_error`
+- `create_time`
+- `update_time`
+
+### 5.2 测试运行表 `tbl_task_test_run`
+
+一条记录表示一次覆盖分析或一次完整测试执行，必须保留历史快照。
+
+建议字段：
+
+- `id`
+- `workflow_id`
+- `run_no`
+- `run_type`
+- `status`
+- `trigger_source`
+- `requirement_snapshot_md`
+- `dev_plan_snapshot_md`
+- `diff_snapshot_text`
+- `coverage_report_json`
+- `test_plan_json`
+- `test_report_json`
+- `summary_md`
+- `started_at`
+- `finished_at`
+- `create_time`
+
+推荐 `run_type`：
+
+- `coverage_only`
+- `plan_generate`
+- `test_execute`
+- `plan_and_test`
+
+### 5.3 测试用例结果表 `tbl_task_test_case_result`
+
+如果需要在页面细粒度展示每条用例结果，建议新增此表。
+
+建议字段：
+
+- `id`
+- `test_run_id`
+- `case_id`
+- `case_name`
+- `requirement_id`
+- `api_id`
+- `api_uri`
+- `status`
+- `duration_ms`
+- `request_snapshot_json`
+- `response_snapshot_json`
+- `assertions_json`
+- `db_checks_json`
+- `failure_reason`
+- `create_time`
+
+### 5.4 为什么必须保留 Snapshot
+
+需求文档、开发执行文档和代码分支后续都可能变化，因此每次执行必须保留当时的上下文快照。
+
+这样才能保证：
+
+- 历史记录可回放
+- 失败结果可复盘
+- 修复前后可对比
+
+---
+
+## 六、状态流转设计
+
+### 6.1 工作流宏观状态 `status`
+
+建议值：
+
+- `init`
+- `dev_plan_ready`
+- `coverage_ready`
+- `test_plan_ready`
+- `testing`
+- `await_review`
+- `failed`
+
+### 6.2 当前阶段 `current_stage`
+
+建议值：
+
+- `idle`
+- `loading_context`
+- `checking_coverage`
+- `generating_plan`
+- `preparing_data`
+- `running_cases`
+- `checking_db`
+- `writing_report`
+
+### 6.3 流转建议
+
+1. 创建任务后：`init`
+2. 自动创建开发执行 MD 后：`dev_plan_ready`
+3. 覆盖分析成功后：`coverage_ready`
+4. 测试计划生成成功后：`test_plan_ready`
+5. 测试执行中：`testing`
+6. 测试完成待人工查看：`await_review`
+7. 执行异常：`failed`
+
+---
+
+## 七、覆盖检查设计
+
+### 7.1 目标
+
+第四个 Tab 不仅要回答“接口能不能跑”，还要回答：
+
+```text
+需求 MD 中写的功能，现在到底有没有在接口中实现出来？
 ```
 
-#### 4.1.2 测试用例结构设计
+### 7.2 输出结构
+
+建议单独产出 `coverage_report.json`：
 
 ```json
 {
-  "test_plan_name": "XX需求接口测试",
-  "source_md": "fragments/2026/2026-04/xxx.md",
-  "api_base_url": "http://localhost:8080",
-  "test_cases": [
+  "summary": {
+    "requirement_points": 6,
+    "covered": 4,
+    "partial": 1,
+    "missing": 1,
+    "questions": 2,
+    "blocked": 1
+  },
+  "items": [
     {
-      "name": "创建用户-正常流程",
-      "api_uri": "/api/user/create",
+      "requirement_id": "req-1",
+      "title": "创建订单",
+      "status": "covered",
+      "evidence": [
+        {"type": "api", "value": "/api/order/create"},
+        {"type": "code", "value": "internal/app/order/controller.go"}
+      ]
+    },
+    {
+      "requirement_id": "req-2",
+      "title": "撤销订单",
+      "status": "missing",
+      "evidence": [],
+      "question": "需求描述中存在撤销能力，但当前 diff 与接口定义中未发现对应接口"
+    }
+  ],
+  "questions": [
+    "需求中提到批量操作，但当前仅发现单条操作接口，是否遗漏批量接口？"
+  ],
+  "blocked": [
+    "需要构造某类业务数据，但当前未发现可用于造数的现有接口"
+  ]
+}
+```
+
+### 7.3 覆盖判断证据来源
+
+按优先级建议如下：
+
+1. 开发执行 MD
+2. 当前分支相对基线分支的 diff
+3. 接口定义
+4. 路由与控制器代码
+5. 数据库 schema 辅助判断
+
+规则：
+
+- 每个结论必须带证据
+- 无法确认的内容进入 `questions`
+- 缺少前置能力的内容进入 `blocked`
+
+---
+
+## 八、测试计划设计
+
+### 8.1 核心产物
+
+第三个 Tab 的主产物是机器可执行的 `test_plan.json`，而不是纯 Markdown。
+
+### 8.2 结构示例
+
+```json
+{
+  "plan_name": "任务123-接口测试计划",
+  "workflow_id": 123,
+  "source": {
+    "task_id": 123,
+    "requirement_fragment_id": "req_frag_xxx",
+    "dev_plan_fragment_id": "dev_frag_xxx",
+    "base_branch": "main",
+    "feature_branch": "feature/order"
+  },
+  "coverage_links": [
+    {
+      "requirement_id": "req-1",
+      "title": "创建订单",
+      "apis": ["/api/order/create"]
+    }
+  ],
+  "preconditions": [
+    {
+      "id": "pre-1",
+      "type": "api_prepare",
+      "purpose": "创建可用商品",
+      "api_uri": "/api/product/create"
+    }
+  ],
+  "api_cases": [
+    {
+      "case_id": "case-001",
+      "name": "创建订单-正常流程",
+      "requirement_id": "req-1",
+      "api_id": 1001,
+      "api_uri": "/api/order/create",
       "method": "POST",
-      "content_type": "application/json",
-      "params": {
-        "username": "test_user",
-        "email": "test@example.com"
+      "request_data": {
+        "product_id": "{{pre-1.data.id}}",
+        "count": 2
       },
       "assertions": [
         {"type": "status_code", "expected": 200},
         {"type": "json_path", "path": "code", "expected": 0},
-        {"type": "json_path", "path": "data.id", "expected_type": "number"},
-        {"type": "json_path", "path": "data.username", "expected": "test_user"}
+        {"type": "json_not_null", "path": "data.id"}
       ],
-      "category": "positive"
-    },
-    {
-      "name": "创建用户-用户名已存在",
-      "api_uri": "/api/user/create",
-      "method": "POST",
-      "content_type": "application/json",
-      "params": {
-        "username": "exist_user",
-        "email": "test@example.com"
-      },
-      "assertions": [
-        {"type": "json_path", "path": "code", "expected": 10001}
-      ],
-      "category": "negative"
-    },
-    {
-      "name": "创建用户-缺少必填参数",
-      "api_uri": "/api/user/create",
-      "method": "POST",
-      "content_type": "application/json",
-      "params": {
-        "email": "test@example.com"
-      },
-      "assertions": [
-        {"type": "json_path", "path": "code", "expected": 400}
-      ],
-      "category": "boundary"
-    }
-  ]
-}
-```
-
-#### 4.1.3 断言类型
-
-| 断言类型 | 说明 | 示例 |
-|---|---|---|
-| `status_code` | HTTP 状态码 | `{"type": "status_code", "expected": 200}` |
-| `json_path` | JSON 字段值匹配 | `{"type": "json_path", "path": "code", "expected": 0}` |
-| `json_type` | JSON 字段类型检查 | `{"type": "json_type", "path": "data.id", "expected": "number"}` |
-| `json_contains` | JSON 包含指定字段 | `{"type": "json_contains", "path": "data.list"}` |
-| `json_not_null` | 字段不为空 | `{"type": "json_not_null", "path": "data.token"}` |
-| `response_time` | 响应时间 | `{"type": "response_time", "expected_ms": 3000}` |
-
-#### 4.1.4 测试报告结构
-
-```json
-{
-  "test_plan_name": "XX需求接口测试",
-  "run_time": "2026-04-28T10:30:00+08:00",
-  "total": 10,
-  "passed": 8,
-  "failed": 1,
-  "error": 1,
-  "results": [
-    {
-      "name": "创建用户-正常流程",
-      "status": "passed",
-      "duration_ms": 120,
-      "assertions": [
-        {"type": "status_code", "expected": 200, "actual": 200, "passed": true},
-        {"type": "json_path", "path": "code", "expected": 0, "actual": 0, "passed": true}
+      "db_checks": [
+        {
+          "type": "table_exists",
+          "table": "orders",
+          "condition": "id={{response.data.id}}"
+        }
       ]
-    },
-    {
-      "name": "创建用户-失败示例",
-      "status": "failed",
-      "duration_ms": 85,
-      "assertions": [
-        {"type": "json_path", "path": "code", "expected": 10001, "actual": 0, "passed": false}
-      ],
-      "actual_response": {"code": 0, "msg": "success", "data": {}}
     }
+  ],
+  "open_questions": [
+    "撤销订单能力未发现对应接口"
+  ],
+  "blocked_items": [
+    "缺少用于创建测试客户的现有接口"
   ]
 }
 ```
 
-#### 4.1.5 可行性评估
+### 8.3 设计约束
 
-| 维度 | 评分 | 说明 |
-|---|---|---|
-| 技术可行性 | ★★★★★ | 所有底层能力已就绪 |
-| 实现难度 | ★★☆☆☆ | 主要是 AI 编排逻辑 |
-| 新增代码量 | 少 | 主要是测试报告结构 + AI 提示词 |
-| 覆盖场景 | API 级别 | 无法覆盖 UI 交互 |
+- 每条用例必须绑定 `requirement_id`
+- 前置造数优先调用已有业务接口
+- 数据库仅做只读校验
+- 阻塞项必须显式输出
+- 疑问项必须显式输出
 
 ---
 
-### Phase 2：Playwright 浏览器端到端测试
+## 九、测试报告设计
 
-**定位：** 补充 UI 层面的端到端测试，覆盖需要浏览器交互的场景。
+### 9.1 目标
 
-#### 4.2.1 流程
+测试报告既要给前端渲染，也要给后续 AI 或人工复盘使用。
 
-```
-1. 获取需求 MD
-2. AI 解析 MD 中涉及 UI 交互的测试场景
-3. AI 生成 Smart Link Process 配置（JSON）
-4. 加载已有的 Session 登录态（或执行登录流程）
-5. 通过 dtool-agent 执行 Playwright 操作
-6. 提取页面内容/API 响应，验证是否符合 MD 期望
-```
-
-#### 4.2.2 Session/登录态管理
-
-**方案 A：复用 Smart Link 已有 Session**
-
-```
-已有的 Smart Link 在执行时会创建 BrowserContext 并保持登录态
-→ 新的测试任务直接复用该 Context
-→ 需要新增 API：获取可用 Context 列表 / 指定 Context 执行任务
-```
-
-**方案 B：基于 storageState 的 Session 导出/加载**
-
-```
-1. 用户手动或自动登录目标系统
-2. 调用 Playwright API 导出 storageState（cookies + localStorage）
-3. 保存为 JSON 文件到指定目录
-4. 测试执行时加载 storageState 创建新 Context
-5. 测试结束后可选择更新 storageState
-```
-
-需要新增的接口：
-
-| 接口 | 说明 |
-|---|---|
-| `/api/SmartLinkExportSession` | 导出指定 Context 的 storageState |
-| `/api/SmartLinkImportSession` | 从 storageState 文件创建新 Context |
-| `/api/SmartLinkSessionList` | 列出已保存的 Session 文件 |
-
-#### 4.2.3 测试用例结构
+### 9.2 结构示例
 
 ```json
 {
-  "name": "用户登录后创建订单-E2E测试",
-  "session_id": "tapd_logged_in",
-  "steps": [
-    {"type": "redirect", "url": "/order/create"},
-    {"type": "input", "locator": {"role": "textbox", "name": "商品名称"}, "value": "测试商品"},
-    {"type": "input", "locator": {"role": "spinbutton", "name": "数量"}, "value": "2"},
-    {"type": "click", "locator": {"role": "button", "name": "提交订单"}},
-    {"type": "wait_url", "value": "/api/order/create", "wait_seconds": 5},
-    {"type": "text_content", "locator": {"css": ".order-result"}, "out_key": "result_text"}
+  "summary": {
+    "total": 12,
+    "passed": 9,
+    "failed": 2,
+    "skipped": 1,
+    "duration_ms": 18230
+  },
+  "cases": [
+    {
+      "case_id": "case-001",
+      "name": "创建订单-正常流程",
+      "status": "passed",
+      "duration_ms": 320,
+      "request_snapshot": {},
+      "response_snapshot": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "expected": 200,
+          "actual": 200,
+          "passed": true
+        }
+      ],
+      "db_checks": [
+        {
+          "table": "orders",
+          "passed": true,
+          "actual_count": 1
+        }
+      ]
+    }
   ],
-  "assertions": [
-    {"type": "element_exists", "locator": {"css": ".order-success"}, "expected": true},
-    {"type": "text_contains", "key": "result_text", "expected": "下单成功"}
-  ]
+  "failures": [
+    {
+      "case_id": "case-003",
+      "reason": "返回字段 code 与预期不一致",
+      "suspected_area": "/api/order/cancel"
+    }
+  ],
+  "questions": [],
+  "blocked": []
 }
 ```
 
-#### 4.2.4 可行性评估
+---
 
-| 维度 | 评分 | 说明 |
+## 十、核心接口设计
+
+建议统一走 `task/workflow` 前缀。
+
+### 10.1 基础信息
+
+- `/api/task/workflow/create_or_get`
+- `/api/task/workflow/info`
+
+### 10.2 开发执行 MD
+
+- `/api/task/workflow/dev-plan/init`
+- `/api/task/workflow/dev-plan/info`
+- `/api/task/workflow/dev-plan/save`
+
+### 10.3 覆盖分析与测试计划
+
+- `/api/task/workflow/coverage/generate`
+- `/api/task/workflow/coverage/info`
+- `/api/task/workflow/test-plan/generate`
+- `/api/task/workflow/test-plan/info`
+
+### 10.4 测试执行
+
+- `/api/task/workflow/test-run/start`
+- `/api/task/workflow/test-run/info`
+- `/api/task/workflow/test-run/list`
+- `/api/task/workflow/test-run/cases`
+- `/api/task/workflow/test-run/retry`
+
+### 10.5 只读数据库工具
+
+- `/api/task/workflow/db/schema`
+- `/api/task/workflow/db/sample`
+- `/api/task/workflow/db/check`
+
+### 10.6 推荐实现方式
+
+以下动作建议都通过异步任务执行：
+
+- 生成覆盖分析
+- 生成测试计划
+- 执行接口测试
+
+页面实时状态可继续复用现有 SSE / async_task 广播模式。
+
+---
+
+## 十一、异步任务阶段设计
+
+### 11.1 推荐新增任务类型
+
+- `task_workflow_coverage_generate`
+- `task_workflow_test_plan_generate`
+- `task_workflow_test_execute`
+
+### 11.2 `test_execute` 阶段建议
+
+1. `加载上下文`
+2. `执行覆盖检查`
+3. `生成测试计划`
+4. `准备前置数据`
+5. `执行接口测试`
+6. `执行数据库校验`
+7. `汇总测试结果`
+8. `写入执行记录`
+
+### 11.3 阶段说明
+
+#### 加载上下文
+
+读取：
+
+- 需求 MD
+- 开发执行 MD
+- branch diff
+- 相关接口定义
+- 测试环境信息
+
+#### 执行覆盖检查
+
+输出：
+
+- 已覆盖功能点
+- 未覆盖功能点
+- 疑问项
+- 阻塞项
+
+#### 生成测试计划
+
+输出：
+
+- `test_plan.json`
+
+#### 准备前置数据
+
+规则：
+
+- 优先走业务接口
+- 不允许直接写数据库
+- 无法造数则记录阻塞项
+
+#### 执行接口测试
+
+逐条调用 `/api/ApiRun`
+
+#### 执行数据库校验
+
+只做只读检查：
+
+- 数据是否写入
+- 状态是否变化
+- 关联记录是否存在
+
+#### 汇总测试结果
+
+输出：
+
+- `test_report.json`
+- `summary_md`
+
+#### 写入执行记录
+
+把结构化结果、日志、快照统一落表，并更新工作流状态。
+
+---
+
+## 十二、AI 编排 Agent 设计
+
+### 12.1 Agent 负责什么
+
+- 解析需求 MD
+- 解析开发执行 MD
+- 结合 diff 判断实现范围
+- 从接口定义中寻找候选接口
+- 必要时调用只读数据库工具辅助理解数据结构
+- 生成覆盖分析
+- 生成测试计划
+- 在测试完成后生成失败总结
+
+### 12.2 Agent 不负责什么
+
+- 不直接修改数据库
+- 不直接修复代码
+- 不替代后端做任务调度
+- 不持有长期状态
+
+### 12.3 设计原则
+
+- `dtool` 做状态机和执行器
+- `测试编排 Agent` 做分析器和生成器
+- `大模型` 只负责推理输出
+
+---
+
+## 十三、日志与历史记录
+
+### 13.1 日志格式建议
+
+建议每次运行都记录阶段化日志：
+
+- 阶段
+- 动作
+- 结果
+- 补充信息
+
+示例：
+
+- `加载上下文 | 读取需求文档 | 成功 | fragment_id=req_xxx`
+- `覆盖检查 | 匹配接口 | 成功 | 命中 5 个接口`
+- `测试计划 | 生成用例 | 成功 | 共 12 条`
+- `接口测试 | 执行 case-003 | 失败 | code 断言不匹配`
+- `数据库校验 | 校验 orders 记录 | 成功 | 命中 1 条`
+
+### 13.2 历史记录要求
+
+每次执行都必须生成新的 `test_run` 记录，不能覆盖历史。
+
+建议支持：
+
+- 完整重跑
+- 基于最近计划重跑
+- 基于某次历史记录重跑
+
+---
+
+## 十四、风险与控制策略
+
+| 风险 | 影响 | 控制策略 |
 |---|---|---|
-| 技术可行性 | ★★★★☆ | Playwright 运行时完整，Session 管理需小幅扩展 |
-| 实现难度 | ★★★☆☆ | AI 生成 Process 配置的准确度需要调优 |
-| 新增代码量 | 中等 | Session 管理 API + AI 生成配置的提示词 |
-| 覆盖场景 | API + UI | 可覆盖完整用户操作链路 |
+| 需求 MD 描述不够清晰 | 覆盖分析和测试计划不准确 | 输出疑问项并要求人工确认 |
+| 缺少可用于造数的业务接口 | 测试无法落地 | 标记阻塞项，禁止直接写库绕过 |
+| AI 输出结构不稳定 | 前端渲染或执行失败 | 所有 JSON 产物先做 schema 校验再入库 |
+| 分支 diff 不完整 | 覆盖判断偏差 | 同时结合接口定义与控制器证据 |
+| 测试环境数据状态不稳定 | 用例结果波动 | 优先使用独立测试环境，并记录前置接口造数路径 |
 
 ---
 
-### Phase 3：全自动闭环
+## 十五、第一期最小闭环
 
-**定位：** 从 `tapd_url` 到测试报告的全自动流水线。
+推荐先做如下能力：
 
-#### 4.3.1 完整流程
+1. 任务清单新增工作流程入口
+2. 自动初始化开发执行 MD
+3. 生成覆盖分析
+4. 生成可执行测试计划
+5. 执行 `/api/ApiRun`
+6. 执行数据库只读校验
+7. 保存测试报告与历史记录
+8. 支持查看执行详情与重跑
 
-```
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│ tapd_url  │───→│ TAPD抓取  │───→│ AI解析   │───→│ 分支diff  │───→│ 测试计划  │
-│ 任务触发  │    │ → MD     │    │ 需求     │    │ 检测改动  │    │ 生成     │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
-                                                                      │
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐          │
-│ 测试报告  │←───│ 结果验证  │←───│ 测试执行  │←───│ 环境准备  │←─────────┘
-│ 生成     │    │ & 断言   │    │ (API+UI) │    │ Session  │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘
-```
+这套最小闭环已经能够解决：
 
-#### 4.3.2 任务编排引擎
-
-基于现有的异步任务系统（`async_task`）扩展：
-
-```go
-// 测试流水线任务类型
-const (
-    AsyncTaskTestPlanGenerate  = "test_plan_generate"   // 生成测试计划
-    AsyncTaskTestPlanExecute   = "test_plan_execute"    // 执行测试计划
-    AsyncTaskTestPlanReport    = "test_plan_report"      // 生成测试报告
-)
-
-// 测试流水线配置
-type TestPipeline struct {
-    SourceMDPath    string   // 需求 MD 路径
-    BranchName      string   // 当前分支
-    BaseBranch      string   // 基分支（用于 diff）
-    TestTypes       []string // 测试类型：api / e2e
-    SessionID       string   // E2E 测试用的 Session ID
-    CollectionID    int      // 目标 API 集合 ID
-    EnvID           int      // 测试环境 ID
-}
-```
-
-#### 4.3.3 可行性评估
-
-| 维度 | 评分 | 说明 |
-|---|---|---|
-| 技术可行性 | ★★★☆☆ | 技术上可行，但 AI 判断准确性需持续优化 |
-| 实现难度 | ★★★★☆ | 编排引擎 + 错误恢复 + AI 重试 |
-| 新增代码量 | 较多 | 编排引擎 + AI 评估逻辑 + 报告持久化 |
-| 覆盖场景 | 全链路 | 从需求到测试的完整自动化 |
+- 需求是否实现
+- 实现的接口是否可用
+- 修复后能否快速回归验证
 
 ---
 
-## 五、关键风险与应对策略
+## 十六、后续演进方向
 
-| 风险 | 影响 | 概率 | 应对策略 |
-|---|---|---|---|
-| MD 需求描述不精确 | AI 无法提取明确的测试条件 | 高 | 定义 MD 模板规范，要求必须包含：接口路径、请求参数、期望返回、业务规则 |
-| AI 生成的测试用例不完整 | 遗漏边界场景、误判通过 | 中 | 人工审核测试计划 + 持续优化 AI 提示词 + 建立测试用例模板库 |
-| 目标系统登录态过期 | Playwright 操作失败 | 中 | Session 自动检测 + 过期自动触发重新登录流程 |
-| API 响应不稳定 | 网络抖动导致误报测试失败 | 低 | 内置重试机制（最多 3 次）+ 响应断言容忍度配置 |
-| 测试数据污染 | 测试用例产生脏数据 | 中 | 测试用例标记为测试数据 + 提供清理接口 + 使用独立测试环境 |
-| AI 对需求理解偏差 | 生成了错误的断言条件 | 中 | 生成测试计划后人工确认，执行结果异常时标注待人工复核 |
+在第一期稳定后，可继续扩展：
 
----
-
-## 六、推荐实施路径
-
-```
-Phase 1 ──────────────────────────────────────────────
-  ┌─ 1. 定义测试用例 JSON 结构
-  ├─ 2. 定义测试报告 JSON 结构
-  ├─ 3. 编写 AI 提示词：MD → 测试计划
-  ├─ 4. 实现测试执行引擎（调用 /api/ApiRun）
-  ├─ 5. 实现断言引擎（对比实际 vs 期望）
-  └─ 6. 实现测试报告生成
-     ↓
-Phase 2 ──────────────────────────────────────────────
-  ┌─ 1. 新增 Session 导出/加载 API
-  ├─ 2. 编写 AI 提示词：MD → Smart Link Process 配置
-  ├─ 3. 实现 E2E 测试执行引擎
-  └─ 4. 实现 UI 断言（元素存在、文本匹配等）
-     ↓
-Phase 3 ──────────────────────────────────────────────
-  ┌─ 1. 扩展异步任务系统，支持测试流水线
-  ├─ 2. 实现任务编排引擎
-  ├─ 3. 实现 AI 评估与重试机制
-  └─ 4. 实现测试报告持久化与前端展示
-```
+- Playwright 辅助页面功能识别
+- 登录态复用
+- 仅失败用例重跑
+- 历史记录对比
+- 覆盖趋势分析
+- 外部 AI 一键读取失败上下文进行修复
 
 ---
 
-## 七、结论
+## 十七、结论
 
-**方案完全可行。** 项目已具备所有底层能力：
+该方案第一期完全可行，且与当前项目基础能力高度匹配。
 
-1. **需求获取**：TAPD → MD 管线已完整实现
-2. **浏览器自动化**：Playwright + Agent 模式已深度集成
-3. **接口测试**：API Runner + 环境管理已就绪
-4. **登录态管理**：BrowserContext + storageState 原生支持
+核心价值不在于立即做自动修复，而在于先把下面三件事做稳定：
 
-**建议从 Phase 1 起步**，纯 API 级别测试，复用 `/api/ApiRun`，价值最大、风险最低、实现最快。
+1. 需求是否实现
+2. 接口是否符合需求
+3. 每次测试是否可留痕、可重跑、可复盘
+
+建议从 `API-only + 工作流程页 + 覆盖检查 + 接口测试历史` 这条主链路启动，后续再逐步扩展到更完整的 AI 测试与修复闭环。
