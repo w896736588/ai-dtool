@@ -15,7 +15,7 @@
           <el-option
               v-for="env in envs"
               :key="env.id"
-              :label="env.name"
+              :label="env.id === 0 && folderEnvId ? '继承文件夹环境' : env.name"
               :value="env.id"
           />
         </el-select>
@@ -27,9 +27,9 @@
       </div>
     </div>
 
-    <el-tabs v-model="configActiveTab" class="detail-tabs" style="min-height: 500px;" @tab-change="responseTabChange">
-      <el-tab-pane label="备注" name="desc">
-        <MdEditor  v-model="apiForm.desc" @blur="handleBlurSave" :onSave="handleSave" />
+    <el-tabs v-model="configActiveTab" class="detail-tabs api-config-tabs" @tab-change="responseTabChange">
+      <el-tab-pane label="备注" name="desc" class="desc-tab-pane">
+        <MdEditor class="desc-editor" v-model="apiForm.desc" @blur="handleBlurSave" :onSave="handleSave" />
       </el-tab-pane>
       <el-tab-pane :label="'请求头(' + (isObject(apiForm.header_list) ? Object.keys(apiForm.header_list).length : 0) + ')'" name="headers">
         <headers-value-editor
@@ -80,8 +80,9 @@
             @update="updateResponseTake"
         />
       </el-tab-pane>
-      <el-tab-pane v-if="parseInt(apiForm.env_id) > 0" :label="'环境变量(' + (isArray(envItems) ? envItems.length : 0) + ')'" lazy name="env_items" style="width: 96%;">
-        <div class="config-section" v-if="parseInt(apiForm.env_id) > 0">
+      <el-tab-pane v-if="parseInt(apiForm.env_id) > 0 || folderEnvId > 0" :label="'环境变量(' + (isArray(envItems) ? envItems.length : 0) + ')'" lazy name="env_items" style="width: 96%;">
+        <div class="config-section" v-if="parseInt(apiForm.env_id) > 0 || folderEnvId > 0">
+          <el-alert v-if="!apiForm.env_id && folderEnvId" title="当前环境变量继承自所属文件夹" type="info" :closable="false" style="margin-bottom: 10px;"/>
           <variable-manager
               ref="refVariableManager"
               @update="handleVariablesUpdate"
@@ -367,6 +368,7 @@ export default {
         'Token',
       ],
       envs: [],
+      folderEnvId: 0,
       codeTypeOptions: [
         'curl bash(chrome)',
         'curl shell(apifox)',
@@ -549,7 +551,13 @@ export default {
       let _that = this
       _that.loadApiData(apiInfo)
       _that.loadEnvs()
-      _that.loadEnvItems(apiInfo.env_id)
+      _that.folderEnvId = apiInfo.folder_env_id || 0
+      // 接口无环境时使用文件夹环境
+      let effectiveEnvId = apiInfo.env_id
+      if (!effectiveEnvId && _that.folderEnvId) {
+        effectiveEnvId = _that.folderEnvId
+      }
+      _that.loadEnvItems(effectiveEnvId)
       _that.initKeyUp()
       _that.configActiveTab = Store.getStore(apiInfo.id + '_last_tab_name')
       if(_that.configActiveTab === '' || _that.configActiveTab === undefined || _that.configActiveTab === null){
@@ -590,7 +598,9 @@ export default {
       let _that = this
       _that.handleSave()
       _that.apiForm.env_id = env_id
-      _that.loadEnvItems(_that.apiForm.env_id)
+      // 接口无环境时加载文件夹环境变量
+      let effectiveEnvId = env_id || _that.folderEnvId
+      _that.loadEnvItems(effectiveEnvId)
     },
     loadEnvItems: function (env_id) {
       let _that = this
@@ -627,7 +637,7 @@ export default {
         _that.envs = res.Data.list
         _that.envs.unshift({
           id: 0,
-          name: '请选择',
+          name: _that.folderEnvId ? '继承文件夹环境' : '请选择',
         })
       })
     },

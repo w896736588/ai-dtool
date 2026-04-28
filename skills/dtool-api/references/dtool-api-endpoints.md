@@ -249,11 +249,31 @@
 
 ```json
 {
-  "field": "username",
+  "field": "client_type",
   "type": "string",
-  "value": "demo",
-  "description": "用户名"
+  "value": "pc",
+  "description": "客户端类型：pc=PC端，h5=移动H5，mini=小程序"
 }
+```
+
+#### 固定值、常量、枚举值备注规则
+
+请求参数如果存在固定值、常量、枚举值或布尔开关，必须在备注中明确每个值和含义。
+
+- `query_params` 和 `body_form`：写入参数项的 `description` 字段。
+- 单一固定值：也要说明“固定传某值”以及该值代表什么。
+- 枚举/状态/类型/开关：必须列出每个允许值的含义，不能只写“状态”“类型”“是否启用”。
+- 取值来自源码常量时，必须以源码为准；无法确认时先询问用户。
+- `body_json` 字段没有独立的参数备注结构时，必须在接口 `desc` 中补充字段取值说明。
+
+示例：
+```json
+[
+  {"field": "client_type", "type": "string", "value": "pc", "description": "客户端类型：pc=PC端，h5=移动H5，mini=小程序"},
+  {"field": "status", "type": "integer", "value": "1", "description": "状态：0=禁用，1=启用，2=冻结"},
+  {"field": "enabled", "type": "boolean", "value": "true", "description": "是否启用：true=启用，false=停用"},
+  {"field": "version", "type": "string", "value": "v1", "description": "接口版本，固定传 v1，表示第一版协议"}
+]
 ```
 
 **type 字段只接受以下值（严禁使用其他值）：**
@@ -349,7 +369,7 @@
   "body_form": [
     {"field": "title", "type": "string", "value": "测试标题", "description": "标题"},
     {"field": "count", "type": "integer", "value": "10", "description": "数量"},
-    {"field": "enabled", "type": "boolean", "value": "true", "description": "是否启用"}
+    {"field": "enabled", "type": "boolean", "value": "true", "description": "是否启用：true=启用，false=停用"}
   ],
   "body_json": "",
   "take_result": [

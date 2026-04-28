@@ -17,7 +17,7 @@
       "desc": "登录接口",
       "headers": {"Content-Type": "application/json"},
       "query_params": [
-        {"field": "version", "type": "string", "value": "v1", "description": "版本号"}
+        {"field": "version", "type": "string", "value": "v1", "description": "接口版本，固定传 v1，表示第一版协议"}
       ],
       "content_type": "application/json",
       "body_form": [],
@@ -33,6 +33,7 @@
 
 注意：
 - type 字段只接受: string / integer / float / boolean / file (禁止使用 int；bool 和 boolean 均可，推荐 boolean)
+- 请求参数如果是常量、固定值、枚举值或布尔开关，必须在 description 中列出每个值和含义
 - content_type 必须根据后端控制器实际代码判断，不得默认 application/json
 - take_result 必须填写，描述接口返回字段含义
 - base-url 和 Token 必须由用户提供，所有请求都会携带 Header: Token

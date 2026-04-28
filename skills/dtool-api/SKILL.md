@@ -122,7 +122,25 @@ description: Use when operating the dtool 接口开发模块 and the task involv
 - 如果是 POST 请求，必须根据后端控制器实际接收方式，填写 `body_form` 或 `body_json`。
 - 即便接口暂时没有参数，也必须传空数组 `[]` 或空字符串 `""`，不得省略字段。
 
-### 2. 参数类型必须使用规范名称
+### 2. 固定值、常量、枚举值必须写清含义
+
+请求参数如果存在常量、固定值、枚举值或布尔开关，必须在参数备注中明确列出每个值和含义。
+
+- `query_params` 和 `body_form` 参数必须写入每项的 `description` 字段。
+- 如果只有一个固定值，也要说明“固定传某值”以及该值代表什么。
+- 如果参数来自代码常量、状态码、类型字段、开关字段，必须回到源码确认取值，不得只写“类型”“状态”“是否启用”这类笼统描述。
+- `body_json` 中的字段如果有固定值或枚举值，必须在接口 `desc` 中补充字段取值说明；能拆成表单参数的场景，优先写入对应参数的 `description`。
+
+示例：
+```json
+[
+  {"field": "client_type", "type": "string", "value": "pc", "description": "客户端类型：pc=PC端，h5=移动H5，mini=小程序"},
+  {"field": "status", "type": "integer", "value": "1", "description": "状态：0=禁用，1=启用，2=冻结"},
+  {"field": "version", "type": "string", "value": "v1", "description": "接口版本，固定传 v1，表示第一版协议"}
+]
+```
+
+### 3. 参数类型必须使用规范名称
 
 `query_params` 和 `body_form` 中每项的 `type` 字段只接受以下值：
 
@@ -136,7 +154,7 @@ description: Use when operating the dtool 接口开发模块 and the task involv
 
 **如果 type 写成 `int`，后端会报错并拒绝写入。`bool` 和 `boolean` 均可正常使用，推荐统一用 `boolean`。**
 
-### 3. POST 请求的 content_type 必须根据后端控制器代码判断
+### 4. POST 请求的 content_type 必须根据后端控制器代码判断
 
 不得默认将所有 POST 请求的 `content_type` 设为 `application/json`。必须根据后端 Go 控制器代码实际接收参数的方式来决定：
 
@@ -152,7 +170,7 @@ description: Use when operating the dtool 接口开发模块 and the task involv
 2. 根据实际代码确定 `content_type` 和对应的请求数据字段
 3. 如果无法确定，优先询问用户
 
-### 4. 必须设置结果字段备注（take_result）
+### 5. 必须设置结果字段备注（take_result）
 
 每个接口都必须设置 `take_result`（结果字段备注），用于描述接口返回结果中各字段的含义。
 
