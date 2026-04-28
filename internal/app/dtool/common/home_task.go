@@ -17,6 +17,12 @@ select id,name,task_status,memory_fragment_id,is_archived,start_time,last_operat
 from tbl_home_task
 where is_archived = ?
 order by id desc`
+	// homeTaskListTodayUpdatedQuerySQL 用于查询今天变更过的任务，供工作日报使用。
+	homeTaskListTodayUpdatedQuerySQL = `
+select id,name,task_status,memory_fragment_id,is_archived,start_time,last_operated_at,create_time,update_time,tapd_url
+from tbl_home_task
+where update_time >= ? or create_time >= ?
+order by id desc`
 	// homeTaskDateLayout 用于只展示年月日格式。
 	homeTaskDateLayout = `Y-m-d`
 	// homeTaskDateTimeLayout 用于展示完整时间。
@@ -29,6 +35,18 @@ func (h *CSqlite) HomeTaskList(isArchived int) ([]map[string]any, error) {
 		return nil, errors.New(`归档状态不合法`)
 	}
 	list, err := h.Client.QueryBySql(homeTaskListQuerySQL, isArchived).All()
+	if err != nil {
+		return nil, err
+	}
+	h.fillHomeTaskTimeDescList(list)
+	return list, nil
+}
+
+// HomeTaskListTodayUpdated 查询今天变更过的任务列表（包含已归档和未归档），用于工作日报。
+func (h *CSqlite) HomeTaskListTodayUpdated() ([]map[string]any, error) {
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
+	list, err := h.Client.QueryBySql(homeTaskListTodayUpdatedQuerySQL, todayStart, todayStart).All()
 	if err != nil {
 		return nil, err
 	}

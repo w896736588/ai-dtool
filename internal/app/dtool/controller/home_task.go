@@ -120,17 +120,11 @@ func HomeTaskDailyReportGenerate(c *gin.Context) {
 	if _, ok := memoryDBOrResponse(c); !ok {
 		return
 	}
-	activeTaskList, err := common.DbMain.HomeTaskList(define.HomeTaskArchivedNo)
+	taskList, err := common.DbMain.HomeTaskListTodayUpdated()
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	archivedTaskList, err := common.DbMain.HomeTaskList(define.HomeTaskArchivedYes)
-	if err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
-	}
-	taskList := mergeHomeTaskDailyReportTaskList(activeTaskList, archivedTaskList)
 	reportTime := time.Now().Unix()
 	if _, err = buildHomeTaskDailyReportTasksSnapshot(taskList); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)

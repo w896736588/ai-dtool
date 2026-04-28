@@ -19,17 +19,11 @@ func CronDailyReportGenerate() {
 		gstool.FmtPrintlnLogTime(`定时日报：记忆库未配置，跳过 %s`, err.Error())
 		return
 	}
-	activeTaskList, err := common.DbMain.HomeTaskList(define.HomeTaskArchivedNo)
+	taskList, err := common.DbMain.HomeTaskListTodayUpdated()
 	if err != nil {
-		gstool.FmtPrintlnLogTime(`定时日报：读取活跃任务失败 %s`, err.Error())
+		gstool.FmtPrintlnLogTime(`定时日报：读取今日变更任务失败 %s`, err.Error())
 		return
 	}
-	archivedTaskList, err := common.DbMain.HomeTaskList(define.HomeTaskArchivedYes)
-	if err != nil {
-		gstool.FmtPrintlnLogTime(`定时日报：读取归档任务失败 %s`, err.Error())
-		return
-	}
-	taskList := mergeHomeTaskDailyReportTaskList(activeTaskList, archivedTaskList)
 	reportTime := time.Now().Unix()
 	if _, err = buildHomeTaskDailyReportTasksSnapshot(taskList); err != nil {
 		gstool.FmtPrintlnLogTime(`定时日报：%s`, err.Error())
