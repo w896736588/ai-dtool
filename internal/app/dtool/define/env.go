@@ -44,6 +44,8 @@ type Env struct {
 	WebkitDataPath     string           // 浏览器数据目录 webkit data path / browser data directory
 	PythonCommand      string           // Python 命令 python command / Python executable command
 	Ports              []string         // gin 端口 ports / gin ports
+	ApiPorts           []string         // API 端口 api ports / API ports
+	SsePort            string           // SSE 端口 sse port / SSE port
 	ConfigBase         *Base            // 基础配置 base config / base configuration
 	DbConfig           *DbConfig        // 主库配置 main db config / main database configuration
 	LogDbConfig        *DbConfig        // 日志库配置 log db config / log database configuration

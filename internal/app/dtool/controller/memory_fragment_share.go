@@ -12,8 +12,6 @@ import (
 	"github.com/spf13/cast"
 )
 
-var defaultMemoryFragmentShareStore = newMemoryFragmentShareStore()
-
 // MemoryFragmentShareCreate 创建一个 24 小时有效的知识片段只读分享 token。
 func MemoryFragmentShareCreate(c *gin.Context) {
 	memoryDB, ok := memoryDBOrResponse(c)
@@ -31,7 +29,13 @@ func MemoryFragmentShareCreate(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	share := defaultMemoryFragmentShareStore.Create(fragmentID, time.Now())
+	shareStore := memoryFragmentShareStoreForRoot(component.MemoryRuntime.Config().Dir)
+	share, err := shareStore.Create(fragmentID, time.Now())
+	if err != nil {
+		gsgin.GinResponseError(c, `创建分享链接失败：`+err.Error(), nil)
+		return
+	}
+	component.MemoryRuntime.ScheduleSync()
 	gsgin.GinResponseSuccess(c, ``, memoryFragmentShareResponse(share))
 }
 
@@ -50,7 +54,12 @@ func MemoryFragmentShareInfo(c *gin.Context) {
 		gsgin.GinResponseError(c, `分享链接不能为空`, nil)
 		return
 	}
-	share, ok := defaultMemoryFragmentShareStore.Resolve(token, time.Now())
+	shareStore := memoryFragmentShareStoreForRoot(component.MemoryRuntime.Config().Dir)
+	share, ok, err := shareStore.Resolve(token, time.Now())
+	if err != nil {
+		gsgin.GinResponseError(c, `读取分享链接失败：`+err.Error(), nil)
+		return
+	}
 	if !ok {
 		gsgin.GinResponseError(c, `分享链接不存在或已过期`, nil)
 		return

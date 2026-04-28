@@ -125,15 +125,11 @@ window.ResizeObserver = class ResizeObserver extends _ResizeObserver{
 }
 
 import sse from '@/utils/base/sse_distribute'
-sse.Create()
-sse.OpenFunc(function (){
+sse.InitFromLoginStatus(function (){
   console.log('打开链接')
-})
-sse.ErrorFunc(function (e){
-  console.log('链接错误',e.message)
-})
-sse.CloseFunc(function (){
+}, function (e){
+  console.log('链接错误', e && e.message)
+}, function (){
   console.log('链接关闭')
 })
-sse.ReceiveMessage()
 

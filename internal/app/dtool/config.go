@@ -396,10 +396,59 @@ func formatLogDBFullPath(env *define.Env) string {
 	return filepath.Join(env.LogDbConfig.DbPath, env.LogDbConfig.DbName)
 }
 
+func splitRunPorts(raw string) []string {
+	portList := strings.Split(raw, `,`)
+	ret := make([]string, 0, len(portList))
+	seen := make(map[string]bool)
+	for _, port := range portList {
+		port = strings.TrimSpace(port)
+		if port == `` || seen[port] {
+			continue
+		}
+		seen[port] = true
+		ret = append(ret, port)
+	}
+	return ret
+}
+
+func resolveRunPorts(cfg *viper.Viper) ([]string, string) {
+	apiPorts := splitRunPorts(cfg.GetString(`run.api_port`))
+	if len(apiPorts) == 0 {
+		apiPorts = splitRunPorts(cfg.GetString(`run.ports`))
+	}
+
+	ssePort := strings.TrimSpace(cfg.GetString(`run.sse_port`))
+	if ssePort == `` && len(apiPorts) > 0 {
+		ssePort = apiPorts[0]
+	}
+	return apiPorts, ssePort
+}
+
+func mergeRunPorts(apiPorts []string, ssePort string) []string {
+	ret := make([]string, 0, len(apiPorts)+1)
+	seen := make(map[string]bool)
+	for _, port := range apiPorts {
+		port = strings.TrimSpace(port)
+		if port == `` || seen[port] {
+			continue
+		}
+		seen[port] = true
+		ret = append(ret, port)
+	}
+	ssePort = strings.TrimSpace(ssePort)
+	if ssePort != `` && !seen[ssePort] {
+		ret = append(ret, ssePort)
+	}
+	return ret
+}
+
 func initGin() {
 	host := component.ConfigViper.GetString(`run.host`)
-	ports := strings.Split(component.ConfigViper.GetString(`run.ports`), `,`)
+	apiPorts, ssePort := resolveRunPorts(component.ConfigViper)
+	ports := mergeRunPorts(apiPorts, ssePort)
 	component.EnvClient.Ports = ports
+	component.EnvClient.ApiPorts = apiPorts
+	component.EnvClient.SsePort = ssePort
 	gin.DefaultWriter = io.Discard
 	if err := controller.CleanupPortsByPreference(ports, []string{AppName}); err != nil {
 		gstool.FmtPrintlnLogTime(`启动前端口清理失败 %s`, err.Error())
@@ -413,7 +462,7 @@ func initGin() {
 		tGin.SetMode(gin.DebugMode)
 		tGin.GinInit(host, port)
 		tGin.GinSetAllowCrossDomain()
-		//第一个加载前端
+		//第一个 API 端口加载前端
 		if key == 0 {
 			tGin.GinStatic(`/js`, component.EnvClient.WebConfig.WebPath+`/js`)
 			tGin.GinStaticFile(`/favicon.ico`, component.EnvClient.WebConfig.WebPath+`/favicon.ico`)
@@ -421,8 +470,9 @@ func initGin() {
 			tGin.GinLoadHTMLFiles(component.EnvClient.WebConfig.WebPath + `/index.html`)
 			tGin.GinGet(`/`, func(context *gin.Context) {
 				cfg := gstool.JsonEncode(map[string]string{
-					"port": port,
-					"host": host,
+					"port":     port,
+					"host":     host,
+					"sse_port": ssePort,
 				})
 				context.HTML(200, `index.html`, gin.H{"serverConfig": template.JS(string(cfg))})
 			})

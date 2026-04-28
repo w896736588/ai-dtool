@@ -8,32 +8,60 @@ let SseConn = null
 let SseReceiveIdFunc = {}
 
 let sseClientId = ''
-let sseDistributeSeq = 0
-
+let sseUrl = ''
+let initFromLoginStatusPromise = null
 //全局获取sse 客户端id
 function GetSseClientId(){
     return sseClientId
 }
-function Create() {
-    sseClientId = base.GenerateId(SseClientId)
-    let params = 'client_id=' + sseClientId + '&token=' + encodeURIComponent(base.GetSafeToken())
-    let url = base.GetSseApiHost() + '/sse?' + params
+function Create(ssePort) {
+    if (ssePort) {
+        base.SetSsePort(ssePort)
+    }
+    const nextClientId = sseClientId || base.GenerateId(SseClientId)
+    let params = 'client_id=' + nextClientId + '&token=' + encodeURIComponent(base.GetSafeToken())
+    const sseHost = base.GetSseApiHost()
+    if (!sseHost) {
+        return false
+    }
+    let url = sseHost + '/sse?' + params
+    if (SseConn && sseUrl === url) {
+        return true
+    }
+    if (SseConn) {
+        SseConn.close()
+    }
+    sseClientId = nextClientId
+    sseUrl = url
     SseConn = new EventSource(url)
+    return true
 }
 
 function OpenFunc(callFunc) {
+    if (!SseConn) {
+        return
+    }
     SseConn.onopen = callFunc;
 }
 
 function ErrorFunc(callFunc) {
+    if (!SseConn) {
+        return
+    }
     SseConn.onerror = callFunc
 }
 
 function CloseFunc(callFunc) {
+    if (!SseConn) {
+        return
+    }
     SseConn.onclosse = callFunc
 }
 
 function ReceiveMessage() {
+    if (!SseConn) {
+        return
+    }
     SseConn.onmessage = function (event) {
         let objData = null
         try {
@@ -68,16 +96,49 @@ function UnRegisterReceive(receiveId){
 }
 
 function Close() {
+    if (!SseConn) {
+        return
+    }
     SseConn.close()
+    SseConn = null
+    sseUrl = ''
+    sseClientId = ''
     SseReceiveIdFunc = {}
+}
+
+function InitFromLoginStatus(openFunc, errorFunc, closeFunc) {
+    if (initFromLoginStatusPromise) {
+        return initFromLoginStatusPromise
+    }
+    initFromLoginStatusPromise = new Promise(resolve => {
+        base.BaseLoginStatus(function (response) {
+            if (response.ErrCode !== 0) {
+                resolve(false)
+                return
+            }
+            const data = response.Data || {}
+            const created = Create(data.sse_port)
+            if (created) {
+                if (openFunc) {
+                    OpenFunc(openFunc)
+                }
+                if (errorFunc) {
+                    ErrorFunc(errorFunc)
+                }
+                if (closeFunc) {
+                    CloseFunc(closeFunc)
+                }
+                ReceiveMessage()
+            }
+            resolve(created)
+        })
+    })
+    return initFromLoginStatusPromise
 }
 
 //获取分发id
 function GetSseDistributeId(businessId){
     return businessId
-    const prefix = String(businessId || 'sse').trim() || 'sse'
-    sseDistributeSeq += 1
-    return `${prefix}_${Date.now()}_${sseDistributeSeq}`
 }
 
 export default {
@@ -87,6 +148,7 @@ export default {
     UnRegisterReceive,
     Close,
     Create,
+    InitFromLoginStatus,
     CloseFunc,
     ReceiveMessage,
     GetSseDistributeId,

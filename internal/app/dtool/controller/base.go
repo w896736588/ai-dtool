@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cast"
+	"github.com/spf13/viper"
 )
 
 // getSafeTokenManager 创建 Safe Token 管理器（从配置读取）
@@ -25,6 +26,62 @@ func getSafeTokenManager() *common.SafeTokenManager {
 	password := component.ConfigViper.GetString("safe.password")
 	appName := component.ConfigViper.GetString("app.name")
 	return common.NewSafeTokenManager(password, appName)
+}
+
+func splitConfiguredPorts(raw string) []string {
+	portList := strings.Split(raw, `,`)
+	ret := make([]string, 0, len(portList))
+	seen := make(map[string]bool)
+	for _, port := range portList {
+		port = strings.TrimSpace(port)
+		if port == `` || seen[port] {
+			continue
+		}
+		seen[port] = true
+		ret = append(ret, port)
+	}
+	return ret
+}
+
+func getConfiguredAPIPorts(cfg *viper.Viper) []string {
+	apiPorts := splitConfiguredPorts(cfg.GetString(`run.api_port`))
+	if len(apiPorts) > 0 {
+		return apiPorts
+	}
+	return splitConfiguredPorts(cfg.GetString(`run.ports`))
+}
+
+func getConfiguredSsePort(cfg *viper.Viper) string {
+	ssePort := strings.TrimSpace(cfg.GetString(`run.sse_port`))
+	if ssePort != `` {
+		return ssePort
+	}
+	apiPorts := getConfiguredAPIPorts(cfg)
+	if len(apiPorts) == 0 {
+		return ``
+	}
+	return apiPorts[0]
+}
+
+func buildLoginStatusData(cfg *viper.Viper, enabled bool, loggedIn bool, expireAt int64) map[string]any {
+	return map[string]any{
+		`enabled`:   enabled,
+		`logged_in`: loggedIn,
+		`expire_at`: expireAt,
+		`api_port`:  getConfiguredAPIPorts(cfg),
+		`sse_port`:  getConfiguredSsePort(cfg),
+	}
+}
+
+func buildLoginData(cfg *viper.Viper, enabled bool, token string, expireAt int64) map[string]any {
+	return map[string]any{
+		`enabled`:   enabled,
+		`token`:     token,
+		`expire_at`: expireAt,
+		`api_port`:  getConfiguredAPIPorts(cfg),
+		`sse_port`:  getConfiguredSsePort(cfg),
+		`local_ip`:  GetLANIP(),
+	}
 }
 
 // BaseLogin Safe 登录接口
@@ -53,13 +110,7 @@ func BaseLogin(c *gin.Context) {
 
 	// 检查是否启用了密码保护
 	if !tokenManager.IsEnabled() {
-		gsgin.GinResponseSuccess(c, `未启用密码保护，无需登录`, map[string]any{
-			`enabled`:   false,
-			`token`:     ``,
-			`expire_at`: 0,
-			`ports`:     strings.Split(component.ConfigViper.GetString(`run.ports`), `,`),
-			`local_ip`:  GetLANIP(),
-		})
+		gsgin.GinResponseSuccess(c, `未启用密码保护，无需登录`, buildLoginData(component.ConfigViper, false, ``, 0))
 		return
 	}
 
@@ -80,12 +131,7 @@ func BaseLogin(c *gin.Context) {
 		return
 	}
 
-	gsgin.GinResponseSuccess(c, `登录成功`, map[string]any{
-		`token`:     token,
-		`expire_at`: expireAt,
-		`ports`:     strings.Split(component.ConfigViper.GetString(`run.ports`), `,`),
-		`local_ip`:  GetLANIP(),
-	})
+	gsgin.GinResponseSuccess(c, `登录成功`, buildLoginData(component.ConfigViper, true, token, expireAt))
 }
 
 // BaseLoginStatus 检查登录状态接口
@@ -99,11 +145,7 @@ func BaseLoginStatus(c *gin.Context) {
 
 	// 检查是否启用了密码保护
 	if !tokenManager.IsEnabled() {
-		gsgin.GinResponseSuccess(c, `获取成功`, map[string]any{
-			`enabled`:   false,
-			`logged_in`: true, // 未启用密码保护视为已登录
-			`expire_at`: 0,
-		})
+		gsgin.GinResponseSuccess(c, `获取成功`, buildLoginStatusData(component.ConfigViper, false, true, 0))
 		return
 	}
 
@@ -116,11 +158,7 @@ func BaseLoginStatus(c *gin.Context) {
 		expireAt = claims.ExpireAt
 	}
 
-	gsgin.GinResponseSuccess(c, `获取成功`, map[string]any{
-		`enabled`:   true,
-		`logged_in`: isLoggedIn,
-		`expire_at`: expireAt,
-	})
+	gsgin.GinResponseSuccess(c, `获取成功`, buildLoginStatusData(component.ConfigViper, true, isLoggedIn, expireAt))
 }
 
 func GetLANIP() string {

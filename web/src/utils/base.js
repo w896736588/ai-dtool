@@ -5,6 +5,7 @@ import {globals} from '@/main'
 
 const DEV_PORT = '17170'
 const SAFE_TOKEN_KEY = 'safe_token'
+let runtimeSsePort = ''
 
 // 获取服务端注入的配置（Go模板渲染时注入）
 function GetServerConfig() {
@@ -21,6 +22,10 @@ function SetSafeToken(token) {
     if (token) {
         store.setStore(SAFE_TOKEN_KEY, token)
     }
+}
+
+function SetSsePort(port) {
+    runtimeSsePort = port ? String(port).trim() : ''
 }
 
 // 清除 safe token
@@ -154,7 +159,10 @@ function GetApiHost() {
 function GetSseApiHost() {
     if (isDev()) {
         const config = GetServerConfig()
-        const port = (config && config.port) ? config.port : DEV_PORT
+        const port = runtimeSsePort || (config && config.sse_port)
+        if (!port) {
+            return ''
+        }
         return 'http://localhost:' + port
     }
     return ''  // 生产环境返回空字符串，使用相对路径
@@ -265,6 +273,7 @@ export default {
     GetSafeToken,
     SetSafeToken,
     ClearSafeToken,
+    SetSsePort,
     Globals,
     GetDivHeight,
     GetDivHeight2,
