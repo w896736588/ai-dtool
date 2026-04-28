@@ -1,10 +1,10 @@
 .api-detail {
   padding: 12px 0;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 720px;
+  min-height: 0;
 }
 
 .json-box {
@@ -52,6 +52,46 @@
 .api-url-input {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.api-config-tabs {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+}
+
+.desc-tab-pane {
+  height: 100%;
+  display: flex;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.desc-editor {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.desc-editor :deep(.md-editor) {
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+}
+
+.desc-editor :deep(.md-editor-content) {
+  height: 100%;
+  min-height: 0;
+}
+
+.desc-editor :deep(.md-editor-input-wrapper) {
+  overflow: auto;
 }
 
 .config-section,
@@ -324,9 +364,20 @@
   padding: 10px 0;
 }
 
-:deep(.el-tabs__content) {
+:deep(.api-config-tabs > .el-tabs__content) {
   padding: 12px;
   overflow: auto;
+  height: calc(100% - 50px);
+  min-height: 0;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+:deep(.api-config-tabs > .el-tabs__content > .el-tab-pane) {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
 }
 
 :deep(.detail-tabs > .el-tabs__header) {
