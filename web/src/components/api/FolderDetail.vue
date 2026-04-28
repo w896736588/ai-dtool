@@ -171,7 +171,8 @@ export default {
         name: updatedFolder.name,
         desc: updatedFolder.desc || '',
         collection_id: updatedFolder.collection_id,
-        headers: updatedFolder.headers || {}
+        headers: updatedFolder.headers || {},
+        env_id: parseInt(updatedFolder.env_id) || 0,
       }
       Api.CreateDir(updateData, function (res) {
         if (res.ErrCode === 0) {

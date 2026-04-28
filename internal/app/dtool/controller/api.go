@@ -72,6 +72,7 @@ func buildFolderBasicInfo(item map[string]any) map[string]any {
 		`collection_id`: item[`collection_id`],
 		`name`:          item[`name`],
 		`headers`:       cast.ToString(item[`headers`]),
+		`env_id`:        cast.ToInt(item[`env_id`]),
 		`child_count`:   cast.ToInt(item[`child_count`]),
 		`create_time`:   item[`create_time`],
 		`update_time`:   item[`update_time`],
@@ -302,13 +303,14 @@ select d.id,
        d.collection_id,
        d.name,
        d.headers,
+	       d.env_id,
        d.create_time,
        d.update_time,
        count(a.id) as child_count
 from tbl_api_dir d
 left join tbl_api a on a.folder_id = d.id
 where d.collection_id = ?
-group by d.id, d.collection_id, d.name, d.headers, d.create_time, d.update_time
+group by d.id, d.collection_id, d.name, d.headers, d.env_id, d.create_time, d.update_time
 order by d.id asc`, collectionId).All()
 	result := make([]map[string]any, 0, len(list))
 	for _, item := range list {
@@ -466,7 +468,7 @@ func ApiCreateDir(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `collection_id`, `headers`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `collection_id`, `headers`, `env_id`})
 	var err error
 	for key, value := range updateData {
 		if gstool.ArrayExistValue(&[]string{reflect.Array.String(), reflect.Map.String(), reflect.Slice.String()}, gstool.ReflectGetType(value).String()) {
@@ -692,11 +694,15 @@ func ApiRun(c *gin.Context) {
 		return
 	}
 	// 中文注释：运行前加载所属目录默认请求头，用于与接口请求头做覆盖合并。
-	folderInfo, _ := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `headers`, map[string]any{
+	folderInfo, _ := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `headers,env_id`, map[string]any{
 		`id`: apiInfo[`folder_id`],
 	}).One()
 	if len(folderInfo) > 0 {
 		apiInfo[`folder_headers`] = folderInfo[`headers`]
+		// 接口自身无环境时继承文件夹的环境
+		if cast.ToInt(apiInfo[`env_id`]) == 0 {
+			apiInfo[`env_id`] = folderInfo[`env_id`]
+		}
 	}
 	apiCli := api.NewApi(apiInfo)
 	err := apiCli.Run()
@@ -725,6 +731,15 @@ func ApiCode(c *gin.Context) {
 		return
 	}
 	codeType := dataMap[`code_type`]
+	// 接口自身无环境时继承文件夹的环境
+	if cast.ToInt(apiInfo[`env_id`]) == 0 {
+		folderInfo, _ := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `env_id`, map[string]any{
+			`id`: apiInfo[`folder_id`],
+		}).One()
+		if len(folderInfo) > 0 {
+			apiInfo[`env_id`] = folderInfo[`env_id`]
+		}
+	}
 	apiCli := api.NewApi(apiInfo)
 	code := apiCli.GenerateCode(cast.ToString(codeType))
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
@@ -1125,14 +1140,15 @@ func ApiFolderDetail(c *gin.Context) {
 	for _, api := range apis {
 		api[`type`] = `api`
 		api[`uniqueid`] = fmt.Sprintf(`api%d`, api[`id`])
-		// If env_id exists, fetch environment variables and replace URL
+		// 接口自身无环境时继承文件夹的环境
 		envId := cast.ToInt(api[`env_id`])
+		if envId == 0 {
+			envId = cast.ToInt(dir[`env_id`])
+		}
 		if envId > 0 {
-			// Query all environment variables for this env_id
 			envItems, _ := common.DbMain.Client.QuickQuery(`tbl_api_env_item`, `*`, map[string]any{
 				`env_id`: envId,
 			}).All()
-			// Replace variables in URL
 			url := cast.ToString(api[`url`])
 			for _, envItem := range envItems {
 				key := cast.ToString(envItem[`key`])

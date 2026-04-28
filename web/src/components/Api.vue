@@ -1345,6 +1345,11 @@ export default {
         if (treeApiNode) {
           this.syncApiNodeFields(treeApiNode, detail)
         }
+        // 查找文件夹的环境配置，用于接口无环境时继承
+        const folderNode = this.findFolderNode(apiNode.collection_id, apiNode.folder_id)
+        if (folderNode && folderNode.env_id) {
+          detail.folder_env_id = folderNode.env_id
+        }
         const activeTab = this.getActiveWorkspaceTab()
         if (activeTab && activeTab.type === 'api' && parseInt(activeTab.id) === parseInt(detail.id)) {
           activeTab.data = {
