@@ -702,10 +702,10 @@ export default {
         }
       })
     },
-    // buildShareUrl 基于当前访问地址生成前端 hash 分享链接。
+    // buildShareUrl 生成后端直出的纯 HTML 分享链接，避免依赖前端 SPA 渲染。
     buildShareUrl(token) {
-      const baseUrl = window.location.origin + window.location.pathname
-      return `${baseUrl}#/MemoryFragmentShare?token=${encodeURIComponent(token)}`
+      const apiHost = String(base.GetApiHost() || window.location.origin).trim()
+      return new URL(`/share/${encodeURIComponent(token)}`, apiHost).toString()
     },
     // writeClipboard 复制文本，兼容不支持 navigator.clipboard 的浏览器环境。
     writeClipboard(text) {

@@ -1207,6 +1207,7 @@ export default {
         desc: source.desc,
         headers: source.headers || '{}',
         collection_id: source.collection_id,
+        env_id: source.env_id,
         create_time: source.create_time,
         update_time: source.update_time,
       })

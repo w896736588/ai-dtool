@@ -144,7 +144,7 @@ func memoryFragmentShareResponse(share memoryFragmentShare) map[string]any {
 func templateHTML(msg string) string {
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>知识片段分享</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f5f7f2;color:#5f7059;font-size:14px;}</style>
+<title>知识片段分享</title>
 </head><body><p>%s</p></body></html>`, template.HTMLEscapeString(msg))
 }
 
@@ -155,50 +155,17 @@ func buildShareHTML(title, updateTime, expireAt, bodyHTML string) string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>%s</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{min-height:100vh;background:#f5f7f2;color:#2f3c2b;font-family:system-ui,-apple-system,sans-serif}
-.shell{width:min(960px,calc(100%% - 32px));margin:0 auto;padding:32px 0}
-.viewer{min-height:calc(100vh - 64px);border:1px solid #e2e8d8;border-radius:12px;background:#fff;box-shadow:0 8px 24px rgba(54,74,54,.08);overflow:hidden}
-.header{padding:24px 28px 18px;border-bottom:1px solid #e8eee0;background:#f8faf5}
-.header h1{color:#263523;font-size:24px;line-height:1.35;font-weight:700;word-break:break-word}
-.meta{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;color:#687762;font-size:13px}
-.content{padding:22px 28px 32px;font-size:14px;color:#33422f;line-height:1.7}
-.content h1,.content h2,.content h3,.content h4,.content h5,.content h6{color:#263523;margin:24px 0 12px;line-height:1.35}
-.content h1{font-size:22px;border-bottom:1px solid #e2e8d8;padding-bottom:8px}
-.content h2{font-size:19px}
-.content h3{font-size:16px}
-.content p{margin:10px 0}
-.content ul,.content ol{padding-left:24px;margin:10px 0}
-.content li{margin:4px 0}
-.content code{background:#f0f4ec;padding:2px 6px;border-radius:4px;font-size:13px;font-family:Menlo,Consolas,monospace}
-.content pre{background:#f6f8f3;border:1px solid #e2e8d8;border-radius:8px;padding:16px;overflow-x:auto;margin:14px 0}
-.content pre code{background:none;padding:0}
-.content blockquote{border-left:4px solid #b5c7ad;padding:8px 16px;margin:14px 0;color:#5f7059;background:#f8faf5;border-radius:0 8px 8px 0}
-.content table{border-collapse:collapse;width:100%%;margin:14px 0}
-.content th,.content td{border:1px solid #e2e8d8;padding:8px 12px;text-align:left}
-.content th{background:#f8faf5;font-weight:600}
-.content img{max-width:100%%;border-radius:6px}
-.content a{color:#3d7a3a;text-decoration:none}
-.content a:hover{text-decoration:underline}
-.content hr{border:none;border-top:1px solid #e2e8d8;margin:20px 0}
-@media(max-width:720px){
-  .shell{width:calc(100%% - 20px);padding:10px 0}
-  .viewer{min-height:calc(100vh - 20px)}
-  .header,.content{padding-left:16px;padding-right:16px}
-}
-</style>
 </head>
 <body>
-<main class="shell">
-<article class="viewer">
-<header class="header">
+<main>
+<article>
+<header>
 <h1>%s</h1>
-<div class="meta">
+<div>
 %s
 </div>
 </header>
-<section class="content">
+<section>
 %s
 </section>
 </article>
