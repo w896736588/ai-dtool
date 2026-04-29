@@ -42,6 +42,7 @@ func InitRouter(tGin *p_gin.Gin) {
 	setMarkdown(tGin)
 	setMemoryFragment(tGin)
 	homeTask(tGin)
+	taskWorkflow(tGin)
 	shellOut(tGin)
 	variableRouter(tGin)
 	smartLink(tGin)
@@ -300,6 +301,22 @@ func homeTask(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/HomeTaskStatusQuickUpdate`, controller.HomeTaskStatusQuickUpdate)
 	tGin.GinPost(`/api/HomeTaskDelete`, controller.HomeTaskDelete)
 	tGin.GinPost(`/api/HomeTaskDailyReportGenerate`, controller.HomeTaskDailyReportGenerate)
+}
+
+func taskWorkflow(tGin *p_gin.Gin) {
+	tGin.GinPost(`/api/task/workflow/create_or_get`, controller.TaskWorkflowCreateOrGet)
+	tGin.GinPost(`/api/task/workflow/info`, controller.TaskWorkflowInfo)
+	tGin.GinPost(`/api/task/workflow/dev-plan/init`, controller.TaskWorkflowDevPlanInit)
+	tGin.GinPost(`/api/task/workflow/dev-plan/info`, controller.TaskWorkflowDevPlanInfo)
+	tGin.GinPost(`/api/task/workflow/dev-plan/save`, controller.TaskWorkflowDevPlanSave)
+	tGin.GinPost(`/api/task/workflow/ui-assist/generate`, controller.TaskWorkflowUIAssistGenerate)
+	tGin.GinPost(`/api/task/workflow/ui-assist/info`, controller.TaskWorkflowUIAssistInfo)
+	tGin.GinPost(`/api/task/workflow/coverage/generate`, controller.TaskWorkflowCoverageGenerate)
+	tGin.GinPost(`/api/task/workflow/coverage/info`, controller.TaskWorkflowCoverageInfo)
+	tGin.GinPost(`/api/task/workflow/test-plan/generate`, controller.TaskWorkflowTestPlanGenerate)
+	tGin.GinPost(`/api/task/workflow/test-plan/info`, controller.TaskWorkflowTestPlanInfo)
+	tGin.GinPost(`/api/task/workflow/test-run/execute`, controller.TaskWorkflowTestRunExecute)
+	tGin.GinPost(`/api/task/workflow/test-run/list`, controller.TaskWorkflowTestRunList)
 }
 
 func shellOut(tGin *p_gin.Gin) {

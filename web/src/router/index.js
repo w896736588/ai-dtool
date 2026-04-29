@@ -142,6 +142,12 @@ const router = createRouter({
       meta: { keepAlive: false },
     },
     {
+      path: '/TaskWorkflow/:taskId',
+      name: 'task-workflow',
+      component: () => import('../components/TaskWorkflow.vue'),
+      meta: { keepAlive: false },
+    },
+    {
       path: '/MemoryFragmentShare',
       name: 'memory-fragment-share',
       component: () => import('../components/memory/MemoryFragmentShare.vue'),

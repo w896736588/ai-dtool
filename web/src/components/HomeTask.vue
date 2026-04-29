@@ -54,6 +54,14 @@
                   </div>
                 </div>
                 <div class="home-task-card__actions">
+                  <GitActionButton
+                    compact
+                    variant="primary"
+                    :disabled="isHomeTaskBusy(task.id)"
+                    @click="openTaskWorkflow(task)"
+                  >
+                    工作流程
+                  </GitActionButton>
                   <el-dropdown
                     trigger="click"
                     :disabled="isHomeTaskBusy(task.id)"
@@ -167,6 +175,14 @@
                 </div>
               </div>
               <div class="home-task-card__actions">
+                <GitActionButton
+                  compact
+                  variant="primary"
+                  :disabled="isHomeTaskBusy(task.id)"
+                  @click="openTaskWorkflow(task)"
+                >
+                  工作流程
+                </GitActionButton>
                 <el-dropdown
                   trigger="click"
                   :disabled="isHomeTaskBusy(task.id)"
@@ -560,6 +576,17 @@ export default {
           fragment_id: String(fragmentId),
           hide_menu: '1',
         },
+      })
+      window.open(routeInfo.href, '_blank')
+    },
+    openTaskWorkflow(task) {
+      const taskId = Number(task?.id || 0)
+      if (taskId <= 0) {
+        this.$helperNotify.error('任务 id 不合法')
+        return
+      }
+      const routeInfo = this.$router.resolve({
+        path: `/TaskWorkflow/${taskId}`,
       })
       window.open(routeInfo.href, '_blank')
     },
