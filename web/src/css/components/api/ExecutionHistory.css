@@ -1,0 +1,82 @@
+.execution-history {
+  padding: 12px;
+  border: 1px solid #e8eee5;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(80, 110, 80, 0.08);
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e6ece0;
+  border-radius: 10px;
+  background: #f7f9f5;
+}
+
+.filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.api-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.api-name {
+  font-weight: 500;
+}
+
+.request-url {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  color: #606266;
+}
+
+.status-success {
+  color: #67c23a;
+  font-weight: bold;
+}
+
+.status-warning {
+  color: #e6a23c;
+  font-weight: bold;
+}
+
+.status-danger {
+  color: #f56c6c;
+  font-weight: bold;
+}
+
+.status-error {
+  color: #f56c6c;
+  font-weight: bold;
+}
+
+.pagination-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding: 16px 0;
+  border-top: 1px solid #e8eee5;
+}
+
+:deep(.el-table) {
+  border: 1px solid #e6ece0;
+  border-radius: 10px;
+  overflow: hidden;
+}

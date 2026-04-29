@@ -5,6 +5,7 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -217,7 +218,7 @@ func SetAiModelTest(c *gin.Context) {
 		gsgin.GinResponseError(c, `模型 id 不能为空`, nil)
 		return
 	}
-	modelInfo, err := common.DbMain.InfoCrawlAiModelInfo(modelID)
+	modelInfo, err := common.DbMain.AiModelInfo(modelID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -244,24 +245,106 @@ func SetAiModelTest(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	// 脱敏 headers
+	headers := map[string]string{
+		`Authorization`: maskApiKey(apiKey),
+		`Content-Type`:  `application/json`,
+	}
 	request.Header.Set(`Authorization`, `Bearer `+apiKey)
 	request.Header.Set(`Content-Type`, `application/json`)
 	client := &http.Client{Timeout: 30 * time.Second}
+	startTime := time.Now()
 	response, err := client.Do(request)
+	costTimeMs := time.Since(startTime).Milliseconds()
 	if err != nil {
+		logTestRequestToDb(modelInfo, requestURL, method, bodyMap, headers, 0, ``, `连通失败: `+err.Error(), costTimeMs)
 		gsgin.GinResponseError(c, `连通失败: `+err.Error(), nil)
 		return
 	}
 	defer response.Body.Close()
 	responseBody, _ := io.ReadAll(response.Body)
 	if response.StatusCode >= 300 {
-		gsgin.GinResponseError(c, `连通失败: HTTP `+cast.ToString(response.StatusCode)+` `+truncateAiTestResponse(responseBody), nil)
+		errMsg := `连通失败: HTTP ` + cast.ToString(response.StatusCode) + ` ` + truncateAiTestResponse(responseBody)
+		logTestRequestToDb(modelInfo, requestURL, method, bodyMap, headers, response.StatusCode, string(responseBody), errMsg, costTimeMs)
+		gsgin.GinResponseError(c, errMsg, nil)
 		return
 	}
+	logTestRequestToDb(modelInfo, requestURL, method, bodyMap, headers, response.StatusCode, string(responseBody), ``, costTimeMs)
 	gsgin.GinResponseSuccess(c, `连通成功`, map[string]any{
 		`status_code`: response.StatusCode,
 		`message`:     `连通成功`,
 	})
+}
+
+// maskApiKey 脱敏 API Key
+func maskApiKey(apiKey string) string {
+	if len(apiKey) <= 10 {
+		return `******`
+	}
+	return apiKey[:6] + `******` + apiKey[len(apiKey)-4:]
+}
+
+// logTestRequestToDb 记录测试请求到日志库
+func logTestRequestToDb(
+	modelInfo map[string]any,
+	requestURL, method string,
+	requestParams map[string]any,
+	requestHeaders map[string]string,
+	statusCode int,
+	responseBody, errMsg string,
+	costTimeMs int64,
+) {
+	success := 1
+	if errMsg != `` {
+		success = 0
+	}
+	providerID := cast.ToInt(modelInfo[`provider_id`])
+	providerName := cast.ToString(modelInfo[`provider_name`])
+	modelID := cast.ToInt(modelInfo[`id`])
+	modelName := cast.ToString(modelInfo[`name`])
+	model := cast.ToString(modelInfo[`model`])
+	modelType := cast.ToString(modelInfo[`model_type`])
+	if modelType == `` {
+		modelType = `llm`
+	}
+	requestFormat := cast.ToString(modelInfo[`provider_type`])
+	if requestFormat == `` {
+		requestFormat = `openai`
+	}
+	baseURL := cast.ToString(modelInfo[`base_url`])
+
+	requestParamsJSON, _ := json.Marshal(requestParams)
+	headersJSON, _ := json.Marshal(requestHeaders)
+
+	logData := map[string]any{
+		`provider_id`:            providerID,
+		`provider_name`:          providerName,
+		`model_id`:             modelID,
+		`model_name`:           modelName,
+		`model`:                model,
+		`model_type`:           modelType,
+		`request_format`:        requestFormat,
+		`base_url`:            baseURL,
+		`request_url`:         requestURL,
+		`request_method`:       method,
+		`request_params`:       string(requestParamsJSON),
+		`request_headers`:      string(headersJSON),
+		`response_status_code`: statusCode,
+		`response_body`:       responseBody,
+		`input_tokens`:        0,
+		`output_tokens`:        0,
+		`cost_time_ms`:        costTimeMs,
+		`success`:             success,
+		`error_message`:       errMsg,
+		`create_time`:         time.Now().Unix(),
+	}
+
+	// 异步写入日志
+	go func() {
+		if common.DbLog != nil && common.DbLog.Client != nil {
+			_, _ = common.DbLog.Client.QuickCreate(`tbl_ai_request_log`, logData).Exec()
+		}
+	}()
 }
 
 func normalizeAiProviderBaseURL(raw string) string {
@@ -339,4 +422,79 @@ func truncateAiTestResponse(responseBody []byte) string {
 		return string(runes[:180]) + `...`
 	}
 	return text
+}
+
+// SetAiRequestLogList 查询 AI 请求日志列表
+func SetAiRequestLogList(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+
+	sql := `select id, provider_id, provider_name, model_id, model_name, model, model_type,
+			request_format, base_url, request_url, request_method,
+			request_params, request_headers, response_body,
+			response_status_code, input_tokens, output_tokens, cost_time_ms,
+			success, error_message, create_time
+			from tbl_ai_request_log where 1=1`
+	paramList := make([]any, 0)
+
+	providerID := cast.ToInt(dataMap[`provider_id`])
+	if providerID > 0 {
+		sql += ` and provider_id = ?`
+		paramList = append(paramList, providerID)
+	}
+
+	modelID := cast.ToInt(dataMap[`model_id`])
+	if modelID > 0 {
+		sql += ` and model_id = ?`
+		paramList = append(paramList, modelID)
+	}
+
+	modelType := strings.TrimSpace(cast.ToString(dataMap[`model_type`]))
+	if modelType != `` {
+		sql += ` and model_type = ?`
+		paramList = append(paramList, modelType)
+	}
+
+	successOnly := cast.ToBool(dataMap[`success_only`])
+	if successOnly {
+		sql += ` and success = 1`
+	}
+
+	limit := cast.ToInt(dataMap[`limit`])
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	sql += ` order by id desc limit ?`
+	paramList = append(paramList, limit)
+
+	list, err := common.DbLog.Client.QueryBySql(sql, paramList...).All()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	// 格式化时间
+	for i := range list {
+		createTime := cast.ToInt64(list[i][`create_time`])
+		if createTime > 0 {
+			list[i][`create_time_desc`] = time.Unix(createTime, 0).Format(`2006-01-02 15:04:05`)
+		}
+		// 格式化耗时
+		costTimeMs := cast.ToInt64(list[i][`cost_time_ms`])
+		list[i][`cost_time_desc`] = formatCostTime(costTimeMs)
+	}
+
+	gsgin.GinResponseSuccess(c, ``, list)
+}
+
+// formatCostTime 格式化耗时为可读字符串
+func formatCostTime(costTimeMs int64) string {
+	if costTimeMs < 1000 {
+		return cast.ToString(costTimeMs) + `ms`
+	}
+	seconds := float64(costTimeMs) / 1000.0
+	return fmt.Sprintf(`%.2fs`, seconds)
 }

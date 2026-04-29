@@ -1,0 +1,44 @@
+.kv-table {
+  width: 100%;
+  border: 1px solid #e6ece0;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.kv-table-inner {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.kv-table-inner th,
+.kv-table-inner td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #eef3ec;
+}
+
+.kv-table-inner th {
+  background: #f7f9f5;
+  font-weight: 600;
+  font-size: 14px;
+  color: #4e594a;
+}
+
+.col-value { width: 35%; }
+.col-env { width: 25%; }
+.col-desc { width: 25%; }
+.col-actions { width: 15%; text-align: center; }
+
+.kv-table-inner .el-input,
+.kv-table-inner .el-select {
+  width: 100%;
+}
+
+.add-rule-btn {
+  border-radius: 8px;
+}
+
+.delete-rule-btn {
+  border-radius: 8px;
+}

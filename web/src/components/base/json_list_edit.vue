@@ -95,32 +95,7 @@
   </el-dialog>
 
 </template>
-<style>
-td {
-  padding: 5px;
-}
-
-th {
-  text-align: left;
-}
-
-.el-form-item {
-  padding: 5px;
-}
-
-.ellipsis-column .cell {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.json_list_edit {
-  overflow-y: auto !important; /* 垂直滚动条 */
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  padding: 10px;
-}
-</style>
+<style scoped src="@/css/components/base/json_list_edit.css"></style>
 
 <script>
 import {reactive, ref} from "vue";

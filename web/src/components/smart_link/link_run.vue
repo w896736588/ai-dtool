@@ -1,7 +1,24 @@
 ﻿<template>
-  <el-alert v-if="is_install === 1" :closable="false" show-icon title="正在安装中，看网速大约5-20分钟" type="warning"/>
+  <!-- 本地客户端模式状态卡片 -->
   <el-alert
-      v-if="node_install_tip.show"
+      v-if="runtimeConfig.run_mode === 'local_client'"
+      :closable="false"
+      :show-icon="true"
+      :type="clientStatusType"
+      style="margin-bottom: 8px;"
+  >
+    <template #title>{{ clientStatusTitle }}</template>
+    <div>{{ clientStatusMessage }}</div>
+    <div v-if="runtimeConfig.run_mode === 'local_client' && !clientStatus.client_connected" style="margin-top: 8px;">
+      <el-button type="primary" size="small" :loading="isClientDownloadBusy('windows')" @click="downloadClient('windows')">{{ getClientDownloadButtonText('windows') }}</el-button>
+      <el-button type="primary" size="small" :loading="isClientDownloadBusy('macos')" @click="downloadClient('macos')">{{ getClientDownloadButtonText('macos') }}</el-button>
+      <el-button size="small" @click="refreshClientStatus">刷新状态</el-button>
+    </div>
+  </el-alert>
+
+  <el-alert v-if="is_install === 1 && runtimeConfig.run_mode === 'server'" :closable="false" show-icon title="正在安装中，看网速大约5-20分钟" type="warning"/>
+  <el-alert
+      v-if="node_install_tip.show && runtimeConfig.run_mode === 'server'"
       :closable="false"
       show-icon
       type="error"
@@ -27,20 +44,19 @@
         <GitActionButton @click="showCreateDialog">
           <el-icon><Plus /></el-icon>创建
         </GitActionButton>
-        <GitActionButton @click="install">
-          <el-icon><Tools /></el-icon>安装核心
-        </GitActionButton>
-        <GitActionButton variant="warning" @click="recycle">
-          <el-icon><Refresh /></el-icon>释放内存
-        </GitActionButton>
-        <GitActionButton variant="info" @click="downloadPath">
-          <el-icon><Download /></el-icon>下载目录
-        </GitActionButton>
+        <template v-if="runtimeConfig.run_mode === 'server'">
+          <GitActionButton @click="install">
+            <el-icon><Tools /></el-icon>安装核心
+          </GitActionButton>
+          <GitActionButton variant="warning" @click="recycle">
+            <el-icon><Refresh /></el-icon>释放内存
+          </GitActionButton>
+          <GitActionButton variant="info" @click="downloadPath">
+            <el-icon><Download /></el-icon>下载目录
+          </GitActionButton>
+        </template>
         <GitActionButton variant="info" @click="drawerVisibleMarkdown = true">
           <el-icon><QuestionFilled /></el-icon>帮助文档
-        </GitActionButton>
-        <GitActionButton variant="info" @click="changeToProcess">
-          <el-icon><EditPen /></el-icon>切换到编辑执行逻辑
         </GitActionButton>
       </div>
     </div>
@@ -204,8 +220,9 @@
 
   <shellResult ref="shellRef" :btnName="'运行日志'" :isRunning="shellController.isRunning" :shellShowResult="shellController.sshResult" :show-model="shellController.showModel"></shellResult>
   <el-dialog v-model="dialogShowUserPass" title="账号密码列表" width="90%">
+    <el-input v-model="userPassSearchKeyword" clearable placeholder="搜索环境、用户名或密码" style="margin-bottom: 12px" />
     <el-table
-        :data="showUserPassList"
+        :data="filteredUserPassList"
         border
         highlight-current-row
         stripe
@@ -244,26 +261,7 @@
     <AccountSettingPage @changed="handleAccountSettingsChanged" />
   </SettingsDialog>
 </template>
-<style>
-
-.demo-form-inline .el-input {
-  --el-input-width: 220px;
-}
-
-
-.demo-form-inline {
-  display: flex;
-  justify-content: center; /* 水平居中 */
-}
-
-.el-alert {
-  margin: 3px;
-}
-
-.demo-form-inline .el-select {
-  --el-select-width: 220px;
-}
-</style>
+<style scoped src="@/css/components/smart_link/link_run.css"></style>
 <script>
 import smart_link_set from "@/utils/base/smart_link_set"
 import base from "@/utils/base";
@@ -279,7 +277,11 @@ import LinkConfigEditor from "@/components/smart_link/LinkConfigEditor.vue";
 import GitActionButton from "@/components/base/GitActionButton.vue";
 import SettingsDialog from '@/components/base/SettingsDialog.vue'
 import AccountSettingPage from '@/components/set/account.vue'
-import { Plus, Tools, Refresh, Download, QuestionFilled, EditPen, Setting, Notebook, Delete, User } from '@element-plus/icons-vue'
+import { Plus, Tools, Refresh, Download, QuestionFilled, Setting, Notebook, Delete, User } from '@element-plus/icons-vue'
+
+const { mergeSavedSmartLinkIntoList } = require('@/utils/smart_link_config_sync.cjs')
+const { DEFAULT_RUNTIME_CONFIG, buildRuntimeApiUrl, buildRuntimeRequestOptions, resolveRuntimeRefreshActions } = require('@/utils/smart_link_runtime.cjs')
+const { buildDownloadUrlWithToken } = require('@/utils/download_url.cjs')
 
 export default {
   props: {
@@ -295,7 +297,6 @@ export default {
     Refresh,
     Download,
     QuestionFilled,
-    EditPen,
     Setting,
     Notebook,
     Delete,
@@ -320,6 +321,7 @@ export default {
       dialogShowUserPass: false,
       dialogSsePushLog: false,
       showUserPassList: [],
+      userPassSearchKeyword: '',
       dialogSmartLink: false,
       openTypeList: [
         {label: '通过js直接打开', value: 1},
@@ -387,13 +389,95 @@ export default {
         install_tip: '请先安装 Node.js（建议 LTS 版本），安装完成后刷新当前页面。',
       },
       accountSettingsVisible: false,
+      // 本地客户端模式相关
+      runtimeConfig: {...DEFAULT_RUNTIME_CONFIG},
+      clientStatus: {
+        client_connected: false,
+        client_status: 'offline',
+        client_name: '',
+        client_version: '',
+        client_version_match: false,
+        client_last_seen_at: 0,
+        client_os: '',
+        client_arch: ''
+      },
+      clientDownloadStates: {
+        windows: {
+          status: 'idle',
+          text: '下载 Windows 客户端',
+          progress: 0,
+          jobId: '',
+          timerId: null,
+        },
+        macos: {
+          status: 'idle',
+          text: '下载 macOS 客户端',
+          progress: 0,
+          jobId: '',
+          timerId: null,
+        },
+      },
     }
+  },
+  computed: {
+    clientStatusType() {
+      if (this.runtimeConfig.run_mode !== 'local_client') return 'info'
+      if (this.clientStatus.client_connected && this.clientStatus.client_version_match) return 'success'
+      if (this.clientStatus.client_status === 'preparing_runtime') return 'warning'
+      return 'error'
+    },
+    clientStatusTitle() {
+      if (this.runtimeConfig.run_mode !== 'local_client') return '服务端执行模式'
+      if (this.clientStatus.client_connected && this.clientStatus.client_version_match) return '本地客户端在线'
+      if (this.clientStatus.client_status === 'preparing_runtime') return '运行环境准备中'
+      if (this.clientStatus.client_status === 'version_mismatch') return '客户端版本不匹配'
+      return '本地客户端未连接'
+    },
+    clientStatusMessage() {
+      if (this.runtimeConfig.run_mode !== 'local_client') {
+        return '当前使用服务端 Playwright 执行自定义网页'
+      }
+      if (this.clientStatus.client_connected && this.clientStatus.client_version_match) {
+        return `本地客户端 ${this.clientStatus.client_name} 在线，版本 ${this.clientStatus.client_version}，可执行自定义网页`
+      }
+      if (this.clientStatus.client_status === 'preparing_runtime') {
+        return '本地客户端正在准备运行环境，请稍后重试'
+      }
+      if (this.clientStatus.client_status === 'version_mismatch') {
+        return `当前客户端版本为 ${this.clientStatus.client_version}，要求版本为 ${this.runtimeConfig.required_client_version}，请重新下载并启动`
+      }
+      return '当前已启用本地客户端执行，但未检测到客户端连接，请下载安装并启动本地客户端'
+    },
+    canExecute() {
+      // 本地客户端模式下检查客户端状态
+      if (this.runtimeConfig.run_mode === 'local_client') {
+        return this.clientStatus.client_connected && this.clientStatus.client_version_match
+      }
+      // 服务端模式下检查 Node.js
+      return !this.node_install_tip.show
+    },
+    filteredUserPassList() {
+      const keyword = this.userPassSearchKeyword.trim().toLowerCase()
+      if (!keyword) return this.showUserPassList
+      return this.showUserPassList.filter(item =>
+        (item.label || '').toLowerCase().includes(keyword) ||
+        (item.username || '').toLowerCase().includes(keyword) ||
+        (item.password || '').toLowerCase().includes(keyword)
+      )
+    },
   },
   mounted: function () {
     this.sse_distribute_id = sseDistribute.GetSseDistributeId('link')
     this.sseCreate()
     this.init()
-
+    this.refreshRuntimeConfigState()
+    // 注册 SSE 客户端状态推送
+    sseDistribute.RegisterReceive('smart_link_client_status', this.handleClientStatusSSE)
+  },
+  beforeUnmount() {
+    sseDistribute.UnRegisterReceive('smart_link_client_status')
+    this.clearClientDownloadPoll('windows')
+    this.clearClientDownloadPoll('macos')
   },
   activated() {
     if (Init.GetIsInit('smart_link') === true) {
@@ -401,6 +485,9 @@ export default {
       _that.init()
       Init.DelInit('smart_link')
     }
+    // 页面从设置页切回时需要重新读取运行模式，否则会继续显示旧的 server 模式。
+    // Reload runtime mode when the page is re-activated so the UI does not stay on stale server mode after settings changes.
+    this.refreshRuntimeConfigState()
   },
   methods: {
     sseCreate: function () {
@@ -480,8 +567,276 @@ export default {
       _that.smartList[smartLinkIndex].chooseLinkIndex = linkIndex
       ticker_step.Active(_that.tickerKey)
     },
+    // loadRuntimeConfig 拉取最新运行模式。
+    // loadRuntimeConfig fetches the latest run mode.
+    loadRuntimeConfig: function () {
+      let _that = this
+      return fetch(
+        buildRuntimeApiUrl(base.GetApiHost(), '/api/smart-link/runtime-config'),
+        buildRuntimeRequestOptions(base.GetSafeToken())
+      )
+        .then(res => res.json())
+        .then(data => {
+          if (data.ErrCode === 0 && data.Data) {
+            const nextState = resolveRuntimeRefreshActions(_that.runtimeConfig, data.Data)
+            _that.runtimeConfig = nextState.runtimeConfig
+            // 本地客户端模式下，runtimeConfig 加载完毕后立即拉取一次客户端状态，避免 SSE 推送时序问题。
+            // Immediately fetch client status after runtimeConfig is loaded in local_client mode.
+            if (nextState.shouldLoadClientStatus) {
+              _that.refreshClientStatus()
+            }
+          }
+        })
+        .catch(() => {
+          // 使用默认值
+        })
+    },
+    // refreshRuntimeConfigState 在页面初始化和重新激活时同步运行模式。
+    // refreshRuntimeConfigState keeps runtime mode in sync on mount and when the kept-alive page is activated again.
+    refreshRuntimeConfigState: function () {
+      return this.loadRuntimeConfig()
+    },
+    // handleClientStatusSSE 处理 SSE 推送的客户端状态。
+    handleClientStatusSSE: function (data) {
+      if (data && this.runtimeConfig.run_mode === 'local_client') {
+        this.clientStatus = data
+      }
+    },
+    // 刷新客户端状态（手动触发一次 HTTP 拉取兜底）
+    refreshClientStatus: function () {
+      let _that = this
+      if (_that.runtimeConfig.run_mode !== 'local_client') return
+      fetch(
+        buildRuntimeApiUrl(base.GetApiHost(), '/api/smart-link/client-status'),
+        buildRuntimeRequestOptions(base.GetSafeToken())
+      )
+        .then(res => res.json())
+        .then(data => {
+          if (data.ErrCode === 0 && data.Data) {
+            _that.clientStatus = data.Data
+          }
+        })
+        .catch(() => {})
+      _that.$message.success('状态已刷新')
+    },
+    // getClientDownloadDefaultText 返回不同平台下载按钮的默认文案。
+    // getClientDownloadDefaultText returns the default download button label for each platform.
+    getClientDownloadDefaultText: function (platform) {
+      return platform === 'windows' ? '下载 Windows 客户端' : '下载 macOS 客户端'
+    },
+    // getClientDownloadButtonText 根据当前任务状态展示实时进度文案。
+    // getClientDownloadButtonText renders live task progress text for the download button.
+    getClientDownloadButtonText: function (platform) {
+      const state = this.clientDownloadStates[platform]
+      if (!state || !state.text) {
+        return this.getClientDownloadDefaultText(platform)
+      }
+      return state.text
+    },
+    // isClientDownloadBusy 判断当前平台是否处于编译或下载中。
+    // isClientDownloadBusy reports whether the platform-specific download task is active.
+    isClientDownloadBusy: function (platform) {
+      const state = this.clientDownloadStates[platform]
+      if (!state) return false
+      return ['pending', 'building', 'ready', 'downloading'].includes(state.status)
+    },
+    // setClientDownloadState 更新按钮展示状态，避免模板里散落复杂判断。
+    // setClientDownloadState updates the per-platform button state so template logic stays simple.
+    setClientDownloadState: function (platform, status, text, progress, extras) {
+      const currentState = this.clientDownloadStates[platform]
+      if (!currentState) return
+      this.clientDownloadStates[platform] = {
+        ...currentState,
+        ...(extras || {}),
+        status: status || currentState.status,
+        text: text || currentState.text,
+        progress: typeof progress === 'number' ? progress : currentState.progress,
+      }
+    },
+    clearClientDownloadPoll: function (platform) {
+      const state = this.clientDownloadStates[platform]
+      if (!state || !state.timerId) return
+      clearTimeout(state.timerId)
+      this.clientDownloadStates[platform].timerId = null
+    },
+    // resolveClientBuildHost 解析需要注入到客户端里的默认服务端地址。
+    // resolveClientBuildHost resolves the server host that should be embedded into the downloaded client.
+    resolveClientBuildHost: function () {
+      const apiHost = String(base.GetApiHost() || '').trim()
+      if (apiHost) {
+        return apiHost
+      }
+      if (window && window.location && window.location.origin) {
+        return window.location.origin
+      }
+      return ''
+    },
+    // scheduleClientBuildStatusPoll 统一管理轮询节奏，避免重复 setTimeout 叠加。
+    // scheduleClientBuildStatusPoll centralizes polling cadence so repeated setTimeout calls do not stack.
+    scheduleClientBuildStatusPoll: function (platform, jobId) {
+      this.clearClientDownloadPoll(platform)
+      this.clientDownloadStates[platform].timerId = setTimeout(() => {
+        this.pollClientBuildStatus(platform, jobId)
+      }, 800)
+    },
+    // pollClientBuildStatus 轮询后端编译任务状态，并驱动按钮文案实时变化。
+    // pollClientBuildStatus polls backend build progress and drives the live button label updates.
+    pollClientBuildStatus: function (platform, jobId) {
+      const _that = this
+      fetch(
+        buildRuntimeApiUrl(base.GetApiHost(), `/api/smart-link/client-build/status?job_id=${encodeURIComponent(jobId)}`),
+        buildRuntimeRequestOptions(base.GetSafeToken())
+      )
+        .then(res => res.json())
+        .then(data => {
+          if (data.ErrCode !== 0 || !data.Data) {
+            throw new Error(data.ErrMsg || '获取编译状态失败')
+          }
+          const statusData = data.Data
+          const progressText = statusData.message || _that.getClientDownloadDefaultText(platform)
+          _that.setClientDownloadState(platform, statusData.status, `${progressText}${statusData.progress >= 0 ? ` (${statusData.progress}%)` : ''}`, statusData.progress, {
+            jobId,
+          })
+          // 失败后立即停止轮询，避免错误提示和状态更新重复触发。
+          // Stop polling immediately on failure so error toasts and state transitions do not repeat.
+          if (statusData.status === 'failed') {
+            _that.clearClientDownloadPoll(platform)
+            _that.$message.error(statusData.error || statusData.message || '编译失败')
+            return
+          }
+          // 任务 ready 后切到二进制下载；completed 兜底兼容后端已提前结束的状态。
+          // Switch to binary download when ready; completed is kept as a fallback for already-finished backend states.
+          if (statusData.status === 'ready' || statusData.status === 'completed') {
+            _that.clearClientDownloadPoll(platform)
+            _that.downloadBuiltClient(platform, jobId, statusData.file_name)
+            return
+          }
+          _that.scheduleClientBuildStatusPoll(platform, jobId)
+        })
+        .catch(err => {
+          _that.clearClientDownloadPoll(platform)
+          _that.setClientDownloadState(platform, 'failed', '编译失败', 100)
+          _that.$message.error(err.message || '获取编译状态失败')
+        })
+    },
+    // downloadBuiltClient 下载已编译好的二进制文件，并触发浏览器保存。
+    // downloadBuiltClient downloads the compiled binary artifact and triggers the browser save flow.
+    downloadBuiltClient: function (platform, jobId, fallbackFileName) {
+      const _that = this
+      const requestUrl = buildDownloadUrlWithToken(
+        buildRuntimeApiUrl(base.GetApiHost(), `/api/smart-link/client-build/download/${encodeURIComponent(jobId)}`),
+        base.GetSafeToken()
+      )
+      const xhr = new XMLHttpRequest()
+      xhr.open('GET', requestUrl, true)
+      xhr.responseType = 'blob'
+      if (base.GetSafeToken()) {
+        xhr.setRequestHeader('Token', base.GetSafeToken())
+      }
+      _that.setClientDownloadState(platform, 'downloading', '正在下载客户端', 100, { jobId })
+      xhr.onprogress = function (event) {
+        // 浏览器能提供长度时展示实时百分比，否则退化为通用“正在下载”文案。
+        // Show live percentage when the browser exposes content length, otherwise fall back to a generic downloading message.
+        if (event.lengthComputable && event.total > 0) {
+          const percent = Math.min(100, Math.round((event.loaded / event.total) * 100))
+          _that.setClientDownloadState(platform, 'downloading', `正在下载客户端 (${percent}%)`, 100, { jobId })
+          return
+        }
+        _that.setClientDownloadState(platform, 'downloading', '正在下载客户端', 100, { jobId })
+      }
+      xhr.onload = function () {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          _that.setClientDownloadState(platform, 'failed', '下载失败', 100, { jobId })
+          _that.$message.error('客户端下载失败')
+          return
+        }
+        const headerFileName = xhr.getResponseHeader('X-Download-Filename')
+        const fileName = headerFileName || fallbackFileName || _that.getClientDownloadDefaultText(platform)
+        const blobUrl = window.URL.createObjectURL(xhr.response)
+        const a = document.createElement('a')
+        a.href = blobUrl
+        a.download = fileName
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        window.URL.revokeObjectURL(blobUrl)
+        _that.setClientDownloadState(platform, 'completed', '下载完成', 100, { jobId })
+        setTimeout(() => {
+          _that.setClientDownloadState(platform, 'idle', _that.getClientDownloadDefaultText(platform), 0, { jobId: '' })
+        }, 2000)
+      }
+      xhr.onerror = function () {
+        _that.setClientDownloadState(platform, 'failed', '下载失败', 100, { jobId })
+        _that.$message.error('客户端下载失败')
+      }
+      xhr.send()
+    },
+    // downloadClient 创建编译任务并开始轮询，是按钮点击后的主入口。
+    // downloadClient creates the build job and starts polling; it is the main button click entry point.
+    downloadClient: function (platform) {
+      const _that = this
+      // 未知平台直接拦截，避免前端状态机和后端参数校验出现双重噪音。
+      // Reject unknown platforms early so both the frontend state machine and backend validation stay clean.
+      if (!_that.clientDownloadStates[platform]) {
+        _that.$message.error('不支持的客户端平台')
+        return
+      }
+      // 正在编译或下载时不重复提交，避免产生多个并发任务抢占同一个按钮状态。
+      // Do not submit again while a job is active, otherwise concurrent tasks would fight over one button state.
+      if (_that.isClientDownloadBusy(platform)) {
+        return
+      }
+      const host = _that.resolveClientBuildHost()
+      // host 会编译进客户端，因此拿不到有效地址时必须直接终止。
+      // host is compiled into the client, so the flow must stop if no valid server address can be resolved.
+      if (!host) {
+        _that.$message.error('当前服务端地址不可用')
+        return
+      }
+      _that.setClientDownloadState(platform, 'pending', '准备编译参数 (5%)', 5, { jobId: '' })
+      fetch(
+        buildRuntimeApiUrl(base.GetApiHost(), '/api/smart-link/client-build/start'),
+        buildRuntimeRequestOptions(base.GetSafeToken(), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            platform,
+            host,
+          })
+        })
+      )
+        .then(res => res.json())
+        .then(data => {
+          if (data.ErrCode !== 0 || !data.Data) {
+            throw new Error(data.ErrMsg || '创建编译任务失败')
+          }
+          const jobId = data.Data.job_id
+          _that.setClientDownloadState(platform, data.Data.status || 'pending', `${data.Data.message || '准备编译参数'} (${data.Data.progress || 0}%)`, data.Data.progress || 0, {
+            jobId,
+          })
+          _that.scheduleClientBuildStatusPoll(platform, jobId)
+        })
+        .catch(err => {
+          _that.setClientDownloadState(platform, 'failed', '编译失败', 100)
+          _that.$message.error(err.message || '创建编译任务失败')
+        })
+    },
     smartLinkRun: function (smartLinkIndex, linkIndex) {
       let _that = this
+
+      // 本地客户端模式下检查执行权限
+      if (_that.runtimeConfig.run_mode === 'local_client') {
+        if (!_that.canExecute) {
+          _that.$message.error('本地客户端未连接或版本不匹配，无法执行')
+          return
+        }
+        // 本地客户端模式：创建任务
+        _that.createLocalClientTask(smartLinkIndex, linkIndex)
+        return
+      }
+
       if (smartLinkIndex !== null && smartLinkIndex !== undefined && linkIndex === null) {
         _that.chooseSmartLinkIndex = smartLinkIndex
         smartLinkIndex = _that.chooseSmartLinkIndex
@@ -515,6 +870,56 @@ export default {
         }
         ticker_step.Active(_that.tickerKey)
       });
+    },
+    // 创建本地客户端任务
+    createLocalClientTask: function (smartLinkIndex, linkIndex) {
+      let _that = this
+      if (smartLinkIndex !== null && smartLinkIndex !== undefined && linkIndex === null) {
+        _that.chooseSmartLinkIndex = smartLinkIndex
+        smartLinkIndex = _that.chooseSmartLinkIndex
+        linkIndex = _that.smartList[_that.chooseSmartLinkIndex].chooseLinkIndex
+      }
+
+      let chooseSmartLink = _that.smartList[smartLinkIndex]
+      let chooseLink = chooseSmartLink.linkList[linkIndex]
+
+      let chooseUser = {}
+      for (let i in chooseLink.userList) {
+        if (chooseLink.userList[i].user_name === chooseLink.chooseUserName) {
+          chooseUser = chooseLink.userList[i]
+        }
+      }
+
+      let taskData = {
+        smart_link_id: chooseSmartLink.id,
+        label: chooseLink.label,
+        user_name: chooseUser.user_name || '',
+        password: chooseUser.password || '',
+        open_num: chooseSmartLink.open_num_new,
+      }
+
+      fetch(
+        buildRuntimeApiUrl(base.GetApiHost(), '/api/smart-link/task/create'),
+        buildRuntimeRequestOptions(base.GetSafeToken(), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(taskData)
+        })
+      )
+        .then(res => res.json())
+        .then(data => {
+          if (data.ErrCode === 0) {
+            _that.$message.success('任务已创建，等待本地客户端执行')
+            ticker_step.Active(_that.tickerKey)
+          } else {
+            _that.$message.error(data.ErrMsg || '创建任务失败')
+          }
+        })
+        .catch(err => {
+          _that.$message.error('创建任务失败: ' + err.message)
+        })
     },
     tickerRunList: function () {
       let _that = this
@@ -580,15 +985,10 @@ export default {
       _that.smartLinkConfig.linkList = JSON.parse(_that.smartLinkConfig.links || '[]')
       smart_link_set.SmartLinkAdd(_that.smartLinkConfig, function (response) {
         if (response.ErrCode === 0) {
+          _that.smartList = mergeSavedSmartLinkIntoList(_that.smartList, response.Data)
           _that.dialogSmartLink = false
         } else {
           _that.$helperNotify.error('失败')
-        }
-        // 更新页面上的
-        for (let i in _that.smartList) {
-          if (_that.smartList[i].id === _that.smartLinkConfig.id) {
-            _that.smartList[i].linkList = _that.smartLinkConfig.linkList
-          }
         }
         ticker_step.Active(_that.tickerKey)
       })

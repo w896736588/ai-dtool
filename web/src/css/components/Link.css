@@ -1,0 +1,225 @@
+.link-module-shell {
+  width: 100%;
+}
+
+.link-module-switch-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #e8e8e0;
+  border-radius: 12px;
+}
+
+.link-module-switch-card__title {
+  color: #4a4a4a;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.link-module-switch-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.link-module-shell :deep(.link-run-page),
+.link-module-shell :deep(.smart-process-container),
+.link-module-shell :deep(.smart-process-canvas-container) {
+  color: #3f4a3f;
+  --el-color-primary: #5f7ea6;
+  --el-color-primary-light-3: #7f99bb;
+  --el-color-primary-light-5: #9eb1cd;
+  --el-color-primary-light-7: #c0ccde;
+  --el-color-primary-light-8: #d3dce8;
+  --el-color-primary-light-9: #e8eef5;
+  --el-color-primary-dark-2: #4c688c;
+}
+
+.link-module-shell :deep(.git-action-button--primary),
+.link-module-shell :deep(.pl-button--primary) {
+  --git-button-text-color: #476487;
+  --git-button-border-color: #d5dfeb;
+  --git-button-background-color: #f4f7fb;
+  --git-button-hover-text-color: #35506f;
+  --git-button-hover-border-color: #bccbe0;
+  --git-button-hover-background-color: #eaf0f7;
+  --pl-button-text-color: #476487;
+  --pl-button-border-color: #d5dfeb;
+  --pl-button-background-color: #f4f7fb;
+  --pl-button-hover-text-color: #35506f;
+  --pl-button-hover-border-color: #bccbe0;
+  --pl-button-hover-background-color: #eaf0f7;
+}
+
+.link-module-shell :deep(.git-action-button--primary:hover),
+.link-module-shell :deep(.git-action-button--primary:focus-visible),
+.link-module-shell :deep(.pl-button--primary:hover),
+.link-module-shell :deep(.pl-button--primary:focus-visible) {
+  color: #35506f !important;
+  border-color: #bccbe0 !important;
+  background: #eaf0f7 !important;
+}
+
+.link-module-shell :deep(.git-action-button--warning),
+.link-module-shell :deep(.git-action-button--info),
+.link-module-shell :deep(.pl-button--warning),
+.link-module-shell :deep(.pl-button--info) {
+  color: inherit !important;
+}
+
+.link-module-shell :deep(.git-action-button--warning),
+.link-module-shell :deep(.pl-button--warning) {
+  --git-button-text-color: #8a5b22;
+  --git-button-border-color: #ead8bb;
+  --git-button-background-color: #fbf5ea;
+  --git-button-hover-text-color: #724816;
+  --git-button-hover-border-color: #ddc49e;
+  --git-button-hover-background-color: #f4ead7;
+  --pl-button-text-color: #8a5b22;
+  --pl-button-border-color: #ead8bb;
+  --pl-button-background-color: #fbf5ea;
+  --pl-button-hover-text-color: #724816;
+  --pl-button-hover-border-color: #ddc49e;
+  --pl-button-hover-background-color: #f4ead7;
+}
+
+.link-module-shell :deep(.git-action-button--info),
+.link-module-shell :deep(.pl-button--info) {
+  --git-button-text-color: #4b627a;
+  --git-button-border-color: #d3dbe5;
+  --git-button-background-color: #f4f7fa;
+  --git-button-hover-text-color: #384d63;
+  --git-button-hover-border-color: #bcc8d6;
+  --git-button-hover-background-color: #e9eef4;
+  --pl-button-text-color: #4b627a;
+  --pl-button-border-color: #d3dbe5;
+  --pl-button-background-color: #f4f7fa;
+  --pl-button-hover-text-color: #384d63;
+  --pl-button-hover-border-color: #bcc8d6;
+  --pl-button-hover-background-color: #e9eef4;
+}
+
+.link-module-shell :deep(.git-action-button--danger),
+.link-module-shell :deep(.pl-button--danger) {
+  --git-button-text-color: #ffffff;
+  --git-button-border-color: #d65c5c;
+  --git-button-background-color: linear-gradient(180deg, #de6f6f 0%, #d65c5c 100%);
+  --git-button-hover-text-color: #ffffff;
+  --git-button-hover-border-color: #bb4747;
+  --git-button-hover-background-color: linear-gradient(180deg, #c95757 0%, #bb4747 100%);
+  --pl-button-text-color: #ffffff;
+  --pl-button-border-color: #d65c5c;
+  --pl-button-background-color: linear-gradient(180deg, #de6f6f 0%, #d65c5c 100%);
+  --pl-button-hover-text-color: #ffffff;
+  --pl-button-hover-border-color: #bb4747;
+  --pl-button-hover-background-color: linear-gradient(180deg, #c95757 0%, #bb4747 100%);
+  color: #ffffff !important;
+  border-color: #d65c5c !important;
+  background: linear-gradient(180deg, #de6f6f 0%, #d65c5c 100%) !important;
+}
+
+.link-module-shell :deep(.git-action-button--danger:hover),
+.link-module-shell :deep(.git-action-button--danger:focus-visible),
+.link-module-shell :deep(.pl-button--danger:hover),
+.link-module-shell :deep(.pl-button--danger:focus-visible) {
+  color: #ffffff !important;
+  border-color: #bb4747 !important;
+  background: linear-gradient(180deg, #c95757 0%, #bb4747 100%) !important;
+}
+
+.link-module-shell :deep(.git-action-button.pl-button--plain),
+.link-module-shell :deep(.pl-button--plain.pl-button--primary),
+.link-module-shell :deep(.pl-button--plain.pl-button--warning),
+.link-module-shell :deep(.pl-button--plain.pl-button--info) {
+  color: inherit !important;
+}
+
+.link-module-shell :deep(.git-action-button--danger),
+.link-module-shell :deep(.pl-button--plain.pl-button--danger) {
+  color: #ffffff !important;
+}
+
+.link-module-shell :deep(.git-action-button--danger span),
+.link-module-shell :deep(.pl-button--danger span),
+.link-module-shell :deep(.git-action-button--danger .el-button__text),
+.link-module-shell :deep(.pl-button--danger .el-button__text) {
+  color: #ffffff !important;
+}
+
+.link-module-shell :deep(.smart-process-container),
+.link-module-shell :deep(.smart-process-canvas-container) {
+  height: calc(100vh - 140px);
+  background: #fafaf7;
+  border: 1px solid #e6e8de;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.link-module-shell :deep(.left-sidebar) {
+  background: #f5f5f0;
+  border-right: 1px solid #e6e8de;
+}
+
+.link-module-shell :deep(.right-content) {
+  background: #fafaf7;
+}
+
+.link-module-shell :deep(.search-box),
+.link-module-shell :deep(.add-btn),
+.link-module-shell :deep(.canvas-header) {
+  background: #f7f8f2;
+}
+
+.link-module-shell :deep(.canvas-header) {
+  border-bottom: 1px solid #e6e8de;
+}
+
+.link-module-shell :deep(.process-item) {
+  border-radius: 6px;
+  margin: 2px 8px;
+  color: #465246;
+}
+
+.link-module-shell :deep(.process-item:hover) {
+  background: #e8f2e5 !important;
+}
+
+.link-module-shell :deep(.process-item.active) {
+  background: #edf3fa !important;
+  color: #35506f;
+}
+
+.link-module-shell :deep(.process-item-card),
+.link-module-shell :deep(.box-card),
+.link-module-shell :deep(.custom-node) {
+  background: #ffffff;
+  border: 1px solid #e6e8de;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(80, 96, 80, 0.08);
+}
+
+.link-module-shell :deep(.custom-node.selected) {
+  border-color: #9fb5d1;
+  box-shadow: 0 0 0 2px rgba(95, 126, 166, 0.16);
+}
+
+.link-module-shell :deep(.node-type) {
+  background: #f1f5ec;
+  color: #4f5b4f;
+}
+
+.link-module-shell :deep(.el-link.el-link--primary),
+.link-module-shell :deep(a) {
+  color: #4b627a;
+}
+
+@media (max-width: 768px) {
+  .link-module-switch-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

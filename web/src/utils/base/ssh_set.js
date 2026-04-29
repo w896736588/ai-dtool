@@ -1,7 +1,7 @@
 import base from "@/utils/base";
 
-function SshList(callBack){
-    base.BasePost('/api/Set/SshList', {} , callBack)
+function SshList(callBack, params = {}){
+    base.BasePost('/api/Set/SshList', params , callBack)
 }
 function SshAdd(data , callBack){
     base.BasePost(
@@ -21,9 +21,6 @@ function SshDelete(data , callBack){
         }
     )
 }
-function GetConnections(callBack){
-    base.BasePost('/api/shellOutConnections', {} , callBack)
-}
 function ReconnectConnection(shellClientId, callBack){
     base.BasePost('/api/shellOutReconnect', {shell_client_id: shellClientId} , callBack)
 }
@@ -31,6 +28,5 @@ export default {
     SshList,
     SshAdd,
     SshDelete,
-    GetConnections,
     ReconnectConnection,
 }

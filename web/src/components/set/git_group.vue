@@ -177,7 +177,5 @@ export default defineComponent({
 })
 </script>
 
-<style scoped>
-@import "@/css/set_module_unified.css";
-</style>
+<style scoped src="@/css/components/set/git_group.css"></style>
 

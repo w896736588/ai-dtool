@@ -109,6 +109,12 @@ func (h *Command) GitPullOrigin(branch string) *Command {
 	return h
 }
 
+// GitPullOriginCurrentBranch 拉取当前本地分支对应的远程分支（运行时动态解析）。
+func (h *Command) GitPullOriginCurrentBranch() *Command {
+	h.SetCommand(fmt.Sprintf(`%sgit pull --quiet origin "$(%sgit symbolic-ref --short -q HEAD)"`, h.sudo, h.sudo))
+	return h
+}
+
 // GitPushOriginSetUpstream 推送并建立上游跟踪
 func (h *Command) GitPushOriginSetUpstream(branch string) *Command {
 	h.SetCommand(fmt.Sprintf(`%sgit push -u origin %s`, h.sudo, branch))

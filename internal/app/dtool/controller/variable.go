@@ -2,6 +2,7 @@ package controller
 
 import (
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/variable"
 	"dev_tool/internal/pkg/p_common"
@@ -76,8 +77,7 @@ func VariableInfo(c *gin.Context) {
 func VariableSetLogin(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	variable.VariableClient.LoginUsername = cast.ToString(dataMap[`username`])
-	variable.VariableClient.LoginPassword = cast.ToString(dataMap[`password`])
+	component.VariableClient.SetLoginCredentials(cast.ToString(dataMap[`username`]), cast.ToString(dataMap[`password`]))
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -265,13 +265,13 @@ func VariableCmdRun(c *gin.Context) {
 	p_common.TBaseClient.FillConst(replaceList)
 	//如果是预执行 那么重置任务ID为0 让前一个退出
 	if runCmdId == 0 {
-		variable.VariableClient.CreateTask(``)
+		component.VariableClient.CreateTask(``)
 	}
 	//登录任务执行中
 	taskId := ``
 	if isRun == 1 {
 		taskId = p_common.TBaseClient.GetUnique(`variable_run_`)
-		variable.VariableClient.CreateTask(taskId)
+		component.VariableClient.CreateTask(taskId)
 	}
 	//sse
 	sse := &p_sse.SseShell{

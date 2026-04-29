@@ -11,23 +11,32 @@
         <span>终端输出管理</span>
       </div>
       <div class="control-row">
-        <el-select v-model="chooseGroupId" class="group-select" placeholder="筛选分组" @change="chooseGroupIdChange" clearable>
+        <div class="view-switch">
+          <pl-button :type="currentView === 'task' ? 'primary' : 'default'" @click="switchView('task')">
+            终端输出
+          </pl-button>
+          <pl-button :type="currentView === 'rule' ? 'primary' : 'default'" @click="switchView('rule')">
+            规则管理
+          </pl-button>
+        </div>
+        <el-select v-if="currentView === 'task'" v-model="chooseGroupId" class="group-select" placeholder="筛选分组" @change="chooseGroupIdChange" clearable>
           <el-option key="0" label="全部" value="-1" />
           <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="String(g.id)" />
         </el-select>
-        <div class="action-buttons">
+        <div v-if="currentView === 'task'" class="action-buttons">
           <pl-button type="primary" @click="createTab">
             <el-icon><Plus /></el-icon>创建
           </pl-button>
           <pl-button @click="groupDialog = true">
             <el-icon><FolderOpened /></el-icon>分组管理
           </pl-button>
-          <pl-button type="success">
-            <el-icon><DataLine /></el-icon>运行总览
-          </pl-button>
+          <!-- <pl-button type="success"> -->
+            <!-- <el-icon><DataLine /></el-icon>运行总览 -->
+          <!-- </pl-button> -->
         </div>
         <!-- 本地搜索框 -->
         <el-input
+          v-if="currentView === 'task'"
           v-model="localSearchKey"
           placeholder="搜索名称/命令，空格多条件"
           class="search-input"
@@ -40,35 +49,61 @@
       </div>
     </div>
 
-    <!-- 执行卡片列表 -->
-    <template v-for="tab in tabConfigList" :key="tab.id">
-      <div v-if="getExecutionInfo(tab.id) && (!chooseGroupId || parseInt(chooseGroupId) === -1 || Number(tab.group_id) === Number(chooseGroupId)) && matchSearch(tab)" class="execution-card">
+    <shell_out_rule v-if="currentView === 'rule'" ref="shellOutRuleRef" />
+
+    <!-- execution-grid 使用卡片网格承载任务，减少宽屏场景下的空白。 / Use a card grid so wide screens feel denser and easier to scan. -->
+    <div v-else-if="filteredTabConfigList.length > 0" class="execution-grid">
+      <div v-for="tab in filteredTabConfigList" :key="tab.id" class="execution-card">
         <div class="card-header">
           <div class="card-info">
             <el-tag class="tab-id-tag">#{{ tab.id }}</el-tag>
-            <span class="tab-name">{{ tab.name }}</span>
-          </div>
-          <div class="card-actions">
-            <pl-button size="small" @click="showEditTabConfig(tab.id)">
-              <el-icon><Edit /></el-icon>编辑
-            </pl-button>
-            <pl-button size="small" @click="showCopyCreateTabConfig(tab.id)">
-              <el-icon><CopyDocument /></el-icon>复制
-            </pl-button>
-            <pl-button size="small" type="danger" @click="removeTab(tab.id)">
-              <el-icon><Delete /></el-icon>删除
-            </pl-button>
-            <pl-button size="small" type="primary" @click="openNewTab(tab)">
-              <el-icon><Position /></el-icon>新窗口
-            </pl-button>
+            <div class="card-title-block">
+              <span class="tab-name">{{ tab.name }}</span>
+              <div class="card-subtitle">{{ getGroupName(tab.group_id) }}</div>
+            </div>
           </div>
         </div>
+
+        <div class="card-meta-list">
+          <div class="card-meta-item">
+            <span class="card-meta-label">分组</span>
+            <span class="card-meta-value">{{ getGroupName(tab.group_id) }}</span>
+          </div>
+          <div class="card-meta-item">
+            <span class="card-meta-label">SSH</span>
+            <span class="card-meta-value">{{ getSshName(tab.ssh_id) }}</span>
+          </div>
+        </div>
+
         <div class="card-command">
-          <el-icon class="command-icon"><Terminal /></el-icon>
-          <code class="command-text">{{ getExecutionInfo(tab.id).command }}</code>
+          <el-icon class="command-icon"><Monitor /></el-icon>
+          <code class="command-text">{{ getCommandPreview(tab.command) }}</code>
+        </div>
+
+        <div class="card-actions">
+          <pl-button size="small" @click="showEditTabConfig(tab.id)">
+            <el-icon><Edit /></el-icon>编辑
+          </pl-button>
+          <pl-button size="small" @click="showCopyCreateTabConfig(tab.id)">
+            <el-icon><CopyDocument /></el-icon>复制
+          </pl-button>
+          <pl-button size="small" type="danger" @click="removeTab(tab.id)">
+            <el-icon><Delete /></el-icon>删除
+          </pl-button>
+          <pl-button size="small" type="primary" @click="openNewTab(tab)">
+            <el-icon><Position /></el-icon>运行
+          </pl-button>
         </div>
       </div>
-    </template>
+    </div>
+
+    <div v-else class="shell-empty-state">
+      <div class="shell-empty-state__icon">
+        <el-icon><Monitor /></el-icon>
+      </div>
+      <div class="shell-empty-state__title">当前没有可展示的终端输出任务</div>
+      <div class="shell-empty-state__desc">可以尝试切换分组、清空搜索条件，或者直接创建一个新的终端输出任务。</div>
+    </div>
 
     <!-- 创建/编辑弹窗 -->
     <el-dialog v-model="shellOutDialog" title="创建终端输出" width="550px" destroy-on-close class="create-dialog">
@@ -90,6 +125,11 @@
             <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="g.id" />
           </el-select>
         </el-form-item>
+        <el-form-item label="规则集">
+          <el-select v-model="editTabConfigData.rule_set_id" clearable placeholder="不启用规则" style="width: 100%">
+            <el-option v-for="ruleSet in ruleSetList" :key="ruleSet.id" :label="ruleSet.name" :value="ruleSet.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="命令" prop="command" :rules="[{ required: true, message: '请输入命令', trigger: 'blur' }]">
           <el-input v-model="editTabConfigData.command" placeholder="输入要执行的命令" type="textarea" :rows="4" clearable />
         </el-form-item>
@@ -105,12 +145,6 @@
     <!-- 分组管理弹窗 -->
     <el-dialog v-model="groupDialog" title="分组管理" width="70%" class="group-dialog">
       <Group
-        :extra1Title="'过滤正则'"
-        :extra1Type="'textarea'"
-        :extra2Title="'错误捕获正则'"
-        :extra2Type="'textarea'"
-        :extra3Title="'排除捕获的错误'"
-        :extra3Type="'textarea'"
         :groupTitle="'终端输出'"
         :groupType="groupType"
         @update="groupUpdate">
@@ -121,7 +155,7 @@
 
 <script>
 /* 以下 import 保持你原来的即可 */
-import { Plus, FolderOpened, DataLine, Edit, CopyDocument, Delete, Position, CollectionTag, Check, Terminal, Search } from '@element-plus/icons-vue';
+import { Plus, FolderOpened, DataLine, Edit, CopyDocument, Delete, Position, CollectionTag, Check, Monitor, Search } from '@element-plus/icons-vue';
 import base from '@/utils/base.js'
 import sse from '@/utils/base/sse'
 import shell from '@/utils/base/shell'
@@ -130,6 +164,8 @@ import {ref, onMounted} from 'vue'
 import copy from '@/utils/base/copy'
 import Init from "@/utils/base/set_init";
 import shellOut from "@/utils/base/shell_out"
+import shellOutRule from "@/utils/base/shell_out_rule"
+import shell_out_rule from '@/components/set/shell_out_rule.vue'
 import format from "@/utils/base/format";
 import shellResult from "@/components/shell/result_div.vue";
 import type from "@/utils/base/type"
@@ -146,6 +182,7 @@ const StoreChooseShellOutKey = 'shell_out_choose_shell_group'
 export default {
   components: {
     shellResult,
+    shell_out_rule,
     Group,
     Plus,
     FolderOpened,
@@ -156,7 +193,7 @@ export default {
     Position,
     CollectionTag,
     Check,
-    Terminal,
+    Monitor,
     Search,
   },
   data() {
@@ -171,12 +208,15 @@ export default {
       groupDialog: false,
       shellOutDialog: false,
       sshList: [],
+      ruleSetList: [],
+      currentView: 'task',
       chooseGroupId: '',
       //编辑 能够编辑的项
       editTabConfigData: {
         id: 0,
         ssh_id: '',
         group_id: '',
+        rule_set_id: '',
         command: '',
         name: '',
       },
@@ -198,6 +238,7 @@ export default {
     });
     shell.calculateShellDivHeight(_that)
     _that.getGroupList()
+    _that.loadRuleSetList()
     _that.getFullPageParams()
     //如果是单独展示的页面 里面返回的就是传参的
     _that.chooseGroupId = _that.getStoreGroupId()
@@ -209,7 +250,33 @@ export default {
   deactivated() {
 
   },
+  computed: {
+    // filteredTabConfigList 统一收敛分组和搜索过滤，模板只负责渲染。 / Centralize group and search filtering so the template stays clean.
+    filteredTabConfigList() {
+      if (this.currentView !== 'task') {
+        return []
+      }
+      return this.tabConfigList.filter((tab) => {
+        if (!this.getExecutionInfo(tab.id)) {
+          return false
+        }
+        // 仅当选择了具体分组时做精确过滤。 / Filter by group only when the user picked a concrete group.
+        if (this.chooseGroupId && parseInt(this.chooseGroupId) !== -1 && Number(tab.group_id) !== Number(this.chooseGroupId)) {
+          return false
+        }
+        return this.matchSearch(tab)
+      })
+    },
+  },
   methods: {
+    switchView(viewName) {
+      this.currentView = viewName
+      if (viewName === 'rule') {
+        this.$nextTick(() => {
+          this.$refs.shellOutRuleRef && this.$refs.shellOutRuleRef.loadRuleSetList && this.$refs.shellOutRuleRef.loadRuleSetList()
+        })
+      }
+    },
     // Local search filter
     matchSearch: function (tab) {
       let _that = this
@@ -292,7 +359,30 @@ export default {
       let _that = this
       return _that.getTabConfigById(tabId)
     },
-
+    // getGroupName 返回分组展示名，缺失时统一给出兜底文案。 / Return a stable group label with a fallback when the group is missing.
+    getGroupName(groupId) {
+      if (!groupId) {
+        return '未分组'
+      }
+      const found = this.groupList.find((item) => Number(item.id) === Number(groupId))
+      return found && found.name ? found.name : '未分组'
+    },
+    // getSshName 返回 SSH 环境名称，便于卡片直接展示执行上下文。 / Resolve the SSH environment name so each card shows where it runs.
+    getSshName(sshId) {
+      if (!sshId) {
+        return '未选择'
+      }
+      const found = this.sshList.find((item) => Number(item.id) === Number(sshId))
+      return found && found.name ? found.name : `SSH#${sshId}`
+    },
+    // getCommandPreview 对长命令做两行左右的预览，避免卡片被超长命令撑散。 / Create a compact command preview so long commands do not dominate the card.
+    getCommandPreview(command) {
+      const normalizedCommand = String(command || '').replace(/\s+/g, ' ').trim()
+      if (normalizedCommand.length <= 180) {
+        return normalizedCommand || '-'
+      }
+      return `${normalizedCommand.slice(0, 180)}...`
+    },
     createTab: function () {
       let _that = this
       _that.shellOutDialog = true
@@ -301,6 +391,7 @@ export default {
       _that.editTabConfigData.command = ''
       _that.editTabConfigData.ssh_id = ''
       _that.editTabConfigData.group_id = ''
+      _that.editTabConfigData.rule_set_id = ''
     },
     chooseGroupIdChange: function () {
       let _that = this
@@ -321,6 +412,15 @@ export default {
         if (res.ErrCode === 0) {
           _that.sshList = res.Data
           _that.loadShellOuts()
+        }
+      })
+    },
+    // loadRuleSetList 加载可选规则集，让输出任务能直接绑定日志处理策略。 // Load rule sets so each shell-out task can choose one log-processing profile.
+    loadRuleSetList() {
+      let _that = this
+      shellOutRule.ShellOutRuleSetList({}, function (response) {
+        if (response.ErrCode === 0) {
+          _that.ruleSetList = Array.isArray(response.Data) ? response.Data : []
         }
       })
     },
@@ -384,7 +484,8 @@ export default {
           _that.$helperNotify.success('编辑成功')
           //重新启动命令
           if (_that.editTabConfigData.command !== oldTabConfig.command ||
-              _that.editTabConfigData.ssh_id !== oldTabConfig.ssh_id) {
+              _that.editTabConfigData.ssh_id !== oldTabConfig.ssh_id ||
+              parseInt(_that.editTabConfigData.rule_set_id || 0) !== parseInt(oldTabConfig.rule_set_id || 0)) {
             _that.stopByTabId(oldTabConfig.id, function () {
               _that.startByTabId(oldTabConfig.id)
             })
@@ -395,6 +496,7 @@ export default {
               _that.tabConfigList[i].name = _that.editTabConfigData.name
               _that.tabConfigList[i].group_id = _that.editTabConfigData.group_id
               _that.tabConfigList[i].ssh_id = _that.editTabConfigData.ssh_id
+              _that.tabConfigList[i].rule_set_id = _that.editTabConfigData.rule_set_id
             }
           }
           _that.cleanEditTabConfigData()
@@ -407,6 +509,7 @@ export default {
       _that.editTabConfigData.ssh_id = ''
       _that.editTabConfigData.name = ''
       _that.editTabConfigData.group_id = ''
+      _that.editTabConfigData.rule_set_id = ''
       _that.editTabConfigData.id = ''
       _that.shellOutDialog = false
     },
@@ -431,6 +534,7 @@ export default {
         name: _that.editTabConfigData.name,
         is_run: _that.urlParams.id ? 0 : 1,
         group_id: _that.editTabConfigData.group_id,
+        rule_set_id: _that.editTabConfigData.rule_set_id,
       }
       // 调接口
       shell.ShellOutStart(tabConfig, (res) => {
@@ -456,6 +560,7 @@ export default {
       _that.editTabConfigData.ssh_id = tabConfig.ssh_id
       _that.editTabConfigData.name = tabConfig.name
       _that.editTabConfigData.group_id = tabConfig.group_id
+      _that.editTabConfigData.rule_set_id = tabConfig.rule_set_id || ''
       _that.shellOutDialog = true
     },
     showEditTabConfig: function (tabId) {
@@ -466,6 +571,7 @@ export default {
       _that.editTabConfigData.ssh_id = tabConfig.ssh_id
       _that.editTabConfigData.name = tabConfig.name
       _that.editTabConfigData.group_id = tabConfig.group_id
+      _that.editTabConfigData.rule_set_id = tabConfig.rule_set_id || ''
       _that.shellOutDialog = true
     },
     // 移除标签页
@@ -502,185 +608,5 @@ export default {
 }
 </script>
 
-<style scoped>
-.shell-page-container {
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  min-height: 100%;
-  color: #4a4a4a;
-}
-
-.shell-header-card {
-  background: #fff;
-  border: 1px solid #e8e8e0;
-  border-radius: 12px;
-  padding: 16px 18px;
-  margin-bottom: 12px;
-}
-
-.header-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #4a4a4a;
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 12px;
-}
-
-.header-icon {
-  width: 20px;
-  height: 20px;
-  color: #5a8a5a;
-}
-
-.control-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.group-select {
-  width: 220px;
-}
-
-.group-select :deep(.el-input__wrapper),
-.search-input :deep(.el-input__wrapper) {
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 0 0 1px #dde3d8 inset;
-}
-
-.group-select :deep(.el-input__wrapper.is-focus),
-.search-input :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #93b793 inset;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.action-buttons .el-button {
-  border-radius: 8px;
-  border: 1px solid #d8ded2;
-  background: #f6f8f3;
-  color: #4f804f;
-}
-
-.action-buttons .el-button:hover {
-  background: #eef4ea;
-  border-color: #bfd1bf;
-  color: #3f6f3f;
-}
-
-.search-input {
-  flex: 1;
-  max-width: 360px;
-  min-width: 200px;
-}
-
-.execution-card {
-  background: #fff;
-  border: 1px solid #e8e8e0;
-  border-left: 3px solid #b8ceb6;
-  border-radius: 12px;
-  padding: 14px;
-  margin-bottom: 10px;
-}
-
-.execution-card:hover {
-  border-left-color: #93b793;
-  background: #fcfdfb;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.card-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.tab-id-tag {
-  background: #eaf3e6;
-  color: #3f6f3f;
-  border: 1px solid #c7dbc5;
-  font-size: 12px;
-}
-
-.tab-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.card-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.card-command {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  background: #f7f9f5;
-  border: 1px solid #e6ece0;
-  padding: 10px 12px;
-  border-radius: 8px;
-}
-
-.command-icon {
-  color: #5f8f5f;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.command-text {
-  font-family: Consolas, Monaco, monospace;
-  font-size: 13px;
-  color: #5a5a5a;
-  word-break: break-all;
-  line-height: 1.45;
-}
-
-.create-form :deep(.el-input__wrapper),
-.create-form :deep(.el-textarea__inner),
-.create-form :deep(.el-select .el-input__wrapper) {
-  border-radius: 8px;
-}
-
-@media (max-width: 768px) {
-  .control-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .group-select,
-  .search-input {
-    width: 100%;
-    max-width: 100%;
-  }
-
-  .card-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .card-actions {
-    width: 100%;
-  }
-}
-</style>
+<style scoped src="@/css/components/ShellOut.css"></style>
 

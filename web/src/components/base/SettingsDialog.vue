@@ -49,8 +49,4 @@ export default {
 }
 </script>
 
-<style scoped>
-.settings-dialog__body {
-  min-height: 120px;
-}
-</style>
+<style scoped src="@/css/components/base/SettingsDialog.css"></style>

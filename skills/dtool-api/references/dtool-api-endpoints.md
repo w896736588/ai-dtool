@@ -2,17 +2,18 @@
 
 ## 使用前置要求
 
-1. 默认服务地址：`http://localhost:17170`
+1. 服务请求地址必须由用户明确提供，不得假设默认地址。
 2. 路由前缀：`/api`
 3. 除 `ApiBatchImport` 外，均为 `POST + application/json`
-4. AI 在调用这些接口时，必须使用 UTF-8 编码处理请求与响应，尤其是 `name`、`desc`、错误信息、目录名、集合名等中文字段。
-5. 使用 PowerShell 或其他终端前，必须先切换 UTF-8 编码：
+4. 所有请求都必须携带 Header 头 `Token`，具体值必须由用户明确提供。
+5. AI 在调用这些接口时，必须使用 UTF-8 编码处理请求与响应，尤其是 `name`、`desc`、错误信息、目录名、集合名等中文字段。
+6. 使用 PowerShell 或其他终端前，必须先切换 UTF-8 编码：
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 ```
 
-6. 如果通过脚本、终端或手工请求这些接口，默认都要按 UTF-8 发送请求体，并按 UTF-8 解读接口返回内容。
+7. 如果通过脚本、终端或手工请求这些接口，默认都要按 UTF-8 发送请求体，并按 UTF-8 解读接口返回内容。
 
 ## 一、集合相关
 
@@ -216,27 +217,114 @@
 - `id` 不存在或为 0：创建
 - `id` 存在：更新
 
-常用参数：
+#### 参数说明
 
-- `id`
-- `folder_id`
-- `collection_id`
-- `name`
-- `method`
-- `url`
-- `protocol`
-- `desc`
-- `headers`
-- `query_params`
-- `content_type`
-- `body_form`
-- `body_json`
-- `env_id`
-- `response_take`
-- `take_result`
-- `take_result_desc`
+| 字段 | 类型 | 说明                                             |
+|---|---|------------------------------------------------|
+| `id` | int | 接口 ID，更新时必传                                    |
+| `folder_id` | int | 目标文件夹 ID                                       |
+| `collection_id` | int | 目标集合 ID                                        |
+| `name` | string | 接口名称                                           |
+| `method` | string | 请求方法：GET / POST                                |
+| `url` | string | 请求 URL，可含环境变量如 `$Url$/v1/login`                |
+| `protocol` | string | 协议：http / https                                |
+| `desc` | string | 接口描述                                           |
+| `headers` | object | 请求头，键值对 `{"Content-Type":"application/json"}`  |
+| `query_params` | array | URL 查询参数数组，见下方字段格式                             |
+| `content_type` | string | 请求体类型，**必须根据后端控制器实际代码判断**，见下方对照表               |
+| `body_form` | array | 表单参数数组（用于 form-urlencoded / multipart），见下方字段格式 |
+| `body_json` | string | JSON 请求体字符串（用于 application/json）               |
+| `body_raw` | string | 原始请求体（用于 text/plain / raw）                     |
+| `env_id` | int | 环境变量 ID                                        |
+| `take_result` | array | 结果字段备注，**必须填写**，用于写入返回字段描述、字段含义、示例等备注结构，见下方格式  |
+| `take_result_desc` | string | 不需要处理                                          |
 
-创建示例：
+#### 返回结果字段写入规则
+
+- 返回字段描述、字段含义、示例等备注内容必须写入 `take_result` 数组结构。
+- 生成或更新接口时，返回字段描述只能写入 `take_result`。
+- `take_result_desc` 不需要处理。
+
+#### query_params / body_form 中每项的字段格式
+
+```json
+{
+  "field": "client_type",
+  "type": "string",
+  "value": "pc",
+  "description": "客户端类型：pc=PC端，h5=移动H5，mini=小程序"
+}
+```
+
+#### 固定值、常量、枚举值备注规则
+
+请求参数如果存在固定值、常量、枚举值或布尔开关，必须在备注中明确每个值和含义。
+
+- `query_params` 和 `body_form`：写入参数项的 `description` 字段。
+- 单一固定值：也要说明“固定传某值”以及该值代表什么。
+- 枚举/状态/类型/开关：必须列出每个允许值的含义，不能只写“状态”“类型”“是否启用”。
+- 取值来自源码常量时，必须以源码为准；无法确认时先询问用户。
+- `body_json` 字段没有独立的参数备注结构时，必须在接口 `desc` 中补充字段取值说明。
+
+示例：
+```json
+[
+  {"field": "client_type", "type": "string", "value": "pc", "description": "客户端类型：pc=PC端，h5=移动H5，mini=小程序"},
+  {"field": "status", "type": "integer", "value": "1", "description": "状态：0=禁用，1=启用，2=冻结"},
+  {"field": "enabled", "type": "boolean", "value": "true", "description": "是否启用：true=启用，false=停用"},
+  {"field": "version", "type": "string", "value": "v1", "description": "接口版本，固定传 v1，表示第一版协议"}
+]
+```
+
+**type 字段只接受以下值（严禁使用其他值）：**
+
+| 规范值 | 含义 | 错误写法（会被后端拒绝） |
+|---|---|---|
+| `string` | 字符串 | - |
+| **`integer`** | 整数 | ~~`int`~~ (后端会报错) |
+| `float` | 浮点数 | - |
+| **`boolean`** | 布尔值 | 也接受 `bool`，推荐统一用 `boolean` |
+| `file` | 文件上传 | - |
+
+> **重要**：type 写成 `int` 会导致后端报错 `"type 仅支持 integer，不支持 int"`，接口无法创建。`bool` 和 `boolean` 均可正常使用，推荐统一用 `boolean`。
+
+#### content_type 判断规则（必须根据后端 Go 控制器代码决定）
+
+**不得默认所有 POST 都是 `application/json`**，必须先阅读后端控制器源码再决定：
+
+| 后端控制器代码写法 | content_type 值 | 请求体字段 |
+|---|---|---|
+| `gsgin.GinPostBody(c, &dataMap)` 或 `c.BindJSON()` | `application/json` | `body_json` |
+| `c.PostForm("key")` 或 `c.DefaultPostForm("key")` | `application/x-www-form-urlencoded` | `body_form` |
+| `c.MultipartForm()` 或涉及文件上传 | `multipart/form-data` | `body_form` |
+| 纯文本/二进制请求体 | `text/plain` 或 `raw` | `body_raw` |
+| GET 请求 | 不设置或留空 | 无 |
+
+#### take_result 格式（必须填写，描述接口返回字段含义）
+
+```json
+[
+  {
+    "key": "code",
+    "type": "number",
+    "desc": "状态码，0表示成功"
+  },
+  {
+    "key": "data.token",
+    "type": "string",
+    "desc": "用户认证令牌"
+  },
+  {
+    "key": "data.user_id",
+    "type": "number",
+    "desc": "用户唯一ID"
+  }
+]
+```
+
+> **禁止留空 take_result**，至少要描述返回结构中的核心字段。
+
+#### 创建示例（application/json 类型）
 
 ```json
 {
@@ -246,18 +334,52 @@
   "method": "POST",
   "url": "$Url$/v1/login",
   "protocol": "https",
-  "desc": "登录接口",
+  "desc": "用户登录接口，返回认证令牌",
   "headers": {
     "Content-Type": "application/json"
   },
   "query_params": [],
   "content_type": "application/json",
   "body_form": [],
-  "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}"
+  "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}",
+  "take_result": [
+    {"key": "code", "type": "number", "desc": "状态码，0表示成功"},
+    {"key": "msg", "type": "string", "desc": "提示信息"},
+    {"key": "data.token", "type": "string", "desc": "认证令牌"}
+  ]
 }
 ```
 
-更新示例：
+#### 创建示例（form-urlencoded 类型）
+
+```json
+{
+  "folder_id": 12,
+  "collection_id": 1,
+  "name": "提交表单",
+  "method": "POST",
+  "url": "$Url$/v1/submit",
+  "protocol": "https",
+  "desc": "提交表单数据",
+  "headers": {
+    "Content-Type": "application/x-www-form-urlencoded"
+  },
+  "query_params": [],
+  "content_type": "application/x-www-form-urlencoded",
+  "body_form": [
+    {"field": "title", "type": "string", "value": "测试标题", "description": "标题"},
+    {"field": "count", "type": "integer", "value": "10", "description": "数量"},
+    {"field": "enabled", "type": "boolean", "value": "true", "description": "是否启用：true=启用，false=停用"}
+  ],
+  "body_json": "",
+  "take_result": [
+    {"key": "code", "type": "number", "desc": "状态码"},
+    {"key": "data.id", "type": "number", "desc": "提交结果ID"}
+  ]
+}
+```
+
+#### 更新示例
 
 ```json
 {
@@ -268,14 +390,19 @@
   "method": "POST",
   "url": "$Url$/v1/login",
   "protocol": "https",
-  "desc": "登录接口-更新",
+  "desc": "用户登录接口，返回认证令牌",
   "headers": {
     "Content-Type": "application/json"
   },
   "query_params": [],
   "content_type": "application/json",
   "body_form": [],
-  "body_json": "{\"username\":\"demo\",\"password\":\"new-password\"}"
+  "body_json": "{\"username\":\"demo\",\"password\":\"new-password\"}",
+  "take_result": [
+    {"key": "code", "type": "number", "desc": "状态码，0表示成功"},
+    {"key": "msg", "type": "string", "desc": "提示信息"},
+    {"key": "data.token", "type": "string", "desc": "认证令牌"}
+  ]
 }
 ```
 
@@ -460,13 +587,22 @@ JSON 结构：
           "headers": {
             "Content-Type": "application/json"
           },
-          "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}"
+          "query_params": [],
+          "content_type": "application/json",
+          "body_form": [],
+          "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}",
+          "take_result": [
+            {"key": "code", "type": "number", "desc": "状态码，0表示成功"},
+            {"key": "data.token", "type": "string", "desc": "认证令牌"}
+          ]
         }
       ]
     }
   ]
 }
 ```
+
+> **批量导入同样需要遵守上述所有约束**：type 只能用 `integer`（不能用 `int`），推荐统一用 `boolean`（`bool` 也可），必须根据后端代码判断 content_type，必须填写 take_result。
 
 注意：
 
@@ -538,7 +674,7 @@ curl -X POST "http://localhost:17170/api/CreateDir" \
 ```bash
 curl -X POST "http://localhost:17170/api/CreateApi" \
   -H "Content-Type: application/json" \
-  -d "{\"folder_id\":12,\"collection_id\":1,\"name\":\"用户登录\",\"method\":\"POST\",\"url\":\"$Url$/v1/login\",\"protocol\":\"https\"}"
+  -d "{\"folder_id\":12,\"collection_id\":1,\"name\":\"用户登录\",\"method\":\"POST\",\"url\":\"$Url$/v1/login\",\"protocol\":\"https\",\"query_params\":[],\"content_type\":\"application/json\",\"body_form\":[],\"body_json\":\"{\\\"username\\\":\\\"demo\\\",\\\"password\\\":\\\"123456\\\"}\",\"take_result\":[{\"key\":\"code\",\"type\":\"number\",\"desc\":\"状态码\"},{\"key\":\"data.token\",\"type\":\"string\",\"desc\":\"认证令牌\"}]}"
 ```
 
 ### 7. 批量导入

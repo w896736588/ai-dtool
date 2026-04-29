@@ -1,7 +1,6 @@
 package plw
 
 import (
-	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"fmt"
@@ -19,7 +18,8 @@ var list []*ContextPage
 var ContextLock sync.RWMutex
 
 type ContextPageList struct {
-	log *gstool.GsSlog
+	log                *gstool.GsSlog
+	smartLinkLastStore SmartLinkLastStore
 }
 
 func getList() *[]*ContextPage {
@@ -31,8 +31,24 @@ func getList() *[]*ContextPage {
 
 func NewContextList(log *gstool.GsSlog) *ContextPageList {
 	return &ContextPageList{
-		log: log,
+		log:                log,
+		smartLinkLastStore: NewDBSmartLinkLastStore(),
 	}
+}
+
+// SetSmartLinkLastStore 允许 agent 注入远程存储实现，避免在 agent 侧访问 sqlite。
+func (h *ContextPageList) SetSmartLinkLastStore(store SmartLinkLastStore) {
+	if store != nil {
+		h.smartLinkLastStore = store
+	}
+}
+
+// getSmartLinkLastStore 返回历史目录存储；未注入时使用服务端默认 DB 实现。
+func (h *ContextPageList) getSmartLinkLastStore() SmartLinkLastStore {
+	if h.smartLinkLastStore == nil {
+		h.smartLinkLastStore = NewDBSmartLinkLastStore()
+	}
+	return h.smartLinkLastStore
 }
 
 func (h *ContextPageList) EventContextClose(contextP *ContextPage) {
@@ -146,7 +162,7 @@ func (h *ContextPageList) FindNotSaveUserDataContext(runParams *PlaywrightRunPar
 			return nil
 		}
 		//非同种类型的context跳过
-		if !PlaywrightClient.IsSameLink(context.LinkIdLabel, runParams.LinkIdLabel) {
+		if !component.PlaywrightClient.IsSameLink(context.LinkIdLabel, runParams.LinkIdLabel) {
 			runParams.StreamFunc(`获取无痕浏览器实例`, context.LinkIdLabel+`,`+context.LinkId+` 不属于同一链接类型，当前需要的链接类型为：`+context.LinkIdLabel)
 			return nil
 		}
@@ -235,15 +251,13 @@ func (h *ContextPageList) GetLastUserDataIndex(runParams *PlaywrightRunParams) i
 	if runParams.LastIndexLabel == `` {
 		return 0
 	}
-	sql := `select * from tbl_smart_link_last where user_name = ? and domain = ? `
-	// 历史索引只保存在 log 库，不再依赖主库中的旧表。
-	smartLinkLast, smartLinkErr := common.DbLog.Client.QueryBySql(sql, runParams.LastIndexLabel, runParams.Domain).One()
+	lastUserDataIndex, smartLinkErr := h.getSmartLinkLastStore().GetLastUserDataIndex(runParams.LastIndexLabel, runParams.Domain)
 	if smartLinkErr != nil {
-		runParams.StreamFunc(`查询历史数据目录`, fmt.Sprintf(`获取上次使用索引失败 %s %s`, sql, smartLinkErr.Error()))
+		runParams.StreamFunc(`查询历史数据目录`, fmt.Sprintf(`获取上次使用索引失败 %s`, smartLinkErr.Error()))
 		return 0
 	} else {
-		runParams.StreamFunc(`查询历史数据目录`, `获取上次使用索引成功 `+cast.ToString(smartLinkLast[`user_data_index`]))
-		return cast.ToInt(smartLinkLast[`user_data_index`])
+		runParams.StreamFunc(`查询历史数据目录`, `获取上次使用索引成功 `+cast.ToString(lastUserDataIndex))
+		return lastUserDataIndex
 	}
 }
 
@@ -303,15 +317,11 @@ func (h *ContextPageList) GetFindUserDataIndex(runParams *PlaywrightRunParams) i
 }
 
 func (h *ContextPageList) ExistDomainUserDataIndex(userDataIndex int, runParams *PlaywrightRunParams) bool {
-	sql := `select * from tbl_smart_link_last where domain = ? and user_data_index = ? `
-	// 目录占用关系已迁移到 log 库，避免继续读主库旧数据。
-	smartLinkLast, smartLinkErr := common.DbLog.Client.QueryBySql(sql, runParams.Domain, userDataIndex).One()
+	exist, smartLinkErr := h.getSmartLinkLastStore().ExistDomainUserDataIndex(runParams.Domain, userDataIndex)
 	if smartLinkErr != nil {
 		return false
-	} else if len(smartLinkLast) > 0 {
-		return true
 	} else {
-		return false
+		return exist
 	}
 }
 
@@ -336,7 +346,18 @@ func (h *ContextPageList) GetNoUserDataIndex() int {
 	return 0
 }
 
-func (h *ContextPageList) GetContextByIndex(dataIndex int) *ContextPage {
+func (h *ContextPageList) GetContextByIndex(dataIndex int, openType define.OpenType) *ContextPage {
+	return h.FindContextList(func(context *ContextPage) *ContextPage {
+		// 同一个 userDataIndex 可能残留不同打开模式的实例，复用时必须同时校验 openType，
+		// 否则首次无头打开后，后续切换为有头模式仍会错误复用旧的无头 context。
+		if context.UserDataIndex == dataIndex && context.OpenType == openType {
+			return context
+		}
+		return nil
+	})
+}
+
+func (h *ContextPageList) GetContextByIndexIgnoreOpenType(dataIndex int) *ContextPage {
 	return h.FindContextList(func(context *ContextPage) *ContextPage {
 		if context.UserDataIndex == dataIndex {
 			return context
@@ -352,10 +373,17 @@ func (h *ContextPageList) GetContextParam(runParams *PlaywrightRunParams) (*Cont
 	//获取数据索引目录
 	userDataIndex := h.GetUserDataIndex(runParams)
 	//通过索引目录拿到已存在的context
-	existContextPage := h.GetContextByIndex(userDataIndex)
+	existContextPage := h.GetContextByIndex(userDataIndex, runParams.OpenType)
 	if existContextPage != nil {
 		runParams.StreamFunc(`获取数据目录`, fmt.Sprintf(`已存在浏览器实例 %s ,直接使用`, existContextPage.LinkId))
 		return existContextPage, existContextPage.UserDataIndex, existContextPage.UserDataPath
+	}
+	mismatchContextPage := h.GetContextByIndexIgnoreOpenType(userDataIndex)
+	if mismatchContextPage != nil {
+		// 同目录下若已有另一种打开模式的实例，先关闭旧实例再重建；
+		// 持久化目录可以复用，但浏览器是否有头是启动期选项，不能沿用旧 context 强行切换。
+		runParams.StreamFunc(`获取数据目录`, fmt.Sprintf(`同目录已存在 %d 类型的旧实例，当前需要 %d，先关闭旧实例再重建`, mismatchContextPage.OpenType, runParams.OpenType))
+		h.RemoveContextPage(mismatchContextPage)
 	}
 	userDataPath := fmt.Sprintf(component.EnvClient.WebkitDataPath+`/%d`, userDataIndex)
 	runParams.StreamFunc(`获取数据目录`, fmt.Sprintf(`未找到已存在的浏览器实例，使用的数据目录 %s,开始创建实例`, userDataPath))
@@ -385,7 +413,7 @@ func (h *ContextPageList) GetContextSaveUserData(runParams *PlaywrightRunParams)
 	//浏览器自带验证
 	if runParams.BrowserAuthUsername != `` && runParams.BrowserAuthPassword != `` {
 		runParams.StreamFunc(`获取浏览器实例`, fmt.Sprintf(`打开contxt，使用浏览器自带验证 用户名%s,超时时间 %f`, runParams.BrowserAuthUsername, runParams.GetPageTimeout))
-		context, contextErr = PlaywrightClient.Pw.Chromium.LaunchPersistentContext(userDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
+		context, contextErr = component.PlaywrightClient.Pw.Chromium.LaunchPersistentContext(userDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
 			//DownloadsPath:     &h.downloadPath,
 			Headless:          &Headless,
 			Channel:           playwright.String(runParams.Channel), // 使用完整版 Chrome 而非 Chromium
@@ -417,7 +445,7 @@ func (h *ContextPageList) GetContextSaveUserData(runParams *PlaywrightRunParams)
 		}
 	} else {
 		runParams.StreamFunc(`获取浏览器实例`, fmt.Sprintf(`启动超时时间：%f`, runParams.GetPageTimeout))
-		context, contextErr = PlaywrightClient.Pw.Chromium.LaunchPersistentContext(userDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
+		context, contextErr = component.PlaywrightClient.Pw.Chromium.LaunchPersistentContext(userDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
 			//DownloadsPath:     &h.downloadPath,
 			Headless: &Headless,
 			//Channel:           playwright.String(runParams.Channel),//增加这个会导致问题 关闭后不能正常启动下一个

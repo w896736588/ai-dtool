@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"dev_tool/internal/app/dtool/plw"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/pkg/p_sse"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
@@ -12,7 +12,7 @@ const nodeInstallURL = "https://nodejs.org/zh-cn/download"
 
 // ensureSmartLinkNodeInstalled 校验自定义网页运行所需 Node.js 环境
 func ensureSmartLinkNodeInstalled(c *gin.Context, sse *p_sse.SseShell) bool {
-	if plw.PlaywrightClient != nil && plw.PlaywrightClient.EnsureNodeRuntime() {
+	if component.PlaywrightClient != nil && component.PlaywrightClient.EnsureNodeRuntime() {
 		return true
 	}
 	if sse != nil {

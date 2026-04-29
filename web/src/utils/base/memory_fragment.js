@@ -25,7 +25,6 @@ function MemoryFragmentSave(id, title, content, tags, callBack) {
     id: id,
     title: title,
     content: content,
-    tags: tags,
   }, callBack)
 }
 
@@ -64,32 +63,64 @@ function MemoryFragmentHistoryList(id, callBack) {
   }, callBack)
 }
 
-// MemoryFragmentTagList 查询可用标签列表。
-function MemoryFragmentTagList(callBack) {
-  base.BasePost('/api/MemoryFragmentTagList', {}, callBack)
-}
-
 // MemoryFragmentSearch 搜索知识片段。
 function MemoryFragmentSearch(query, mode, selectedTags, limit, callBack) {
   base.BasePost('/api/MemoryFragmentSearch', {
     query: query,
     mode: mode,
-    selected_tags: selectedTags,
     limit: limit,
   }, callBack)
 }
 
 // MemoryFragmentOrganize 使用 AI 整理当前知识片段内容。
-function MemoryFragmentOrganize(id, title, content, tags, callBack) {
+function MemoryFragmentOrganize(id, title, content, tags, sseDistributeId, callBack) {
   base.BasePost('/api/MemoryFragmentOrganize', {
     id: id,
     title: title,
     content: content,
-    tags: tags,
+  }, callBack)
+}
+
+// MemoryFragmentShareCreate 创建 24 小时有效的片段分享链接 token。
+function MemoryFragmentShareCreate(id, callBack) {
+  base.BasePost('/api/MemoryFragmentShareCreate', {
+    id: id,
+  }, callBack)
+}
+
+// MemoryFragmentShareInfo 通过分享 token 查询只读片段详情。
+function MemoryFragmentShareInfo(token, callBack) {
+  base.BasePost('/api/MemoryFragmentShareInfo', {
+    token: token,
+  }, callBack)
+}
+
+// MemoryFragmentTagList 查询可用标签列表。
+function MemoryFragmentTagList(callBack) {
+  callBack({ ErrCode: 0, Data: [] })
+}
+
+// GitPendingStatus 检测主库和记忆库是否有待 commit 的 git 变更。
+function GitPendingStatus(callBack) {
+  base.BasePost('/api/GitPendingStatus', {}, callBack)
+}
+
+// MemoryFragmentImageUpload 上传图片到记忆库，返回可访问的 URL。
+function MemoryFragmentImageUpload(file, callBack) {
+  const form = new FormData()
+  form.append('file', file)
+  base.BasePostForm('/api/MemoryFragmentImageUpload', form, callBack)
+}
+
+// MemoryFragmentBatchInfoByPaths 批量按文件路径查询片段摘要（id + title）。
+function MemoryFragmentBatchInfoByPaths(paths, callBack) {
+  base.BasePost('/api/MemoryFragmentBatchInfoByPaths', {
+    paths: paths,
   }, callBack)
 }
 
 export default {
+  GitPendingStatus,
   MemoryFragmentStatus,
   MemoryFragmentList,
   MemoryFragmentInfo,
@@ -102,4 +133,8 @@ export default {
   MemoryFragmentTagList,
   MemoryFragmentSearch,
   MemoryFragmentOrganize,
+  MemoryFragmentShareCreate,
+  MemoryFragmentShareInfo,
+  MemoryFragmentImageUpload,
+  MemoryFragmentBatchInfoByPaths,
 }

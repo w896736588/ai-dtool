@@ -6,10 +6,13 @@
       <div class="set-config-actions">
         <pl-button type="primary" @click="ShowAddAccount">添加账号</pl-button>
         <pl-button @click="ShowAccountGroup">Account分组</pl-button>
+        <el-select v-model="state.filterGroupId" clearable placeholder="按分组筛选" style="width: 160px">
+          <el-option v-for="item in state.accountGroupList" :key="item.id" :label="item.name" :value="item.id" />
+        </el-select>
       </div>
     </div>
     <div class="set-config-table-card">
-      <el-table :data="state.accountList" class="set-config-table">
+      <el-table :data="filteredAccountList" class="set-config-table" max-height="460">
         <el-table-column prop="id" label="#id" width="80" />
         <el-table-column prop="username" label="用户名" min-width="160" />
         <el-table-column prop="password" label="密码" min-width="140">
@@ -58,7 +61,7 @@
   </div>
 </template>
 <script>
-import {defineComponent , getCurrentInstance , reactive} from 'vue';
+import {defineComponent , getCurrentInstance , reactive, computed} from 'vue';
 import set from '../../utils/base/account_set'
 import common from '../../utils/common'
 import list from "@/utils/base/list";
@@ -148,13 +151,20 @@ export default defineComponent({
       dialogEditAccount : false,
       editAccountConfig : {},
       filterValue : '',
+      filterGroupId : '',
       dialogAccountGroup: false,
+    })
+
+    const filteredAccountList = computed(() => {
+      if (!state.filterGroupId) return state.accountList
+      return state.accountList.filter(item => item.account_group_id === state.filterGroupId)
     })
     //初始化
     AccountList()
     AccountGroupList()
     return {
       state,
+      filteredAccountList,
       ShowEditAccount,
       ShowAddAccount,
       EditAccount,
@@ -173,7 +183,5 @@ export default defineComponent({
 })
 </script>
 
-<style scoped>
-@import "@/css/set_module_unified.css";
-</style>
+<style scoped src="@/css/components/set/account.css"></style>
 

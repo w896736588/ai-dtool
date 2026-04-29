@@ -10,6 +10,9 @@ function Exist(value , arrayList){
 }
 
 function SortByKey(arrayList , key , type){
+    if (!arrayList || !Array.isArray(arrayList)) {
+        return []
+    }
     arrayList.sort((a,b) => {
         if(type.toLowerCase() === 'asc'){
             if ((a[key] || '') < (b[key] || '')) {

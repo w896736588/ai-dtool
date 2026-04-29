@@ -79,6 +79,14 @@ func buildHomeTaskDailyReportUserPrompt(prompt string, taskList []map[string]any
 	return strings.TrimSpace(strings.Join(lineList, "\n")), nil
 }
 
+// mergeHomeTaskDailyReportTaskList 合并日报使用的任务列表，默认把已归档任务追加到未归档任务之后。
+func mergeHomeTaskDailyReportTaskList(activeTaskList, archivedTaskList []map[string]any) []map[string]any {
+	merged := make([]map[string]any, 0, len(activeTaskList)+len(archivedTaskList))
+	merged = append(merged, activeTaskList...)
+	merged = append(merged, archivedTaskList...)
+	return merged
+}
+
 // homeTaskDailyReportSystemPrompt 返回首页工作日报固定 system prompt。
 func homeTaskDailyReportSystemPrompt() string {
 	return homeTaskDailyReportSystemPromptText
@@ -86,23 +94,23 @@ func homeTaskDailyReportSystemPrompt() string {
 
 // homeTaskDailyReportConfig 读取并校验首页工作日报配置。
 func homeTaskDailyReportConfig() (int, string, error) {
-	modelIDText, err := common.DbMain.GlobalValue(define.GlobalHomeTaskDailyReportModelID)
-	if err != nil && !memoryConfigValueMissing(err) {
+	modelIDText, err := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigDailyReportModelID)
+	if err != nil && !common.DbRowMissing(err) {
 		return 0, "", err
 	}
 	modelID := cast.ToInt(modelIDText)
 	if modelID <= 0 {
 		return 0, "", errors.New(homeTaskDailyReportModelRequiredError)
 	}
-	modelInfo, err := common.DbMain.InfoCrawlAiModelInfo(modelID)
+	modelInfo, err := common.DbMain.AiModelInfo(modelID)
 	if err != nil {
 		return 0, "", errors.New(homeTaskDailyReportModelUnavailableError)
 	}
 	if strings.ToLower(cast.ToString(modelInfo["model_type"])) != "llm" {
 		return 0, "", errors.New(homeTaskDailyReportModelTypeError)
 	}
-	prompt, err := common.DbMain.GlobalValue(define.GlobalHomeTaskDailyReportPrompt)
-	if err != nil && !memoryConfigValueMissing(err) {
+	prompt, err := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigDailyReportPrompt)
+	if err != nil && !common.DbRowMissing(err) {
 		return 0, "", err
 	}
 	prompt = strings.TrimSpace(prompt)

@@ -55,10 +55,4 @@ export default {
 }
 </script>
 
-<style>
-.el-textarea.inputQrContent textarea{
-  background-color: white !important;
-  color:#2c3e50;
-}
-
-</style>
+<style scoped src="@/css/components/tools/QrCode.css"></style>

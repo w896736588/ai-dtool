@@ -8,9 +8,9 @@ function GetSystemName() {
 function GetOpenModuleList() {
   switch (GetSystemName()) {
     case 'zhima':
-      return ['redis', 'supervisor', 'command', 'git' , 'login' , 'variable' , 'model' , 'open_link' , 'shellout' , 'qr_code' , 'time_transfer' , 'tools' , 'docker' , 'code' , 'markdown' , 'api', 'memory_fragment', 'info_crawl']
+      return ['redis', 'supervisor', 'command', 'git' , 'login' , 'variable' , 'model' , 'open_link' , 'shellout' , 'qr_code' , 'time_transfer' , 'tools' , 'docker' , 'code' , 'markdown' , 'api', 'memory_fragment']
     default:
-      return ['redis', 'supervisor', 'git' , 'tools' , 'markdown', 'memory_fragment', 'info_crawl']
+      return ['redis', 'supervisor', 'git' , 'tools' , 'markdown', 'memory_fragment']
   }
 }
 

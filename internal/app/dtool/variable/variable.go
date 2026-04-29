@@ -25,14 +25,37 @@ type TVariable struct {
 	RunTaskId     string //正在执行的任务ID 一次只能一个任务
 }
 
-var VariableClient *TVariable
-
 func NewVariableClient() *TVariable {
 	log := gstool.NewSlog3(component.EnvClient.LogPath, `variable`)
 	_ = log.CleanOldLogs(2)
 	return &TVariable{
 		Log: log,
 	}
+}
+
+// GetLog 通过接口暴露日志实例，避免外部依赖 TVariable 具体字段。
+func (h *TVariable) GetLog() *gstool.GsSlog {
+	return h.Log
+}
+
+// SetLoginCredentials 统一封装登录态写入，便于从 component 接口访问。
+func (h *TVariable) SetLoginCredentials(username, password string) {
+	h.LoginUsername = username
+	h.LoginPassword = password
+}
+
+// ClearLoginCredentials 用于需要重新等待前端输入账号密码的场景。
+func (h *TVariable) ClearLoginCredentials() {
+	h.LoginUsername = ``
+	h.LoginPassword = ``
+}
+
+func (h *TVariable) GetLoginUsername() string {
+	return h.LoginUsername
+}
+
+func (h *TVariable) GetLoginPassword() string {
+	return h.LoginPassword
 }
 
 func (h *TVariable) CreateTask(taskId string) {
@@ -200,22 +223,46 @@ func (h *TVariable) PreConnSsh(sshId int, sshUniqueKey, sftpUniqueKey string, ss
 	}
 
 	if component.ShellClient.Exist(sshUniqueKey) && component.ShellClient.Exist(sftpUniqueKey) {
+		if sse != nil {
+			sse.Send(" [ssh] 连接已存在，直接复用: " + sshUniqueKey + "\n")
+		}
 		return nil
 	}
 	//初始化连接
+	if sse != nil {
+		sse.Send(" [ssh] 正在初始化SSH连接: sshId=" + cast.ToString(sshId) + "\n")
+	}
 	sshConfig, sshConfigErr := call.GetSshConfig(sshId)
 	if sshConfigErr != nil {
+		if sse != nil {
+			sse.Send(" [ssh] 获取SSH配置失败: " + sshConfigErr.Error() + "\n")
+		}
 		return sshConfigErr
 	}
 	//ssh
+	if sse != nil {
+		sse.Send(" [ssh] 建立终端连接(run): " + cast.ToString(sshConfig["host"]) + ":" + cast.ToString(sshConfig["port"]) + "\n")
+	}
 	_, sshClientErr := component.ShellClient.GetClientMarkdown(sshConfig, sshUniqueKey, sse)
 	if sshClientErr != nil {
+		if sse != nil {
+			sse.Send(" [ssh] 终端连接(run)建立失败: " + sshClientErr.Error() + "\n")
+		}
 		return sshClientErr
 	}
 	//sftp
+	if sse != nil {
+		sse.Send(" [ssh] 建立终端连接(sftp): " + cast.ToString(sshConfig["host"]) + ":" + cast.ToString(sshConfig["port"]) + "\n")
+	}
 	_, sftpClientErr := component.ShellClient.GetClientMarkdown(sshConfig, sftpUniqueKey, sse)
 	if sftpClientErr != nil {
+		if sse != nil {
+			sse.Send(" [ssh] 终端连接(sftp)建立失败: " + sftpClientErr.Error() + "\n")
+		}
 		return sftpClientErr
+	}
+	if sse != nil {
+		sse.Send(" [ssh] SSH连接初始化完成\n")
 	}
 	return nil
 }

@@ -52,7 +52,7 @@ func SmartLinkLocatorAutoExtract(c *gin.Context) {
 		gsgin.GinResponseError(c, `目标元素描述不能为空`, nil)
 		return
 	}
-	rawContent, modelInfo, err := common.DbMain.InfoCrawlChatByModel(
+	rawContent, modelInfo, err := common.DbMain.AIChatByModel(
 		modelID,
 		smartLinkLocatorAutoExtractSystemPrompt(),
 		buildSmartLinkLocatorAutoExtractUserPrompt(htmlSource, targetDesc),

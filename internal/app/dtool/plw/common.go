@@ -33,6 +33,7 @@ func GetRunParams(id int, label, userName, password string, openType int, openNu
 		return runParams, errors.New(`不存在的链接`)
 	}
 	linkList := make([]map[string]any, 0)
+	linkProcessId := 0
 	runParams.DownloadFinds = strings.Split(cast.ToString(smartLink[`download_finds`]), `,`)
 	runParams.AutoCloseSecond = cast.ToInt(smartLink[`auto_close_second`])
 	runParams.Channel = cast.ToString(smartLink[`channel`])
@@ -57,6 +58,7 @@ func GetRunParams(id int, label, userName, password string, openType int, openNu
 			runParams.Headers = headerMap
 			runParams.BrowserAuthUsername = cast.ToString(link[`browser_auth_username`])
 			runParams.BrowserAuthPassword = cast.ToString(link[`browser_auth_password`])
+			linkProcessId = cast.ToInt(link[`process_id`])
 			break
 		}
 	}
@@ -75,9 +77,12 @@ func GetRunParams(id int, label, userName, password string, openType int, openNu
 		runParams.OpenType = define.OpenType(cast.ToInt(smartLink[`open_type`]))
 	}
 
-	//查询process
+	//查询process，优先使用子链接配置的process_id，否则使用总链接的process_id
 	processList := make([]map[string]any, 0)
-	processId := cast.ToInt(smartLink[`process_id`])
+	processId := linkProcessId
+	if processId == 0 {
+		processId = cast.ToInt(smartLink[`process_id`])
+	}
 	if processId > 0 {
 		processList, _ = common.DbMain.Client.QueryBySql("select * from tbl_smart_link_process_item where status = 1 and smart_link_process_id = ? order by weight asc", processId).All()
 

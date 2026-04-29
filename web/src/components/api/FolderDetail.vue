@@ -171,7 +171,8 @@ export default {
         name: updatedFolder.name,
         desc: updatedFolder.desc || '',
         collection_id: updatedFolder.collection_id,
-        headers: updatedFolder.headers || {}
+        headers: updatedFolder.headers || {},
+        env_id: parseInt(updatedFolder.env_id) || 0,
       }
       Api.CreateDir(updateData, function (res) {
         if (res.ErrCode === 0) {
@@ -207,38 +208,5 @@ export default {
 }
 </script>
 
-<style scoped>
-.folder-detail {
-  padding: 12px;
-  border: 1px solid #e8eee5;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 6px 18px rgba(80, 110, 80, 0.08);
-}
-
-.folder-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  padding: 10px 12px;
-  border: 1px solid #e6ece0;
-  border-radius: 10px;
-  background: #f7f9f5;
-}
-
-.folder-title {
-  margin: 0;
-  color: #303133;
-}
-
-.folder-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.folder-content {
-  margin-top: 20px;
-}
-</style>
+<style scoped src="@/css/components/api/FolderDetail.css"></style>
 

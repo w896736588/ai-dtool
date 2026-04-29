@@ -34,9 +34,4 @@ export default {
 }
 </script>
 
-<style scoped>
-.tools-container {
-  height: 100%;
-  overflow-y: auto;
-}
-</style>
+<style scoped src="@/css/components/Tools.css"></style>

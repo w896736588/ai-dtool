@@ -1,6 +1,7 @@
 package plw
 
 import (
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_common"
 	"dev_tool/internal/pkg/p_curl"
@@ -113,24 +114,24 @@ func (h *ContextPage) tryMarkPageEventInited(page *playwright.Page) bool {
 func (h *ContextPage) handleDownload(page *playwright.Page, download playwright.Download) {
 	h.SetPageActive(page)
 	fileName := sanitizeWindowsFilename(download.SuggestedFilename())
-	PlaywrightClient.AddTipMsg(page, `检测到下载`+fileName+`,别急，自动打开中..`)
+	component.PlaywrightClient.AddTipMsg(page, `检测到下载`+fileName+`,别急，自动打开中..`)
 	localPath := h.GetDownloadPathByFilename(fileName)
 	h.log.Debugf(`download localPath %s`, localPath)
 	if saveErr := download.SaveAs(localPath); saveErr != nil {
 		h.log.Debugf(`下载保存失败 %s %s`, localPath, saveErr.Error())
-		PlaywrightClient.AddTipMsg(page, `下载保存失败：`+fileName)
+		component.PlaywrightClient.AddTipMsg(page, `下载保存失败：`+fileName)
 		return
 	}
 	if !gstool.FileIsExisted(localPath) {
 		h.log.Debugf(`下载保存后文件不存在 %s`, localPath)
-		PlaywrightClient.AddTipMsg(page, `下载失败，未找到文件：`+fileName)
+		component.PlaywrightClient.AddTipMsg(page, `下载失败，未找到文件：`+fileName)
 		return
 	}
-	PlaywrightClient.AddTipMsg(page, `开始打开`+fileName)
+	component.PlaywrightClient.AddTipMsg(page, `开始打开`+fileName)
 	openErr := p_common.TOsClient.OpenFileWindows(localPath, localPath)
 	if openErr != nil {
 		h.log.Debugf(`打开文件失败 %s %s`, localPath, openErr.Error())
-		PlaywrightClient.AddTipMsg(page, `自动打开失败，请到下载目录查看：`+fileName)
+		component.PlaywrightClient.AddTipMsg(page, `自动打开失败，请到下载目录查看：`+fileName)
 		return
 	}
 	h.log.Debugf(`打开文件成功 %s`, localPath)
@@ -170,7 +171,7 @@ func (h *ContextPage) GetDownloadPath(download playwright.Download) string {
 
 // GetDownloadPathByFilename 生成下载文件路径并统一处理文件名。
 func (h *ContextPage) GetDownloadPathByFilename(fileName string) string {
-	return filepath.Join(PlaywrightClient.DownloadPath, p_common.TBaseClient.GetUnique(`download`)+`_`+sanitizeWindowsFilename(fileName))
+	return filepath.Join(component.PlaywrightClient.DownloadPath, p_common.TBaseClient.GetUnique(`download`)+`_`+sanitizeWindowsFilename(fileName))
 }
 
 // sanitizeWindowsFilename 清洗 Windows 不允许的文件名字符，避免下载保存失败。

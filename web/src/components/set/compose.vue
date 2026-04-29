@@ -5,10 +5,17 @@
       <p class="set-config-desc">管理 compose 项目目录、默认服务与执行命令</p>
       <div class="set-config-actions">
         <pl-button type="primary" @click="ShowAddCompose">添加 Compose</pl-button>
+        <el-input
+          v-model="state.searchKey"
+          autocomplete="off"
+          placeholder="搜索名称、目录、SSH等"
+          class="set-config-search"
+          clearable
+        ></el-input>
       </div>
     </div>
     <div class="set-config-table-card">
-      <el-table :data="state.composeList" class="set-config-table">
+      <el-table :data="filteredComposeList" class="set-config-table" height="calc(100vh - 300px)">
         <el-table-column prop="id" label="#id" width="60"/>
         <el-table-column prop="name" label="名称" min-width="150"/>
         <el-table-column prop="compose_yml_path" label="compose.yml目录" min-width="220">
@@ -65,7 +72,7 @@
   </div>
 </template>
 <script>
-import {defineComponent , getCurrentInstance , reactive} from 'vue';
+import {defineComponent , getCurrentInstance , reactive, computed} from 'vue';
 import set from '../../utils/base/compose_set'
 import common from '../../utils/common'
 import ssh_set from "@/utils/base/ssh_set";
@@ -139,6 +146,17 @@ export default defineComponent({
       composeList : [],
       dialogEditCompose : false,
       editComposeConfig : {},
+      searchKey : '',
+    })
+
+    const filteredComposeList = computed(() => {
+      const key = (state.searchKey || '').trim().toLowerCase()
+      if (!key) return state.composeList
+      const keywords = key.split(/\s+/)
+      return state.composeList.filter(row => {
+        const text = [row.name, row.compose_yml_path, row.env_file, row.ssh_name, row.docker_cmd, row.default_service].filter(Boolean).join(' ').toLowerCase()
+        return keywords.every(k => text.includes(k))
+      })
     })
     //初始化
     ComposeList()
@@ -146,6 +164,7 @@ export default defineComponent({
 
     return {
       state,
+      filteredComposeList,
       ShowEditCompose,
       ShowAddCompose,
       EditCompose,
@@ -162,7 +181,5 @@ export default defineComponent({
 })
 </script>
 
-<style scoped>
-@import "@/css/set_module_unified.css";
-</style>
+<style scoped src="@/css/components/set/compose.css"></style>
 

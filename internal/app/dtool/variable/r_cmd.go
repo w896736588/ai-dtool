@@ -63,12 +63,12 @@ func (h *RCmd) RunMysql() error {
 	//替换
 	cmdSql = p_common.Replace(cmdSql, h.replaceList)
 	//解析Id
-	mysqlId, sql, err := VariableClient.ParseIdContent(cmdSql)
+	mysqlId, sql, err := component.VariableClient.ParseIdContent(cmdSql)
 	if err != nil {
 		return err
 	}
 	//检查是否还有未替换的
-	if VariableClient.ExistReplaceParam(sql) {
+	if component.VariableClient.ExistReplaceParam(sql) {
 		return errors.New(`还存在未替换的参数：` + sql)
 	}
 	//执行
@@ -93,7 +93,7 @@ func (h *RCmd) RunMysql() error {
 		}
 		//增加替换变量
 		if resultKey != `` && len(all) > 0 {
-			VariableClient.AddReplace(h.replaceList, resultKey, gstool.JsonEncode(all))
+			component.VariableClient.AddReplace(h.replaceList, resultKey, gstool.JsonEncode(all))
 		}
 		return nil
 	} else if len(gstool.RegexSearchString(sql, "(?i)update")) > 0 {
@@ -143,13 +143,13 @@ func (h *RCmd) RunBash() (string, error) {
 	cmdBash := cast.ToString(h.cmd[`bash`])
 	cmdId := cast.ToString(h.cmd[`id`])
 	cmdBash = p_common.Replace(cmdBash, h.replaceList)
-	sshId, bash, parseIdErr := VariableClient.ParseIdContent(cmdBash)
+	sshId, bash, parseIdErr := component.VariableClient.ParseIdContent(cmdBash)
 	if parseIdErr != nil {
 		gstool.FmtPrintlnLogTime(`解析配置失败`)
 		return ``, parseIdErr
 	}
 	//如果脚本还有未替换的
-	if VariableClient.ExistReplaceParam(bash) {
+	if component.VariableClient.ExistReplaceParam(bash) {
 		gstool.FmtPrintlnLogTime(`执行的脚本存在未替换的参数`)
 		return ``, gstool.Error("执行的脚本还存在需要替换的内容")
 	}
@@ -157,7 +157,7 @@ func (h *RCmd) RunBash() (string, error) {
 	sshUniqueKey := p_common.TBaseClient.GetCombineKey(`variable`, sshId, `run`)
 	sftpUniqueKey := p_common.TBaseClient.GetCombineKey(`variable`, sshId, `sftp`)
 	//链接ssh
-	preConnErr := VariableClient.PreConnSsh(sshId, sshUniqueKey, sftpUniqueKey, &p_sse.SseShell{
+	preConnErr := component.VariableClient.PreConnSsh(sshId, sshUniqueKey, sftpUniqueKey, &p_sse.SseShell{
 		Sse:             h.Sse.Sse,
 		SseDistributeId: h.Sse.SseDistributeId,
 	}, h.Call)
@@ -211,7 +211,7 @@ func (h *RCmd) RunBash() (string, error) {
 	//if err != nil {
 	//	return ``, err
 	//}
-	VariableClient.Log.Debugf(`%s \n %s `, fmt.Sprintf(variableDir+`/variable_%s.sh`, cmdId), bash)
+	component.VariableClient.GetLog().Debugf(`%s \n %s `, fmt.Sprintf(variableDir+`/variable_%s.sh`, cmdId), bash)
 	err = sshOnce.UploadFile(fmt.Sprintf(variableDir+`/variable_%s.sh`, cmdId), bash, ``)
 	if err != nil {
 		h.Sse.Send(`上传失败 %s %s`, fmt.Sprintf(variableDir+`/variable_%s.sh`, cmdId), err.Error()+"\n")
@@ -237,12 +237,12 @@ func (h *RCmd) RunUpload() (string, error) {
 	cmdBash := cast.ToString(h.cmd[`bash`])
 	//cmdId := cast.ToString(h.cmd[`id`])
 	cmdBash = p_common.Replace(cmdBash, h.replaceList)
-	sshId, bash, parseIdErr := VariableClient.ParseIdContent(cmdBash)
+	sshId, bash, parseIdErr := component.VariableClient.ParseIdContent(cmdBash)
 	if parseIdErr != nil {
 		return ``, parseIdErr
 	}
 	//如果脚本还有未替换的
-	if VariableClient.ExistReplaceParam(bash) {
+	if component.VariableClient.ExistReplaceParam(bash) {
 		return ``, gstool.Error("上传的脚本还存在需要替换的内容")
 	}
 	//解析配置
@@ -294,7 +294,7 @@ func (h *RCmd) RunUpload() (string, error) {
 			}
 			uploadErr := h.uploadFile(sshConfig, sshId, sshOnce, path, targetDir)
 			if uploadErr != nil {
-				VariableClient.Log.Errof(`上传失败`)
+				component.VariableClient.GetLog().Errof(`上传失败`)
 				h.Sse.Send(fmt.Sprintf(`上传失败 %s`, uploadErr.Error()) + "\n")
 				isErr = true
 				return
@@ -369,14 +369,14 @@ func (h *RCmd) uploadFile(sshConfig map[string]any, sshId int, sshOnce *gsssh.Ss
 func (h *RCmd) RunCommand() (string, error) {
 	cmdBash := cast.ToString(h.cmd[`bash`])
 	cmdBash = p_common.Replace(cmdBash, h.replaceList)
-	sshId, bash, parseIdErr := VariableClient.ParseIdContent(cmdBash)
+	sshId, bash, parseIdErr := component.VariableClient.ParseIdContent(cmdBash)
 	if parseIdErr != nil {
 		return ``, parseIdErr
 	}
 	//注册client
 	sshUniqueKey := p_common.TBaseClient.GetCombineKey(`variable`, sshId, `run`)
 	sftpUniqueKey := p_common.TBaseClient.GetCombineKey(`variable`, sshId, `sftp`)
-	preConnErr := VariableClient.PreConnSsh(sshId, sshUniqueKey, sftpUniqueKey, &p_sse.SseShell{
+	preConnErr := component.VariableClient.PreConnSsh(sshId, sshUniqueKey, sftpUniqueKey, &p_sse.SseShell{
 		Sse:             h.Sse.Sse,
 		SseDistributeId: h.Sse.SseDistributeId,
 	}, h.Call)
@@ -465,7 +465,7 @@ func (h *RCmd) RunCurl() (string, error) {
 	result, err := pCurl.Run()
 	//增加替换变量
 	if resultKey != `` {
-		VariableClient.AddReplace(h.replaceList, resultKey, cast.ToString(result))
+		component.VariableClient.AddReplace(h.replaceList, resultKey, cast.ToString(result))
 	}
 	return cast.ToString(result), err
 }
@@ -586,7 +586,7 @@ func (h *RCmd) RunLlm() (string, error) {
 	}
 	resultKey := cast.ToString(h.cmd[`result_key`])
 	if resultKey != `` {
-		VariableClient.AddReplace(h.replaceList, resultKey, content)
+		component.VariableClient.AddReplace(h.replaceList, resultKey, content)
 	}
 	return content, nil
 }
@@ -639,17 +639,16 @@ func (h *RCmd) RunPlaywright(stopCall func() bool) (string, error) {
 		case define.ExistWait, define.NoExistWait:
 			//h.Sse.Send(p_common.TMarkDownClient.Bold(tip)+`,`+errmsg+ "\n")
 		case define.LoginUsernamePassword: //前端弹窗输入账号密码
-			VariableClient.LoginUsername = ``
-			VariableClient.LoginPassword = ``
+			component.VariableClient.ClearLoginCredentials()
 			sse.Send(define.SseEventLogin)
 			for i := 0; i < 30; i++ {
 				time.Sleep(time.Second * 2)
-				if VariableClient.LoginUsername != `` && VariableClient.LoginPassword != `` {
+				if component.VariableClient.GetLoginUsername() != `` && component.VariableClient.GetLoginPassword() != `` {
 					break
 				}
 			}
-			h.replaceList[`{user_name}`] = VariableClient.LoginUsername
-			h.replaceList[`{password}`] = VariableClient.LoginPassword
+			h.replaceList[`{user_name}`] = component.VariableClient.GetLoginUsername()
+			h.replaceList[`{password}`] = component.VariableClient.GetLoginPassword()
 		}
 	}
 	//注册需要监听的接口
@@ -674,7 +673,7 @@ func (h *RCmd) RunPlaywright(stopCall func() bool) (string, error) {
 				},
 				StartCall: func() {
 					runParams.StopEchoTips = true
-					VariableClient.Log.Debugf(`监听到%s`, parseConfig.Uri)
+					component.VariableClient.GetLog().Debugf(`监听到%s`, parseConfig.Uri)
 					sse.Send(p_common.TMarkDownClient.BlockQuote("开始回答...") + "\n")
 				},
 			})
@@ -689,7 +688,7 @@ func (h *RCmd) RunPlaywright(stopCall func() bool) (string, error) {
 		sse.Send(p_common.TMarkDownClient.Bold(name) + `,` + msg + "\n")
 	}
 	runParams.StreamFunc = streamFunc
-	p := plw.NewPlaywright(runParams, VariableClient.Log)
+	p := plw.NewPlaywright(runParams, component.VariableClient.GetLog())
 	openErr := p.Open(h.Call, stopCall)
 	if openErr != nil {
 		sse.Send(p_common.TMarkDownClient.BlockQuote(cast.ToString(h.cmd[`name`])+`,启动失败，`+openErr.Error()) + "\n")
@@ -710,9 +709,9 @@ func (h *RCmd) StreamDataReceive(sse *p_sse.SseShell, parseConfig _struct.CurlPa
 				for _, takeJson := range parseConfig.TakeJsons {
 					realTakeJson, _ := strings.CutPrefix(takeJson.Take, `res.`)
 					ret := gjson.Get(part, realTakeJson)
-					VariableClient.Log.Debugf(`提取json成功#%s#%v`, part, ret.String())
+					component.VariableClient.GetLog().Debugf(`提取json成功#%s#%v`, part, ret.String())
 					if ret.String() != `` { //发送到sse
-						VariableClient.Log.Debugf(`发送到sse#%s#`, ret.String())
+						component.VariableClient.GetLog().Debugf(`发送到sse#%s#`, ret.String())
 						sse.Send(ret.String())
 					}
 				}
@@ -731,7 +730,7 @@ func (h *RCmd) RunCombine() (string, error) {
 
 	//增加替换变量
 	if resultKey != `` {
-		VariableClient.AddReplace(h.replaceList, resultKey, combine)
+		component.VariableClient.AddReplace(h.replaceList, resultKey, combine)
 	}
 	h.Sse.Send(p_common.TMarkDownClient.Bold(`合并内容`) + `,` + combine + "\n")
 	return ``, nil
@@ -740,7 +739,7 @@ func (h *RCmd) RunCombine() (string, error) {
 func (h *RCmd) RunRedis() (string, error) {
 	name := cast.ToString(h.cmd[`name`])
 	cmdBash := p_common.Replace(cast.ToString(h.cmd[`bash`]), h.replaceList)
-	redisId, redisBash, parseErr := VariableClient.ParseIdContent(cmdBash)
+	redisId, redisBash, parseErr := component.VariableClient.ParseIdContent(cmdBash)
 	if parseErr != nil {
 		return ``, errors.New(`redis解析失败` + parseErr.Error())
 	}

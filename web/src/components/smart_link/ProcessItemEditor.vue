@@ -355,20 +355,6 @@
       </el-form-item>
     </template>
 
-    <template v-if="showField('secondary_locator')">
-      <el-form-item :label="fieldLabel('secondary_locator')" :error="fieldError('secondary_locator')">
-        <el-input v-model="formMeta.secondary_locator" :placeholder="fieldPlaceholder('secondary_locator')" />
-        <div class="field-guide">{{ fieldGuide('secondary_locator') }}</div>
-      </el-form-item>
-    </template>
-
-    <template v-if="showField('tertiary_locator')">
-      <el-form-item :label="fieldLabel('tertiary_locator')" :error="fieldError('tertiary_locator')">
-        <el-input v-model="formMeta.tertiary_locator" :placeholder="fieldPlaceholder('tertiary_locator')" />
-        <div class="field-guide">{{ fieldGuide('tertiary_locator') }}</div>
-      </el-form-item>
-    </template>
-
     <template v-if="localItem.type === 'redirect_uri'">
       <el-form-item label="跳转地址" :error="fieldError('value')">
         <el-input
@@ -929,6 +915,7 @@ const {
   serializeCheckConfig,
   serializeRedirectUriValue,
   serializeWaitUrlValue,
+  shouldShowAppendToReplace,
   validateProcessItemForm,
 } = require('../../utils/smart_link_process_validation.cjs')
 const {
@@ -1187,7 +1174,10 @@ export default {
       return PROCESS_TYPE_FIELDS[this.localItem.type] || []
     },
     allowAppendToReplace() {
-      return this.localItem.type !== 'click' && this.localItem.type !== 'delete_element'
+      return shouldShowAppendToReplace({
+        type: this.localItem.type,
+        out_key: this.formMeta.out_key,
+      })
     },
     useLocatorExpressionEditor() {
       return this.showField('locator') && this.supportLocatorExpression(this.localItem.type)
@@ -1436,10 +1426,8 @@ export default {
           meta.locator_structured = JSON.stringify(structuredLocator, null, 2)
         }
       } else if (item.type === 'login_username_password') {
-        const parts = String(item.locator || '').split('||')
-        meta.locator_list = parts[0] ? [{ uid: createLocatorRow().uid, value: parts[0] }] : [createLocatorRow()]
-        meta.secondary_locator = parts[1] || ''
-        meta.tertiary_locator = parts[2] || ''
+        meta.secondary_locator = ''
+        meta.tertiary_locator = ''
       } else if (item.type === 'delete_element') {
         meta.locator_list = this.decodeLocatorList(item.locator, '|')
       } else if ((item.type === 'click' || item.type === 'input') && isLocatorConfigPayload(item.locator)) {
@@ -1673,11 +1661,10 @@ export default {
         item.out_key = this.formMeta.out_key
         item.check_key = checkKeyExpression
       } else if (item.type === 'login_username_password') {
-        const userLocator = this.formMeta.locator_list[0] ? this.formMeta.locator_list[0].value : ''
-        item.locator = [userLocator, this.formMeta.secondary_locator, this.formMeta.tertiary_locator].filter(Boolean).join('||')
+        item.locator = ''
         item.value = ''
         item.out_key = ''
-        item.check_key = ''
+        item.check_key = checkKeyExpression
       } else if (item.type === 'delete_element') {
         item.locator = this.formMeta.locator_list.map(v => v.value.trim()).filter(Boolean).join('|')
         item.value = this.formMeta.delete_mode
@@ -1767,9 +1754,6 @@ export default {
         response_url: '等待地址',
         delete_mode: '删除类型',
         register_response_urls: '跳转后等待地址',
-      }
-      if (this.localItem.type === 'login_username_password' && fieldName === 'locator') {
-        return '用户名框定位'
       }
       return labels[fieldName] || fieldName
     },
@@ -2045,479 +2029,4 @@ export default {
 }
 </script>
 
-<style scoped>
-.list-editor {
-  width: 100%;
-}
-
-.locator-expression-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.locator-expression-toolbar__select {
-  width: 220px;
-}
-
-.locator-expression-toolbar__tip,
-.field-guide {
-  color: #6b7b68;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.locator-config-panel {
-  display: grid;
-  gap: 12px;
-}
-
-.locator-config-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  background: #f7faf4;
-  border: 1px solid #dfe8d7;
-  border-radius: 10px;
-}
-
-.locator-config-panel__title {
-  color: #456238;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.locator-config-panel__select {
-  width: 280px;
-}
-
-.base-locator-card {
-  padding: 14px;
-  background: #fcfdfb;
-  border: 1px solid #d8e3d0;
-  border-radius: 12px;
-}
-
-.base-locator-card__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.base-locator-card__title {
-  color: #355128;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.base-locator-card__summary {
-  margin: 10px 0;
-  color: #6b7b68;
-  font-size: 12px;
-  line-height: 1.6;
-  word-break: break-word;
-}
-
-.base-locator-card__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.base-locator-card__action {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.base-locator-card__action-label {
-  color: #4b6540;
-  font-size: 12px;
-}
-
-.base-locator-card__action-select {
-  width: 180px;
-}
-
-.field-guide {
-  margin-top: 8px;
-}
-
-.variable-quick-pick {
-  margin-top: 10px;
-  padding: 10px 12px;
-  background: #f8fbf6;
-  border: 1px solid #dfe8d7;
-  border-radius: 10px;
-}
-
-.variable-quick-pick--embedded {
-  margin-bottom: 10px;
-}
-
-.variable-quick-pick__title {
-  margin-bottom: 8px;
-  color: #48653a;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.variable-quick-pick__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.locator-purpose-card {
-  margin-bottom: 10px;
-  padding: 10px 12px;
-  background: #f6f8f4;
-  border: 1px solid #dfe8d7;
-  border-radius: 8px;
-}
-
-.locator-purpose-card__title {
-  color: #48653a;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.locator-purpose-card__text {
-  color: #6b7b68;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.locator-behavior-summary {
-  margin-top: 10px;
-  padding: 10px 12px;
-  background: #fffdf5;
-  border: 1px solid #efe4b0;
-  border-radius: 8px;
-}
-
-.locator-behavior-summary__title {
-  color: #8a6b13;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.locator-behavior-summary__text {
-  color: #7b714d;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.structured-locator-editor {
-  margin-top: 4px;
-}
-
-.structured-locator-card {
-  padding: 16px;
-  background: linear-gradient(180deg, #fcfdfb 0%, #f6f8f4 100%);
-  border: 1px solid #d8e3d0;
-  border-radius: 14px;
-  box-shadow: 0 8px 18px rgba(89, 113, 72, 0.08);
-}
-
-.structured-locator-card__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.structured-locator-card__title {
-  color: #355128;
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.4;
-}
-
-.structured-locator-card__desc {
-  margin-top: 4px;
-  color: #6a7d60;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.structured-locator-card__badge {
-  flex: 0 0 auto;
-  padding: 4px 10px;
-  color: #48653a;
-  font-size: 12px;
-  font-weight: 600;
-  background: #e7f1df;
-  border-radius: 999px;
-}
-
-.structured-locator-section {
-  padding: 14px;
-  margin-bottom: 12px;
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid #e4ebde;
-  border-radius: 12px;
-}
-
-.structured-locator-section:last-child {
-  margin-bottom: 0;
-}
-
-.structured-locator-section__title {
-  margin-bottom: 10px;
-  color: #456238;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.structured-locator-grid {
-  display: grid;
-  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-}
-
-.structured-locator-grid + .structured-locator-grid {
-  margin-top: 10px;
-}
-
-.structured-locator-grid--secondary {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.structured-locator-grid--stacked {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.structured-locator-filter-pair {
-  display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-}
-
-.structured-locator-tip {
-  margin-top: 10px;
-  padding: 10px 12px;
-  color: #607355;
-  font-size: 12px;
-  line-height: 1.6;
-  background: #f7faf4;
-  border-radius: 10px;
-}
-
-.structured-locator-switches {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.structured-locator-switch-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  background: #f9fbf7;
-  border: 1px solid #e3eadc;
-  border-radius: 10px;
-}
-
-.structured-locator-switch-card__label {
-  color: #4e6442;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.structured-locator-switch-card__control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.structured-locator-switch-card__state {
-  color: #6c7c63;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.structured-locator-inline-field {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 12px 14px;
-  background: #f9fbf7;
-  border: 1px solid #e3eadc;
-  border-radius: 10px;
-}
-
-.structured-locator-inline-field--compact {
-  min-height: 46px;
-}
-
-.structured-locator-inline-field__label {
-  min-width: 0;
-}
-
-.structured-locator-inline-field__title {
-  color: #4e6442;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.structured-locator-inline-field__desc {
-  margin-top: 2px;
-  color: #7a8970;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.structured-locator-inline-field__control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 180px;
-}
-
-.structured-locator-inline-field__unit {
-  color: #69805d;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.structured-locator-preview {
-  margin-top: 4px;
-}
-
-.locator-expression-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 130px 130px 60px;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.locator-expression-row__mode {
-  width: 100%;
-}
-
-.list-editor__row,
-.response-url-row {
-  display: grid;
-  grid-template-columns: 1fr 120px 60px;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.list-editor__row {
-  grid-template-columns: 1fr 60px;
-}
-
-.bool-result-row {
-  display: grid;
-  grid-template-columns: 1fr 140px 60px;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.bool-result-rule-card {
-  padding: 12px;
-  margin-bottom: 12px;
-  background: #fbfcfa;
-  border: 1px solid #e2eadc;
-  border-radius: 12px;
-}
-
-.bool-result-rule-card__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.bool-result-rule-card__title {
-  color: #48653a;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.bool-result-rule-card__actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.bool-result-rule-card__mode {
-  width: 140px;
-}
-
-.bool-result-rule-card__result {
-  width: 160px;
-}
-
-.structured-locator-card--nested {
-  padding: 12px;
-  background: linear-gradient(180deg, #ffffff 0%, #f7faf5 100%);
-  box-shadow: none;
-}
-
-.check-rule-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 140px 60px;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.check-rule-row__mode {
-  width: 100%;
-}
-
-.check-mode-select {
-  width: 220px;
-  margin-bottom: 10px;
-}
-
-.compare-rule-row {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) 140px minmax(320px, 1fr);
-  gap: 10px;
-  align-items: start;
-  margin-bottom: 10px;
-}
-
-.compare-rule-row__operator {
-  width: 100%;
-}
-
-.compare-rule-right {
-  min-width: 0;
-}
-
-.compare-rule-right__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.plain-number-input {
-  width: 100%;
-}
-</style>
+<style scoped src="@/css/components/smart_link/ProcessItemEditor.css"></style>

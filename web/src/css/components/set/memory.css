@@ -1,0 +1,56 @@
+@import "@/css/set_module_unified.css";
+
+.memory-config-display {
+  margin: 16px 0;
+}
+
+.memory-config-form {
+  margin-top: 16px;
+}
+
+.config-value {
+  color: #24312f;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.config-value-desc {
+  margin-left: 8px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.config-item-help {
+  margin-top: 6px;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.config-item-wrapper {
+  width: 100%;
+}
+
+.config-display-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.config-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.config-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.config-item-actions {
+  display: flex;
+  gap: 8px;
+}

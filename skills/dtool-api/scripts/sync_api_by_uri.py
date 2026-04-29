@@ -1,8 +1,8 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """
-按 URI 在 dtool 接口开发模块中执行“导入或更新”。
+按 URI 在 dtool 接口开发模块中执行"导入或更新"。
 
 输入 JSON 示例：
 {
@@ -16,13 +16,27 @@
       "protocol": "https",
       "desc": "登录接口",
       "headers": {"Content-Type": "application/json"},
-      "query_params": [],
+      "query_params": [
+        {"field": "version", "type": "string", "value": "v1", "description": "接口版本，固定传 v1，表示第一版协议"}
+      ],
       "content_type": "application/json",
       "body_form": [],
-      "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}"
+      "body_json": "{\"username\":\"demo\",\"password\":\"123456\"}",
+      "body_raw": "",
+      "take_result": [
+        {"key": "code", "type": "number", "desc": "状态码，0表示成功"},
+        {"key": "data.token", "type": "string", "desc": "认证令牌"}
+      ]
     }
   ]
 }
+
+注意：
+- type 字段只接受: string / integer / float / boolean / file (禁止使用 int；bool 和 boolean 均可，推荐 boolean)
+- 请求参数如果是常量、固定值、枚举值或布尔开关，必须在 description 中列出每个值和含义
+- content_type 必须根据后端控制器实际代码判断，不得默认 application/json
+- take_result 必须填写，描述接口返回字段含义
+- base-url 和 Token 必须由用户提供，所有请求都会携带 Header: Token
 """
 
 from __future__ import annotations
@@ -43,13 +57,13 @@ def normalize_uri(uri: str) -> str:
     return value.lower()
 
 
-def post_json(base_url: str, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+def post_json(base_url: str, token: str, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     """发送 JSON POST 请求并返回响应 JSON。"""
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = request.Request(
         url=f"{base_url}{path}",
         data=body,
-        headers={"Content-Type": "application/json; charset=utf-8"},
+        headers={"Content-Type": "application/json; charset=utf-8", "Token": token},
         method="POST",
     )
     try:
@@ -61,9 +75,9 @@ def post_json(base_url: str, path: str, payload: Dict[str, Any]) -> Dict[str, An
         raise RuntimeError(f"HTTP {exc.code} {path} 失败: {detail}") from exc
 
 
-def get_collections(base_url: str) -> List[Dict[str, Any]]:
+def get_collections(base_url: str, token: str) -> List[Dict[str, Any]]:
     """获取集合树。"""
-    response = post_json(base_url, "/api/Collections", {})
+    response = post_json(base_url, token, "/api/Collections", {})
     data = response.get("data") or {}
     return data.get("list") or []
 
@@ -84,18 +98,18 @@ def find_folder(collection: Dict[str, Any], folder_name: str) -> Optional[Dict[s
     return None
 
 
-def create_folder(base_url: str, collection_id: int, folder_name: str) -> Dict[str, Any]:
+def create_folder(base_url: str, token: str, collection_id: int, folder_name: str) -> Dict[str, Any]:
     """新建文件夹。"""
-    response = post_json(base_url, "/api/CreateDir", {"collection_id": collection_id, "name": folder_name})
+    response = post_json(base_url, token, "/api/CreateDir", {"collection_id": collection_id, "name": folder_name})
     data = response.get("data") or {}
     if not data.get("id"):
         raise RuntimeError(f"创建文件夹失败，返回: {response}")
     return data
 
 
-def get_folder_apis(base_url: str, folder_id: int) -> List[Dict[str, Any]]:
+def get_folder_apis(base_url: str, token: str, folder_id: int) -> List[Dict[str, Any]]:
     """获取文件夹下接口列表。"""
-    response = post_json(base_url, "/api/FolderDetail", {"dir_id": folder_id})
+    response = post_json(base_url, token, "/api/FolderDetail", {"dir_id": folder_id})
     data = response.get("data") or {}
     folder = data.get("dir") or {}
     return folder.get("children") or []
@@ -118,9 +132,11 @@ def build_create_api_payload(
         "desc": api_item.get("desc", ""),
         "headers": api_item.get("headers", {}),
         "query_params": api_item.get("query_params", []),
-        "content_type": api_item.get("content_type", "application/json"),
+        "content_type": api_item.get("content_type", ""),
         "body_form": api_item.get("body_form", []),
         "body_json": api_item.get("body_json", ""),
+        "body_raw": api_item.get("body_raw", ""),
+        "take_result": api_item.get("take_result", []),
     }
     if api_item.get("env_id"):
         payload["env_id"] = api_item["env_id"]
@@ -129,9 +145,9 @@ def build_create_api_payload(
     return payload
 
 
-def sync_apis(base_url: str, collection_name: str, folder_name: str, apis: List[Dict[str, Any]], create_folder_if_missing: bool) -> Tuple[int, int]:
+def sync_apis(base_url: str, token: str, collection_name: str, folder_name: str, apis: List[Dict[str, Any]], create_folder_if_missing: bool) -> Tuple[int, int]:
     """执行同步：按 URI 命中则更新，否则创建。"""
-    collections = get_collections(base_url)
+    collections = get_collections(base_url, token)
     collection = find_collection(collections, collection_name)
     if not collection:
         raise RuntimeError(f"集合不存在: {collection_name}")
@@ -144,13 +160,13 @@ def sync_apis(base_url: str, collection_name: str, folder_name: str, apis: List[
     if not folder:
         if not create_folder_if_missing:
             raise RuntimeError(f"文件夹不存在: {folder_name}，可使用 --create-folder 自动创建")
-        folder = create_folder(base_url, collection_id, folder_name)
+        folder = create_folder(base_url, token, collection_id, folder_name)
 
     folder_id = int(folder.get("id") or 0)
     if folder_id <= 0:
         raise RuntimeError("文件夹 ID 无效")
 
-    existed_apis = get_folder_apis(base_url, folder_id)
+    existed_apis = get_folder_apis(base_url, token, folder_id)
     uri_index: Dict[Tuple[str, str], Dict[str, Any]] = {}
     for api in existed_apis:
         uri_key = normalize_uri(str(api.get("url") or ""))
@@ -170,7 +186,7 @@ def sync_apis(base_url: str, collection_name: str, folder_name: str, apis: List[
         existed_api_id = int(existed.get("id") or 0) if existed else None
 
         payload = build_create_api_payload(api_item, collection_id, folder_id, existed_api_id)
-        post_json(base_url, "/api/CreateApi", payload)
+        post_json(base_url, token, "/api/CreateApi", payload)
 
         if existed_api_id:
             updated += 1
@@ -183,7 +199,8 @@ def sync_apis(base_url: str, collection_name: str, folder_name: str, apis: List[
 def main() -> int:
     """脚本入口。"""
     parser = argparse.ArgumentParser(description="按 URI 同步 dtool 接口（命中更新，未命中创建）")
-    parser.add_argument("--base-url", default="http://localhost:17170", help="dtool 服务地址")
+    parser.add_argument("--base-url", required=True, help="用户提供的 dtool 服务请求地址")
+    parser.add_argument("--token", required=True, help="用户提供的 Header Token 值")
     parser.add_argument("--input", required=True, help="输入 JSON 文件路径")
     parser.add_argument("--create-folder", action="store_true", help="若文件夹不存在则自动创建")
     args = parser.parse_args()
@@ -199,8 +216,11 @@ def main() -> int:
         raise RuntimeError("input 缺少 folder_name")
     if not isinstance(apis, list) or not apis:
         raise RuntimeError("input 缺少 apis 或 apis 为空")
+    token = args.token.strip()
+    if not token:
+        raise RuntimeError("缺少 Header Token 值")
 
-    created, updated = sync_apis(args.base_url.rstrip("/"), collection_name, folder_name, apis, args.create_folder)
+    created, updated = sync_apis(args.base_url.rstrip("/"), token, collection_name, folder_name, apis, args.create_folder)
     print(json.dumps({"created": created, "updated": updated}, ensure_ascii=False))
     return 0
 

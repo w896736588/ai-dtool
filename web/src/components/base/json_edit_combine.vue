@@ -111,14 +111,4 @@ export default {
 }
 </script>
 
-<style scoped>
-.json-editor-combine {
-  max-height: 1000px;
-  min-height: 300px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  overflow-y: auto;
-  padding:5px;
-}
-
-</style>
+<style scoped src="@/css/components/base/json_edit_combine.css"></style>

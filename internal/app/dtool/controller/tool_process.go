@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -14,6 +15,11 @@ import (
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+)
+
+var (
+	queryToolPortProcessesFunc = queryToolPortProcesses
+	killToolProcessFunc        = killToolProcess
 )
 
 type toolPortProcessItem struct {
@@ -102,9 +108,29 @@ func queryToolPortProcessesWindows(port int) ([]toolPortProcessItem, error) {
 }
 
 func queryToolPortProcessesUnix(port int) ([]toolPortProcessItem, error) {
+	items, err := queryToolPortProcessesUnixSS(port)
+	if err == nil {
+		return items, nil
+	}
+	items, err2 := queryToolPortProcessesUnixLsof(port)
+	if err2 != nil {
+		return nil, fmt.Errorf(`查询端口占用失败(ss: %v, lsof: %v)，请确认系统已安装 ss 或 lsof`, err, err2)
+	}
+	return items, nil
+}
+
+func queryToolPortProcessesUnixSS(port int) ([]toolPortProcessItem, error) {
+	raw, err := runToolCommand(`ss`, `-tlnp`, fmt.Sprintf(`sport = :%d`, port))
+	if err != nil {
+		return nil, err
+	}
+	return parseUnixSSPortProcessRows(raw), nil
+}
+
+func queryToolPortProcessesUnixLsof(port int) ([]toolPortProcessItem, error) {
 	raw, err := runToolCommand(`lsof`, `-nP`, fmt.Sprintf(`-iTCP:%d`, port), `-sTCP:LISTEN`)
 	if err != nil {
-		return nil, fmt.Errorf(`查询端口占用失败，请确认系统已安装 lsof: %w`, err)
+		return nil, err
 	}
 	return parseUnixPortProcessRows(raw), nil
 }
@@ -126,6 +152,95 @@ func killToolProcess(pid int) error {
 	default:
 		return fmt.Errorf(`当前系统暂不支持: %s`, runtime.GOOS)
 	}
+}
+
+func CleanupPortsByPreference(portList []string, preferredCommands []string) error {
+	for _, rawPort := range portList {
+		portText := strings.TrimSpace(rawPort)
+		if portText == `` {
+			continue
+		}
+		port, err := strconv.Atoi(portText)
+		if err != nil || port <= 0 || port > 65535 {
+			return fmt.Errorf(`无效端口: %s`, portText)
+		}
+
+		items, err := queryToolPortProcessesFunc(port)
+		if err != nil {
+			return err
+		}
+		preferred, _ := buildPortCleanupPlan(items, preferredCommands)
+		if err = killPortProcessList(port, preferred); err != nil {
+			return err
+		}
+
+		items, err = queryToolPortProcessesFunc(port)
+		if err != nil {
+			return err
+		}
+		_, fallback := buildPortCleanupPlan(items, preferredCommands)
+		if err = killPortProcessList(port, fallback); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func killPortProcessList(port int, pidList []int) error {
+	for _, pid := range pidList {
+		if err := killToolProcessFunc(pid); err != nil {
+			return fmt.Errorf(`清理端口 %d 的进程 %d 失败: %w`, port, pid, err)
+		}
+	}
+	return nil
+}
+
+func buildPortCleanupPlan(items []toolPortProcessItem, preferredCommands []string) ([]int, []int) {
+	preferredList := make([]int, 0, len(items))
+	fallbackList := make([]int, 0, len(items))
+	seen := make(map[int]struct{}, len(items))
+	for _, item := range items {
+		if item.PID <= 0 {
+			continue
+		}
+		if _, ok := seen[item.PID]; ok {
+			continue
+		}
+		seen[item.PID] = struct{}{}
+		if matchPreferredProcessName(item.Command, preferredCommands) {
+			preferredList = append(preferredList, item.PID)
+			continue
+		}
+		fallbackList = append(fallbackList, item.PID)
+	}
+	return preferredList, fallbackList
+}
+
+func matchPreferredProcessName(command string, preferredCommands []string) bool {
+	if len(preferredCommands) == 0 {
+		return false
+	}
+	name := normalizeProcessName(command)
+	if name == `` {
+		return false
+	}
+	for _, preferred := range preferredCommands {
+		if name == normalizeProcessName(preferred) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeProcessName(command string) string {
+	name := strings.TrimSpace(command)
+	if name == `` {
+		return ``
+	}
+	name = filepath.Base(strings.ReplaceAll(name, `\`, `/`))
+	name = strings.ToLower(name)
+	name = strings.TrimSuffix(name, `.exe`)
+	return name
 }
 
 func runToolCommand(name string, args ...string) (string, error) {
@@ -213,6 +328,63 @@ func parseWindowsPortProcessRows(raw string, port int, pidNameMap map[int]string
 		list = append(list, item)
 	}
 	return list
+}
+
+func parseUnixSSPortProcessRows(raw string) []toolPortProcessItem {
+	lines := strings.Split(raw, "\n")
+	list := make([]toolPortProcessItem, 0, len(lines))
+	for _, line := range lines {
+		clean := strings.TrimSpace(strings.ReplaceAll(line, "\r", ""))
+		if clean == `` || strings.HasPrefix(clean, `State `) {
+			continue
+		}
+		fields := strings.Fields(clean)
+		// 中文注释：`ss -tlnp` 的列顺序固定为 State/Recv-Q/Send-Q/Local/Peer/Process。
+		// English comment: `ss -tlnp` uses State/Recv-Q/Send-Q/Local/Peer/Process columns.
+		if len(fields) < 6 {
+			continue
+		}
+		pid := extractPIDFromSSUsers(fields[len(fields)-1])
+		if pid <= 0 {
+			continue
+		}
+		list = append(list, toolPortProcessItem{
+			PID:      pid,
+			Command:  extractCommandFromSSUsers(fields[len(fields)-1]),
+			Protocol: `tcp`,
+			Address:  fields[3],
+		})
+	}
+	return list
+}
+
+func extractPIDFromSSUsers(usersField string) int {
+	// users:(("cmd",pid=1234,fd=3))
+	pidIdx := strings.Index(usersField, `pid=`)
+	if pidIdx < 0 {
+		return 0
+	}
+	pidStr := usersField[pidIdx+4:]
+	end := strings.IndexAny(pidStr, `,)`)
+	if end < 0 {
+		end = len(pidStr)
+	}
+	pid, _ := strconv.Atoi(pidStr[:end])
+	return pid
+}
+
+func extractCommandFromSSUsers(usersField string) string {
+	// users:(("cmd",pid=1234,fd=3))
+	start := strings.Index(usersField, `(("`)
+	if start < 0 {
+		return ``
+	}
+	rest := usersField[start+3:]
+	end := strings.Index(rest, `"`)
+	if end < 0 {
+		return ``
+	}
+	return rest[:end]
 }
 
 func parseUnixPortProcessRows(raw string) []toolPortProcessItem {

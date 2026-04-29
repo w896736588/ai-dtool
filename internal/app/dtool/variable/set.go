@@ -1,6 +1,7 @@
 package variable
 
 import (
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/struct"
 	"dev_tool/internal/pkg/p_common"
@@ -59,7 +60,7 @@ func (h *VariableSet) Set() (_struct.VCmdResult, error) {
 			form.Name,
 			p_common.TMarkDownClient.Bold(`choose：`),
 			form.Select.GetSelectOption(h.EditValue).Label) + "\n")
-		VariableClient.SelectChooseReplace(&form, h.ReplaceList, h.EditValue)
+		component.VariableClient.SelectChooseReplace(&form, h.ReplaceList, h.EditValue)
 	case define.VariableCmdInput, define.VariableCmdTextarea:
 		if gstool.SContains(strings.ToLower(form.Name), []string{`php`}) {
 			h.Sse.Send(fmt.Sprintf(`%s %s %s`,
@@ -82,7 +83,7 @@ func (h *VariableSet) Set() (_struct.VCmdResult, error) {
 		if err != nil {
 			return cmdResult, errors.New(`解析input失败 ` + err.Error())
 		}
-		VariableClient.AddReplace(h.ReplaceList, form.ResultKey, h.EditValue)
+		component.VariableClient.AddReplace(h.ReplaceList, form.ResultKey, h.EditValue)
 	default:
 		cmdResult.RunStatus = define.RunStatusFinish
 		return cmdResult, errors.New(`不支持的操作` + form.CmdType)

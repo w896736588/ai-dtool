@@ -1,6 +1,7 @@
 package business
 
 import (
+	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"fmt"
 	"path/filepath"
@@ -100,6 +101,30 @@ func ReadMainDBConfig() MainDBConfig {
 	return config
 }
 
+// ReadMainDBAutoSyncConfig 读取主库自动同步配置。 // Read main db auto-sync config from ini and runtime state.
+func ReadMainDBAutoSyncConfig() common.MainDBAutoSyncConfig {
+	mainConfig := ReadMainDBConfig()
+	autoSyncMinutes := common.DefaultMainDBAutoPushDelayMinutes
+	if component.EnvClient != nil && component.EnvClient.ConfigBase != nil {
+		if component.EnvClient.ConfigBase.DbAutoPushDelayMinutes > 0 {
+			autoSyncMinutes = component.EnvClient.ConfigBase.DbAutoPushDelayMinutes
+		}
+	}
+	// IsGitRepo 只在 PrepareMainDBStore 中通过 gitSyncer.IsGitRepo() 实际验证后才为 true，
+	// ReadMainDBConfig() 不设置该字段（始终为零值），因此需要从 preparedMainDBStore 取已验证的值。
+	isGitRepo := mainConfig.IsGitRepo
+	if preparedMainDBStore != nil {
+		isGitRepo = preparedMainDBStore.Config.IsGitRepo
+	}
+	return common.MainDBAutoSyncConfig{
+		Dir:             mainConfig.Dir,
+		DBName:          mainConfig.DBName,
+		IsGitRepo:       isGitRepo,
+		GitRepoEnabled:  mainConfig.GitRepoEnabled,
+		AutoSyncMinutes: autoSyncMinutes,
+	}
+}
+
 // PrepareMainDBStore 在主库初始化前按配置执行 git pull。 // Performs git pull before opening the main database when enabled.
 func PrepareMainDBStore() error {
 	config := ReadMainDBConfig()
@@ -156,4 +181,33 @@ func SyncMainDBStoreOnShutdown() error {
 	}
 	_, err := SyncMainDBFile(config, preparedMainDBStore.Git)
 	return err
+}
+
+// StartMainDBAutoSync 启动主库自动同步定时器。 // Start the main db auto-sync periodic timer.
+func StartMainDBAutoSync() {
+	if preparedMainDBStore == nil {
+		gstool.FmtPrintlnLogTime(`主库未完成预处理，跳过自动同步启动`)
+		return
+	}
+	config := ReadMainDBAutoSyncConfig()
+	if !config.IsGitRepo {
+		gstool.FmtPrintlnLogTime(`主库未启用 git 仓库同步，跳过自动同步启动`)
+		return
+	}
+	component.MainDBAutoSyncRuntime.Configure(config, preparedMainDBStore.Git)
+	component.MainDBAutoSyncRuntime.Start()
+}
+
+// StopMainDBAutoSync 停止主库自动同步定时器并执行最后一次同步。 // Stop the main db auto-sync timer and perform a final sync.
+func StopMainDBAutoSync() {
+	if component.MainDBAutoSyncRuntime == nil {
+		return
+	}
+	hasPendingTask := component.MainDBAutoSyncRuntime.HasPendingTask()
+	component.MainDBAutoSyncRuntime.Stop()
+	if hasPendingTask {
+		_ = component.MainDBAutoSyncRuntime.SyncPendingTaskNow()
+		return
+	}
+	_ = component.MainDBAutoSyncRuntime.SyncNow()
 }

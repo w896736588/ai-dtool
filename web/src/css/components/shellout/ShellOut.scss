@@ -1,0 +1,565 @@
+.shell-console {
+  padding: 16px;
+  background: #f0f2f5;
+  height: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+
+  .select {
+    width: 200px
+  }
+
+  .command {
+    width: 300px;
+    margin: 0 10px
+  }
+
+  .name {
+    width: 200px;
+    margin-right: 10px
+  }
+}
+
+:deep(.el-tabs--card > .el-tabs__header .el-tabs__item.is-active) {
+  background-color: #eeeeee !important; // 选中背景色
+  border: 1px solid #409eff !important; // 边框颜色
+  border-bottom-color: #409eff !important;
+  font-weight: bold;
+}
+
+// 标签标题样式
+.tab-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tab-badge {
+  :deep(.el-badge__content) {
+    transform: scale(0.8);
+  }
+}
+
+.error-line {
+  white-space: pre-line; /* 把 \n 变成换行，不保留多余空格 */
+}
+
+// 执行信息区域样式
+.execution-info {
+  margin-bottom: 12px;
+  padding: 16px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e1e4e8;
+
+  h4 {
+    font-size: 15px;
+    font-weight: 500;
+    color: #4a5568;
+    margin: 0;
+  }
+
+  :deep(.el-descriptions) {
+    .el-descriptions__label {
+      font-weight: 500;
+      color: #5c6370;
+    }
+  }
+}
+
+.rule-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.rule-summary-card {
+  padding: 16px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ffffff 0%, #f7fafc 100%);
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+}
+
+.rule-summary-card__label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.rule-summary-card__value {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.rule-summary-card__desc {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.error-tag-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+// 命令弹窗样式
+.command-popover {
+  h4 {
+    margin: 0 0 12px 0;
+    color: #2c3e50;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .full-command {
+    background: #edf3e9;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #435244;
+    margin: 0 0 12px 0;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #d6e1d1;
+  }
+
+  .command-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+// 错误列表样式
+.error-list {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 8px;
+  background: #f0f2f5;
+  border-radius: 8px;
+
+  // Custom scrollbar
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #e2ebdc;
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #a4b7a3;
+    border-radius: 4px;
+
+    &:hover {
+      background: #8fa48f;
+    }
+  }
+}
+
+.search-item {
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  border-left: 3px solid transparent;
+
+  &:hover {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    transform: translateX(2px);
+  }
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  // Unread state - highlight with red border
+  &:not([style*="border: 0px"]) {
+    border-left-color: #c96269;
+    background: #fffbf7;
+  }
+
+  // Line number styling
+  &::before {
+    content: "##" attr(data-line) "##";
+    display: inline-block;
+    background: #5c6370;
+    color: #abb2bf;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    margin-right: 8px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    vertical-align: middle;
+  }
+}
+
+.search-content {
+  display: inline;
+  font-size: 13px;
+  color: #4a5568;
+  line-height: 1.6;
+  word-break: break-all;
+
+  // Highlight text styling
+  :deep(span[style*="color:red"]) {
+    background: rgba(201, 98, 105, 0.15);
+    color: #c96269 !important;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+}
+
+.search-actions {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e0e0e0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.context-btn {
+  font-weight: 500;
+  transition: all 0.2s ease;
+  
+  .btn-icon {
+    margin-right: 4px;
+    font-size: 14px;
+  }
+  
+  &:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.error-item {
+  margin-bottom: 6px;
+  padding: 6px;
+  border: 1px solid #c96269;
+  border-radius: 1px;
+  background: #fff5f7;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+// Card style for error items
+.card-item {
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  border-left: 3px solid #c96269;
+
+  &:hover {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    transform: translateX(2px);
+  }
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  // Line number styling using pseudo element
+  &::before {
+    content: "##" attr(data-line) "##";
+    display: none;
+  }
+}
+
+.error-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #e0e0e0;
+}
+
+.error-time {
+  font-size: 12px;
+  color: #909399;
+  background: #f5f7fa;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.error-content {
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #435244;
+  line-height: 1.7;
+  word-break: break-all;
+  white-space: pre-wrap;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
+  background: #edf3e9;
+  padding: 14px 16px;
+  border-radius: 8px;
+  border-left: 3px solid #c96269;
+
+  // Highlight error styling
+  :deep(span[style*="color:red"]) {
+    background: rgba(201, 98, 105, 0.2);
+    color: #c96269 !important;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+}
+
+.error-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px dashed #e0e0e0;
+}
+
+.error-context-info {
+  font-size: 12px;
+  color: #67c23a;
+  background: #f0f9eb;
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-basis: 100%;
+}
+
+// Context list styles
+.context-list {
+  background: #eef3ea;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.context-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 12px;
+  background: #ffffff;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  transition: all 0.2s ease;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  &:hover {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+  }
+
+  &.highlight-line {
+    background: #fff5f7;
+    border-left: 3px solid #c96269;
+    box-shadow: 0 2px 4px rgba(201, 98, 105, 0.2);
+    animation: highlight-pulse 2s ease-in-out;
+  }
+}
+
+.line-number {
+  flex-shrink: 0;
+  display: inline-block;
+  background: #dbe7d5;
+  color: #4f6350;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  margin-right: 12px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  min-width: 80px;
+  text-align: center;
+}
+
+.line-content {
+  flex: 1;
+  font-size: 13px;
+  color: #435244;
+  line-height: 1.7;
+  word-break: break-all;
+  white-space: pre-wrap;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
+  background: #edf3e9;
+  padding: 12px 14px;
+  border-radius: 6px;
+  border-left: 3px solid #8fae92;
+}
+
+@keyframes highlight-pulse {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+}
+
+
+.error-time {
+  font-size: 12px;
+  color: #909399;
+}
+
+.error-line {
+  font-size: 12px;
+  color: #606266;
+  background: #e6e6e6;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.error-content {
+  white-space: pre-line; /* 把 \n 变成换行，不保留多余空格 */
+  background: #2d2d2d;
+  color: #e0e0e0;
+  padding: 12px;
+  border-radius: 4px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-all;
+  margin: 0;
+
+  // 高亮错误关键词的样式
+
+  :deep(.error-highlight) {
+    color: #ff6b6b;
+    font-weight: bold;
+    background: rgba(255, 107, 107, 0.1);
+    padding: 2px 4px;
+    border-radius: 3px;
+
+    // 严重错误
+
+    &.error-critical {
+      color: #ff4757;
+      background: rgba(255, 71, 87, 0.1);
+    }
+
+    // 警告
+
+    &.error-warning {
+      color: #ffa502;
+      background: rgba(255, 165, 2, 0.1);
+    }
+
+    // 数据库错误 - 使用紫色
+
+    &.error-database {
+      color: #a29bfe;
+      background: rgba(162, 155, 254, 0.1);
+      border-left: 3px solid #a29bfe;
+    }
+
+    // 语法错误 - 使用橙色
+
+    &.error-syntax {
+      color: #fd9644;
+      background: rgba(253, 150, 68, 0.1);
+      border-left: 3px solid #fd9644;
+    }
+  }
+
+  :deep(.error-line-marker) {
+    background: rgba(255, 107, 107, 0.2) !important;
+    border: 2px solid #ff6b6b;
+    padding: 4px 8px;
+    display: block;
+    margin: 8px 0;
+    border-radius: 6px;
+    font-weight: bold;
+    color: #ff6b6b;
+  }
+}
+
+.no-errors {
+  text-align: center;
+  color: #909399;
+  padding: 60px 20px;
+  font-size: 14px;
+  
+  .no-data-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.6;
+  }
+}
+
+pre {
+  margin: 0;
+  padding: 10px 0 20px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+@keyframes gentle-blink {
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.running-tab {
+  color: #52c41a !important;
+  font-weight: bold !important;
+}
+
+/* 搜索弹窗内容区样式（仅作用于搜索弹窗） */
+:deep(.search-dialog .el-dialog__body) {
+  padding: 20px !important;
+  background: #f5f7fa;
+}
+
+/* 规则列表弹窗表格样式 */
+.match-type-text {
+  color: #606050;
+  font-size: 13px;
+}
+
+:deep(.el-table .el-table__header th) {
+  background: #f7f7f2;
+  color: #606050;
+  font-weight: 600;
+}
+
+:deep(.el-table .el-table__row:hover > td) {
+  background-color: #f3f7ef !important;
+}
+
+// Search statistics badge
+.search-stats {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 8px;
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
+}

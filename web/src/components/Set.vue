@@ -16,6 +16,9 @@
       <el-tab-pane label="Config" name="Config" class="set-tab-pane">
         <memory ref="memory" :show-runtime-config="true"></memory>
       </el-tab-pane>
+      <el-tab-pane label="Schedule" name="Schedule" class="set-tab-pane">
+        <cron_setting ref="cron_setting"></cron_setting>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -28,10 +31,11 @@ import store from '@/utils/base/store'
 import global from '@/components/set/global.vue'
 import ai_provider from '@/components/set/ai_provider.vue'
 import memory from '@/components/set/memory.vue'
+import cron_setting from '@/components/set/cron_setting.vue'
 
 // SET_ACTIVE_TABS 定义当前仍保留在配置页中的标签页，避免旧缓存命中已迁出的业务设置。
 // Keep the tabs that still belong to the settings page to avoid stale cache pointing to moved pages.
-const SET_ACTIVE_TABS = ['Ssh', 'Mysql', 'Global', 'AI', 'Config']
+const SET_ACTIVE_TABS = ['Ssh', 'Mysql', 'Global', 'AI', 'Config', 'Schedule']
 
 export default {
   props: {
@@ -45,6 +49,7 @@ export default {
     global,
     ai_provider,
     memory,
+    cron_setting,
   },
   data() {
     return {
@@ -91,6 +96,9 @@ export default {
           this.$refs.memory && this.$refs.memory.loadConfig && this.$refs.memory.loadConfig()
           this.$refs.memory && this.$refs.memory.loadAiModelList && this.$refs.memory.loadAiModelList()
           break
+        case 'Schedule':
+          this.$refs.cron_setting && this.$refs.cron_setting.loadConfig && this.$refs.cron_setting.loadConfig()
+          break
         default:
           break
       }
@@ -110,43 +118,4 @@ export default {
 }
 </script>
 
-<style scoped>
-.set-page-tabs {
-  background: #fff;
-  border: 1px solid #e8e8e0;
-  border-radius: 12px;
-  padding: 10px 12px;
-}
-
-.set-tabs :deep(.el-tabs__header) {
-  margin-bottom: 10px;
-}
-
-.set-tabs :deep(.el-tabs__nav-wrap::after) {
-  background-color: #e8e8e0;
-}
-
-.set-tabs :deep(.el-tabs__item) {
-  height: 36px;
-  color: #5c6856;
-  font-weight: 500;
-}
-
-.set-tabs :deep(.el-tabs__item.is-active) {
-  color: #4f804f;
-}
-
-.set-tabs :deep(.el-tabs__active-bar) {
-  background-color: #4f804f;
-}
-
-.set-tab-pane {
-  padding: 4px;
-}
-
-@media (max-width: 768px) {
-  .set-page-tabs {
-    padding: 8px;
-  }
-}
-</style>
+<style scoped src="@/css/components/Set.css"></style>

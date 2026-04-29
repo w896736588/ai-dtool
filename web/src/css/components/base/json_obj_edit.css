@@ -1,0 +1,9 @@
+.el-form-item {
+  padding: 5px;
+}
+
+.ellipsis-column .cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

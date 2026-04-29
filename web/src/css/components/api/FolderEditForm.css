@@ -1,0 +1,23 @@
+.folder-edit-form {
+  padding: 12px;
+  border: 1px solid #e8eee5;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(80, 110, 80, 0.08);
+}
+
+.folder-edit-form :deep(.el-form-item:last-child .el-form-item__content) {
+  gap: 10px;
+}
+
+.folder-edit-form :deep(.el-input__wrapper),
+.folder-edit-form :deep(.el-select .el-input__wrapper),
+.folder-edit-form :deep(.el-textarea__inner) {
+  border-radius: 8px;
+}
+
+.folder-edit-form :deep(.el-radio-group) {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}

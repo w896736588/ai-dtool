@@ -175,10 +175,8 @@ export default {
   methods: {
     loadLocalIp() {
       const _this = this
-      Base.BasePost('/api/BaseLogin', {}, function (res) {
-        console.log('BaseLogin response:', res)
+      Base.BasePost('/api/GetLocalIP', {}, function (res) {
         if (res.ErrCode === 0 && res.Data && res.Data.local_ip) {
-          console.log('Setting localIp:', res.Data.local_ip)
           _this.localIp = res.Data.local_ip
         }
       })
@@ -308,7 +306,7 @@ export default {
     },
 
     hasLastResult(api) {
-      return api && (api.last_result !== '') && api.last_result !== '{}'
+      return api && api.last_result && api.last_result !== '{}'
     },
 
     formatJsonBody(body) {
@@ -322,6 +320,26 @@ export default {
         return body
       } catch (e) {
         return body
+      }
+    },
+
+    formatMarkdownBlockquote(content) {
+      if (content === undefined || content === null) return ''
+      const text = String(content)
+      return text.split('\n').map(line => line === '' ? '>' : `> ${line}`).join('\n')
+    },
+
+    getLastResultExample(api) {
+      if (!this.hasLastResult(api)) return ''
+
+      try {
+        const lastResultData = JSON.parse(api.last_result)
+        if (lastResultData && Object.prototype.hasOwnProperty.call(lastResultData, 'result')) {
+          return this.formatJsonBody(lastResultData.result)
+        }
+        return this.formatJsonBody(lastResultData)
+      } catch {
+        return this.formatJsonBody(api.last_result)
       }
     },
 
@@ -377,14 +395,17 @@ export default {
         markdownLines.push('| --- | --- |');
         let apiUrl = this.formatApiUrl(api.url)
         markdownLines.push(`| 请求URL | \`${api.method}\` \`${apiUrl}\` |`);
-        markdownLines.push(`| 请求类型 | \`${api.content_type}\` |`);
+        if (this.hasBodyContent(api)) {
+          markdownLines.push(`| 请求类型 | \`${api.content_type}\` |`);
+        }
         markdownLines.push(`| 创建时间 | ${this.formatTimestamp(api.create_time)} |`);
         markdownLines.push('');
 
         //描述
-        if(api.desc !== ''){
-          markdownLines.push(`备注 `);
-          markdownLines.push(...api.desc.split('\n'));
+        if(api.desc){
+          markdownLines.push('备注');
+          markdownLines.push('');
+          markdownLines.push(this.formatMarkdownBlockquote(api.desc));
           markdownLines.push('');
         }
 
@@ -462,16 +483,13 @@ export default {
           markdownLines.push('');
         }
 
-        // 请求结果
-        // if (this.hasLastResult(api)) {
-        //   api.last_result_data = JSON.parse(api.last_result)
-        //   markdownLines.push('### 请求结果');
-        //   markdownLines.push('');
-        //   markdownLines.push('```json');
-        //   markdownLines.push(this.formatJsonBody(api.last_result_data.result));
-        //   markdownLines.push('```');
-        //   markdownLines.push('');
-        // }
+        // 返回结果示例
+        if (this.hasLastResult(api)) {
+          markdownLines.push('返回结果示例');
+          markdownLines.push('');
+          markdownLines.push(this.formatMarkdownBlockquote(this.getLastResultExample(api)));
+          markdownLines.push('');
+        }
 
         // 分隔线（除最后一个API外）
         if (index < this.apis.length - 1) {
@@ -493,199 +511,5 @@ export default {
 }
 </script>
 
-<style scoped> .api-documentation {
-  display: flex;
-  height: 100vh;
-  overflow: hidden;
-  background: #f3f6f2;
-}
-
-.sidebar {
-  width: 240px;
-  background: #fff;
-  border-right: 1px solid #e6ece0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.sidebar-header {
-  padding: 16px 12px;
-  border-bottom: 1px solid #e6ece0;
-  background: #f7f9f5;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.sidebar-header h3 {
-  margin: 0;
-  padding: 0;
-  font-size: 14px;
-  color: #303133;
-  font-weight: 600;
-}
-
-.sidebar-header :deep(.el-button) {
-  width: 100%;
-  display: block;
-  margin-left: 0;
-}
-
-.sidebar-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 6px 0;
-}
-
-.api-menu {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.api-menu li {
-  padding: 8px 16px;
-  cursor: pointer;
-  font-size: 13px; /* 字体缩小 */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  border-left: 2px solid transparent;
-  transition: all 0.2s;
-}
-
-.api-menu li:hover {
-  background-color: #f4faf2;
-}
-
-.api-menu li.active {
-  background-color: #edf6ea;
-  border-left: 2px solid #5a8a5a;
-  color: #4f7d4f;
-  font-weight: 500;
-}
-
-.api-content {
-  flex: 1;
-  overflow-y: auto;
-  background: #f3f6f2;
-}
-
-/* 其余样式保持不变... */
-.content-wrapper {
-  padding: 20px;
-}
-
-.api-section {
-  background: #fff;
-  margin-bottom: 20px;
-  padding: 20px;
-  border: 1px solid #e8eee5;
-  border-radius: 12px;
-  box-shadow: 0 6px 18px rgba(80, 110, 80, 0.08);
-}
-
-.api-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #e6ece0;
-}
-
-.method-tag {
-  font-weight: bold;
-  min-width: 60px;
-  text-align: center;
-}
-
-.api-title {
-  margin: 0;
-  color: #303133;
-  font-size: 20px;
-}
-
-.section-content {
-  margin: 10px;
-}
-
-.section-content h4 {
-  margin-top: 0;
-  margin-bottom: 10px;
-  color: #4f5f4b;
-  border-bottom: 1px solid #e6ece0;
-  padding-bottom: 5px;
-}
-
-.json-body {
-  background: #2d2d2d;
-  color: #f8f8f2;
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px solid #2f3a2f;
-  overflow: auto;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 14px;
-  white-space: pre;
-}
-
-.raw-body {
-  background: #f7f9f5;
-  border: 1px solid #e6ece0;
-  padding: 16px;
-  border-radius: 8px;
-  overflow: auto;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 14px;
-  white-space: pre-wrap;
-}
-
-.no-content {
-  color: #909399;
-  font-style: italic;
-  padding: 10px 0;
-}
-
-.response-take-item {
-  background: #f7f9f5;
-  border: 1px solid #e6ece0;
-  padding: 10px;
-  border-radius: 8px;
-  margin-bottom: 8px;
-}
-
-.response-take-item > div {
-  margin-bottom: 4px;
-}
-
-.response-take-item > div:last-child {
-  margin-bottom: 0;
-}
-
-.section-divider {
-  height: 1px;
-  background: #e6ece0;
-  margin: 30px 0;
-}
-
-/* 滚动条样式 */
-.sidebar::-webkit-scrollbar, .api-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.sidebar::-webkit-scrollbar-track, .api-content::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 3px;
-}
-
-.sidebar::-webkit-scrollbar-thumb, .api-content::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 3px;
-}
-
-.sidebar::-webkit-scrollbar-thumb:hover, .api-content::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
-} </style>
+<style scoped src="@/css/components/api/ApiDocument.css"></style>
 

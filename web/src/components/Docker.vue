@@ -12,6 +12,7 @@
       </div>
       <div class="control-row">
         <el-select v-model="chooseSshId" placeholder="选择环境" @change="changeSsh" class="env-select">
+          <el-option key="__all__" label="全部" :value="0"></el-option>
           <el-option v-for="(value) in sshList" :key="value.name" :label="value.name" :value="value.id">
           </el-option>
         </el-select>
@@ -62,7 +63,7 @@
     </div>
 
     <div class="compose-table-card">
-      <el-table :data="composeList" :row-class-name="getColumnColor" class="compose-table">
+      <el-table :data="composeList" :row-class-name="getColumnColor" class="compose-table" height="calc(100vh - 220px)">
         <el-table-column label="名称" sortable width="200">
           <template #default="scope">
             <div class="name-cell">
@@ -79,46 +80,55 @@
             </div>
           </template>
         </el-table-column>
+        <el-table-column v-if="!chooseSshId" label="环境" sortable width="120">
+          <template #default="scope">
+            <span v-html="scope.row.ssh_name"></span>
+          </template>
+        </el-table-column>
         <el-table-column label="位置" sortable width="260">
           <template #default="scope">
             <code class="path-text" v-html="scope.row.compose_yml_path"></code>
           </template>
         </el-table-column>
-        <el-table-column label="env file" sortable width="260">
+        <el-table-column fixed="right" label="操作" min-width="360">
           <template #default="scope">
-            <code class="path-text" v-html="scope.row.env_file"></code>
-          </template>
-        </el-table-column>
-        <el-table-column fixed="right" label="操作" min-width="620">
-          <template #default="scope">
-            <div class="operation-block">
-              <span class="operation-title">常用操作：</span>
-              <div class="operation-buttons">
-                <pl-button class="operation-btn operation-btn-primary" size="small" plain @click="dialogServices(scope.row)">服务列表</pl-button>
-                <pl-button class="operation-btn operation-btn-primary" size="small" plain @click="status(scope.row)">运行状态</pl-button>
-                <pl-button class="operation-btn operation-btn-success" size="small" plain @click="start(scope.row)">启动（up -d）</pl-button>
-                <pl-button class="operation-btn operation-btn-success" size="small" plain @click="restart(scope.row)">重启（restart）</pl-button>
-                <pl-button class="operation-btn operation-btn-danger" size="small" plain @click="stop(scope.row)">停止(stop)</pl-button>
-                <pl-button class="operation-btn operation-btn-primary" size="small" plain @click="configShow(scope.row)">查看compose.yml</pl-button>
-                <pl-button class="operation-btn operation-btn-primary" size="small" plain @click="envShow(scope.row)">查看env</pl-button>
-              </div>
-            </div>
-            <div class="operation-block">
+            <div v-if="scope.row.default_service_list && scope.row.default_service_list.length" class="operation-block">
               <span class="operation-title">快速重启：</span>
               <div class="quick-actions">
                 <template v-for="item in scope.row.default_service_list" :key="`restart_${scope.row.id}_${item}`">
-                  <pl-button class="quick-action-btn quick-action-restart" size="small" plain @click="restart(scope.row , item)">{{ item }}</pl-button>
+                  <pl-button size="small" type="success" plain @click="restart(scope.row , item)">{{ item }}</pl-button>
                 </template>
               </div>
             </div>
-            <div class="operation-block">
+            <div v-if="scope.row.default_service_list && scope.row.default_service_list.length" class="operation-block">
               <span class="operation-title">快速停止：</span>
               <div class="quick-actions">
                 <template v-for="item in scope.row.default_service_list" :key="`stop_${scope.row.id}_${item}`">
-                  <pl-button class="quick-action-btn quick-action-stop" size="small" plain @click="stop(scope.row , item)">{{ item }}</pl-button>
+                  <pl-button size="small" type="warning" plain @click="stop(scope.row , item)">{{ item }}</pl-button>
                 </template>
               </div>
             </div>
+          </template>
+        </el-table-column>
+        <el-table-column fixed="right" label="更多操作" width="120">
+          <template #default="scope">
+            <el-dropdown @command="(command) => handleComposeRowActionCommand(scope.row, command)">
+              <pl-button size="small" type="primary" plain class="operation-dropdown-trigger">
+                更多操作
+                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </pl-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_SERVICE_LIST">服务列表</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_STATUS">运行状态</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_SHOW_CONFIG" divided>查看 compose.yml</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_SHOW_ENV">查看 env</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_RESTART" divided>重启（restart）</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_STOP">停止（stop）</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_START">启动（up -d）</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -183,8 +193,8 @@
         <el-table-column label="操作" min-width="220">
           <template #default="scope">
             <div class="operation-buttons">
-              <pl-button class="operation-btn" size="small" plain @click="showImageContainers(scope.row)">查看容器</pl-button>
-              <pl-button class="operation-btn operation-btn-danger" size="small" plain @click="confirmRemoveImage(scope.row)">移除镜像</pl-button>
+              <pl-button size="small" type="primary" plain @click="showImageContainers(scope.row)">查看容器</pl-button>
+              <pl-button size="small" type="danger" plain @click="confirmRemoveImage(scope.row)">移除镜像</pl-button>
             </div>
           </template>
         </el-table-column>
@@ -204,8 +214,8 @@
         <el-table-column label="操作" min-width="220">
           <template #default="scope">
             <div class="operation-buttons">
-              <pl-button class="operation-btn operation-btn-danger" size="small" plain @click="confirmStopContainer(scope.row)">停止</pl-button>
-              <pl-button class="operation-btn operation-btn-danger" size="small" plain @click="confirmRemoveContainer(scope.row)">移除</pl-button>
+              <pl-button size="small" type="warning" plain @click="confirmStopContainer(scope.row)">停止</pl-button>
+              <pl-button size="small" type="danger" plain @click="confirmRemoveContainer(scope.row)">移除</pl-button>
             </div>
           </template>
         </el-table-column>
@@ -249,6 +259,15 @@ const TRUNCATE_CONTAINER_LOG_TITLE = '确认清理容器日志'
 const TRUNCATE_CONTAINER_LOG_MESSAGE = '确定清理当前环境下全部容器日志吗？该操作会执行 truncate -s 0 /var/lib/docker/containers/*/*-json.log。'
 const TRUNCATE_CONTAINER_LOG_SUCCESS = '容器日志已清理'
 const TRUNCATE_CONTAINER_LOG_ERROR = '容器日志清理失败'
+// COMPOSE_ROW_ACTION_* 统一定义表格行下拉动作命令，避免模板里散落魔法字符串。
+// COMPOSE_ROW_ACTION_* centralizes row dropdown commands to avoid magic strings in the template.
+const COMPOSE_ROW_ACTION_SERVICE_LIST = 'service_list'
+const COMPOSE_ROW_ACTION_STATUS = 'status'
+const COMPOSE_ROW_ACTION_SHOW_CONFIG = 'show_config'
+const COMPOSE_ROW_ACTION_SHOW_ENV = 'show_env'
+const COMPOSE_ROW_ACTION_RESTART = 'restart'
+const COMPOSE_ROW_ACTION_STOP = 'stop'
+const COMPOSE_ROW_ACTION_START = 'start'
 
 export default {
   props: {},
@@ -279,7 +298,7 @@ export default {
       imageContainerLoading: false,
       currentImageRow: {},
       //选中的环境
-      chooseSshId: '',
+      chooseSshId: 0,
       chooseComposeeConfig: {},
       //是否显示所有的消费者
       showAllSupervisor: false,
@@ -307,6 +326,13 @@ export default {
       sseThrottleStringFunc: null,
       defaultServiceLoadingMap: {},
       composeSettingsVisible: false,
+      COMPOSE_ROW_ACTION_SERVICE_LIST,
+      COMPOSE_ROW_ACTION_STATUS,
+      COMPOSE_ROW_ACTION_SHOW_CONFIG,
+      COMPOSE_ROW_ACTION_SHOW_ENV,
+      COMPOSE_ROW_ACTION_RESTART,
+      COMPOSE_ROW_ACTION_STOP,
+      COMPOSE_ROW_ACTION_START,
     }
   },
   inject: ["showTerminal", "resizeTerminal"],
@@ -319,16 +345,7 @@ export default {
       if (response.ErrCode === 0) {
         _that.sshList = response.Data
         if (_that.sshList.length > 0) {
-          _that.chooseSshId = parseInt(_that.getLastSshId())
-          let exist = false
-          for (let i in _that.sshList) {
-            if (parseInt(_that.sshList[i]['id']) === parseInt(_that.chooseSshId)) {
-              exist = true
-            }
-          }
-          if (!exist) {
-            _that.chooseSshId = '' + _that.sshList[0]['id']
-          }
+          _that.chooseSshId = _that.getLastSshId()
           _that.changeSsh()
         }
       }
@@ -351,12 +368,43 @@ export default {
     },
   },
   methods: {
+    // handleComposeRowActionCommand 统一分发项目级下拉操作，保持模板简洁且便于后续扩展。
+    // handleComposeRowActionCommand routes compose row dropdown actions to keep the template compact and extensible.
+    handleComposeRowActionCommand: function (row, command) {
+      // switch 分支只做动作分发，不改变原有接口调用语义。
+      // The switch only dispatches actions and preserves existing API behavior.
+      switch (command) {
+        case COMPOSE_ROW_ACTION_SERVICE_LIST:
+          this.dialogServices(row)
+          return
+        case COMPOSE_ROW_ACTION_STATUS:
+          this.status(row)
+          return
+        case COMPOSE_ROW_ACTION_SHOW_CONFIG:
+          this.configShow(row)
+          return
+        case COMPOSE_ROW_ACTION_SHOW_ENV:
+          this.envShow(row)
+          return
+        case COMPOSE_ROW_ACTION_RESTART:
+          this.restart(row)
+          return
+        case COMPOSE_ROW_ACTION_STOP:
+          this.stop(row)
+          return
+        case COMPOSE_ROW_ACTION_START:
+          this.start(row)
+          return
+        default:
+          return
+      }
+    },
     prepareActionSse: function (action) {
       let _that = this
       if (_that.sse_distribute_id) {
         sseDistribute.UnRegisterReceive(_that.sse_distribute_id)
       }
-      _that.sse_distribute_id = sseDistribute.GetSseDistributeId(`docker_${action}_${Date.now()}`)
+      _that.sse_distribute_id = sseDistribute.GetSseDistributeId(`docker`)
       if (!_that.sseThrottleStringFunc) {
         _that.sseThrottleStringFunc = new Throttle_string(50, text => {
           _that.shellController.sshResult += text
@@ -550,10 +598,11 @@ export default {
     refreshServices : function (row){
       let _that = this
       _that.prepareActionSse('services_refresh')
+      let sshId = _that.getSshId(_that.dialogServiceConfig)
       //优先从缓存拿
-      let servicesKey = 'docker_services_' + _that.chooseSshId + '_' + _that.dialogServiceConfig.id
+      let servicesKey = 'docker_services_' + sshId + '_' + _that.dialogServiceConfig.id
       let data = {
-        ssh_id: _that.chooseSshId,
+        ssh_id: sshId,
         id: _that.dialogServiceConfig.id,
         sse_distribute_id: _that.sse_distribute_id,
       }
@@ -570,13 +619,14 @@ export default {
       let _that = this
       _that.dialogServiceConfig = row
       _that.shellController.isRunning = true
+      let sshId = _that.getSshId(row)
       let data = {
-        ssh_id: _that.chooseSshId,
+        ssh_id: sshId,
         id: row.id,
         sse_distribute_id: _that.sse_distribute_id,
       }
       //优先从缓存拿
-      let servicesKey = 'docker_services_' + _that.chooseSshId + '_' + row.id
+      let servicesKey = 'docker_services_' + sshId + '_' + row.id
       let services =store.getStore(servicesKey)
       if(type.IsString(services)){
         _that.shellController.isRunning = false
@@ -599,18 +649,19 @@ export default {
     getLastSshId: function () {
       let _that = this
       let chooseSshId = _that.$helperStore.getStore('dockerChooseSshId')
-      if (chooseSshId === null || chooseSshId === undefined || isNaN(chooseSshId)) {
-        chooseSshId = 0
+      if (chooseSshId === null || chooseSshId === undefined || chooseSshId === '' || isNaN(chooseSshId)) {
+        return 0
       }
-      if (chooseSshId === 0 && _that.composeList.length > 0) {
-        return _that.composeList[0].id
+      chooseSshId = parseInt(chooseSshId)
+      if (chooseSshId === 0) {
+        return 0
       }
-      for (let i in _that.composeList) {
-        if (parseInt(_that.composeList[i].id) === parseInt(chooseSshId)) {
-          chooseSshId = _that.composeList[i].id
+      for (let i in _that.sshList) {
+        if (parseInt(_that.sshList[i].id) === chooseSshId) {
+          return chooseSshId
         }
       }
-      return chooseSshId
+      return 0
     },
     //获取列背景颜色
     getColumnColor: function (value) {
@@ -634,7 +685,7 @@ export default {
       _that.shellController.isRunning = true
       _that.prepareActionSse('restart')
       let data = {
-        ssh_id: _that.chooseSshId,
+        ssh_id: _that.getSshId(value),
         id: value.id,
         sse_distribute_id: _that.sse_distribute_id,
         service: service,
@@ -651,7 +702,7 @@ export default {
       _that.shellController.isRunning = true
       _that.prepareActionSse('stop')
       let data = {
-        ssh_id: _that.chooseSshId,
+        ssh_id: _that.getSshId(value),
         id: value.id,
         sse_distribute_id: _that.sse_distribute_id,
         service : service,
@@ -668,7 +719,7 @@ export default {
       _that.shellController.isRunning = true
       _that.prepareActionSse('start')
       let data = {
-        ssh_id: _that.chooseSshId,
+        ssh_id: _that.getSshId(value),
         id: value.id,
         sse_distribute_id: _that.sse_distribute_id,
         service : service,
@@ -685,7 +736,7 @@ export default {
       _that.shellController.isRunning = true
       _that.prepareActionSse('status')
       let data = {
-        ssh_id: _that.chooseSshId,
+        ssh_id: _that.getSshId(value),
         id: value.id,
         sse_distribute_id: _that.sse_distribute_id,
       }
@@ -704,7 +755,7 @@ export default {
       _that.prepareActionSse('show_compose')
       let data = {
         config_path: value.compose_yml_path,
-        ssh_id: _that.chooseSshId,
+        ssh_id: _that.getSshId(value),
         sse_distribute_id: _that.sse_distribute_id,
       }
       compose.DockerComposeConfigShow(data, function (response) {
@@ -728,7 +779,7 @@ export default {
       }
       let data = {
         config_path: envFile,
-        ssh_id: _that.chooseSshId,
+        ssh_id: _that.getSshId(value),
         sse_distribute_id: _that.sse_distribute_id,
       }
       compose.DockerComposeConfigShow(data, function (response) {
@@ -743,9 +794,6 @@ export default {
     },
     getComposeList: function () {
       let _that = this
-      if (!_that.chooseSshId) {
-        return
-      }
       _that.shellController.isRunning = true
       _that.prepareActionSse('compose_list')
       compose.DockerComposeList({ssh_id: _that.chooseSshId, sse_distribute_id: _that.sse_distribute_id}, function (response) {
@@ -763,6 +811,9 @@ export default {
             _that.shellController.isRunning = false
           }
       )
+    },
+    getSshId: function (row) {
+      return parseInt(this.chooseSshId) || row.ssh_id
     },
     //选择代码环境
     changeSsh: function () {
@@ -928,339 +979,5 @@ export default {
 }
 </script>
 
-<style scoped>
-.docker-page-container {
-  padding: 0;
-  width: 100%;
-  color: #4a4a4a;
-}
-
-.docker-header-card {
-  background: #fff;
-  border: 1px solid #e8e8e0;
-  border-radius: 12px;
-  padding: 16px 18px;
-  margin-bottom: 12px;
-}
-
-.header-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #4a4a4a;
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 12px;
-}
-
-.header-icon {
-  width: 20px;
-  height: 20px;
-  color: #5a8a5a;
-}
-
-.control-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.env-select {
-  width: 260px;
-}
-
-.env-select :deep(.el-input__wrapper),
-.search-input :deep(.el-input__wrapper) {
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 0 0 1px #dde3d8 inset;
-}
-
-.env-select :deep(.el-input__wrapper.is-focus),
-.search-input :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #93b793 inset;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.action-buttons .el-button {
-  border-radius: 8px;
-  border: 1px solid #d8ded2;
-  background: #f6f8f3;
-  color: #4f804f;
-}
-
-.action-buttons .el-button:hover {
-  background: #eef4ea;
-  border-color: #bfd1bf;
-  color: #3f6f3f;
-}
-
-.search-input {
-  flex: 1;
-  max-width: 420px;
-  min-width: 220px;
-}
-
-.header-tail-actions {
-  margin-left: auto;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.header-tail-btn {
-  border-radius: 8px;
-}
-
-.compose-table-card {
-  background: #fff;
-  border: 1px solid #e8e8e0;
-  border-radius: 12px;
-  padding: 12px;
-}
-
-.compose-table {
-  width: 100%;
-  font-size: 14px;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.compose-table :deep(.el-table__header th) {
-  background: #f7f7f2;
-  color: #606050;
-  font-weight: 600;
-}
-
-.compose-table :deep(.el-table__row:hover > td) {
-  background-color: #f3f7ef !important;
-}
-
-.name-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 24px;
-}
-
-.name-text {
-  line-height: 1.2;
-  display: flex;
-  align-items: center;
-}
-
-.path-text {
-  font-family: Consolas, Monaco, monospace;
-  font-size: 13px;
-  color: #4f804f;
-  background: #f3f8ef;
-  padding: 2px 8px;
-  border-radius: 4px;
-  word-break: break-all;
-}
-
-.operation-block {
-  margin-top: 8px;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 9px 10px;
-  border: 1px solid #e8eee4;
-  border-radius: 10px;
-  background: #fbfdf9;
-}
-
-.operation-block:first-child {
-  margin-top: 0;
-}
-
-.operation-title {
-  flex: 0 0 auto;
-  font-weight: 500;
-  color: #4a4a4a;
-  line-height: 28px;
-}
-
-.operation-buttons {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  flex: 1;
-}
-
-.operation-btn {
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 8px;
-  font-weight: 500;
-  transition: all 0.18s ease;
-}
-
-.operation-btn.operation-btn-primary {
-  border-color: #d8ded2;
-  color: #4f804f;
-  background: #f6f8f3;
-}
-
-.operation-btn.operation-btn-primary:hover {
-  background: #eef4ea;
-  border-color: #bfd1bf;
-  color: #3f6f3f;
-}
-
-.operation-btn.operation-btn-success {
-  border-color: #c1d9ba;
-  color: #356a35;
-  background: #edf6e9;
-}
-
-.operation-btn.operation-btn-success:hover {
-  border-color: #9fc49c;
-  color: #2d5a2d;
-  background: #e2f0dd;
-}
-
-.operation-btn.operation-btn-danger {
-  border-color: #e6c9be;
-  color: #9b523d;
-  background: #fcf4f1;
-}
-
-.operation-btn.operation-btn-danger:hover {
-  border-color: #d8ad9f;
-  color: #864434;
-  background: #f8e9e4;
-}
-
-.quick-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  flex: 1;
-}
-
-.quick-action-btn {
-  min-height: 28px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 0 10px;
-}
-
-.quick-action-restart {
-  border-color: #b7d7b2;
-  color: #2f6e37;
-  background: #eff8ec;
-}
-
-.quick-action-restart:hover {
-  border-color: #93be8d;
-  color: #285e30;
-  background: #e3f2df;
-}
-
-.quick-action-stop {
-  border-color: #e8ccb9;
-  color: #965139;
-  background: #fff5ef;
-}
-
-.quick-action-stop:hover {
-  border-color: #deaf94;
-  color: #844530;
-  background: #feede3;
-}
-
-.dialog-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.dialog-toolbar-text {
-  color: #606050;
-  font-size: 13px;
-}
-
-.dialog-toolbar-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.image-name-cell {
-  line-height: 1.4;
-  word-break: break-all;
-}
-
-.el-table .warning-row {
-  --el-table-tr-bg-color: #fdf6e6;
-}
-
-.el-table .success-row {
-  --el-table-tr-bg-color: #eef7ea;
-}
-
-.el-table .error-row {
-  --el-table-tr-bg-color: #fbeeee;
-}
-
-.compose-table :deep(.row-hide) {
-  display: none;
-}
-
-.star-icon {
-  cursor: pointer;
-  transition: all 0.3s ease;
-  flex-shrink: 0;
-}
-
-.star-icon:hover {
-  transform: scale(1.2);
-}
-
-.star-icon.starred {
-  animation: starPulse 0.3s ease;
-}
-
-@keyframes starPulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.3); }
-  100% { transform: scale(1); }
-}
-
-@media (max-width: 1200px) {
-  .control-row {
-    align-items: stretch;
-  }
-
-  .search-input {
-    max-width: 100%;
-  }
-
-  .header-tail-actions {
-    margin-left: 0;
-    justify-content: flex-start;
-  }
-
-  .operation-block {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .operation-title {
-    line-height: 1.4;
-  }
-}
-</style>
+<style scoped src="@/css/components/Docker.css"></style>
 

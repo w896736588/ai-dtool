@@ -1,7 +1,7 @@
 package variable
 
 import (
-	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	_struct "dev_tool/internal/app/dtool/struct"
 	"dev_tool/internal/pkg/p_common"
@@ -46,7 +46,7 @@ func (h *Variable) InitRunUniqueId() {
 
 func (h *Variable) Run() (_struct.VCmdResult, error) {
 	//注入全局替换
-	VariableClient.RegisterAllGlobal(h.ReplaceList, &p_sse.SseShell{
+	component.VariableClient.RegisterAllGlobal(h.ReplaceList, &p_sse.SseShell{
 		Sse:             h.Sse.Sse,
 		SseDistributeId: h.Sse.SseDistributeId,
 	}, h.Call)
@@ -54,16 +54,16 @@ func (h *Variable) Run() (_struct.VCmdResult, error) {
 	cmdResult := _struct.VCmdResult{
 		VariableId: h.VariableId,
 	}
-	cmdList, cmdErr := common.DbMain.CmdList(h.VariableId)
+	cmdList, cmdErr := component.DbMain.CmdList(h.VariableId)
 	if cmdErr != nil {
 		return cmdResult, cmdErr
 	}
 	//当前执行的cmd
-	cmdInfo, _ := common.DbMain.CmdInfo(h.RunCmdId)
+	cmdInfo, _ := component.DbMain.CmdInfo(h.RunCmdId)
 	runWeight := cast.ToInt(cmdInfo[`weight`])
 	havePlaywright := false //如果有自定义链接 那么不输出end
 	for _, cmd := range cmdList {
-		if VariableClient.IsStop(h.TaskId) {
+		if component.VariableClient.IsStop(h.TaskId) {
 			return cmdResult, errors.New(`任务被取消`)
 		}
 		name := cast.ToString(cmd[`name`])
@@ -83,7 +83,7 @@ func (h *Variable) Run() (_struct.VCmdResult, error) {
 		//替换
 		h.Replace(cmd)
 		//是否需要执行
-		if !VariableClient.ChecksCanDo(cmd) {
+		if !component.VariableClient.ChecksCanDo(cmd) {
 			h.Sse.Send(fmt.Sprintf(`%s %s %s %s`, p_common.TMarkDownClient.Bold(`check`), name, p_common.TMarkDownClient.Bold(`not run：`), cmd[`checks`]) + "\n")
 			continue
 		}
@@ -166,7 +166,7 @@ func (h *Variable) RunCmd(cmd map[string]any) error {
 		_, err = rCmd.RunCombine()
 	case define.VariableCmdPlaywright:
 		_, err = rCmd.RunPlaywright(func() bool {
-			return VariableClient.IsStop(h.TaskId)
+			return component.VariableClient.IsStop(h.TaskId)
 		})
 	case define.VariableCmdLlm:
 		_, err = rCmd.RunLlm()

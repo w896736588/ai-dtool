@@ -132,30 +132,4 @@ export default {
 }
 </script>
 
-<style scoped>
-.json-editor-container {
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  height : 100%;
-}
-
-.editor-switch {
-  padding: 10px;
-  background: #f5f7fa;
-  border-bottom: 1px solid #dcdfe6;
-}
-
-.raw-editor {
-  padding: 10px;
-}
-
-/* 覆盖 json-editor-vue 默认样式 */
-.json-editor-container :deep(.jse-theme-dark) {
-  --jse-theme-color: #409eff;
-  --jse-theme-color-highlight: #79bbff;
-}
-
-.json-editor-container :deep(.jse-contents) {
-  border-radius: 0;
-}
-</style>
+<style scoped src="@/css/components/base/json.css"></style>

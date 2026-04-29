@@ -1,6 +1,7 @@
 package variable
 
 import (
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/struct"
 	"dev_tool/internal/pkg/p_common"
 	"dev_tool/internal/pkg/p_sse"
@@ -40,12 +41,12 @@ func (h *PCmd) ParseSelect(form *_struct.VForm) error {
 	form.Select.Options = p_common.Replace(form.Select.Options, h.replaceList)
 	//解析配置
 	var parseErr error
-	form.Select.Options, parseErr = VariableClient.ParseConfig(form.Select.Options, h.Call)
+	form.Select.Options, parseErr = component.VariableClient.ParseConfig(form.Select.Options, h.Call)
 	if parseErr != nil {
 		return parseErr
 	}
 	//开始判断
-	if VariableClient.ExistReplaceParamFull(form.Select.Options) {
+	if component.VariableClient.ExistReplaceParamFull(form.Select.Options) {
 		return errors.New(`存在未进行替换的内容：` + form.Select.Options)
 	}
 	//组装选项
@@ -71,10 +72,10 @@ func (h *PCmd) SelectChooseReplace(variableForm *_struct.VForm, replaceList map[
 			sourceOptionList := make(map[string]any, 0)
 			_ = gstool.JsonDecode(option.Source, &sourceOptionList)
 			for optionKey, optionValue := range sourceOptionList {
-				VariableClient.AddReplace(replaceList, variableForm.ResultKey+`.`+optionKey, cast.ToString(optionValue))
+				component.VariableClient.AddReplace(replaceList, variableForm.ResultKey+`.`+optionKey, cast.ToString(optionValue))
 			}
 			//替换整体
-			VariableClient.AddReplace(replaceList, variableForm.ResultKey, option.Source)
+			component.VariableClient.AddReplace(replaceList, variableForm.ResultKey, option.Source)
 		}
 	}
 	return nil

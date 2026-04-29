@@ -5,6 +5,7 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -21,38 +22,53 @@ import (
 
 // SetSshList ssh列表
 func SetSshList(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	// 是否检查连接状态，1检查，0不检查，默认0
+	isCheckConnection := cast.ToInt(dataMap[`is_check_connection`])
+
 	all, allErr := common.DbMain.Client.QuickQuery(`tbl_ssh`, `*`, nil).All()
 	if allErr != nil {
 		gsgin.GinResponseError(c, allErr.Error(), nil)
 		return
 	}
 	allSsh := map[int]map[string]any{}
-	//返回连接状态
-	task := gstask.NewTask()
-	for _, sshValue := range all {
-		allSsh[cast.ToInt(sshValue[`id`])] = sshValue
-		callBack := gstask.CallbackFunc{
-			Func: func() *gstask.Result {
-				return testSshConn(sshValue)
-			},
-			Timeout: 3 * time.Second,
-			Id:      cast.ToString(sshValue[`id`]),
+
+	// 只有在需要检查连接状态时才执行连接测试
+	if isCheckConnection == 1 {
+		//返回连接状态
+		task := gstask.NewTask()
+		for _, sshValue := range all {
+			allSsh[cast.ToInt(sshValue[`id`])] = sshValue
+			callBack := gstask.CallbackFunc{
+				Func: func() *gstask.Result {
+					return testSshConn(sshValue)
+				},
+				Timeout: 3 * time.Second,
+				Id:      cast.ToString(sshValue[`id`]),
+			}
+			task.Add(callBack)
 		}
-		task.Add(callBack)
-	}
-	resultList := task.RunAll()
-	//填充链接状态
-	for _, result := range resultList {
-		for sshId, _ := range allSsh {
-			if sshId == cast.ToInt(result.Id) {
-				if result.Err != nil {
-					allSsh[sshId][`status`] = result.Err.Error()
-				} else {
-					allSsh[sshId][`status`] = `success`
+		resultList := task.RunAll()
+		//填充链接状态
+		for _, result := range resultList {
+			for sshId, _ := range allSsh {
+				if sshId == cast.ToInt(result.Id) {
+					if result.Err != nil {
+						allSsh[sshId][`status`] = result.Err.Error()
+					} else {
+						allSsh[sshId][`status`] = `success`
+					}
 				}
 			}
 		}
+	} else {
+		// 不检查连接状态，直接填充数据
+		for _, sshValue := range all {
+			allSsh[cast.ToInt(sshValue[`id`])] = sshValue
+		}
 	}
+
 	returnList := make([]map[string]any, 0)
 	for _, sshValue := range allSsh {
 		returnList = append(returnList, sshValue)
@@ -805,22 +821,47 @@ func SetGlobalDelete(c *gin.Context) {
 func SetMemoryConfigGet(c *gin.Context) {
 	mainDBConfig := business.ReadMainDBConfig()
 	memoryConfig := business.ReadMemoryConfigFromINI()
-	arrangePrompt, err := memoryConfigValue(define.GlobalMemoryArrangePrompt)
+	arrangePrompt, err := memoryConfigValue(define.MemoryConfigArrangePrompt)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	arrangeModelID, err := memoryConfigValue(define.GlobalMemoryArrangeModelID)
+	arrangeModelID, err := memoryConfigValue(define.MemoryConfigArrangeModelID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	dailyReportPrompt, err := memoryConfigValue(define.GlobalHomeTaskDailyReportPrompt)
+	dailyReportPrompt, err := homeTaskConfigValue(define.HomeTaskConfigDailyReportPrompt)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	dailyReportModelID, err := memoryConfigValue(define.GlobalHomeTaskDailyReportModelID)
+	dailyReportModelID, err := homeTaskConfigValue(define.HomeTaskConfigDailyReportModelID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	fragmentPrompt, err := homeTaskConfigValue(define.HomeTaskConfigFragmentPrompt)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	tapdSmartLinkID, err := homeTaskConfigValue(define.HomeTaskConfigTapdSmartLinkID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	tapdLinkLabel, err := homeTaskConfigValue(define.HomeTaskConfigTapdLinkLabel)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	tapdCssSelector, err := homeTaskConfigValue(define.HomeTaskConfigTapdCssSelector)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	tapdWaitSeconds, err := homeTaskConfigValue(define.HomeTaskConfigTapdWaitSeconds)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -830,12 +871,10 @@ func SetMemoryConfigGet(c *gin.Context) {
 		`db_name`:                           mainDBConfig.DBName,
 		`db_configured`:                     mainDBConfig.Dir != `` && mainDBConfig.DBName != ``,
 		`db_is_git_repo`:                    mainDBConfig.GitRepoEnabled,
-		`webkit_driver_path`:                component.ConfigViper.GetString(`path.webkit_driver_path`),
-		`webkit_data_path`:                  component.ConfigViper.GetString(`path.webkit_data_path`),
-		`webkit_download_path`:              component.ConfigViper.GetString(`path.webkit_download_path`),
+		`db_auto_push_delay_minutes`:        business.ReadMainDBAutoSyncConfig().AutoSyncMinutes,
+		`log_db_path`:                       component.EnvClient.LogDbConfig.DbPath,
 		`memory_dir`:                        memoryConfig.Dir,
-		`memory_db_name`:                    memoryConfig.DBName,
-		`memory_db_configured`:              memoryConfig.Dir != `` && memoryConfig.DBName != ``,
+		`memory_db_configured`:              memoryConfig.Dir != ``,
 		`memory_db_is_git_repo`:             memoryConfig.GitRepoEnabled,
 		`memory_db_auto_push_delay_minutes`: memoryConfig.AutoPushDelayMinutes,
 		`memory_config_file`:                memoryConfigFilePath(),
@@ -843,6 +882,14 @@ func SetMemoryConfigGet(c *gin.Context) {
 		`memory_arrange_model_id`:           cast.ToInt(arrangeModelID),
 		`home_task_daily_report_prompt`:     dailyReportPrompt,
 		`home_task_daily_report_model_id`:   cast.ToInt(dailyReportModelID),
+		`home_task_fragment_prompt`:         fragmentPrompt,
+		`home_task_tapd_smart_link_id`:      cast.ToInt(tapdSmartLinkID),
+		`home_task_tapd_link_label`:         tapdLinkLabel,
+		`home_task_tapd_css_selector`:       tapdCssSelector,
+		`home_task_tapd_wait_seconds`:       cast.ToInt(tapdWaitSeconds),
+		`safe_password`:                     component.ConfigViper.GetString(`safe.password`),
+		`run_mode`:                          component.EnvClient.SmartLinkConfig.RunMode,
+		`client_version`:                    component.EnvClient.SmartLinkConfig.ClientVersion,
 	})
 }
 
@@ -856,7 +903,7 @@ func SetMemoryConfigSave(c *gin.Context) {
 	}
 	memoryArrangeModelID := cast.ToInt(dataMap[`memory_arrange_model_id`])
 	if memoryArrangeModelID > 0 {
-		modelInfo, err := common.DbMain.InfoCrawlAiModelInfo(memoryArrangeModelID)
+		modelInfo, err := common.DbMain.AiModelInfo(memoryArrangeModelID)
 		if err != nil {
 			gsgin.GinResponseError(c, `AI 模型不存在`, nil)
 			return
@@ -867,11 +914,11 @@ func SetMemoryConfigSave(c *gin.Context) {
 			return
 		}
 	}
-	if err := common.DbMain.SetGlobalValue(`记忆整理提示词`, define.GlobalMemoryArrangePrompt, memoryArrangePrompt, `知识片段 AI 整理提示词`); err != nil {
+	if err := common.DbMain.MemoryConfigSave(`记忆整理提示词`, define.MemoryConfigArrangePrompt, memoryArrangePrompt, `知识片段 AI 整理提示词`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	if err := common.DbMain.SetGlobalValue(`记忆整理模型`, define.GlobalMemoryArrangeModelID, cast.ToString(memoryArrangeModelID), `知识片段 AI 整理所用模型 id`); err != nil {
+	if err := common.DbMain.MemoryConfigSave(`记忆整理模型`, define.MemoryConfigArrangeModelID, cast.ToString(memoryArrangeModelID), `知识片段 AI 整理所用模型 id`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
@@ -881,7 +928,7 @@ func SetMemoryConfigSave(c *gin.Context) {
 	}
 	homeTaskDailyReportModelID := cast.ToInt(dataMap[`home_task_daily_report_model_id`])
 	if homeTaskDailyReportModelID > 0 {
-		modelInfo, err := common.DbMain.InfoCrawlAiModelInfo(homeTaskDailyReportModelID)
+		modelInfo, err := common.DbMain.AiModelInfo(homeTaskDailyReportModelID)
 		if err != nil {
 			gsgin.GinResponseError(c, `AI 模型不存在`, nil)
 			return
@@ -892,11 +939,36 @@ func SetMemoryConfigSave(c *gin.Context) {
 			return
 		}
 	}
-	if err := common.DbMain.SetGlobalValue(`工作日报提示词`, define.GlobalHomeTaskDailyReportPrompt, homeTaskDailyReportPrompt, `首页任务工作日报 AI 提示词`); err != nil {
+	if err := common.DbMain.HomeTaskConfigSave(`工作日报提示词`, define.HomeTaskConfigDailyReportPrompt, homeTaskDailyReportPrompt, `首页任务工作日报 AI 提示词`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	if err := common.DbMain.SetGlobalValue(`工作日报模型`, define.GlobalHomeTaskDailyReportModelID, cast.ToString(homeTaskDailyReportModelID), `首页任务工作日报所用模型 id`); err != nil {
+	if err := common.DbMain.HomeTaskConfigSave(`工作日报模型`, define.HomeTaskConfigDailyReportModelID, cast.ToString(homeTaskDailyReportModelID), `首页任务工作日报所用模型 id`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskFragmentPrompt := strings.TrimSpace(cast.ToString(dataMap[`home_task_fragment_prompt`]))
+	if err := common.DbMain.HomeTaskConfigSave(`任务知识片段提示词`, define.HomeTaskConfigFragmentPrompt, homeTaskFragmentPrompt, `新建任务时自动创建知识片段的提示词模板`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskTapdSmartLinkID := cast.ToString(cast.ToInt(dataMap[`home_task_tapd_smart_link_id`]))
+	if err := common.DbMain.HomeTaskConfigSave(`TAPD自定义网页ID`, define.HomeTaskConfigTapdSmartLinkID, homeTaskTapdSmartLinkID, `TAPD登录页所选自定义网页ID`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskTapdLinkLabel := strings.TrimSpace(cast.ToString(dataMap[`home_task_tapd_link_label`]))
+	if err := common.DbMain.HomeTaskConfigSave(`TAPD链接标签`, define.HomeTaskConfigTapdLinkLabel, homeTaskTapdLinkLabel, `TAPD登录页所选链接的label`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskTapdCssSelector := strings.TrimSpace(cast.ToString(dataMap[`home_task_tapd_css_selector`]))
+	if err := common.DbMain.HomeTaskConfigSave(`TAPD抓取CSS选择器`, define.HomeTaskConfigTapdCssSelector, homeTaskTapdCssSelector, `TAPD网页抓取区域CSS选择器`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskTapdWaitSeconds := cast.ToString(cast.ToInt(dataMap[`home_task_tapd_wait_seconds`]))
+	if err := common.DbMain.HomeTaskConfigSave(`TAPD抓取等待秒数`, define.HomeTaskConfigTapdWaitSeconds, homeTaskTapdWaitSeconds, `TAPD网页抓取前等待秒数`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
@@ -922,19 +994,26 @@ func SetRuntimeConfigSave(c *gin.Context) {
 		return
 	}
 
+	// 保存前读取当前密码，用于判断密码是否修改
+	oldSafePassword := component.ConfigViper.GetString(`safe.password`)
+
 	baseSection := cfg.Section(`base`)
-	pathSection := cfg.Section(`path`)
+	safeSection := cfg.Section(`safe`)
 
 	setIniKey(baseSection, `dbPath`, strings.TrimSpace(cast.ToString(dataMap[`db_path`])))
 	setIniKey(baseSection, `dbFileName`, strings.TrimSpace(cast.ToString(dataMap[`db_file_name`])))
 	setIniKey(baseSection, `dbIsGitRepo`, cast.ToString(cast.ToBool(dataMap[`db_is_git_repo`])))
+	setIniKey(baseSection, `logDbPath`, strings.TrimSpace(cast.ToString(dataMap[`log_db_path`])))
 	setIniKey(baseSection, `memoryDbPath`, strings.TrimSpace(cast.ToString(dataMap[`memory_db_path`])))
-	setIniKey(baseSection, `memoryDbFileName`, strings.TrimSpace(cast.ToString(dataMap[`memory_db_file_name`])))
 	setIniKey(baseSection, `memoryDbIsGitRepo`, cast.ToString(cast.ToBool(dataMap[`memory_db_is_git_repo`])))
 	setIniKey(baseSection, `memoryDbAutoPushDelayMinutes`, cast.ToString(cast.ToInt(dataMap[`memory_db_auto_push_delay_minutes`])))
-	setIniKey(pathSection, `webkit_driver_path`, strings.TrimSpace(cast.ToString(dataMap[`webkit_driver_path`])))
-	setIniKey(pathSection, `webkit_data_path`, strings.TrimSpace(cast.ToString(dataMap[`webkit_data_path`])))
-	setIniKey(pathSection, `webkit_download_path`, strings.TrimSpace(cast.ToString(dataMap[`webkit_download_path`])))
+
+	// 保存 safe 配置
+	newSafePassword := strings.TrimSpace(cast.ToString(dataMap[`safe_password`]))
+	setIniKey(safeSection, `password`, newSafePassword)
+
+	// 判断密码是否修改
+	safeChanged := oldSafePassword != newSafePassword
 
 	if err = cfg.SaveTo(configFile); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -950,10 +1029,154 @@ func SetRuntimeConfigSave(c *gin.Context) {
 	}
 	business.ReloadEditableRuntimeConfig()
 
+	// 如果密码修改了，需要重新登录
+	needRelogin := safeChanged && newSafePassword != ``
+
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`config_file`:  configFile,
 		`reloaded`:     true,
 		`need_restart`: true,
+		`safe_changed`: safeChanged,
+		`need_relogin`: needRelogin,
+	})
+}
+
+// SetRuntimeConfigItemSave 保存单个运行时配置项（用于独立编辑保存）。 // Save a single runtime config item for independent editing.
+func SetRuntimeConfigItemSave(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+
+	configKey := strings.TrimSpace(cast.ToString(dataMap[`key`]))
+	configValue := dataMap[`value`]
+	sectionName := strings.TrimSpace(cast.ToString(dataMap[`section`]))
+
+	if configKey == `` || sectionName == `` {
+		gsgin.GinResponseError(c, `配置项 key 和 section 不能为空`, nil)
+		return
+	}
+
+	configFile := memoryConfigFilePath()
+	if strings.TrimSpace(configFile) == `` {
+		gsgin.GinResponseError(c, `未找到配置文件路径`, nil)
+		return
+	}
+
+	cfg, err := ini.LoadSources(ini.LoadOptions{
+		Loose: true,
+	}, configFile)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	section := cfg.Section(sectionName)
+
+	// 根据 key 处理不同类型的配置项
+	needRestart := false
+	switch configKey {
+	case `run_mode`:
+		value := strings.TrimSpace(cast.ToString(configValue))
+		if value != string(define.SmartLinkRunModeServer) && value != string(define.SmartLinkRunModeLocalClient) {
+			gsgin.GinResponseError(c, `run_mode 必须是 server 或 local_client`, nil)
+			return
+		}
+		setIniKey(section, configKey, value)
+		// 更新内存中的配置
+		component.EnvClient.SmartLinkConfig.RunMode = define.SmartLinkRunMode(value)
+		needRestart = false
+	case `client_version`:
+		value := strings.TrimSpace(cast.ToString(configValue))
+		setIniKey(section, configKey, value)
+		component.EnvClient.SmartLinkConfig.ClientVersion = value
+		needRestart = false
+	case `db_path`:
+		setIniKey(section, configKey, strings.TrimSpace(cast.ToString(configValue)))
+		needRestart = false
+	case `dbFileName`:
+		setIniKey(section, configKey, strings.TrimSpace(cast.ToString(configValue)))
+		needRestart = false
+	case `logDbPath`:
+		setIniKey(section, configKey, strings.TrimSpace(cast.ToString(configValue)))
+		needRestart = false
+	case `memoryDbPath`:
+		setIniKey(section, configKey, strings.TrimSpace(cast.ToString(configValue)))
+		needRestart = false
+	case `db_is_git_repo`:
+		setIniKey(section, configKey, cast.ToString(cast.ToBool(configValue)))
+		needRestart = false
+	case `memoryDbIsGitRepo`:
+		setIniKey(section, configKey, cast.ToString(cast.ToBool(configValue)))
+		needRestart = false
+	case `dbAutoPushDelayMinutes`:
+		setIniKey(section, configKey, cast.ToString(cast.ToInt(configValue)))
+		needRestart = false
+	case `memoryDbAutoPushDelayMinutes`:
+		setIniKey(section, configKey, cast.ToString(cast.ToInt(configValue)))
+		needRestart = false
+	case `password`:
+		oldSafePassword := component.ConfigViper.GetString(`safe.password`)
+		newSafePassword := strings.TrimSpace(cast.ToString(configValue))
+		setIniKey(section, configKey, newSafePassword)
+		needRestart = false
+		// 如果密码修改了，需要重新登录
+		if oldSafePassword != newSafePassword && newSafePassword != `` {
+			if err = cfg.SaveTo(configFile); err != nil {
+				gsgin.GinResponseError(c, err.Error(), nil)
+				return
+			}
+			if component.ConfigViper != nil {
+				_ = component.ConfigViper.ReadInConfig()
+			}
+			business.ReloadEditableRuntimeConfig()
+			gsgin.GinResponseSuccess(c, ``, map[string]any{
+				`config_file`:  configFile,
+				`reloaded`:     true,
+				`need_restart`: false,
+				`need_relogin`: true,
+			})
+			return
+		}
+	default:
+		// 通用字符串配置
+		setIniKey(section, configKey, strings.TrimSpace(cast.ToString(configValue)))
+	}
+
+	if err = cfg.SaveTo(configFile); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	if component.ConfigViper != nil {
+		_ = component.ConfigViper.ReadInConfig()
+	}
+	business.ReloadEditableRuntimeConfig()
+
+	// 热重载分发：根据配置项 key 调用对应热重载函数
+	var hotReloadErr error
+	switch configKey {
+	case `db_path`, `dbFileName`:
+		hotReloadErr = business.HotReloadMainDB(configKey)
+	case `logDbPath`:
+		hotReloadErr = business.HotReloadLogDB()
+	case `memoryDbPath`, `memoryDbIsGitRepo`:
+		hotReloadErr = business.HotReloadMemoryDB()
+	case `db_is_git_repo`:
+		hotReloadErr = business.HotReloadDBGitFlag()
+	case `dbAutoPushDelayMinutes`:
+		hotReloadErr = business.HotReloadAutoSyncDelay()
+	case `memoryDbAutoPushDelayMinutes`:
+		hotReloadErr = business.HotReloadMemoryAutoSyncDelay()
+	}
+
+	if hotReloadErr != nil {
+		gsgin.GinResponseError(c, fmt.Sprintf(`配置已保存但热重载失败: %s`, hotReloadErr.Error()), nil)
+		return
+	}
+
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`config_file`:  configFile,
+		`reloaded`:     true,
+		`need_restart`: needRestart,
 	})
 }
 
@@ -1028,10 +1251,10 @@ func memoryConfigFilePath() string {
 	return filepath.Join(component.EnvClient.ConfigPath, configFileName)
 }
 
-func memoryConfigValue(key string) (string, error) {
-	value, err := common.DbMain.GlobalValue(key)
+func homeTaskConfigValue(key string) (string, error) {
+	value, err := common.DbMain.HomeTaskConfigValue(key)
 	if err != nil {
-		if memoryConfigValueMissing(err) {
+		if common.DbRowMissing(err) {
 			return ``, nil
 		}
 		return ``, err
@@ -1039,9 +1262,15 @@ func memoryConfigValue(key string) (string, error) {
 	return value, nil
 }
 
-func memoryConfigValueMissing(err error) bool {
-	errText := strings.ToLower(err.Error())
-	return strings.Contains(errText, `not found`) || strings.Contains(errText, `no rows`)
+func memoryConfigValue(key string) (string, error) {
+	value, err := common.DbMain.MemoryConfigValue(key)
+	if err != nil {
+		if common.DbRowMissing(err) {
+			return ``, nil
+		}
+		return ``, err
+	}
+	return value, nil
 }
 
 func SetAccountList(c *gin.Context) {
@@ -1129,6 +1358,46 @@ func SetAccountGroupAdd(c *gin.Context) {
 			map[string]any{
 				`id`: dataMap[`id`],
 			}, updateData).Exec()
+	}
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+// SetCronConfigGet 返回定时任务配置。 // Return scheduled task settings.
+func SetCronConfigGet(c *gin.Context) {
+	one, err := common.DbMain.CronTaskByType(define.CronTaskTypeDailyReport)
+	if err != nil && !common.DbRowMissing(err) {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`cron_daily_report_enabled`: cast.ToInt(one[`enabled`]),
+		`cron_daily_report_time`:    strings.TrimSpace(cast.ToString(one[`trigger_time`])),
+	})
+}
+
+// SetCronConfigSave 保存定时任务配置并热重载调度器。 // Save scheduled task settings and hot-reload the scheduler.
+func SetCronConfigSave(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	enabled := cast.ToInt(dataMap[`cron_daily_report_enabled`])
+	triggerTime := strings.TrimSpace(cast.ToString(dataMap[`cron_daily_report_time`]))
+	if enabled == 1 {
+		if triggerTime == `` {
+			gsgin.GinResponseError(c, `启用定时任务时触发时间不能为空`, nil)
+			return
+		}
+		if _, err := time.Parse(`15:04`, triggerTime); err != nil {
+			gsgin.GinResponseError(c, `时间格式无效，请使用 HH:MM 格式`, nil)
+			return
+		}
+	}
+	if err := common.DbMain.CronTaskSave(define.CronTaskTypeDailyReport, `AI 生成工作日报`, enabled, triggerTime); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if err := business.HotReloadCronScheduler(); err != nil {
+		gsgin.GinResponseError(c, fmt.Sprintf(`配置已保存但热重载失败: %s`, err.Error()), nil)
+		return
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }

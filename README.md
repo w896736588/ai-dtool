@@ -1,12 +1,12 @@
-﻿# dev_tool_master
+# dev_tool_master
 
 ## 功能简介
 
-本工具是面向开发与运维场景的个人使用的本地化工作台，数据存储个人空间
+本工具是面向开发与运维场景的个人使用的本地化工作台，当前仅保留 Web/API 运行模式，数据存储在个人空间。
 
 ### 模块说明
 
-- 首页：通过快捷命令操作Git等模块
+- 首页：通过快捷命令操作 Git 等模块
 - Redis：用于 Redis 数据查询、键值查看与常用缓存操作。
 - Supervisor：用于进程/服务管理，查看运行状态并执行启停相关操作。
 - Git：用于代码仓库常用操作与结果查看。
@@ -31,40 +31,92 @@ go env -w GOPRIVATE=gitee.com
 go get -u gitee.com/Sxiaobai/gs/v2@latest
 # task安装
 go install github.com/go-task/task/v3/cmd/task@latest
-# 安装 Wails CLI（用于桌面端调试/构建）：
-go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+# air监听启动
+go install github.com/air-verse/air@latest
 ```
 
-## 启动命令（task）
-
-
-### Web 端（浏览器模式）
+## 开发时启动命令（task）
 
 ```bash
-开发时
-# 后端
-task run-server-company
-# 前端 
-task run-web-dev
-# 访问地址
+# 启动服务，启动后前端变更后都会自动热更新
+task dun-dev-company
+
+# 前端开发地址
 http://localhost:8080
 ```
+## 发布版启动命令
 
 ```bash
-# 点击
+# windows
 网页版.bat
-# 访问地址
+
+# linux
+web.sh
+
+# macos
+web.command
+
+# 默认访问地址
 http://localhost:17170
 ```
-
 
 ## 编译打包命令
 
 ```bash
-# web端和桌面端
-task package-windows
-# web端
-task package-linux
-# web端和桌面端
-task package-macos
+# Windows Web 发行包
+task package-windows -- 20260101
+
+# Linux Web 发行包
+task package-linux -- 20260101
+
+# macOS Web 发行包
+task package-macos -- 20260101
+
+# 后台执行
+nohup ./dtool --ConfigFile=space >> /var/log/space.$(date +%Y%m%d).log 2>&1 &
+```
+
+## dtool-agent 构建命令
+
+`dtool-agent` 支持编译时默认值和运行时环境变量两种配置方式：
+
+- `DTOOL_SERVER_URL`：服务端地址，例如 `http://localhost:17170`
+- `DTOOL_CLIENT_VERSION`：客户端版本号，需要和服务端配置的 `smart_link.client_version` 保持一致
+
+优先级说明：
+
+- 运行时环境变量优先
+- 如果运行时未设置，则回退到编译时通过 `-ldflags -X` 注入的默认值
+- 如果编译时也未注入，则回退到代码内默认值
+
+### macOS 版本
+
+```powershell
+# 构建 macOS agent
+$env:GOOS="darwin"
+$env:GOARCH="amd64"
+$env:CGO_ENABLED="0"
+go build -ldflags "-X main.defaultServerURL=http://localhost:17170 -X main.defaultClientVersion=2.0.0" -o build/dtool-agent ./cmd/dtool-agent
+```
+
+### Windows 版本
+
+```powershell
+# 构建 Windows agent
+$env:GOOS="windows"
+$env:GOARCH="amd64"
+$env:CGO_ENABLED="0"
+go build -ldflags "-X main.defaultServerURL=http://localhost:17170 -X main.defaultClientVersion=2.0.0" -o build/dtool-agent.exe ./cmd/dtool-agent
+```
+
+如果只想在运行时临时覆盖，也可以在启动前设置环境变量。
+
+```powershell
+# macOS
+$env:DTOOL_SERVER_URL="http://localhost:17170"; $env:DTOOL_CLIENT_VERSION="2.0.0"; ./build/dtool-agent
+```
+
+```powershell
+# Windows
+$env:DTOOL_SERVER_URL="http://localhost:17170"; $env:DTOOL_CLIENT_VERSION="2.0.0"; .\build\dtool-agent.exe
 ```

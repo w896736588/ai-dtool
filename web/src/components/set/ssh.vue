@@ -93,6 +93,7 @@ import {defineExpose , defineComponent , inject , defineEmits , getCurrentInstan
 import set from '../../utils/base/ssh_set'
 import common from '../../utils/common'
 import Init  from '@/utils/base/set_init'
+import sseDistribute from '@/utils/base/sse_distribute'
 export default defineComponent({
   props: {
   },
@@ -119,14 +120,25 @@ export default defineComponent({
           // Sort by ID ascending
           state.sshList = response.Data.sort((a, b) => a.id - b.id)
         }
-      })
+      }, {is_check_connection: 1})
+    }
+    // 处理SSE推送的连接状态更新
+    const handleConnectionsUpdate = function (data){
+      if(!data || typeof data !== 'object'){
+        state.allConnections = []
+        return
+      }
+      state.allConnections = SortConnectionsByDuration(data.connections || [])
+      // 如果对话框打开，更新过滤后的连接列表
+      if(state.dialogConnections && state.selectedSshId){
+        state.connections = SortConnectionsByDuration(state.allConnections.filter(conn => {
+          const sshId = String(conn.shell_client_id || '').split('#')[0]
+          return sshId === String(state.selectedSshId)
+        }))
+      }
     }
     const LoadConnections = function (){
-      set.GetConnections(function (response){
-        if(response.ErrCode === 0){
-          state.allConnections = SortConnectionsByDuration(response.Data.connections || [])
-        }
-      })
+      // 连接数据现在通过SSE自动推送，无需主动获取
     }
     const ShowEditSsh = function (sshConfig , isCopy){
       state.dialogEditSsh = true
@@ -173,25 +185,18 @@ export default defineComponent({
     const ShowConnections = function (sshConfig){
       state.dialogConnections = true
       state.selectedSshId = sshConfig.id
-      set.GetConnections(function (response){
-        if(response.ErrCode === 0){
-          state.allConnections = SortConnectionsByDuration(response.Data.connections || [])
-          // Filter connections for the selected SSH
-          state.connections = SortConnectionsByDuration(state.allConnections.filter(conn => {
-            const sshId = conn.shell_client_id.split('#')[0]
-            return sshId === String(sshConfig.id)
-          }))
-        }else{
-          instance.$helperNotify.success(response.ErrMsg)
-        }
-      })
+      // 使用已有的 allConnections 数据进行过滤
+      state.connections = SortConnectionsByDuration(state.allConnections.filter(conn => {
+        const sshId = String(conn.shell_client_id || '').split('#')[0]
+        return sshId === String(sshConfig.id)
+      }))
     }
     const GetConnectionCount = function (sshId){
       if(!state.allConnections || state.allConnections.length === 0){
         return 0
       }
       return state.allConnections.filter(conn => {
-        const connSshId = conn.shell_client_id.split('#')[0]
+        const connSshId = String(conn.shell_client_id || '').split('#')[0]
         return connSshId === String(sshId)
       }).length
     }
@@ -199,12 +204,6 @@ export default defineComponent({
       set.ReconnectConnection(connection.shell_client_id, function (response){
         if(response.ErrCode === 0){
           instance.$helperNotify.success('重连成功')
-          // Refresh connections
-          if(state.selectedSshId){
-            ShowConnections({id: state.selectedSshId})
-          }else{
-            LoadConnections()
-          }
         }else{
           instance.$helperNotify.error(response.ErrMsg)
         }
@@ -212,21 +211,8 @@ export default defineComponent({
     }
     const RefreshAll = function (){
       SshList()
-      LoadConnections()
-      // Also refresh dialog connections if dialog is open
-      if(state.dialogConnections && state.selectedSshId){
-        set.GetConnections(function (response){
-          if(response.ErrCode === 0){
-            state.allConnections = SortConnectionsByDuration(response.Data.connections || [])
-            state.connections = SortConnectionsByDuration(state.allConnections.filter(conn => {
-              const sshId = conn.shell_client_id.split('#')[0]
-              return sshId === String(state.selectedSshId)
-            }))
-          }
-        })
-      }
+      // 连接数据现在通过SSE自动推送
     }
-    let timer = null
     //固有属性
     const state = reactive({
       sshList : [],
@@ -239,17 +225,10 @@ export default defineComponent({
     })
     //初始化
     SshList()
-    LoadConnections()
-    onMounted(() => {
-      timer = setInterval(() => {
-        RefreshAll()
-      }, 3000)
-    })
+    // 注册Shell连接状态SSE监听
+    sseDistribute.RegisterReceive('shell_connections', handleConnectionsUpdate)
     onBeforeUnmount(() => {
-      if(timer){
-        clearInterval(timer)
-        timer = null
-      }
+      sseDistribute.UnRegisterReceive('shell_connections')
     })
     return {
       state,
@@ -270,7 +249,5 @@ export default defineComponent({
 })
 </script>
 
-<style scoped>
-@import "@/css/set_module_unified.css";
-</style>
+<style scoped src="@/css/components/set/ssh.css"></style>
 

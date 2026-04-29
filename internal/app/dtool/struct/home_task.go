@@ -2,11 +2,14 @@ package _struct
 
 // HomeTaskSaveRequest 保存首页任务请求。
 type HomeTaskSaveRequest struct {
-	ID         int    `json:"id"`
-	Name       string `json:"name"`
-	TaskStatus string `json:"task_status"`
-	Remark     string `json:"remark"`
-	StartTime  int64  `json:"start_time"`
+	ID               int    `json:"id"`
+	Name             string `json:"name"`
+	TaskStatus       string `json:"task_status"`
+	StartTime        int64  `json:"start_time"`
+	MemoryFragmentID any    `json:"memory_fragment_id"`
+	TapdUrl          string `json:"tapd_url"`
+	ApiHost          string `json:"api_host"`
+	ApiToken         string `json:"api_token"`
 }
 
 // HomeTaskListRequest 查询首页任务列表请求。

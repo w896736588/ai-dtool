@@ -1,0 +1,118 @@
+.markdown-container {
+  font-size:14px;
+  height: 100vh;
+  background-color: #f5f7fa;
+
+  .full-height {
+    height: 100%;
+  }
+
+  .sidebar {
+    background-color: #fff;
+    border-right: 1px solid #e6e6e6;
+    display: flex;
+    flex-direction: column;
+
+    .sidebar-header {
+      padding: 15px;
+      border-bottom: 1px solid #e6e6e6;
+
+      .search-input {
+        :deep(.el-input-group__append) {
+          padding: 0 10px;
+        }
+      }
+    }
+
+    .doc-list-scroll {
+      padding: 0 15px; // 添加内边距
+
+      .doc-item {
+        height: 38px;
+        line-height: 38px;
+        display: flex;
+        align-items: center;
+        padding: 0 10px;
+        margin-bottom: 5px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.3s;
+
+        &:hover {
+          background-color: #f5f7fa;
+
+          .doc-delete-btn {
+            opacity: 1;
+          }
+        }
+
+        &.active {
+          background-color: #e6f7ff;
+        }
+
+        .drag-handle {
+          margin-right: 10px;
+          cursor: move;
+          color: #c0c4cc;
+
+          &:hover {
+            color: #606266;
+          }
+        }
+
+        .doc-title {
+          flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .doc-delete-btn {
+          padding: 0;
+          color: #f56c6c;
+          opacity: 0;
+          transition: opacity 0.3s;
+        }
+      }
+    }
+  }
+
+  .editor-main {
+    padding: 0;
+    background-color: #fff;
+    z-index : 10001;
+    .editor-container {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+
+      .editor-header {
+        padding: 15px;
+        border-bottom: 1px solid #e6e6e6;
+        display: flex;
+        align-items: center;
+
+        .title-input {
+          flex: 1;
+          margin-right: 15px;
+
+          :deep(.el-input__inner) {
+            font-size: 16px;
+            //font-weight: bold;
+            border: none;
+            box-shadow: none;
+          }
+        }
+      }
+
+      .markdown-editor {
+        flex: 1;
+        border: none;
+
+        :deep(.v-md-editor) {
+          border: none;
+        }
+      }
+    }
+  }
+}

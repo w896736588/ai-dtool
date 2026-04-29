@@ -328,6 +328,139 @@ func (h *CSqlite) SetGlobalValue(name, key, value, desc string) error {
 	return err
 }
 
+// CronTaskByType 按 type 查询单条定时任务。
+func (h *CSqlite) CronTaskByType(taskType string) (map[string]any, error) {
+	return h.Client.QuickQuery(`tbl_cron_task`, `*`, map[string]any{
+		`type`: taskType,
+	}).Order(`id asc`).One()
+}
+
+// CronTaskList 查询所有定时任务。
+func (h *CSqlite) CronTaskList() ([]map[string]any, error) {
+	return h.Client.QuickQuery(`tbl_cron_task`, `*`, nil).Order(`id asc`).All()
+}
+
+// CronTaskSave 保存定时任务配置（按 type upsert）。
+func (h *CSqlite) CronTaskSave(taskType, name string, enabled int, triggerTime string) error {
+	now := time.Now().Unix()
+	one, err := h.Client.QuickQuery(`tbl_cron_task`, `*`, map[string]any{
+		`type`: taskType,
+	}).Order(`id asc`).One()
+	if err != nil && !DbRowMissing(err) {
+		return err
+	}
+	updateData := map[string]any{
+		`name`:         name,
+		`type`:         taskType,
+		`enabled`:      enabled,
+		`trigger_time`: triggerTime,
+		`update_time`:  now,
+	}
+	if cast.ToInt(one[`id`]) > 0 {
+		_, err = h.Client.QuickUpdate(`tbl_cron_task`, map[string]any{
+			`id`: one[`id`],
+		}, updateData).Exec()
+		return err
+	}
+	updateData[`create_time`] = now
+	_, err = h.Client.QuickCreate(`tbl_cron_task`, updateData).Exec()
+	return err
+}
+
+// CronTaskUpdateLastTriggerTime 更新定时任务最后触发时间。
+func (h *CSqlite) CronTaskUpdateLastTriggerTime(taskType string) error {
+	now := time.Now().Unix()
+	_, err := h.Client.QuickUpdate(`tbl_cron_task`, map[string]any{
+		`type`: taskType,
+	}, map[string]any{
+		`last_trigger_time`: now,
+		`update_time`:       now,
+	}).Exec()
+	return err
+}
+
+// DbRowMissing 判断数据库查询是否因行不存在而报错。
+func DbRowMissing(err error) bool {
+	errText := strings.ToLower(err.Error())
+	return strings.Contains(errText, `not found`) || strings.Contains(errText, `no rows`)
+}
+
+// HomeTaskConfigValue 按 key 从 tbl_home_task_config 读取配置值。
+func (h *CSqlite) HomeTaskConfigValue(key string) (string, error) {
+	one, err := h.Client.QuickQuery(`tbl_home_task_config`, `*`, map[string]any{
+		`key`: key,
+	}).Order(`id asc`).One()
+	if err != nil {
+		return ``, err
+	}
+	return cast.ToString(one[`value`]), nil
+}
+
+// HomeTaskConfigSave 按 key 保存首页任务配置（upsert）。
+func (h *CSqlite) HomeTaskConfigSave(name, key, value, desc string) error {
+	now := time.Now().Unix()
+	one, err := h.Client.QuickQuery(`tbl_home_task_config`, `*`, map[string]any{
+		`key`: key,
+	}).Order(`id asc`).One()
+	if err != nil && !DbRowMissing(err) {
+		return err
+	}
+	updateData := map[string]any{
+		`name`:        name,
+		`key`:         key,
+		`value`:       value,
+		`desc`:        desc,
+		`update_time`: now,
+	}
+	if cast.ToInt(one[`id`]) > 0 {
+		_, err = h.Client.QuickUpdate(`tbl_home_task_config`, map[string]any{
+			`id`: one[`id`],
+		}, updateData).Exec()
+		return err
+	}
+	updateData[`create_time`] = now
+	_, err = h.Client.QuickCreate(`tbl_home_task_config`, updateData).Exec()
+	return err
+}
+
+// MemoryConfigValue 按 key 从 tbl_memory_config 读取配置值。
+func (h *CSqlite) MemoryConfigValue(key string) (string, error) {
+	one, err := h.Client.QuickQuery(`tbl_memory_config`, `*`, map[string]any{
+		`key`: key,
+	}).Order(`id asc`).One()
+	if err != nil {
+		return ``, err
+	}
+	return cast.ToString(one[`value`]), nil
+}
+
+// MemoryConfigSave 按 key 保存记忆配置（upsert）。
+func (h *CSqlite) MemoryConfigSave(name, key, value, desc string) error {
+	now := time.Now().Unix()
+	one, err := h.Client.QuickQuery(`tbl_memory_config`, `*`, map[string]any{
+		`key`: key,
+	}).Order(`id asc`).One()
+	if err != nil && !DbRowMissing(err) {
+		return err
+	}
+	updateData := map[string]any{
+		`name`:        name,
+		`key`:         key,
+		`value`:       value,
+		`desc`:        desc,
+		`update_time`: now,
+	}
+	if cast.ToInt(one[`id`]) > 0 {
+		_, err = h.Client.QuickUpdate(`tbl_memory_config`, map[string]any{
+			`id`: one[`id`],
+		}, updateData).Exec()
+		return err
+	}
+	updateData[`create_time`] = now
+	_, err = h.Client.QuickCreate(`tbl_memory_config`, updateData).Exec()
+	return err
+}
+
 func (h *CSqlite) CmdList(variableId any) ([]map[string]any, error) {
 	return h.Client.QuickQuery(`tbl_variable_cmd`, `*`, map[string]any{
 		`variable_id`: variableId,
@@ -392,7 +525,8 @@ func (h *CSqlite) MemoryFragmentInfo(id int) (map[string]any, error) {
 	one[`tags`] = tags
 	one[`create_time_desc`] = h.memoryFragmentFormatTime(cast.ToInt64(one[`create_time`]))
 	one[`update_time_desc`] = h.memoryFragmentFormatTime(cast.ToInt64(one[`update_time`]))
-	one[`index_status_desc`] = h.memoryFragmentIndexStatusDesc(cast.ToString(one[`index_status`]))
+	delete(one, `index_status`)
+	delete(one, `index_version`)
 	return one, nil
 }
 
@@ -697,7 +831,8 @@ group by f.id`
 		rowCopy[`tags`] = tags
 		rowCopy[`create_time_desc`] = h.memoryFragmentFormatTime(cast.ToInt64(row[`create_time`]))
 		rowCopy[`update_time_desc`] = h.memoryFragmentFormatTime(cast.ToInt64(row[`update_time`]))
-		rowCopy[`index_status_desc`] = h.memoryFragmentIndexStatusDesc(cast.ToString(row[`index_status`]))
+		delete(rowCopy, `index_status`)
+		delete(rowCopy, `index_version`)
 		rowCopy[`score`] = score
 		resultRows = append(resultRows, searchRow{
 			row:   rowCopy,
@@ -816,7 +951,8 @@ func (h *CSqlite) memoryFragmentFillDisplayFields(list []map[string]any) {
 		list[i][`tags`] = tags
 		list[i][`create_time_desc`] = h.memoryFragmentFormatTime(cast.ToInt64(list[i][`create_time`]))
 		list[i][`update_time_desc`] = h.memoryFragmentFormatTime(cast.ToInt64(list[i][`update_time`]))
-		list[i][`index_status_desc`] = h.memoryFragmentIndexStatusDesc(cast.ToString(list[i][`index_status`]))
+		delete(list[i], `index_status`)
+		delete(list[i], `index_version`)
 	}
 }
 
@@ -826,18 +962,6 @@ func (h *CSqlite) memoryFragmentFormatTime(unixTime int64) string {
 		return ``
 	}
 	return gstool.TimeUnixToString(time.Unix(unixTime, 0), `Y-m-d H:i:s`)
-}
-
-// memoryFragmentIndexStatusDesc 返回索引状态描述。
-func (h *CSqlite) memoryFragmentIndexStatusDesc(status string) string {
-	switch status {
-	case `success`:
-		return `索引成功`
-	case `failed`:
-		return `索引失败`
-	default:
-		return `待索引`
-	}
 }
 
 // memoryFragmentNormalizeTags 规范化标签列表。

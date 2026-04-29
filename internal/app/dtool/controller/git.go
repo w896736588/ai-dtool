@@ -12,8 +12,8 @@ import (
 	"io"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
@@ -28,23 +28,36 @@ var (
 	cdCommand = `/var/www/`
 )
 
+// sendGitSse 安全发送 Git 操作 SSE 消息。
+func sendGitSse(sse *p_sse.SseShell, msg string) {
+	if sse != nil && sse.Sse != nil {
+		sse.Send(msg + "\n")
+	}
+}
+
 // GitCurrentBranch 查询目录的git分支
 func GitCurrentBranch(c *gin.Context) {
-	reqMap, sshClient, _, err := getGitComponent(c)
+	reqMap, sshClient, sse, err := getGitComponent(c)
 	if err != nil {
+		gstool.FmtPrintlnLogTime(`[GitCurrentBranch][01] 获取Git组件失败 err=%s`, err.Error())
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	codePath := cast.ToString(reqMap[`code_path`])
 	if codePath == `` {
+		gstool.FmtPrintlnLogTime(`[GitCurrentBranch][02] code_path为空 req=%#v`, reqMap)
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
 		return
 	}
-	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	gstool.FmtPrintlnLogTime(`[GitCurrentBranch][03] 开始前置环境处理 code_path=%s ssh_id=%s sse_distribute_id=%s`, codePath, cast.ToString(reqMap[`ssh_id`]), cast.ToString(reqMap[`sse_distribute_id`]))
+	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
 	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+		gstool.FmtPrintlnLogTime(`[GitCurrentBranch][04] 前置环境处理失败 code_path=%s err=%s`, codePath, prepareErr.Error())
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
+	gstool.FmtPrintlnLogTime(`[GitCurrentBranch][05] 前置环境处理完成，准备查询当前分支 code_path=%s`, codePath)
+	sendGitSse(sse, fmt.Sprintf("[ssh] 查询 %s 当前分支...", codePath))
 	command := p_shell.NewCommand()
 	//command.Sudo()
 	command.Cd(codePath)
@@ -52,13 +65,22 @@ func GitCurrentBranch(c *gin.Context) {
 	command.GitShowBranch()
 	command.Echo(`远程分支：`)
 	command.GitShowOriginBranch()
-	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), time.Second*4)
+	commandText := command.GetCommand().ToStr()
+	gstool.FmtPrintlnLogTime(`[GitCurrentBranch][06] 执行当前分支查询命令 timeout=%s command=%s`, (time.Second * 4).String(), commandText)
+	result, runErr := sshClient.RunCommandWait(commandText, time.Second*4)
+	if runErr != nil {
+		gstool.FmtPrintlnLogTime(`[GitCurrentBranch][07] 当前分支查询失败 result_len=%d result=%q err=%s`, len(result), result, runErr.Error())
+		sendGitSse(sse, fmt.Sprintf("[ssh] 查询失败 %s", runErr.Error()))
+	} else {
+		gstool.FmtPrintlnLogTime(`[GitCurrentBranch][08] 当前分支查询完成 result_len=%d result=%q`, len(result), result)
+		sendGitSse(sse, "[ssh] 查询完成")
+	}
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
 // GitChangeBranch 切换分支
 func GitChangeBranch(c *gin.Context) {
-	reqMap, sshClient, _, err := getGitComponent(c)
+	reqMap, sshClient, sse, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -73,11 +95,12 @@ func GitChangeBranch(c *gin.Context) {
 		gsgin.GinResponseError(c, `切换的分支不能为空`, nil)
 		return
 	}
-	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
 	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
+	sendGitSse(sse, fmt.Sprintf("[ssh] 切换 %s 到分支 %s...", codePath, branchName))
 	command1 := p_shell.NewCommand()
 	command1.Init()
 	//command.Sudo()
@@ -106,12 +129,13 @@ func GitChangeBranch(c *gin.Context) {
 	command.Echo(`远程分支：`)
 	command.GitShowOriginBranch()
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), getGitOperationTimeout(gitOperationBranchChange))
+	sendGitSse(sse, fmt.Sprintf("[ssh] 切换到分支 %s 完成", branchName))
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
 // GitChangeBranchRemote 切换远程分支
 func GitChangeBranchRemote(c *gin.Context) {
-	reqMap, sshClient, _, err := getGitComponent(c)
+	reqMap, sshClient, sse, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -126,7 +150,7 @@ func GitChangeBranchRemote(c *gin.Context) {
 		gsgin.GinResponseError(c, `切换的分支不能为空`, nil)
 		return
 	}
-	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
 	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
@@ -139,6 +163,7 @@ func GitChangeBranchRemote(c *gin.Context) {
 	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), getGitOperationTimeout(gitOperationBranchChange))
 	currentBranch = CleanBranchName(currentBranch)
 
+	sendGitSse(sse, fmt.Sprintf("[ssh] 切换 %s 到远程分支 %s...", codePath, branchName))
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
@@ -155,12 +180,13 @@ func GitChangeBranchRemote(c *gin.Context) {
 	command.Echo(`远程分支：`)
 	command.GitShowOriginBranch()
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), getGitOperationTimeout(gitOperationBranchChange))
+	sendGitSse(sse, fmt.Sprintf("[ssh] 切换到远程分支 %s 完成", branchName))
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
 // GitPullBranchOrigin 拉取当前分支最新代码
 func GitPullBranchOrigin(c *gin.Context) {
-	reqMap, sshClient, _, err := getGitComponent(c)
+	reqMap, sshClient, sse, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -170,23 +196,13 @@ func GitPullBranchOrigin(c *gin.Context) {
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
 		return
 	}
-	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
 	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
-	command1 := p_shell.NewCommand()
-	command1.Init()
-	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
-	command1.Cd(codePath)
-	command1.GitShowBranch()
-	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), getGitOperationTimeout(gitOperationPull))
-	currentBranch = sshClient.FilterEndTip(currentBranch)
-	currentBranch = sshClient.FilterCommand(currentBranch)
-	currentBranch = CleanBranchName(currentBranch)
 
-	gstool.FmtPrintlnLogTime(`获取当前分支为：%q`, currentBranch)
-
+	sendGitSse(sse, fmt.Sprintf("[ssh] 拉取 %s 项目代码...", codePath))
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
@@ -194,18 +210,25 @@ func GitPullBranchOrigin(c *gin.Context) {
 	command.GitCleanAll()
 	command.GitFetch()
 	command.GitPull()
-	command.GitPullOrigin(currentBranch)
+	// 通过命令替换动态取当前分支，避免分支探测输出中的 prompt/命令残留污染后续拉取命令。
+	command.GitPullOriginCurrentBranch()
 	command.Echo(`当前分支：`)
 	command.GitShowBranch()
 	command.Echo(`远程分支：`)
 	command.GitShowOriginBranch()
-	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), getGitOperationTimeout(gitOperationPull))
+	result, runErr := sshClient.RunCommandWait(command.GetCommand().ToStr(), getGitOperationTimeout(gitOperationPull))
+	if runErr != nil {
+		sendGitSse(sse, fmt.Sprintf("[ssh] 拉取失败: %s", runErr.Error()))
+		gsgin.GinResponseError(c, runErr.Error(), result)
+		return
+	}
+	sendGitSse(sse, "[ssh] 拉取完成")
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
 // GitRemoteBranchList 查询指定仓库的全部远程分支
 func GitRemoteBranchList(c *gin.Context) {
-	reqMap, sshClient, _, err := getGitComponent(c)
+	reqMap, sshClient, sse, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -216,12 +239,13 @@ func GitRemoteBranchList(c *gin.Context) {
 		return
 	}
 
-	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
 	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
 
+	sendGitSse(sse, fmt.Sprintf("[ssh] 查询 %s 远程分支列表...", codePath))
 	command := p_shell.NewCommand()
 	command.Cd(codePath)
 	command.GitFetch()
@@ -239,7 +263,7 @@ func GitRemoteBranchList(c *gin.Context) {
 
 // GitQuickCreateBranch 快捷创建并推送业务分支
 func GitQuickCreateBranch(c *gin.Context) {
-	reqMap, sshClient, _, err := getGitComponent(c)
+	reqMap, sshClient, sse, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -268,7 +292,7 @@ func GitQuickCreateBranch(c *gin.Context) {
 		gsgin.GinResponseError(c, `业务英文仅允许英文、数字、下划线`, nil)
 		return
 	}
-	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
 	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
@@ -289,6 +313,7 @@ func GitQuickCreateBranch(c *gin.Context) {
 	branchDate := time.Now().Format(`20060102`)
 	newBranchName := fmt.Sprintf(`%s_%s_%s_%s`, branchType, userName, businessEN, branchDate)
 
+	sendGitSse(sse, fmt.Sprintf("[ssh] 在 %s 创建分支 %s...", codePath, newBranchName))
 	command := p_shell.NewCommand()
 	command.Cd(codePath)
 	// 按约定顺序执行：pull -> fetch -> checkout . -> clean
@@ -305,9 +330,11 @@ func GitQuickCreateBranch(c *gin.Context) {
 
 	result, runErr := sshClient.RunCommandWait(command.GetCommand().ToStr(), getGitOperationTimeout(gitOperationQuickCreate))
 	if runErr != nil {
+		sendGitSse(sse, fmt.Sprintf("[ssh] 创建分支失败: %s", runErr.Error()))
 		gsgin.GinResponseError(c, runErr.Error(), nil)
 		return
 	}
+	sendGitSse(sse, fmt.Sprintf("[ssh] 创建分支 %s 完成", newBranchName))
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`branch_name`: newBranchName,
 		`result`:      result,
@@ -321,7 +348,7 @@ func CleanBranchName(branchName string) string {
 
 // QueryStatus 查询分支状态
 func QueryStatus(c *gin.Context) {
-	reqMap, sshClient, _, err := getGitComponent(c)
+	reqMap, sshClient, sse, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -331,7 +358,7 @@ func QueryStatus(c *gin.Context) {
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
 		return
 	}
-	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
 	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
@@ -342,13 +369,15 @@ func QueryStatus(c *gin.Context) {
 	command.Cd(codePath)
 	command.GitStatus()
 
+	sendGitSse(sse, fmt.Sprintf("[ssh] 查询 %s 项目状态...", codePath))
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	sendGitSse(sse, "[ssh] 查询状态完成")
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
 // GitCommitLog 查询提交日志
 func GitCommitLog(c *gin.Context) {
-	reqMap, sshClient, _, err := getGitComponent(c)
+	reqMap, sshClient, sse, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -358,7 +387,7 @@ func GitCommitLog(c *gin.Context) {
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
 		return
 	}
-	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
 	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
@@ -368,7 +397,9 @@ func GitCommitLog(c *gin.Context) {
 	command.Cd(codePath)
 	command.GitCommitLog()
 
+	sendGitSse(sse, fmt.Sprintf("[ssh] 查询 %s 提交日志...", codePath))
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	sendGitSse(sse, "[ssh] 查询提交日志完成")
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
@@ -418,6 +449,183 @@ func filterGitListByExistingGroups(gitGroupList, gitList []map[string]any) []map
 	return filteredList
 }
 
+// 推送一行
+func pushTableLine(name, codePath, localBranch, remoteBranch, use string, writeSummary func(string)) {
+	tableLine := fmt.Sprintf(
+		"| %s | %s | %s | %s |",
+		escapeMarkdownTableCell(name),
+		escapeMarkdownTableCell(codePath),
+		escapeMarkdownTableCell(localBranch),
+		escapeMarkdownTableCell(remoteBranch),
+	)
+	writeSummary(tableLine + "\n")
+}
+
+const (
+	// gitGroupBranchListConcurrency Git 分组分支查询的最大并发数。
+	// gitGroupBranchListConcurrency caps Git group branch queries to 5 concurrent SSH sessions.
+	gitGroupBranchListConcurrency = 5
+)
+
+// gitBranchRunner 抽象单次 SSH 执行能力，避免交互式终端缓冲造成串线。
+// gitBranchRunner abstracts one-shot SSH execution to avoid interactive terminal buffer bleed.
+type gitBranchRunner interface {
+	RunCommandOnce(command string) (string, error)
+	Close()
+}
+
+// gitBranchOnceRunner 包装 SshOnce，统一成可关闭的单次执行接口。
+// gitBranchOnceRunner wraps SshOnce into a closeable one-shot runner interface.
+type gitBranchOnceRunner struct {
+	client *gsssh.SshOnce
+}
+
+func (h *gitBranchOnceRunner) RunCommandOnce(command string) (string, error) {
+	return h.client.RunCommandOnce(command)
+}
+
+func (h *gitBranchOnceRunner) Close() {}
+
+// gitBranchRunnerFactory 创建单次查询使用的一次性 SSH 执行器。
+// gitBranchRunnerFactory builds a one-shot SSH runner for every repository query.
+type gitBranchRunnerFactory func(sshConfig map[string]any) (gitBranchRunner, error)
+
+// gitBranchRunnerRelease 在单次执行结束后做额外清理；默认无需动作。
+// gitBranchRunnerRelease performs optional cleanup after one-shot execution completes.
+type gitBranchRunnerRelease func()
+
+var (
+	// gitGroupBranchRunnerFactory 默认创建一次性 SSH 执行器；测试中可替换。
+	// gitGroupBranchRunnerFactory creates a one-shot SSH runner and can be swapped in tests.
+	gitGroupBranchRunnerFactory gitBranchRunnerFactory = func(sshConfig map[string]any) (gitBranchRunner, error) {
+		client, err := component.ShellClient.GetSshOnce(sshConfig)
+		if err != nil {
+			return nil, err
+		}
+		return &gitBranchOnceRunner{client: client}, nil
+	}
+	// gitGroupBranchRunnerRelease 一次性执行器默认无需额外释放；测试中可替换。
+	// gitGroupBranchRunnerRelease is a no-op by default because SshOnce is not pooled.
+	gitGroupBranchRunnerRelease gitBranchRunnerRelease = func() {
+	}
+)
+
+// runGitGroupBranchQueries 并发查询 Git 分组下所有仓库分支。
+// runGitGroupBranchQueries uses fresh SSH connections per repository and limits concurrency.
+func runGitGroupBranchQueries(
+	gitList []map[string]any,
+	sshConfig map[string]any,
+	writeSummary func(string),
+	factory gitBranchRunnerFactory,
+	release gitBranchRunnerRelease,
+) []map[string]any {
+	if len(gitList) == 0 {
+		return []map[string]any{}
+	}
+	if factory == nil {
+		factory = gitGroupBranchRunnerFactory
+	}
+	if release == nil {
+		release = gitGroupBranchRunnerRelease
+	}
+
+	results := make([]map[string]any, len(gitList))
+	// 中文注释：使用信号量限制同时活跃的 SSH 连接数，避免同一 SSH 被瞬时打满。
+	// English comment: A semaphore keeps active SSH sessions under the configured concurrency cap.
+	limiter := make(chan struct{}, gitGroupBranchListConcurrency)
+	var waitGroup sync.WaitGroup
+
+	for index, item := range gitList {
+		index := index
+		item := item
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			limiter <- struct{}{}
+			defer func() {
+				<-limiter
+			}()
+			results[index] = queryGitGroupBranchItem(item, sshConfig, writeSummary, factory, release)
+		}()
+	}
+
+	waitGroup.Wait()
+	return results
+}
+
+// queryGitGroupBranchItem 查询单个仓库的本地/远程分支，并保证连接即用即释放。
+// queryGitGroupBranchItem queries one repository and always closes/releases the fresh SSH client.
+func queryGitGroupBranchItem(
+	item map[string]any,
+	sshConfig map[string]any,
+	writeSummary func(string),
+	factory gitBranchRunnerFactory,
+	release gitBranchRunnerRelease,
+) map[string]any {
+	name := cast.ToString(item[`name`])
+	codePath := cast.ToString(item[`code_path`])
+	command := p_shell.NewCommand()
+	command.Cd(codePath)
+	command.Echo(`当前分支：`)
+	command.GitShowBranch()
+	command.Echo(`远程分支：`)
+	command.GitShowOriginBranch()
+
+	runner, cliErr := factory(sshConfig)
+	if cliErr != nil {
+		pushTableLine(name, codePath, cliErr.Error(), ``, ``, writeSummary)
+		return map[string]any{
+			`name`:         name,
+			`local_branch`: cliErr.Error(),
+		}
+	}
+	defer func() {
+		runner.Close()
+		release()
+	}()
+
+	result, getErr := runner.RunCommandOnce(command.GetCommand().ToStr())
+	if getErr != nil {
+		pushTableLine(name, codePath, getErr.Error(), ``, ``, writeSummary)
+		return map[string]any{
+			`name`:         name,
+			`local_branch`: getErr.Error(),
+		}
+	}
+
+	localBranch, remoteBranch := parseGitGroupBranchOutput(name, result)
+	pushTableLine(name, codePath, localBranch, remoteBranch, ``, writeSummary)
+	return map[string]any{
+		`name`:          name,
+		`local_branch`:  localBranch,
+		`remote_branch`: remoteBranch,
+	}
+}
+
+// parseGitGroupBranchOutput 解析分支查询输出中的本地/远程分支名称。
+// parseGitGroupBranchOutput extracts local and remote branch names from one-shot command output.
+func parseGitGroupBranchOutput(name string, result string) (string, string) {
+	// 中文注释：一次性 SSH 输出不存在交互式终端 prompt，只需清理终端控制字符并按标签提取。
+	// English comment: One-shot SSH output has no terminal prompt state; clean terminal chars and parse labels.
+	ret := p_common.TBaseClient.FilterTerminalChars(result)
+
+	splitRet := strings.Split(ret, "\n")
+	localBranch := `-`
+	remoteBranch := `-`
+	for indexSplit, split := range splitRet {
+		if split == `当前分支：` && len(splitRet) > indexSplit+1 {
+			localBranch = splitRet[indexSplit+1]
+		}
+		if split == `远程分支：` && len(splitRet) > indexSplit+1 {
+			remoteBranch = splitRet[indexSplit+1]
+		}
+	}
+	gstool.FmtPrintlnLogTime(`%s 运行结果 %#v`, name, splitRet)
+	gstool.FmtPrintlnLogTime(`%s 结果 本地：%s 远程：%s`, name, localBranch, remoteBranch)
+	return localBranch, remoteBranch
+}
+
+// 查询某个组当前的git分支和使用情况
 func GitGroupBranchList(c *gin.Context) {
 	reqMap := make(map[string]interface{})
 	if err := gsgin.GinPostBody(c, &reqMap); err != nil {
@@ -451,7 +659,7 @@ func GitGroupBranchList(c *gin.Context) {
 		})
 		return
 	}
-
+	//sse分发id
 	sseDistributeId := cast.ToString(reqMap[`sse_distribute_id`])
 	sse := &p_sse.SseShell{
 		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
@@ -466,128 +674,36 @@ func GitGroupBranchList(c *gin.Context) {
 	}
 
 	totalCount := len(gitList)
-	resultList := make([]map[string]any, 0, totalCount)
+	gstool.FmtPrintlnLogTime(`本次查询仓库数量%d`, totalCount)
 	summaryLines := make([]string, 0, totalCount+4)
-	summaryLines = append(summaryLines, fmt.Sprintf("### Git分组 `%s` 分支总览", cast.ToString(groupInfo[`name`])))
-	summaryLines = append(summaryLines, "")
-	summaryHeaderIndex := len(summaryLines)
-	summaryLines = append(summaryLines, "| 名称 | 路径 | 当前分支 | 远程分支/错误 |")
-	summaryLines = append(summaryLines, "| --- | --- | --- | --- |")
-	// 先输出表头，后续只输出表格行，不输出其他日志文本
-	summaryLines[summaryHeaderIndex] = "| 鍚嶇О | 璺緞 | 褰撳墠鍒嗘敮 | 杩滅▼鍒嗘敮/閿欒 | 鏄惁鏈変汉浣跨敤 |"
-	summaryLines[summaryHeaderIndex+1] = "| --- | --- | --- | --- | --- |"
-	summaryLines[summaryHeaderIndex] = "| 名称 | 路径 | 当前分支 | 远程分支/错误 | 是否有人使用 |"
+	writeSummary("\n" + fmt.Sprintf("### Git分组 `%s` 分支总览", cast.ToString(groupInfo[`name`])))
+	writeSummary(fmt.Sprintf("本次查询仓库数量 %d", totalCount))
+
+	summaryLines = append(summaryLines, "| 名称 | 路径 | 当前分支 | 远程分支 |")
+	summaryLines = append(summaryLines, "| --- | --- | --- | --- | ")
 	writeSummary("\n" + strings.Join(summaryLines, "\n") + "\n")
-
-	for _, item := range gitList {
-		itemName := cast.ToString(item[`name`])
-		itemPath := cast.ToString(item[`code_path`])
-		sshId := cast.ToString(item[`ssh_id`])
-
-		itemResult := map[string]any{
-			`id`:            cast.ToString(item[`id`]),
-			`name`:          itemName,
-			`code_path`:     itemPath,
-			`ssh_id`:        sshId,
-			`local_branch`:  `N/A`,
-			`remote_branch`: `N/A`,
-			`usage_status`:  `N/A`,
-			`usage_owners`:  []string{},
-			`ok`:            false,
-			`error`:         ``,
-		}
-		tableLine := ``
-		if itemPath == `` || sshId == `` {
-			itemResult[`error`] = `缺少 code_path 或 ssh_id 配置`
-			tableLine = fmt.Sprintf(
-				"| %s | %s | %s | %s |",
-				escapeMarkdownTableCell(itemName),
-				escapeMarkdownTableCell(itemPath),
-				escapeMarkdownTableCell(`N/A`),
-				escapeMarkdownTableCell(`失败: `+cast.ToString(itemResult[`error`])),
-			)
-		} else {
-			sshConfig, sshErr := common.DbMain.GetSshConfig(sshId)
-			if sshErr != nil || len(sshConfig) == 0 {
-				itemResult[`error`] = `SSH配置不存在`
-				tableLine = fmt.Sprintf(
-					"| %s | %s | %s | %s |",
-					escapeMarkdownTableCell(itemName),
-					escapeMarkdownTableCell(itemPath),
-					escapeMarkdownTableCell(`N/A`),
-					escapeMarkdownTableCell(`失败: `+cast.ToString(itemResult[`error`])),
-				)
-			} else {
-				uniqueKey := p_common.TBaseClient.GetCombineKey(
-					sshId,
-					`group_branch_`+gitGroupId+`_`+cast.ToString(item[`id`])+`_`+cast.ToString(time.Now().UnixNano()),
-				)
-				// 组内批量查询只保留汇总结果，避免每个项目的原始 shell 输出刷屏
-				silentSse := &p_sse.SseShell{}
-				sshClient, clientErr := component.ShellClient.GetClient(sshConfig, uniqueKey, silentSse, nil, nil, nil)
-				if clientErr != nil {
-					itemResult[`error`] = clientErr.Error()
-					tableLine = fmt.Sprintf(
-						"| %s | %s | %s | %s |",
-						escapeMarkdownTableCell(itemName),
-						escapeMarkdownTableCell(itemPath),
-						escapeMarkdownTableCell(`N/A`),
-						escapeMarkdownTableCell(`失败: `+cast.ToString(itemResult[`error`])),
-					)
-				} else if prepareErr := prepareGitOperationEnv(sshClient, itemPath); prepareErr != nil {
-					// 复用统一预处理，避免分组查询单独实现认证方案。
-					itemResult[`error`] = prepareErr.Error()
-					tableLine = fmt.Sprintf(
-						"| %s | %s | %s | %s |",
-						escapeMarkdownTableCell(itemName),
-						escapeMarkdownTableCell(itemPath),
-						escapeMarkdownTableCell(`N/A`),
-						escapeMarkdownTableCell(`失败: `+cast.ToString(itemResult[`error`])),
-					)
-				} else {
-					branchInfo, queryErr := queryCurrentBranchInfo(sshClient, itemPath, 5*time.Second)
-					if queryErr != nil {
-						itemResult[`error`] = queryErr.Error()
-						tableLine = fmt.Sprintf(
-							"| %s | %s | %s | %s |",
-							escapeMarkdownTableCell(itemName),
-							escapeMarkdownTableCell(itemPath),
-							escapeMarkdownTableCell(`N/A`),
-							escapeMarkdownTableCell(`失败: `+cast.ToString(itemResult[`error`])),
-						)
-					} else {
-						usageInfo := queryBranchUsageInfo(sshClient, itemPath, branchInfo, 8*time.Second)
-						itemResult[`local_branch`] = branchInfo.LocalBranch
-						itemResult[`remote_branch`] = branchInfo.RemoteBranch
-						itemResult[`usage_status`] = usageInfo.UsageDisplay
-						itemResult[`usage_owners`] = usageInfo.Owners
-						itemResult[`ok`] = true
-						tableLine = fmt.Sprintf(
-							"| %s | %s | %s | %s |",
-							escapeMarkdownTableCell(itemName),
-							escapeMarkdownTableCell(itemPath),
-							escapeMarkdownTableCell(branchInfo.LocalBranch),
-							escapeMarkdownTableCell(branchInfo.RemoteBranch),
-						)
-					}
-				}
-			}
-		}
-
-		tableLine = appendMarkdownTableUsageCell(tableLine, cast.ToString(itemResult[`usage_status`]))
-		writeSummary(tableLine + "\n")
-
-		resultList = append(resultList, itemResult)
-		summaryLines = append(summaryLines, tableLine)
+	// 中文注释：同组仓库共用一个 SSH 配置，但每个仓库查询都重新建连。
+	// English comment: Repositories in the group share one SSH config, but each query uses a fresh connection.
+	sshId := gitList[0][`ssh_id`]
+	sshConfig, sshErr := common.DbMain.GetSshConfig(sshId)
+	if sshErr != nil || len(sshConfig) == 0 {
+		gsgin.GinResponseSuccess(c, ``, map[string]any{
+			`git_group_id`: gitGroupId,
+			`group_name`:   cast.ToString(groupInfo[`name`]),
+			`list`:         []map[string]any{},
+			`summary_text`: fmt.Sprintf("Git(%s)未配置ssh连接\n", gitList[0][`name`]),
+		})
+		return
 	}
-	summaryText := strings.Join(summaryLines, "\n")
+	resultList := runGitGroupBranchQueries(gitList, sshConfig, writeSummary, nil, nil)
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`git_group_id`:  gitGroupId,
 		`group_name`:    cast.ToString(groupInfo[`name`]),
 		`list`:          resultList,
 		`summary_lines`: summaryLines,
-		`summary_text`:  summaryText,
 	})
+	return
+
 }
 
 type GitCurrentBranchInfo struct {
@@ -603,7 +719,7 @@ type GitBranchUsageInfo struct {
 
 const (
 	gitDefaultCommandTimeout    = 40 * time.Second
-	gitBranchChangeTimeout      = 5 * time.Minute
+	gitBranchChangeTimeout      = 10 * time.Minute
 	gitOperationBranchChange    = `branch_change`
 	gitOperationPull            = `pull`
 	gitOperationQuickCreate     = `quick_create_branch`
@@ -627,166 +743,6 @@ func getGitOperationTimeout(operation string) time.Duration {
 	default:
 		return gitDefaultCommandTimeout
 	}
-}
-
-// queryCurrentBranchInfo 合并本地+远程分支查询为单次SSH命令，减少网络往返
-func queryCurrentBranchInfo(sshClient *gsssh.SshTerminal, codePath string, timeout time.Duration) (*GitCurrentBranchInfo, error) {
-	const branchSep = `__DT_BRANCH_SEP__`
-	combinedCmd := p_shell.NewCommand()
-	combinedCmd.Cd(codePath)
-	combinedCmd.Echo(`__DT_LOCAL_BRANCH_BEGIN__`)
-	combinedCmd.GitShowBranch()
-	combinedCmd.Echo(`__DT_LOCAL_BRANCH_END__`)
-	combinedCmd.Echo(`__DT_REMOTE_BRANCH_BEGIN__`)
-	combinedCmd.GitShowOriginBranch()
-	combinedCmd.Echo(`__DT_REMOTE_BRANCH_END__`)
-
-	combinedOutput, err := sshClient.RunCommandWait(combinedCmd.GetCommand().ToStr(), timeout)
-	if err != nil {
-		return nil, err
-	}
-	return parseCurrentBranchInfoFromCombinedOutput(combinedOutput), nil
-
-	lines := strings.Split(combinedOutput, "\n")
-	gstool.FmtPrintlnLogTime(`合并查询结果：%s`, gstool.JsonEncode(lines))
-
-	// 定位分隔符行（跳过首行命令回显）
-	sepIdx := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(p_common.TBaseClient.FilterTerminalChars(lines[i])) == branchSep {
-			sepIdx = i
-			break
-		}
-	}
-
-	// 解析本地分支：命令回显之后、分隔符之前的第一行
-	localBranch := ``
-	if sepIdx > 1 {
-		candidate := strings.TrimSpace(p_common.TBaseClient.FilterTerminalChars(lines[1]))
-		// 过滤掉终端提示符等噪声，避免把控制串当成本地分支
-		if !isBranchParseNoise(candidate) {
-			localBranch = candidate
-		}
-	} else if len(lines) > 1 {
-		candidate := strings.TrimSpace(p_common.TBaseClient.FilterTerminalChars(lines[1]))
-		// 过滤掉终端提示符等噪声，避免把控制串当成本地分支
-		if !isBranchParseNoise(candidate) {
-			localBranch = candidate
-		}
-	}
-
-	// 解析远程分支：分隔符之后第一个非空行
-	remoteBranch := ``
-	if sepIdx >= 0 {
-		for i := sepIdx + 1; i < len(lines); i++ {
-			cleaned := strings.TrimSpace(p_common.TBaseClient.FilterTerminalChars(lines[i]))
-			// 仅接受合法的远程分支行（如 "<sha>\trefs/heads/xxx"），
-			// 终端提示符/控制串等噪声直接跳过
-			if cleaned == `` || isBranchParseNoise(cleaned) || !isLikelyRemoteBranch(cleaned) {
-				continue
-			}
-			if cleaned != `` {
-				remoteBranch = cleaned
-				break
-			}
-		}
-	}
-
-	return &GitCurrentBranchInfo{
-		LocalBranch:  localBranch,
-		RemoteBranch: remoteBranch,
-		RawOutput:    buildCurrentBranchDisplayOutput(localBranch, remoteBranch),
-	}, nil
-}
-
-// parseCurrentBranchInfoFromCombinedOutput 解析组内批量查询使用的合并命令输出。
-// 这里统一复用带 begin/end 标记的分支解析逻辑，避免依赖脆弱的固定行号。
-func parseCurrentBranchInfoFromCombinedOutput(output string) *GitCurrentBranchInfo {
-	localBranch, remoteBranch := parseBranchFromCurrentBranchOutput(output)
-	return &GitCurrentBranchInfo{
-		LocalBranch:  localBranch,
-		RemoteBranch: remoteBranch,
-		RawOutput:    buildCurrentBranchDisplayOutput(localBranch, remoteBranch),
-	}
-}
-
-func runRemoteBranchQuery(sshClient *gsssh.SshTerminal, codePath string, timeout time.Duration) (string, error) {
-	remoteCommand := p_shell.NewCommand()
-	remoteCommand.Cd(codePath)
-	remoteCommand.Echo(`远程分支：`)
-	remoteCommand.GitShowOriginBranch()
-	return sshClient.RunCommandWait(remoteCommand.GetCommand().ToStr(), timeout)
-}
-
-func parseBranchFromCurrentBranchOutput(output string) (string, string) {
-	text := p_common.TBaseClient.FilterTerminalChars(output)
-	lines := strings.Split(text, "\n")
-	localBranch := ``
-	remoteBranch := ``
-	localBegin := false
-	localEnd := false
-	remoteBegin := false
-	remoteEnd := false
-
-	findNextValue := func(start int) string {
-		for i := start; i < len(lines); i++ {
-			line := strings.TrimSpace(lines[i])
-			if line == `` {
-				continue
-			}
-			if isBranchParseNoise(line) {
-				continue
-			}
-			if strings.Contains(line, `当前分支：`) || strings.Contains(line, `远程分支：`) {
-				continue
-			}
-			return line
-		}
-		return ``
-	}
-
-	for idx, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.Contains(trimmed, `__DT_LOCAL_BRANCH_BEGIN__`) {
-			localBegin = true
-			continue
-		}
-		if strings.Contains(trimmed, `__DT_LOCAL_BRANCH_END__`) {
-			localEnd = true
-			continue
-		}
-		if strings.Contains(trimmed, `__DT_REMOTE_BRANCH_BEGIN__`) {
-			remoteBegin = true
-			continue
-		}
-		if strings.Contains(trimmed, `__DT_REMOTE_BRANCH_END__`) {
-			remoteEnd = true
-			continue
-		}
-
-		if localBegin && !localEnd && localBranch == `` {
-			if isLikelyLocalBranch(trimmed) {
-				localBranch = trimmed
-				continue
-			}
-		}
-		if remoteBegin && !remoteEnd && remoteBranch == `` {
-			if isLikelyRemoteBranch(trimmed) {
-				remoteBranch = trimmed
-				continue
-			}
-		}
-
-		if strings.Contains(trimmed, `当前分支：`) && localBranch == `` {
-			localBranch = findNextValue(idx + 1)
-			continue
-		}
-		if strings.Contains(trimmed, `远程分支：`) && remoteBranch == `` {
-			remoteBranch = findNextValue(idx + 1)
-			continue
-		}
-	}
-	return localBranch, remoteBranch
 }
 
 func isBranchParseNoise(line string) bool {
@@ -813,26 +769,6 @@ func isLikelyShellPrompt(line string) bool {
 		return false
 	}
 	return true
-}
-
-func isLikelyLocalBranch(line string) bool {
-	if isBranchParseNoise(line) {
-		return false
-	}
-	if strings.Contains(line, " ") || strings.Contains(line, "\t") {
-		return false
-	}
-	return true
-}
-
-func isLikelyRemoteBranch(line string) bool {
-	if isBranchParseNoise(line) {
-		return false
-	}
-	if strings.Contains(line, `refs/heads/`) {
-		return true
-	}
-	return false
 }
 
 // parseAllRemoteBranches 解析 git ls-remote --heads origin 输出
@@ -909,216 +845,8 @@ func escapeMarkdownTableCell(value string) string {
 	return v
 }
 
-func normalizeRemoteBranchDisplay(value string) string {
-	v := strings.TrimSpace(value)
-	if v == "" || v == "N/A" {
-		return "N/A"
-	}
-	if strings.HasPrefix(v, "refs/heads/") {
-		return strings.TrimPrefix(v, "refs/heads/")
-	}
-	fields := strings.Fields(v)
-	if len(fields) >= 2 {
-		last := fields[len(fields)-1]
-		if strings.HasPrefix(last, "refs/heads/") {
-			return strings.TrimPrefix(last, "refs/heads/")
-		}
-		return last
-	}
-	return v
-}
-
-// queryBranchUsageInfo 先检查远程分支，再回退到最近 2 小时工作区文件属主。
-// queryBranchUsageInfo checks remote branch first, then falls back to recent workspace owners within 2 hours.
-func queryBranchUsageInfo(sshClient *gsssh.SshTerminal, codePath string, branchInfo *GitCurrentBranchInfo, timeout time.Duration) GitBranchUsageInfo {
-	// 关键判断 / Key decision: 本地分支不存在时，直接视为无人使用并返回统一占位符。
-	if strings.TrimSpace(branchInfo.LocalBranch) == "" {
-		return GitBranchUsageInfo{
-			UsageDisplay: gitBranchUsageNoneDisplay,
-			Owners:       []string{},
-		}
-	}
-
-	remoteBranch := normalizeRemoteBranchDisplay(branchInfo.RemoteBranch)
-	// 关键判断 / Key decision: 只要存在远程分支，就直接标记为“有人使用”。
-	if remoteBranch != "" && remoteBranch != "N/A" {
-		return GitBranchUsageInfo{
-			UsageDisplay: gitBranchUsageUsedDisplay,
-			Owners:       []string{},
-		}
-	}
-
-	owners, err := queryRecentWorkspaceOwners(sshClient, codePath, timeout)
-	if err != nil {
-		return GitBranchUsageInfo{
-			UsageDisplay: gitBranchUsageNoneDisplay,
-			Owners:       []string{},
-		}
-	}
-	return GitBranchUsageInfo{
-		UsageDisplay: buildBranchUsageDisplay(branchInfo.LocalBranch, remoteBranch, owners...),
-		Owners:       owners,
-	}
-}
-
-// queryRecentWorkspaceOwners 查询 git status 变更文件中最近 2 小时有改动的文件属主。
-// queryRecentWorkspaceOwners returns owners of changed files touched within the last 2 hours.
-func queryRecentWorkspaceOwners(sshClient *gsssh.SshTerminal, codePath string, timeout time.Duration) ([]string, error) {
-	statusCommand := p_shell.NewCommand()
-	statusCommand.Cd(codePath)
-	statusCommand.SetCommand(`git status --porcelain --untracked-files=all`)
-	statusOutput, err := sshClient.RunCommandWait(statusCommand.GetCommand().ToStr(), timeout)
-	if err != nil {
-		return nil, err
-	}
-
-	fileList := parseGitStatusEntries(statusOutput)
-	if len(fileList) == 0 {
-		return []string{}, nil
-	}
-
-	statCommand := p_shell.NewCommand()
-	statCommand.Cd(codePath)
-	statCommand.SetCommand(buildStatOwnersCommand(fileList))
-	statOutput, err := sshClient.RunCommandWait(statCommand.GetCommand().ToStr(), timeout)
-	if err != nil {
-		return nil, err
-	}
-	return parseRecentUsageOwners(statOutput, time.Now(), 2*time.Hour), nil
-}
-
-// parseGitStatusEntries 解析 git status --porcelain 的变更文件路径。
-// parseGitStatusEntries extracts changed file paths from git status --porcelain output.
-func parseGitStatusEntries(output string) []string {
-	lines := strings.Split(p_common.TBaseClient.FilterTerminalChars(output), "\n")
-	seen := make(map[string]struct{})
-	result := make([]string, 0, len(lines))
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || len(line) < 4 {
-			continue
-		}
-		pathPart := strings.TrimSpace(line[3:])
-		if pathPart == "" {
-			continue
-		}
-		// 重命名场景 / Rename case: 使用新路径判断最近活跃状态。
-		if strings.Contains(pathPart, " -> ") {
-			parts := strings.Split(pathPart, " -> ")
-			pathPart = strings.TrimSpace(parts[len(parts)-1])
-		}
-		pathPart = strings.Trim(pathPart, `"`)
-		if pathPart == "" {
-			continue
-		}
-		if _, exist := seen[pathPart]; exist {
-			continue
-		}
-		seen[pathPart] = struct{}{}
-		result = append(result, pathPart)
-	}
-	return result
-}
-
-// buildStatOwnersCommand 构造批量查询属主和 mtime 的 shell 命令。
-// buildStatOwnersCommand builds a shell command for querying owner and mtime in batch.
-func buildStatOwnersCommand(fileList []string) string {
-	commandList := make([]string, 0, len(fileList))
-	for _, filePath := range fileList {
-		quotedPath := quoteShellArg(filePath)
-		commandList = append(commandList, fmt.Sprintf(`[ -e %s ] && stat -c '%%U|%%Y|%%n' -- %s`, quotedPath, quotedPath))
-	}
-	return strings.Join(commandList, " ; ")
-}
-
-// parseRecentUsageOwners 过滤最近时间窗口内修改文件的属主。
-// parseRecentUsageOwners filters owners whose files were modified within the recent time window.
-func parseRecentUsageOwners(output string, now time.Time, recentWindow time.Duration) []string {
-	lines := strings.Split(p_common.TBaseClient.FilterTerminalChars(output), "\n")
-	ownerSet := make(map[string]struct{})
-	ownerList := make([]string, 0, len(lines))
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		parts := strings.SplitN(trimmed, "|", 3)
-		if len(parts) < 3 {
-			continue
-		}
-		owner := strings.TrimSpace(parts[0])
-		unixTS, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
-		if err != nil || owner == "" {
-			continue
-		}
-		modifiedAt := time.Unix(unixTS, 0)
-		// 关键判断 / Key decision: 仅保留最近 2 小时内的文件属主。
-		if now.Sub(modifiedAt) > recentWindow {
-			continue
-		}
-		if _, exist := ownerSet[owner]; exist {
-			continue
-		}
-		ownerSet[owner] = struct{}{}
-		ownerList = append(ownerList, owner)
-	}
-	sort.Strings(ownerList)
-	return ownerList
-}
-
-// buildBranchUsageDisplay 生成“是否有人使用”列的显示内容。
-// buildBranchUsageDisplay builds the display text for the usage column.
-func buildBranchUsageDisplay(localBranch, remoteBranch string, owners ...string) string {
-	// 关键判断 / Key decision: 没有本地分支时，统一展示为 "-"。
-	if strings.TrimSpace(localBranch) == "" {
-		return gitBranchUsageNoneDisplay
-	}
-	if normalized := normalizeRemoteBranchDisplay(remoteBranch); normalized != "" && normalized != "N/A" {
-		return gitBranchUsageUsedDisplay
-	}
-	if len(owners) > 0 {
-		return strings.Join(owners, ", ")
-	}
-	return gitBranchUsageNoneDisplay
-}
-
-// appendMarkdownTableUsageCell 为现有 Markdown 表格行追加“是否有人使用”列。
-// appendMarkdownTableUsageCell appends the usage column to an existing Markdown table row.
-func appendMarkdownTableUsageCell(line, usage string) string {
-	trimmedLine := strings.TrimRight(line, " ")
-	if strings.HasSuffix(trimmedLine, "|") {
-		trimmedLine = strings.TrimSuffix(trimmedLine, "|")
-	}
-	return trimmedLine + " | " + escapeMarkdownTableCell(usage) + " |"
-}
-
-// quoteShellArg 使用单引号安全转义 shell 参数。
-// quoteShellArg safely escapes a shell argument using single quotes.
-func quoteShellArg(value string) string {
-	return `'` + strings.ReplaceAll(value, `'`, `'"'"'`) + `'`
-}
-
-// buildCurrentBranchDisplayOutput 组装“当前分支”接口的展示输出。
-// buildCurrentBranchDisplayOutput builds display output for the current branch API.
-func buildCurrentBranchDisplayOutput(localBranch, remoteBranch string) string {
-	local := strings.TrimSpace(localBranch)
-	remote := strings.TrimSpace(remoteBranch)
-	if local == `` {
-		local = `N/A`
-	}
-	if remote == `` {
-		remote = `N/A`
-	}
-	return strings.Join([]string{
-		`当前分支：`,
-		local,
-		`远程分支：`,
-		remote,
-	}, "\n")
-}
-
 func CreateMerge(c *gin.Context) {
-	reqMap, sshClient, _, err := getGitComponent(c)
+	reqMap, sshClient, sse, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -1128,7 +856,7 @@ func CreateMerge(c *gin.Context) {
 		gsgin.GinResponseError(c, `git未配置目录`, nil)
 		return
 	}
-	// 所有通过 SSH 的 Git 操作前，默认先执行“目录安全 + 保存账号密码”。
+	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
 	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
@@ -1138,31 +866,46 @@ func CreateMerge(c *gin.Context) {
 	command.Cd(codePath)
 	command.GitCommitLog()
 
+	sendGitSse(sse, fmt.Sprintf("[ssh] 查询 %s 提交日志...", codePath))
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	sendGitSse(sse, "[ssh] 查询提交日志完成")
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
 func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal, *p_sse.SseShell, error) {
+	sseClientId := c.GetHeader(`SseClientId`)
+	gstool.FmtPrintlnLogTime(`[getGitComponent][01] 开始解析Git请求 sse_client_id=%s`, sseClientId)
 	dataMap := make(map[string]interface{})
 	err := gsgin.GinPostBody(c, &dataMap)
 	if err != nil {
+		gstool.FmtPrintlnLogTime(`[getGitComponent][02] 解析body失败 err=%s`, err.Error())
 		return nil, nil, nil, err
 	}
 	sshId := dataMap[`ssh_id`]
 	if cast.ToString(sshId) == `` {
+		gstool.FmtPrintlnLogTime(`[getGitComponent][03] 缺少ssh_id req=%#v`, dataMap)
 		return nil, nil, nil, errors.New(`缺少ssh_id参数`)
 	}
 	sseDistributeId := cast.ToString(dataMap[`sse_distribute_id`])
-	sshConfig, _ := common.DbMain.GetSshConfig(sshId)
+	sshConfig, sshConfigErr := common.DbMain.GetSshConfig(sshId)
+	if sshConfigErr != nil {
+		gstool.FmtPrintlnLogTime(`[getGitComponent][04] 获取SSH配置失败 ssh_id=%s err=%s`, cast.ToString(sshId), sshConfigErr.Error())
+	} else if len(sshConfig) == 0 {
+		gstool.FmtPrintlnLogTime(`[getGitComponent][04] SSH配置为空 ssh_id=%s`, cast.ToString(sshId))
+	}
 	uniqueKey := p_common.TBaseClient.GetCombineKey(sshId, sseDistributeId)
+	gstool.FmtPrintlnLogTime(`[getGitComponent][05] 请求参数解析完成 ssh_id=%s unique_key=%s sse_distribute_id=%s code_path=%s`, cast.ToString(sshId), uniqueKey, sseDistributeId, cast.ToString(dataMap[`code_path`]))
 	sse := &p_sse.SseShell{
-		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
+		Sse:             gsgin.SseGetByClientId(sseClientId),
 		SseDistributeId: sseDistributeId,
 	}
+	gstool.FmtPrintlnLogTime(`[getGitComponent][06] SSE绑定状态 sse_client_id=%s sse_distribute_id=%s can_send=%v`, sseClientId, sseDistributeId, sse.Sse != nil)
 	globalMap, err := common.DbMain.AllGlobalMap()
 	if err != nil {
+		gstool.FmtPrintlnLogTime(`[getGitComponent][07] 获取global map失败 err=%s`, err.Error())
 		return nil, nil, nil, err
 	}
+	gstool.FmtPrintlnLogTime(`[getGitComponent][08] global map加载完成 count=%d`, len(globalMap))
 	//输出格式化 去除特殊符号
 	formatFunc := func(s string) []string {
 		return []string{p_common.TBaseClient.FilterTerminalChars(s)}
@@ -1216,14 +959,16 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal
 	}
 	sshClient, sshClientErr := component.ShellClient.GetClient(sshConfig, uniqueKey, sse, formatFunc, promptKeywords, promptFunc)
 	if sshClientErr != nil {
+		gstool.FmtPrintlnLogTime(`[getGitComponent][09] 获取SSH客户端失败 unique_key=%s err=%s`, uniqueKey, sshClientErr.Error())
 		return nil, nil, nil, sshClientErr
 	}
+	gstool.FmtPrintlnLogTime(`[getGitComponent][10] 获取SSH客户端成功 unique_key=%s`, uniqueKey)
 	return dataMap, sshClient, sse, nil
 }
 
 // GitSetSafeLog 设置项目安全
 func GitSetSafeLog(c *gin.Context) {
-	reqMap, sshClient, _, err := getGitComponent(c)
+	reqMap, sshClient, sse, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -1238,7 +983,9 @@ func GitSetSafeLog(c *gin.Context) {
 	command.Cd(codePath)
 	command.GitSetSafe(codePath)
 
+	sendGitSse(sse, fmt.Sprintf("[ssh] 设置 %s 安全目录...", codePath))
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 40*time.Second)
+	sendGitSse(sse, "[ssh] 设置安全目录完成")
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
@@ -1257,6 +1004,7 @@ func GitSaveCredentials(c *gin.Context) {
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
+	sendGitSse(sse, fmt.Sprintf("[ssh] 配置 %s git账号密码存储...", codePath))
 	command.SetCommand(`grep -i -E '^\[credential\]|^[[:space:]]*helper[[:space:]]*=[[:space:]]*store' .git/config`)
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 4*time.Second)
 	if strings.Contains(result, `store`) && strings.Contains(result, `credential`) {

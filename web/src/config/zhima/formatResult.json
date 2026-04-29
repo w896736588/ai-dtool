@@ -1,0 +1,94 @@
+{
+  "copy" : [
+    {
+      "reg" : "(hotfix|feature|publish|feat|yun|main|master|pro|pro_master|yun_master)([_a-zA-Z0-9]*/*[_a-zA-Z0-9]*)+",
+      "model" : "ig",
+      "class" : "",
+      "style" : "cursor:copy; text-decoration: underline;"
+    },
+    {
+      "reg" : "/[a-zA-Z0-9/._-]*\\.(log|LOG)",
+      "model" : "g",
+      "class" : "",
+      "style" : "cursor:copy; text-decoration: underline;"
+    },
+    {
+      "reg" : "php\\s+[a-zA-Z0-9/_-]+(\\s+[a-zA-Z_-]+)+",
+      "model" : "g",
+      "class" : "",
+      "style" : "cursor:copy; text-decoration: underline;"
+    }
+  ],
+  "color" : [
+    {
+      "reg" : "\u001B\\[31m[0-9a-zA-Z+-]+\u001B\\[m",
+      "model" : "g",
+      "class" : "",
+      "style" : "color:#FF0000;"
+    },
+    {
+      "reg" : "\u001B\\[32m[0-9a-zA-Z+-]+\u001B\\[m",
+      "model" : "g",
+      "class" : "",
+      "style" : "color:#00FF00;"
+    },
+    {
+      "reg" : "\u001B\\[33m[0-9a-zA-Z+-]+\u001B\\[m",
+      "model" : "g",
+      "class" : "",
+      "style" : "color:#FFFF00;"
+    },
+    {
+      "reg" : "\u001B\\[34m[0-9a-zA-Z+-]+\u001B\\[m",
+      "model" : "g",
+      "class" : "",
+      "style" : "color:#0000FF;"
+    },
+    {
+      "reg" : "\u001B\\[35m[0-9a-zA-Z+-]+\u001B\\[m",
+      "model" : "g",
+      "class" : "",
+      "style" : "color:#FF00FF;"
+    },
+    {
+      "reg" : "\u001B\\[36m[0-9a-zA-Z+-]+\u001B\\[m",
+      "model" : "g",
+      "class" : "",
+      "style" : "color:#00FFFF;"
+    },
+    {
+      "reg" : "\u001B\\[37m[0-9a-zA-Z+-]+\u001B\\[m",
+      "model" : "g",
+      "class" : "",
+      "style" : "color:#FFFFFF;"
+    }
+  ],
+  "length" : 100000,
+  "replace" : [
+    {
+      "reg" : "\n",
+      "model" : "g",
+      "val" : "<br/>"
+    },
+    {
+      "reg" : "\u001B\\[01;32m",
+      "model" : "g",
+      "val" : "<span style='color:green;'>■ </span>"
+    },
+    {
+      "reg" : "\u001B\\[3[0-9]{1}m",
+      "model" : "g",
+      "val" : ""
+    },
+    {
+      "reg" : "\u001B\\[m",
+      "model" : "g",
+      "val" : ""
+    },
+    {
+      "reg" : "\u001B\\[K",
+      "model" : "g",
+      "val" : ""
+    }
+  ]
+}

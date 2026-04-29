@@ -3,16 +3,6 @@
     <div class="set-config-header">
       <h3 class="set-config-title">{{ pageTitle }}</h3>
       <p class="set-config-desc">{{ pageDesc }}</p>
-      <div class="set-config-actions">
-        <template v-if="showRuntimeConfig">
-          <pl-button v-if="!runtimeEditMode" type="primary" @click="startRuntimeEdit">编辑配置</pl-button>
-          <template v-else>
-            <pl-button @click="cancelRuntimeEdit">取消</pl-button>
-            <pl-button type="primary" @click="saveRuntimeConfig">保存并重新加载</pl-button>
-          </template>
-        </template>
-        <pl-button v-else type="primary" @click="saveAiConfig">保存 AI 配置</pl-button>
-      </div>
     </div>
 
     <div class="set-config-table-card">
@@ -32,139 +22,264 @@
           </el-descriptions-item>
         </el-descriptions>
 
-        <div v-if="runtimeEditMode" class="memory-config-form">
-          <el-divider content-position="left">[base] 主库配置</el-divider>
-          <el-form label-width="150px">
-            <el-form-item label="dbPath">
-              <el-input v-model="runtimeEditForm.db_path" placeholder="请输入主库目录" />
+        <!-- [smart_link] 自定义网页配置 -->
+        <el-divider content-position="left">[smart_link] 自定义网页配置</el-divider>
+        <el-descriptions class="memory-config-display" :column="1" border>
+          <el-descriptions-item label="run_mode">
+            <div class="config-item-wrapper">
+              <template v-if="editingItem.key === 'run_mode'">
+                <div class="config-edit-row">
+                  <el-select v-model="editingItem.value" style="width: 200px">
+                    <el-option label="server (服务端执行)" value="server" />
+                    <el-option label="local_client (本地客户端执行)" value="local_client" />
+                  </el-select>
+                  <div class="config-edit-actions">
+                    <GitActionButton compact size="small" @click="saveItem('smart_link', 'run_mode', editingItem.value)">保存</GitActionButton>
+                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="config-display-row">
+                  <div class="config-value">
+                    <el-tag :type="form.run_mode === 'local_client' ? 'success' : 'info'" size="small">
+                      {{ form.run_mode || 'server' }}
+                    </el-tag>
+                    <span class="config-value-desc">
+                      {{ form.run_mode === 'local_client' ? '本地客户端执行模式' : '服务端执行模式' }}
+                    </span>
+                  </div>
+                  <GitActionButton compact size="small" @click="startEdit('run_mode', form.run_mode || 'server')">编辑</GitActionButton>
+                </div>
+              </template>
+              <div class="config-item-help">自定义网页运行模式：server(服务端执行) 或 local_client(本地客户端执行)</div>
+            </div>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- [base] 主库配置 -->
+        <el-divider content-position="left">[base] 主库配置</el-divider>
+        <el-descriptions class="memory-config-display" :column="1" border>
+          <el-descriptions-item label="dbPath">
+            <div class="config-item-wrapper">
+              <template v-if="editingItem.key === 'db_path'">
+                <div class="config-edit-row">
+                  <el-input v-model="editingItem.value" placeholder="请输入主库目录" style="flex: 1" />
+                  <div class="config-edit-actions">
+                    <GitActionButton compact size="small" :loading="saving" @click="saveItem('base', 'db_path', editingItem.value)">保存</GitActionButton>
+                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="config-display-row">
+                  <div class="config-value">{{ form.db_dir || '未配置，请在配置文件中设置' }}</div>
+                  <GitActionButton compact size="small" @click="startEdit('db_path', form.db_dir)">编辑</GitActionButton>
+                </div>
+              </template>
               <div class="config-item-help">主库 sqlite 所在目录；未配置时默认使用 config/{AppName}。</div>
-            </el-form-item>
-            <el-form-item label="dbFileName">
-              <el-input v-model="runtimeEditForm.db_file_name" placeholder="请输入主库文件名" />
+            </div>
+          </el-descriptions-item>
+          <el-descriptions-item label="dbFileName">
+            <div class="config-item-wrapper">
+              <template v-if="editingItem.key === 'db_file_name'">
+                <div class="config-edit-row">
+                  <el-input v-model="editingItem.value" placeholder="请输入主库文件名" style="flex: 1" />
+                  <div class="config-edit-actions">
+                    <GitActionButton compact size="small" :loading="saving" @click="saveItem('base', 'dbFileName', editingItem.value)">保存</GitActionButton>
+                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="config-display-row">
+                  <div class="config-value">{{ form.db_name || '未配置，请在配置文件中设置' }}</div>
+                  <GitActionButton compact size="small" @click="startEdit('db_file_name', form.db_name)">编辑</GitActionButton>
+                </div>
+              </template>
               <div class="config-item-help">主库 sqlite 文件名；未配置时默认使用 {AppName}.db。</div>
-            </el-form-item>
-            <el-form-item label="dbIsGitRepo">
-              <el-switch v-model="runtimeEditForm.db_is_git_repo" />
+            </div>
+          </el-descriptions-item>
+          <el-descriptions-item label="dbIsGitRepo">
+            <div class="config-item-wrapper">
+              <template v-if="editingItem.key === 'db_is_git_repo'">
+                <div class="config-edit-row">
+                  <el-switch v-model="editingItem.value" />
+                  <div class="config-edit-actions">
+                    <GitActionButton compact size="small" :loading="saving" @click="saveItem('base', 'db_is_git_repo', editingItem.value)">保存</GitActionButton>
+                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="config-display-row">
+                  <div class="config-value">{{ boolText(form.db_is_git_repo) }}</div>
+                  <div class="config-item-actions">
+                    <GitActionButton compact size="small" @click="startEdit('db_is_git_repo', form.db_is_git_repo)">编辑</GitActionButton>
+                    <GitActionButton
+                      v-if="form.db_is_git_repo"
+                      compact
+                      size="small"
+                      variant="info"
+                      :loading="syncLoading.main"
+                      @click="syncDatabase(RUNTIME_DATABASE_SYNC_TARGET_MAIN)"
+                    >
+                      同步
+                    </GitActionButton>
+                  </div>
+                </div>
+              </template>
               <div class="config-item-help">开启后主库在使用前会 git pull，关闭程序时会自动 push。</div>
-            </el-form-item>
-          </el-form>
+            </div>
+          </el-descriptions-item>
+          <el-descriptions-item label="dbAutoPushDelayMinutes">
+            <div class="config-item-wrapper">
+              <template v-if="editingItem.key === 'db_auto_push_delay_minutes'">
+                <div class="config-edit-row">
+                  <el-input-number v-model="editingItem.value" :min="0" :step="1" />
+                  <div class="config-edit-actions">
+                    <GitActionButton compact size="small" :loading="saving" @click="saveItem('base', 'dbAutoPushDelayMinutes', editingItem.value)">保存</GitActionButton>
+                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="config-display-row">
+                  <div class="config-value">{{ form.db_auto_push_delay_minutes }} 分钟</div>
+                  <GitActionButton compact size="small" @click="startEdit('db_auto_push_delay_minutes', form.db_auto_push_delay_minutes)">编辑</GitActionButton>
+                </div>
+              </template>
+              <div class="config-item-help">主库数据变更后，延迟多少分钟自动 git commit + push；0 表示关闭自动 push，默认 10 分钟。</div>
+            </div>
+          </el-descriptions-item>
+        </el-descriptions>
 
-          <el-divider content-position="left">[base] 记忆库配置</el-divider>
-          <el-form label-width="150px">
-            <el-form-item label="memoryDbPath">
-              <el-input v-model="runtimeEditForm.memory_db_path" placeholder="请输入记忆库目录" />
-              <div class="config-item-help">记忆库 sqlite 所在目录；未配置时记忆库不会初始化。</div>
-            </el-form-item>
-            <el-form-item label="memoryDbFileName">
-              <el-input v-model="runtimeEditForm.memory_db_file_name" placeholder="请输入记忆库文件名" />
-              <div class="config-item-help">记忆库 sqlite 文件名，会和 memoryDbPath 组合成完整路径。</div>
-            </el-form-item>
-            <el-form-item label="memoryDbIsGitRepo">
-              <el-switch v-model="runtimeEditForm.memory_db_is_git_repo" />
+        <!-- [base] 日志库配置 -->
+        <el-divider content-position="left">[base] 日志库配置</el-divider>
+        <el-descriptions class="memory-config-display" :column="1" border>
+          <el-descriptions-item label="logDbPath">
+            <div class="config-item-wrapper">
+              <template v-if="editingItem.key === 'log_db_path'">
+                <div class="config-edit-row">
+                  <el-input v-model="editingItem.value" placeholder="请输入日志库目录" style="flex: 1" />
+                  <div class="config-edit-actions">
+                    <GitActionButton compact size="small" :loading="saving" @click="saveItem('base', 'logDbPath', editingItem.value)">保存</GitActionButton>
+                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="config-display-row">
+                  <div class="config-value">{{ form.log_db_path || '未配置（默认与主库相同）' }}</div>
+                  <GitActionButton compact size="small" @click="startEdit('log_db_path', form.log_db_path)">编辑</GitActionButton>
+                </div>
+              </template>
+              <div class="config-item-help">日志库 sqlite 所在目录；未配置时默认使用与主库相同目录。</div>
+            </div>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- [base] 记忆库配置 -->
+        <el-divider content-position="left">[base] 记忆库配置</el-divider>
+        <el-descriptions class="memory-config-display" :column="1" border>
+          <el-descriptions-item label="memoryDbPath">
+            <div class="config-item-wrapper">
+              <template v-if="editingItem.key === 'memory_db_path'">
+                <div class="config-edit-row">
+                  <el-input v-model="editingItem.value" placeholder="请输入记忆库目录" style="flex: 1" />
+                  <div class="config-edit-actions">
+                    <GitActionButton compact size="small" :loading="saving" @click="saveItem('base', 'memoryDbPath', editingItem.value)">保存</GitActionButton>
+                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="config-display-row">
+                  <div class="config-value">{{ form.memory_dir || '未配置，请在配置文件中设置' }}</div>
+                  <GitActionButton compact size="small" @click="startEdit('memory_db_path', form.memory_dir)">编辑</GitActionButton>
+                </div>
+              </template>
+              <div class="config-item-help">记忆库 Markdown 根目录；未配置时记忆库不会初始化。</div>
+            </div>
+          </el-descriptions-item>
+          <el-descriptions-item label="memoryDbIsGitRepo">
+            <div class="config-item-wrapper">
+              <template v-if="editingItem.key === 'memory_db_is_git_repo'">
+                <div class="config-edit-row">
+                  <el-switch v-model="editingItem.value" />
+                  <div class="config-edit-actions">
+                    <GitActionButton compact size="small" :loading="saving" @click="saveItem('base', 'memoryDbIsGitRepo', editingItem.value)">保存</GitActionButton>
+                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="config-display-row">
+                  <div class="config-value">{{ boolText(form.memory_db_is_git_repo) }}</div>
+                  <div class="config-item-actions">
+                    <GitActionButton compact size="small" @click="startEdit('memory_db_is_git_repo', form.memory_db_is_git_repo)">编辑</GitActionButton>
+                    <GitActionButton
+                      v-if="form.memory_db_is_git_repo"
+                      compact
+                      size="small"
+                      variant="info"
+                      :loading="syncLoading.memory"
+                      @click="syncDatabase(RUNTIME_DATABASE_SYNC_TARGET_MEMORY)"
+                    >
+                      同步
+                    </GitActionButton>
+                  </div>
+                </div>
+              </template>
               <div class="config-item-help">开启后记忆库启动前会 git pull，自动同步时会 push。</div>
-            </el-form-item>
-            <el-form-item label="memoryDbAutoPushDelayMinutes">
-              <el-input-number v-model="runtimeEditForm.memory_db_auto_push_delay_minutes" :min="0" :step="1" />
-              <div class="config-item-help">知识库内容写入 sqlite 后，延迟多少分钟自动 git commit + push；0 表示关闭自动 push。</div>
-            </el-form-item>
-          </el-form>
+            </div>
+          </el-descriptions-item>
+          <el-descriptions-item label="memoryDbAutoPushDelayMinutes">
+            <div class="config-item-wrapper">
+              <template v-if="editingItem.key === 'memory_db_auto_push_delay_minutes'">
+                <div class="config-edit-row">
+                  <el-input-number v-model="editingItem.value" :min="0" :step="1" />
+                  <div class="config-edit-actions">
+                    <GitActionButton compact size="small" :loading="saving" @click="saveItem('base', 'memoryDbAutoPushDelayMinutes', editingItem.value)">保存</GitActionButton>
+                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="config-display-row">
+                  <div class="config-value">{{ form.memory_db_auto_push_delay_minutes }} 分钟</div>
+                  <GitActionButton compact size="small" @click="startEdit('memory_db_auto_push_delay_minutes', form.memory_db_auto_push_delay_minutes)">编辑</GitActionButton>
+                </div>
+              </template>
+              <div class="config-item-help">知识片段写入本地 Markdown 后，延迟多少分钟自动 git commit + push；0 表示关闭自动 push。</div>
+            </div>
+          </el-descriptions-item>
+        </el-descriptions>
 
-          <el-divider content-position="left">[path] 路径配置</el-divider>
-          <el-form label-width="150px">
-            <el-form-item label="webkit_driver_path">
-              <el-input v-model="runtimeEditForm.webkit_driver_path" placeholder="请输入 webkit driver 目录" />
-              <div class="config-item-help">Playwright WebKit 驱动目录，支持使用 {DRIVE} 占位符。</div>
-            </el-form-item>
-            <el-form-item label="webkit_data_path">
-              <el-input v-model="runtimeEditForm.webkit_data_path" placeholder="请输入 webkit 数据目录" />
-              <div class="config-item-help">浏览器运行数据目录，支持使用 {DRIVE} 占位符。</div>
-            </el-form-item>
-            <el-form-item label="webkit_download_path">
-              <el-input v-model="runtimeEditForm.webkit_download_path" placeholder="请输入下载目录" />
-              <div class="config-item-help">Playwright 文件下载目录，支持使用 {DRIVE} 占位符。</div>
-            </el-form-item>
-          </el-form>
-        </div>
-
-        <template v-else>
-          <el-divider content-position="left">[base] 主库配置</el-divider>
-          <el-descriptions class="memory-config-display" :column="1" border>
-            <el-descriptions-item label="dbPath">
-              <div class="config-value">{{ form.db_dir || '未配置，请在配置文件中设置' }}</div>
-              <div class="config-item-help">主库 sqlite 所在目录；未配置时默认使用 config/{AppName}。</div>
-            </el-descriptions-item>
-            <el-descriptions-item label="dbFileName">
-              <div class="config-value">{{ form.db_name || '未配置，请在配置文件中设置' }}</div>
-              <div class="config-item-help">主库 sqlite 文件名；未配置时默认使用 {AppName}.db。</div>
-            </el-descriptions-item>
-            <el-descriptions-item label="dbIsGitRepo">
-              <div class="config-value">{{ boolText(form.db_is_git_repo) }}</div>
-              <div class="config-item-help">开启后主库在使用前会 git pull，关闭程序时会自动 push。</div>
-              <div v-if="showMainDbSyncButton" class="config-item-actions">
-                <GitActionButton
-                  compact
-                  variant="info"
-                  :loading="syncLoading.main"
-                  @click="syncDatabase(RUNTIME_DATABASE_SYNC_TARGET_MAIN)"
-                >
-                  同步
-                </GitActionButton>
-              </div>
-            </el-descriptions-item>
-          </el-descriptions>
-
-          <el-divider content-position="left">[base] 记忆库配置</el-divider>
-          <el-descriptions class="memory-config-display" :column="1" border>
-            <el-descriptions-item label="memoryDbPath">
-              <div class="config-value">{{ form.memory_dir || '未配置，请在配置文件中设置' }}</div>
-              <div class="config-item-help">记忆库 sqlite 所在目录；未配置时记忆库不会初始化。</div>
-            </el-descriptions-item>
-            <el-descriptions-item label="memoryDbFileName">
-              <div class="config-value">{{ form.memory_db_name || '未配置，请在配置文件中设置' }}</div>
-              <div class="config-item-help">记忆库 sqlite 文件名，会和 memoryDbPath 组合成完整路径。</div>
-            </el-descriptions-item>
-            <el-descriptions-item label="memoryDbIsGitRepo">
-              <div class="config-value">{{ boolText(form.memory_db_is_git_repo) }}</div>
-              <div class="config-item-help">开启后记忆库启动前会 git pull，自动同步时会 push。</div>
-              <div v-if="showMemoryDbSyncButton" class="config-item-actions">
-                <GitActionButton
-                  compact
-                  variant="info"
-                  :loading="syncLoading.memory"
-                  @click="syncDatabase(RUNTIME_DATABASE_SYNC_TARGET_MEMORY)"
-                >
-                  同步
-                </GitActionButton>
-              </div>
-            </el-descriptions-item>
-            <el-descriptions-item label="memoryDbAutoPushDelayMinutes">
-              <div class="config-value">{{ form.memory_db_auto_push_delay_minutes }}</div>
-              <div class="config-item-help">知识库内容写入 sqlite 后，延迟多少分钟自动 git commit + push；0 表示关闭自动 push。</div>
-            </el-descriptions-item>
-          </el-descriptions>
-
-          <el-divider content-position="left">[path] 路径配置</el-divider>
-          <el-descriptions class="memory-config-display" :column="1" border>
-            <el-descriptions-item label="webkit_driver_path">
-              <div class="config-value">{{ form.webkit_driver_path || '未配置，请在配置文件中设置' }}</div>
-              <div class="config-item-help">Playwright WebKit 驱动目录，支持使用 {DRIVE} 占位符。</div>
-            </el-descriptions-item>
-            <el-descriptions-item label="webkit_data_path">
-              <div class="config-value">{{ form.webkit_data_path || '未配置，请在配置文件中设置' }}</div>
-              <div class="config-item-help">浏览器运行数据目录，支持使用 {DRIVE} 占位符。</div>
-            </el-descriptions-item>
-            <el-descriptions-item label="webkit_download_path">
-              <div class="config-value">{{ form.webkit_download_path || '未配置，请在配置文件中设置' }}</div>
-              <div class="config-item-help">Playwright 文件下载目录，支持使用 {DRIVE} 占位符。</div>
-            </el-descriptions-item>
-          </el-descriptions>
-        </template>
-
-        <el-alert
-          :closable="false"
-          type="info"
-          title="保存后会写回当前 ini 文件并重新读取配置；如果修改了数据库路径、文件名或 git 仓库开关，建议重启应用让数据库连接和启动流程完全生效。"
-        />
+        <!-- [safe] 安全登录配置 -->
+        <el-divider content-position="left">[safe] 安全登录配置</el-divider>
+        <el-descriptions class="memory-config-display" :column="1" border>
+          <el-descriptions-item label="password">
+            <div class="config-item-wrapper">
+              <template v-if="editingItem.key === 'safe_password'">
+                <div class="config-edit-row">
+                  <el-input v-model="editingItem.value" placeholder="请输入后台访问密码" show-password style="flex: 1" />
+                  <div class="config-edit-actions">
+                    <GitActionButton compact size="small" :loading="saving" @click="saveItem('safe', 'password', editingItem.value)">保存</GitActionButton>
+                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="config-display-row">
+                  <div class="config-value">{{ safePasswordDisplay }}</div>
+                  <GitActionButton compact size="small" @click="startEdit('safe_password', form.safe_password)">编辑</GitActionButton>
+                </div>
+              </template>
+              <div class="config-item-help">后台访问密码，留空表示不启用密码保护。密码设置后登录当天有效，次日需重新登录。</div>
+            </div>
+          </el-descriptions-item>
+        </el-descriptions>
       </template>
 
       <el-form v-else label-width="120px" class="memory-config-form">
@@ -193,6 +308,9 @@
             placeholder="请输入 AI 整理提示词"
           />
         </el-form-item>
+        <el-form-item>
+          <GitActionButton type="primary" @click="saveAiConfig">保存 AI 配置</GitActionButton>
+        </el-form-item>
       </el-form>
     </div>
   </div>
@@ -211,27 +329,19 @@ const DEFAULT_HOME_TASK_DAILY_REPORT_PROMPT = '请基于当前活跃任务生成
 const RUNTIME_DATABASE_SYNC_TARGET_MAIN = 'main'
 const RUNTIME_DATABASE_SYNC_TARGET_MEMORY = 'memory'
 
-// createRuntimeEditForm 创建可编辑运行时配置表单默认值。 // Build the default state for editable runtime config fields.
-function createRuntimeEditForm() {
-  return {
-    db_path: '',
-    db_file_name: '',
-    db_is_git_repo: false,
-    memory_db_path: '',
-    memory_db_file_name: '',
-    memory_db_is_git_repo: false,
-    memory_db_auto_push_delay_minutes: 1,
-    webkit_driver_path: '',
-    webkit_data_path: '',
-    webkit_download_path: '',
-  }
-}
-
 // createSyncLoading 创建主库和记忆库的独立同步 loading 状态。 // Build independent loading flags for main and memory manual sync actions.
 function createSyncLoading() {
   return {
     main: false,
     memory: false,
+  }
+}
+
+// createEditingItem 创建编辑中的配置项状态。 // Build the editing state for a single config item.
+function createEditingItem() {
+  return {
+    key: '',
+    value: null,
   }
 }
 
@@ -250,19 +360,17 @@ export default {
   data() {
     return {
       aiModelList: [],
-      runtimeEditMode: false,
-      runtimeEditForm: createRuntimeEditForm(),
       syncLoading: createSyncLoading(),
+      saving: false,
+      editingItem: createEditingItem(),
       form: {
         db_dir: '',
         db_name: '',
         db_is_git_repo: false,
+        db_auto_push_delay_minutes: 10,
         db_configured: false,
-        webkit_driver_path: '',
-        webkit_data_path: '',
-        webkit_download_path: '',
+        log_db_path: '',
         memory_dir: '',
-        memory_db_name: '',
         memory_db_is_git_repo: false,
         memory_db_auto_push_delay_minutes: 1,
         memory_db_configured: false,
@@ -271,6 +379,8 @@ export default {
         memory_arrange_prompt: DEFAULT_MEMORY_ARRANGE_PROMPT,
         home_task_daily_report_model_id: null,
         home_task_daily_report_prompt: DEFAULT_HOME_TASK_DAILY_REPORT_PROMPT,
+        safe_password: '',
+        run_mode: 'server',
       },
       RUNTIME_DATABASE_SYNC_TARGET_MAIN,
       RUNTIME_DATABASE_SYNC_TARGET_MEMORY,
@@ -284,7 +394,7 @@ export default {
     // pageDesc 根据当前展示模式返回页面说明。 // Returns the page description for the current display mode.
     pageDesc() {
       if (this.showRuntimeConfig) {
-        return '这里可以查看并编辑当前生效的 [base] 与 [path] 配置。'
+        return '这里可以查看并编辑当前生效的 [base]、[path]、[safe] 和 [smart_link] 配置，每个配置项可独立编辑保存。'
       }
       return '这里维护知识片段整理相关的 AI 参数。'
     },
@@ -299,17 +409,16 @@ export default {
         return `未检测到主库配置，请在 ${configFile} 的 [base] 节点中配置 dbPath 和 dbFileName。`
       }
       if (!this.form.memory_db_configured) {
-        return `未检测到记忆库配置，请在 ${configFile} 的 [base] 节点中配置 memoryDbPath 和 memoryDbFileName。`
+        return `未检测到记忆库配置，请在 ${configFile} 的 [base] 节点中配置 memoryDbPath。`
       }
       return `当前主库、记忆库和路径配置均来自 ${configFile} 的 [base] 与 [path] 节点。`
     },
-    // showMainDbSyncButton 仅在运行时配置展示态且主库启用 Git 时展示同步按钮。 // Show the main-db sync button only in display mode when Git sync is enabled.
-    showMainDbSyncButton() {
-      return this.showRuntimeConfig && !this.runtimeEditMode && this.form.db_is_git_repo
-    },
-    // showMemoryDbSyncButton 仅在运行时配置展示态且记忆库启用 Git 时展示同步按钮。 // Show the memory-db sync button only in display mode when Git sync is enabled.
-    showMemoryDbSyncButton() {
-      return this.showRuntimeConfig && !this.runtimeEditMode && this.form.memory_db_is_git_repo
+    // safePasswordDisplay 展示密码状态（已设置/未设置）
+    safePasswordDisplay() {
+      if (this.form.safe_password && this.form.safe_password.length > 0) {
+        return '已设置（' + '*'.repeat(Math.min(this.form.safe_password.length, 8)) + '）'
+      }
+      return '未设置（不启用密码保护）'
     },
   },
   mounted() {
@@ -332,41 +441,30 @@ export default {
         return
       }
       AiSetApi.AiModelList({ model_type: 'llm' }, (response) => {
+        if (response.__loginRequired) {
+          return
+        }
         if (response.ErrCode !== 0) {
           return
         }
         this.aiModelList = Array.isArray(response.Data) ? response.Data : []
       })
     },
-    // syncRuntimeEditForm 把当前展示数据同步到编辑表单。 // Sync the current display values into the runtime edit form.
-    syncRuntimeEditForm() {
-      this.runtimeEditForm = {
-        db_path: this.form.db_dir || '',
-        db_file_name: this.form.db_name || '',
-        db_is_git_repo: !!this.form.db_is_git_repo,
-        memory_db_path: this.form.memory_dir || '',
-        memory_db_file_name: this.form.memory_db_name || '',
-        memory_db_is_git_repo: !!this.form.memory_db_is_git_repo,
-        memory_db_auto_push_delay_minutes: Number(this.form.memory_db_auto_push_delay_minutes ?? 1),
-        webkit_driver_path: this.form.webkit_driver_path || '',
-        webkit_data_path: this.form.webkit_data_path || '',
-        webkit_download_path: this.form.webkit_download_path || '',
-      }
-    },
     loadConfig() {
       set.MemoryConfigGet((response) => {
+        if (response.__loginRequired) {
+          return
+        }
         if (response.ErrCode !== 0 || !response.Data) {
           return
         }
         this.form.db_dir = response.Data.db_dir || ''
         this.form.db_name = response.Data.db_name || ''
         this.form.db_is_git_repo = !!response.Data.db_is_git_repo
+        this.form.db_auto_push_delay_minutes = Number(response.Data.db_auto_push_delay_minutes ?? 10)
         this.form.db_configured = !!response.Data.db_configured
-        this.form.webkit_driver_path = response.Data.webkit_driver_path || ''
-        this.form.webkit_data_path = response.Data.webkit_data_path || ''
-        this.form.webkit_download_path = response.Data.webkit_download_path || ''
+        this.form.log_db_path = response.Data.log_db_path || ''
         this.form.memory_dir = response.Data.memory_dir || ''
-        this.form.memory_db_name = response.Data.memory_db_name || ''
         this.form.memory_db_is_git_repo = !!response.Data.memory_db_is_git_repo
         this.form.memory_db_auto_push_delay_minutes = Number(response.Data.memory_db_auto_push_delay_minutes ?? 1)
         this.form.memory_db_configured = !!response.Data.memory_db_configured
@@ -375,41 +473,54 @@ export default {
         this.form.memory_arrange_prompt = response.Data.memory_arrange_prompt || DEFAULT_MEMORY_ARRANGE_PROMPT
         this.form.home_task_daily_report_model_id = response.Data.home_task_daily_report_model_id || null
         this.form.home_task_daily_report_prompt = response.Data.home_task_daily_report_prompt || DEFAULT_HOME_TASK_DAILY_REPORT_PROMPT
-        this.syncRuntimeEditForm()
+        this.form.safe_password = response.Data.safe_password || ''
+        this.form.run_mode = response.Data.run_mode || 'server'
       })
     },
-    // startRuntimeEdit 进入运行时配置编辑模式。 // Enter runtime config edit mode.
-    startRuntimeEdit() {
-      this.syncRuntimeEditForm()
-      this.runtimeEditMode = true
-    },
-    // cancelRuntimeEdit 退出运行时配置编辑模式并恢复当前展示值。 // Exit runtime config edit mode and restore the current values.
-    cancelRuntimeEdit() {
-      this.runtimeEditMode = false
-      this.syncRuntimeEditForm()
-    },
-    // saveRuntimeConfig 保存 ini 中可编辑的运行时配置，并重新加载页面数据。 // Save editable ini config values and reload current config state.
-    saveRuntimeConfig() {
-      const payload = {
-        db_path: this.runtimeEditForm.db_path,
-        db_file_name: this.runtimeEditForm.db_file_name,
-        db_is_git_repo: this.runtimeEditForm.db_is_git_repo,
-        memory_db_path: this.runtimeEditForm.memory_db_path,
-        memory_db_file_name: this.runtimeEditForm.memory_db_file_name,
-        memory_db_is_git_repo: this.runtimeEditForm.memory_db_is_git_repo,
-        memory_db_auto_push_delay_minutes: Number(this.runtimeEditForm.memory_db_auto_push_delay_minutes || 0),
-        webkit_driver_path: this.runtimeEditForm.webkit_driver_path,
-        webkit_data_path: this.runtimeEditForm.webkit_data_path,
-        webkit_download_path: this.runtimeEditForm.webkit_download_path,
+    // startEdit 开始编辑单个配置项。 // Start editing a single config item.
+    startEdit(key, value) {
+      this.editingItem = {
+        key,
+        value: value === null || value === undefined ? '' : value,
       }
-      set.RuntimeConfigSave(payload, (response) => {
-        if (response.ErrCode !== 0) {
-          this.$helperNotify.error(response.ErrMsg || '配置保存失败')
+    },
+    // cancelEdit 取消编辑。 // Cancel editing.
+    cancelEdit() {
+      this.editingItem = createEditingItem()
+    },
+    // saveItem 保存单个配置项。 // Save a single config item.
+    saveItem(section, key, value) {
+      this.saving = true
+      const payload = {
+        section,
+        key,
+        value,
+      }
+      set.RuntimeConfigItemSave(payload, (response) => {
+        this.saving = false
+        if (response.__loginRequired) {
           return
         }
-        this.runtimeEditMode = false
+        if (response.ErrCode !== 0) {
+          this.$helperNotify.error(response.ErrMsg || '保存失败')
+          return
+        }
+        this.$helperNotify.success('保存成功')
+        this.editingItem = createEditingItem()
         this.loadConfig()
-        this.$helperNotify.success('配置已写入文件并重新加载')
+        // 如果需要重新登录
+        if (response.Data && response.Data.need_relogin) {
+          this.$helperNotify.success('密码已修改，请使用新密码重新登录')
+          this.$base.ClearSafeToken()
+          if (this.$eventBus) {
+            this.$eventBus.emit('safe_auth_required', { message: '密码已修改，请使用新密码登录' })
+          }
+          return
+        }
+        // 如果需要重启提示
+        if (response.Data && response.Data.need_restart) {
+          this.$helperNotify.info('配置已保存，建议重启应用让数据库配置完全生效')
+        }
         this.$emit('changed')
       })
     },
@@ -421,6 +532,9 @@ export default {
       this.syncLoading[loadingKey] = true
       set.RuntimeDatabaseGitSync({ target }, (response) => {
         this.syncLoading[loadingKey] = false
+        if (response.__loginRequired) {
+          return
+        }
         if (response.ErrCode !== 0) {
           this.$helperNotify.error(response.ErrMsg || '同步失败')
           return
@@ -441,6 +555,9 @@ export default {
         home_task_daily_report_prompt: this.form.home_task_daily_report_prompt,
       }
       set.MemoryConfigSave(payload, (response) => {
+        if (response.__loginRequired) {
+          return
+        }
         if (response.ErrCode === 0) {
           this.$helperNotify.success('AI 配置已保存')
           this.$emit('changed')
@@ -453,31 +570,4 @@ export default {
 }
 </script>
 
-<style scoped>
-@import "@/css/set_module_unified.css";
-
-.memory-config-display {
-  margin: 16px 0;
-}
-
-.memory-config-form {
-  margin-top: 16px;
-}
-
-.config-value {
-  color: #24312f;
-  line-height: 1.6;
-  word-break: break-all;
-}
-
-.config-item-help {
-  margin-top: 6px;
-  color: #6b7280;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.config-item-actions {
-  margin-top: 10px;
-}
-</style>
+<style scoped src="@/css/components/set/memory.css"></style>

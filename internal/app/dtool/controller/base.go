@@ -4,11 +4,12 @@ import (
 	"context"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
-	_struct "dev_tool/internal/app/dtool/struct"
 	"dev_tool/internal/pkg/p_common"
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -17,41 +18,154 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cast"
+	"github.com/spf13/viper"
 )
 
-// BaseLogin 登录
+// getSafeTokenManager 创建 Safe Token 管理器（从配置读取）
+func getSafeTokenManager() *common.SafeTokenManager {
+	password := component.ConfigViper.GetString("safe.password")
+	appName := component.ConfigViper.GetString("app.name")
+	return common.NewSafeTokenManager(password, appName)
+}
+
+func splitConfiguredPorts(raw string) []string {
+	portList := strings.Split(raw, `,`)
+	ret := make([]string, 0, len(portList))
+	seen := make(map[string]bool)
+	for _, port := range portList {
+		port = strings.TrimSpace(port)
+		if port == `` || seen[port] {
+			continue
+		}
+		seen[port] = true
+		ret = append(ret, port)
+	}
+	return ret
+}
+
+func getConfiguredAPIPorts(cfg *viper.Viper) []string {
+	apiPorts := splitConfiguredPorts(cfg.GetString(`run.api_port`))
+	if len(apiPorts) > 0 {
+		return apiPorts
+	}
+	return splitConfiguredPorts(cfg.GetString(`run.ports`))
+}
+
+func getConfiguredSsePort(cfg *viper.Viper) string {
+	ssePort := strings.TrimSpace(cfg.GetString(`run.sse_port`))
+	if ssePort != `` {
+		return ssePort
+	}
+	apiPorts := getConfiguredAPIPorts(cfg)
+	if len(apiPorts) == 0 {
+		return ``
+	}
+	return apiPorts[0]
+}
+
+func buildLoginStatusData(cfg *viper.Viper, enabled bool, loggedIn bool, expireAt int64) map[string]any {
+	return map[string]any{
+		`enabled`:   enabled,
+		`logged_in`: loggedIn,
+		`expire_at`: expireAt,
+		`api_port`:  getConfiguredAPIPorts(cfg),
+		`sse_port`:  getConfiguredSsePort(cfg),
+	}
+}
+
+func buildLoginData(cfg *viper.Viper, enabled bool, token string, expireAt int64) map[string]any {
+	return map[string]any{
+		`enabled`:   enabled,
+		`token`:     token,
+		`expire_at`: expireAt,
+		`api_port`:  getConfiguredAPIPorts(cfg),
+		`sse_port`:  getConfiguredSsePort(cfg),
+		`local_ip`:  GetLANIP(),
+	}
+}
+
+// BaseLogin Safe 登录接口
+// 使用配置文件中的 safe.password 进行验证
 func BaseLogin(c *gin.Context) {
-	reqBody := &_struct.LoginStruct{}
-	err := gsgin.GinPostBody(c, reqBody)
+	// 获取请求参数（兼容旧字段和新字段）
+	reqMap := make(map[string]interface{})
+	err := gsgin.GinPostBody(c, &reqMap)
 	if err != nil {
-		gsgin.GinResponseSuccess(c, err.Error(), nil)
-		return
-	}
-	userId, loginErr := common.DbMain.Login(reqBody.UserName, reqBody.Password)
-	if loginErr != nil {
-		gsgin.GinResponseError(c, `登录失败（`+loginErr.Error()+`）`, map[string]string{
+		gsgin.GinResponseError(c, `请求参数错误`, map[string]any{
 			`token`: ``,
 		})
 		return
 	}
-	token, tokenErr := p_common.AesGcmClient.Encrypt([]byte(cast.ToString(userId)))
+
+	// 获取输入密码（兼容 password 和 Password 字段）
+	inputPassword := ``
+	if p, ok := reqMap[`password`]; ok {
+		inputPassword = cast.ToString(p)
+	} else if p, ok := reqMap[`Password`]; ok {
+		inputPassword = cast.ToString(p)
+	}
+
+	// 创建 Token 管理器
+	tokenManager := getSafeTokenManager()
+
+	// 检查是否启用了密码保护
+	if !tokenManager.IsEnabled() {
+		gsgin.GinResponseSuccess(c, `未启用密码保护，无需登录`, buildLoginData(component.ConfigViper, false, ``, 0))
+		return
+	}
+
+	// 验证密码
+	if !tokenManager.VerifyPassword(inputPassword) {
+		gsgin.GinResponseError(c, `密码错误`, map[string]any{
+			`token`: ``,
+		})
+		return
+	}
+
+	// 生成 Token
+	token, expireAt, tokenErr := tokenManager.GenerateToken()
 	if tokenErr != nil {
-		gsgin.GinResponseError(c, `登录失败（`+tokenErr.Error()+`）`, map[string]string{
+		gsgin.GinResponseError(c, `登录失败（`+tokenErr.Error()+`）`, map[string]any{
 			`token`: ``,
 		})
+		return
 	}
-	gsgin.GinResponseSuccess(c, `获取成功`, map[string]any{
-		`token`:    token,
-		`ports`:    strings.Split(component.ConfigViper.GetString(`run.ports`), `,`),
-		`local_ip`: GetLANIP(),
-	})
+
+	gsgin.GinResponseSuccess(c, `登录成功`, buildLoginData(component.ConfigViper, true, token, expireAt))
+}
+
+// BaseLoginStatus 检查登录状态接口
+// 前端启动时调用，判断是否需要弹出登录框
+func BaseLoginStatus(c *gin.Context) {
+	// 从请求头获取 Token
+	token := c.GetHeader("Token")
+
+	// 创建 Token 管理器
+	tokenManager := getSafeTokenManager()
+
+	// 检查是否启用了密码保护
+	if !tokenManager.IsEnabled() {
+		gsgin.GinResponseSuccess(c, `获取成功`, buildLoginStatusData(component.ConfigViper, false, true, 0))
+		return
+	}
+
+	// 解析并验证 Token
+	claims, errCode, _ := tokenManager.ParseToken(token)
+
+	isLoggedIn := errCode == 0
+	expireAt := int64(0)
+	if claims != nil {
+		expireAt = claims.ExpireAt
+	}
+
+	gsgin.GinResponseSuccess(c, `获取成功`, buildLoginStatusData(component.ConfigViper, true, isLoggedIn, expireAt))
 }
 
 func GetLANIP() string {
 	// 获取主机的所有网络接口
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		gstool.FmtPrintlnLogTime(`获取主机的所有网络接口失败:` + err.Error())
+		gstool.FmtPrintlnLogTime(`%s`, `获取主机的所有网络接口失败:`+err.Error())
 		return ""
 	}
 
@@ -116,6 +230,13 @@ func BaseCheckUnikeyExist(c *gin.Context) {
 	})
 }
 
+// GetLocalIP 获取局域网IP
+func GetLocalIP(c *gin.Context) {
+	gsgin.GinResponseSuccess(c, `获取成功`, map[string]any{
+		`local_ip`: GetLANIP(),
+	})
+}
+
 // BaseRegisterService 注册各类服务
 func BaseRegisterService(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, `ok`, nil)
@@ -162,12 +283,6 @@ func Ip(c *gin.Context) {
 	})
 }
 
-func Ports(c *gin.Context) {
-	gsgin.GinResponseSuccess(c, `获取成功`, map[string]any{
-		`ports`: component.EnvClient.Ports,
-	})
-}
-
 func Upload(c *gin.Context) {
 	file, err := c.FormFile(`file`)
 	if err != nil {
@@ -189,4 +304,51 @@ func Upload(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, `上传成功`, map[string]string{
 		`url`: dst,
 	})
+}
+
+// DownloadWebFile 下载 web/download 目录下的单个文件。
+func DownloadWebFile(c *gin.Context) {
+	fileName := strings.TrimSpace(c.Param(`name`))
+	if !isValidWebDownloadFileName(fileName) {
+		gsgin.GinResponseError(c, `文件名不合法`, ``)
+		return
+	}
+
+	targetPath := buildWebDownloadFilePath(fileName)
+	fileInfo, err := os.Stat(targetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			gsgin.GinResponseError(c, `文件不存在`, ``)
+			return
+		}
+		gsgin.GinResponseError(c, `读取文件失败:`+err.Error(), ``)
+		return
+	}
+	if fileInfo.IsDir() {
+		gsgin.GinResponseError(c, `文件不存在`, ``)
+		return
+	}
+
+	c.FileAttachment(targetPath, fileName)
+	c.Status(http.StatusOK)
+}
+
+// isValidWebDownloadFileName 校验下载文件名只能是 web/download 下的顶层文件。
+func isValidWebDownloadFileName(fileName string) bool {
+	if fileName == `` || fileName == `.` || fileName == `..` {
+		return false
+	}
+	if strings.Contains(fileName, `/`) || strings.Contains(fileName, `\`) {
+		return false
+	}
+	return filepath.Base(fileName) == fileName
+}
+
+// buildWebDownloadFilePath 拼接 web/download 目录中的目标文件路径。
+func buildWebDownloadFilePath(fileName string) string {
+	rootPath := ``
+	if component.EnvClient != nil {
+		rootPath = component.EnvClient.RootPath
+	}
+	return filepath.Join(rootPath, `web`, `download`, fileName)
 }

@@ -10,8 +10,6 @@ const {
 
 const PROCESS_ITEM_FIELD_GUIDES = {
   locator: '统一使用结构化 Locator 配置，按页面可见内容填写后系统会自动生成后端需要的 {"spec": {...}} 结构。',
-  secondary_locator: '请输入密码输入框定位，建议使用稳定的 CSS 选择器或 XPath。',
-  tertiary_locator: '请输入提交按钮定位，建议避免依赖易变的动态 class。',
   value: '跳转步骤填写目标地址；输入步骤可使用 {user_name}、{password}、{rand} 等占位符。',
   out_key: '仅支持英文字母开头，后续可包含字母、数字、下划线，例如 {login_state}。',
   check_key: '仅支持英文字母开头，后续可包含字母、数字、下划线，例如 login_state。',
@@ -35,7 +33,7 @@ const PROCESS_TYPE_FIELDS = {
   close: [],
   no_exist_wait: ['locator', 'wait_second', 'wait_count', 'out_key', 'check_key'],
   canvas_image: ['locator', 'out_key', 'check_key'],
-  login_username_password: ['locator', 'secondary_locator', 'tertiary_locator'],
+  login_username_password: ['check_key'],
   delete_element: ['locator'],
 }
 
@@ -52,6 +50,14 @@ function isValidTokenKey(value) {
 
 function showTypeField(type, fieldName) {
   return (PROCESS_TYPE_FIELDS[type] || []).includes(fieldName)
+}
+
+function shouldShowAppendToReplace(item = {}) {
+  const type = normalizeText(item.type)
+  if (type === 'click' || type === 'delete_element') return false
+  if (type === 'input') return false
+  if (!showTypeField(type, 'out_key')) return false
+  return normalizeText(item.out_key) !== ''
 }
 
 function normalizeText(value) {
@@ -383,15 +389,6 @@ function validateProcessItemForm({ item = {}, formMeta = {} }) {
       setFieldError(fieldErrors, 'locator', validateLocatorField(formMeta))
     }
   }
-  if (type === 'login_username_password') {
-    if (!normalizeText(formMeta.secondary_locator)) {
-      setFieldError(fieldErrors, 'secondary_locator', '密码框定位不能为空。')
-    }
-    if (!normalizeText(formMeta.tertiary_locator)) {
-      setFieldError(fieldErrors, 'tertiary_locator', '提交按钮定位不能为空。')
-    }
-  }
-
   if (showTypeField(type, 'value')) {
     const valueText = normalizeText(formMeta.value)
     if (!valueText) {
@@ -513,5 +510,6 @@ module.exports = {
   serializeCheckKeyExpression,
   serializeRedirectUriValue,
   serializeWaitUrlValue,
+  shouldShowAppendToReplace,
   validateProcessItemForm,
 }

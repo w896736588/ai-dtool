@@ -35,6 +35,20 @@
         />
       </el-form-item>
 
+      <el-form-item label="默认环境">
+        <el-select v-model="form.env_id" placeholder="选择环境" style="width: 100%" @change="handleEnvChange">
+          <el-option
+              v-for="env in envs"
+              :key="env.id"
+              :label="env.name"
+              :value="env.id"
+          />
+        </el-select>
+        <div class="env-hint" style="color: #909399; font-size: 12px; margin-top: 4px;">
+          接口未单独配置环境时，将使用此环境
+        </div>
+      </el-form-item>
+
       <el-form-item label="接口数量">
         <el-tag type="info">{{ form.apiCount || 0 }} 个接口</el-tag>
       </el-form-item>
@@ -50,6 +64,7 @@
 
 <script>
 import HeadersValueEditor from './HeadersValueEditor.vue'
+import Api from '@/utils/base/api'
 
 // 中文注释：复用接口详情页中常见的请求头候选项。
 const HEADER_SUGGESTIONS = [
@@ -92,6 +107,7 @@ export default {
     return {
       form: {},
       headerSuggestions: HEADER_SUGGESTIONS,
+      envs: [],
     }
   },
   watch: {
@@ -109,8 +125,10 @@ export default {
         name: folder.name || '',
         desc: folder.desc || '',
         headers: parseFolderHeaders(folder.headers),
+        env_id: parseInt(folder.env_id) || 0,
         apiCount: folder.apiCount || 0,
       }
+      this.loadEnvs()
     },
 
     formatTime(timeString) {
@@ -134,6 +152,22 @@ export default {
       this.form.headers = headers || {}
     },
 
+    handleEnvChange(envId) {
+      this.form.env_id = envId
+    },
+
+    loadEnvs() {
+      if (!this.folder.collection_id) return
+      let _that = this
+      Api.CollectionEnvs({
+        collection_id: this.folder.collection_id,
+      }, function (res) {
+        if (res.ErrCode !== 0) return
+        _that.envs = (res.Data.list || []).map(function(env) { return {id: parseInt(env.id), name: env.name} })
+        _that.envs.unshift({id: 0, name: '不设置'})
+      })
+    },
+
     handleReset() {
       this.loadFolderData(this.folder)
       this.$message.info('已重置')
@@ -146,55 +180,5 @@ export default {
 }
 </script>
 
-<style scoped>
-.folder-basic-info {
-  padding: 12px;
-  border: 1px solid #e8eee5;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 6px 18px rgba(80, 110, 80, 0.08);
-}
-
-.info-form {
-  max-width: 600px;
-}
-
-.folder-basic-info :deep(.el-input__wrapper),
-.folder-basic-info :deep(.el-textarea__inner) {
-  border-radius: 8px;
-}
-
-.folder-basic-info :deep(.el-form-item:last-child .el-form-item__content) {
-  gap: 10px;
-}
-
-.readonly-text {
-  color: #606266;
-  font-size: 14px;
-}
-
-.stats-row {
-  margin-top: 20px;
-}
-
-.stat-card {
-  text-align: center;
-  padding: 20px;
-  background: #f7f9f5;
-  border-radius: 8px;
-  border: 1px solid #e6ece0;
-}
-
-.stat-value {
-  font-size: 24px;
-  font-weight: bold;
-  color: #4f7d4f;
-  margin-bottom: 8px;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: #909399;
-}
-</style>
+<style scoped src="@/css/components/api/FolderBasicInfo.css"></style>
 

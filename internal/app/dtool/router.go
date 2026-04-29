@@ -3,6 +3,7 @@ package dtool
 import (
 	"dev_tool/internal/app/dtool/controller"
 	"dev_tool/internal/app/dtool/define"
+	"dev_tool/internal/app/dtool/middleware"
 	"dev_tool/internal/pkg/p_define"
 	"dev_tool/internal/pkg/p_gin"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
@@ -17,7 +19,14 @@ import (
 )
 
 func InitRouter(tGin *p_gin.Gin) {
+	// 注册 SafeAuth 中间件（需要在基础路由之后，其他受保护路由之前）
+	// 但白名单接口需要在中间件之前注册，所以这里采用另一种方式：
+	// 1. 先注册白名单接口
 	baseRouter(tGin)
+
+	// 2. 注册 SafeAuth 中间件到所有后续路由
+	tGin.UseMiddleware(middleware.SafeAuthMiddleware())
+
 	toolRouter(tGin)
 	redisRouter(tGin)
 	phpRouter(tGin)
@@ -33,7 +42,6 @@ func InitRouter(tGin *p_gin.Gin) {
 	setMarkdown(tGin)
 	setMemoryFragment(tGin)
 	homeTask(tGin)
-	infoCrawl(tGin)
 	shellOut(tGin)
 	variableRouter(tGin)
 	smartLink(tGin)
@@ -101,13 +109,19 @@ func toolRouter(tGin *p_gin.Gin) {
 
 // 基础接口
 func baseRouter(tGin *p_gin.Gin) {
-	tGin.GinPost(`/api/BaseLogin`, controller.BaseLogin)                       //登录
-	tGin.GinPost(`/api/BaseRegisterService`, controller.BaseRegisterService)   //注册各类服务 CheckUnikeyExist
-	tGin.GinPost(`/api/BaseCheckUnikeyExist`, controller.BaseCheckUnikeyExist) //检查unikey是否已经登录注册
-	tGin.GinPost(`/api/BaseSshList`, controller.BaseSshList)                   //ssh列表
-	tGin.GinPost(`/api/Ip`, controller.Ip)                                     //登录
-	tGin.GinPost(`/api/ports`, controller.Ports)                               //获取支持的端口
-	tGin.GinPost(`/api/Upload`, controller.Upload)                             //上传文件
+	tGin.GinPost(`/api/BaseLogin`, controller.BaseLogin)                             //Safe 登录
+	tGin.GinPost(`/api/BaseLoginStatus`, controller.BaseLoginStatus)                 //Safe 登录状态检查
+	tGin.GinPost(`/api/BaseRegisterService`, controller.BaseRegisterService)         //注册各类服务 CheckUnikeyExist
+	tGin.GinPost(`/api/BaseCheckUnikeyExist`, controller.BaseCheckUnikeyExist)       //检查unikey是否已经登录注册
+	tGin.GinPost(`/api/BaseSshList`, controller.BaseSshList)                         //ssh列表
+	tGin.GinPost(`/api/Ip`, controller.Ip)                                           //外网IP
+	tGin.GinPost(`/api/GetLocalIP`, controller.GetLocalIP)                           //局域网IP
+	tGin.GinPost(`/api/Upload`, controller.Upload)                                   //上传文件
+	tGin.GinPost(`/api/MemoryFragmentShareInfo`, controller.MemoryFragmentShareInfo) //知识片段分享只读详情
+	tGin.GinGet(`/share/:token`, controller.MemoryFragmentSharePage)                 //知识片段分享纯HTML页面
+	tGin.GinGet(`/api/download/:name`, controller.DownloadWebFile)                   //下载 web/download 目录文件
+	tGin.GinGet(`/web/download/:name`, controller.DownloadWebFile)                   //兼容 web/download 直链下载
+	tGin.GinGet(`/memory/images/:name`, controller.MemoryFragmentImageServe)         //记忆库图片静态服务
 }
 
 // redis相关
@@ -231,10 +245,14 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/AiModelAdd`, controller.SetAiModelAdd)
 	tGin.GinPost(`/api/Set/AiModelDelete`, controller.SetAiModelDelete)
 	tGin.GinPost(`/api/Set/AiModelTest`, controller.SetAiModelTest)
+	tGin.GinPost(`/api/Set/AiRequestLogList`, controller.SetAiRequestLogList)
 	tGin.GinPost(`/api/Set/MemoryConfigGet`, controller.SetMemoryConfigGet)
 	tGin.GinPost(`/api/Set/MemoryConfigSave`, controller.SetMemoryConfigSave)
 	tGin.GinPost(`/api/Set/RuntimeConfigSave`, controller.SetRuntimeConfigSave)
 	tGin.GinPost(`/api/Set/RuntimeDatabaseGitSync`, controller.SetRuntimeDatabaseGitSync)
+	tGin.GinPost(`/api/Set/RuntimeConfigItemSave`, controller.SetRuntimeConfigItemSave)
+	tGin.GinPost(`/api/Set/CronConfigGet`, controller.SetCronConfigGet)
+	tGin.GinPost(`/api/Set/CronConfigSave`, controller.SetCronConfigSave)
 }
 
 func setStar(tGin *p_gin.Gin) {
@@ -253,6 +271,7 @@ func setMarkdown(tGin *p_gin.Gin) {
 }
 
 func setMemoryFragment(tGin *p_gin.Gin) {
+	tGin.GinPost(`/api/GitPendingStatus`, controller.GitPendingStatus)
 	tGin.GinPost(`/api/MemoryFragmentStatus`, controller.MemoryFragmentStatus)
 	tGin.GinPost(`/api/MemoryFragmentList`, controller.MemoryFragmentList)
 	tGin.GinPost(`/api/MemoryFragmentInfo`, controller.MemoryFragmentInfo)
@@ -265,6 +284,13 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/MemoryFragmentTagList`, controller.MemoryFragmentTagList)
 	tGin.GinPost(`/api/MemoryFragmentSearch`, controller.MemoryFragmentSearch)
 	tGin.GinPost(`/api/MemoryFragmentOrganize`, controller.MemoryFragmentOrganize)
+	tGin.GinPost(`/api/MemoryFragmentShareCreate`, controller.MemoryFragmentShareCreate)
+	tGin.GinPost(`/api/MemoryFragmentImageUpload`, controller.MemoryFragmentImageUpload)
+	tGin.GinPost(`/api/MemoryFragmentBatchInfoByPaths`, controller.MemoryFragmentBatchInfoByPaths)
+	tGin.GinPost(`/api/AsyncTaskList`, controller.AsyncTaskList)
+	tGin.GinPost(`/api/AsyncTaskInfo`, controller.AsyncTaskInfo)
+	tGin.GinPost(`/api/AsyncTaskAction`, controller.AsyncTaskAction)
+	tGin.GinPost(`/api/AsyncTaskDelete`, controller.AsyncTaskDelete)
 }
 
 func homeTask(tGin *p_gin.Gin) {
@@ -276,29 +302,22 @@ func homeTask(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/HomeTaskDailyReportGenerate`, controller.HomeTaskDailyReportGenerate)
 }
 
-func infoCrawl(tGin *p_gin.Gin) {
-	tGin.GinPost(`/api/InfoCrawlCrawl4AIStatus`, controller.InfoCrawlCrawl4AIStatus)
-	tGin.GinPost(`/api/InfoCrawlTaskList`, controller.InfoCrawlTaskList)
-	tGin.GinPost(`/api/InfoCrawlTaskInfo`, controller.InfoCrawlTaskInfo)
-	tGin.GinPost(`/api/InfoCrawlTaskSave`, controller.InfoCrawlTaskSave)
-	tGin.GinPost(`/api/InfoCrawlTaskDelete`, controller.InfoCrawlTaskDelete)
-	tGin.GinPost(`/api/InfoCrawlTaskRun`, controller.InfoCrawlTaskRun)
-	tGin.GinPost(`/api/InfoCrawlRunList`, controller.InfoCrawlRunList)
-	tGin.GinPost(`/api/InfoCrawlRunInfo`, controller.InfoCrawlRunInfo)
-}
-
 func shellOut(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/shellOut`, controller.ShellOut)
 	tGin.GinPost(`/api/shellOutSetSeeId`, controller.ShellOutSetSeeId)
 	tGin.GinPost(`/api/shellOutCleanErrors`, controller.ShellOutCleanErrors)
 	tGin.GinPost(`/api/shellOuts`, controller.GetShellOuts)
+	tGin.GinPost(`/api/ShellOutRuleSetList`, controller.ShellOutRuleSetList)
+	tGin.GinPost(`/api/ShellOutRuleSetInfo`, controller.ShellOutRuleSetInfo)
+	tGin.GinPost(`/api/ShellOutRuleSetSave`, controller.ShellOutRuleSetSave)
+	tGin.GinPost(`/api/ShellOutRuleSetDelete`, controller.ShellOutRuleSetDelete)
+	tGin.GinPost(`/api/ShellOutRuleImportLegacy`, controller.ShellOutRuleImportLegacy)
 	tGin.GinPost(`/api/shellOutDelete`, controller.ShellOutDelete)
 	tGin.GinPost(`/api/shellOutStop`, controller.ShellOutStop)
 	tGin.GinPost(`/api/shellOutEdit`, controller.ShellOutEdit)
 	tGin.GinPost(`/api/shellOutErrorContext`, controller.ShellOutErrorContext)
 	tGin.GinPost(`/api/shellOutSearchContent`, controller.ShellOutSearchContent)
 	tGin.GinPost(`/api/shellOutCleanLog`, controller.ShellOutCleanLog)
-	tGin.GinPost(`/api/shellOutConnections`, controller.ShellOutGetConnections)
 	tGin.GinPost(`/api/shellOutReconnect`, controller.ShellOutReconnect)
 }
 
@@ -327,6 +346,17 @@ func smartLink(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/SmartLinkRecycle`, controller.SmartLinkRecycle)
 	tGin.GinPost(`/api/SmartLinkDownloadPath`, controller.SmartLinkDownloadPath)
 	tGin.GinPost(`/api/SmartLinkLocatorAutoExtract`, controller.SmartLinkLocatorAutoExtract)
+	// 本地客户端相关接口
+	tGin.GinGet(`/api/smart-link/runtime-config`, controller.SmartLinkRuntimeConfig)
+	tGin.GinGet(`/api/smart-link/client-status`, controller.SmartLinkClientStatus)
+	tGin.GinPost(`/api/smart-link/client-build/start`, controller.SmartLinkClientBuildStart)
+	tGin.GinGet(`/api/smart-link/client-build/status`, controller.SmartLinkClientBuildStatus)
+	tGin.GinGet(`/api/smart-link/client-build/download/:job_id`, controller.SmartLinkClientBuildDownload)
+	tGin.GinPost(`/api/smart-link/task/create`, controller.SmartLinkTaskCreate)
+	tGin.GinPost(`/api/smart-link/scrape-to-markdown`, controller.SmartLinkScrapeToMarkdown)
+	tGin.GinPost(`/api/smart-link/task/result-file`, controller.SmartLinkTaskResultFileUpload)
+	tGin.GinPost(`/api/smart-link/agent/last-user-data`, controller.SmartLinkLastForAgent)
+	tGin.GinGet(`/api/agent/ws`, controller.AgentWs)
 	//执行逻辑
 	tGin.GinPost(`/api/SmartProcessList`, controller.SmartProcessList)
 	tGin.GinPost(`/api/SmartProcessAdd`, controller.SmartProcessAdd)
@@ -422,6 +452,21 @@ func apiUse(tGin *p_gin.Gin) {
 		sse := gsgin.SseRegister(clientId, stopC, c)
 		//发送一个事件 前端才会建立连接
 		_ = sse.SendToChan(define.SseConnect)
+		// 中文注释：Shell 连接状态复用普通 SSE 通道推送，无需单独订阅 shell_connections client_id。
+		// English comment: Shell connection status now rides on the normal SSE channel for this client.
+		controller.BindShellConnectionsSSE(sse, stopC, 5*time.Second)
+		// 中文注释：异步任务状态复用普通 SSE 通道推送，页面加载时初始化一次，后续后端主动推送。
+		// English comment: Async task status now rides on the normal SSE channel for this client.
+		controller.BindAsyncTasksSSE(sse, stopC, 5*time.Second)
+		// 中文注释：记忆库状态复用普通 SSE 通道推送，替代原来的轮询方式。
+		// English comment: Memory fragment status now rides on the normal SSE channel for this client.
+		controller.BindMemoryFragmentStatusSSE(sse, stopC, 10*time.Second)
+		// 中文注释：本地客户端状态复用普通 SSE 通道推送，替代前端 5s 轮询。
+		// English comment: Smart-link client status now rides on the normal SSE channel for this client.
+		controller.BindSmartLinkClientStatusSSE(sse, stopC, 5*time.Second)
+		// 中文注释：Git 待提交状态及倒计时复用普通 SSE 通道推送，替代前端 10s 轮询。
+		// English comment: Git pending status and countdown now ride on the normal SSE channel for this client.
+		controller.BindGitPendingStatusSSE(sse, stopC, 5*time.Second)
 		return sse, nil
 	}
 	closeFunc := func(sse *gsgin.Sse) {

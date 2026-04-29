@@ -1,0 +1,17 @@
+.collection-basic-info {
+  max-width: 600px;
+  padding: 12px;
+  border: 1px solid #e8eee5;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(80, 110, 80, 0.08);
+}
+
+.collection-basic-info :deep(.el-input__wrapper),
+.collection-basic-info :deep(.el-textarea__inner) {
+  border-radius: 8px;
+}
+
+.collection-basic-info :deep(.el-form-item:last-child .el-form-item__content) {
+  gap: 10px;
+}

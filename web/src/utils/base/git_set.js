@@ -61,6 +61,18 @@ function RuntimeDatabaseGitSync(data , callBack){
     base.BasePost('/api/Set/RuntimeDatabaseGitSync', data, callBack)
 }
 
+function RuntimeConfigItemSave(data , callBack){
+    base.BasePost('/api/Set/RuntimeConfigItemSave', data, callBack)
+}
+
+function CronConfigGet(callBack){
+    base.BasePost('/api/Set/CronConfigGet', {}, callBack)
+}
+
+function CronConfigSave(data , callBack){
+    base.BasePost('/api/Set/CronConfigSave', data, callBack)
+}
+
 export default {
     GitList,
     GitAdd,
@@ -79,4 +91,7 @@ export default {
     MemoryConfigSave,
     RuntimeConfigSave,
     RuntimeDatabaseGitSync,
+    RuntimeConfigItemSave,
+    CronConfigGet,
+    CronConfigSave,
 }

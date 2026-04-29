@@ -2,7 +2,12 @@ package controller
 
 import (
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
+	"dev_tool/internal/pkg/p_define"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,12 +17,24 @@ import (
 	"github.com/spf13/cast"
 )
 
-// MemoryFragmentStatus 返回记忆库配置状态。
-func MemoryFragmentStatus(c *gin.Context) {
-	config := common.MemoryRuntime.Config()
-	nextPushTime := common.MemoryRuntime.NextPushTime()
-	lastPushTime := common.MemoryRuntime.LastPushTime()
-	lastPushError := common.MemoryRuntime.LastPushError()
+// buildMemoryFragmentStatusPayload 构造记忆库状态数据。
+func buildMemoryFragmentStatusPayload() map[string]any {
+	config := component.MemoryRuntime.Config()
+	nextPushTime := component.MemoryRuntime.NextPushTime()
+	lastPushTime := component.MemoryRuntime.LastPushTime()
+	lastPushError := component.MemoryRuntime.LastPushError()
+	indexReady := false
+	fragmentCount := 0
+	trashCount := 0
+	if runtimeStore, ok := component.MemoryRuntime.DB().(interface {
+		IndexReady() bool
+		FragmentCount() int
+		TrashCount() int
+	}); ok {
+		indexReady = runtimeStore.IndexReady()
+		fragmentCount = runtimeStore.FragmentCount()
+		trashCount = runtimeStore.TrashCount()
+	}
 	nextPushTimeDesc := `-`
 	lastPushTimeDesc := `-`
 	if nextPushTime > 0 {
@@ -26,19 +43,85 @@ func MemoryFragmentStatus(c *gin.Context) {
 	if lastPushTime > 0 {
 		lastPushTimeDesc = gstool.TimeUnixToString(time.Unix(lastPushTime, 0), `Y-m-d H:i:s`)
 	}
-	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`configured`:              common.MemoryRuntime.IsConfigured(),
+	return map[string]any{
+		`configured`:              component.MemoryRuntime.IsConfigured(),
 		`memory_dir`:              config.Dir,
-		`memory_db_name`:          config.DBName,
 		`git_repo_enabled`:        config.GitRepoEnabled,
 		`is_git_repo`:             config.IsGitRepo,
 		`auto_push_delay_minutes`: config.AutoPushDelayMinutes,
+		`index_ready`:             indexReady,
+		`fragment_count`:          fragmentCount,
+		`trash_count`:             trashCount,
 		`next_push_time`:          nextPushTime,
 		`next_push_time_desc`:     nextPushTimeDesc,
 		`last_push_time`:          lastPushTime,
 		`last_push_time_desc`:     lastPushTimeDesc,
 		`last_push_error`:         lastPushError,
-	})
+	}
+}
+
+// MemoryFragmentStatus 返回记忆库配置状态。
+func MemoryFragmentStatus(c *gin.Context) {
+	gsgin.GinResponseSuccess(c, ``, buildMemoryFragmentStatusPayload())
+}
+
+// sendMemoryFragmentStatusSnapshot 向指定 SSE 连接发送一次记忆库状态快照。
+func sendMemoryFragmentStatusSnapshot(sse *gsgin.Sse) {
+	if sse == nil {
+		return
+	}
+	data := buildMemoryFragmentStatusPayload()
+	err := sse.SendToChan(gstool.JsonEncode(p_define.SseData{
+		SseDistributeId: define.SseMemoryFragmentStatus,
+		Data:            data,
+		Type:            p_define.SseContentTypeMsg,
+	}))
+	if err != nil {
+		gstool.FmtPrintlnLogTime(`MemoryFragmentStatus广播错误 %s`, err.Error())
+	}
+}
+
+// BindMemoryFragmentStatusSSE 为普通 SSE client 绑定记忆库状态推送。
+func BindMemoryFragmentStatusSSE(sse *gsgin.Sse, stopC chan int, interval time.Duration) {
+	if sse == nil {
+		return
+	}
+	if interval <= 0 {
+		interval = 10 * time.Second
+	}
+	// 建连后立即推一次，避免前端初次打开时要等下一个周期。
+	sendMemoryFragmentStatusSnapshot(sse)
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				sendMemoryFragmentStatusSnapshot(sse)
+			case <-stopC:
+				return
+			}
+		}
+	}()
+}
+
+// MemoryFragmentBatchInfoByPaths 批量按文件路径查询片段摘要。
+func MemoryFragmentBatchInfoByPaths(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	pathsRaw, _ := dataMap[`paths`].([]any)
+	paths := make([]string, 0, len(pathsRaw))
+	for _, p := range pathsRaw {
+		if s, ok := p.(string); ok {
+			paths = append(paths, s)
+		}
+	}
+	results := memoryDB.MemoryFragmentBatchInfoByPaths(paths)
+	gsgin.GinResponseSuccess(c, ``, results)
 }
 
 // MemoryFragmentList 查询知识片段列表。
@@ -65,11 +148,12 @@ func MemoryFragmentInfo(c *gin.Context) {
 	}
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToInt(dataMap[`id`]) <= 0 {
+	fragmentID := strings.TrimSpace(cast.ToString(dataMap[`id`]))
+	if fragmentID == `` || fragmentID == `0` {
 		gsgin.GinResponseError(c, `片段id不能为空`, nil)
 		return
 	}
-	info, err := memoryDB.MemoryFragmentInfo(cast.ToInt(dataMap[`id`]))
+	info, err := memoryDB.MemoryFragmentInfo(fragmentID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -86,7 +170,7 @@ func MemoryFragmentSave(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	info, err := memoryDB.MemoryFragmentSave(
-		cast.ToInt(dataMap[`id`]),
+		cast.ToString(dataMap[`id`]),
 		cast.ToString(dataMap[`title`]),
 		cast.ToString(dataMap[`content`]),
 		memoryFragmentParseTags(dataMap[`tags`]),
@@ -95,7 +179,8 @@ func MemoryFragmentSave(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	common.MemoryRuntime.ScheduleSync()
+	component.MemoryRuntime.ScheduleSync()
+	broadcastMemoryFragmentUpsert(info)
 	gsgin.GinResponseSuccess(c, ``, info)
 }
 
@@ -107,16 +192,18 @@ func MemoryFragmentDelete(c *gin.Context) {
 	}
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToInt(dataMap[`id`]) <= 0 {
+	fragmentID := strings.TrimSpace(cast.ToString(dataMap[`id`]))
+	if fragmentID == `` || fragmentID == `0` {
 		gsgin.GinResponseError(c, `片段id不能为空`, nil)
 		return
 	}
-	_, err := memoryDB.MemoryFragmentSoftDelete(cast.ToInt(dataMap[`id`]))
+	_, err := memoryDB.MemoryFragmentSoftDelete(fragmentID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	common.MemoryRuntime.ScheduleSync()
+	component.MemoryRuntime.ScheduleSync()
+	broadcastMemoryFragmentDelete(fragmentID)
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -144,16 +231,20 @@ func MemoryFragmentRestore(c *gin.Context) {
 	}
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToInt(dataMap[`id`]) <= 0 {
+	fragmentID := strings.TrimSpace(cast.ToString(dataMap[`id`]))
+	if fragmentID == `` || fragmentID == `0` {
 		gsgin.GinResponseError(c, `片段id不能为空`, nil)
 		return
 	}
-	_, err := memoryDB.MemoryFragmentRestore(cast.ToInt(dataMap[`id`]))
+	_, err := memoryDB.MemoryFragmentRestore(fragmentID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	common.MemoryRuntime.ScheduleSync()
+	component.MemoryRuntime.ScheduleSync()
+	if info, infoErr := memoryDB.MemoryFragmentInfo(fragmentID); infoErr == nil {
+		broadcastMemoryFragmentUpsert(info)
+	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -165,16 +256,77 @@ func MemoryFragmentHardDelete(c *gin.Context) {
 	}
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToInt(dataMap[`id`]) <= 0 {
+	fragmentID := strings.TrimSpace(cast.ToString(dataMap[`id`]))
+	if fragmentID == `` || fragmentID == `0` {
 		gsgin.GinResponseError(c, `片段id不能为空`, nil)
 		return
 	}
-	if err := memoryDB.MemoryFragmentHardDelete(cast.ToInt(dataMap[`id`])); err != nil {
+	if err := memoryDB.MemoryFragmentHardDelete(fragmentID); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	common.MemoryRuntime.ScheduleSync()
+	component.MemoryRuntime.ScheduleSync()
+	broadcastMemoryFragmentDelete(fragmentID)
 	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+const (
+	// memoryFragmentSseActionUpsert 表示知识片段新增或更新。 // memoryFragmentSseActionUpsert marks a fragment upsert event.
+	memoryFragmentSseActionUpsert = `upsert`
+	// memoryFragmentSseActionDelete 表示知识片段删除或移出当前列表。 // memoryFragmentSseActionDelete marks a fragment delete event.
+	memoryFragmentSseActionDelete = `delete`
+	// memoryFragmentSseStatusPrefix 是 gsgin.SseStatus 返回值里的 client_id 前缀。 // memoryFragmentSseStatusPrefix matches the client-id prefix returned by gsgin.SseStatus.
+	memoryFragmentSseStatusPrefix = `ClientId:`
+)
+
+// broadcastMemoryFragmentUpsert 广播知识片段新增或更新事件。 // broadcastMemoryFragmentUpsert broadcasts a fragment upsert event.
+func broadcastMemoryFragmentUpsert(fragment map[string]any) {
+	fragmentID := strings.TrimSpace(cast.ToString(fragment[`id`]))
+	if fragmentID == `` {
+		fragmentID = strings.TrimSpace(cast.ToString(fragment[`file_id`]))
+	}
+	if fragmentID == `` {
+		return
+	}
+	broadcastMemoryFragmentEvent(memoryFragmentSseActionUpsert, fragmentID, fragment)
+}
+
+// broadcastMemoryFragmentDelete 广播知识片段删除事件。 // broadcastMemoryFragmentDelete broadcasts a fragment delete event.
+func broadcastMemoryFragmentDelete(fragmentID string) {
+	normalizedID := strings.TrimSpace(fragmentID)
+	if normalizedID == `` || normalizedID == `0` {
+		return
+	}
+	broadcastMemoryFragmentEvent(memoryFragmentSseActionDelete, normalizedID, nil)
+}
+
+// broadcastMemoryFragmentEvent 把知识片段变更广播到所有普通 SSE 客户端。 // broadcastMemoryFragmentEvent pushes fragment changes to all normal SSE clients.
+func broadcastMemoryFragmentEvent(action, fragmentID string, fragment map[string]any) {
+	payload := map[string]any{
+		`action`:      strings.TrimSpace(action),
+		`fragment_id`: strings.TrimSpace(fragmentID),
+	}
+	if fragment != nil {
+		payload[`fragment`] = fragment
+	}
+	msg := gstool.JsonEncode(p_define.SseData{
+		SseDistributeId: define.SseMemoryFragmentUpdates,
+		Data:            payload,
+		Type:            p_define.SseContentTypeMsg,
+	})
+	// 中文注释：这里只复用全局普通 SSE 通道，避免为知识片段同步再单独维护一套长连接。
+	// English comment: Reuse the shared SSE channel so fragment sync does not require a second long-lived connection.
+	for _, item := range gsgin.SseStatus() {
+		clientID := strings.TrimSpace(strings.TrimPrefix(item, memoryFragmentSseStatusPrefix))
+		if clientID == `` || clientID == item {
+			continue
+		}
+		sse := gsgin.SseGetByClientId(clientID)
+		if sse == nil {
+			continue
+		}
+		_ = sse.SendToChan(msg)
+	}
 }
 
 // MemoryFragmentHistoryList 查询知识片段历史记录。
@@ -185,16 +337,31 @@ func MemoryFragmentHistoryList(c *gin.Context) {
 	}
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToInt(dataMap[`id`]) <= 0 {
+	fragmentID := strings.TrimSpace(cast.ToString(dataMap[`id`]))
+	if fragmentID == `` || fragmentID == `0` {
 		gsgin.GinResponseError(c, `片段id不能为空`, nil)
 		return
 	}
-	list, err := memoryDB.MemoryFragmentHistoryList(cast.ToInt(dataMap[`id`]))
+	config := component.MemoryRuntime.Config()
+	result := map[string]any{
+		`list`:             []map[string]any{},
+		`git_repo_enabled`: config.GitRepoEnabled,
+		`is_git_repo`:      config.IsGitRepo,
+		`history_source`:   `none`,
+		`setting_hint`:     `请到“设置” -> “记忆设置”中开启 Git 管理（memoryDbIsGitRepo）后，再查看知识片段历史记录。`,
+	}
+	if !config.GitRepoEnabled || !config.IsGitRepo {
+		gsgin.GinResponseSuccess(c, ``, result)
+		return
+	}
+	list, err := memoryDB.MemoryFragmentHistoryList(fragmentID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	gsgin.GinResponseSuccess(c, ``, list)
+	result[`list`] = list
+	result[`history_source`] = `git`
+	gsgin.GinResponseSuccess(c, ``, result)
 }
 
 // MemoryFragmentTagList 查询知识片段标签列表。
@@ -232,7 +399,7 @@ func MemoryFragmentSearch(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, list)
 }
 
-// MemoryFragmentOrganize 调用 AI 对当前片段内容进行整理。
+// MemoryFragmentOrganize 创建知识片段整理异步任务。 // MemoryFragmentOrganize creates an async memory fragment arrange task.
 func MemoryFragmentOrganize(c *gin.Context) {
 	_, ok := memoryDBOrResponse(c)
 	if !ok {
@@ -245,34 +412,47 @@ func MemoryFragmentOrganize(c *gin.Context) {
 		gsgin.GinResponseError(c, `片段内容不能为空`, nil)
 		return
 	}
-	modelID, prompt, err := memoryArrangeConfig()
-	if err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
-	}
+	fragmentID := strings.TrimSpace(cast.ToString(dataMap[`id`]))
 	title := strings.TrimSpace(cast.ToString(dataMap[`title`]))
-	userPrompt := buildMemoryArrangeUserPrompt(prompt, title, content)
-	result, modelInfo, err := common.DbMain.InfoCrawlChatByModel(modelID, memoryArrangeSystemPrompt(), userPrompt)
+	taskInfo, err := createAsyncTask(
+		asyncTaskTypeMemoryFragmentArrange,
+		`整理知识片段 `+title,
+		fragmentID,
+		map[string]any{
+			`fragment_id`: fragmentID,
+			`title`:       title,
+			`content`:     content,
+		},
+		func(taskID int) {
+			runAsyncTaskAndPersistResult(taskID, func() (map[string]any, error) {
+				resultMap, buildErr := buildAsyncMemoryArrangeResult(title, content)
+				if buildErr != nil {
+					return nil, buildErr
+				}
+				resultMap[`fragment_id`] = fragmentID
+				return resultMap, nil
+			})
+		},
+	)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`content`:  stripMarkdownCodeFence(result),
-		`prompt`:   prompt,
-		`model`:    cast.ToString(modelInfo[`model`]),
-		`model_id`: modelID,
+		`task_id`:     taskInfo[`id`],
+		`task_status`: taskInfo[`task_status`],
+		`task_type`:   taskInfo[`task_type`],
 	})
 }
 
-func memoryDBOrResponse(c *gin.Context) (*common.CSqlite, bool) {
-	if err := common.MemoryRuntime.EnsureConfigured(); err != nil {
+func memoryDBOrResponse(c *gin.Context) (common.MemoryFragmentStore, bool) {
+	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
 		gsgin.GinResponseError(c, err.Error(), map[string]any{
 			`configured`: false,
 		})
 		return nil, false
 	}
-	return common.MemoryRuntime.DB(), true
+	return component.MemoryRuntime.DB(), true
 }
 
 // memoryFragmentParseTags 解析请求中的标签数组。
@@ -308,23 +488,23 @@ func memoryArrangeSystemPrompt() string {
 }
 
 func memoryArrangeConfig() (int, string, error) {
-	modelIDText, err := common.DbMain.GlobalValue(define.GlobalMemoryArrangeModelID)
-	if err != nil && !memoryConfigValueMissing(err) {
+	modelIDText, err := common.DbMain.MemoryConfigValue(define.MemoryConfigArrangeModelID)
+	if err != nil && !common.DbRowMissing(err) {
 		return 0, ``, err
 	}
 	modelID := cast.ToInt(modelIDText)
 	if modelID <= 0 {
 		return 0, ``, gstool.Error(`请先在记忆设置中配置 AI 整理模型`)
 	}
-	modelInfo, err := common.DbMain.InfoCrawlAiModelInfo(modelID)
+	modelInfo, err := common.DbMain.AiModelInfo(modelID)
 	if err != nil {
 		return 0, ``, gstool.Error(`当前记忆整理模型不可用`)
 	}
 	if strings.ToLower(cast.ToString(modelInfo[`model_type`])) != `llm` {
 		return 0, ``, gstool.Error(`记忆整理仅支持 LLM 模型`)
 	}
-	prompt, err := common.DbMain.GlobalValue(define.GlobalMemoryArrangePrompt)
-	if err != nil && !memoryConfigValueMissing(err) {
+	prompt, err := common.DbMain.MemoryConfigValue(define.MemoryConfigArrangePrompt)
+	if err != nil && !common.DbRowMissing(err) {
 		return 0, ``, err
 	}
 	prompt = strings.TrimSpace(prompt)
@@ -361,4 +541,58 @@ func stripMarkdownCodeFence(content string) string {
 		return strings.TrimSpace(strings.Join(lineList[1:len(lineList)-1], "\n"))
 	}
 	return content
+}
+
+// allowedImageExts 记忆库图片上传允许的文件扩展名。
+var allowedImageExts = map[string]bool{
+	`.png`: true, `.jpg`: true, `.jpeg`: true, `.gif`: true, `.webp`: true, `.bmp`: true, `.svg`: true,
+}
+
+// MemoryFragmentImageUpload 上传图片到记忆库 images 目录。
+func MemoryFragmentImageUpload(c *gin.Context) {
+	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	file, err := c.FormFile(`file`)
+	if err != nil {
+		gsgin.GinResponseError(c, `上传失败:`+err.Error(), nil)
+		return
+	}
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	if !allowedImageExts[ext] {
+		gsgin.GinResponseError(c, `不支持的图片格式: `+ext, nil)
+		return
+	}
+	imageDir := filepath.Join(component.MemoryRuntime.Config().Dir, `images`)
+	_ = gstool.DirCreatePath(imageDir)
+	newName := fmt.Sprintf(`%d%s`, time.Now().UnixMicro(), ext)
+	dst := filepath.Join(imageDir, newName)
+	if err := c.SaveUploadedFile(file, dst); err != nil {
+		gsgin.GinResponseError(c, `保存图片失败:`+err.Error(), nil)
+		return
+	}
+	urlPath := `/memory/images/` + newName
+	gsgin.GinResponseSuccess(c, ``, map[string]string{
+		`url`: urlPath,
+	})
+}
+
+// MemoryFragmentImageServe 提供记忆库图片的静态文件服务。
+func MemoryFragmentImageServe(c *gin.Context) {
+	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
+		c.Status(404)
+		return
+	}
+	imageName := strings.TrimSpace(c.Param(`name`))
+	if imageName == `` || strings.ContainsAny(imageName, `/\`) {
+		c.Status(404)
+		return
+	}
+	imagePath := filepath.Join(component.MemoryRuntime.Config().Dir, `images`, imageName)
+	if _, err := os.Stat(imagePath); err != nil {
+		c.Status(404)
+		return
+	}
+	c.File(imagePath)
 }

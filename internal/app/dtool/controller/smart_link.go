@@ -2,6 +2,7 @@ package controller
 
 import (
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/plw"
 	"dev_tool/internal/pkg/p_common"
@@ -32,7 +33,7 @@ func SmartLinkUpWebkit(c *gin.Context) {
 	if !ensureSmartLinkNodeInstalled(c, sse) {
 		return
 	}
-	go plw.PlaywrightClient.Install(sse, pw.Version)
+	go component.PlaywrightClient.Install(sse, pw.Version)
 	gsgin.GinResponseSuccess(c, `更新浏览器核心中`, ``)
 	return
 }
@@ -49,14 +50,14 @@ func SmartLinkRecycle(c *gin.Context) {
 		return
 	}
 	sse.Send(`开始释放实例` + "\n")
-	p := plw.NewPlaywright(nil, plw.PlaywrightClient.Log)
+	p := plw.NewPlaywright(nil, component.PlaywrightClient.Log)
 	err := p.Recycle()
 	if err != nil {
-		sse.Send(fmt.Sprintf(`释放失败 `+err.Error()) + "\n")
+		sse.Send(`释放失败 ` + err.Error() + "\n")
 		gsgin.GinResponseError(c, fmt.Sprintf(`释放失败 %s`, err.Error()), nil)
 		return
 	}
-	sse.Send(fmt.Sprintf(`释放成功 `) + "\n")
+	sse.Send(`释放成功 ` + "\n")
 	gsgin.GinResponseSuccess(c, `释放成功`, ``)
 	return
 }
@@ -65,7 +66,7 @@ func SmartLinkDownloadPath(c *gin.Context) {
 	if !ensureSmartLinkNodeInstalled(c, nil) {
 		return
 	}
-	err := plw.PlaywrightClient.SmartLinkDownloadPath()
+	err := component.PlaywrightClient.SmartLinkDownloadPath()
 	if err != nil {
 		gsgin.GinResponseError(c, fmt.Sprintf(`释放失败 %s`, err.Error()), nil)
 		return
@@ -250,6 +251,14 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
 		SseDistributeId: cast.ToString(dataMap[`sse_distribute_id`]),
 	}
+
+	// 客户端模式下，走任务下发流程
+	cfg := getSmartLinkConfig()
+	if cfg.RunMode == define.SmartLinkRunModeLocalClient {
+		smartLinkRunPlaywrightViaClient(c, dataMap, id, label, sse)
+		return
+	}
+
 	if !ensureSmartLinkNodeInstalled(c, sse) {
 		return
 	}
@@ -276,7 +285,7 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 			runParams.StreamFunc = streamFunc
 			streamFunc(`构建run_params`, `成功，准备打开的链接：`+runParams.Link+`,链接类型：`+runParams.LinkIdLabel)
 			streamFunc(`打开浏览器实例`, `开始`)
-			p := plw.NewPlaywright(runParams, plw.PlaywrightClient.Log)
+			p := plw.NewPlaywright(runParams, component.PlaywrightClient.Log)
 			openErr := p.Open(common.GetCall(), nil)
 			if openErr != nil {
 				streamFunc(`打开浏览器实例`, `失败：`+openErr.Error())
@@ -289,6 +298,111 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
+// smartLinkRunPlaywrightViaClient 客户端模式下通过 WebSocket 下发任务给 Agent
+func smartLinkRunPlaywrightViaClient(c *gin.Context, dataMap map[string]any, id int, label string, sse *p_sse.SseShell) {
+	// 从内存检查客户端状态
+	info := GlobalClientRegistry.GetLatest()
+	if info == nil {
+		sse.Send(`客户端未连接，无法执行任务` + "\n")
+		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_OFFLINE", nil)
+		return
+	}
+
+	isConnected := GlobalAgentWsManager.GetConnection(info.ClientID) != nil
+	if !isConnected {
+		sse.Send(`客户端未连接，无法执行任务` + "\n")
+		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_OFFLINE", nil)
+		return
+	}
+
+	cfg := getSmartLinkConfig()
+	if info.ClientVersion != cfg.ClientVersion {
+		sse.Send(`客户端版本不匹配，请更新客户端` + "\n")
+		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_VERSION_MISMATCH", nil)
+		return
+	}
+
+	if info.Status == define.SmartLinkClientStatusPreparingRuntime {
+		sse.Send(`客户端正在准备运行环境，请稍后重试` + "\n")
+		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_PREPARING_RUNTIME", nil)
+		return
+	}
+
+	clientID := info.ClientID
+	userName := cast.ToString(dataMap[`user_name`])
+	password := cast.ToString(dataMap[`password`])
+	openType := cast.ToInt(dataMap[`open_type`])
+	openNum := cast.ToInt(dataMap[`open_num`])
+	replaceList := make(map[string]string)
+
+	// 构建运行参数
+	sse.Send(p_common.TMarkDownClient.BlockQuote(`运行,开始----------------我是分隔君`) + "\n")
+	sse.Send(p_common.TMarkDownClient.Bold(label) + ` 构建run_params 开始` + "\n")
+
+	runParams, runParamsErr := plw.GetRunParams(id, label, userName, password, openType, openNum, replaceList)
+	if runParamsErr != nil {
+		sse.Send(p_common.TMarkDownClient.Bold(label) + ` 构建run_params 失败:` + runParamsErr.Error() + "\n")
+		gsgin.GinResponseError(c, `构建运行参数失败: `+runParamsErr.Error(), nil)
+		return
+	}
+
+	sse.Send(p_common.TMarkDownClient.Bold(label) + ` 构建run_params 成功，准备下发给客户端执行` + "\n")
+
+	// 生成任务 ID 和 SSE 分发 ID
+	now := time.Now().Unix()
+	taskID := "task_" + cast.ToString(now) + "_" + cast.ToString(id)
+	sseDistributeId := cast.ToString(dataMap[`sse_distribute_id`])
+	if sseDistributeId == `` {
+		sseDistributeId = "smart_link_run_" + cast.ToString(now)
+	}
+
+	// 创建任务记录到数据库（用于状态追踪）
+	_, createErr := common.DbMain.Client.QuickCreate("tbl_smart_link_task", map[string]any{
+		"task_id":       taskID,
+		"client_id":     clientID,
+		"smart_link_id": id,
+		"label":         label,
+		"status":        define.SmartLinkTaskStatusPending,
+		"run_mode":      define.SmartLinkRunModeLocalClient,
+		"create_time":   now,
+		"update_time":   now,
+	}).Exec()
+	if createErr != nil {
+		sse.Send(`创建任务记录失败: ` + createErr.Error() + "\n")
+		gsgin.GinResponseError(c, `创建任务失败: `+createErr.Error(), nil)
+		return
+	}
+
+	// 通过 WebSocket 下发任务给 Agent
+	agentRunParams := BuildAgentRunParams(runParams)
+	wsMsg := define.AgentWsMessage{
+		Type:            define.AgentWsMsgTaskExecute,
+		ClientID:        clientID,
+		TaskID:          taskID,
+		SseDistributeId: sseDistributeId,
+		Data: define.AgentTaskExecuteData{
+			TaskID:          taskID,
+			SseDistributeId: sseDistributeId,
+			ClientID:        clientID,
+			RunParams:       agentRunParams,
+		},
+	}
+
+	if sendErr := GlobalAgentWsManager.Send(clientID, wsMsg); sendErr != nil {
+		sse.Send(`下发任务到客户端失败: ` + sendErr.Error() + "\n")
+		gsgin.GinResponseError(c, `下发任务到Agent失败: `+sendErr.Error(), nil)
+		return
+	}
+
+	sse.Send(p_common.TMarkDownClient.Bold(label) + ` 任务已下发给客户端，等待执行` + "\n")
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		"task_id":           taskID,
+		"client_id":         clientID,
+		"status":            define.SmartLinkTaskStatusPending,
+		"sse_distribute_id": sseDistributeId,
+	})
+}
+
 // SmartLinkRunPlaywrightList 获取运行的列表
 func SmartLinkRunPlaywrightList(c *gin.Context) {
 	dataMap := make(map[string]any)
@@ -296,7 +410,7 @@ func SmartLinkRunPlaywrightList(c *gin.Context) {
 	if !ensureSmartLinkNodeInstalled(c, nil) {
 		return
 	}
-	contextPageList := plw.NewContextList(plw.PlaywrightClient.Log)
+	contextPageList := plw.NewContextList(component.PlaywrightClient.Log)
 	runList := contextPageList.GetPlaywrightRunList()
 	gsgin.GinResponseSuccess(c, ``, runList)
 }
@@ -312,7 +426,7 @@ func SmartLinkPlaywrightVersion(c *gin.Context) {
 		return
 	}
 	sse.Send(`获取核心版本` + "\n")
-	pw, pwErr := plw.PlaywrightClient.SmartLinkPlaywrightVersion()
+	pw, pwErr := component.PlaywrightClient.SmartLinkPlaywrightVersion()
 	if pwErr != nil {
 		sse.Send(`获取核心版本失败` + pwErr.Error() + "\n")
 		gsgin.GinResponseError(c, `查询失败`+pwErr.Error(), nil)
@@ -320,17 +434,11 @@ func SmartLinkPlaywrightVersion(c *gin.Context) {
 	}
 	//是否在安装中
 	isInstall := 0
-	if !gstool.FileIsExisted(plw.PlaywrightClient.LockFileFullPath) {
+	if component.PlaywrightClient.IsInstalling() {
 		sse.Send(`核心正在安装中` + "\n")
 		isInstall = 1
 	} else {
-		content, _ := gstool.FileGetContent(plw.PlaywrightClient.LockFileFullPath)
-		if content == `` {
-			sse.Send(`核心正在安装中` + "\n")
-			isInstall = 1
-		} else {
-			sse.Send(`当前核心版本` + content + "\n")
-		}
+		sse.Send(`当前未处于安装中` + "\n")
 	}
 	gsgin.GinResponseSuccess(c, pw.Version, map[string]any{
 		`is_install`: isInstall,

@@ -1,5 +1,6 @@
 ﻿<template>
   <div class="kv-table">
+    <div class="kv-table-scroll">
     <table class="kv-table-inner">
       <thead>
       <tr>
@@ -57,9 +58,12 @@
             />
           </div>
           <div v-else-if="item.type === 'integer'">
-            <el-input-number
-                v-model="item.value"
-                @blur="handleDataChange"
+            <el-input
+                :model-value="formatIntegerValue(item.value)"
+                inputmode="numeric"
+                placeholder="整数值"
+                @input="handleIntegerInput(idx, $event)"
+                @blur="handleIntegerBlur(idx)"
             />
           </div>
           <div v-else-if="item.type === 'json'">
@@ -102,6 +106,7 @@
       </tr>
       </tbody>
     </table>
+    </div>
 
     <div class="footer" style="margin: 10px;">
       <pl-button type="primary" plain size="small" class="add-rule-btn" @click="addItem">+ 添加参数</pl-button>
@@ -111,16 +116,10 @@
 </template>
 
 <script>
-import { Delete, Plus, Edit } from '@element-plus/icons-vue'
 import Base from '@/utils/base.js'
 
 export default {
   name: 'KeyValueEditor',
-  components: {
-    Delete,
-    Plus,
-    Edit
-  },
   props: {
     list: {
       type: Array,
@@ -163,7 +162,7 @@ export default {
       // 根据类型重置值
       const item = this.list[index]
       if (item.type === 'integer') {
-        item.value = 0
+        item.value = '0'
       } else if (item.type === 'array(string)') {
         item.value = ''
       } else if (item.type === 'json') {
@@ -197,65 +196,33 @@ export default {
           .join('\n')
       this.$emit('bulk-edit', this.bulkEditText)
     },
+    formatIntegerValue(value) {
+      if (value === null || value === undefined) {
+        return ''
+      }
+      return String(value)
+    },
+    sanitizeIntegerValue(value) {
+      const text = String(value ?? '')
+      const hasLeadingMinus = text.trimStart().startsWith('-')
+      const digits = text.replace(/\D/g, '')
+      return hasLeadingMinus ? `-${digits}` : digits
+    },
+    handleIntegerInput(index, value) {
+      this.list[index].value = this.sanitizeIntegerValue(value)
+      this.handleDataChange()
+    },
+    handleIntegerBlur(index) {
+      const normalized = this.sanitizeIntegerValue(this.list[index].value)
+      this.list[index].value = normalized === '-' ? '' : normalized
+      this.handleDataChange()
+    },
 
   }
 }
 </script>
 
-<style scoped>
-.kv-table {
-  width: 100%;
-  border: 1px solid #e6ece0;
-  border-radius: 10px;
-  background: #fff;
-  overflow: hidden;
-}
-
-.kv-table-inner {
-  width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
-}
-
-.kv-table-inner th,
-.kv-table-inner td {
-  padding: 8px 12px;
-  border-bottom: 1px solid #eef3ec;
-}
-
-.kv-table-inner th {
-  background: #f7f9f5;
-  font-weight: 600;
-  font-size: 14px;
-  color: #4e594a;
-}
-
-.col-key { width: 25%; }
-.col-value { width: 25%; }
-.col-desc { width: 25%; }
-.col-actions { width: 10%; text-align: center; }
-
-.kv-table-inner input,
-.kv-table-inner .el-autocomplete,
-.kv-table-inner .el-input,
-.kv-table-inner .el-select {
-  width: 100%;
-}
-
-.file-name {
-  margin-left: 10px;
-  color: #606266;
-  font-size: 12px;
-}
-
-.add-rule-btn {
-  border-radius: 8px;
-}
-
-.delete-rule-btn {
-  border-radius: 8px;
-}
-</style>
+<style scoped src="@/css/components/api/KeyValueEditor.css"></style>
 
 
 

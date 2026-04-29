@@ -26,6 +26,10 @@ function info(msg) {
 }
 
 function error(msg) {
+  // 如果消息为空，不显示通知
+  if (!msg || msg === '') {
+    return
+  }
   globals.$notify({
     title: '提示',
     message: msg,

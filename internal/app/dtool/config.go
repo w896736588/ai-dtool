@@ -4,7 +4,7 @@ import (
 	"dev_tool/internal/app/dtool/business"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
-	"dev_tool/internal/app/dtool/crawl4ai"
+	"dev_tool/internal/app/dtool/controller"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/plw"
 	"dev_tool/internal/app/dtool/variable"
@@ -15,6 +15,7 @@ import (
 	"dev_tool/internal/pkg/p_sse"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"os"
 	"path/filepath"
@@ -112,12 +113,6 @@ func formatEnvSummary(env *define.Env) string {
 		{"数据目录", env.WebkitDataPath},
 	})
 
-	writeSummarySection(&builder, "Crawl4AI", [][2]string{
-		{"地址", env.Crawl4AIBaseURL},
-		{"数据目录", env.Crawl4AIDataPath},
-		{"脚本", env.Crawl4AIScriptPath},
-	})
-
 	writeSummarySection(&builder, "日志", [][2]string{
 		{"目录", env.LogPath},
 	})
@@ -185,6 +180,12 @@ func stdLog() {
 func initComponent(appName, ConfigFile string) {
 	component.EnvClient = &define.Env{}
 	component.TGins = make([]*p_gin.Gin, 0)
+	component.MemoryRuntime = common.NewMemoryStore()
+	component.MemoryRuntime.OnStatusChange = controller.BroadcastAsyncTasksUpdate
+	component.MainDBAutoSyncRuntime = common.NewMainDBAutoSync()
+	component.MainDBAutoSyncRuntime.OnStatusChange = controller.BroadcastAsyncTasksUpdate
+	component.CronScheduler = common.NewCronScheduler()
+	component.CronScheduler.SetTaskFunc(controller.CronDailyReportGenerate)
 	component.RedisClient = &p_db.TRedis{RedisClientMap: make(map[string]*gsdb.GsRedis)}
 	component.RedisClient.PingAll(common.GetCall())
 	component.MysqlClient = &p_db.TMysql{MysqlClientMap: make(map[string]*gsdb.GsMysql)}
@@ -202,14 +203,13 @@ func initComponent(appName, ConfigFile string) {
 	InitEnv(appName, ConfigFile, component.ConfigViper)
 	component.EnvClient.DatabaseUpPath = filepath.Join(component.EnvClient.RootPath, `internal`, `app`, AppName, defaultDatabaseDirName)
 	component.EnvClient.LogDatabaseUpPath = filepath.Join(component.EnvClient.RootPath, `internal`, `app`, AppName, logDatabaseDirName)
-	component.EnvClient.MemoryDatabaseUpPath = filepath.Join(component.EnvClient.RootPath, `internal`, `app`, AppName, memoryDatabaseDirName)
 	p_common.TBaseClient = &p_common.TBase{
 		StartMillUnix: gstool.TimeNowMilliInt64(),
 		LogPath:       component.EnvClient.LogPath,
 	}
 	//初始化shell
 	component.ShellClient = p_shell.NewShell(component.EnvClient.LogPath)
-	common.ShellOutClient = common.NewTShellOut()
+	component.ShellOutClient = common.NewTShellOut(component.EnvClient.LogPath)
 	//aesGcm
 	gcm := gsencrypt.NewAesGcm(component.EnvClient.AppName)
 	p_common.AesGcmClient = gcm
@@ -254,11 +254,15 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 		DbFileName:                   viper.GetString(`base.dbFileName`),
 		DbPath:                       viper.GetString(`base.dbPath`),
 		DbIsGitRepo:                  viper.GetBool(`base.dbIsGitRepo`),
+		DbAutoPushDelayMinutes:       common.DefaultMainDBAutoPushDelayMinutes,
+		LogDbPath:                    viper.GetString(`base.logDbPath`),
 		MemoryDBPath:                 viper.GetString(`base.memoryDbPath`),
-		MemoryDBName:                 viper.GetString(`base.memoryDbFileName`),
 		MemoryDBIsGitRepo:            viper.GetBool(`base.memoryDbIsGitRepo`),
 		MemoryDBAutoPushDelayMinutes: common.DefaultMemoryAutoPushDelayMinutes,
 		WebPath:                      viper.GetString(`base.webPath`),
+	}
+	if viper.IsSet(`base.dbAutoPushDelayMinutes`) {
+		component.EnvClient.ConfigBase.DbAutoPushDelayMinutes = viper.GetInt(`base.dbAutoPushDelayMinutes`)
 	}
 	if viper.IsSet(`base.memoryDbAutoPushDelayMinutes`) {
 		component.EnvClient.ConfigBase.MemoryDBAutoPushDelayMinutes = viper.GetInt(`base.memoryDbAutoPushDelayMinutes`)
@@ -284,59 +288,53 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	if component.EnvClient.ConfigBase.DbFileName != `` {
 		component.EnvClient.DbConfig.DbName = component.EnvClient.ConfigBase.DbFileName
 	}
-	// log 库默认与主库放在同一目录，便于统一管理。
+	// log 库默认与主库放在同一目录，但可以通过 logDbPath 单独配置。
+	logDbPath := component.EnvClient.ConfigBase.LogDbPath
+	if logDbPath == `` {
+		logDbPath = component.EnvClient.DbConfig.DbPath
+	}
 	component.EnvClient.LogDbConfig = &define.DbConfig{
 		DbName: buildLogDBName(component.EnvClient.DbConfig.DbName),
-		DbPath: component.EnvClient.DbConfig.DbPath,
+		DbPath: logDbPath,
 	}
-	//判断是否存在D盘如果没有那么就改为C盘
-	drive := ``
-	drivePath := string(`D`) + ":\\"
-	_, err := os.Stat(drivePath)
-	if err == nil {
-		drive = `D`
-	} else {
-		drive = `C`
+	// Playwright 路径统一默认到 ~/.dtool/server
+	component.EnvClient.WebkitDriverPath,
+		component.EnvClient.WebkitDataPath,
+		component.EnvClient.WebkitDownloadPath = common.ResolvePlaywrightPaths(`server`)
+	// 自定义网页配置
+	component.EnvClient.SmartLinkConfig = &define.SmartLinkConfig{
+		RunMode:       define.SmartLinkRunMode(viper.GetString(`smart_link.run_mode`)),
+		ClientVersion: viper.GetString(`smart_link.client_version`),
+		SourcePath:    strings.TrimSpace(viper.GetString(`smart_link.source_path`)),
 	}
-	component.EnvClient.WebkitDriverPath = common.ResolvePlaywrightPath(viper.GetString(`path.webkit_driver_path`), `webkit_driver`, drive)
-	component.EnvClient.WebkitDataPath = common.ResolvePlaywrightPath(viper.GetString(`path.webkit_data_path`), `webkit_data`, drive)
-	component.EnvClient.WebkitDownloadPath = common.ResolvePlaywrightPath(viper.GetString(`path.webkit_download_path`), `webkit_download`, drive)
-	component.EnvClient.Crawl4AIHost = viper.GetString(`crawl4ai.host`)
-	component.EnvClient.Crawl4AIPort = viper.GetString(`crawl4ai.port`)
-	component.EnvClient.Crawl4AIDataPath = viper.GetString(`crawl4ai.data_path`)
-	if component.EnvClient.Crawl4AIHost == `` {
-		component.EnvClient.Crawl4AIHost = `127.0.0.1`
+	// 默认值为 server
+	if component.EnvClient.SmartLinkConfig.RunMode == `` {
+		component.EnvClient.SmartLinkConfig.RunMode = define.SmartLinkRunModeServer
 	}
-	if component.EnvClient.Crawl4AIPort == `` {
-		component.EnvClient.Crawl4AIPort = `11235`
+	// 默认客户端版本
+	if component.EnvClient.SmartLinkConfig.ClientVersion == `` {
+		component.EnvClient.SmartLinkConfig.ClientVersion = `1.0.0`
 	}
-	if component.EnvClient.Crawl4AIDataPath == `` {
-		component.EnvClient.Crawl4AIDataPath = filepath.Join(component.EnvClient.RootPath, `upload`, `crawl4ai`)
-	}
-	component.EnvClient.Crawl4AIBaseURL = fmt.Sprintf(`http://%s:%s`, component.EnvClient.Crawl4AIHost, component.EnvClient.Crawl4AIPort)
-	component.EnvClient.Crawl4AIScriptPath = filepath.Join(component.EnvClient.RootPath, `script`, `crawl4ai_service.py`)
 	//创建目录
 	_ = gstool.DirCreatePath(component.EnvClient.LogPath)
 	_ = gstool.DirCreatePath(component.EnvClient.DbConfig.DbPath)
 	_ = gstool.DirCreatePath(component.EnvClient.WebkitDataPath)
 	_ = gstool.DirCreatePath(component.EnvClient.WebkitDriverPath)
 	_ = gstool.DirCreatePath(component.EnvClient.WebkitDownloadPath)
-	_ = gstool.DirCreatePath(component.EnvClient.Crawl4AIDataPath)
 	gstool.FmtPrintlnLogTime(`输出配置：`)
 	gstool.FmtPrintlnLogTime(`%s`, formatEnvSummary(component.EnvClient))
 }
 
 func initPlaywright() {
 	//初始化playwright
-	plw.PlaywrightClient = plw.NewTPlaywright()
-	plw.PlaywrightClient.LockFileFullPath = filepath.Join(component.EnvClient.RootPath, `playwright.RunLock`)
+	component.PlaywrightClient = component.NewTPlaywright()
 	plw.InitPageActiveTime()
-	if !plw.PlaywrightClient.EnsureNodeRuntime() {
+	if !component.PlaywrightClient.EnsureNodeRuntime() {
 		gstool.FmtPrintlnLogTime(`未检测到 Node.js，跳过 Playwright 初始化，等待用户安装后再使用自定义网页`)
 		return
 	}
-	go plw.PlaywrightClient.WitchDownload()
-	go plw.PlaywrightClient.SmartCheckAndUpdate(&p_sse.SseShell{})
+	go component.PlaywrightClient.WitchDownload()
+	go component.PlaywrightClient.SmartCheckAndUpdate(&p_sse.SseShell{})
 }
 
 func initSqlite() {
@@ -348,14 +346,18 @@ func initSqlite() {
 		panic(fmt.Sprintf(`连接sqlite失败 %s`, err.Error()))
 	}
 	p_db.InitMysql()
-	common.DbMain = &common.CSqlite{Client: component.SqliteClient, Env: component.EnvClient}
-	business.DataBaseUp = business.NewTDataBaseUp()
-	business.DataBaseUp.Run()
+	// 新代码统一从 component 取主库实例；common 保留同步赋值，兼容现有调用。
+	component.DbMain = &common.CSqlite{Client: component.SqliteClient, Env: component.EnvClient}
+	common.DbMain = component.DbMain
+	component.DataBaseUp = business.NewTDataBaseUp(component.DbMain, component.EnvClient.DatabaseUpPath)
+	component.DataBaseUp.Run()
 	initLogSqlite()
 	if err = business.LoadMemoryStore(); err != nil {
 		panic(err.Error())
 	}
-	common.ShellOutClient.InitGroupConfigs()
+	business.StartMainDBAutoSync()
+	business.StartCronScheduler()
+	component.ShellOutClient.InitGroupConfigs()
 }
 
 // initLogSqlite 初始化独立 log 库，并执行 log 库迁移。
@@ -369,8 +371,10 @@ func initLogSqlite() {
 		panic(fmt.Sprintf(`连接log sqlite失败 %s`, err.Error()))
 	}
 
-	common.DbLog = &common.CSqlite{Client: component.LogSqliteClient, Env: component.EnvClient}
-	business.NewLogDataBaseUp(common.DbLog, component.EnvClient.LogDatabaseUpPath).Run()
+	// log 库入口也收敛到 component；common.DbLog 继续保留给旧逻辑平滑过渡。
+	component.DbLog = &common.CSqlite{Client: component.LogSqliteClient, Env: component.EnvClient}
+	common.DbLog = component.DbLog
+	business.NewLogDataBaseUp(component.DbLog, component.EnvClient.LogDatabaseUpPath).Run()
 }
 
 // buildLogDBName 基于主库文件名派生 log 库文件名。
@@ -392,11 +396,63 @@ func formatLogDBFullPath(env *define.Env) string {
 	return filepath.Join(env.LogDbConfig.DbPath, env.LogDbConfig.DbName)
 }
 
+func splitRunPorts(raw string) []string {
+	portList := strings.Split(raw, `,`)
+	ret := make([]string, 0, len(portList))
+	seen := make(map[string]bool)
+	for _, port := range portList {
+		port = strings.TrimSpace(port)
+		if port == `` || seen[port] {
+			continue
+		}
+		seen[port] = true
+		ret = append(ret, port)
+	}
+	return ret
+}
+
+func resolveRunPorts(cfg *viper.Viper) ([]string, string) {
+	apiPorts := splitRunPorts(cfg.GetString(`run.api_port`))
+	if len(apiPorts) == 0 {
+		apiPorts = splitRunPorts(cfg.GetString(`run.ports`))
+	}
+
+	ssePort := strings.TrimSpace(cfg.GetString(`run.sse_port`))
+	if ssePort == `` && len(apiPorts) > 0 {
+		ssePort = apiPorts[0]
+	}
+	return apiPorts, ssePort
+}
+
+func mergeRunPorts(apiPorts []string, ssePort string) []string {
+	ret := make([]string, 0, len(apiPorts)+1)
+	seen := make(map[string]bool)
+	for _, port := range apiPorts {
+		port = strings.TrimSpace(port)
+		if port == `` || seen[port] {
+			continue
+		}
+		seen[port] = true
+		ret = append(ret, port)
+	}
+	ssePort = strings.TrimSpace(ssePort)
+	if ssePort != `` && !seen[ssePort] {
+		ret = append(ret, ssePort)
+	}
+	return ret
+}
+
 func initGin() {
 	host := component.ConfigViper.GetString(`run.host`)
-	ports := strings.Split(component.ConfigViper.GetString(`run.ports`), `,`)
+	apiPorts, ssePort := resolveRunPorts(component.ConfigViper)
+	ports := mergeRunPorts(apiPorts, ssePort)
 	component.EnvClient.Ports = ports
+	component.EnvClient.ApiPorts = apiPorts
+	component.EnvClient.SsePort = ssePort
 	gin.DefaultWriter = io.Discard
+	if err := controller.CleanupPortsByPreference(ports, []string{AppName}); err != nil {
+		gstool.FmtPrintlnLogTime(`启动前端口清理失败 %s`, err.Error())
+	}
 	for key, port := range ports {
 		if !gstool.NetIsPortAvailable(host + `:` + port) {
 			gstool.FmtPrintlnLogTime(`端口已被占用 %s`, host+`:`+port)
@@ -406,14 +462,19 @@ func initGin() {
 		tGin.SetMode(gin.DebugMode)
 		tGin.GinInit(host, port)
 		tGin.GinSetAllowCrossDomain()
-		//第一个加载前端
+		//第一个 API 端口加载前端
 		if key == 0 {
 			tGin.GinStatic(`/js`, component.EnvClient.WebConfig.WebPath+`/js`)
 			tGin.GinStaticFile(`/favicon.ico`, component.EnvClient.WebConfig.WebPath+`/favicon.ico`)
 			tGin.GinStatic(`/css`, component.EnvClient.WebConfig.WebPath+`/css`)
 			tGin.GinLoadHTMLFiles(component.EnvClient.WebConfig.WebPath + `/index.html`)
 			tGin.GinGet(`/`, func(context *gin.Context) {
-				context.HTML(200, `index.html`, nil)
+				cfg := gstool.JsonEncode(map[string]string{
+					"port":     port,
+					"host":     host,
+					"sse_port": ssePort,
+				})
+				context.HTML(200, `index.html`, gin.H{"serverConfig": template.JS(string(cfg))})
 			})
 		}
 		tGin.IsRun = true
@@ -431,8 +492,8 @@ func initOther() {
 		JsData: map[string]string{},
 	}
 	p_common.TJasClient.Load()
-	variable.VariableClient = variable.NewVariableClient()
-	component.Crawl4AIClient = crawl4ai.NewService(component.EnvClient, component.GsLog)
+	// VariableClient 放到 component 持有，外层不再直接依赖 variable 包级全局变量。
+	component.VariableClient = variable.NewVariableClient()
 }
 
 func InitComponent() {
@@ -447,11 +508,16 @@ func InitComponent() {
 			os.Exit(0)
 		}
 	}
-
+	// 启动Shell连接状态广播器，每5秒推送一次
+	controller.ShellConnectionsBroadcasterInstance = controller.NewShellConnectionsBroadcaster(5 * time.Second)
 }
 
 func Stop() {
 	fmt.Println(`停止`)
+	// 停止Shell连接状态广播器
+	if controller.ShellConnectionsBroadcasterInstance != nil {
+		controller.ShellConnectionsBroadcasterInstance.Stop()
+	}
 	task := gstask.NewTask()
 	for key, tGin := range component.TGins {
 		task.Add(gstask.CallbackFunc{
@@ -467,16 +533,22 @@ func Stop() {
 		})
 	}
 	task.RunAll()
-	if component.Crawl4AIClient != nil {
-		component.Crawl4AIClient.Stop()
-	}
-	if err := common.MemoryRuntime.SyncNow(); err != nil && !errors.Is(err, common.ErrMemoryNotConfigured) {
+	if component.MemoryRuntime.HasPendingTask() {
+		component.MemoryRuntime.Stop()
+		if err := component.MemoryRuntime.SyncPendingTaskNow(); err != nil && !errors.Is(err, common.ErrMemoryNotConfigured) {
+			gstool.FmtPrintlnLogTime(`记忆库关闭前同步待处理任务失败 %s`, err.Error())
+		}
+	} else if err := component.MemoryRuntime.SyncNow(); err != nil && !errors.Is(err, common.ErrMemoryNotConfigured) {
 		gstool.FmtPrintlnLogTime(`记忆库关闭前同步失败 %s`, err.Error())
 	}
+	business.StopCronScheduler()
+	business.StopMainDBAutoSync()
 	if err := business.SyncMainDBStoreOnShutdown(); err != nil {
 		gstool.FmtPrintlnLogTime(`主库关闭前同步失败 %s`, err.Error())
 	}
-	_ = plw.PlaywrightClient.Log.Close()
-	_ = variable.VariableClient.Log.Close()
+	_ = component.PlaywrightClient.Log.Close()
+	if component.VariableClient != nil && component.VariableClient.GetLog() != nil {
+		_ = component.VariableClient.GetLog().Close()
+	}
 	_ = component.GsLog.Close()
 }

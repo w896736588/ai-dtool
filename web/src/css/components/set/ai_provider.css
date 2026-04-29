@@ -1,0 +1,62 @@
+@import "@/css/set_module_unified.css";
+
+.model-actions {
+  margin-bottom: 10px;
+  gap: 10px;
+}
+
+.request-preview {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #f8faf6;
+  color: #53624d;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.set-config-inner-tabs :deep(.el-tabs__header) {
+  margin-bottom: 10px;
+}
+
+.set-config-page :deep(.el-button--primary),
+.set-config-page :deep(.el-button--primary.is-plain) {
+  border-color: #d8ded2 !important;
+  background: #f6f8f3 !important;
+  color: #4f804f !important;
+}
+
+.set-config-page :deep(.el-button--primary:hover),
+.set-config-page :deep(.el-button--primary.is-plain:hover) {
+  border-color: #bfd1bf !important;
+  background: #eef4ea !important;
+  color: #3f6f3f !important;
+}
+
+.log-actions {
+  margin-bottom: 10px;
+  gap: 10px;
+}
+
+.log-model-id {
+  font-size: 12px;
+  color: #999;
+}
+
+.json-preview {
+  background: #f5f7fa;
+  padding: 12px;
+  border-radius: 4px;
+  max-height: 300px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.error-text {
+  color: #f56c6c;
+}

@@ -10,8 +10,16 @@ import '../src/css/el_textarea.css'
 import '../src/css/pretty_json.css'
 import '../src/css/markdown.css'
 import '../src/css/api_module_unified.css'
+import { config as configureMdEditor } from 'md-editor-v3'
 app.use(ElementUI)
 import { ElMessage } from 'element-plus'
+const { buildMdEditorCodeMirrorExtensions } = require('./utils/md_editor_config.cjs')
+
+configureMdEditor({
+  codeMirrorExtensions(extensions) {
+    return buildMdEditorCodeMirrorExtensions(extensions)
+  },
+})
 
 
 //自定义通用方法
@@ -39,7 +47,7 @@ app.config.globalProperties.$pageInit = {}
 import Axios from 'axios'
 import VueAxios from 'vue-axios'
 import SseDistribute from '@/utils/base/sse_distribute'
-Axios.defaults.timeout = 300000
+Axios.defaults.timeout = 600000
 Axios.defaults.baseURL = '/'
 Axios.defaults.headers.post['Content-Type'] = 'text/xml'
 // 添加请求拦截器
@@ -70,6 +78,11 @@ Axios.interceptors.response.use((response) => {
 })
 app.use(VueAxios, Axios)
 app.config.globalProperties.$axios = Axios
+
+// 创建全局事件总线（用于登录失效等全局事件）
+import mitt from 'mitt'
+const eventBus = mitt()
+app.config.globalProperties.$eventBus = eventBus
 
 import router from './router/index'
 
@@ -112,19 +125,11 @@ window.ResizeObserver = class ResizeObserver extends _ResizeObserver{
 }
 
 import sse from '@/utils/base/sse_distribute'
-sse.Create()
-sse.OpenFunc(function (){
+sse.InitFromLoginStatus(function (){
   console.log('打开链接')
-})
-sse.ErrorFunc(function (e){
-  console.log('链接错误',e.message)
-})
-sse.CloseFunc(function (){
+}, function (e){
+  console.log('链接错误', e && e.message)
+}, function (){
   console.log('链接关闭')
 })
-sse.ReceiveMessage()
-
-//初始化端口
-import base from '@/utils/base.js'
-base.Ports()
 

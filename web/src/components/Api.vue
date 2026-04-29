@@ -40,6 +40,9 @@
                 />
               </div>
             </el-popover>
+            <pl-button class="toolbar-btn toolbar-btn-mini" size="small" type="success" plain @click="copyApiHostAndToken">
+              <el-icon><CopyDocument /></el-icon>复制API地址
+            </pl-button>
           </div>
         </div>
         <div class="collection-list">
@@ -83,9 +86,8 @@
                     {{ node.label }}
                   </span>
                   <span v-if="data.type === 'collection'" class="node-actions">
-                    <pl-button link type="primary" @click.stop="toggleCollection(data)">
-                      <el-dropdown>
-                      <pl-button link type="primary" @click.stop>
+                    <el-dropdown>
+                      <pl-button class="node-action-trigger" link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
                       </pl-button>
                       <template #dropdown>
@@ -95,12 +97,11 @@
                           <el-dropdown-item command="delete_collection" icon="Delete" @click="handleCollectionDelete(data)" style="color:red;">删除集合</el-dropdown-item>
                         </el-dropdown-menu>
                       </template>
-                      </el-dropdown>
-                    </pl-button>
+                    </el-dropdown>
                   </span>
                   <span v-else-if="data.type === 'api'" class="node-actions">
                     <el-dropdown>
-                      <pl-button link type="primary" @click.stop>
+                      <pl-button class="node-action-trigger" link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
                       </pl-button>
                       <template #dropdown>
@@ -115,7 +116,7 @@
                   </span>
                   <span v-else-if="data.type === 'folder'" class="node-actions">
                     <el-dropdown>
-                      <pl-button link type="primary" @click.stop>
+                      <pl-button class="node-action-trigger" link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
                       </pl-button>
                       <template #dropdown>
@@ -441,16 +442,18 @@
 </template>
 
 <script>
-import {FolderOpened, Folder, Document, More, Plus, QuestionFilled, Tools} from '@element-plus/icons-vue'
+import {FolderOpened, Folder, Document, More, Plus, QuestionFilled, Tools, CopyDocument} from '@element-plus/icons-vue'
 import CollectionBasicInfo from './api/CollectionBasicInfo'
 import CollectionEnvironment from './api/CollectionEnvironment'
 import FolderDetail from './api/FolderDetail'
 import ApiDetail from './api/ApiDetail'
 import Markdown from '@/components/Markdown.vue'
 import Api from '@/utils/base/api'
+import Base from '@/utils/base'
 import ArrayUtil from '@/utils/base/array'
 import KeyDebounceDetector from "@/utils/base/keyup"
 import store from "@/utils/base/store";
+import sseDistribute from '@/utils/base/sse_distribute'
 
 export default {
   name: 'CollectionManager',
@@ -462,6 +465,7 @@ export default {
     Plus,
     QuestionFilled,
     Tools,
+    CopyDocument,
     CollectionBasicInfo,
     CollectionEnvironment,
     FolderDetail,
@@ -544,6 +548,7 @@ export default {
           content_type: "",
           body_form: "[]",
           body_json: {},
+          body_raw: '',
           curlData: '',
         },
         copyApi: {
@@ -560,6 +565,7 @@ export default {
           content_type: "",
           body_form: {},
           body_json: {},
+          body_raw: '',
         },
         moveApi: {
           api_id: '',
@@ -606,12 +612,55 @@ export default {
     this.loadSidebarWidthCache()
     this.loadCollectionData()
     this.loadArchivedItems()
+    // 注册 API 数据变更 SSE 回调
+    sseDistribute.RegisterReceive('api_data_change', this.handleApiChangeSSE)
   },
   beforeUnmount() {
     // 组件销毁时兜底移除拖拽事件
     this.stopSidebarResize()
+    // 注销 API 数据变更 SSE 回调
+    sseDistribute.UnRegisterReceive('api_data_change')
   },
   methods: {
+
+    // ==================== SSE 数据变更回调 ====================
+
+    handleApiChangeSSE(data) {
+      if (!data || !data.change_type) {
+        return
+      }
+      // 跳过自身触发的变更，避免重复刷新
+      if (data.source_client_id && data.source_client_id === sseDistribute.GetSseClientId()) {
+        return
+      }
+      const changeType = data.change_type
+      const collectionId = data.collection_id
+      const folderId = data.folder_id
+
+      if (changeType === 'collection_created' || changeType === 'collection_updated' || changeType === 'collection_deleted') {
+        this.loadCollectionData()
+      } else if (changeType === 'folder_created' || changeType === 'folder_updated' || changeType === 'folder_deleted') {
+        if (collectionId) {
+          this.refreshCollectionFolders(collectionId)
+        }
+      } else if (changeType === 'api_created' || changeType === 'api_updated' || changeType === 'api_deleted' || changeType === 'api_weight_changed') {
+        if (collectionId && folderId) {
+          this.refreshFolderApis(collectionId, folderId)
+        }
+      } else if (changeType === 'api_moved') {
+        // 刷新源文件夹和目标文件夹
+        if (data.old_folder_id && collectionId) {
+          this.refreshFolderApis(collectionId, data.old_folder_id)
+        }
+        if (folderId && collectionId) {
+          this.refreshFolderApis(collectionId, folderId)
+        }
+      } else if (changeType === 'batch_imported') {
+        if (collectionId) {
+          this.refreshCollectionFolders(collectionId)
+        }
+      }
+    },
 
     // ==================== 工作区 Tab 方法 ====================
 
@@ -792,12 +841,20 @@ export default {
       if (!tab) {
         return
       }
-      
+
       // 同步 selectedItem
       this.syncSelectedItemFromActiveTab()
-      
+
       // 同步左侧树高亮
       await this.highlightWorkspaceTreeNode(tab)
+
+      // 同步接口详情数据（已加载的接口 tab 需要手动触发 InitApiDetail，否则 Vue 复用组件导致内容不变）
+      if (tab.type === 'api' && tab.loaded && tab.data) {
+        await this.$nextTick()
+        if (this.$refs.refApiDetail) {
+          this.$refs.refApiDetail.InitApiDetail(tab.data)
+        }
+      }
     },
 
     // 高亮左侧树节点
@@ -1287,6 +1344,11 @@ export default {
         const treeApiNode = this.findApiNode(apiNode.collection_id, apiNode.folder_id, apiNode.id)
         if (treeApiNode) {
           this.syncApiNodeFields(treeApiNode, detail)
+        }
+        // 查找文件夹的环境配置，用于接口无环境时继承
+        const folderNode = this.findFolderNode(apiNode.collection_id, apiNode.folder_id)
+        if (folderNode && folderNode.env_id) {
+          detail.folder_env_id = folderNode.env_id
         }
         const activeTab = this.getActiveWorkspaceTab()
         if (activeTab && activeTab.type === 'api' && parseInt(activeTab.id) === parseInt(detail.id)) {
@@ -1828,6 +1890,17 @@ export default {
         document.body.removeChild(input)
       }
     },
+    copyApiHostAndToken() {
+      const apiHost = Base.GetApiHost()
+      const token = Base.GetSafeToken()
+      const lines = []
+      lines.push('API Host: ' + apiHost)
+      if (token) {
+        lines.push('Token: ' + token)
+      }
+      const text = lines.join('\n')
+      this.copyText(text, 'API地址和Token已复制')
+    },
     async buildMoveApiFolderOptions(api) {
       this.moveApiFolderOptionsLoading = true
       try {
@@ -2056,7 +2129,11 @@ export default {
       }
       _that.dialogData.createApi.folder_id = _that.selectedItem.id
       _that.dialogData.createApi.collection_id = _that.selectedItem.collection_id
-      Api.CreateApi(_that.dialogData.createApi, function (res) {
+      const createApiParams = { ..._that.dialogData.createApi }
+      if (createApiParams.body_json && typeof createApiParams.body_json === 'object') {
+        createApiParams.body_json = JSON.stringify(createApiParams.body_json)
+      }
+      Api.CreateApi(createApiParams, function (res) {
         _that.endDialogSubmit('createApi')
         _that.dialogShow.createApi = false
         if (res.ErrCode !== 0) {
@@ -2078,6 +2155,9 @@ export default {
       console.log('更新api', api)
       // 实现接口更新逻辑
       let _that = this
+      const bodyJsonStr = api.body_json_data && typeof api.body_json_data === 'object'
+        ? JSON.stringify(api.body_json_data)
+        : api.body_json_data
       Api.CreateApi({
         id: api.id,
         folder_id: api.folder_id,
@@ -2091,7 +2171,8 @@ export default {
         query_params: api.query_params_data,
         content_type: api.content_type,
         body_form: api.body_form_data,
-        body_json: api.body_json_data,
+        body_json: bodyJsonStr,
+        body_raw: api.body_raw_data,
         env_id: api.env_id,
         response_take: api.response_take_data,
         take_result: api.take_result_data,
@@ -2148,9 +2229,17 @@ export default {
     },
 
     // 打开复制接口对话框
-    openCopyApiDialog(api) {
+    async openCopyApiDialog(api) {
+      let detail = null
+      try {
+        const detailResponse = await this.requestApi('ApisDetailByIds', { ids: [api.id] })
+        detail = Array.isArray(detailResponse.list) ? detailResponse.list[0] : null
+      } catch (error) {
+        this.$message.warning(error.message || '加载接口详情失败，将尝试复制当前已加载内容')
+      }
+      const copySource = detail || api
       // 复制API数据到复制对话框
-      this.dialogData.copyApi = JSON.parse(JSON.stringify(api))
+      this.dialogData.copyApi = JSON.parse(JSON.stringify(copySource))
       this.dialogData.copyApi.id = 0
       this.dialogData.copyApi.name = api.name + '-复制'
       this.dialogShow.copyApi = true
@@ -2285,7 +2374,11 @@ export default {
       if (_that.beginDialogSubmit('copyApi')) {
         return
       }
-      Api.CreateApi(_that.dialogData.copyApi, function (res) {
+      const copyApiParams = { ..._that.dialogData.copyApi }
+      if (copyApiParams.body_json && typeof copyApiParams.body_json === 'object') {
+        copyApiParams.body_json = JSON.stringify(copyApiParams.body_json)
+      }
+      Api.CreateApi(copyApiParams, function (res) {
         _that.endDialogSubmit('copyApi')
         _that.dialogShow.copyApi = false
         if (res.ErrCode !== 0) {
@@ -2307,464 +2400,7 @@ export default {
 }
 </script>
 
-<style scoped>
-.collection-container {
-  display: flex;
-  height: 100%;
-  min-height: 100%;
-  min-width: 0;
-  background-color: transparent;
-  width: 100%;
-  box-sizing: border-box;
-  gap: 12px;
-  color: #4a4a4a;
-}
-
-.collection-container.resizing {
-  user-select: none;
-}
-
-.left-sidebar {
-  display: flex;
-  min-height: 0;
-  background: #fff;
-  border: 1px solid #e8e8e0;
-  border-radius: 12px;
-  flex-direction: column;
-  width: 280px;
-  min-width: 250px;
-  max-width: 350px;
-  flex-shrink: 0;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(54, 74, 54, 0.05);
-}
-
-.collection-section {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.panel-resizer {
-  width: 8px;
-  flex-shrink: 0;
-  cursor: col-resize;
-  position: relative;
-  border-radius: 6px;
-  transition: background-color 0.2s ease;
-}
-
-.panel-resizer::before {
-  content: '';
-  position: absolute;
-  left: 3px;
-  top: 10px;
-  bottom: 10px;
-  width: 2px;
-  border-radius: 2px;
-  background: #d6dfd2;
-}
-
-.panel-resizer:hover::before {
-  background: #9fb59a;
-}
-
-.section-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  width: 100%;
-}
-
-.section-header-actions :deep(.el-button + .el-button) {
-  margin-left: 0;
-}
-
-.toolbar-btn {
-  padding: 6px 10px;
-}
-
-.toolbar-btn-small {
-  padding: 4px 8px;
-  font-size: 12px;
-}
-
-.toolbar-btn-mini {
-  padding: 4px 7px;
-  font-size: 12px;
-}
-
-.skill-install-popover {
-  padding: 2px;
-}
-
-.skill-install-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #4f804f;
-  margin-bottom: 6px;
-}
-
-.skill-install-text {
-  font-size: 13px;
-  color: #5e6b57;
-  margin-bottom: 8px;
-}
-
-.skill-install-feature {
-  font-size: 12px;
-  color: #4f804f;
-  margin-bottom: 8px;
-  line-height: 1.5;
-}
-
-.skill-install-url {
-  margin-bottom: 8px;
-}
-
-.skill-install-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-
-.section-header {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid #ecece4;
-  background: #f7f7f2;
-  font-weight: 600;
-  cursor: pointer;
-  user-select: none;
-  color: #4a4a4a;
-}
-
-.section-header-title {
-  line-height: 1.2;
-}
-
-.collection-list {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: auto;
-  min-height: 0;
-  padding: 8px;
-  padding-bottom: 0;
-}
-
-.tree-wrapper {
-  min-width: 100%;
-  display: block;
-}
-
-.collection-list .el-tree {
-  min-width: 100%;
-  white-space: nowrap;
-  color: #4a4a4a;
-}
-
-.tree-node {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: 4px 0;
-  white-space: nowrap;
-  position: relative;
-}
-
-.node-icon {
-  margin-right: 6px;
-  color: #5a8a5a;
-  flex-shrink: 0;
-}
-
-.node-label {
-  flex: 1;
-  font-size: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  cursor: default;
-  max-width: calc(100% - 40px);
-  margin-right: 10px;
-}
-
-.node-actions {
-  opacity: 0;
-  transition: opacity 0.3s;
-  white-space: nowrap;
-  position: absolute;
-  right: 0;
-  background: #fff;
-  z-index: 1;
-  padding-left: 10px;
-  padding-right: 5px;
-}
-
-.tree-node:hover .node-actions {
-  opacity: 1;
-}
-
-.collection-list .el-tree-node__content {
-  position: relative;
-  height: auto;
-  min-height: 32px;
-  line-height: 24px;
-  padding-right: 0;
-  white-space: nowrap;
-  overflow: visible;
-  border-radius: 8px;
-}
-
-.collection-list :deep(.el-tree-node__content:hover) {
-  background: #f3f7ef;
-}
-
-.archive-section {
-  border-top: 1px solid #ecece4;
-}
-
-.archive-list {
-  max-height: 200px;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.archive-item {
-  display: flex;
-  align-items: center;
-  padding: 8px 12px;
-  cursor: pointer;
-  border-radius: 4px;
-  margin-bottom: 4px;
-}
-
-.archive-item:hover {
-  background-color: #f3f7ef;
-}
-
-.archive-item .el-icon {
-  margin-right: 8px;
-  color: #7a8773;
-}
-
-.collapse-icon {
-  transition: transform 0.3s;
-}
-
-.rotate-180 {
-  transform: rotate(180deg);
-}
-
-/* 右侧面板样式 */
-.right-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background: #fff;
-  border: 1px solid #e8e8e0;
-  border-radius: 12px;
-  min-width: 0;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(54, 74, 54, 0.05);
-}
-
-/* 工作区 Tab 样式 */
-.workspace-tabs {
-  background: #f7f7f2;
-  border-bottom: 1px solid #ecece4;
-  padding: 0 12px;
-}
-
-.workspace-tabs :deep(.el-tabs__header) {
-  margin: 0;
-  border-bottom: none;
-}
-
-.workspace-tabs :deep(.el-tabs__nav-wrap) {
-  padding: 8px 0 0 0;
-}
-
-.workspace-tabs :deep(.el-tabs__item) {
-  height: 32px;
-  line-height: 32px;
-  padding: 0 12px;
-  border-radius: 6px 6px 0 0;
-  background: #fff;
-  border: 1px solid #e8e8e0;
-  border-bottom: none;
-  margin-right: 4px;
-  color: #5e6b57;
-  font-size: 13px;
-}
-
-.workspace-tabs :deep(.el-tabs__item.is-active) {
-  color: #4f804f;
-  background: #fff;
-  border-bottom: 1px solid #fff;
-}
-
-.workspace-tabs :deep(.el-tabs__item:hover) {
-  color: #4f804f;
-}
-
-.workspace-tabs :deep(.el-tabs__nav-prev),
-.workspace-tabs :deep(.el-tabs__nav-next) {
-  line-height: 40px;
-}
-
-.workspace-tab-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.workspace-tab-label .tab-icon {
-  font-size: 14px;
-}
-
-.workspace-tab-label .tab-title {
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  border-bottom: 1px solid #ecece4;
-  background: #f7f7f2;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-}
-
-.selected-info {
-  display: flex;
-  align-items: center;
-}
-
-.info-icon {
-  font-size: 24px;
-  color: #5a8a5a;
-  margin-right: 12px;
-}
-
-.info-content {
-  display: flex;
-  flex-direction: column;
-}
-
-.info-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: #4a4a4a;
-}
-
-.info-desc {
-  font-size: 12px;
-  color: #7a8773;
-  margin-top: 4px;
-}
-
-.no-selection {
-  color: #7a8773;
-  font-style: italic;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.panel-content {
-  flex: 1;
-  padding: 12px 16px;
-  overflow-y: auto;
-  background: #fff;
-}
-
-.panel-content--flush {
-  padding: 0;
-}
-
-.empty-state {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-}
-
-.panel-content :deep(.el-tabs--card > .el-tabs__header) {
-  border-bottom-color: #ecece4;
-}
-
-.panel-content :deep(.el-tabs--card > .el-tabs__header .el-tabs__item) {
-  border-color: #ecece4;
-  color: #5e6b57;
-}
-
-.panel-content :deep(.el-tabs--card > .el-tabs__header .el-tabs__item.is-active) {
-  color: #4f804f;
-  background: #f6f8f3;
-}
-
-.panel-content :deep(.el-button--primary) {
-  --el-button-bg-color: #5a8a5a;
-  --el-button-border-color: #5a8a5a;
-  --el-button-hover-bg-color: #4f804f;
-  --el-button-hover-border-color: #4f804f;
-}
-
-.panel-content :deep(.el-tag--success) {
-  --el-tag-bg-color: #eef7ea;
-  --el-tag-border-color: #cfe0c8;
-  --el-tag-text-color: #4f804f;
-}
-
-.panel-content :deep(.el-tag--primary) {
-  --el-tag-bg-color: #eef4ea;
-  --el-tag-border-color: #cfe0c8;
-  --el-tag-text-color: #4f804f;
-}
-
-@media (max-width: 1200px) {
-  .collection-container {
-    flex-direction: column;
-    height: auto;
-    min-height: 0;
-  }
-
-  .left-sidebar {
-    width: 100% !important;
-    max-width: 100%;
-    min-width: 0;
-  }
-
-  .panel-resizer {
-    display: none;
-  }
-
-  .right-panel {
-    min-height: 500px;
-  }
-}
-
-</style>
+<style scoped src="@/css/components/Api.css"></style>
 
 
 

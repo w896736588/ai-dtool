@@ -3,6 +3,7 @@ package api
 import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
+	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_curl"
 	"errors"
 	"net/http"
@@ -34,16 +35,19 @@ type ResponseTake struct {
 }
 
 type Result struct {
-	Url          string            `json:"url"`           //请求的url 如果是get那么就是完整的链接
-	StatusCode   int               `json:"status_code"`   //http状态码
-	Errmsg       string            `json:"errmsg"`        //请求错误描述
-	Result       string            `json:"result"`        //请求返回
-	Status       string            `json:"status"`        //status
-	Millisecond  int64             `json:"millisecond"`   //花费的时间
-	Headers      map[string]string `json:"headers"`       //header
-	BodyForms    []map[string]any  `json:"body_forms"`    //提交的Form
-	ResponseTake []ResponseTake    `json:"response_take"` //返回参数的提取
-	RequestTime  string            `json:"request_time"`  //发起请求时间
+	Url             string            `json:"url"`              //请求的url 如果是get那么就是完整的链接
+	StatusCode      int               `json:"status_code"`      //http状态码
+	Errmsg          string            `json:"errmsg"`           //请求错误描述
+	Result          string            `json:"result"`           //请求返回
+	Status          string            `json:"status"`           //status
+	Millisecond     int64             `json:"millisecond"`      //花费的时间
+	Headers         map[string]string `json:"headers"`          //兼容旧字段，保留请求头
+	RequestHeaders  map[string]string `json:"request_headers"`  //请求头
+	ResponseHeaders map[string]string `json:"response_headers"` //返回头
+	BodyForms       []map[string]any  `json:"body_forms"`       //提交的Form
+	BodyRaw         string            `json:"body_raw"`         //请求体（application/json / text/plain / raw）
+	ResponseTake    []ResponseTake    `json:"response_take"`    //返回参数的提取
+	RequestTime     string            `json:"request_time"`     //发起请求时间
 }
 
 type Api struct {
@@ -139,12 +143,26 @@ func (h *Api) ReplaceEnv() {
 	h.CurlStruct.BodyRaw = gstool.SReplaces(h.CurlStruct.BodyRaw, h.BaseInfo.EnvItems)
 }
 
+// collectResponseHeaders 扁平化响应头，便于前端直接展示和历史记录持久化。
+func collectResponseHeaders(headers http.Header) map[string]string {
+	result := make(map[string]string)
+	for key, values := range headers {
+		if len(values) == 0 {
+			result[key] = ``
+			continue
+		}
+		result[key] = strings.Join(values, `; `)
+	}
+	return result
+}
+
 func (h *Api) Run() error {
 	var cli *gshttp.Client
 	h.ReplaceEnv()
 	if h.CurlStruct.Method == http.MethodPost {
 		if h.CurlStruct.ContentType == `application/json` {
 			h.Result.Url = h.CurlStruct.Url
+			h.Result.BodyRaw = h.CurlStruct.BodyJson
 			cli = gshttp.PostJson(h.CurlStruct.Url).BodyStr(h.CurlStruct.BodyJson)
 		} else if h.CurlStruct.ContentType == `application/x-www-form-urlencoded` {
 			h.Result.Url = h.CurlStruct.Url
@@ -160,6 +178,15 @@ func (h *Api) Run() error {
 			if err != nil {
 				return err
 			}
+		} else if h.CurlStruct.ContentType == define.ContentTypeText || h.CurlStruct.ContentType == define.ContentTypeRaw {
+			h.Result.Url = h.CurlStruct.Url
+			h.Result.BodyRaw = h.CurlStruct.BodyRaw
+			contentType := h.CurlStruct.ContentType
+			if contentType == define.ContentTypeRaw {
+				contentType = `application/octet-stream`
+			}
+			h.CurlStruct.Headers[`Content-Type`] = contentType
+			cli = gshttp.PostJson(h.CurlStruct.Url).BodyStr(h.CurlStruct.BodyRaw)
 		} else {
 			return errors.New(`不支持的请求类型`)
 		}
@@ -169,9 +196,11 @@ func (h *Api) Run() error {
 	}
 	//填充header
 	cli.Headers(h.CurlStruct.Headers)
-	h.Result.Headers = cli.GetHeaders()
+	h.Result.RequestHeaders = cli.GetHeaders()
+	h.Result.Headers = h.Result.RequestHeaders
+	h.Result.ResponseHeaders = map[string]string{}
 	startMill := time.Now().UnixMilli()
-	cli.Request(20)
+	cli.Request(300)
 	if cli.ErrInfo() != nil {
 		h.Result.Millisecond = time.Now().UnixMilli() - startMill
 		h.Result.Errmsg = cli.ErrInfo().Error()
@@ -184,6 +213,9 @@ func (h *Api) Run() error {
 		h.Result.Errmsg = err.Error()
 	}
 	response := cli.Response()
+	if response != nil {
+		h.Result.ResponseHeaders = collectResponseHeaders(response.Header)
+	}
 	h.Result.StatusCode = response.StatusCode
 	h.Result.Status = response.Status
 	h.Result.Millisecond = time.Now().UnixMilli() - startMill

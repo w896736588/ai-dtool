@@ -13,10 +13,16 @@ import (
 const (
 	// homeTaskListQuerySQL 用于查询首页任务列表。
 	homeTaskListQuerySQL = `
-select id,name,task_status,remark,is_archived,start_time,last_operated_at,create_time,update_time
+select id,name,task_status,memory_fragment_id,is_archived,start_time,last_operated_at,create_time,update_time,tapd_url
 from tbl_home_task
 where is_archived = ?
-order by last_operated_at desc, id desc`
+order by id desc`
+	// homeTaskListTodayUpdatedQuerySQL 用于查询今天变更过的任务，供工作日报使用。
+	homeTaskListTodayUpdatedQuerySQL = `
+select id,name,task_status,memory_fragment_id,is_archived,start_time,last_operated_at,create_time,update_time,tapd_url
+from tbl_home_task
+where update_time >= ? or create_time >= ?
+order by id desc`
 	// homeTaskDateLayout 用于只展示年月日格式。
 	homeTaskDateLayout = `Y-m-d`
 	// homeTaskDateTimeLayout 用于展示完整时间。
@@ -29,6 +35,18 @@ func (h *CSqlite) HomeTaskList(isArchived int) ([]map[string]any, error) {
 		return nil, errors.New(`归档状态不合法`)
 	}
 	list, err := h.Client.QueryBySql(homeTaskListQuerySQL, isArchived).All()
+	if err != nil {
+		return nil, err
+	}
+	h.fillHomeTaskTimeDescList(list)
+	return list, nil
+}
+
+// HomeTaskListTodayUpdated 查询今天变更过的任务列表（包含已归档和未归档），用于工作日报。
+func (h *CSqlite) HomeTaskListTodayUpdated() ([]map[string]any, error) {
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
+	list, err := h.Client.QueryBySql(homeTaskListTodayUpdatedQuerySQL, todayStart, todayStart).All()
 	if err != nil {
 		return nil, err
 	}
@@ -55,11 +73,11 @@ func (h *CSqlite) HomeTaskRow(id int) (map[string]any, error) {
 }
 
 // HomeTaskSave 保存首页任务。
-func (h *CSqlite) HomeTaskSave(id int, name, taskStatus, remark string, startTime int64) (map[string]any, error) {
+func (h *CSqlite) HomeTaskSave(id int, name, taskStatus string, startTime int64, memoryFragmentID string, tapdUrl string) (map[string]any, error) {
 	now := time.Now().Unix()
 	name = strings.TrimSpace(name)
 	taskStatus = strings.TrimSpace(taskStatus)
-	remark = strings.TrimSpace(remark)
+	startTime = normalizeHomeTaskStartTime(startTime)
 
 	// 任务名称为空时直接返回错误，避免写入无意义记录。
 	if name == `` {
@@ -71,12 +89,13 @@ func (h *CSqlite) HomeTaskSave(id int, name, taskStatus, remark string, startTim
 	}
 
 	updateData := map[string]any{
-		`name`:             name,
-		`task_status`:      taskStatus,
-		`remark`:           remark,
-		`start_time`:       startTime,
-		`last_operated_at`: now,
-		`update_time`:      now,
+		`name`:               name,
+		`task_status`:        taskStatus,
+		`memory_fragment_id`: memoryFragmentID,
+		`start_time`:         startTime,
+		`last_operated_at`:   now,
+		`update_time`:        now,
+		`tapd_url`:           tapdUrl,
 	}
 	if id <= 0 {
 		updateData[`is_archived`] = define.HomeTaskArchivedNo
@@ -111,7 +130,6 @@ func (h *CSqlite) HomeTaskArchiveToggle(id, isArchived int) (map[string]any, err
 	}, map[string]any{
 		`is_archived`:      isArchived,
 		`last_operated_at`: now,
-		`update_time`:      now,
 	}).Exec()
 	if err != nil {
 		return nil, err
@@ -168,6 +186,28 @@ func (h *CSqlite) HomeTaskDelete(id int) error {
 	return nil
 }
 
+// ReplaceHomeTaskMemoryFragmentIDs 批量替换首页任务关联的知识片段 ID。 // Bulk replace memory fragment IDs referenced by home tasks.
+func (h *CSqlite) ReplaceHomeTaskMemoryFragmentIDs(idMap map[string]string) error {
+	if len(idMap) == 0 {
+		return nil
+	}
+	for oldID, newID := range idMap {
+		oldID = strings.TrimSpace(oldID)
+		newID = strings.TrimSpace(newID)
+		// 空值或无变化映射直接跳过，避免把无效值写回主库。 // Skip empty or unchanged mappings to avoid persisting invalid values.
+		if oldID == `` || newID == `` || oldID == newID {
+			continue
+		}
+		if _, err := h.Client.ExecBySql(`
+update tbl_home_task
+set memory_fragment_id = ?
+where memory_fragment_id = ?`, newID, oldID).Exec(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // fillHomeTaskTimeDescList 批量填充首页任务时间描述字段。
 func (h *CSqlite) fillHomeTaskTimeDescList(list []map[string]any) {
 	for _, item := range list {
@@ -189,6 +229,15 @@ func formatHomeTaskTime(unixTime int64, layout string) string {
 		return ``
 	}
 	return gstool.TimeUnixToString(time.Unix(unixTime, 0), layout)
+}
+
+// normalizeHomeTaskStartTime 统一把空开始日期补到当天零点，避免前端漏传时留下空值。
+func normalizeHomeTaskStartTime(startTime int64) int64 {
+	if startTime > 0 {
+		return startTime
+	}
+	now := time.Now()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
 }
 
 // isValidHomeTaskStatus 校验首页任务状态是否合法。

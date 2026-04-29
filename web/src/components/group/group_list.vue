@@ -224,11 +224,4 @@ export default defineComponent({
 })
 </script>
 
-<style scoped>
-.ellipsis-cell {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-</style>
+<style scoped src="@/css/components/group/group_list.css"></style>

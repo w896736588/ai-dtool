@@ -3,9 +3,8 @@ package business
 import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
-	"dev_tool/internal/pkg/p_db"
+	"dev_tool/internal/app/dtool/memory"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"gitee.com/Sxiaobai/gs/v2/gstool"
@@ -37,7 +36,7 @@ var newMemoryGitFactory = func() memoryGitSyncer {
 
 // SyncMemoryDBFile 手动同步记忆库 sqlite 文件到 git 仓库。 // Sync the memory sqlite file into the git repository on demand.
 func SyncMemoryDBFile(config common.MemoryConfig, memoryGit memoryGitSyncer) (bool, error) {
-	if config.Dir == `` || config.DBPath == `` {
+	if config.Dir == `` {
 		return false, fmt.Errorf(`记忆库配置不完整，无法执行同步`)
 	}
 	if !config.IsGitRepo {
@@ -47,31 +46,31 @@ func SyncMemoryDBFile(config common.MemoryConfig, memoryGit memoryGitSyncer) (bo
 		return false, fmt.Errorf(`记忆库 git syncer 未设置`)
 	}
 
-	fileName := filepath.Base(config.DBPath)
-	gstool.FmtPrintlnLogTime(`记忆库开始检查变更并执行手动同步 dir=%s file=%s`, config.Dir, fileName)
-	hasChanges, err := memoryGit.HasFileChanges(config.Dir, fileName)
+	target := `.`
+	gstool.FmtPrintlnLogTime(`记忆库开始检查变更并执行手动同步 dir=%s target=%s`, config.Dir, target)
+	hasChanges, err := memoryGit.HasFileChanges(config.Dir, target)
 	if err != nil {
-		gstool.FmtPrintlnLogTime(`记忆库手动同步前检查变更失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
+		gstool.FmtPrintlnLogTime(`记忆库手动同步前检查变更失败 dir=%s target=%s err=%s`, config.Dir, target, err.Error())
 		return false, err
 	}
 	// 没有文件变更时直接返回未同步，供页面提示无需 push。 // Return a no-op result when the database file has no pending changes.
 	if !hasChanges {
-		gstool.FmtPrintlnLogTime(`记忆库未检测到文件变更，跳过手动同步 dir=%s file=%s`, config.Dir, fileName)
+		gstool.FmtPrintlnLogTime(`记忆库未检测到文件变更，跳过手动同步 dir=%s target=%s`, config.Dir, target)
 		return false, nil
 	}
-	if err = memoryGit.AddFile(config.Dir, fileName); err != nil {
-		gstool.FmtPrintlnLogTime(`记忆库手动同步 add 失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
+	if err = memoryGit.AddFile(config.Dir, target); err != nil {
+		gstool.FmtPrintlnLogTime(`记忆库手动同步 add 失败 dir=%s target=%s err=%s`, config.Dir, target, err.Error())
 		return false, err
 	}
-	if err = memoryGit.Commit(config.Dir, fileName, common.MemorySyncCommitMessage); err != nil {
-		gstool.FmtPrintlnLogTime(`记忆库手动同步 commit 失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
+	if err = memoryGit.Commit(config.Dir, target, common.MemorySyncCommitMessage); err != nil {
+		gstool.FmtPrintlnLogTime(`记忆库手动同步 commit 失败 dir=%s target=%s err=%s`, config.Dir, target, err.Error())
 		return false, err
 	}
 	if err = memoryGit.Push(config.Dir); err != nil {
-		gstool.FmtPrintlnLogTime(`记忆库手动同步 push 失败 dir=%s file=%s err=%s`, config.Dir, fileName, err.Error())
+		gstool.FmtPrintlnLogTime(`记忆库手动同步 push 失败 dir=%s target=%s err=%s`, config.Dir, target, err.Error())
 		return false, err
 	}
-	gstool.FmtPrintlnLogTime(`记忆库手动同步成功 dir=%s file=%s`, config.Dir, fileName)
+	gstool.FmtPrintlnLogTime(`记忆库手动同步成功 dir=%s target=%s`, config.Dir, target)
 	return true, nil
 }
 
@@ -81,29 +80,22 @@ func ReadMemoryConfigFromINI() common.MemoryConfig {
 		return common.MemoryConfig{}
 	}
 	memoryDir := strings.TrimSpace(component.ConfigViper.GetString(`base.memoryDbPath`))
-	memoryDBName := strings.TrimSpace(component.ConfigViper.GetString(`base.memoryDbFileName`))
 	memoryDBIsGitRepo := component.ConfigViper.GetBool(`base.memoryDbIsGitRepo`)
-	if memoryDBName == `` {
-		// 未显式配置文件名时使用 memory.db，和注释说明保持一致。 // Use memory.db when no file name is explicitly configured, matching the config comment.
-		memoryDBName = `memory.db`
-	}
 	config := common.MemoryConfig{
 		Dir:                  common.ResolveDefaultDToolDir(memoryDir),
-		DBName:               memoryDBName,
 		GitRepoEnabled:       memoryDBIsGitRepo,
 		AutoPushDelayMinutes: common.DefaultMemoryAutoPushDelayMinutes,
 	}
 	if component.ConfigViper.IsSet(`base.memoryDbAutoPushDelayMinutes`) {
 		config.AutoPushDelayMinutes = component.ConfigViper.GetInt(`base.memoryDbAutoPushDelayMinutes`)
 	}
-	config.DBPath = filepath.Join(config.Dir, config.DBName)
 	return config
 }
 
 // PrepareMemoryStore 在任何数据库初始化前完成记忆库目录检查和 git pull / preflight memory store before any database initialization.
 func PrepareMemoryStore() error {
 	config := ReadMemoryConfigFromINI()
-	if config.Dir == `` || config.DBName == `` {
+	if config.Dir == `` {
 		preparedMemoryStore = nil
 		gstool.FmtPrintlnLogTime(`记忆库未在配置文件中配置，跳过初始化`)
 		return nil
@@ -115,7 +107,7 @@ func PrepareMemoryStore() error {
 	memoryGit := newMemoryGitFactory()
 	// 仅当配置显式开启 git 同步时才检测和拉取 / only detect and pull git when config explicitly enables git sync.
 	if config.GitRepoEnabled {
-		gstool.FmtPrintlnLogTime(`记忆库 git 模式已开启，准备检查仓库并执行 pull dir=%s file=%s`, config.Dir, config.DBName)
+		gstool.FmtPrintlnLogTime(`记忆库 git 模式已开启，准备检查仓库并执行 pull dir=%s`, config.Dir)
 		isGitRepo, err := memoryGit.IsGitRepo(config.Dir)
 		if err != nil {
 			return fmt.Errorf(`检测记忆目录 git 仓库失败 %w`, err)
@@ -130,9 +122,9 @@ func PrepareMemoryStore() error {
 		gstool.FmtPrintlnLogTime(`记忆库 git pull 完成 dir=%s`, config.Dir)
 		config.IsGitRepo = true
 	} else {
-		gstool.FmtPrintlnLogTime(`记忆库 git 模式未开启，跳过 pull dir=%s file=%s`, config.Dir, config.DBName)
+		gstool.FmtPrintlnLogTime(`记忆库 git 模式未开启，跳过 pull dir=%s`, config.Dir)
 	}
-	config.DBPath = filepath.Join(config.Dir, config.DBName)
+	config.DBPath = config.Dir
 	preparedMemoryStore = &preparedMemoryBootstrap{
 		Config:    config,
 		MemoryGit: memoryGit,
@@ -141,7 +133,7 @@ func PrepareMemoryStore() error {
 }
 
 func LoadMemoryStore() error {
-	common.MemoryRuntime.Reset()
+	component.MemoryRuntime.Reset()
 
 	// 若上游尚未预处理，则在这里兜底，兼容旧调用路径 / fallback here when caller did not preflight memory store.
 	if preparedMemoryStore == nil {
@@ -155,14 +147,22 @@ func LoadMemoryStore() error {
 
 	config := preparedMemoryStore.Config
 	memoryGit := preparedMemoryStore.MemoryGit
+	// if migrationReport, err := memory.MigrateNumericFragmentIDs(config.Dir); err != nil {
+	// 	return fmt.Errorf(`迁移旧数字知识片段ID失败 %w`, err)
+	// } else if component.DbMain != nil {
+	// 	// 启动时同步修正首页任务里的旧片段引用，避免数字文件改名后关联失效。
+	// 	// Repair home-task fragment references during boot so renamed legacy files do not break associations.
+	// 	if err = component.DbMain.ReplaceHomeTaskMemoryFragmentIDs(migrationReport.IDMap); err != nil {
+	// 		return fmt.Errorf(`同步首页任务知识片段ID失败 %w`, err)
+	// 	}
+	// }
 
-	memoryClient, err := p_db.InitSqlite(config.Dir, config.DBName)
-	if err != nil {
-		return fmt.Errorf(`连接记忆 sqlite 失败 %w`, err)
+	memoryDB := memory.NewService(config.Dir)
+	component.MemoryRuntime.SetGitSyncer(memoryGit)
+	component.MemoryRuntime.Configure(config, memoryDB)
+	memoryDB.LoadAsync()
+	if err := memoryDB.StartWatching(); err != nil {
+		return fmt.Errorf(`启动记忆目录监听失败 %w`, err)
 	}
-	memoryDB := &common.CSqlite{Client: memoryClient, Env: component.EnvClient}
-	NewMemoryDataBaseUp(memoryDB, component.EnvClient.MemoryDatabaseUpPath).Run()
-	common.MemoryRuntime.SetGitSyncer(memoryGit)
-	common.MemoryRuntime.Configure(config, memoryDB)
 	return nil
 }

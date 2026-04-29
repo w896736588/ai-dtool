@@ -1,0 +1,173 @@
+.supervisor-page-container {
+  padding: 0;
+  width: 100%;
+  color: #4a4a4a;
+}
+
+.supervisor-header-card {
+  background: #fff;
+  border: 1px solid #e8e8e0;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #4a4a4a;
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.page-settings-btn {
+  margin-left: auto;
+}
+
+.header-icon {
+  width: 20px;
+  height: 20px;
+  color: #5a8a5a;
+}
+
+.control-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.env-select {
+  width: 220px;
+}
+
+.env-select :deep(.el-input__wrapper),
+.search-input :deep(.el-input__wrapper) {
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 0 0 1px #dde3d8 inset;
+}
+
+.env-select :deep(.el-input__wrapper.is-focus),
+.search-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px #93b793 inset;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.action-buttons .el-button {
+  border-radius: 8px;
+  border: 1px solid #d8ded2;
+  background: #f6f8f3;
+  color: #4f804f;
+}
+
+.action-buttons .el-button:hover {
+  background: #eef4ea;
+  border-color: #bfd1bf;
+  color: #3f6f3f;
+}
+
+.search-input {
+  flex: 1;
+  max-width: 420px;
+  min-width: 220px;
+}
+
+.process-table-card {
+  background: #fff;
+  border: 1px solid #e8e8e0;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.process-table {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.process-table :deep(.el-table__header th) {
+  background: #f7f7f2;
+  color: #606050;
+  font-weight: 600;
+}
+
+.process-table :deep(.el-table__row:hover > td) {
+  background-color: #f3f7ef !important;
+}
+
+.name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.custom-name {
+  font-weight: 500;
+  color: #303133;
+}
+
+.edit-icon {
+  color: #5a8a5a;
+  cursor: pointer;
+}
+
+.edit-icon:hover {
+  color: #3f6f3f;
+}
+
+.process-name {
+  font-family: Consolas, Monaco, monospace;
+  font-size: 13px;
+  color: #4f804f;
+  background: #f3f8ef;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.status-cell {
+  display: flex;
+  align-items: center;
+}
+
+.status-text {
+  font-size: 13px;
+}
+
+.action-cell {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.el-table .warning-row {
+  --el-table-tr-bg-color: #fdf6e6;
+}
+
+.el-table .success-row {
+  --el-table-tr-bg-color: #eef7ea;
+}
+
+.el-table .error-row {
+  --el-table-tr-bg-color: #fbeeee;
+}
+
+.process-table :deep(.row-hide) {
+  display: none;
+}
+
+@media (max-width: 1200px) {
+  .control-row {
+    align-items: stretch;
+  }
+
+  .search-input {
+    max-width: 100%;
+  }
+}

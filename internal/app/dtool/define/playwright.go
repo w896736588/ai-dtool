@@ -52,3 +52,34 @@ const CombineTypeFind = 1 //自动查找可以用的context
 const CombineTypeLast = 2 //使用上一次登录的context
 const CombineTypeNo = 3   //每次打开新的context
 const CombineTypeFix = 4  //固定id为索引
+
+// SmartLinkRunMode 自定义网页运行模式
+type SmartLinkRunMode string
+
+const (
+	SmartLinkRunModeServer      SmartLinkRunMode = "server"       // 服务端执行
+	SmartLinkRunModeLocalClient SmartLinkRunMode = "local_client" // 本地客户端执行
+)
+
+// SmartLinkClientStatus 本地客户端状态
+type SmartLinkClientStatus string
+
+const (
+	SmartLinkClientStatusOffline           SmartLinkClientStatus = "offline"             // 未连接
+	SmartLinkClientStatusOnline            SmartLinkClientStatus = "online"              // 在线
+	SmartLinkClientStatusPreparingRuntime  SmartLinkClientStatus = "preparing_runtime"   // 运行环境准备中
+	SmartLinkClientStatusVersionMismatch   SmartLinkClientStatus = "version_mismatch"    // 版本不匹配
+	SmartLinkClientStatusRunning           SmartLinkClientStatus = "running"             // 运行中
+	SmartLinkClientStatusError             SmartLinkClientStatus = "error"               // 错误
+)
+
+// SmartLinkTaskStatus 任务状态
+type SmartLinkTaskStatus string
+
+const (
+	SmartLinkTaskStatusPending   SmartLinkTaskStatus = "pending"   // 待执行
+	SmartLinkTaskStatusRunning   SmartLinkTaskStatus = "running"   // 执行中
+	SmartLinkTaskStatusSuccess   SmartLinkTaskStatus = "success"   // 成功
+	SmartLinkTaskStatusFailed    SmartLinkTaskStatus = "failed"    // 失败
+	SmartLinkTaskStatusCancelled SmartLinkTaskStatus = "cancelled" // 已取消
+)

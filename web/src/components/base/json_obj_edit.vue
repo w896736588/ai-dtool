@@ -64,17 +64,7 @@
     </el-form>
 
 </template>
-<style>
-.el-form-item {
-  padding: 5px;
-}
-
-.ellipsis-column .cell {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-</style>
+<style scoped src="@/css/components/base/json_obj_edit.css"></style>
 
 <script>
 import {reactive} from "vue";

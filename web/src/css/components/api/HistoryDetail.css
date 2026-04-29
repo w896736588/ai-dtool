@@ -1,0 +1,198 @@
+/* 样式保持不变，与之前相同 */
+.history-detail {
+  padding: 0;
+  color: #4a4a4a;
+}
+
+.detail-tabs {
+  min-height: 500px;
+}
+
+.tab-content {
+  padding: 16px 0;
+}
+
+.url-text {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 14px;
+  color: #4f7d4f;
+  word-break: break-all;
+}
+
+.status-success {
+  color: #67c23a;
+  font-weight: bold;
+}
+
+.status-warning {
+  color: #e6a23c;
+  font-weight: bold;
+}
+
+.status-danger {
+  color: #f56c6c;
+  font-weight: bold;
+}
+
+.status-error {
+  color: #f56c6c;
+  font-weight: bold;
+}
+
+.response-fast {
+  color: #67c23a;
+  font-weight: bold;
+}
+
+.response-normal {
+  color: #e6a23c;
+  font-weight: bold;
+}
+
+.response-slow {
+  color: #f56c6c;
+  font-weight: bold;
+}
+
+.response-very-slow {
+  color: #f56c6c;
+  font-weight: bold;
+}
+
+.body-type-selector {
+  margin-bottom: 12px;
+}
+
+.request-body,
+.response-body-section {
+  border: 1px solid #e6ece0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.body-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f7f9f5;
+  border-bottom: 1px solid #e6ece0;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.response-body-content {
+  max-height: 400px;
+  overflow: auto;
+}
+
+.raw-body,
+.formatted-body {
+  margin: 0;
+  padding: 16px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background: #f7f9f5;
+}
+
+.raw-body {
+  background: #2d2d2d;
+  color: #f8f8f2;
+  border: 1px solid #2f3a2f;
+  border-radius: 8px;
+}
+
+.json-preview {
+  padding: 16px;
+  background: #f7f9f5;
+}
+
+.console-log {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #e6ece0;
+  border-radius: 10px;
+  padding: 12px;
+  background: #f7f9f5;
+}
+
+.log-entry {
+  padding: 4px 0;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  border-bottom: 1px solid #e6ece0;
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+.log-time {
+  color: #909399;
+  margin-right: 8px;
+}
+
+.log-level {
+  font-weight: bold;
+  margin-right: 8px;
+}
+
+.log-info .log-level {
+  color: #409eff;
+}
+
+.log-warn .log-level {
+  color: #e6a23c;
+}
+
+.log-error .log-level {
+  color: #f56c6c;
+}
+
+.log-debug .log-level {
+  color: #909399;
+}
+
+.log-message {
+  color: #606266;
+}
+
+.detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e6ece0;
+}
+
+/* 滚动条样式 */
+.response-body-content::-webkit-scrollbar,
+.console-log::-webkit-scrollbar {
+  width: 6px;
+}
+
+.response-body-content::-webkit-scrollbar-track,
+.console-log::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.response-body-content::-webkit-scrollbar-thumb,
+.console-log::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.response-body-content::-webkit-scrollbar-thumb:hover,
+.console-log::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}

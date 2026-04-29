@@ -3,14 +3,19 @@ function isMemoryFragmentTabName(tabName) {
 }
 
 function activateMemorySaveFeedback(currentState, fragmentId, now, durationMs) {
-  const normalizedId = String(Number(fragmentId || 0))
-  if (normalizedId === '0' || normalizedId === 'NaN') {
+  const rawId = String(fragmentId || '').trim()
+  const startedAt = Number(now || 0)
+  if (!rawId || rawId === '0' || rawId === 'null' || rawId === 'undefined') {
     return { ...(currentState || {}) }
   }
+  const normalizedId = rawId
   const nextState = { ...(currentState || {}) }
   nextState[normalizedId] = {
     visible: true,
-    expiresAt: Number(now || 0) + Number(durationMs || 0),
+    // startedAt 保存本次反馈的启动时间，用来给列表项生成新的 key，确保 CSS 动画能重新播放。
+    // startedAt keeps the current feedback cycle timestamp so the sidebar item can remount and replay CSS animation.
+    startedAt,
+    expiresAt: startedAt + Number(durationMs || 0),
   }
   return nextState
 }

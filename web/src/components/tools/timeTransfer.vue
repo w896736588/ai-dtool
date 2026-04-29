@@ -261,25 +261,5 @@ export default {
 }
 </script>
 
-<style>
-.timeTransferDiv {
-  margin: 15px;
-}
-
-.timeInput {
-  width: 340px
-}
-
-.timeInputErr {
-  width: 340px;
-  color: red;
-}
-
-.example-showcase .el-dropdown-link {
-  cursor: pointer;
-  color: var(--el-color-primary);
-  display: flex;
-  align-items: center;
-}
-</style>
+<style scoped src="@/css/components/tools/timeTransfer.css"></style>
 

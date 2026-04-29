@@ -6,26 +6,30 @@
         <GitActionButton compact size="small" @click="openCreateLinkDialog">新增链接</GitActionButton>
       </div>
 
+      <el-input
+        v-if="linkItems.length > 0"
+        v-model="linkSearchKeyword"
+        placeholder="搜索链接名称或地址"
+        clearable
+        prefix-icon="Search"
+        class="link-search-input"
+      />
       <div v-if="linkItems.length === 0" class="editor-empty">暂无链接，请先新增一条。</div>
       <div v-else class="link-list">
-        <div v-for="(item, index) in linkItems" :key="item.uid" class="link-list-item">
+        <div v-for="(item, index) in filteredLinkItems" :key="item.uid" class="link-list-item">
           <div class="link-list-item__main">
             <div class="link-list-item__title">
               <span class="link-list-item__index">#{{ index + 1 }}</span>
               <span>{{ item.label || '未命名链接' }}</span>
             </div>
             <div class="link-list-item__meta">{{ item.link || '未配置链接地址' }}</div>
-            <div class="link-list-item__desc">
-              <span>账号分组：{{ item.account_group_name || '未选择' }}</span>
-              <span>Cookie：{{ item.cookie ? '已配置' : '未配置' }}</span>
-              <span>请求头：{{ hasHeaders(item.headers) ? '已配置' : '未配置' }}</span>
-            </div>
           </div>
           <div class="link-list-item__actions">
-            <GitActionButton compact size="small" @click="openEditLinkDialog(index)">编辑</GitActionButton>
-            <GitActionButton compact size="small" variant="danger" @click="removeLinkItem(index)">删除</GitActionButton>
+            <GitActionButton compact size="small" @click="openEditLinkDialog(item._originalIndex)">编辑</GitActionButton>
+            <GitActionButton compact size="small" variant="danger" @click="removeLinkItem(item._originalIndex)">删除</GitActionButton>
           </div>
         </div>
+        <div v-if="filteredLinkItems.length === 0 && linkItems.length > 0" class="editor-empty">无匹配结果。</div>
       </div>
     </div>
 
@@ -155,6 +159,17 @@
             placeholder='可选，例如 {"Authorization":"Bearer xxx"}'
           />
         </el-form-item>
+        <el-form-item label="执行流程">
+          <el-alert :closable="false" show-icon title="留空则使用总链接配置的执行流程" type="info" />
+          <el-select v-model="linkItemDraft.process_id" clearable placeholder="使用默认流程" style="width: 100%">
+            <el-option
+              v-for="proc in processOptions"
+              :key="proc.id"
+              :label="proc.name"
+              :value="proc.id"
+            />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <GitActionButton @click="closeLinkDialog">取消</GitActionButton>
@@ -166,6 +181,7 @@
 
 <script>
 import accountSet from '@/utils/base/account_set'
+import Process from '@/utils/base/smart_link_proces'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 
 const createUid = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
@@ -179,6 +195,7 @@ const createLinkItem = () => ({
   account_group_name: '',
   cookie: '',
   headers: '',
+  process_id: 0,
 })
 const createCookieItem = () => ({
   uid: createUid('cookie'),
@@ -215,7 +232,9 @@ export default {
   data() {
     return {
       accountGroupOptions: [],
+      processOptions: [],
       linkItems: [],
+      linkSearchKeyword: '',
       linkItemDialogVisible: false,
       editingLinkIndex: -1,
       linkItemDraft: createLinkItem(),
@@ -225,9 +244,25 @@ export default {
       lastEditorPayloadSignature: '',
     }
   },
+  computed: {
+    filteredLinkItems() {
+      const keyword = this.linkSearchKeyword.trim().toLowerCase()
+      if (!keyword) {
+        return this.linkItems.map((item, index) => ({ ...item, _originalIndex: index }))
+      }
+      return this.linkItems
+        .map((item, index) => ({ ...item, _originalIndex: index }))
+        .filter(item => {
+          const label = (item.label || '').toLowerCase()
+          const link = (item.link || '').toLowerCase()
+          return label.includes(keyword) || link.includes(keyword)
+        })
+    },
+  },
   mounted() {
     // 加载账号分组选项 / Load account group options for the single-select field.
     this.loadAccountGroupOptions()
+    this.loadProcessOptions()
   },
   watch: {
     modelValue: {
@@ -242,10 +277,6 @@ export default {
     filterItems: { deep: true, handler() { this.emitChange() } },
   },
   methods: {
-    hasHeaders(headersValue) {
-      const normalizedHeaders = typeof headersValue === 'string' ? headersValue.trim() : JSON.stringify(headersValue || {})
-      return normalizedHeaders !== '' && normalizedHeaders !== '{}'
-    },
     // 解析旧配置中的账号组占位符 / Parse persisted placeholder format into group name.
     parseAccountGroupName(accountListValue) {
       const rawValue = String(accountListValue || '').trim()
@@ -266,6 +297,14 @@ export default {
         }
       })
     },
+    loadProcessOptions() {
+      const _that = this
+      Process.SmartProcessList(function (response) {
+        if (response && response.ErrCode === 0 && response.Data && Array.isArray(response.Data.list)) {
+          _that.processOptions = response.Data.list
+        }
+      })
+    },
     // 复制链接项草稿，避免弹窗内联动列表 / Clone draft data so dialog edits do not mutate the list before save.
     cloneLinkItem(item = {}) {
       return {
@@ -278,6 +317,7 @@ export default {
         account_group_name: item.account_group_name || this.parseAccountGroupName(item.account_list),
         cookie: item.cookie || '',
         headers: typeof item.headers === 'string' ? item.headers : JSON.stringify(item.headers || {}, null, 2),
+        process_id: item.process_id || 0,
       }
     },
     // 生成编辑器受控字段快照 / Build normalized payload for loop-safe sync.
@@ -290,6 +330,7 @@ export default {
         account_list: this.formatAccountListValue(item.account_group_name),
         cookie: item.cookie,
         headers: safeParseJson(item.headers, {}),
+        process_id: item.process_id || 0,
       }))
       const showCookies = this.cookieItems.map(item => ({
         find_type: item.find_type,
@@ -393,73 +434,4 @@ export default {
 }
 </script>
 
-<style scoped>
-.editor-section { margin-bottom: 20px; padding: 16px; border: 1px solid #e5eadf; border-radius: 12px; background: #fbfcf8; }
-.editor-section__header, .editor-card__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.editor-section__header { margin-bottom: 12px; }
-.editor-section__title, .editor-card__title { font-weight: 600; color: #405640; }
-.editor-card { padding: 14px; border: 1px solid #dde6d8; border-radius: 10px; background: #fff; margin-bottom: 14px; }
-.editor-empty { color: #7a8776; font-size: 13px; }
-.filter-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-
-.link-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.link-list-item {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px;
-  border: 1px solid #dde6d8;
-  border-radius: 10px;
-  background: #fff;
-}
-
-.link-list-item__main {
-  min-width: 0;
-  flex: 1;
-}
-
-.link-list-item__title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-  font-weight: 600;
-  color: #405640;
-}
-
-.link-list-item__index {
-  color: #789070;
-  font-size: 12px;
-}
-
-.link-list-item__meta {
-  margin-bottom: 8px;
-  color: #556351;
-  word-break: break-all;
-}
-
-.link-list-item__desc {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  color: #7a8776;
-  font-size: 12px;
-}
-
-.link-list-item__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.link-item-form {
-  width: 100%;
-}
-</style>
+<style scoped src="@/css/components/smart_link/LinkConfigEditor.css"></style>

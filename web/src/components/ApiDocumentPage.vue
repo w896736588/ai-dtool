@@ -68,23 +68,4 @@ export default {
 }
 </script>
 
-<style scoped>
-.api-document-page {
-  height: 100vh;
-  overflow: hidden;
-}
-
-.loading-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  gap: 16px;
-  color: #909399;
-}
-
-.error-container {
-  padding: 20px;
-}
-</style>
+<style scoped src="@/css/components/ApiDocumentPage.css"></style>

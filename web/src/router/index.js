@@ -2,7 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import Home from '@/components/Home'
 import fullPageShellOut from '@/components/shellout/ShellOut.vue'
 
-export default createRouter({
+const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     {
@@ -110,14 +110,6 @@ export default createRouter({
           meta: { keepAlive: true },
         },
         {
-          path: '/InfoCrawl',
-          name: 'InfoCrawl',
-          components: {
-            home: () => import('../components/InfoCrawl'),
-          },
-          meta: { keepAlive: true },
-        },
-        {
           path: '/shellout',
           name: 'shellout',
           components: {
@@ -133,12 +125,26 @@ export default createRouter({
           },
           meta: { keepAlive: true },
         },
+        {
+          path: '/HomeTask',
+          name: 'HomeTask',
+          components: {
+            home: () => import('../components/HomeTask'),
+          },
+          meta: { keepAlive: true },
+        },
       ],
     },
     {
       path: '/ApiDocument/:folderId',
       name: 'api-document',
       component: () => import('../components/ApiDocumentPage'),
+      meta: { keepAlive: false },
+    },
+    {
+      path: '/MemoryFragmentShare',
+      name: 'memory-fragment-share',
+      component: () => import('../components/memory/MemoryFragmentShare.vue'),
       meta: { keepAlive: false },
     },
     {
@@ -152,3 +158,13 @@ export default createRouter({
     },
   ],
 })
+
+// 全局导航守卫：根据当前路由名称动态设置页面标题
+router.afterEach((to) => {
+  const title = to.name || to.path
+  if (title) {
+    document.title = title
+  }
+})
+
+export default router

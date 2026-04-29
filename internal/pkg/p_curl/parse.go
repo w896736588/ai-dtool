@@ -110,8 +110,8 @@ func (h *ParseCurl) Parse() error {
 
 func (h *ParseCurl) GetDataForm(sLine string) {
 	if strings.Contains(sLine, "=@") {
-		line := strings.TrimLeft(sLine, "\t--form '")
-		line = strings.TrimRight(line, "\"' \\")
+		line := strings.TrimPrefix(sLine, "\t--form '")
+		line = strings.TrimSuffix(line, "\"' \\")
 		lineParams := strings.Split(line, "=@\"")
 		if len(lineParams) > 1 {
 			keyVal := KeyValue{}
@@ -123,8 +123,8 @@ func (h *ParseCurl) GetDataForm(sLine string) {
 			gstool.FmtPrintlnLogTime(`解析文件错误 %s`, sLine)
 		}
 	} else {
-		line := strings.TrimLeft(sLine, "\t--form '")
-		line = strings.TrimRight(line, "\"' \\")
+		line := strings.TrimPrefix(sLine, "\t--form '")
+		line = strings.TrimSuffix(line, "\"' \\")
 		lineParams := strings.Split(line, "=\"")
 		if len(lineParams) > 1 {
 			keyVal := KeyValue{}
@@ -139,14 +139,14 @@ func (h *ParseCurl) GetDataForm(sLine string) {
 }
 
 func (h *ParseCurl) GetDataRaw(line string) {
-	line = strings.TrimLeft(line, "--data-raw '")
-	line = strings.TrimRight(line, "' \\")
+	line = strings.TrimPrefix(line, "--data-raw '")
+	line = strings.TrimSuffix(line, "' \\")
 	h.CurlStruct.BodyJson = line
 }
 
 func (h *ParseCurl) GetDataRawUrls(line string) {
-	line = strings.TrimLeft(line, "--data-raw '")
-	line = strings.TrimRight(line, "' \\")
+	line = strings.TrimPrefix(line, "--data-raw '")
+	line = strings.TrimSuffix(line, "' \\")
 	values, err := url.ParseQuery(line)
 	if err != nil {
 		gstool.FmtPrintlnLogTime(`解析url参数错误 %s`, line)
@@ -206,8 +206,8 @@ func (h *ParseCurl) GetH(line string) {
 }
 
 func (h *ParseCurl) GetB(line string) {
-	line = strings.TrimLeft(line, "-b '")
-	line = strings.TrimRight(line, "'")
+	line = strings.TrimPrefix(line, "-b '")
+	line = strings.TrimSuffix(line, "'")
 	h.CurlStruct.Headers[`Cookie`] = line
 }
 

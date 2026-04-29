@@ -72,6 +72,7 @@ func buildFolderBasicInfo(item map[string]any) map[string]any {
 		`collection_id`: item[`collection_id`],
 		`name`:          item[`name`],
 		`headers`:       cast.ToString(item[`headers`]),
+		`env_id`:        cast.ToInt(item[`env_id`]),
 		`child_count`:   cast.ToInt(item[`child_count`]),
 		`create_time`:   item[`create_time`],
 		`update_time`:   item[`update_time`],
@@ -143,6 +144,13 @@ func ApiCreateCollection(c *gin.Context) {
 		info[`type`] = define.ApiTypeCollection
 		info[`uniqueid`] = fmt.Sprintf(`collection%d`, info[`id`])
 	}
+	changeType := `collection_updated`
+	if cast.ToInt(dataMap[`id`]) == 0 {
+		changeType = `collection_created`
+	}
+	go BroadcastApiChange(c.GetHeader("SseClientId"), changeType, map[string]any{
+		`collection_id`: cast.ToInt(id),
+	})
 	gsgin.GinResponseSuccess(c, ``, info)
 }
 
@@ -158,6 +166,9 @@ func ApiDeleteCollection(c *gin.Context) {
 				`id`: dataMap[`id`],
 			}).Exec()
 	}
+	go BroadcastApiChange(c.GetHeader("SseClientId"), `collection_deleted`, map[string]any{
+		`collection_id`: cast.ToInt(dataMap[`id`]),
+	})
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -173,6 +184,11 @@ func ApiDeleteApi(c *gin.Context) {
 				`id`: dataMap[`id`],
 			}).Exec()
 	}
+	go BroadcastApiChange(c.GetHeader("SseClientId"), `api_deleted`, map[string]any{
+		`collection_id`: cast.ToInt(dataMap[`collection_id`]),
+		`folder_id`:     cast.ToInt(dataMap[`folder_id`]),
+		`api_id`:        cast.ToInt(dataMap[`id`]),
+	})
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -188,6 +204,10 @@ func ApiDeleteDir(c *gin.Context) {
 				`id`: dataMap[`id`],
 			}).Exec()
 	}
+	go BroadcastApiChange(c.GetHeader("SseClientId"), `folder_deleted`, map[string]any{
+		`collection_id`: cast.ToInt(dataMap[`collection_id`]),
+		`folder_id`:     cast.ToInt(dataMap[`id`]),
+	})
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -283,13 +303,14 @@ select d.id,
        d.collection_id,
        d.name,
        d.headers,
+	       d.env_id,
        d.create_time,
        d.update_time,
        count(a.id) as child_count
 from tbl_api_dir d
 left join tbl_api a on a.folder_id = d.id
 where d.collection_id = ?
-group by d.id, d.collection_id, d.name, d.headers, d.create_time, d.update_time
+group by d.id, d.collection_id, d.name, d.headers, d.env_id, d.create_time, d.update_time
 order by d.id asc`, collectionId).All()
 	result := make([]map[string]any, 0, len(list))
 	for _, item := range list {
@@ -447,7 +468,7 @@ func ApiCreateDir(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `collection_id`, `headers`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `collection_id`, `headers`, `env_id`})
 	var err error
 	for key, value := range updateData {
 		if gstool.ArrayExistValue(&[]string{reflect.Array.String(), reflect.Map.String(), reflect.Slice.String()}, gstool.ReflectGetType(value).String()) {
@@ -487,6 +508,14 @@ func ApiCreateDir(c *gin.Context) {
 		info[`type`] = define.ApiTypeFolder
 		info[`uniqueid`] = fmt.Sprintf(`folder%d`, info[`id`])
 	}
+	changeType := `folder_updated`
+	if cast.ToInt(dataMap[`id`]) == 0 {
+		changeType = `folder_created`
+	}
+	go BroadcastApiChange(c.GetHeader("SseClientId"), changeType, map[string]any{
+		`collection_id`: cast.ToInt(info[`collection_id`]),
+		`folder_id`:     cast.ToInt(id),
+	})
 	gsgin.GinResponseSuccess(c, ``, info)
 }
 
@@ -516,16 +545,19 @@ func ApiCreateApi(c *gin.Context) {
 		dataMap[`content_type`] = parsed.CurlStruct.ContentType
 		dataMap[`body_form`] = parsed.CurlStruct.BodyForm
 		dataMap[`body_json`] = parsed.CurlStruct.BodyJson
+		dataMap[`body_raw`] = parsed.CurlStruct.BodyRaw
 
 	}
 	updateData = gstool.MapTakeKeys(&dataMap, []string{`folder_id`, `collection_id`, `name`, `method`, `url`,
-		`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`,
+		`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`, `body_raw`,
 		`env_id`, `response_take`, `take_result`, `take_result_desc`})
 	for key, value := range updateData {
 		if gstool.ArrayExistValue(&[]string{reflect.Array.String(), reflect.Map.String(), reflect.Slice.String()}, gstool.ReflectGetType(value).String()) {
 			updateData[key] = gstool.JsonEncode(value)
 		}
 	}
+	gstool.FmtPrintlnLogTime(`保存后 %s`, gstool.JsonEncode(updateData))
+	ensureCreateApiOptionalFieldsDefaults(updateData)
 	var err error
 	//处理请求参数空值
 	updateData[`query_params`], err = filterEmptyArrayMap(cast.ToString(updateData[`query_params`]), `field`, `请求参数格式错误`, 500)
@@ -555,11 +587,16 @@ func ApiCreateApi(c *gin.Context) {
 		}
 		id = newId
 	} else {
+		gstool.FmtPrintlnLogTime(`最终更新的数据 %s`, gstool.JsonEncode(updateData))
 		updateData[`update_time`] = time.Now().Unix()
-		_, _ = common.DbMain.Client.QuickUpdate(`tbl_api`,
+		_, err = common.DbMain.Client.QuickUpdate(`tbl_api`,
 			map[string]any{
 				`id`: dataMap[`id`],
 			}, updateData).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, `更新失败 `+err.Error(), nil)
+			return
+		}
 		id = dataMap[`id`]
 	}
 	info, _ := common.DbMain.Client.QuickQuery(`tbl_api`, `*`, map[string]any{
@@ -569,10 +606,18 @@ func ApiCreateApi(c *gin.Context) {
 		info[`type`] = define.ApiTypeApi
 		info[`uniqueid`] = fmt.Sprintf(`api%d`, info[`id`])
 	}
+	changeType := `api_updated`
+	if cast.ToInt(dataMap[`id`]) == 0 {
+		changeType = `api_created`
+	}
+	go BroadcastApiChange(c.GetHeader("SseClientId"), changeType, map[string]any{
+		`collection_id`: cast.ToInt(info[`collection_id`]),
+		`folder_id`:     cast.ToInt(info[`folder_id`]),
+		`api_id`:        cast.ToInt(id),
+	})
 	gsgin.GinResponseSuccess(c, ``, info)
 }
 
-// normalizedIntegerType 中文：接口参数保存时唯一允许的整数类型名。 English: The only accepted integer type name in API parameter definitions.
 const normalizedIntegerType = `integer`
 
 // validateArrayItemTypes 中文：校验数组参数项中的类型字段，禁止继续写入旧的 int 类型名。 English: Validate array item types and reject the legacy int type name.
@@ -584,6 +629,18 @@ func validateArrayItemTypes(items []map[string]any, errmsg string) error {
 		}
 	}
 	return nil
+}
+
+func ensureCreateApiOptionalFieldsDefaults(updateData map[string]any) {
+	if queryParams, exists := updateData[`query_params`]; !exists || queryParams == nil || cast.ToString(queryParams) == `` {
+		updateData[`query_params`] = `[]`
+	}
+	if headers, exists := updateData[`headers`]; !exists || headers == nil || cast.ToString(headers) == `` {
+		updateData[`headers`] = `{}`
+	}
+	if bodyForm, exists := updateData[`body_form`]; !exists || bodyForm == nil || cast.ToString(bodyForm) == `` {
+		updateData[`body_form`] = `[]`
+	}
 }
 
 func filterEmptyArrayMap(queryParams, fieldKey, errmsg string, max int) (string, error) {
@@ -637,11 +694,15 @@ func ApiRun(c *gin.Context) {
 		return
 	}
 	// 中文注释：运行前加载所属目录默认请求头，用于与接口请求头做覆盖合并。
-	folderInfo, _ := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `headers`, map[string]any{
+	folderInfo, _ := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `headers,env_id`, map[string]any{
 		`id`: apiInfo[`folder_id`],
 	}).One()
 	if len(folderInfo) > 0 {
 		apiInfo[`folder_headers`] = folderInfo[`headers`]
+		// 接口自身无环境时继承文件夹的环境
+		if cast.ToInt(apiInfo[`env_id`]) == 0 {
+			apiInfo[`env_id`] = folderInfo[`env_id`]
+		}
 	}
 	apiCli := api.NewApi(apiInfo)
 	err := apiCli.Run()
@@ -670,6 +731,15 @@ func ApiCode(c *gin.Context) {
 		return
 	}
 	codeType := dataMap[`code_type`]
+	// 接口自身无环境时继承文件夹的环境
+	if cast.ToInt(apiInfo[`env_id`]) == 0 {
+		folderInfo, _ := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `env_id`, map[string]any{
+			`id`: apiInfo[`folder_id`],
+		}).One()
+		if len(folderInfo) > 0 {
+			apiInfo[`env_id`] = folderInfo[`env_id`]
+		}
+	}
 	apiCli := api.NewApi(apiInfo)
 	code := apiCli.GenerateCode(cast.ToString(codeType))
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
@@ -694,6 +764,11 @@ func ApiWeightDown(c *gin.Context) {
 	}, map[string]any{
 		`weight`: cast.ToInt(apiInfo[`weight`]) + 1,
 	}).Exec()
+	go BroadcastApiChange(c.GetHeader("SseClientId"), `api_weight_changed`, map[string]any{
+		`collection_id`: cast.ToInt(apiInfo[`collection_id`]),
+		`folder_id`:     cast.ToInt(apiInfo[`folder_id`]),
+		`api_id`:        cast.ToInt(id),
+	})
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 	return
 }
@@ -794,6 +869,9 @@ func ApiBatchImport(c *gin.Context) {
 		}
 	}
 
+	go BroadcastApiChange(c.GetHeader("SseClientId"), `batch_imported`, map[string]any{
+		`collection_id`: collectionId,
+	})
 	gsgin.GinResponseSuccess(c, `导入完成`, map[string]any{
 		`result`: importResult,
 	})
@@ -909,7 +987,7 @@ func processApiItem(c *gin.Context, collectionId, folderId int, apiData map[stri
 		// 直接从JSON数据创建
 		updateData = gstool.MapTakeKeys(&apiData, []string{
 			`folder_id`, `collection_id`, `name`, `method`, `url`,
-			`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`,
+			`protocol`, `desc`, `headers`, `query_params`, `content_type`, `body_form`, `body_json`, `body_raw`,
 			`env_id`, `response_take`, `take_result`, `take_result_desc`,
 		})
 		updateData[`folder_id`] = folderId
@@ -1023,15 +1101,22 @@ func ApiMoveApi(c *gin.Context) {
 	_, err := common.DbMain.Client.QuickUpdate(`tbl_api`, map[string]any{
 		`id`: apiId,
 	}, map[string]any{
-		`folder_id`:      newFolderId,
-		`collection_id`:  folderCollectionId,
-		`update_time`:    time.Now().Unix(),
+		`folder_id`:     newFolderId,
+		`collection_id`: folderCollectionId,
+		`update_time`:   time.Now().Unix(),
 	}).Exec()
 
 	if err != nil {
 		gsgin.GinResponseError(c, `移动失败: `+err.Error(), nil)
 		return
 	}
+
+	go BroadcastApiChange(c.GetHeader("SseClientId"), `api_moved`, map[string]any{
+		`collection_id`: folderCollectionId,
+		`folder_id`:     newFolderId,
+		`api_id`:        apiId,
+		`old_folder_id`: cast.ToInt(apiInfo[`folder_id`]),
+	})
 
 	gsgin.GinResponseSuccess(c, `移动成功`, nil)
 }
@@ -1055,14 +1140,15 @@ func ApiFolderDetail(c *gin.Context) {
 	for _, api := range apis {
 		api[`type`] = `api`
 		api[`uniqueid`] = fmt.Sprintf(`api%d`, api[`id`])
-		// If env_id exists, fetch environment variables and replace URL
+		// 接口自身无环境时继承文件夹的环境
 		envId := cast.ToInt(api[`env_id`])
+		if envId == 0 {
+			envId = cast.ToInt(dir[`env_id`])
+		}
 		if envId > 0 {
-			// Query all environment variables for this env_id
 			envItems, _ := common.DbMain.Client.QuickQuery(`tbl_api_env_item`, `*`, map[string]any{
 				`env_id`: envId,
 			}).All()
-			// Replace variables in URL
 			url := cast.ToString(api[`url`])
 			for _, envItem := range envItems {
 				key := cast.ToString(envItem[`key`])

@@ -2,9 +2,9 @@ version: "3"
 
 tasks:
   run-server-company:
-    desc: Run web backend with company config
+    desc: Run web backend with company config via Air live reload
     cmds:
-      - go run ./cmd/dtool/main.go --ConfigFile=company
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ./script/run_server_company.ps1
 
   run-web-dev:
     desc: Run frontend dev server
@@ -13,16 +13,10 @@ tasks:
       - npm install
       - npm run dev
 
-  run-wails:
-    desc: Run desktop app locally
-    cmds:
-      - go run -tags production ./cmd/dtool_wails --ConfigFile=company
-
   run-dev-company:
     desc: Run frontend and backend for company environment
-    deps:
-      - run-web-dev
-      - run-server-company
+    cmds:
+      - task --parallel run-web-dev run-server-company
 
   build-frontend:
     desc: Build frontend dist assets
@@ -50,46 +44,26 @@ tasks:
     cmds:
       - go build -ldflags "-s -w" -o build/dtool ./cmd/dtool
 
-  build-wails-windows:
-    desc: Build Windows desktop app
-    cmds:
-      - go build -tags production -ldflags "-s -w -H=windowsgui" -o build/dtool_wails.exe ./cmd/dtool_wails
-
-  build-wails-linux:
-    desc: Build Linux desktop app
-    env:
-      GOOS: linux
-      GOARCH: amd64
-      CGO_ENABLED: "0"
-    cmds:
-      - go build -tags production -ldflags "-s -w" -o build/dtool_wails ./cmd/dtool_wails
-
-  build-wails-macos:
-    desc: Build macOS desktop app
-    cmds:
-      - go build -tags production -ldflags "-s -w" -o build/dtool_wails ./cmd/dtool_wails
-
   clean-build:
     desc: Recreate the build directory
     cmds:
       - powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; if (Test-Path './build') { Remove-Item './build' -Recurse -Force }; New-Item -ItemType Directory -Path './build' | Out-Null"
 
   package-windows:
-    desc: Build Windows release package
+    desc: "Build Windows release package. Usage: task package-windows -- <name> (e.g. task package-windows -- frog => build/release_windows/package_frog)"
     platforms: [windows]
     deps:
       - build-frontend
       - build-web-windows
-      - build-wails-windows
     cmds:
-      - powershell -NoProfile -ExecutionPolicy Bypass -File ./script/package_windows.ps1
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ./script/package_windows.ps1 {{.CLI_ARGS}}
 
   package-linux:
-    desc: Build Linux release package
+    desc: "Build Linux release package. Usage: task package-linux -- <name> (e.g. task package-linux -- frog => build/release_linux/package_frog)"
     cmds:
-      - bash ./script/package_unix.sh linux
+      - bash ./script/package_unix.sh linux {{.CLI_ARGS}}
 
   package-macos:
-    desc: Build macOS release package
+    desc: "Build macOS release package. Usage: task package-macos -- <name> (e.g. task package-macos -- frog => build/release_macos/package_frog)"
     cmds:
-      - bash ./script/package_unix.sh macos
+      - bash ./script/package_unix.sh macos {{.CLI_ARGS}}

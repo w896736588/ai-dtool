@@ -1,0 +1,708 @@
+.layout-container {
+  --layout-sidebar-width: 140px;
+  --layout-content-padding: 20px;
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  background-color: #f8f8f5;
+}
+
+.layout-container--hide-sidebar {
+  --layout-content-padding: 0px;
+}
+
+.sidebar {
+  width: 140px;
+  background:
+    linear-gradient(180deg, #f9fbf6 0%, #f3f5ee 100%);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(212, 220, 205, 0.9);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.72);
+}
+
+.sidebar-header {
+  height: 50px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(214, 223, 208, 0.82);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.68) 0%, rgba(245, 248, 239, 0.32) 100%);
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 8px;
+  font-size: 16px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.95) 0%, rgba(234, 241, 229, 0.98) 100%);
+  box-shadow: 0 6px 14px rgba(118, 141, 104, 0.14);
+}
+
+.title {
+  color: #455446;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.sidebar-menu {
+  flex: 1;
+  border-right: none;
+  overflow-y: auto;
+}
+
+.sidebar-menu:not(.el-menu--collapse) {
+  width: 140px;
+}
+
+.sidebar-footer {
+  padding: 8px 10px 10px;
+  border-top: 1px solid rgba(214, 223, 208, 0.82);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: linear-gradient(180deg, rgba(246, 248, 242, 0.4) 0%, rgba(255, 255, 255, 0.72) 100%);
+}
+
+.footer-buttons {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.footer-action {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid rgba(126, 145, 117, 0.12);
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 248, 240, 0.98) 100%);
+  box-shadow: 0 5px 12px rgba(119, 137, 112, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.footer-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(119, 137, 112, 0.1);
+}
+
+.footer-action:active {
+  transform: translateY(0);
+}
+
+.footer-action__title {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #425142;
+}
+
+.footer-action--leaf:hover {
+  border-color: rgba(87, 126, 80, 0.28);
+}
+
+.footer-action--mint:hover {
+  border-color: rgba(56, 128, 109, 0.28);
+}
+
+.footer-action--sky:hover {
+  border-color: rgba(53, 119, 166, 0.28);
+}
+
+.footer-action:focus-visible {
+  outline: 2px solid rgba(83, 123, 77, 0.24);
+  outline-offset: 2px;
+}
+
+.footer-buttons :deep(.git-action-button) {
+  width: 100%;
+  justify-content: center;
+}
+
+.main-content {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background-color: #fafaf7;
+  height: 100%;
+  padding: var(--layout-content-padding);
+  box-sizing: border-box;
+}
+
+.main-content__body {
+  /* 让路由页面拿到稳定的可用高度，避免子页面 100% 高度失效。
+     Keep a continuous height chain for routed views so child pages can truly fill the viewport. */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.main-content__view {
+  /* 非首页路由也需要继承剩余高度，接口开发页才不会在底部露白。
+     Non-dashboard routes must stretch to the remaining height to avoid bottom whitespace. */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.main-content__view > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.main-content__view--dashboard {
+  height: 100%;
+  overflow: auto;
+}
+
+/* 覆盖 Element Plus 菜单样式 */
+.sidebar-menu {
+  padding: 8px 0;
+}
+
+.sidebar-menu .el-menu-item {
+  position: relative;
+  height: 42px;
+  line-height: 42px;
+  margin: 3px 8px;
+  border-radius: 12px;
+  padding-left: 12px !important;
+  border: 1px solid transparent;
+  transition: background-color 0.18s ease, transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.sidebar-menu .el-menu-item:hover {
+  background: linear-gradient(135deg, rgba(237, 246, 232, 0.9) 0%, rgba(250, 252, 246, 0.98) 100%) !important;
+  border-color: rgba(168, 194, 149, 0.26);
+  transform: translateX(2px);
+  box-shadow: 0 6px 14px rgba(141, 163, 126, 0.1);
+}
+
+.sidebar-menu .el-menu-item.is-active {
+  background: linear-gradient(135deg, rgba(221, 238, 203, 0.96) 0%, rgba(241, 248, 231, 0.98) 100%) !important;
+  border-color: rgba(130, 173, 107, 0.3);
+  color: #376e38 !important;
+  box-shadow: 0 8px 18px rgba(128, 160, 112, 0.12);
+}
+
+.sidebar-menu .el-menu-item .el-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 8px;
+  font-size: 16px;
+  color: #71836f;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(206, 216, 198, 0.45);
+  transition: transform 0.18s ease, color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.sidebar-menu .el-menu-item:hover .el-icon,
+.sidebar-menu .el-menu-item.is-active .el-icon {
+  transform: translateY(-1px) scale(1.03);
+  color: #537953;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(178, 198, 166, 0.42), 0 5px 12px rgba(137, 162, 122, 0.14);
+}
+
+.sidebar-menu .el-menu-item.menu-item-common-actions .el-icon {
+  color: #4f8a5b;
+  filter: drop-shadow(0 2px 4px rgba(92, 143, 101, 0.24));
+}
+
+.sidebar-menu .el-menu-item.menu-item-settings .el-icon {
+  color: #de8a2a;
+  transform-origin: center;
+  transition: transform 0.25s ease, color 0.25s ease, filter 0.25s ease;
+  filter: drop-shadow(0 2px 6px rgba(222, 138, 42, 0.28));
+}
+
+.sidebar-menu .el-menu-item.menu-item-settings:hover .el-icon,
+.sidebar-menu .el-menu-item.menu-item-settings.is-active .el-icon {
+  color: #f29f38;
+  transform: rotate(24deg) scale(1.08);
+}
+
+.sidebar-menu .el-menu-item.menu-item-settings.is-active::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 10px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: radial-gradient(circle, #ffd66b 0%, #f29f38 70%, rgba(242, 159, 56, 0) 100%);
+  box-shadow: 0 0 10px rgba(255, 214, 107, 0.7);
+}
+
+/* Git 待提交变更倒计时进度条 */
+.menu-countdown-bar {
+  position: absolute;
+  bottom: 2px;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(111, 142, 103, 0.12);
+  overflow: hidden;
+}
+.menu-countdown-bar__fill {
+  height: 100%;
+  border-radius: 1px;
+  background: linear-gradient(90deg, #6f8e67 0%, #89a27c 100%);
+  transition: width 1s linear;
+}
+
+.sidebar-menu .el-menu-item span {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.ssh-dialog-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e8eee4;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #f6fbf4 0%, #ffffff 100%);
+}
+
+.async-task-entry {
+  width: 100%;
+  margin-top: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+.footer-action--sand {
+  color: #5f6158;
+}
+
+.async-task-entry--idle {
+  background: linear-gradient(180deg, #f3f4f5 0%, #e8ebee 100%);
+  color: #61656d;
+}
+
+.async-task-entry--active {
+  background: linear-gradient(180deg, #edf7ee 0%, #dff0e2 100%);
+  color: #476651;
+}
+
+.async-task-entry--await-confirm {
+  background: linear-gradient(180deg, #fbf2e4 0%, #f6e5cb 100%);
+  color: #7a5c33;
+}
+
+.async-task-entry--pending {
+  background: linear-gradient(180deg, #eaf2ff 0%, #dbe8ff 100%);
+  color: #3d5f92;
+}
+
+.async-task-entry--failed {
+  background: linear-gradient(180deg, #fbeaea 0%, #f4d9d9 100%);
+  color: #835252;
+}
+
+.async-task-entry--running {
+  box-shadow: 0 0 0 1px rgba(115, 164, 122, 0.22), 0 0 0 8px rgba(115, 164, 122, 0.08);
+  animation: async-task-entry-pulse 1.6s ease-in-out infinite;
+}
+
+.async-task-entry--running::after {
+  content: '';
+  position: absolute;
+  inset: -30%;
+  background: radial-gradient(circle, rgba(138, 188, 143, 0.18) 0%, rgba(138, 188, 143, 0) 62%);
+  animation: async-task-entry-sheen 2.1s linear infinite;
+  pointer-events: none;
+}
+
+.footer-action__meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  opacity: 0.78;
+}
+
+.async-task-entry__title {
+  width: 100%;
+}
+
+.async-task-entry__label {
+  display: block;
+}
+
+.async-task-entry__summary {
+  display: inline-flex;
+  align-items: baseline;
+  margin-top: 6px;
+}
+
+.async-task-entry__digit {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.async-task-entry__digit--running {
+  color: #2d6a3f;
+}
+
+.async-task-entry__digit--pending {
+  color: #2f5ca8;
+}
+
+.async-task-entry__digit--await-confirm {
+  color: #9a5b08;
+}
+
+.async-task-entry__digit--failed {
+  color: #b13c3c;
+}
+
+.async-task-entry__slash {
+  display: inline-block;
+  margin: 0 1px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #8a8d83;
+  line-height: 1.4;
+}
+
+.async-task-entry__spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-left: 6px;
+  border-radius: 999px;
+  border: 2px solid rgba(71, 102, 81, 0.24);
+  border-top-color: #64916e;
+  animation: async-task-spinner-rotate 0.9s linear infinite;
+  vertical-align: middle;
+}
+
+.async-task-toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.async-task-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+  min-height: 480px;
+}
+
+.async-task-list {
+  border-right: 1px solid rgba(210, 214, 203, 0.9);
+  padding-right: 12px;
+  overflow: auto;
+}
+
+.async-task-item {
+  width: 100%;
+  border: 1px solid rgba(218, 223, 212, 0.92);
+  background: #fbfbf7;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.async-task-item--active {
+  border-color: #94ad78;
+  box-shadow: 0 0 0 1px rgba(148, 173, 120, 0.32);
+}
+
+.async-task-item__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.async-task-item__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #374332;
+}
+
+.async-task-item__meta,
+.async-task-item__time,
+.async-task-detail__meta {
+  font-size: 12px;
+  color: #697262;
+}
+
+.async-task-item__meta,
+.async-task-item__time {
+  margin-top: 6px;
+}
+
+.async-task-detail {
+  overflow: auto;
+}
+
+.async-task-detail__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.async-task-detail__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #31402e;
+}
+
+.async-task-detail__meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.async-task-detail__section-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4a5441;
+}
+
+.async-task-detail__content {
+  margin-bottom: 14px;
+}
+
+.async-task-detail__pre {
+  margin: 0;
+  padding: 14px;
+  border-radius: 8px;
+  background: #f5f6ef;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 420px;
+  overflow: auto;
+  min-height: 220px;
+}
+
+.async-task-detail__logs {
+  margin-bottom: 14px;
+}
+
+.async-task-detail__logs-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4a5441;
+}
+
+.async-task-detail__logs-pre {
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: #eef4ff;
+  color: #34425c;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow: auto;
+}
+
+/* TAPD 抓取预览：查看/源码切换按钮区 */
+.async-task-detail__view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 12px;
+  vertical-align: middle;
+}
+
+/* 查看模式下 MarkdownRenderer 容器样式 */
+.async-task-detail__markdown {
+  max-height: 420px;
+  min-height: 220px;
+}
+
+/* section-title 内嵌切换按钮时用 flex 水平排列 */
+.async-task-detail__section-title:has(.async-task-detail__view-toggle) {
+  display: flex;
+  align-items: center;
+}
+
+.async-task-detail__note {
+  padding: 12px 14px;
+  border: 1px solid #e4ebf3;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f6f9ff 0%, #eef4ff 100%);
+  color: #41597e;
+  line-height: 1.7;
+}
+
+.async-task-detail__sub-meta {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #667891;
+}
+
+.async-task-detail__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.async-task-detail__error,
+.async-task-empty {
+  padding: 18px;
+  border-radius: 8px;
+  background: #f7f4ea;
+  color: #705e42;
+}
+
+@keyframes async-task-entry-pulse {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1px);
+  }
+}
+
+@keyframes async-task-entry-sheen {
+  0% {
+    transform: translateX(-18%) translateY(0);
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateX(18%) translateY(0);
+    opacity: 0.35;
+  }
+}
+
+@keyframes async-task-spinner-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ssh-connections-table :deep(.el-table__header-wrapper th) {
+  background: #f5faf4;
+  color: #44584a;
+  font-weight: 600;
+}
+
+.ssh-connections-table :deep(.el-table__row td) {
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+
+/* Safe 登录弹窗样式 */
+.safe-login-dialog :deep(.el-dialog) {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2);
+}
+
+/* 登录弹窗背景模糊效果 */
+.safe-login-modal {
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  background-color: rgba(0, 0, 0, 0.35) !important;
+}
+
+.safe-login-content {
+  padding: 20px 10px;
+}
+
+.safe-login-desc {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  color: #5a6d5a;
+  text-align: center;
+}
+
+.safe-login-error {
+  margin: 12px 0 0 0;
+  font-size: 13px;
+  color: #d9534f;
+  text-align: center;
+  min-height: 20px;
+}
+
+.safe-login-dialog :deep(.el-input__wrapper) {
+  border-radius: 10px;
+}
+
+.safe-login-dialog :deep(.el-input__inner) {
+  height: 44px;
+  font-size: 15px;
+}
+
+.safe-login-dialog :deep(.el-dialog__header) {
+  padding: 20px 20px 10px;
+  margin-right: 0;
+}
+
+.safe-login-dialog :deep(.el-dialog__title) {
+  font-weight: 600;
+  color: #3a5a3a;
+}
+
+.safe-login-dialog :deep(.el-dialog__footer) {
+  padding: 10px 20px 20px;
+}
+
+@media (max-width: 900px) {
+  .ssh-dialog-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .async-task-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .async-task-list {
+    border-right: none;
+    border-bottom: 1px solid rgba(210, 214, 203, 0.9);
+    padding-right: 0;
+    padding-bottom: 12px;
+  }
+}

@@ -10,16 +10,29 @@
     <div class="history-layout">
       <div class="history-list-card">
         <div class="history-head">
-          <span>历史记录</span>
+          <span>{{ historyTitleText }}</span>
           <el-tag size="small" effect="light">{{ historyList.length }}</el-tag>
         </div>
+        <el-alert
+          v-if="showGitSettingHint"
+          type="info"
+          :closable="false"
+          class="history-setting-alert"
+        >
+          <template #title>
+            <div class="history-setting-alert-title">
+              <span>{{ settingHint }}</span>
+              <pl-button type="primary" link @click="emitOpenSettings">打开设置</pl-button>
+            </div>
+          </template>
+        </el-alert>
         <el-table
           v-loading="loading"
           :data="historyList"
           border
           stripe
           max-height="58vh"
-          empty-text="暂无历史记录"
+          :empty-text="historyEmptyText"
           @row-click="selectHistory"
         >
           <el-table-column prop="create_time_desc" label="变更时间" width="180" />
@@ -32,7 +45,7 @@
           <span>内容对比</span>
           <el-tag v-if="activeHistory" size="small" effect="light">{{ activeHistory.create_time_desc }}</el-tag>
         </div>
-        <el-empty v-if="!activeHistory" description="选择一条历史记录后查看差异" />
+        <el-empty v-if="!activeHistory" :description="detailEmptyText" />
         <template v-else>
           <div class="history-tags-panel">
             <div class="tags-block">
@@ -101,24 +114,52 @@ export default {
       default: false
     },
     fragmentId: {
-      type: Number,
+      type: [Number, String],
       default: 0
+    },
+    gitRepoEnabled: {
+      type: Boolean,
+      default: false
+    },
+    isGitRepo: {
+      type: Boolean,
+      default: false
     }
   },
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'open-settings'],
   data() {
     return {
       loading: false,
       historyList: [],
       activeHistory: null,
+      historySource: 'none',
+      settingHint: '请到“设置” -> “记忆设置”中开启 Git 管理（memoryDbIsGitRepo）后，再查看知识片段历史记录。',
     }
+  },
+  computed: {
+    hasValidFragmentId() {
+      const text = String(this.fragmentId || '').trim()
+      return text !== '' && text !== '0' && text !== 'null' && text !== 'undefined'
+    },
+    historyTitleText() {
+      return this.historySource === 'git' ? 'Git 历史记录' : '历史记录'
+    },
+    showGitSettingHint() {
+      return !this.gitRepoEnabled || !this.isGitRepo
+    },
+    historyEmptyText() {
+      return this.showGitSettingHint ? '未开启 Git 管理' : '暂无历史记录'
+    },
+    detailEmptyText() {
+      return this.showGitSettingHint ? this.settingHint : '选择一条历史记录后查看差异'
+    },
   },
   watch: {
     // modelValue 打开时重新获取历史记录。
     modelValue: {
       immediate: true,
       handler(value) {
-        if (value && this.fragmentId > 0) {
+        if (value && this.hasValidFragmentId) {
           this.loadHistory()
         }
         if (!value) {
@@ -128,7 +169,8 @@ export default {
     },
     // fragmentId 变化后在弹窗打开状态下同步刷新内容。
     fragmentId(value) {
-      if (this.modelValue && value > 0) {
+      const text = String(value || '').trim()
+      if (this.modelValue && text !== '' && text !== '0' && text !== 'null' && text !== 'undefined') {
         this.loadHistory()
       }
     }
@@ -136,14 +178,19 @@ export default {
   methods: {
     // loadHistory 加载片段历史记录。
     loadHistory() {
-      if (this.fragmentId <= 0) {
+      if (!this.hasValidFragmentId) {
         return
       }
       this.loading = true
       MemoryFragmentApi.MemoryFragmentHistoryList(this.fragmentId, (response) => {
         this.loading = false
-        this.historyList = Array.isArray(response.Data) ? response.Data : []
+        const responseData = response && response.Data ? response.Data : {}
+        this.historyList = Array.isArray(responseData.list) ? responseData.list : []
         this.activeHistory = this.historyList.length > 0 ? this.historyList[0] : null
+        this.historySource = responseData.history_source || 'none'
+        if (responseData.setting_hint) {
+          this.settingHint = responseData.setting_hint
+        }
       })
     },
     // selectHistory 选中一条历史记录。
@@ -153,109 +200,12 @@ export default {
     // handleClose 关闭弹窗。
     handleClose() {
       this.$emit('update:modelValue', false)
+    },
+    emitOpenSettings() {
+      this.$emit('open-settings')
     }
   }
 }
 </script>
 
-<style scoped>
-.history-layout {
-  display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: 16px;
-}
-
-.history-list-card,
-.history-detail-card {
-  border: 1px solid #e8e8e0;
-  border-radius: 14px;
-  background: #fff;
-  box-shadow: 0 4px 12px rgba(54, 74, 54, 0.05);
-  padding: 16px;
-}
-
-.history-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 14px;
-  color: #4d5c47;
-  font-weight: 600;
-}
-
-.history-detail-card {
-  min-height: 66vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.history-tags-panel {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.tags-block {
-  border: 1px solid #edf1e8;
-  border-radius: 12px;
-  background: #fafbf8;
-  padding: 12px;
-}
-
-.tags-title {
-  margin-bottom: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #5b6b55;
-}
-
-.tags-list {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.tags-empty {
-  color: #8b9685;
-  font-size: 13px;
-}
-
-.title-compare {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.title-box {
-  border: 1px solid #edf1e8;
-  border-radius: 12px;
-  background: #fafbf8;
-  padding: 12px;
-}
-
-.title-label {
-  margin-bottom: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #5b6b55;
-}
-
-.title-content {
-  color: #34412f;
-  line-height: 1.6;
-  word-break: break-word;
-}
-
-@media (max-width: 1100px) {
-  .history-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .history-tags-panel,
-  .title-compare {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
+<style scoped src="@/css/components/memory/MemoryHistoryDialog.css"></style>

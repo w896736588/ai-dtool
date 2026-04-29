@@ -14,6 +14,10 @@ const (
 	HomeTaskStatusDeveloping = `开发中`
 	// HomeTaskStatusSelfTesting 表示任务处于自测中。
 	HomeTaskStatusSelfTesting = `自测中`
+	// HomeTaskStatusSelfTested 表示任务自测完成。
+	HomeTaskStatusSelfTested = `自测完`
+	// HomeTaskStatusPendingIntegration 表示任务待对接。
+	HomeTaskStatusPendingIntegration = `待对接`
 	// HomeTaskStatusIntegrating 表示任务处于对接中。
 	HomeTaskStatusIntegrating = `对接中`
 	// HomeTaskStatusTesting 表示任务处于测试中。
@@ -30,6 +34,8 @@ var (
 		HomeTaskStatusTodo,
 		HomeTaskStatusDeveloping,
 		HomeTaskStatusSelfTesting,
+		HomeTaskStatusSelfTested,
+		HomeTaskStatusPendingIntegration,
 		HomeTaskStatusIntegrating,
 		HomeTaskStatusTesting,
 		HomeTaskStatusReleasing,

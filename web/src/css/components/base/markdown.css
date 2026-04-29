@@ -1,0 +1,76 @@
+.markdown-container {
+  width: 100%;
+  min-width: 0;
+  height: 560px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  padding: 10px;
+  box-sizing: border-box;
+  font-family: 'Consolas', monospace;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+code{
+  text-shadow: none !important;
+}
+
+/* 代码块样式 */
+pre {
+  position: relative;
+  margin: 1em 0;
+  border-radius: 4px;
+  background: #282c34;
+}
+
+/* 使用 :deep() 处理动态内容 */
+:deep(pre) {
+  position: relative;
+  margin: 1em 0;
+  border-radius: 4px;
+  background: #282c34 !important;
+}
+
+:deep(pre code) {
+  display: block;
+  padding: 1em;
+  overflow-x: auto;
+  color: #abb2bf;
+  background: transparent !important;
+  text-shadow: none !important;
+}
+
+pre code {
+  display: block;
+  padding: 1em;
+  overflow-x: auto;
+  color: #abb2bf;
+}
+
+/* 复制按钮样式 */
+.copy-btn-container {
+  position: absolute;
+  top: 0.5em;
+  right: 0.5em;
+  z-index: 1;
+}
+
+
+
+
+:deep(blockquote) {
+  border-left: 4px solid #4285f4;
+  background: #f8f9fa !important;   /* 保险起见加 important */
+  padding: 6px 12px;
+  margin: 16px 0;
+  border-radius: 0 4px 4px 0;
+  font-style: italic;
+  color: #555;
+}
+
+strong code {
+  font-weight: bold;
+  background: #f0f0f0;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+}

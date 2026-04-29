@@ -242,7 +242,7 @@ export default {
       if (_that.sse_distribute_id) {
         sseDistribute.UnRegisterReceive(_that.sse_distribute_id)
       }
-      _that.sse_distribute_id = sseDistribute.GetSseDistributeId(`git_${action}_${Date.now()}`)
+      _that.sse_distribute_id = sseDistribute.GetSseDistributeId(`git`)
       if (!_that.sseThrottleStringFunc) {
         _that.sseThrottleStringFunc = new Throttle_string(50, text => {
           _that.shellController.sshResult += text
@@ -440,10 +440,14 @@ export default {
     changeGitGroup: function () {
       let _that = this
       git.GitLocalSetLastGroupId(_that.chooseGroupId)
-      if (_that.gitConfigList.length === 0) {
+      // 从当前分组中找到第一个 Git 配置，而不是直接取全局第一个
+      let firstGitInGroup = _that.gitConfigList.find(function (item) {
+        return parseInt(item.git_group_id) === parseInt(_that.chooseGroupId)
+      })
+      if (!firstGitInGroup) {
         return
       }
-      _that.ChangeGit(_that.gitConfigList[0])
+      _that.ChangeGit(firstGitInGroup)
     },
     queryCurrentBranch: function () {
       let _that = this
@@ -540,205 +544,5 @@ export default {
 }
 </script>
 
-<style scoped>
-.git-page-container {
-  padding: 0;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-  color: #4a4a4a;
-}
-
-.git-header-card {
-  background: #ffffff;
-  border: 1px solid #e8e8e0;
-  border-radius: 12px;
-  padding: 16px 18px;
-  margin-bottom: 12px;
-  flex-shrink: 0;
-}
-
-.header-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #4a4a4a;
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 12px;
-}
-
-.page-settings-btn {
-  margin-left: auto;
-}
-
-.header-icon {
-  width: 20px;
-  height: 20px;
-  color: #5a8a5a;
-}
-
-.project-select-row {
-  background: #fafaf7;
-  border: 1px solid #edede6;
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-bottom: 12px;
-}
-
-.git-tabs :deep(.el-tabs__header) {
-  margin-bottom: 8px;
-}
-
-.git-tabs :deep(.el-tabs__item) {
-  font-size: 14px;
-  color: #707060;
-}
-
-.git-tabs :deep(.el-tabs__item.is-active) {
-  color: #4f804f;
-  font-weight: 600;
-}
-
-.git-tabs :deep(.el-tabs__active-bar) {
-  background-color: #7cb87c;
-}
-
-.git-tabs :deep(.el-tabs__nav-wrap::after) {
-  background-color: #ecece4;
-}
-
-.git-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 18px;
-}
-
-.git-list :deep(.el-radio) {
-  margin-right: 0;
-}
-
-.git-list :deep(.el-radio__label) {
-  color: #4a4a4a;
-}
-
-.git-list :deep(.el-radio__input.is-checked .el-radio__inner) {
-  border-color: #6fa56f;
-  background: #6fa56f;
-}
-
-.git-list :deep(.el-radio__input.is-checked + .el-radio__label) {
-  color: #4f804f;
-}
-
-.control-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.action-buttons,
-.branch-input-group,
-.more-actions-group {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.action-buttons .el-button,
-.branch-input-group .el-button,
-.more-actions-group .el-button {
-  border-radius: 8px;
-  border: 1px solid #d8ded2;
-  background: #f6f8f3;
-  color: #4f804f;
-}
-
-.action-buttons .el-button:hover,
-.branch-input-group .el-button:hover,
-.more-actions-group .el-button:hover {
-  background: #eef4ea;
-  border-color: #bfd1bf;
-  color: #3f6f3f;
-}
-
-.branch-input,
-.remote-input {
-  width: 180px;
-}
-
-.branch-input :deep(.el-input__wrapper),
-.remote-input :deep(.el-input__wrapper) {
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 0 0 1px #dde3d8 inset;
-}
-
-.branch-input :deep(.el-input__wrapper.is-focus),
-.remote-input :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #93b793 inset;
-}
-
-.output-card {
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-  background: #fff;
-  border: 1px solid #e8e8e0;
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.output-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid #e8e8e0;
-  background: #f7f7f2;
-  color: #4a4a4a;
-  font-size: 14px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.output-icon {
-  width: 18px;
-  height: 18px;
-  color: #5a8a5a;
-}
-
-.output-content {
-  flex: 1;
-  overflow: hidden;
-  background: #fbfbf8;
-}
-
-@media (max-width: 1200px) {
-  .control-row {
-    align-items: stretch;
-  }
-}
-
-@media (max-width: 768px) {
-  .git-header-card {
-    padding: 12px;
-  }
-
-  .header-title {
-    font-size: 16px;
-  }
-
-  .branch-input,
-  .remote-input {
-    width: 100%;
-  }
-}
-</style>
+<style scoped src="@/css/components/Git.css"></style>
 

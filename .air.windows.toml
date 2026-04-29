@@ -1,0 +1,36 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/dtool.exe ./cmd/dtool"
+  bin = "tmp\\dtool.exe"
+  args_bin = ["--ConfigFile=company"]
+  include_ext = ["go", "tpl", "tmpl", "html", "yaml", "yml", "json", "toml" , "ini"]
+  exclude_dir = [
+    ".git",
+    ".idea",
+    ".vscode",
+    ".codebuddy",
+    ".codex",
+    "build",
+    "logs",
+    "tmp",
+    "upload",
+    "web",
+  ]
+  exclude_regex = ["_test\\.go"]
+  exclude_unchanged = true
+  follow_symlink = true
+  delay = 300
+  stop_on_error = true
+  poll = false
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true
