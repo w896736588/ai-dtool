@@ -1328,12 +1328,12 @@ func buildTaskWorkflowPlaceholderMap(c *gin.Context, homeTaskInfo map[string]any
 		`{需求文档地址}`:         taskWorkflowBuildShareURL(c, workflowInfo, apiHost),
 		`{接口开发API地址}`:      apiHost,
 		`{接口开发API的token}`:  taskWorkflowBuildAPIToken(c),
-		`{Git配置的id}`:       cast.ToString(homeTaskInfo[`git_id`]),
+		`{Git配置的id}`:       taskWorkflowBuildGitIDsPlaceholder(homeTaskInfo),
 		`{MySQL配置的id}`:     cast.ToString(homeTaskInfo[`mysql_id`]),
-		`{接口开发文件夹}`:        taskWorkflowQueryApiDirName(homeTaskInfo),
-		`{接口开发集合}`:         taskWorkflowQueryApiCollectionName(homeTaskInfo),
-		`{dtool-api地址}`:    taskWorkflowQuerySkillPath(homeTaskInfo, `skills/dtool-api`),
-		`{dtool-common地址}`: taskWorkflowQuerySkillPath(homeTaskInfo, `skills/dtool-common`),
+		`{接口开发文件夹}`:        taskWorkflowQueryApiDirNames(homeTaskInfo),
+		`{接口开发集合}`:         taskWorkflowQueryApiCollectionNames(homeTaskInfo),
+		`{dtool-api地址}`:    taskWorkflowQuerySkillPaths(homeTaskInfo, `skills/dtool-api`),
+		`{dtool-common地址}`: taskWorkflowQuerySkillPaths(homeTaskInfo, `skills/dtool-common`),
 	}
 	return result
 }
@@ -1405,51 +1405,143 @@ func taskWorkflowResolvePlaceholders(template string, placeholders map[string]st
 	return result
 }
 
-// taskWorkflowQueryApiDirName 查询接口文件夹名称。
-func taskWorkflowQueryApiDirName(homeTaskInfo map[string]any) string {
-	dirID := cast.ToInt(homeTaskInfo[`api_dir_id`])
-	if dirID <= 0 {
-		return ``
+// taskWorkflowQueryApiDirNames 查询接口文件夹名称（支持多个），逗号分隔。
+func taskWorkflowQueryApiDirNames(homeTaskInfo map[string]any) string {
+	entries := homeTaskApiDevEntries(homeTaskInfo)
+	var names []string
+	for _, entry := range entries {
+		if entry.DirID <= 0 {
+			continue
+		}
+		info, err := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `name`, map[string]any{
+			`id`: entry.DirID,
+		}).One()
+		if err != nil || len(info) == 0 {
+			continue
+		}
+		names = append(names, cast.ToString(info[`name`]))
 	}
-	info, err := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `name`, map[string]any{
-		`id`: dirID,
-	}).One()
-	if err != nil || len(info) == 0 {
-		return ``
-	}
-	return cast.ToString(info[`name`])
+	return strings.Join(names, `,`)
 }
 
-// taskWorkflowQueryApiCollectionName 查询接口集合名称。
-func taskWorkflowQueryApiCollectionName(homeTaskInfo map[string]any) string {
-	collectionID := cast.ToInt(homeTaskInfo[`api_collection_id`])
-	if collectionID <= 0 {
-		return ``
+// taskWorkflowQueryApiCollectionNames 查询接口集合名称（支持多个），逗号分隔。
+func taskWorkflowQueryApiCollectionNames(homeTaskInfo map[string]any) string {
+	entries := homeTaskApiDevEntries(homeTaskInfo)
+	var names []string
+	for _, entry := range entries {
+		if entry.CollectionID <= 0 {
+			continue
+		}
+		info, err := common.DbMain.Client.QuickQuery(`tbl_api_collection`, `name`, map[string]any{
+			`id`: entry.CollectionID,
+		}).One()
+		if err != nil || len(info) == 0 {
+			continue
+		}
+		names = append(names, cast.ToString(info[`name`]))
 	}
-	info, err := common.DbMain.Client.QuickQuery(`tbl_api_collection`, `name`, map[string]any{
-		`id`: collectionID,
-	}).One()
-	if err != nil || len(info) == 0 {
-		return ``
-	}
-	return cast.ToString(info[`name`])
+	return strings.Join(names, `,`)
 }
 
-// taskWorkflowQuerySkillPath 根据 git_id 查询项目根目录，拼接 skill 子目录的绝对路径。
-func taskWorkflowQuerySkillPath(homeTaskInfo map[string]any, subDir string) string {
-	gitID := cast.ToInt(homeTaskInfo[`git_id`])
-	if gitID <= 0 {
+// taskWorkflowQuerySkillPaths 根据 git_ids 查询多个项目根目录，拼接 skill 子目录路径，逗号分隔。
+func taskWorkflowQuerySkillPaths(homeTaskInfo map[string]any, subDir string) string {
+	gitIDs := homeTaskGitIDs(homeTaskInfo)
+	var paths []string
+	for _, gitID := range gitIDs {
+		info, err := common.DbMain.Client.QuickQuery(`tbl_git`, `code_path`, map[string]any{
+			`id`: gitID,
+		}).One()
+		if err != nil || len(info) == 0 {
+			continue
+		}
+		codePath := strings.TrimSpace(cast.ToString(info[`code_path`]))
+		if codePath == `` {
+			continue
+		}
+		paths = append(paths, filepath.Join(codePath, subDir))
+	}
+	return strings.Join(paths, `,`)
+}
+
+// taskWorkflowBuildGitIDsPlaceholder 构建多个 Git 配置 ID 的占位符值，逗号分隔。
+func taskWorkflowBuildGitIDsPlaceholder(homeTaskInfo map[string]any) string {
+	gitIDs := homeTaskGitIDs(homeTaskInfo)
+	if len(gitIDs) == 0 {
 		return ``
 	}
-	info, err := common.DbMain.Client.QuickQuery(`tbl_git`, `code_path`, map[string]any{
-		`id`: gitID,
-	}).One()
-	if err != nil || len(info) == 0 {
-		return ``
+	strIDs := make([]string, 0, len(gitIDs))
+	for _, id := range gitIDs {
+		strIDs = append(strIDs, cast.ToString(id))
 	}
-	codePath := strings.TrimSpace(cast.ToString(info[`code_path`]))
-	if codePath == `` {
-		return ``
+	return strings.Join(strIDs, `,`)
+}
+
+// homeTaskGitIDs 从 homeTaskInfo 解析 git_ids JSON，优先从 dev_configs 派生，回退到旧字段。
+func homeTaskGitIDs(homeTaskInfo map[string]any) []int {
+	// 优先从 dev_configs 派生。
+	devConfigs := homeTaskDevConfigs(homeTaskInfo)
+	if len(devConfigs) > 0 {
+		var ids []int
+		for _, cfg := range devConfigs {
+			if cfg.GitID > 0 {
+				ids = append(ids, cfg.GitID)
+			}
+		}
+		if len(ids) > 0 {
+			return ids
+		}
 	}
-	return filepath.Join(codePath, subDir)
+	gitIDsJSON := strings.TrimSpace(cast.ToString(homeTaskInfo[`git_ids`]))
+	if gitIDsJSON != `` && gitIDsJSON != `[]` {
+		var ids []int
+		if err := json.Unmarshal([]byte(gitIDsJSON), &ids); err == nil && len(ids) > 0 {
+			return ids
+		}
+	}
+	legacyID := cast.ToInt(homeTaskInfo[`git_id`])
+	if legacyID > 0 {
+		return []int{legacyID}
+	}
+	return nil
+}
+
+// homeTaskApiDevEntries 从 homeTaskInfo 解析 api_dev_entries JSON，优先从 dev_configs 派生，回退到旧字段。
+func homeTaskApiDevEntries(homeTaskInfo map[string]any) []_struct.ApiDevEntry {
+	// 优先从 dev_configs 派生。
+	devConfigs := homeTaskDevConfigs(homeTaskInfo)
+	if len(devConfigs) > 0 {
+		var entries []_struct.ApiDevEntry
+		for _, cfg := range devConfigs {
+			if cfg.CollectionID > 0 {
+				entries = append(entries, _struct.ApiDevEntry{CollectionID: cfg.CollectionID, DirID: cfg.DirID})
+			}
+		}
+		if len(entries) > 0 {
+			return entries
+		}
+	}
+	entriesJSON := strings.TrimSpace(cast.ToString(homeTaskInfo[`api_dev_entries`]))
+	if entriesJSON != `` && entriesJSON != `[]` {
+		var entries []_struct.ApiDevEntry
+		if err := json.Unmarshal([]byte(entriesJSON), &entries); err == nil && len(entries) > 0 {
+			return entries
+		}
+	}
+	colID := cast.ToInt(homeTaskInfo[`api_collection_id`])
+	if colID > 0 {
+		return []_struct.ApiDevEntry{{CollectionID: colID, DirID: cast.ToInt(homeTaskInfo[`api_dir_id`])}}
+	}
+	return nil
+}
+
+// homeTaskDevConfigs 从 homeTaskInfo 解析 dev_configs JSON，回退到旧字段构建。
+func homeTaskDevConfigs(homeTaskInfo map[string]any) []_struct.DevConfig {
+	configsJSON := strings.TrimSpace(cast.ToString(homeTaskInfo[`dev_configs`]))
+	if configsJSON != `` && configsJSON != `[]` {
+		var configs []_struct.DevConfig
+		if err := json.Unmarshal([]byte(configsJSON), &configs); err == nil && len(configs) > 0 {
+			return configs
+		}
+	}
+	return nil
 }

@@ -43,6 +43,7 @@ type VariableRuntime interface {
 var ShellClient *p_shell.Shell
 var TGins []*p_gin.Gin
 var MysqlClient *p_db.TMysql
+var PgsqlClient *p_db.TPgsql
 var RedisClient *p_db.TRedis
 var SqliteClient *gsdb.GsSqlite
 var LogSqliteClient *gsdb.GsSqlite

@@ -189,6 +189,7 @@ func initComponent(appName, ConfigFile string) {
 	component.RedisClient = &p_db.TRedis{RedisClientMap: make(map[string]*gsdb.GsRedis)}
 	component.RedisClient.PingAll(common.GetCall())
 	component.MysqlClient = &p_db.TMysql{MysqlClientMap: make(map[string]*gsdb.GsMysql)}
+	component.PgsqlClient = &p_db.TPgsql{PgsqlClientMap: make(map[string]*gsdb.GsPgsql)}
 
 	component.ConfigViper = newConfigViper()
 

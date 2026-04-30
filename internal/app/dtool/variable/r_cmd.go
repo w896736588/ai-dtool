@@ -24,10 +24,17 @@ import (
 	"sync"
 	"time"
 
+	"gitee.com/Sxiaobai/gs/v2/gsdb"
 	"gitee.com/Sxiaobai/gs/v2/gsssh"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
 )
+
+// _dbQueryer unified db query interface
+type _dbQueryer interface {
+	QueryBySql(sql string, args ...any) *gsdb.SqlQuick
+	ExecBySql(sql string, args ...any) *gsdb.SqlQuick
+}
 
 // llmRunConfig 大模型执行配置
 type llmRunConfig struct {
@@ -76,9 +83,23 @@ func (h *RCmd) RunMysql() error {
 	if mysqlConfigErr != nil {
 		return errors.New(`找不到mysql配置 ` + mysqlConfigErr.Error())
 	}
-	mysqlClient, mysqlClientErr := p_db.MysqlClient.GetClient(mysqlConfig, h.Call)
-	if mysqlClientErr != nil {
-		return errors.New(`获取mysql client 失败 ` + mysqlClientErr.Error())
+	dbType := cast.ToString(mysqlConfig[`db_type`])
+	if dbType == `` {
+		dbType = `mysql`
+	}
+	var dbClient _dbQueryer
+	if dbType == `pgsql` {
+		pgsqlClient, pgsqlErr := p_db.PgsqlClient.GetClient(mysqlConfig, h.Call)
+		if pgsqlErr != nil {
+			return errors.New(`获取pgsql client 失败 ` + pgsqlErr.Error())
+		}
+		dbClient = pgsqlClient
+	} else {
+		mysqlClient, mysqlErr := p_db.MysqlClient.GetClient(mysqlConfig, h.Call)
+		if mysqlErr != nil {
+			return errors.New(`获取mysql client 失败 ` + mysqlErr.Error())
+		}
+		dbClient = mysqlClient
 	}
 	result := ``
 	h.Sse.Send(fmt.Sprintf(`%s %s 执行sql:`,
@@ -87,7 +108,7 @@ func (h *RCmd) RunMysql() error {
 	if len(gstool.RegexSearchString(sql, "(?i)select")) > 0 {
 		result = p_common.TMarkDownClient.Code(sql, `sql`)
 		h.Sse.Send(result + "\n")
-		all, allErr := mysqlClient.QueryBySql(sql).All()
+		all, allErr := dbClient.QueryBySql(sql).All()
 		if allErr != nil {
 			return allErr
 		}
@@ -97,7 +118,7 @@ func (h *RCmd) RunMysql() error {
 		}
 		return nil
 	} else if len(gstool.RegexSearchString(sql, "(?i)update")) > 0 {
-		affectRows, execErr := mysqlClient.ExecBySql(sql).Exec()
+		affectRows, execErr := dbClient.ExecBySql(sql).Exec()
 		result = p_common.TMarkDownClient.Code("-- 更新数"+cast.ToString(affectRows)+"\n"+sql, `sql`)
 		h.Sse.Send(result + "\n")
 		if execErr != nil {

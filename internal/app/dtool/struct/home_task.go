@@ -15,6 +15,24 @@ type HomeTaskSaveRequest struct {
 	ApiHost          string `json:"api_host"`
 	ApiToken         string `json:"api_token"`
 	MysqlID          int    `json:"mysql_id"`
+	GitIds           string `json:"git_ids"`
+	ApiDevEntries    string `json:"api_dev_entries"`
+	DevConfigs       string `json:"dev_configs"`
+}
+
+// DevConfig 开发配置条目，组合了 Git 仓库、接口集合/文件夹、Docker 和 MySQL 配置。
+type DevConfig struct {
+	GitID        int `json:"git_id"`
+	CollectionID int `json:"collection_id"`
+	DirID        int `json:"dir_id"`
+	DockerID     int `json:"docker_id"`
+	MysqlID      int `json:"mysql_id"`
+}
+
+// ApiDevEntry 接口开发条目，对应一个集合+文件夹组合。
+type ApiDevEntry struct {
+	CollectionID int `json:"collection_id"`
+	DirID        int `json:"dir_id"`
 }
 
 // HomeTaskListRequest 查询首页任务列表请求。

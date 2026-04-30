@@ -4,7 +4,7 @@
       <el-tab-pane label="Ssh" name="Ssh" class="set-tab-pane">
         <ssh ref="ssh"></ssh>
       </el-tab-pane>
-      <el-tab-pane label="Mysql" name="Mysql" class="set-tab-pane">
+      <el-tab-pane label="Db" name="Mysql" class="set-tab-pane">
         <mysql ref="mysql"></mysql>
       </el-tab-pane>
       <el-tab-pane label="Global" name="Global" class="set-tab-pane">

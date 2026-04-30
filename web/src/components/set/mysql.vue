@@ -1,21 +1,32 @@
-﻿<template>
+<template>
   <div class="set-config-page">
     <div class="set-config-header">
-      <h3 class="set-config-title">MySQL 配置管理</h3>
+      <h3 class="set-config-title">Db 配置管理</h3>
       <p class="set-config-desc">管理数据库连接配置与 SSH 隧道映射</p>
       <div class="set-config-actions">
-        <pl-button type="primary" @click="ShowAddMysql">添加 MySQL</pl-button>
+        <pl-button type="primary" @click="ShowAddMysql">添加 Db</pl-button>
       </div>
     </div>
     <div class="set-config-table-card">
       <el-table :data="state.mysqlList" class="set-config-table">
         <el-table-column prop="id" label="#id" width="80" />
         <el-table-column prop="name" label="名称" min-width="140" />
+        <el-table-column prop="db_type" label="类型" width="90">
+          <template #default="scope">
+            <span>{{ scope.row.db_type === 'pgsql' ? 'PostgreSQL' : 'MySQL' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="ssh_name" label="SSH" width="140" />
         <el-table-column prop="host" label="Host" min-width="180" />
         <el-table-column prop="port" label="Port" width="90" />
         <el-table-column prop="username" label="用户名" min-width="120" />
         <el-table-column prop="dbname" label="数据库" min-width="140" />
+        <el-table-column label="连接状态" width="100">
+          <template #default="scope">
+            <span v-if="scope.row.status === 'success'" style="color: #67c23a; font-weight: 600;">success</span>
+            <span v-else-if="scope.row.status" style="color: #f56c6c;">{{ scope.row.status }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="200">
           <template #default="scope">
             <div class="set-op-group">
@@ -28,10 +39,16 @@
       </el-table>
     </div>
 
-    <el-dialog v-model="state.dialogEditMysql" title="编辑MySQL配置" width="520">
+    <el-dialog v-model="state.dialogEditMysql" title="编辑Db配置" width="520">
       <el-form :model="state.starForm" label-width="90px">
         <el-form-item label="名称">
           <el-input v-model="state.editMysqlConfig.name" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="数据库类型">
+          <el-select v-model="state.editMysqlConfig.db_type" placeholder="选择类型" style="width: 140px">
+            <el-option label="MySQL" value="mysql" />
+            <el-option label="PostgreSQL" value="pgsql" />
+          </el-select>
         </el-form-item>
         <el-form-item label="Host">
           <el-input v-model="state.editMysqlConfig.host" autocomplete="off" />
@@ -102,7 +119,7 @@ export default defineComponent({
     }
     const ShowAddMysql = function (){
       state.dialogEditMysql = true
-      state.editMysqlConfig = {}
+      state.editMysqlConfig = { db_type: 'mysql' }
     }
     const EditMysql = function (){
       set.MysqlAdd(state.editMysqlConfig , function (response){
@@ -160,4 +177,3 @@ export default defineComponent({
 </script>
 
 <style scoped src="@/css/components/set/mysql.css"></style>
-

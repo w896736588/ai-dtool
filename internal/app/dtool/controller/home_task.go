@@ -5,6 +5,7 @@ import (
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	_struct "dev_tool/internal/app/dtool/struct"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -46,18 +47,80 @@ func HomeTaskSave(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+
+	// 解析 dev_configs JSON，从中派生旧字段实现向后兼容。
+	devConfigsJSON := resolveHomeTaskDevConfigsJSON(&request)
+	var devConfigs []_struct.DevConfig
+	_ = json.Unmarshal([]byte(devConfigsJSON), &devConfigs)
+
+	// 从 dev_configs 派生 git_ids。
+	gitIDsJSON := resolveHomeTaskGitIDsJSON(&request)
+	if len(devConfigs) > 0 {
+		var gitIDs []int
+		for _, cfg := range devConfigs {
+			if cfg.GitID > 0 {
+				gitIDs = append(gitIDs, cfg.GitID)
+			}
+		}
+		if len(gitIDs) > 0 {
+			gitIDsBytes, _ := json.Marshal(gitIDs)
+			gitIDsJSON = string(gitIDsBytes)
+		}
+	}
+
+	// 从 dev_configs 派生 api_dev_entries。
+	apiDevEntriesJSON := `[]`
+	var apiEntries []_struct.ApiDevEntry
+	for _, cfg := range devConfigs {
+		if cfg.CollectionID > 0 {
+			apiEntries = append(apiEntries, _struct.ApiDevEntry{CollectionID: cfg.CollectionID, DirID: cfg.DirID})
+		}
+	}
+	if len(apiEntries) > 0 {
+		entriesBytes, _ := json.Marshal(apiEntries)
+		apiDevEntriesJSON = string(entriesBytes)
+	} else {
+		apiDevEntriesJSON = resolveHomeTaskApiDevEntriesJSON(&request)
+	}
+
+	// 自动创建文件夹：遍历 dev_configs 中每个 dir_id=0 且 collection_id>0 的条目。
+	devConfigsJSON = autoCreateHomeTaskDevConfigDirs(request.Name, devConfigsJSON)
+	_ = json.Unmarshal([]byte(devConfigsJSON), &devConfigs)
+
 	apiDevEnabled := request.ApiDevEnabled
 	apiCollectionID := request.ApiCollectionID
 	apiDirID := request.ApiDirID
-	if apiDevEnabled == homeTaskApiDevEnabled && apiCollectionID > 0 && apiDirID <= 0 {
-		autoDirID, autoDirErr := autoCreateHomeTaskApiDir(request.Name, apiCollectionID)
-		if autoDirErr != nil {
-			gsgin.GinResponseError(c, `自动创建接口文件夹失败: `+autoDirErr.Error(), nil)
-			return
-		}
-		apiDirID = autoDirID
+	if len(apiEntries) > 0 {
+		apiDevEnabled = homeTaskApiDevEnabled
+		apiCollectionID = apiEntries[0].CollectionID
+		apiDirID = apiEntries[0].DirID
 	}
-	info, err := common.DbMain.HomeTaskSave(request.ID, request.Name, request.TaskStatus, request.StartTime, memoryFragmentID, request.TapdUrl, request.GitID, apiDevEnabled, apiCollectionID, apiDirID, request.MysqlID)
+	// 重新从 dev_configs 读取（dir_id 可能已被自动创建更新）。
+	if len(devConfigs) > 0 {
+		for i := range apiEntries {
+			for _, cfg := range devConfigs {
+				if cfg.CollectionID == apiEntries[i].CollectionID {
+					apiEntries[i].DirID = cfg.DirID
+				}
+			}
+		}
+		entriesBytes, _ := json.Marshal(apiEntries)
+		apiDevEntriesJSON = string(entriesBytes)
+		apiDirID = devConfigs[0].DirID
+	}
+
+	// 兼容旧字段：从 git_ids 回填 git_id。
+	var gitIDs []int
+	if json.Unmarshal([]byte(gitIDsJSON), &gitIDs) == nil && len(gitIDs) > 0 {
+		request.GitID = gitIDs[0]
+	}
+
+	// 兼容旧字段：从 dev_configs 回填 mysql_id。
+	if len(devConfigs) > 0 && devConfigs[0].MysqlID > 0 {
+		request.MysqlID = devConfigs[0].MysqlID
+	}
+
+	info, err := common.DbMain.HomeTaskSave(request.ID, request.Name, request.TaskStatus, request.StartTime, memoryFragmentID, request.TapdUrl, request.GitID, apiDevEnabled, apiCollectionID, apiDirID, request.MysqlID, gitIDsJSON, apiDevEntriesJSON, devConfigsJSON)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -286,4 +349,107 @@ func autoCreateHomeTaskApiDir(taskName string, collectionID int) (int, error) {
 		return 0, err
 	}
 	return cast.ToInt(newID), nil
+}
+
+// resolveHomeTaskGitIDsJSON 解析 git_ids JSON，若前端未传则从旧字段回退。
+func resolveHomeTaskGitIDsJSON(req *_struct.HomeTaskSaveRequest) string {
+	raw := strings.TrimSpace(req.GitIds)
+	if raw != `` && raw != `[]` {
+		var ids []int
+		if err := json.Unmarshal([]byte(raw), &ids); err == nil && len(ids) > 0 {
+			return raw
+		}
+	}
+	if req.GitID > 0 {
+		bytes, _ := json.Marshal([]int{req.GitID})
+		return string(bytes)
+	}
+	return `[]`
+}
+
+// resolveHomeTaskApiDevEntriesJSON 解析 api_dev_entries JSON，若前端未传则从旧字段回退。
+func resolveHomeTaskApiDevEntriesJSON(req *_struct.HomeTaskSaveRequest) string {
+	raw := strings.TrimSpace(req.ApiDevEntries)
+	if raw != `` && raw != `[]` {
+		var entries []_struct.ApiDevEntry
+		if err := json.Unmarshal([]byte(raw), &entries); err == nil && len(entries) > 0 {
+			return raw
+		}
+	}
+	if req.ApiCollectionID > 0 {
+		entry := _struct.ApiDevEntry{CollectionID: req.ApiCollectionID, DirID: req.ApiDirID}
+		bytes, _ := json.Marshal([]_struct.ApiDevEntry{entry})
+		return string(bytes)
+	}
+	return `[]`
+}
+
+// autoCreateHomeTaskApiDirs 为 api_dev_entries 中每个没有 dir_id 的条目自动创建文件夹，返回更新后的 JSON。
+func autoCreateHomeTaskApiDirs(taskName string, entriesJSON string) string {
+	var entries []_struct.ApiDevEntry
+	if err := json.Unmarshal([]byte(entriesJSON), &entries); err != nil {
+		return entriesJSON
+	}
+	changed := false
+	for i, entry := range entries {
+		if entry.CollectionID > 0 && entry.DirID <= 0 {
+			dirID, err := autoCreateHomeTaskApiDir(taskName, entry.CollectionID)
+			if err != nil {
+				continue
+			}
+			entries[i].DirID = dirID
+			changed = true
+		}
+	}
+	if !changed {
+		return entriesJSON
+	}
+	bytes, _ := json.Marshal(entries)
+	return string(bytes)
+}
+
+// resolveHomeTaskDevConfigsJSON 解析 dev_configs JSON，若前端未传则从旧字段回退构建。
+func resolveHomeTaskDevConfigsJSON(req *_struct.HomeTaskSaveRequest) string {
+	raw := strings.TrimSpace(req.DevConfigs)
+	if raw != `` && raw != `[]` {
+		var configs []_struct.DevConfig
+		if err := json.Unmarshal([]byte(raw), &configs); err == nil && len(configs) > 0 {
+			return raw
+		}
+	}
+	// 从旧字段回退构建一个 dev_config 条目。
+	cfg := _struct.DevConfig{
+		GitID:        req.GitID,
+		CollectionID: req.ApiCollectionID,
+		DirID:        req.ApiDirID,
+	}
+	if cfg.GitID > 0 || cfg.CollectionID > 0 {
+		bytes, _ := json.Marshal([]_struct.DevConfig{cfg})
+		return string(bytes)
+	}
+	return `[]`
+}
+
+// autoCreateHomeTaskDevConfigDirs 为 dev_configs 中每个 dir_id=0 且 collection_id>0 的条目自动创建文件夹。
+func autoCreateHomeTaskDevConfigDirs(taskName string, configsJSON string) string {
+	var configs []_struct.DevConfig
+	if err := json.Unmarshal([]byte(configsJSON), &configs); err != nil {
+		return configsJSON
+	}
+	changed := false
+	for i, cfg := range configs {
+		if cfg.CollectionID > 0 && cfg.DirID <= 0 {
+			dirID, err := autoCreateHomeTaskApiDir(taskName, cfg.CollectionID)
+			if err != nil {
+				continue
+			}
+			configs[i].DirID = dirID
+			changed = true
+		}
+	}
+	if !changed {
+		return configsJSON
+	}
+	bytes, _ := json.Marshal(configs)
+	return string(bytes)
 }

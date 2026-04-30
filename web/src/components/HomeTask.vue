@@ -37,8 +37,7 @@
                     <span>开始时间：{{ task.start_time_desc || '-' }}</span>
                     <span>最后操作：{{ task.last_operated_at_desc || '-' }}</span>
                     <a v-if="task.tapd_url" :href="task.tapd_url" target="_blank" class="home-task-card__tapd-link">TAPD需求</a>
-                    <span v-if="getHomeTaskGitRepoName(task)" class="home-task-card__git-repo">{{ getHomeTaskGitRepoName(task) }}</span>
-                    <span v-if="task.api_dev_enabled === 1" class="home-task-card__api-dev">接口: {{ getHomeTaskApiDevLabel(task) }}</span>
+                    <span v-if="getHomeTaskDevConfigLabel(task)" class="home-task-card__git-repo">{{ getHomeTaskDevConfigLabel(task) }}</span>
                     <span class="home-task-card__status-group">
                       <el-tag size="small" effect="light" :type="getHomeTaskStatusTagType(task.task_status)">
                         {{ task.task_status }}
@@ -132,8 +131,7 @@
                     <span>开始时间：{{ task.start_time_desc || '-' }}</span>
                     <span>最后操作：{{ task.last_operated_at_desc || '-' }}</span>
                     <a v-if="task.tapd_url" :href="task.tapd_url" target="_blank" class="home-task-card__tapd-link">TAPD需求</a>
-                    <span v-if="getHomeTaskGitRepoName(task)" class="home-task-card__git-repo">{{ getHomeTaskGitRepoName(task) }}</span>
-                    <span v-if="task.api_dev_enabled === 1" class="home-task-card__api-dev">接口: {{ getHomeTaskApiDevLabel(task) }}</span>
+                    <span v-if="getHomeTaskDevConfigLabel(task)" class="home-task-card__git-repo">{{ getHomeTaskDevConfigLabel(task) }}</span>
                   </div>
                 </div>
                 <div class="home-task-card__status-group">
@@ -261,55 +259,11 @@
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="tapd需求地址">
+            <el-form-item label="tapd地址">
               <el-input
                 v-model="homeTaskForm.tapd_url"
                 placeholder="例如：https://www.tapd.cn/123456"
               />
-            </el-form-item>
-          </el-col>
-          <el-col :span="24">
-            <el-form-item label="Git仓库">
-              <el-select
-                v-model="homeTaskForm.git_id"
-                clearable
-                filterable
-                style="width: 100%"
-                placeholder="选择关联的Git仓库（可选）"
-                :loading="homeTaskGitRepoLoading"
-              >
-                <el-option-group
-                  v-for="group in homeTaskGitRepoGroupedOptions"
-                  :key="group.label"
-                  :label="group.label"
-                >
-                  <el-option
-                    v-for="repo in group.options"
-                    :key="repo.value"
-                    :label="repo.label"
-                    :value="repo.value"
-                  />
-                </el-option-group>
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="24">
-            <el-form-item label="MySQL配置">
-              <el-select
-                v-model="homeTaskForm.mysql_id"
-                clearable
-                filterable
-                style="width: 100%"
-                placeholder="选择关联的MySQL配置（可选）"
-                :loading="homeTaskMysqlLoading"
-              >
-                <el-option
-                  v-for="item in homeTaskMysqlList"
-                  :key="item.id"
-                  :label="item.name"
-                  :value="item.id"
-                />
-              </el-select>
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="12" :md="12">
@@ -338,76 +292,127 @@
         </el-row>
         <el-row :gutter="12">
           <el-col :span="24">
-            <el-form-item label="接口开发">
-              <el-switch
-                v-model="homeTaskForm.api_dev_enabled"
-                :active-value="1"
-                :inactive-value="0"
-                active-text="启用"
-                inactive-text="关闭"
-              />
-            </el-form-item>
-          </el-col>
-          <template v-if="homeTaskForm.api_dev_enabled === 1">
-            <el-col :xs="24" :sm="12" :md="12">
-              <el-form-item label="选择集合">
-                <el-select
-                  v-model="homeTaskForm.api_collection_id"
-                  filterable
-                  style="width: 100%"
-                  placeholder="请选择接口集合（必选）"
-                  :loading="homeTaskApiCollectionLoading"
-                  @change="handleHomeTaskApiCollectionChange"
+            <el-form-item label="开发配置">
+              <div v-for="(cfg, cfgIdx) in homeTaskForm.dev_configs" :key="cfgIdx" style="border: 1px solid #e4e7ed; border-radius: 4px; padding: 12px 12px 4px; margin-bottom: 10px; position: relative;">
+                <el-button
+                  v-if="homeTaskForm.dev_configs.length > 1"
+                  type="danger"
+                  plain
+                  size="small"
+                  style="position: absolute; top: 4px; right: 4px; padding: 2px 6px; z-index: 1;"
+                  @click="removeDevConfig(cfgIdx)"
                 >
-                  <el-option
-                    v-for="col in homeTaskApiCollectionList"
-                    :key="col.id"
-                    :label="col.name"
-                    :value="col.id"
-                  />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="12">
-              <el-form-item label="选择文件夹">
-                <el-select
-                  v-model="homeTaskForm.api_dir_id"
-                  filterable
-                  clearable
-                  style="width: 100%"
-                  placeholder="留空则自动创建（可选）"
-                  :loading="homeTaskApiFolderLoading"
-                  :disabled="!homeTaskForm.api_collection_id"
-                >
-                  <el-option
-                    v-for="dir in homeTaskApiFolderList"
-                    :key="dir.id"
-                    :label="dir.name"
-                    :value="dir.id"
-                  />
-                </el-select>
-              </el-form-item>
-            </el-col>
-          </template>
-        </el-row>
-        <el-row :gutter="12">
-          <el-col :span="24">
-            <el-form-item label="知识片段">
-              <el-select
-                v-model="homeTaskForm.memory_fragment_id"
-                filterable
-                clearable
-                style="width: 100%"
-                placeholder="可选择已有知识片段；留空则保存时自动新建"
-                :loading="homeTaskFragmentLoading"
-              >
-                <el-option
-                  v-for="fragment in homeTaskFragmentOptions"
-                  :key="fragment.id"
-                  :label="buildHomeTaskFragmentOptionLabel(fragment)"
-                  :value="fragment.id"
-                />
-              </el-select>
+                  移除
+                </el-button>
+                <el-row :gutter="12">
+                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="Git仓库" label-width="72px">
+                      <el-select
+                        v-model="cfg.git_id"
+                        clearable
+                        filterable
+                        style="width: 100%"
+                        placeholder="选择Git仓库（可选）"
+                        :loading="homeTaskGitRepoLoading"
+                      >
+                        <el-option-group
+                          v-for="group in homeTaskGitRepoGroupedOptions"
+                          :key="group.label"
+                          :label="group.label"
+                        >
+                          <el-option
+                            v-for="repo in group.options"
+                            :key="repo.value"
+                            :label="repo.label"
+                            :value="repo.value"
+                          />
+                        </el-option-group>
+                      </el-select>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="Docker" label-width="72px">
+                      <el-select
+                        v-model="cfg.docker_id"
+                        clearable
+                        filterable
+                        style="width: 100%"
+                        placeholder="选择Docker配置（可选）"
+                        :loading="homeTaskDockerLoading"
+                      >
+                        <el-option
+                          v-for="item in homeTaskDockerList"
+                          :key="item.id"
+                          :label="item.name"
+                          :value="Number(item.id)"
+                        />
+                      </el-select>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="接口集合" label-width="72px">
+                      <el-select
+                        v-model="cfg.collection_id"
+                        filterable
+                        clearable
+                        style="width: 100%"
+                        placeholder="选择接口集合（可选）"
+                        :loading="homeTaskApiCollectionLoading"
+                        @change="handleDevConfigCollectionChange(cfgIdx)"
+                      >
+                        <el-option
+                          v-for="col in homeTaskApiCollectionList"
+                          :key="col.id"
+                          :label="col.name"
+                          :value="Number(col.id)"
+                        />
+                      </el-select>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="文件夹" label-width="72px">
+                      <el-select
+                        v-model="cfg.dir_id"
+                        filterable
+                        clearable
+                        style="width: 100%"
+                        placeholder="留空则自动创建"
+                        :loading="homeTaskApiFolderLoading"
+                        :disabled="!cfg.collection_id"
+                      >
+                        <el-option
+                          v-for="dir in getDevConfigFolders(cfgIdx)"
+                          :key="dir.id"
+                          :label="dir.name"
+                          :value="Number(dir.id)"
+                        />
+                      </el-select>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="MySQL" label-width="72px">
+                      <el-select
+                        v-model="cfg.mysql_id"
+                        clearable
+                        filterable
+                        style="width: 100%"
+                        placeholder="选择MySQL配置（可选）"
+                        :loading="homeTaskMysqlLoading"
+                      >
+                        <el-option
+                          v-for="item in homeTaskMysqlList"
+                          :key="item.id"
+                          :label="item.name"
+                          :value="Number(item.id)"
+                        />
+                      </el-select>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+              </div>
+              <el-button type="primary" plain size="small" @click="addDevConfig">
+                + 添加开发配置
+              </el-button>
             </el-form-item>
           </el-col>
         </el-row>
@@ -438,12 +443,11 @@
 <script>
 import base from '../utils/base'
 import homeTaskApi from '@/utils/base/home_task'
-import memoryFragmentApi from '@/utils/base/memory_fragment'
 import gitApi from '@/utils/base/git'
 import mysqlSetApi from '@/utils/base/mysql_set'
 import apiManagement from '@/utils/base/api'
-const { mergeHomeTaskFragmentOptions } = require('@/utils/home_task_fragment_options.cjs')
-import GitActionButton from "@/components/base/GitActionButton.vue";
+import dockerApi from '@/utils/base/compose'
+import GitActionButton from "@/components/base/GitActionButton.vue"
 import SettingsDialog from '@/components/base/SettingsDialog.vue'
 import HomeTaskReportSetting from '@/components/set/home_task_report.vue'
 
@@ -476,7 +480,6 @@ const HOME_TASK_DAILY_REPORT_BUTTON_TEXT = 'AI 生成工作日报'
 const HOME_TASK_DAILY_REPORT_SUCCESS_MESSAGE = '工作日报任务已加入异步任务列表'
 const HOME_TASK_DAILY_REPORT_FAILED_MESSAGE = '工作日报生成失败'
 const HOME_TASK_ACTION_COMMAND_STATUS_PREFIX = 'status:'
-const HOME_TASK_EMPTY_START_DATE = ''
 const HOME_TASK_STATUS_OPTIONS = [
   HOME_TASK_STATUS_TODO,
   HOME_TASK_STATUS_DEVELOPING,
@@ -497,19 +500,23 @@ function getTodayDateText() {
   return `${year}-${month}-${day}`
 }
 
+function safeParseJSON(text, fallback) {
+  try {
+    const parsed = JSON.parse(text)
+    return Array.isArray(parsed) ? parsed : fallback
+  } catch {
+    return fallback
+  }
+}
+
 function createHomeTaskDefaultForm() {
   return {
     id: 0,
     name: '',
     task_status: HOME_TASK_STATUS_TODO,
     start_date: getTodayDateText(),
-    memory_fragment_id: '',
     tapd_url: '',
-    git_id: 0,
-    api_dev_enabled: 0,
-    api_collection_id: 0,
-    api_dir_id: 0,
-    mysql_id: 0,
+    dev_configs: [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', mysql_id: '' }],
   }
 }
 
@@ -535,12 +542,10 @@ export default {
       homeTaskLoadingArchived: false,
       homeTaskGeneratingDailyReport: false,
       homeTaskSaving: false,
-      homeTaskFragmentLoading: false,
       homeTaskOperatingId: 0,
       homeTaskOperatingType: '',
       homeTaskActiveList: [],
       homeTaskArchivedList: [],
-      homeTaskFragmentOptions: [],
       homeTaskStatusOptions: HOME_TASK_STATUS_OPTIONS,
       homeTaskForm: createHomeTaskDefaultForm(),
       homeTaskExpandedFragments: {},
@@ -550,11 +555,13 @@ export default {
       homeTaskGitRepoList: [],
       homeTaskGitRepoLoading: false,
       homeTaskApiCollectionList: [],
-      homeTaskApiFolderList: [],
+      homeTaskApiFolderMap: {},
       homeTaskApiCollectionLoading: false,
       homeTaskApiFolderLoading: false,
       homeTaskMysqlList: [],
       homeTaskMysqlLoading: false,
+      homeTaskDockerList: [],
+      homeTaskDockerLoading: false,
     }
   },
   computed: {
@@ -570,13 +577,12 @@ export default {
           groupMap[groupName] = []
           groupOrder.push(groupName)
         }
-        groupMap[groupName].push({ label: repo.name, value: repo.id })
+        groupMap[groupName].push({ label: repo.name, value: Number(repo.id) })
       }
       return groupOrder.map(name => ({ label: name, options: groupMap[name] }))
     },
   },
   mounted() {
-    this.loadHomeTaskFragmentOptions()
     this.loadHomeTaskGitRepoList()
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
@@ -584,7 +590,6 @@ export default {
   activated() {
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
-    this.loadHomeTaskFragmentOptions()
     this.loadHomeTaskGitRepoList()
   },
   methods: {
@@ -611,7 +616,12 @@ export default {
           this.$helperNotify.error(response?.ErrMsg || '任务列表加载失败')
           return
         }
-        const taskList = Array.isArray(response.Data?.task_list) ? response.Data.task_list : []
+        const taskList = (Array.isArray(response.Data?.task_list) ? response.Data.task_list : []).map(t => ({
+          ...t,
+          git_ids: safeParseJSON(t.git_ids, []),
+          api_dev_entries: safeParseJSON(t.api_dev_entries, []),
+          dev_configs: safeParseJSON(t.dev_configs, []),
+        }))
         if (isArchived === HOME_TASK_ARCHIVED_YES) {
           this.homeTaskArchivedList = taskList
         } else {
@@ -622,23 +632,9 @@ export default {
     refreshAllHomeTaskList() {
       this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
       this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
-      this.loadHomeTaskFragmentOptions()
     },
     resetHomeTaskForm() {
       this.homeTaskForm = createHomeTaskDefaultForm()
-    },
-    loadHomeTaskFragmentOptions(selectedFragment = null) {
-      this.homeTaskFragmentLoading = true
-      memoryFragmentApi.MemoryFragmentList(200, (response) => {
-        this.homeTaskFragmentLoading = false
-        if (!(response && response.ErrCode === 0 && Array.isArray(response.Data))) {
-          return
-        }
-        this.homeTaskFragmentOptions = mergeHomeTaskFragmentOptions(response.Data, selectedFragment)
-      })
-    },
-    ensureHomeTaskFragmentOption(fragment) {
-      this.homeTaskFragmentOptions = mergeHomeTaskFragmentOptions(this.homeTaskFragmentOptions, fragment)
     },
     loadHomeTaskGitRepoList() {
       this.homeTaskGitRepoLoading = true
@@ -679,34 +675,52 @@ export default {
         this.homeTaskApiCollectionList = Array.isArray(response.Data?.list) ? response.Data.list : []
       })
     },
-    loadHomeTaskApiFolders(collectionId) {
-      if (!collectionId) {
-        this.homeTaskApiFolderList = []
-        return
-      }
-      this.homeTaskApiFolderLoading = true
-      apiManagement.CollectionFoldersBasic({ collection_id: collectionId }, (response) => {
-        this.homeTaskApiFolderLoading = false
+    loadHomeTaskDockerList() {
+      this.homeTaskDockerLoading = true
+      dockerApi.DockerComposeList({}, (response) => {
+        this.homeTaskDockerLoading = false
         if (!(response && response.ErrCode === 0)) {
           return
         }
-        this.homeTaskApiFolderList = Array.isArray(response.Data?.list) ? response.Data.list : []
+        this.homeTaskDockerList = Array.isArray(response.Data?.list) ? response.Data.list : []
       })
     },
-    handleHomeTaskApiCollectionChange(collectionId) {
-      this.homeTaskForm.api_dir_id = 0
-      this.loadHomeTaskApiFolders(collectionId)
+    loadHomeTaskApiFoldersForCollection(collectionId) {
+      if (!collectionId) return
+      if (this.homeTaskApiFolderMap[collectionId]) return
+      this.homeTaskApiFolderLoading = true
+      apiManagement.CollectionFoldersBasic({ collection_id: collectionId }, (response) => {
+        this.homeTaskApiFolderLoading = false
+        if (!(response && response.ErrCode === 0)) return
+        const list = Array.isArray(response.Data?.list) ? response.Data.list : []
+        this.homeTaskApiFolderMap = { ...this.homeTaskApiFolderMap, [collectionId]: list }
+      })
     },
-    buildHomeTaskFragmentOptionLabel(fragment) {
-      const tagText = Array.isArray(fragment?.tags) && fragment.tags.length > 0 ? ` [${fragment.tags.join('、')}]` : ''
-      return `${fragment.title || `#${fragment.id}`}${tagText}`
+    getDevConfigFolders(cfgIdx) {
+      const colId = this.homeTaskForm.dev_configs[cfgIdx]?.collection_id
+      if (!colId) return []
+      return this.homeTaskApiFolderMap[colId] || []
+    },
+    handleDevConfigCollectionChange(cfgIdx) {
+      const cfg = this.homeTaskForm.dev_configs[cfgIdx]
+      cfg.dir_id = 0
+      this.loadHomeTaskApiFoldersForCollection(cfg.collection_id)
+    },
+    addDevConfig() {
+      this.homeTaskForm.dev_configs.push({ git_id: '', collection_id: '', dir_id: '', docker_id: '' })
+    },
+    removeDevConfig(idx) {
+      this.homeTaskForm.dev_configs.splice(idx, 1)
+      if (this.homeTaskForm.dev_configs.length === 0) {
+        this.addDevConfig()
+      }
     },
     openCreateHomeTaskDialog() {
       this.resetHomeTaskForm()
-      this.loadHomeTaskFragmentOptions()
       this.loadHomeTaskGitRepoList()
       this.loadHomeTaskApiCollections()
       this.loadHomeTaskMysqlList()
+      this.loadHomeTaskDockerList()
       this.homeTaskDialogVisible = true
     },
     openHomeTaskReportSettingsDialog() {
@@ -744,27 +758,55 @@ export default {
       this.resetHomeTaskForm()
     },
     editHomeTask(task) {
-      this.ensureHomeTaskFragmentOption(task.memory_fragment)
-      const fragmentID = this.normalizeHomeTaskMemoryFragmentId(task?.memory_fragment?.file_id || task?.memory_fragment_id)
+      let devConfigs = []
+      if (Array.isArray(task.dev_configs) && task.dev_configs.length > 0) {
+        devConfigs = task.dev_configs.map(cfg => ({
+          git_id: Number(cfg.git_id || 0) || '',
+          collection_id: Number(cfg.collection_id || 0) || '',
+          dir_id: Number(cfg.dir_id || 0) || '',
+          docker_id: Number(cfg.docker_id || 0) || '',
+          mysql_id: Number(cfg.mysql_id || 0) || '',
+        }))
+      } else {
+        // 从旧字段回退构建
+        let gitIds = Array.isArray(task.git_ids) && task.git_ids.length > 0
+          ? task.git_ids.map(id => Number(id))
+          : (Number(task.git_id || 0) > 0 ? [Number(task.git_id)] : [])
+        let apiEntries = Array.isArray(task.api_dev_entries) && task.api_dev_entries.length > 0
+          ? task.api_dev_entries
+          : (Number(task.api_collection_id || 0) > 0
+            ? [{ collection_id: Number(task.api_collection_id), dir_id: Number(task.api_dir_id || 0) }]
+            : [])
+        const maxLen = Math.max(gitIds.length, apiEntries.length, 1)
+        for (let i = 0; i < maxLen; i++) {
+          devConfigs.push({
+            git_id: gitIds[i] || '',
+            collection_id: Number(apiEntries[i]?.collection_id || 0) || '',
+            dir_id: Number(apiEntries[i]?.dir_id || 0) || '',
+            docker_id: '',
+            mysql_id: Number(task.mysql_id || 0) || '',
+          })
+        }
+      }
+      if (devConfigs.length === 0) {
+        devConfigs = [{ git_id: '', collection_id: '', dir_id: '', docker_id: '' }]
+      }
       this.homeTaskForm = {
         id: Number(task.id || 0),
         name: task.name || '',
         task_status: task.task_status || HOME_TASK_STATUS_TODO,
         start_date: task.start_time_desc || getTodayDateText(),
-        memory_fragment_id: fragmentID,
         tapd_url: task.tapd_url || '',
-        git_id: Number(task.git_id || 0),
-        api_dev_enabled: Number(task.api_dev_enabled || 0),
-        api_collection_id: Number(task.api_collection_id || 0),
-        api_dir_id: Number(task.api_dir_id || 0),
-        mysql_id: Number(task.mysql_id || 0),
+        dev_configs: devConfigs,
       }
-      this.loadHomeTaskFragmentOptions(task.memory_fragment)
       this.loadHomeTaskGitRepoList()
       this.loadHomeTaskApiCollections()
       this.loadHomeTaskMysqlList()
-      if (Number(task.api_collection_id || 0) > 0) {
-        this.loadHomeTaskApiFolders(Number(task.api_collection_id))
+      this.loadHomeTaskDockerList()
+      for (const cfg of devConfigs) {
+        if (cfg.collection_id > 0) {
+          this.loadHomeTaskApiFoldersForCollection(cfg.collection_id)
+        }
       }
       this.homeTaskDialogVisible = true
     },
@@ -813,22 +855,44 @@ export default {
     hasHomeTaskMemoryFragment(task) {
       return this.normalizeHomeTaskMemoryFragmentId(task?.memory_fragment?.file_id || task?.memory_fragment_id) !== ''
     },
-    getHomeTaskGitRepoName(task) {
-      const gitId = Number(task?.git_id || 0)
-      if (gitId <= 0) return ''
-      const repo = this.homeTaskGitRepoList.find(r => Number(r.id) === gitId)
-      return repo ? repo.name : ''
-    },
-    getHomeTaskApiDevLabel(task) {
-      const collectionId = Number(task?.api_collection_id || 0)
-      if (collectionId <= 0) return ''
-      const col = this.homeTaskApiCollectionList.find(c => Number(c.id) === collectionId)
-      const colName = col ? col.name : `#${collectionId}`
-      const dirId = Number(task?.api_dir_id || 0)
-      if (dirId <= 0) return colName
-      const dir = this.homeTaskApiFolderList.find(d => Number(d.id) === dirId)
-      const dirName = dir ? dir.name : `#${dirId}`
-      return `${colName} / ${dirName}`
+    getHomeTaskDevConfigLabel(task) {
+      let configs = []
+      if (Array.isArray(task.dev_configs) && task.dev_configs.length > 0) {
+        configs = task.dev_configs
+      }
+      if (configs.length === 0) return ''
+      const parts = []
+      for (const cfg of configs) {
+        const items = []
+        if (Number(cfg.git_id || 0) > 0) {
+          const repo = this.homeTaskGitRepoList.find(r => Number(r.id) === Number(cfg.git_id))
+          if (repo) items.push(repo.name)
+        }
+        if (Number(cfg.collection_id || 0) > 0) {
+          const col = this.homeTaskApiCollectionList.find(c => Number(c.id) === Number(cfg.collection_id))
+          if (col) {
+            let label = col.name
+            if (Number(cfg.dir_id || 0) > 0) {
+              const folders = this.homeTaskApiFolderMap[cfg.collection_id] || []
+              const dir = folders.find(d => Number(d.id) === Number(cfg.dir_id))
+              if (dir) label += '/' + dir.name
+            }
+            items.push(label)
+          }
+        }
+        if (Number(cfg.docker_id || 0) > 0) {
+          const docker = this.homeTaskDockerList.find(d => Number(d.id) === Number(cfg.docker_id))
+          if (docker) items.push(docker.name)
+        }
+        if (Number(cfg.mysql_id || 0) > 0) {
+          const mysql = this.homeTaskMysqlList.find(m => Number(m.id) === Number(cfg.mysql_id))
+          if (mysql) items.push(mysql.name)
+        }
+        if (items.length > 0) {
+          parts.push(items.join(' | '))
+        }
+      }
+      return parts.join('; ')
     },
     saveHomeTask() {
       if (this.homeTaskSaving) {
@@ -839,10 +903,15 @@ export default {
         this.$helperNotify.error('任务名称不能为空')
         return
       }
-      if (this.homeTaskForm.api_dev_enabled === 1 && !this.homeTaskForm.api_collection_id) {
-        this.$helperNotify.error('启用接口开发时必须选择集合')
-        return
-      }
+      const validConfigs = this.homeTaskForm.dev_configs
+        .filter(cfg => Number(cfg.git_id || 0) > 0 || Number(cfg.collection_id || 0) > 0 || Number(cfg.docker_id || 0) > 0 || Number(cfg.mysql_id || 0) > 0)
+        .map(cfg => ({
+          git_id: Number(cfg.git_id || 0),
+          collection_id: Number(cfg.collection_id || 0),
+          dir_id: Number(cfg.dir_id || 0),
+          docker_id: Number(cfg.docker_id || 0),
+          mysql_id: Number(cfg.mysql_id || 0),
+        }))
       this.homeTaskSaving = true
       this.homeTaskOperatingType = HOME_TASK_OPERATE_SAVE
       homeTaskApi.HomeTaskSave({
@@ -850,15 +919,9 @@ export default {
         name: taskName,
         task_status: this.homeTaskForm.task_status,
         start_time: this.convertHomeTaskDateToUnix(this.homeTaskForm.start_date),
-        memory_fragment_id: String(this.homeTaskForm.memory_fragment_id || '').trim(),
         tapd_url: String(this.homeTaskForm.tapd_url || '').trim(),
-        git_id: Number(this.homeTaskForm.git_id || 0),
-        api_dev_enabled: Number(this.homeTaskForm.api_dev_enabled || 0),
-        api_collection_id: Number(this.homeTaskForm.api_collection_id || 0),
-        api_dir_id: Number(this.homeTaskForm.api_dir_id || 0),
+        dev_configs: JSON.stringify(validConfigs),
         api_host: base.GetApiHost() || window.location.origin,
-        api_token: base.GetSafeToken(),
-        mysql_id: Number(this.homeTaskForm.mysql_id || 0),
         api_token: base.GetSafeToken(),
       }, (response) => {
         this.homeTaskSaving = false

@@ -80,6 +80,9 @@ func SetSshAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `host`, `port`, `username`, `password`, `home`})
+	if cast.ToString(updateData[`db_type`]) == `` {
+		updateData[`db_type`] = DbTypeMysql
+	}
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
@@ -444,6 +447,67 @@ func testSshConn(sshConfig map[string]any) *gstask.Result {
 	}
 }
 
+func testDbConn(dbConfig map[string]any) *gstask.Result {
+	dbType := cast.ToString(dbConfig[`db_type`])
+	if dbType == `` {
+		dbType = DbTypeMysql
+	}
+	sshBridge := func() *gsssh.SshBridge {
+		if cast.ToInt(dbConfig[`ssh_id`]) == 0 {
+			return nil
+		}
+		sshConfig, sshConfigErr := common.DbMain.GetSshConfig(dbConfig[`ssh_id`])
+		if sshConfigErr != nil {
+			return nil
+		}
+		return gsssh.NewSshBridge(gsssh.NewSsh(&gsssh.SshConfig{
+			Name:     cast.ToString(sshConfig[`name`]),
+			Host:     cast.ToString(sshConfig[`host`]),
+			Port:     cast.ToString(sshConfig[`port`]),
+			UserName: cast.ToString(sshConfig[`username`]),
+			Password: cast.ToString(sshConfig[`password`]),
+		}))
+	}()
+	var connErr error
+	if dbType == DbTypePgsql {
+		gsPgsql := &gsdb.GsPgsql{
+			PgsqlConfig: &gsdb.PgsqlConfig{
+				Name:     cast.ToString(dbConfig[`name`]),
+				Host:     cast.ToString(dbConfig[`host`]),
+				Port:     cast.ToInt64(dbConfig[`port`]),
+				Password: cast.ToString(dbConfig[`password`]),
+				Username: cast.ToString(dbConfig[`username`]),
+				Dbname:   cast.ToString(dbConfig[`dbname`]),
+			},
+		}
+		gsPgsql.SshBridge = sshBridge
+		connErr = gsPgsql.CreateConn()
+	} else {
+		gsMysql := &gsdb.GsMysql{
+			MysqlConfig: &gsdb.MysqlConfig{
+				Name:     cast.ToString(dbConfig[`name`]),
+				Host:     cast.ToString(dbConfig[`host`]),
+				Port:     cast.ToInt64(dbConfig[`port`]),
+				Password: cast.ToString(dbConfig[`password`]),
+				Username: cast.ToString(dbConfig[`username`]),
+				Dbname:   cast.ToString(dbConfig[`dbname`]),
+			},
+		}
+		gsMysql.SshBridge = sshBridge
+		connErr = gsMysql.CreateConn()
+	}
+	if connErr != nil {
+		return &gstask.Result{
+			Err:    connErr,
+			Result: dbConfig[`id`],
+		}
+	}
+	return &gstask.Result{
+		Err:    nil,
+		Result: dbConfig[`id`],
+	}
+}
+
 func SetRedisAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
@@ -477,6 +541,10 @@ func SetRedisDelete(c *gin.Context) {
 }
 
 func SetMysqlList(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	isCheckConnection := cast.ToInt(dataMap[`is_check_connection`])
+
 	allMysql, allErr := common.DbMain.Client.QuickQuery(`tbl_mysql`, `*`, nil).All()
 	if allErr != nil {
 		gsgin.GinResponseError(c, allErr.Error(), nil)
@@ -487,34 +555,69 @@ func SetMysqlList(c *gin.Context) {
 		gsgin.GinResponseError(c, allSshErr.Error(), nil)
 		return
 	}
-	for gitKey, gitValue := range allMysql {
-		allMysql[gitKey][`ssh_name`] = ``
-		gitSshId := cast.ToInt(gitValue[`ssh_id`])
+	for mysqlKey, mysqlValue := range allMysql {
+		allMysql[mysqlKey][`ssh_name`] = ``
+		gitSshId := cast.ToInt(mysqlValue[`ssh_id`])
 		if gitSshId != 0 {
 			for _, sshValue := range allSsh {
 				if cast.ToInt(sshValue[`id`]) == gitSshId {
-					allMysql[gitKey][`ssh_name`] = sshValue[`name`]
+					allMysql[mysqlKey][`ssh_name`] = sshValue[`name`]
 				}
 			}
 		}
 	}
+
+	if isCheckConnection == 1 {
+		task := gstask.NewTask()
+		for _, mysqlValue := range allMysql {
+			callBack := gstask.CallbackFunc{
+				Func: func() *gstask.Result {
+					return testDbConn(mysqlValue)
+				},
+				Timeout: 5 * time.Second,
+				Id:      cast.ToString(mysqlValue[`id`]),
+			}
+			task.Add(callBack)
+		}
+		resultList := task.RunAll()
+		for _, result := range resultList {
+			for mysqlKey, mysqlValue := range allMysql {
+				if cast.ToInt(mysqlValue[`id`]) == cast.ToInt(result.Id) {
+					if result.Err != nil {
+						allMysql[mysqlKey][`status`] = result.Err.Error()
+					} else {
+						allMysql[mysqlKey][`status`] = `success`
+					}
+				}
+			}
+		}
+	}
+
 	gsgin.GinResponseSuccess(c, ``, allMysql)
 }
 
 func SetMysqlAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `host`, `port`, `username`, `dbname`, `password`, `ssh_id`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `host`, `port`, `username`, `dbname`, `password`, `ssh_id`, `db_type`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
-		_, _ = common.DbMain.Client.QuickCreate(`tbl_mysql`, updateData).Exec()
+		_, createErr := common.DbMain.Client.QuickCreate(`tbl_mysql`, updateData).Exec()
+		if createErr != nil {
+			gsgin.GinResponseError(c, createErr.Error(), nil)
+			return
+		}
 	} else {
 		updateData[`update_time`] = time.Now().Unix()
-		_, _ = common.DbMain.Client.QuickUpdate(`tbl_mysql`,
+		_, updateErr := common.DbMain.Client.QuickUpdate(`tbl_mysql`,
 			map[string]any{
 				`id`: dataMap[`id`],
 			}, updateData).Exec()
+		if updateErr != nil {
+			gsgin.GinResponseError(c, updateErr.Error(), nil)
+			return
+		}
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
