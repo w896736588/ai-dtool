@@ -32,14 +32,14 @@
 .el-dialog__header {
   margin: 0;
   padding: 14px 18px;
-  border-bottom: 1px solid #ecece4;
-  background: #f7f7f2;
+  border-bottom: 1px solid #e3e9dd;
+  background: ##f8faf4;
 }
 
 .el-dialog__title {
   font-size: 16px;
   font-weight: 600;
-  color: #4a4a4a;
+  color: #3d6b3d;
 }
 
 .el-dialog__body {
@@ -59,11 +59,11 @@
 }
 
 .el-dialog__headerbtn .el-dialog__close {
-  color: #7b8575;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .el-dialog__headerbtn:hover .el-dialog__close {
-  color: #5a8a5a;
+  color: #fff;
 }
 
 @media (max-width: 768px) {
