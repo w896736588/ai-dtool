@@ -24,11 +24,12 @@
           </el-select>
         </el-form-item>
         <el-form-item label="日报提示词">
-          <el-input
+          <MdEditor
             v-model="form.home_task_daily_report_prompt"
-            type="textarea"
-            :rows="5"
-            placeholder="请输入首页任务工作日报提示词"
+            preview-theme="github"
+            :preview="true"
+            :toolbars="promptEditorToolbars"
+            style="height: 280px;"
           />
         </el-form-item>
         <el-form-item>
@@ -63,7 +64,7 @@
           <MdEditor
             v-model="form.home_task_prompt_dev"
             preview-theme="github"
-            :preview="false"
+            :preview="true"
             :toolbars="promptEditorToolbars"
             style="height: 280px;"
           />
@@ -72,7 +73,7 @@
           <MdEditor
             v-model="form.home_task_prompt_api_gen"
             preview-theme="github"
-            :preview="false"
+            :preview="true"
             :toolbars="promptEditorToolbars"
             style="height: 280px;"
           />
@@ -81,7 +82,7 @@
           <MdEditor
             v-model="form.home_task_prompt_api_test"
             preview-theme="github"
-            :preview="false"
+            :preview="true"
             :toolbars="promptEditorToolbars"
             style="height: 280px;"
           />
