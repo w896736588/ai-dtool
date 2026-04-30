@@ -37,3 +37,16 @@ type TaskWorkflowUIAssistGenerateRequest struct {
 	CssSelector string `json:"css_selector"`
 	WaitSeconds int    `json:"wait_seconds"`
 }
+
+// TaskWorkflowPromptsSaveRequest 保存工作流提示词请求。
+type TaskWorkflowPromptsSaveRequest struct {
+	WorkflowID        int    `json:"workflow_id"`
+	PromptRequirement string `json:"prompt_requirement"`
+	PromptApiDev      string `json:"prompt_api_dev"`
+	PromptApiTest     string `json:"prompt_api_test"`
+}
+
+// TaskWorkflowPromptsRestoreRequest 还原工作流提示词请求。
+type TaskWorkflowPromptsRestoreRequest struct {
+	WorkflowID int `json:"workflow_id"`
+}

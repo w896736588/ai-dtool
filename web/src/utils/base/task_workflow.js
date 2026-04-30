@@ -14,7 +14,21 @@ function TaskWorkflowInfo(workflowId, callBack) {
   }, callBack)
 }
 
+// TaskWorkflowPromptsSave 保存工作流提示词。
+function TaskWorkflowPromptsSave(data, callBack) {
+  base.BasePost('/api/task/workflow/prompts/save', data, callBack)
+}
+
+// TaskWorkflowPromptsRestore 还原工作流提示词为默认值。
+function TaskWorkflowPromptsRestore(workflowId, callBack) {
+  base.BasePost('/api/task/workflow/prompts/restore', {
+    workflow_id: workflowId,
+  }, callBack)
+}
+
 export default {
   TaskWorkflowCreateOrGet,
   TaskWorkflowInfo,
+  TaskWorkflowPromptsSave,
+  TaskWorkflowPromptsRestore,
 }

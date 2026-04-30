@@ -190,3 +190,22 @@ func (h *CSqlite) TaskWorkflowRunList(workflowID int) ([]map[string]any, error) 
 	}
 	return h.Client.QueryBySql(`select * from tbl_task_test_run where workflow_id = ? order by id desc`, workflowID).All()
 }
+
+// TaskWorkflowUpdatePrompts 更新工作流的提示词。
+func (h *CSqlite) TaskWorkflowUpdatePrompts(workflowID int, promptRequirement, promptApiDev, promptApiTest string) error {
+	if workflowID <= 0 {
+		return errors.New(`工作流id不能为空`)
+	}
+	if _, err := h.TaskWorkflowInfo(workflowID); err != nil {
+		return err
+	}
+	_, err := h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
+		`id`: workflowID,
+	}, map[string]any{
+		`prompt_requirement`: promptRequirement,
+		`prompt_api_dev`:     promptApiDev,
+		`prompt_api_test`:    promptApiTest,
+		`update_time`:        time.Now().Unix(),
+	}).Exec()
+	return err
+}

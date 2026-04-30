@@ -4,11 +4,14 @@ import (
 	"dev_tool/internal/app/dtool/api"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
+	"dev_tool/internal/app/dtool/define"
 	_struct "dev_tool/internal/app/dtool/struct"
 	"encoding/json"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
@@ -43,7 +46,7 @@ func TaskWorkflowCreateOrGet(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	responseData, err := buildTaskWorkflowResponse(info)
+	responseData, err := buildTaskWorkflowResponse(c, info)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -64,7 +67,7 @@ func TaskWorkflowInfo(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	responseData, err := buildTaskWorkflowResponse(info)
+	responseData, err := buildTaskWorkflowResponse(c, info)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -577,10 +580,20 @@ func taskWorkflowMemoryDBOrResponse(c *gin.Context) (common.MemoryFragmentStore,
 	return component.MemoryRuntime.DB(), true
 }
 
-func buildTaskWorkflowResponse(workflowInfo map[string]any) (map[string]any, error) {
+func buildTaskWorkflowResponse(c *gin.Context, workflowInfo map[string]any) (map[string]any, error) {
 	homeTaskInfo, err := common.DbMain.HomeTaskRow(cast.ToInt(workflowInfo[`home_task_id`]))
 	if err != nil {
 		return nil, err
+	}
+	// 新创建的工作流提示词为空时，从配置模板初始化。
+	workflowID := cast.ToInt(workflowInfo[`id`])
+	if workflowID > 0 && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_requirement`])) == `` && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_api_dev`])) == `` && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_api_test`])) == `` {
+		prompts := resolveTaskWorkflowPrompts(c, homeTaskInfo, workflowInfo)
+		_ = common.DbMain.TaskWorkflowUpdatePrompts(workflowID, prompts[`requirement`], prompts[`api_dev`], prompts[`api_test`])
+		updatedInfo, updateErr := common.DbMain.TaskWorkflowInfo(workflowID)
+		if updateErr == nil {
+			workflowInfo = updatedInfo
+		}
 	}
 	return map[string]any{
 		`workflow`:  workflowInfo,
@@ -1214,4 +1227,203 @@ func taskWorkflowBuildUIAssistSummaryMarkdown(uiAssistReport map[string]any) str
 		"- label：" + cast.ToString(uiAssistReport[`label`]) + "\n" +
 		"- jump_url：" + cast.ToString(uiAssistReport[`jump_url`]) + "\n" +
 		"- 下载地址：" + cast.ToString(uiAssistReport[`download_url`]) + "\n"
+}
+
+// TaskWorkflowPromptsSave 保存工作流提示词。
+func TaskWorkflowPromptsSave(c *gin.Context) {
+	if common.DbMain == nil || common.DbMain.Client == nil {
+		gsgin.GinResponseError(c, `主库未初始化`, nil)
+		return
+	}
+	request := _struct.TaskWorkflowPromptsSaveRequest{}
+	_ = gsgin.GinPostBody(c, &request)
+	if request.WorkflowID <= 0 {
+		gsgin.GinResponseError(c, `workflow_id不能为空`, nil)
+		return
+	}
+	err := common.DbMain.TaskWorkflowUpdatePrompts(
+		request.WorkflowID,
+		request.PromptRequirement,
+		request.PromptApiDev,
+		request.PromptApiTest,
+	)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	updatedInfo, err := common.DbMain.TaskWorkflowInfo(request.WorkflowID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`workflow`: updatedInfo,
+	})
+}
+
+// TaskWorkflowPromptsRestore 还原工作流提示词为默认值。
+func TaskWorkflowPromptsRestore(c *gin.Context) {
+	if common.DbMain == nil || common.DbMain.Client == nil {
+		gsgin.GinResponseError(c, `主库未初始化`, nil)
+		return
+	}
+	request := _struct.TaskWorkflowPromptsRestoreRequest{}
+	_ = gsgin.GinPostBody(c, &request)
+	if request.WorkflowID <= 0 {
+		gsgin.GinResponseError(c, `workflow_id不能为空`, nil)
+		return
+	}
+	workflowInfo, err := common.DbMain.TaskWorkflowInfo(request.WorkflowID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskInfo, homeTaskErr := common.DbMain.HomeTaskRow(cast.ToInt(workflowInfo[`home_task_id`]))
+	if homeTaskErr != nil {
+		gsgin.GinResponseError(c, homeTaskErr.Error(), nil)
+		return
+	}
+	prompts := resolveTaskWorkflowPrompts(c, homeTaskInfo, workflowInfo)
+	if updateErr := common.DbMain.TaskWorkflowUpdatePrompts(
+		request.WorkflowID,
+		prompts[`requirement`],
+		prompts[`api_dev`],
+		prompts[`api_test`],
+	); updateErr != nil {
+		gsgin.GinResponseError(c, updateErr.Error(), nil)
+		return
+	}
+	updatedInfo, err := common.DbMain.TaskWorkflowInfo(request.WorkflowID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`workflow`: updatedInfo,
+	})
+}
+
+// resolveTaskWorkflowPrompts 从配置模板解析占位符生成工作流提示词。
+func resolveTaskWorkflowPrompts(c *gin.Context, homeTaskInfo map[string]any, workflowInfo map[string]any) map[string]string {
+	placeholders := buildTaskWorkflowPlaceholderMap(c, homeTaskInfo, workflowInfo)
+	promptDev, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigPromptDev)
+	promptApiGen, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigPromptApiGen)
+	promptApiTest, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigPromptApiTest)
+	return map[string]string{
+		`requirement`: taskWorkflowResolvePlaceholders(promptDev, placeholders),
+		`api_dev`:     taskWorkflowResolvePlaceholders(promptApiGen, placeholders),
+		`api_test`:    taskWorkflowResolvePlaceholders(promptApiTest, placeholders),
+	}
+}
+
+// buildTaskWorkflowPlaceholderMap 根据任务信息构建占位符替换映射。
+func buildTaskWorkflowPlaceholderMap(c *gin.Context, homeTaskInfo map[string]any, workflowInfo map[string]any) map[string]string {
+	apiHost := taskWorkflowBuildAPIHost(c)
+	result := map[string]string{
+		`{需求文档地址}`:        taskWorkflowBuildShareURL(c, workflowInfo, apiHost),
+		`{接口开发API地址}`:     apiHost,
+		`{接口开发API的token}`: taskWorkflowBuildAPIToken(c),
+		`{Git配置的id}`:      cast.ToString(homeTaskInfo[`git_id`]),
+		`{MySQL配置的id}`:    cast.ToString(homeTaskInfo[`mysql_id`]),
+		`{接口开发文件夹}`:       taskWorkflowQueryApiDirName(homeTaskInfo),
+		`{接口开发集合}`:        taskWorkflowQueryApiCollectionName(homeTaskInfo),
+	}
+	return result
+}
+
+// taskWorkflowBuildAPIHost 从请求上下文构建 API 基地址。
+func taskWorkflowBuildAPIHost(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ``
+	}
+	scheme := `http`
+	if c.Request.TLS != nil {
+		scheme = `https`
+	}
+	if forwarded := strings.TrimSpace(c.GetHeader(`X-Forwarded-Proto`)); forwarded != `` {
+		scheme = forwarded
+	}
+	host := strings.TrimSpace(c.Request.Host)
+	if host == `` {
+		return ``
+	}
+	return scheme + `://` + host
+}
+
+// taskWorkflowBuildAPIToken 从请求上下文获取认证 token。
+func taskWorkflowBuildAPIToken(c *gin.Context) string {
+	if c == nil {
+		return ``
+	}
+	token := strings.TrimSpace(c.GetHeader(`Authorization`))
+	if token != `` {
+		return token
+	}
+	token = strings.TrimSpace(c.GetHeader(`token`))
+	return token
+}
+
+// taskWorkflowBuildShareURL 为需求文档知识片段生成分享链接。
+func taskWorkflowBuildShareURL(c *gin.Context, workflowInfo map[string]any, apiHost string) string {
+	fragmentID := strings.TrimSpace(cast.ToString(workflowInfo[`requirement_fragment_id`]))
+	if fragmentID == `` || component.MemoryRuntime == nil {
+		return ``
+	}
+	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
+		return ``
+	}
+	// 确认片段存在。
+	if _, err := component.MemoryRuntime.DB().MemoryFragmentInfo(fragmentID); err != nil {
+		return ``
+	}
+	shareStore := memoryFragmentShareStoreForRoot(component.MemoryRuntime.Config().Dir)
+	share, err := shareStore.Create(fragmentID, time.Now())
+	if err != nil {
+		return ``
+	}
+	if apiHost == `` {
+		return ``
+	}
+	shareURL, _ := url.Parse(apiHost)
+	shareURL.Path = `/share/` + url.PathEscape(share.Token)
+	return shareURL.String()
+}
+
+// taskWorkflowResolvePlaceholders 批量替换模板中的占位符。
+func taskWorkflowResolvePlaceholders(template string, placeholders map[string]string) string {
+	result := template
+	for key, value := range placeholders {
+		result = strings.ReplaceAll(result, key, value)
+	}
+	return result
+}
+
+// taskWorkflowQueryApiDirName 查询接口文件夹名称。
+func taskWorkflowQueryApiDirName(homeTaskInfo map[string]any) string {
+	dirID := cast.ToInt(homeTaskInfo[`api_dir_id`])
+	if dirID <= 0 {
+		return ``
+	}
+	info, err := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `name`, map[string]any{
+		`id`: dirID,
+	}).One()
+	if err != nil || len(info) == 0 {
+		return ``
+	}
+	return cast.ToString(info[`name`])
+}
+
+// taskWorkflowQueryApiCollectionName 查询接口集合名称。
+func taskWorkflowQueryApiCollectionName(homeTaskInfo map[string]any) string {
+	collectionID := cast.ToInt(homeTaskInfo[`api_collection_id`])
+	if collectionID <= 0 {
+		return ``
+	}
+	info, err := common.DbMain.Client.QuickQuery(`tbl_api_collection`, `name`, map[string]any{
+		`id`: collectionID,
+	}).One()
+	if err != nil || len(info) == 0 {
+		return ``
+	}
+	return cast.ToString(info[`name`])
 }

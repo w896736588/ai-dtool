@@ -39,32 +39,27 @@
       <el-tabs v-model="activeTab" class="task-workflow-tabs">
         <el-tab-pane label="需求文档 MD" name="requirement">
           <div class="task-workflow-tab">
-            <div class="task-workflow-toolbar">
-              <GitActionButton compact variant="info" :loading="requirementShareLoading" @click="refreshRequirementShareUrl">
-                刷新分享链接
-              </GitActionButton>
-              <GitActionButton compact @click="copyRequirementPrompt">
-                复制 AI 提示词
-              </GitActionButton>
-            </div>
-
             <div class="task-workflow-card">
-              <div class="task-workflow-card__label">知识片段分享地址</div>
-              <div class="task-workflow-inline">
-                <el-input :model-value="requirementShareUrl" readonly />
-                <GitActionButton compact @click="copyText(requirementShareUrl, '分享地址已复制')">
-                  复制
-                </GitActionButton>
+              <div class="task-workflow-card__header">
+                <div class="task-workflow-card__title">AI 提示词</div>
+                <div class="task-workflow-card__switch">
+                  <GitActionButton compact :loading="promptSaving === 'requirement'" @click="savePrompts('requirement')">
+                    保存提示词
+                  </GitActionButton>
+                  <GitActionButton compact @click="copyText(workflow.prompt_requirement || '', '提示词已复制')">
+                    复制提示词
+                  </GitActionButton>
+                  <GitActionButton compact variant="warning" :loading="promptRestoring === 'requirement'" @click="restorePrompts('requirement')">
+                    还原为默认提示词
+                  </GitActionButton>
+                </div>
               </div>
-            </div>
-
-            <div class="task-workflow-card">
-              <div class="task-workflow-card__label">给 AI 的提示词</div>
-              <el-input
-                :model-value="requirementPromptText"
-                type="textarea"
-                :rows="3"
-                readonly
+              <MdEditor
+                v-model="workflow.prompt_requirement"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                style="height: 560px;"
               />
             </div>
 
@@ -110,12 +105,24 @@
             <div class="task-workflow-card">
               <div class="task-workflow-card__header">
                 <div class="task-workflow-card__title">AI 提示词</div>
+                <div class="task-workflow-card__switch">
+                  <GitActionButton compact :loading="promptSaving === 'api_dev'" @click="savePrompts('api_dev')">
+                    保存提示词
+                  </GitActionButton>
+                  <GitActionButton compact @click="copyText(workflow.prompt_api_dev || '', '提示词已复制')">
+                    复制提示词
+                  </GitActionButton>
+                  <GitActionButton compact variant="warning" :loading="promptRestoring === 'api_dev'" @click="restorePrompts('api_dev')">
+                    还原为默认提示词
+                  </GitActionButton>
+                </div>
               </div>
-              <el-input
-                v-model="apiDevPrompt"
-                type="textarea"
-                :rows="10"
-                placeholder="请输入接口开发生成的 AI 提示词"
+              <MdEditor
+                v-model="workflow.prompt_api_dev"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                style="height: 560px;"
               />
             </div>
           </div>
@@ -126,12 +133,24 @@
             <div class="task-workflow-card">
               <div class="task-workflow-card__header">
                 <div class="task-workflow-card__title">AI 提示词</div>
+                <div class="task-workflow-card__switch">
+                  <GitActionButton compact :loading="promptSaving === 'api_test'" @click="savePrompts('api_test')">
+                    保存提示词
+                  </GitActionButton>
+                  <GitActionButton compact @click="copyText(workflow.prompt_api_test || '', '提示词已复制')">
+                    复制提示词
+                  </GitActionButton>
+                  <GitActionButton compact variant="warning" :loading="promptRestoring === 'api_test'" @click="restorePrompts('api_test')">
+                    还原为默认提示词
+                  </GitActionButton>
+                </div>
               </div>
-              <el-input
-                v-model="apiTestFixPrompt"
-                type="textarea"
-                :rows="10"
-                placeholder="请输入接口自动化测试修复的 AI 提示词"
+              <MdEditor
+                v-model="workflow.prompt_api_test"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                style="height: 560px;"
               />
             </div>
           </div>
@@ -147,12 +166,21 @@ import MarkdownRenderer from '@/components/base/markdown.vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
 import taskWorkflowApi from '@/utils/base/task_workflow'
 import baseUtils from '@/utils/base'
+import { MdEditor } from 'md-editor-v3'
+import 'md-editor-v3/lib/style.css'
+
+const PROMPT_EDITOR_TOOLBARS = [
+  'bold', 'italic', 'strikeThrough', 'title', 'quote',
+  'unorderedList', 'orderedList', 'task', 'link', 'code',
+  'codeRow', 'table', 'preview', 'fullscreen',
+]
 
 export default {
   name: 'TaskWorkflow',
   components: {
     GitActionButton,
     MarkdownRenderer,
+    MdEditor,
   },
   data() {
     return {
@@ -166,17 +194,14 @@ export default {
       requirementFragment: {},
       requirementShareUrl: '',
       requirementViewMode: 'preview',
-      apiDevPrompt: '',
-      apiTestFixPrompt: '',
+      promptSaving: '',
+      promptRestoring: '',
+      promptEditorToolbars: PROMPT_EDITOR_TOOLBARS,
     }
   },
   computed: {
     taskId() {
       return Number(this.$route.params.taskId || 0)
-    },
-    requirementPromptText() {
-      const shareUrl = this.requirementShareUrl || 'xxxxx'
-      return `读取 ${shareUrl}（TAPD 抓取后生成的知识片段分享地址），分析并设计方案`
     },
   },
   mounted() {
@@ -251,10 +276,61 @@ export default {
         }
         const apiHost = String(baseUtils.GetApiHost() || window.location.origin).trim()
         this.requirementShareUrl = new URL(`/share/${encodeURIComponent(token)}`, apiHost).toString()
+        // 获取到分享链接后自动替换需求提示词中的占位符。
+        this.replaceRequirementShareUrlPlaceholder()
       })
     },
-    copyRequirementPrompt() {
-      this.copyText(this.requirementPromptText, '需求文档提示词已复制')
+    replaceRequirementShareUrlPlaceholder() {
+      if (!this.requirementShareUrl || !this.workflow.prompt_requirement) {
+        return
+      }
+      const placeholder = '{需求文档地址}'
+      if (this.workflow.prompt_requirement.includes(placeholder)) {
+        this.workflow.prompt_requirement = this.workflow.prompt_requirement.replaceAll(placeholder, this.requirementShareUrl)
+      }
+    },
+    savePrompts(promptType) {
+      if (this.promptSaving || this.workflowId <= 0) {
+        return
+      }
+      this.promptSaving = promptType
+      taskWorkflowApi.TaskWorkflowPromptsSave({
+        workflow_id: this.workflowId,
+        prompt_requirement: this.workflow.prompt_requirement || '',
+        prompt_api_dev: this.workflow.prompt_api_dev || '',
+        prompt_api_test: this.workflow.prompt_api_test || '',
+      }, (response) => {
+        this.promptSaving = ''
+        if (!(response && response.ErrCode === 0)) {
+          this.$helperNotify.error(response?.ErrMsg || '提示词保存失败')
+          return
+        }
+        this.$helperNotify.success('提示词已保存')
+        if (response.Data?.workflow) {
+          this.workflow = { ...this.workflow, ...response.Data.workflow }
+        }
+      })
+    },
+    restorePrompts(promptType) {
+      if (this.promptRestoring || this.workflowId <= 0) {
+        return
+      }
+      this.promptRestoring = promptType
+      taskWorkflowApi.TaskWorkflowPromptsRestore(this.workflowId, (response) => {
+        this.promptRestoring = ''
+        if (!(response && response.ErrCode === 0)) {
+          this.$helperNotify.error(response?.ErrMsg || '还原提示词失败')
+          return
+        }
+        this.$helperNotify.success('提示词已还原为默认值')
+        if (response.Data?.workflow) {
+          this.workflow = response.Data.workflow
+          // 还原后如果有分享链接，自动替换需求文档地址占位符。
+          this.$nextTick(() => {
+            this.replaceRequirementShareUrlPlaceholder()
+          })
+        }
+      })
     },
     copyText(text, successMessage) {
       const value = String(text || '').trim()
