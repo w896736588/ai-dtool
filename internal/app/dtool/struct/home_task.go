@@ -14,6 +14,7 @@ type HomeTaskSaveRequest struct {
 	ApiDirID         int    `json:"api_dir_id"`
 	ApiHost          string `json:"api_host"`
 	ApiToken         string `json:"api_token"`
+	MysqlID          int    `json:"mysql_id"`
 }
 
 // HomeTaskListRequest 查询首页任务列表请求。

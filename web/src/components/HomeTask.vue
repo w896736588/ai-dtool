@@ -293,6 +293,25 @@
               </el-select>
             </el-form-item>
           </el-col>
+          <el-col :span="24">
+            <el-form-item label="MySQL配置">
+              <el-select
+                v-model="homeTaskForm.mysql_id"
+                clearable
+                filterable
+                style="width: 100%"
+                placeholder="选择关联的MySQL配置（可选）"
+                :loading="homeTaskMysqlLoading"
+              >
+                <el-option
+                  v-for="item in homeTaskMysqlList"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="item.id"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
           <el-col :xs="24" :sm="12" :md="12">
             <el-form-item label="任务状态">
               <el-select v-model="homeTaskForm.task_status" style="width: 100%">
@@ -421,6 +440,7 @@ import base from '../utils/base'
 import homeTaskApi from '@/utils/base/home_task'
 import memoryFragmentApi from '@/utils/base/memory_fragment'
 import gitApi from '@/utils/base/git'
+import mysqlSetApi from '@/utils/base/mysql_set'
 import apiManagement from '@/utils/base/api'
 const { mergeHomeTaskFragmentOptions } = require('@/utils/home_task_fragment_options.cjs')
 import GitActionButton from "@/components/base/GitActionButton.vue";
@@ -489,6 +509,7 @@ function createHomeTaskDefaultForm() {
     api_dev_enabled: 0,
     api_collection_id: 0,
     api_dir_id: 0,
+    mysql_id: 0,
   }
 }
 
@@ -532,6 +553,8 @@ export default {
       homeTaskApiFolderList: [],
       homeTaskApiCollectionLoading: false,
       homeTaskApiFolderLoading: false,
+      homeTaskMysqlList: [],
+      homeTaskMysqlLoading: false,
     }
   },
   computed: {
@@ -636,6 +659,16 @@ export default {
         }))
       })
     },
+    loadHomeTaskMysqlList() {
+      this.homeTaskMysqlLoading = true
+      mysqlSetApi.MysqlList((response) => {
+        this.homeTaskMysqlLoading = false
+        if (!(response && response.ErrCode === 0)) {
+          return
+        }
+        this.homeTaskMysqlList = Array.isArray(response.Data) ? response.Data : []
+      })
+    },
     loadHomeTaskApiCollections() {
       this.homeTaskApiCollectionLoading = true
       apiManagement.CollectionListBasic({}, (response) => {
@@ -673,6 +706,7 @@ export default {
       this.loadHomeTaskFragmentOptions()
       this.loadHomeTaskGitRepoList()
       this.loadHomeTaskApiCollections()
+      this.loadHomeTaskMysqlList()
       this.homeTaskDialogVisible = true
     },
     openHomeTaskReportSettingsDialog() {
@@ -723,10 +757,12 @@ export default {
         api_dev_enabled: Number(task.api_dev_enabled || 0),
         api_collection_id: Number(task.api_collection_id || 0),
         api_dir_id: Number(task.api_dir_id || 0),
+        mysql_id: Number(task.mysql_id || 0),
       }
       this.loadHomeTaskFragmentOptions(task.memory_fragment)
       this.loadHomeTaskGitRepoList()
       this.loadHomeTaskApiCollections()
+      this.loadHomeTaskMysqlList()
       if (Number(task.api_collection_id || 0) > 0) {
         this.loadHomeTaskApiFolders(Number(task.api_collection_id))
       }
@@ -821,6 +857,8 @@ export default {
         api_collection_id: Number(this.homeTaskForm.api_collection_id || 0),
         api_dir_id: Number(this.homeTaskForm.api_dir_id || 0),
         api_host: base.GetApiHost() || window.location.origin,
+        api_token: base.GetSafeToken(),
+        mysql_id: Number(this.homeTaskForm.mysql_id || 0),
         api_token: base.GetSafeToken(),
       }, (response) => {
         this.homeTaskSaving = false

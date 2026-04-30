@@ -174,6 +174,8 @@ const PROMPT_PLACEHOLDERS = [
   { label: '查询数据库接口python', value: '{查询数据库接口python}' },
   { label: '接口开发文件夹', value: '{接口开发文件夹}' },
   { label: '接口开发集合', value: '{接口开发集合}' },
+  { label: 'Git配置的id', value: '{Git配置的id}' },
+  { label: 'MySQL配置的id', value: '{MySQL配置的id}' },
 ]
 
 const PROMPT_EDITOR_TOOLBARS = [

@@ -57,7 +57,7 @@ func HomeTaskSave(c *gin.Context) {
 		}
 		apiDirID = autoDirID
 	}
-	info, err := common.DbMain.HomeTaskSave(request.ID, request.Name, request.TaskStatus, request.StartTime, memoryFragmentID, request.TapdUrl, request.GitID, apiDevEnabled, apiCollectionID, apiDirID)
+	info, err := common.DbMain.HomeTaskSave(request.ID, request.Name, request.TaskStatus, request.StartTime, memoryFragmentID, request.TapdUrl, request.GitID, apiDevEnabled, apiCollectionID, apiDirID, request.MysqlID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return

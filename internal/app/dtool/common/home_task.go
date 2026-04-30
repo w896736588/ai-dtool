@@ -73,7 +73,7 @@ func (h *CSqlite) HomeTaskRow(id int) (map[string]any, error) {
 }
 
 // HomeTaskSave 保存首页任务。
-func (h *CSqlite) HomeTaskSave(id int, name, taskStatus string, startTime int64, memoryFragmentID string, tapdUrl string, gitID int, apiDevEnabled int, apiCollectionID int, apiDirID int) (map[string]any, error) {
+func (h *CSqlite) HomeTaskSave(id int, name, taskStatus string, startTime int64, memoryFragmentID string, tapdUrl string, gitID int, apiDevEnabled int, apiCollectionID int, apiDirID int, mysqlID int) (map[string]any, error) {
 	now := time.Now().Unix()
 	name = strings.TrimSpace(name)
 	taskStatus = strings.TrimSpace(taskStatus)
@@ -100,6 +100,7 @@ func (h *CSqlite) HomeTaskSave(id int, name, taskStatus string, startTime int64,
 		`api_dev_enabled`:    apiDevEnabled,
 		`api_collection_id`:  apiCollectionID,
 		`api_dir_id`:         apiDirID,
+		`mysql_id`:           mysqlID,
 	}
 	if id <= 0 {
 		updateData[`is_archived`] = define.HomeTaskArchivedNo
