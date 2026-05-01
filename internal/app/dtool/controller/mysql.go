@@ -149,8 +149,25 @@ func MysqlTableStructure(c *gin.Context) {
 		return
 	}
 
+	// 查询索引信息
+	var indexSql string
+	if dbType == DbTypePgsql {
+		indexSql = fmt.Sprintf(
+			`SELECT indexname AS IndexName, indexdef AS IndexDef FROM pg_indexes WHERE tablename = '%s' ORDER BY indexname`,
+			tableName,
+		)
+	} else {
+		indexSql = fmt.Sprintf(`SHOW INDEX FROM %s`, tableName)
+	}
+	indexList, indexErr := dbClient.QueryBySql(indexSql).All()
+	if indexErr != nil {
+		gsgin.GinResponseError(c, `查询索引失败: `+indexErr.Error(), nil)
+		return
+	}
+
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`list`: list,
+		`list`:       list,
+		`index_list`: indexList,
 	})
 }
 

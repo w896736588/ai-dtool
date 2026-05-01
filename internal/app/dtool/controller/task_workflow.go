@@ -7,6 +7,7 @@ import (
 	"dev_tool/internal/app/dtool/define"
 	_struct "dev_tool/internal/app/dtool/struct"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"path/filepath"
 	"regexp"
@@ -1328,12 +1329,9 @@ func buildTaskWorkflowPlaceholderMap(c *gin.Context, homeTaskInfo map[string]any
 		`{需求文档地址}`:         taskWorkflowBuildShareURL(c, workflowInfo, apiHost),
 		`{接口开发API地址}`:      apiHost,
 		`{接口开发API的token}`:  taskWorkflowBuildAPIToken(c),
-		`{Git配置的id}`:       taskWorkflowBuildGitIDsPlaceholder(homeTaskInfo),
-		`{MySQL配置的id}`:     cast.ToString(homeTaskInfo[`mysql_id`]),
-		`{接口开发文件夹}`:        taskWorkflowQueryApiDirNames(homeTaskInfo),
-		`{接口开发集合}`:         taskWorkflowQueryApiCollectionNames(homeTaskInfo),
-		`{dtool-api地址}`:    taskWorkflowQuerySkillPaths(homeTaskInfo, `skills/dtool-api`),
-		`{dtool-common地址}`: taskWorkflowQuerySkillPaths(homeTaskInfo, `skills/dtool-common`),
+		`{开发配置}`:           taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo),
+		`{dtool-api地址}`:    filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-api`),
+		`{dtool-common地址}`: filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-common`),
 	}
 	return result
 }
@@ -1405,44 +1403,6 @@ func taskWorkflowResolvePlaceholders(template string, placeholders map[string]st
 	return result
 }
 
-// taskWorkflowQueryApiDirNames 查询接口文件夹名称（支持多个），逗号分隔。
-func taskWorkflowQueryApiDirNames(homeTaskInfo map[string]any) string {
-	entries := homeTaskApiDevEntries(homeTaskInfo)
-	var names []string
-	for _, entry := range entries {
-		if entry.DirID <= 0 {
-			continue
-		}
-		info, err := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `name`, map[string]any{
-			`id`: entry.DirID,
-		}).One()
-		if err != nil || len(info) == 0 {
-			continue
-		}
-		names = append(names, cast.ToString(info[`name`]))
-	}
-	return strings.Join(names, `,`)
-}
-
-// taskWorkflowQueryApiCollectionNames 查询接口集合名称（支持多个），逗号分隔。
-func taskWorkflowQueryApiCollectionNames(homeTaskInfo map[string]any) string {
-	entries := homeTaskApiDevEntries(homeTaskInfo)
-	var names []string
-	for _, entry := range entries {
-		if entry.CollectionID <= 0 {
-			continue
-		}
-		info, err := common.DbMain.Client.QuickQuery(`tbl_api_collection`, `name`, map[string]any{
-			`id`: entry.CollectionID,
-		}).One()
-		if err != nil || len(info) == 0 {
-			continue
-		}
-		names = append(names, cast.ToString(info[`name`]))
-	}
-	return strings.Join(names, `,`)
-}
-
 // taskWorkflowQuerySkillPaths 根据 git_ids 查询多个项目根目录，拼接 skill 子目录路径，逗号分隔。
 func taskWorkflowQuerySkillPaths(homeTaskInfo map[string]any, subDir string) string {
 	gitIDs := homeTaskGitIDs(homeTaskInfo)
@@ -1461,19 +1421,6 @@ func taskWorkflowQuerySkillPaths(homeTaskInfo map[string]any, subDir string) str
 		paths = append(paths, filepath.Join(codePath, subDir))
 	}
 	return strings.Join(paths, `,`)
-}
-
-// taskWorkflowBuildGitIDsPlaceholder 构建多个 Git 配置 ID 的占位符值，逗号分隔。
-func taskWorkflowBuildGitIDsPlaceholder(homeTaskInfo map[string]any) string {
-	gitIDs := homeTaskGitIDs(homeTaskInfo)
-	if len(gitIDs) == 0 {
-		return ``
-	}
-	strIDs := make([]string, 0, len(gitIDs))
-	for _, id := range gitIDs {
-		strIDs = append(strIDs, cast.ToString(id))
-	}
-	return strings.Join(strIDs, `,`)
 }
 
 // homeTaskGitIDs 从 homeTaskInfo 解析 git_ids JSON，优先从 dev_configs 派生，回退到旧字段。
@@ -1544,4 +1491,75 @@ func homeTaskDevConfigs(homeTaskInfo map[string]any) []_struct.DevConfig {
 		}
 	}
 	return nil
+}
+
+// taskWorkflowBuildDevConfigsMarkdown 将 dev_configs 转为 markdown 列表。
+func taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo map[string]any) string {
+	devConfigs := homeTaskDevConfigs(homeTaskInfo)
+	if len(devConfigs) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i, cfg := range devConfigs {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(fmt.Sprintf("#### 配置 %d\n", i+1))
+		gitName := taskWorkflowQueryNameByID("tbl_git", cfg.GitID)
+		gitCodePath := taskWorkflowQueryCodePath(cfg.GitID)
+		if cfg.GitID > 0 {
+			sb.WriteString(fmt.Sprintf("- **Git配置**: %s（ID: %d）\n", gitName, cfg.GitID))
+		}
+		if gitCodePath != "" {
+			sb.WriteString(fmt.Sprintf("- **Git仓库路径**: %s\n", gitCodePath))
+		}
+		if cfg.LocalDir != "" {
+			sb.WriteString(fmt.Sprintf("- **本地目录**: %s\n", cfg.LocalDir))
+		}
+		collectionName := taskWorkflowQueryNameByID("tbl_api_collection", cfg.CollectionID)
+		if cfg.CollectionID > 0 {
+			dirName := taskWorkflowQueryNameByID("tbl_api_dir", cfg.DirID)
+			sb.WriteString(fmt.Sprintf("- **接口集合**: %s（ID: %d）\n", collectionName, cfg.CollectionID))
+			if cfg.DirID > 0 {
+				sb.WriteString(fmt.Sprintf("- **接口文件夹**: %s（ID: %d）\n", dirName, cfg.DirID))
+			}
+		}
+		dockerName := taskWorkflowQueryNameByID("tbl_docker_compose", cfg.DockerID)
+		if cfg.DockerID > 0 {
+			sb.WriteString(fmt.Sprintf("- **Docker**: %s（ID: %d）\n", dockerName, cfg.DockerID))
+		}
+		mysqlName := taskWorkflowQueryNameByID("tbl_mysql", cfg.MysqlID)
+		if cfg.MysqlID > 0 {
+			sb.WriteString(fmt.Sprintf("- **MySQL**: %s（ID: %d）\n", mysqlName, cfg.MysqlID))
+		}
+	}
+	return sb.String()
+}
+
+// taskWorkflowQueryCodePath 根据 git_id 查询 tbl_git 表的 code_path 字段。
+func taskWorkflowQueryCodePath(gitID int) string {
+	if gitID <= 0 {
+		return ""
+	}
+	info, err := common.DbMain.Client.QuickQuery("tbl_git", "code_path", map[string]any{
+		"id": gitID,
+	}).One()
+	if err != nil || len(info) == 0 {
+		return ""
+	}
+	return cast.ToString(info["code_path"])
+}
+
+// taskWorkflowQueryNameByID 根据 ID 查询表中的 name 字段。
+func taskWorkflowQueryNameByID(tableName string, id int) string {
+	if id <= 0 {
+		return ""
+	}
+	info, err := common.DbMain.Client.QuickQuery(tableName, "name", map[string]any{
+		"id": id,
+	}).One()
+	if err != nil || len(info) == 0 {
+		return ""
+	}
+	return cast.ToString(info["name"])
 }

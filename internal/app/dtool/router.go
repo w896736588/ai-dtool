@@ -265,6 +265,7 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/CronConfigSave`, controller.SetCronConfigSave)
 	tGin.GinPost(`/api/Set/HomeTaskConfigGet`, controller.SetHomeTaskConfigGet)
 	tGin.GinPost(`/api/Set/HomeTaskConfigSave`, controller.SetHomeTaskConfigSave)
+	tGin.GinPost(`/api/Set/LocalDirList`, controller.SetLocalDirList)
 }
 
 func setStar(tGin *p_gin.Gin) {
@@ -307,6 +308,7 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 
 func homeTask(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/HomeTaskList`, controller.HomeTaskList)
+	tGin.GinPost(`/api/HomeTaskInfo`, controller.HomeTaskInfo)
 	tGin.GinPost(`/api/HomeTaskSave`, controller.HomeTaskSave)
 	tGin.GinPost(`/api/HomeTaskArchiveToggle`, controller.HomeTaskArchiveToggle)
 	tGin.GinPost(`/api/HomeTaskStatusQuickUpdate`, controller.HomeTaskStatusQuickUpdate)
@@ -414,6 +416,7 @@ func docker(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/DockerContainerStop`, controller.DockerContainerStop)
 	tGin.GinPost(`/api/DockerContainerRemove`, controller.DockerContainerRemove)
 	tGin.GinPost(`/api/DockerContainerLogTruncate`, controller.DockerContainerLogTruncate)
+	tGin.GinPost(`/api/DockerServiceRestart`, controller.DockerServiceRestart)
 }
 
 func api(tGin *p_gin.Gin) {

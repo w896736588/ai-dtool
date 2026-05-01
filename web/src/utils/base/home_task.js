@@ -25,9 +25,19 @@ function HomeTaskDelete(id, callBack) {
   base.BasePost('/api/HomeTaskDelete', { id: id }, callBack)
 }
 
+// HomeTaskInfo 查询单条首页任务详情。
+function HomeTaskInfo(id, callBack) {
+  base.BasePost('/api/HomeTaskInfo', { id: id }, callBack)
+}
+
 // HomeTaskDailyReportGenerate 生成首页工作日报。
 function HomeTaskDailyReportGenerate(callBack) {
   base.BasePost('/api/HomeTaskDailyReportGenerate', {}, callBack)
+}
+
+// LocalDirList 浏览本地目录，返回子目录列表。
+function LocalDirList(dirPath, callBack) {
+  base.BasePost('/api/Set/LocalDirList', { path: dirPath || '' }, callBack)
 }
 
 export default {
@@ -36,5 +46,7 @@ export default {
   HomeTaskArchiveToggle,
   HomeTaskStatusQuickUpdate,
   HomeTaskDelete,
+  HomeTaskInfo,
   HomeTaskDailyReportGenerate,
+  LocalDirList,
 }

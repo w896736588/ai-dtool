@@ -104,7 +104,7 @@ export default defineComponent({
     const proxy = getCurrentInstance().proxy
     const instance = getCurrentInstance().appContext.config.globalProperties
     const MysqlList = function (){
-      set.MysqlList(function (response){
+      set.MysqlList({check_status: 1}, function (response){
         if(response.ErrCode === 0){
           state.mysqlList = response.Data
         }

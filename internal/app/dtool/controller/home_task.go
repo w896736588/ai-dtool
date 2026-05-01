@@ -156,6 +156,19 @@ func HomeTaskSave(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, info)
 }
 
+// HomeTaskInfo 查询单条首页任务详情。
+func HomeTaskInfo(c *gin.Context) {
+	request := _struct.HomeTaskDeleteRequest{}
+	_ = gsgin.GinPostBody(c, &request)
+	info, err := common.DbMain.HomeTaskRow(request.ID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	enrichHomeTaskListWithMemoryFragment([]map[string]any{info})
+	gsgin.GinResponseSuccess(c, ``, info)
+}
+
 // HomeTaskArchiveToggle 切换首页任务归档状态。
 func HomeTaskArchiveToggle(c *gin.Context) {
 	request := _struct.HomeTaskArchiveToggleRequest{}

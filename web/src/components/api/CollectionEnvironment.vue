@@ -181,7 +181,6 @@ export default {
         Api.CreateCollectionEnvItem({
           collection_id: this.collection.id,
           env_id: savedEnvId,
-          name: item.name || '',
           desc: item.desc || '',
           key: item.key || '',
           value: item.value || ''

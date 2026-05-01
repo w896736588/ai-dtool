@@ -520,3 +520,55 @@ func getDockerComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTermi
 	}
 	return dataMap, sshClient, nil
 }
+
+// DockerServiceRestart 通过 docker_id 重启指定的 Docker Compose 服务。
+// 与 DockerComposeRestart 不同，本接口只需传 docker_id 和 service，
+// ssh_id 从 tbl_docker_compose 配置中自动解析，方便外部脚本和 Agent 调用。
+func DockerServiceRestart(c *gin.Context) {
+	dataMap := make(map[string]any)
+	if err := gsgin.GinPostBody(c, &dataMap); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	dockerId := cast.ToInt(dataMap[`docker_id`])
+	if dockerId == 0 {
+		gsgin.GinResponseError(c, `docker_id is empty`, nil)
+		return
+	}
+	service := cast.ToString(dataMap[`service`])
+	if service == `` {
+		gsgin.GinResponseError(c, `service is empty`, nil)
+		return
+	}
+	// 查询 compose 配置
+	one, oneErr := common.DbMain.Client.QuickQuery(`tbl_docker_compose`, `*`, map[string]any{
+		`id`: dockerId,
+	}).One()
+	if oneErr != nil {
+		gsgin.GinResponseError(c, oneErr.Error(), nil)
+		return
+	}
+	// 从配置中自动获取 ssh_id 并建立 SSH 连接
+	sshId := cast.ToString(one[`ssh_id`])
+	sshConfig, _ := common.DbMain.GetSshConfig(sshId)
+	sse := &p_sse.SseShell{
+		Sse: gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
+	}
+	uniqueKey := p_common.TBaseClient.GetCombineKey(sshId, ``)
+	sshClient, sshClientErr := component.ShellClient.GetClient(sshConfig, uniqueKey, sse, func(s string) []string {
+		return []string{p_common.TBaseClient.FilterTerminalChars(s)}
+	}, nil, nil)
+	if sshClientErr != nil {
+		gsgin.GinResponseError(c, sshClientErr.Error(), nil)
+		return
+	}
+	// 执行 docker compose restart 指定服务
+	envFile := cast.ToString(one[`env_file`])
+	composeYmlPath := one[`compose_yml_path`].(string)
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.Cd(path.Dir(composeYmlPath))
+	command.DockerComposeRestart(cast.ToString(one[`docker_cmd`]), envFile, []string{service})
+	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+}

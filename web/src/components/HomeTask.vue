@@ -37,7 +37,21 @@
                     <span>开始时间：{{ task.start_time_desc || '-' }}</span>
                     <span>最后操作：{{ task.last_operated_at_desc || '-' }}</span>
                     <a v-if="task.tapd_url" :href="task.tapd_url" target="_blank" class="home-task-card__tapd-link">TAPD需求</a>
-                    <span v-if="getHomeTaskDevConfigLabel(task)" class="home-task-card__git-repo">{{ getHomeTaskDevConfigLabel(task) }}</span>
+                    <div v-if="getHomeTaskDevConfigTags(task).length > 0" class="home-task-card__config-tags">
+                      <div v-for="(group, gIdx) in getHomeTaskDevConfigTags(task)" :key="gIdx" class="home-task-config-group">
+                        <el-tag
+                          v-for="(tag, tagIdx) in group"
+                          :key="tagIdx"
+                          size="small"
+                          effect="plain"
+                          :type="tag.tagType"
+                          class="home-task-config-tag"
+                          @click.stop="navigateToDevConfig(tag)"
+                        >
+                          {{ tag.label }}
+                        </el-tag>
+                      </div>
+                    </div>
                     <span class="home-task-card__status-group">
                       <el-tag size="small" effect="light" :type="getHomeTaskStatusTagType(task.task_status)">
                         {{ task.task_status }}
@@ -131,7 +145,21 @@
                     <span>开始时间：{{ task.start_time_desc || '-' }}</span>
                     <span>最后操作：{{ task.last_operated_at_desc || '-' }}</span>
                     <a v-if="task.tapd_url" :href="task.tapd_url" target="_blank" class="home-task-card__tapd-link">TAPD需求</a>
-                    <span v-if="getHomeTaskDevConfigLabel(task)" class="home-task-card__git-repo">{{ getHomeTaskDevConfigLabel(task) }}</span>
+                    <div v-if="getHomeTaskDevConfigTags(task).length > 0" class="home-task-card__config-tags">
+                      <div v-for="(group, gIdx) in getHomeTaskDevConfigTags(task)" :key="gIdx" class="home-task-config-group">
+                        <el-tag
+                          v-for="(tag, tagIdx) in group"
+                          :key="tagIdx"
+                          size="small"
+                          effect="plain"
+                          :type="tag.tagType"
+                          class="home-task-config-tag"
+                          @click.stop="navigateToDevConfig(tag)"
+                        >
+                          {{ tag.label }}
+                        </el-tag>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div class="home-task-card__status-group">
@@ -390,13 +418,13 @@
                     </el-form-item>
                   </el-col>
                   <el-col :xs="24" :sm="12" :md="12">
-                    <el-form-item label="MySQL" label-width="72px">
+                    <el-form-item label="Db" label-width="72px">
                       <el-select
                         v-model="cfg.mysql_id"
                         clearable
                         filterable
                         style="width: 100%"
-                        placeholder="选择MySQL配置（可选）"
+                        placeholder="选择Db配置（可选）"
                         :loading="homeTaskMysqlLoading"
                       >
                         <el-option
@@ -406,6 +434,16 @@
                           :value="Number(item.id)"
                         />
                       </el-select>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="本地目录" label-width="72px">
+                      <el-input
+                        v-model="cfg.local_dir"
+                        clearable
+                        style="width: 100%"
+                        placeholder="输入本地项目目录路径（可选）"
+                      />
                     </el-form-item>
                   </el-col>
                 </el-row>
@@ -516,7 +554,7 @@ function createHomeTaskDefaultForm() {
     task_status: HOME_TASK_STATUS_TODO,
     start_date: getTodayDateText(),
     tapd_url: '',
-    dev_configs: [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', mysql_id: '' }],
+    dev_configs: [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', mysql_id: '', local_dir: '' }],
   }
 }
 
@@ -584,6 +622,9 @@ export default {
   },
   mounted() {
     this.loadHomeTaskGitRepoList()
+    this.loadHomeTaskApiCollections()
+    this.loadHomeTaskDockerList()
+    this.loadHomeTaskMysqlList()
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
   },
@@ -591,6 +632,9 @@ export default {
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
     this.loadHomeTaskGitRepoList()
+    this.loadHomeTaskApiCollections()
+    this.loadHomeTaskDockerList()
+    this.loadHomeTaskMysqlList()
   },
   methods: {
     handleHomeTaskTabChange(tabName) {
@@ -626,6 +670,16 @@ export default {
           this.homeTaskArchivedList = taskList
         } else {
           this.homeTaskActiveList = taskList
+        }
+        // 预加载 dev_configs 中引用的 API 文件夹
+        for (const t of taskList) {
+          if (Array.isArray(t.dev_configs)) {
+            for (const cfg of t.dev_configs) {
+              if (Number(cfg.collection_id || 0) > 0) {
+                this.loadHomeTaskApiFoldersForCollection(cfg.collection_id)
+              }
+            }
+          }
         }
       })
     },
@@ -707,7 +761,7 @@ export default {
       this.loadHomeTaskApiFoldersForCollection(cfg.collection_id)
     },
     addDevConfig() {
-      this.homeTaskForm.dev_configs.push({ git_id: '', collection_id: '', dir_id: '', docker_id: '' })
+      this.homeTaskForm.dev_configs.push({ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '' })
     },
     removeDevConfig(idx) {
       this.homeTaskForm.dev_configs.splice(idx, 1)
@@ -758,6 +812,19 @@ export default {
       this.resetHomeTaskForm()
     },
     editHomeTask(task) {
+      homeTaskApi.HomeTaskInfo(task.id, (response) => {
+        if (!response || response.ErrCode !== 0) {
+          this.$helperNotify.error(response?.ErrMsg || '任务详情查询失败')
+          return
+        }
+        const detail = response.Data || {}
+        detail.git_ids = safeParseJSON(detail.git_ids, [])
+        detail.api_dev_entries = safeParseJSON(detail.api_dev_entries, [])
+        detail.dev_configs = safeParseJSON(detail.dev_configs, [])
+        this.fillHomeTaskEditForm(detail)
+      })
+    },
+    fillHomeTaskEditForm(task) {
       let devConfigs = []
       if (Array.isArray(task.dev_configs) && task.dev_configs.length > 0) {
         devConfigs = task.dev_configs.map(cfg => ({
@@ -766,9 +833,9 @@ export default {
           dir_id: Number(cfg.dir_id || 0) || '',
           docker_id: Number(cfg.docker_id || 0) || '',
           mysql_id: Number(cfg.mysql_id || 0) || '',
+          local_dir: String(cfg.local_dir || ''),
         }))
       } else {
-        // 从旧字段回退构建
         let gitIds = Array.isArray(task.git_ids) && task.git_ids.length > 0
           ? task.git_ids.map(id => Number(id))
           : (Number(task.git_id || 0) > 0 ? [Number(task.git_id)] : [])
@@ -785,11 +852,12 @@ export default {
             dir_id: Number(apiEntries[i]?.dir_id || 0) || '',
             docker_id: '',
             mysql_id: Number(task.mysql_id || 0) || '',
+            local_dir: '',
           })
         }
       }
       if (devConfigs.length === 0) {
-        devConfigs = [{ git_id: '', collection_id: '', dir_id: '', docker_id: '' }]
+        devConfigs = [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '' }]
       }
       this.homeTaskForm = {
         id: Number(task.id || 0),
@@ -855,44 +923,89 @@ export default {
     hasHomeTaskMemoryFragment(task) {
       return this.normalizeHomeTaskMemoryFragmentId(task?.memory_fragment?.file_id || task?.memory_fragment_id) !== ''
     },
-    getHomeTaskDevConfigLabel(task) {
+    getHomeTaskDevConfigTags(task) {
+      const DEV_CONFIG_TAG_TYPE_GIT = 'success'
+      const DEV_CONFIG_TAG_TYPE_API = ''
+      const DEV_CONFIG_TAG_TYPE_DOCKER = 'info'
+      const DEV_CONFIG_TAG_TYPE_DB = 'warning'
+      const DEV_CONFIG_TAG_TYPE_DIR = 'danger'
       let configs = []
       if (Array.isArray(task.dev_configs) && task.dev_configs.length > 0) {
         configs = task.dev_configs
       }
-      if (configs.length === 0) return ''
-      const parts = []
+      if (configs.length === 0) return []
+      const groups = []
       for (const cfg of configs) {
-        const items = []
+        const group = []
         if (Number(cfg.git_id || 0) > 0) {
           const repo = this.homeTaskGitRepoList.find(r => Number(r.id) === Number(cfg.git_id))
-          if (repo) items.push(repo.name)
+          if (repo) {
+            group.push({ type: 'git', label: repo.name, id: Number(cfg.git_id), tagType: DEV_CONFIG_TAG_TYPE_GIT })
+          }
         }
         if (Number(cfg.collection_id || 0) > 0) {
           const col = this.homeTaskApiCollectionList.find(c => Number(c.id) === Number(cfg.collection_id))
           if (col) {
             let label = col.name
+            let folderId = 0
             if (Number(cfg.dir_id || 0) > 0) {
               const folders = this.homeTaskApiFolderMap[cfg.collection_id] || []
               const dir = folders.find(d => Number(d.id) === Number(cfg.dir_id))
-              if (dir) label += '/' + dir.name
+              if (dir) {
+                label += '/' + dir.name
+                folderId = Number(cfg.dir_id)
+              }
             }
-            items.push(label)
+            group.push({
+              type: 'api',
+              label: label,
+              collectionId: Number(cfg.collection_id),
+              folderId: folderId,
+              tagType: DEV_CONFIG_TAG_TYPE_API,
+            })
           }
         }
         if (Number(cfg.docker_id || 0) > 0) {
           const docker = this.homeTaskDockerList.find(d => Number(d.id) === Number(cfg.docker_id))
-          if (docker) items.push(docker.name)
+          if (docker) {
+            group.push({ type: 'docker', label: 'Docker: ' + docker.name, id: Number(cfg.docker_id), tagType: DEV_CONFIG_TAG_TYPE_DOCKER })
+          }
         }
         if (Number(cfg.mysql_id || 0) > 0) {
           const mysql = this.homeTaskMysqlList.find(m => Number(m.id) === Number(cfg.mysql_id))
-          if (mysql) items.push(mysql.name)
+          if (mysql) {
+            group.push({ type: 'mysql', label: 'Db: ' + mysql.name, id: Number(cfg.mysql_id), tagType: DEV_CONFIG_TAG_TYPE_DB })
+          }
         }
-        if (items.length > 0) {
-          parts.push(items.join(' | '))
+        if (String(cfg.local_dir || '').trim() !== '') {
+          const dirPath = String(cfg.local_dir).trim()
+          const dirName = dirPath.split(/[/\\]/).filter(Boolean).pop() || dirPath
+          group.push({ type: 'local_dir', label: dirName, fullPath: dirPath, tagType: DEV_CONFIG_TAG_TYPE_DIR })
+        }
+        if (group.length > 0) {
+          groups.push(group)
         }
       }
-      return parts.join('; ')
+      return groups
+    },
+    navigateToDevConfig(tag) {
+      let path = ''
+      if (tag.type === 'git') {
+        path = '/Git'
+      } else if (tag.type === 'api') {
+        if (tag.folderId > 0) {
+          path = '/ApiDocument/' + tag.folderId
+        } else {
+          path = '/Api'
+        }
+      } else if (tag.type === 'docker') {
+        path = '/Docker'
+      } else if (tag.type === 'mysql') {
+        path = '/Set'
+      }
+      if (!path) return
+      const routeInfo = this.$router.resolve({ path })
+      window.open(routeInfo.href, '_blank')
     },
     saveHomeTask() {
       if (this.homeTaskSaving) {
@@ -904,13 +1017,14 @@ export default {
         return
       }
       const validConfigs = this.homeTaskForm.dev_configs
-        .filter(cfg => Number(cfg.git_id || 0) > 0 || Number(cfg.collection_id || 0) > 0 || Number(cfg.docker_id || 0) > 0 || Number(cfg.mysql_id || 0) > 0)
+        .filter(cfg => Number(cfg.git_id || 0) > 0 || Number(cfg.collection_id || 0) > 0 || Number(cfg.docker_id || 0) > 0 || Number(cfg.mysql_id || 0) > 0 || String(cfg.local_dir || '').trim() !== '')
         .map(cfg => ({
           git_id: Number(cfg.git_id || 0),
           collection_id: Number(cfg.collection_id || 0),
           dir_id: Number(cfg.dir_id || 0),
           docker_id: Number(cfg.docker_id || 0),
           mysql_id: Number(cfg.mysql_id || 0),
+          local_dir: String(cfg.local_dir || '').trim(),
         }))
       this.homeTaskSaving = true
       this.homeTaskOperatingType = HOME_TASK_OPERATE_SAVE

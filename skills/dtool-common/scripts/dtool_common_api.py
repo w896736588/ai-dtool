@@ -2,25 +2,23 @@
 # -*- coding: utf-8 -*-
 """
 dtool 通用工具 API 调用示例
-包含：Git文件上传、MySQL表查询、MySQL表结构查询、MySQL查询
+包含：Git文件上传、数据库表查询（MySQL/Pgsql）、表结构查询、SQL查询、Docker服务重启
 
 使用前请先向用户确认以下信息，替换下方占位值：
   - base_url: dtool 服务地址（如 http://192.168.1.100:17170）
   - token: 认证令牌
-  - git_id: Git 配置 ID（用于文件上传）
-  - mysql_id: MySQL 配置 ID（用于 MySQL 查询）
+  - mysql_id: 数据库配置 ID（支持 MySQL 和 Pgsql）
 """
 
 import json
 from urllib import request, error
 
 # ============================================================
-# 以下四个变量必须向用户确认后填入
+# 以下三个变量必须向用户确认后填入
 # ============================================================
 BASE_URL = "http://localhost:17170"  # TODO: 替换为用户提供的地址
 TOKEN = ""                           # TODO: 替换为用户提供的 Token
-GIT_ID = ""                          # TODO: 替换为用户提供的 Git 配置 ID（用于获取 SSH 远程连接信息和项目路径）
-MYSQL_ID = ""                        # TODO: 替换为用户提供的 MySQL 配置 ID
+MYSQL_ID = ""                        # TODO: 替换为用户提供的数据库配置 ID（支持 MySQL 和 Pgsql）
 
 
 def call_api(path, payload):
@@ -45,39 +43,42 @@ def call_api(path, payload):
 
 # ============================================================
 # 1. 上传文件到远程项目
-# 通过 git_id 获取 SSH 远程连接配置和项目路径，将本地文件传输到远程服务器
+# 通过 git_id 获取 SSH 远程连接配置和 tbl_git 的 code_path，将本地文件传输到远程服务器
 # ============================================================
-def git_upload_file(local_file_path, upload_dir):
+def git_upload_file(git_id, local_file_paths):
     """
-    上传本地文件到远程项目目录
+    上传一个或多个本地文件到远程项目目录
 
-    通过 git_id 获取 SSH 远程连接配置（主机、端口、认证信息）和项目路径，
-    将当前项目中的文件传输到远程服务器的指定目录。
+    通过 git_id 获取 SSH 远程连接配置和 tbl_git 的 code_path（远程代码目录），
+    将本地文件传输到 code_path/relative_file_path（已存在则覆盖）。
 
     参数:
-        local_file_path: 当前项目中要上传文件的绝对路径
-        upload_dir: 相对于远程项目根目录的上传目录，如 "src/config"、"public/uploads"
+        git_id: Git 配置 ID（关联 tbl_git 表，用于获取远程连接信息和项目路径）
+        local_file_paths: 文件路径数组，每个元素为字典:
+            {"full_file_path": "本机绝对文件路径", "relative_file_path": "项目目录下的相对文件路径"}
     """
     result = call_api("/api/GitUploadFile", {
-        "git_id": GIT_ID,
-        "local_file_path": local_file_path,
-        "upload_dir": upload_dir,
+        "git_id": git_id,
+        "local_file_paths": local_file_paths,
     })
     if result.get("code") == 0:
-        data = result.get("data", {})
-        print(f"上传成功: {data.get('remote_path')}")
-        print(f"  文件名: {data.get('file_name')}")
-        print(f"  大小: {data.get('file_size')} 字节")
+        file_list = result.get("data", {}).get("list", [])
+        for item in file_list:
+            print(f"上传成功: {item.get('remote_path')}")
+            print(f"  文件名: {item.get('file_name')}")
+            print(f"  大小: {item.get('file_size')} 字节")
+        print(f"共上传 {len(file_list)} 个文件")
     else:
         print(f"上传失败: {result.get('msg')}")
     return result
 
 
+
 # ============================================================
-# 2. 查询 MySQL 所有表
+# 2. 查询数据库所有表（MySQL/Pgsql）
 # ============================================================
 def mysql_tables():
-    """查询 MySQL 配置对应数据库的所有表"""
+    """查询数据库配置对应的所有表（支持 MySQL 和 Pgsql）"""
     result = call_api("/api/MysqlTables", {
         "mysql_id": MYSQL_ID,
     })
@@ -94,11 +95,11 @@ def mysql_tables():
 
 
 # ============================================================
-# 3. 查询 MySQL 表结构
+# 3. 查询数据库表结构（MySQL/Pgsql）
 # ============================================================
 def mysql_table_structure(table_name):
     """
-    查询 MySQL 表结构
+    查询数据库表结构（支持 MySQL 和 Pgsql）
 
     参数:
         table_name: 表名
@@ -126,11 +127,11 @@ def mysql_table_structure(table_name):
 
 
 # ============================================================
-# 4. 执行 MySQL 查询（仅 SELECT）
+# 4. 执行数据库查询（仅 SELECT，支持 MySQL/Pgsql）
 # ============================================================
 def mysql_query(sql):
     """
-    执行 MySQL SELECT 查询
+    执行数据库 SELECT 查询（支持 MySQL 和 Pgsql）
 
     参数:
         sql: SELECT 语句
@@ -172,6 +173,35 @@ def mysql_query(sql):
 
 
 # ============================================================
+# 5. 重启 Docker Compose 服务
+# ============================================================
+def docker_service_restart(docker_id, service):
+    """
+    重启指定 Docker Compose 中的某个服务
+
+    只需传入 docker_id（对应 dtool 中 Docker Compose 配置的 ID）和服务名，
+    ssh_id 从配置中自动解析，无需手动指定。
+
+    参数:
+        docker_id: Docker Compose 配置 ID（整数）
+        service: 要重启的服务名（如 "nginx"、"php-fpm"）
+
+    示例:
+        docker_service_restart(1, "nginx")
+        docker_service_restart(3, "php-fpm")
+    """
+    result = call_api("/api/DockerServiceRestart", {
+        "docker_id": docker_id,
+        "service": service,
+    })
+    if result.get("code") == 0:
+        print(f"服务 {service} 重启成功")
+    else:
+        print(f"重启失败: {result.get('msg')}")
+    return result
+
+
+# ============================================================
 # 使用示例
 # ============================================================
 if __name__ == "__main__":
@@ -181,11 +211,13 @@ if __name__ == "__main__":
         exit(1)
 
     print("=== dtool 通用工具 API 示例 ===\n")
+    # 示例1: 上传文件到远程项目（需提供 git_id）
+    # git_upload_file(1, [
+    #     {"full_file_path": "/home/user/src/config/config.yaml", "relative_file_path": "src/config/config.yaml"},
+    #     {"full_file_path": "/home/user/src/data/data.json", "relative_file_path": "src/data/data.json"},
+    # ])
 
-    # 示例1: 上传文件到远程项目（需设置 GIT_ID）
-    # git_upload_file("/home/user/config.yaml", "src/config")
-
-    # 示例2: 查询 MySQL 所有表（需设置 MYSQL_ID）
+    # 示例2: 查询数据库所有表（需设置 MYSQL_ID）
     # mysql_tables()
 
     # 示例3: 查询表结构（需设置 MYSQL_ID）
@@ -193,3 +225,6 @@ if __name__ == "__main__":
 
     # 示例4: 执行 SELECT 查询（需设置 MYSQL_ID）
     # mysql_query("SELECT * FROM users LIMIT 10")
+
+    # 示例5: 重启 Docker Compose 服务（需提供 docker_id 和服务名）
+    # docker_service_restart(1, "nginx")

@@ -6,7 +6,9 @@ import (
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"fmt"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -543,7 +545,8 @@ func SetRedisDelete(c *gin.Context) {
 func SetMysqlList(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	isCheckConnection := cast.ToInt(dataMap[`is_check_connection`])
+	// 是否检查连接状态，1检查，0或未传不检查
+	isCheckConnection := cast.ToInt(dataMap[`check_status`])
 
 	allMysql, allErr := common.DbMain.Client.QuickQuery(`tbl_mysql`, `*`, nil).All()
 	if allErr != nil {
@@ -574,7 +577,7 @@ func SetMysqlList(c *gin.Context) {
 				Func: func() *gstask.Result {
 					return testDbConn(mysqlValue)
 				},
-				Timeout: 5 * time.Second,
+				Timeout: 2 * time.Second,
 				Id:      cast.ToString(mysqlValue[`id`]),
 			}
 			task.Add(callBack)
@@ -1574,4 +1577,83 @@ func SetHomeTaskConfigSave(c *gin.Context) {
 		return
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+// SetLocalDirList 浏览本地目录，返回指定路径下的子目录列表。
+func SetLocalDirList(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	dirPath := strings.TrimSpace(cast.ToString(dataMap[`path`]))
+	if dirPath == `` {
+		// 未传路径时返回根目录（Windows 返回驱动器列表，其他返回 /）
+		if drives, err := listWindowsDrives(); err == nil && len(drives) > 0 {
+			gsgin.GinResponseSuccess(c, ``, drives)
+			return
+		}
+		dirPath = `/`
+	}
+
+	info, statErr := os.Stat(dirPath)
+	if statErr != nil {
+		gsgin.GinResponseError(c, fmt.Sprintf(`路径不可访问: %s`, statErr.Error()), nil)
+		return
+	}
+	if !info.IsDir() {
+		gsgin.GinResponseError(c, `指定路径不是目录`, nil)
+		return
+	}
+
+	entries, readErr := os.ReadDir(dirPath)
+	if readErr != nil {
+		gsgin.GinResponseError(c, fmt.Sprintf(`读取目录失败: %s`, readErr.Error()), nil)
+		return
+	}
+
+	result := make([]map[string]any, 0)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, `.`) || name == `$RECYCLE.BIN` || name == `System Volume Information` {
+			continue
+		}
+		fullPath := filepath.Join(dirPath, name)
+		hasChildren := false
+		if subEntries, subErr := os.ReadDir(fullPath); subErr == nil {
+			for _, sub := range subEntries {
+				if sub.IsDir() && !strings.HasPrefix(sub.Name(), `.`) {
+					hasChildren = true
+					break
+				}
+			}
+		}
+		result = append(result, map[string]any{
+			`label`:        name,
+			`value`:        fullPath,
+			`has_children`: hasChildren,
+		})
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return cast.ToString(result[i][`label`]) < cast.ToString(result[j][`label`])
+	})
+
+	gsgin.GinResponseSuccess(c, ``, result)
+}
+
+// listWindowsDrives 返回 Windows 系统上可用的驱动器盘符列表。
+func listWindowsDrives() ([]map[string]any, error) {
+	drives := make([]map[string]any, 0)
+	for _, letter := range `ABCDEFGHIJKLMNOPQRSTUVWXYZ` {
+		drive := string(letter) + `:/`
+		if _, err := os.Stat(drive); err == nil {
+			drives = append(drives, map[string]any{
+				`label`:        drive,
+				`value`:        drive,
+				`has_children`: true,
+			})
+		}
+	}
+	return drives, nil
 }

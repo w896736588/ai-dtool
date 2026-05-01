@@ -211,20 +211,28 @@
   text-decoration: underline;
 }
 
-.home-task-card__git-repo {
-  color: #5a8a5a;
-  background: #eef4ec;
-  padding: 1px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+.home-task-card__config-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
 }
 
-.home-task-card__api-dev {
-  color: #6b5a8a;
-  background: #eeeef4;
-  padding: 1px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+.home-task-config-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.home-task-config-tag {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.home-task-config-tag:hover {
+  filter: brightness(0.92);
+  transform: translateY(-1px);
 }
 
 .home-task-card__memory {

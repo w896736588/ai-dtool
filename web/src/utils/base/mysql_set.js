@@ -1,7 +1,11 @@
 import base from "@/utils/base";
 
-function MysqlList(callBack){
-    base.BasePost('/api/Set/MysqlList', {is_check_connection: 1} , callBack)
+function MysqlList(params, callBack){
+    if(typeof params === 'function'){
+        callBack = params
+        params = {}
+    }
+    base.BasePost('/api/Set/MysqlList', params, callBack)
 }
 function MysqlAdd(data , callBack){
     base.BasePost(

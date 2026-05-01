@@ -11,22 +11,43 @@ if [[ -z "${FILE_PATH}" ]]; then
   exit 1
 fi
 
-# 自动推断默认基分支 / Detect the default base branch automatically
-get_default_base_branch() {
-  if git show-ref --verify --quiet refs/remotes/origin/main; then
-    echo "origin/main"
-    return 0
+# 自动检测当前分支的真实基分支（merge-base 最近原则）
+# 遍历所有本地和远程分支，计算每个分支与 HEAD 的 merge-base，
+# 选出 merge-base 距离 HEAD 最近（独占提交数最少）的分支作为基分支
+detect_base_branch() {
+  local current_branch
+  current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  if [[ -z "${current_branch}" || "${current_branch}" == "HEAD" ]]; then
+    return 1
   fi
-  if git show-ref --verify --quiet refs/remotes/origin/master; then
-    echo "origin/master"
-    return 0
-  fi
-  if git show-ref --verify --quiet refs/heads/main; then
-    echo "main"
-    return 0
-  fi
-  if git show-ref --verify --quiet refs/heads/master; then
-    echo "master"
+
+  local best_branch=""
+  local best_commits=-1
+
+  while IFS= read -r ref; do
+    [[ -z "${ref}" ]] && continue
+    local branch="${ref#refs/heads/}"
+    branch="${branch#refs/remotes/}"
+    [[ "${branch}" == "${current_branch}" ]] && continue
+    [[ "${branch}" == "HEAD" ]] && continue
+
+    local mb
+    mb=$(git merge-base "${branch}" HEAD 2>/dev/null) || continue
+    [[ -z "${mb}" ]] && continue
+
+    local commits
+    commits=$(git rev-list --count "${mb}..HEAD" 2>/dev/null) || continue
+    [[ "${commits}" -eq 0 ]] && continue
+
+    if [[ ${best_commits} -eq -1 || ${commits} -lt ${best_commits} ]]; then
+      best_commits="${commits}"
+      best_branch="${branch}"
+    fi
+  done < <(git for-each-ref --format='%(refname)' refs/heads/ refs/remotes/ 2>/dev/null)
+
+  if [[ -n "${best_branch}" ]]; then
+    echo "自动检测到基分支: ${best_branch}" >&2
+    echo "${best_branch}"
     return 0
   fi
   return 1
@@ -51,7 +72,7 @@ if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
 fi
 
 if [[ -z "${BASE_BRANCH}" ]]; then
-  if ! BASE_BRANCH="$(get_default_base_branch)"; then
+  if ! BASE_BRANCH="$(detect_base_branch)"; then
     echo "无法自动检测基分支，请手动指定: ./show-file-diff.sh <文件路径> <base-branch> / Failed to detect base branch automatically" >&2
     exit 1
   fi
