@@ -265,6 +265,7 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/CronConfigSave`, controller.SetCronConfigSave)
 	tGin.GinPost(`/api/Set/HomeTaskConfigGet`, controller.SetHomeTaskConfigGet)
 	tGin.GinPost(`/api/Set/HomeTaskConfigSave`, controller.SetHomeTaskConfigSave)
+	tGin.GinPost(`/api/Set/PromptChangeLogList`, controller.SetPromptChangeLogList)
 	tGin.GinPost(`/api/Set/LocalDirList`, controller.SetLocalDirList)
 }
 
@@ -417,6 +418,7 @@ func docker(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/DockerContainerRemove`, controller.DockerContainerRemove)
 	tGin.GinPost(`/api/DockerContainerLogTruncate`, controller.DockerContainerLogTruncate)
 	tGin.GinPost(`/api/DockerServiceRestart`, controller.DockerServiceRestart)
+	tGin.GinPost(`/api/DockerServiceLogs`, controller.DockerServiceLogs)
 }
 
 func api(tGin *p_gin.Gin) {

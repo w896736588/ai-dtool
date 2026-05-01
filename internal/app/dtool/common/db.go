@@ -1067,6 +1067,29 @@ func (h *CSqlite) memoryFragmentMatchSelectedTags(selectedTags, rowTags []string
 	return true
 }
 
+// PromptChangeLogSave 记录提示词变更日志。
+func (h *CSqlite) PromptChangeLogSave(configKey, configName, oldValue, newValue string) error {
+	now := time.Now().Unix()
+	_, err := h.Client.QuickCreate(`tbl_prompt_change_log`, map[string]any{
+		`config_key`:  configKey,
+		`config_name`: configName,
+		`old_value`:   oldValue,
+		`new_value`:   newValue,
+		`create_time`: now,
+		`update_time`: now,
+	}).Exec()
+	return err
+}
+
+// PromptChangeLogList 查询提示词变更日志，返回最近 limit 条记录。
+func (h *CSqlite) PromptChangeLogList(limit int) ([]map[string]any, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	sql := `select * from tbl_prompt_change_log order by id desc limit ?`
+	return h.Client.QueryBySql(sql, limit).All()
+}
+
 // memoryFragmentSearchScore 计算搜索得分。
 func (h *CSqlite) memoryFragmentSearchScore(mode, query string, tokens []string, searchText string, tags []string, title string) (bool, int) {
 	if query == `` {

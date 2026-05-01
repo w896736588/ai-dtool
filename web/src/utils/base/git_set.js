@@ -81,6 +81,10 @@ function HomeTaskConfigSave(data , callBack){
     base.BasePost('/api/Set/HomeTaskConfigSave', data, callBack)
 }
 
+function PromptChangeLogList(callBack){
+    base.BasePost('/api/Set/PromptChangeLogList', {}, callBack)
+}
+
 export default {
     GitList,
     GitAdd,
@@ -104,4 +108,5 @@ export default {
     CronConfigSave,
     HomeTaskConfigGet,
     HomeTaskConfigSave,
+    PromptChangeLogList,
 }

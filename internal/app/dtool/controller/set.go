@@ -1502,6 +1502,25 @@ func SetHomeTaskConfigGet(c *gin.Context) {
 	})
 }
 
+// promptConfigKeys 需要记录变更日志的提示词配置 key 及其中文名称。
+var promptConfigKeys = map[string]string{
+	define.HomeTaskConfigDailyReportPrompt: `工作日报提示词`,
+	define.HomeTaskConfigFragmentPrompt:    `任务知识片段提示词`,
+	define.HomeTaskConfigPromptDev:         `需求分析设计提示词`,
+	define.HomeTaskConfigPromptApiGen:      `接口生成提示词`,
+	define.HomeTaskConfigPromptApiTest:     `接口自动化测试提示词`,
+	define.HomeTaskConfigPromptDesign:      `开发设计提示词`,
+}
+
+// saveHomeTaskPromptWithLog 保存提示词配置并记录变更日志（仅当值真正变化时才写日志）。
+func saveHomeTaskPromptWithLog(key, name, newValue, desc string) {
+	oldValue, _ := homeTaskConfigValue(key)
+	if oldValue == newValue {
+		return
+	}
+	_ = common.DbMain.PromptChangeLogSave(key, name, oldValue, newValue)
+}
+
 // SetHomeTaskConfigSave 保存任务清单配置。
 func SetHomeTaskConfigSave(c *gin.Context) {
 	dataMap := make(map[string]any)
@@ -1523,6 +1542,7 @@ func SetHomeTaskConfigSave(c *gin.Context) {
 			return
 		}
 	}
+	saveHomeTaskPromptWithLog(define.HomeTaskConfigDailyReportPrompt, `工作日报提示词`, homeTaskDailyReportPrompt, `首页任务工作日报 AI 提示词`)
 	if err := common.DbMain.HomeTaskConfigSave(`工作日报提示词`, define.HomeTaskConfigDailyReportPrompt, homeTaskDailyReportPrompt, `首页任务工作日报 AI 提示词`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -1532,6 +1552,7 @@ func SetHomeTaskConfigSave(c *gin.Context) {
 		return
 	}
 	homeTaskFragmentPrompt := strings.TrimSpace(cast.ToString(dataMap[`home_task_fragment_prompt`]))
+	saveHomeTaskPromptWithLog(define.HomeTaskConfigFragmentPrompt, `任务知识片段提示词`, homeTaskFragmentPrompt, `新建任务时自动创建知识片段的提示词模板`)
 	if err := common.DbMain.HomeTaskConfigSave(`任务知识片段提示词`, define.HomeTaskConfigFragmentPrompt, homeTaskFragmentPrompt, `新建任务时自动创建知识片段的提示词模板`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -1557,21 +1578,25 @@ func SetHomeTaskConfigSave(c *gin.Context) {
 		return
 	}
 	homeTaskPromptDev := strings.TrimSpace(cast.ToString(dataMap[`home_task_prompt_dev`]))
-	if err := common.DbMain.HomeTaskConfigSave(`需求开发提示词`, define.HomeTaskConfigPromptDev, homeTaskPromptDev, `工作流-需求开发提示词模板`); err != nil {
+	saveHomeTaskPromptWithLog(define.HomeTaskConfigPromptDev, `需求分析设计提示词`, homeTaskPromptDev, `工作流-需求开发提示词模板`)
+	if err := common.DbMain.HomeTaskConfigSave(`需求分析设计提示词`, define.HomeTaskConfigPromptDev, homeTaskPromptDev, `工作流-需求开发提示词模板`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	homeTaskPromptApiGen := strings.TrimSpace(cast.ToString(dataMap[`home_task_prompt_api_gen`]))
+	saveHomeTaskPromptWithLog(define.HomeTaskConfigPromptApiGen, `接口生成提示词`, homeTaskPromptApiGen, `工作流-接口生成提示词模板`)
 	if err := common.DbMain.HomeTaskConfigSave(`接口生成提示词`, define.HomeTaskConfigPromptApiGen, homeTaskPromptApiGen, `工作流-接口生成提示词模板`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	homeTaskPromptApiTest := strings.TrimSpace(cast.ToString(dataMap[`home_task_prompt_api_test`]))
+	saveHomeTaskPromptWithLog(define.HomeTaskConfigPromptApiTest, `接口自动化测试提示词`, homeTaskPromptApiTest, `工作流-接口自动化测试提示词模板`)
 	if err := common.DbMain.HomeTaskConfigSave(`接口自动化测试提示词`, define.HomeTaskConfigPromptApiTest, homeTaskPromptApiTest, `工作流-接口自动化测试提示词模板`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	homeTaskPromptDesign := strings.TrimSpace(cast.ToString(dataMap[`home_task_prompt_design`]))
+	saveHomeTaskPromptWithLog(define.HomeTaskConfigPromptDesign, `开发设计提示词`, homeTaskPromptDesign, `工作流-开发设计提示词模板`)
 	if err := common.DbMain.HomeTaskConfigSave(`开发设计提示词`, define.HomeTaskConfigPromptDesign, homeTaskPromptDesign, `工作流-开发设计提示词模板`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -1656,4 +1681,17 @@ func listWindowsDrives() ([]map[string]any, error) {
 		}
 	}
 	return drives, nil
+}
+
+// SetPromptChangeLogList 返回提示词变更日志（最近 20 条）。
+func SetPromptChangeLogList(c *gin.Context) {
+	list, err := common.DbMain.PromptChangeLogList(20)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	for i := range list {
+		list[i][`create_time_desc`] = gstool.TimeUnixToString(time.Unix(cast.ToInt64(list[i][`create_time`]), 0), `Y-m-d H:i:s`)
+	}
+	gsgin.GinResponseSuccess(c, ``, list)
 }

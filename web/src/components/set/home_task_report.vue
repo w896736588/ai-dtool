@@ -34,6 +34,7 @@
         </el-form-item>
         <el-form-item>
           <pl-button type="primary" @click="saveConfig">保存工作日报配置</pl-button>
+          <pl-button @click="showChangeLog">改动记录</pl-button>
         </el-form-item>
       </el-form>
     </div>
@@ -59,8 +60,8 @@
     </div>
 
     <div class="set-config-table-card">
-      <el-form label-width="120px" class="memory-config-form">
-        <el-form-item label="需求开发提示词">
+      <el-tabs v-model="activePromptTab" class="prompt-template-tabs">
+        <el-tab-pane label="需求分析设计提示词" name="dev">
           <MdEditor
             v-model="form.home_task_prompt_dev"
             preview-theme="github"
@@ -68,26 +69,8 @@
             :toolbars="promptEditorToolbars"
             style="height: 280px;"
           />
-        </el-form-item>
-        <el-form-item label="接口生成提示词">
-          <MdEditor
-            v-model="form.home_task_prompt_api_gen"
-            preview-theme="github"
-            :preview="true"
-            :toolbars="promptEditorToolbars"
-            style="height: 280px;"
-          />
-        </el-form-item>
-        <el-form-item label="接口自动化测试提示词">
-          <MdEditor
-            v-model="form.home_task_prompt_api_test"
-            preview-theme="github"
-            :preview="true"
-            :toolbars="promptEditorToolbars"
-            style="height: 280px;"
-          />
-        </el-form-item>
-        <el-form-item label="开发设计提示词">
+        </el-tab-pane>
+        <el-tab-pane label="开发设计提示词" name="design">
           <MdEditor
             v-model="form.home_task_prompt_design"
             preview-theme="github"
@@ -95,15 +78,34 @@
             :toolbars="promptEditorToolbars"
             style="height: 280px;"
           />
-        </el-form-item>
-        <el-form-item>
-          <pl-button type="primary" @click="savePromptConfig">保存提示词模板配置</pl-button>
-        </el-form-item>
-      </el-form>
+        </el-tab-pane>
+        <el-tab-pane label="接口生成提示词" name="api_gen">
+          <MdEditor
+            v-model="form.home_task_prompt_api_gen"
+            preview-theme="github"
+            :preview="true"
+            :toolbars="promptEditorToolbars"
+            style="height: 280px;"
+          />
+        </el-tab-pane>
+        <el-tab-pane label="接口自动化测试提示词" name="api_test">
+          <MdEditor
+            v-model="form.home_task_prompt_api_test"
+            preview-theme="github"
+            :preview="true"
+            :toolbars="promptEditorToolbars"
+            style="height: 280px;"
+          />
+        </el-tab-pane>
+      </el-tabs>
+      <div style="padding-top: 12px;">
+        <pl-button type="primary" @click="savePromptConfig">保存提示词模板配置</pl-button>
+        <pl-button @click="showChangeLog">改动记录</pl-button>
+      </div>
     </div>
 
     <div class="set-config-header" style="margin-top: 24px;">
-      <h3 class="set-config-title">TAPD 登录页配置</h3>
+      <h3 class="set-config-title">TAPD 需求抓取配置</h3>
       <p class="set-config-desc">
         从自定义网页中选择一个链接，用于在任务中快速跳转到 TAPD 登录页。
       </p>
@@ -158,10 +160,37 @@
           />
         </el-form-item>
         <el-form-item>
-          <pl-button type="primary" @click="saveTapdConfig">保存 TAPD 登录页配置</pl-button>
+          <pl-button type="primary" @click="saveTapdConfig">保存 TAPD 需求抓取配置</pl-button>
         </el-form-item>
       </el-form>
     </div>
+    <!-- 提示词改动记录弹窗 -->
+    <el-dialog v-model="changeLogVisible" title="提示词改动记录" width="720px" >
+      <el-table :data="changeLogList" stripe max-height="480">
+        <el-table-column prop="config_name" label="配置项" width="160" />
+        <el-table-column prop="create_time_desc" label="改动时间" width="170" />
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="showChangeDetail(row)">详情</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="changeLogList.length === 0" style="text-align:center;color:#999;padding:24px 0;">暂无改动记录</div>
+    </el-dialog>
+
+    <!-- 改动详情弹窗 -->
+    <el-dialog v-model="changeDetailVisible" :title="changeDetailTitle" width="720px" >
+      <div style="display:flex;gap:16px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:bold;margin-bottom:8px;color:#e6a23c;">修改前：</div>
+          <div style="background:#fdf6ec;padding:12px;border-radius:6px;max-height:360px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;font-size:13px;">{{ changeDetailOld }}</div>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:bold;margin-bottom:8px;color:#67c23a;">修改后：</div>
+          <div style="background:#f0f9eb;padding:12px;border-radius:6px;max-height:360px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;font-size:13px;">{{ changeDetailNew }}</div>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -197,6 +226,7 @@ export default {
     return {
       aiModelList: [],
       smartLinkList: [],
+      activePromptTab: 'dev',
       form: {
         home_task_daily_report_model_id: null,
         home_task_daily_report_prompt: DEFAULT_HOME_TASK_DAILY_REPORT_PROMPT,
@@ -212,6 +242,12 @@ export default {
       },
       promptPlaceholders: PROMPT_PLACEHOLDERS,
       promptEditorToolbars: PROMPT_EDITOR_TOOLBARS,
+      changeLogVisible: false,
+      changeLogList: [],
+      changeDetailVisible: false,
+      changeDetailTitle: '',
+      changeDetailOld: '',
+      changeDetailNew: '',
     }
   },
   computed: {
@@ -287,7 +323,7 @@ export default {
       const payload = this.buildFullPayload()
       set.HomeTaskConfigSave(payload, (response) => {
         if (response.ErrCode === 0) {
-          this.$helperNotify.success('TAPD 登录页配置已保存')
+          this.$helperNotify.success('TAPD 需求抓取配置已保存')
           this.$emit('changed')
         }
       })
@@ -327,6 +363,20 @@ export default {
       } else {
         this.fallbackCopy(text)
       }
+    },
+    showChangeLog() {
+      set.PromptChangeLogList((response) => {
+        if (response.ErrCode === 0) {
+          this.changeLogList = Array.isArray(response.Data) ? response.Data : []
+          this.changeLogVisible = true
+        }
+      })
+    },
+    showChangeDetail(row) {
+      this.changeDetailTitle = row.config_name + ' - ' + row.create_time_desc
+      this.changeDetailOld = row.old_value || ''
+      this.changeDetailNew = row.new_value || ''
+      this.changeDetailVisible = true
     },
     fallbackCopy(text) {
       const textarea = document.createElement('textarea')

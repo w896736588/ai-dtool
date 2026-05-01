@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 dtool 通用工具 API 调用示例
-包含：Git文件上传、数据库表查询（MySQL/Pgsql）、表结构查询、SQL查询、Docker服务重启
+包含：Git文件上传、数据库表查询（MySQL/Pgsql）、表结构查询、SQL查询、Docker服务重启、Docker日志查询
 
 使用前请先向用户确认以下信息，替换下方占位值：
   - base_url: dtool 服务地址（如 http://192.168.1.100:17170）
@@ -202,6 +202,46 @@ def docker_service_restart(docker_id, service):
 
 
 # ============================================================
+# 6. 查询 Docker Compose 服务日志
+# ============================================================
+def docker_service_logs(docker_id, command):
+    """
+    查询 Docker Compose 服务日志
+
+    通过 docker_id 自动解析 SSH 连接，在 compose yml 目录下执行用户提供的 logs 命令。
+    command 必须以 "docker compose logs" 开头，否则接口会拒绝执行。
+
+    参数:
+        docker_id: Docker Compose 配置 ID（整数）
+        command: 日志查询命令，必须以 "docker compose logs" 开头
+
+    示例:
+        docker_service_logs(1, "docker compose logs nginx")
+        docker_service_logs(1, "docker compose logs --tail 100 nginx")
+        docker_service_logs(3, "docker compose logs --since 30m nginx php-fpm")
+    """
+    if not command.startswith("docker compose logs"):
+        print("command 必须以 'docker compose logs' 开头")
+        return {"code": -1, "msg": "command 必须以 'docker compose logs' 开头", "data": None}
+    if " -f" in command or " --follow" in command:
+        print("禁止使用 -f / --follow 参数，会导致持续输出")
+        return {"code": -1, "msg": "禁止使用 -f / --follow 参数", "data": None}
+    result = call_api("/api/DockerServiceLogs", {
+        "docker_id": docker_id,
+        "command": command,
+    })
+    if result.get("code") == 0:
+        logs_content = result.get("data", {}).get("logs", "")
+        if logs_content:
+            print(logs_content)
+        else:
+            print("日志为空")
+    else:
+        print(f"查询失败: {result.get('msg')}")
+    return result
+
+
+# ============================================================
 # 使用示例
 # ============================================================
 if __name__ == "__main__":
@@ -228,3 +268,7 @@ if __name__ == "__main__":
 
     # 示例5: 重启 Docker Compose 服务（需提供 docker_id 和服务名）
     # docker_service_restart(1, "nginx")
+
+    # 示例6: 查询 Docker Compose 服务日志（需提供 docker_id 和 command）
+    # docker_service_logs(1, "docker compose logs nginx")
+    # docker_service_logs(1, "docker compose logs --tail 100 nginx")

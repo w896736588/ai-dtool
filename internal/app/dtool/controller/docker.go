@@ -572,3 +572,84 @@ func DockerServiceRestart(c *gin.Context) {
 	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 }
+
+// dockerComposeLogsPrefix docker compose logs 命令允许的前缀
+const dockerComposeLogsPrefix = `docker compose logs`
+
+// DockerServiceLogs 通过 docker_id 查询 Docker Compose 服务日志。
+// 只需传入 docker_id 和 command（必须以 "docker compose logs" 开头），
+// ssh_id 从 tbl_docker_compose 配置中自动解析，方便外部脚本和 Agent 调用。
+func DockerServiceLogs(c *gin.Context) {
+	dataMap := make(map[string]any)
+	if err := gsgin.GinPostBody(c, &dataMap); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	dockerId := cast.ToInt(dataMap[`docker_id`])
+	if dockerId == 0 {
+		gsgin.GinResponseError(c, `docker_id is empty`, nil)
+		return
+	}
+	commandStr := cast.ToString(dataMap[`command`])
+	if commandStr == `` {
+		gsgin.GinResponseError(c, `command is empty`, nil)
+		return
+	}
+	// 校验 command 必须以 "docker compose logs" 开头
+	if !strings.HasPrefix(commandStr, dockerComposeLogsPrefix) {
+		gsgin.GinResponseError(c, `command 必须以 "docker compose logs" 开头`, nil)
+		return
+	}
+	// 禁止持续输出参数，避免命令挂住
+	if strings.Contains(commandStr, ` -f`) || strings.Contains(commandStr, ` --follow`) {
+		gsgin.GinResponseError(c, `禁止使用 -f / --follow 参数，会导致持续输出`, nil)
+		return
+	}
+	// 查询 compose 配置
+	one, oneErr := common.DbMain.Client.QuickQuery(`tbl_docker_compose`, `*`, map[string]any{
+		`id`: dockerId,
+	}).One()
+	if oneErr != nil {
+		gsgin.GinResponseError(c, oneErr.Error(), nil)
+		return
+	}
+	// 从配置中自动获取 ssh_id 并建立 SSH 连接
+	sshId := cast.ToString(one[`ssh_id`])
+	sshConfig, _ := common.DbMain.GetSshConfig(sshId)
+	sse := &p_sse.SseShell{
+		Sse: gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
+	}
+	uniqueKey := p_common.TBaseClient.GetCombineKey(sshId, ``)
+	sshClient, sshClientErr := component.ShellClient.GetClient(sshConfig, uniqueKey, sse, func(s string) []string {
+		return []string{p_common.TBaseClient.FilterTerminalChars(s)}
+	}, nil, nil)
+	if sshClientErr != nil {
+		gsgin.GinResponseError(c, sshClientErr.Error(), nil)
+		return
+	}
+	// 在 compose yml 目录下执行用户提供的 logs 命令
+	composeYmlPath := one[`compose_yml_path`].(string)
+	command := p_shell.NewCommand()
+	command.Cd(path.Dir(composeYmlPath))
+	// SetCommand 不会自动追加 sudo 前缀，需手动拼接
+	command.SetCommand("sudo " + commandStr)
+	fullCommand := command.GetCommand().ToStr()
+	result, _ := sshClient.RunCommandWait(fullCommand, dockerActionTimeoutSeconds*time.Second)
+	// 清洗 ANSI 控制字符
+	cleanResult := ansi.ReplaceAllString(result, "")
+	cleanResult = strings.TrimSpace(cleanResult)
+	// 移除末尾可能混入的 SSH 提示符（如 user@host:path$）
+	lines := strings.Split(cleanResult, "\n")
+	if len(lines) > 0 {
+		lastLine := lines[len(lines)-1]
+		// SSH 提示符通常以 $ 或 # 结尾，且包含 @ 和 :
+		if strings.Contains(lastLine, "@") && strings.Contains(lastLine, ":") &&
+			(strings.HasSuffix(lastLine, "$") || strings.HasSuffix(lastLine, "#")) {
+			lines = lines[:len(lines)-1]
+			cleanResult = strings.TrimSpace(strings.Join(lines, "\n"))
+		}
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`logs`: cleanResult,
+	})
+}

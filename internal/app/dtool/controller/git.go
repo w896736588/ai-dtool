@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -1131,15 +1132,38 @@ func GitUploadFile(c *gin.Context) {
 	}
 
 	// 创建一次性SSH连接
+	gstool.FmtPrintlnLogTime(`[GitUploadFile] 创建SSH连接 ssh_id=%s host=%s port=%s`, sshId, sshConfig[`host`], sshConfig[`port`])
 	sshOnce, sshErr := component.ShellClient.GetSshOnce(sshConfig)
 	if sshErr != nil {
+		gstool.FmtPrintlnLogTime(`[GitUploadFile] 创建SSH连接失败: %s`, sshErr.Error())
 		gsgin.GinResponseError(c, `创建SSH连接失败: `+sshErr.Error(), nil)
 		return
 	}
 
+	// 提前创建所有远程目标目录，避免因目录不存在导致上传失败
+	targetDirs := make(map[string]bool)
+	for _, item := range fileItems {
+		relativePath := strings.ReplaceAll(item.RelativeFilePath, `\`, `/`)
+		relativePath = strings.TrimLeft(relativePath, `/`)
+		targetPath := codePath + `/` + relativePath
+		targetDirs[path.Dir(targetPath)] = true
+	}
+	gstool.FmtPrintlnLogTime(`[GitUploadFile] 需要创建的远程目录: %v`, targetDirs)
+	for dir := range targetDirs {
+		gstool.FmtPrintlnLogTime(`[GitUploadFile] mkdir -p %s`, dir)
+		if out, mkdirErr := sshOnce.RunCommandOnce(fmt.Sprintf(`mkdir -p %s`, dir)); mkdirErr != nil {
+			gstool.FmtPrintlnLogTime(`[GitUploadFile] mkdir失败: dir=%s err=%s out=%s`, dir, mkdirErr.Error(), out)
+			gsgin.GinResponseError(c, `创建远程目录失败: `+mkdirErr.Error(), nil)
+			return
+		}
+		gstool.FmtPrintlnLogTime(`[GitUploadFile] mkdir成功: %s`, dir)
+	}
+
 	// 上传每个文件
 	results := make([]map[string]any, 0, len(fileItems))
+	gstool.FmtPrintlnLogTime(`[GitUploadFile] 开始上传 %d 个文件, code_path=%s`, len(fileItems), codePath)
 	for _, item := range fileItems {
+		gstool.FmtPrintlnLogTime(`[GitUploadFile] 上传文件: local=%s remote_relative=%s`, item.FullFilePath, item.RelativeFilePath)
 		// 校验本地文件
 		fileInfo, statErr := os.Stat(item.FullFilePath)
 		if statErr != nil {
@@ -1160,29 +1184,20 @@ func GitUploadFile(c *gin.Context) {
 		relativePath = strings.TrimLeft(relativePath, `/`)
 		targetPath := codePath + `/` + relativePath
 
-		// 创建远程目标目录
-		targetDir := filepath.Dir(targetPath)
-		if _, mkdirErr := sshOnce.RunCommandOnce(fmt.Sprintf(`mkdir -p %s`, targetDir)); mkdirErr != nil {
-			gsgin.GinResponseError(c, `创建远程目录失败: `+mkdirErr.Error(), nil)
-			return
-		}
-
 		// SCP传输到临时文件
 		fileName := filepath.Base(item.FullFilePath)
 		targetTempFile := targetPath + p_common.TBaseClient.GetUnique(`_upload`)
+		gstool.FmtPrintlnLogTime(`[GitUploadFile] SCP上传开始: local=%s remote=%s fileSize=%d`, item.FullFilePath, targetTempFile, fileInfo.Size())
 		if uploadErr := sshOnce.UploadFileProcessScp(targetTempFile, item.FullFilePath, func(int64, int64) {}); uploadErr != nil {
+			gstool.FmtPrintlnLogTime(`[GitUploadFile] SCP上传失败: local=%s remote=%s err=%s`, item.FullFilePath, targetTempFile, uploadErr.Error())
 			gsgin.GinResponseError(c, fmt.Sprintf(`文件上传失败[%s]: %s`, fileName, uploadErr.Error()), nil)
 			return
 		}
 
-		// mv临时文件到最终路径（已存在则覆盖）
-		sshUniqueKey := p_common.TBaseClient.GetUnique(`git_upload_`)
-		sshClient, sshClientErr := component.ShellClient.GetClientMarkdown(sshConfig, sshUniqueKey, nil)
-		if sshClientErr != nil {
-			gsgin.GinResponseError(c, `创建SSH命令连接失败: `+sshClientErr.Error(), nil)
-			return
-		}
-		if _, mvErr := sshClient.RunCommandWait(fmt.Sprintf(`mv %s %s`, targetTempFile, targetPath), 30*time.Second); mvErr != nil {
+		// mv临时文件到最终路径（已存在则覆盖），复用已有的sshOnce连接
+		gstool.FmtPrintlnLogTime(`[GitUploadFile] mv临时文件: %s -> %s`, targetTempFile, targetPath)
+		if _, mvErr := sshOnce.RunCommandOnce(fmt.Sprintf(`mv %s %s`, targetTempFile, targetPath)); mvErr != nil {
+			gstool.FmtPrintlnLogTime(`[GitUploadFile] mv失败: %s`, mvErr.Error())
 			gsgin.GinResponseError(c, fmt.Sprintf(`移动文件失败[%s]: %s`, fileName, mvErr.Error()), nil)
 			return
 		}
@@ -1195,6 +1210,7 @@ func GitUploadFile(c *gin.Context) {
 		})
 	}
 
+	gstool.FmtPrintlnLogTime(`[GitUploadFile] 全部上传完成, 共%d个文件`, len(results))
 	gsgin.GinResponseSuccess(c, `文件上传成功`, map[string]any{
 		`list`: results,
 	})

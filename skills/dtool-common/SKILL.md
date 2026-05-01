@@ -14,6 +14,7 @@ description: Use when operating the dtool 通用工具模块 and the task involv
    - **Token**：认证令牌，放在请求头 `Token` 中
    - **git_id**：Git 配置 ID（用于获取 SSH 远程连接信息，上传文件到远程项目时需要）
    - **mysql_id**：数据库配置 ID（支持 MySQL 和 Pgsql，使用数据库相关接口时需要）
+   - **docker_id**：Docker Compose 配置 ID（使用 Docker 日志查询接口时需要）
 2. 所有请求使用 `POST`，`Content-Type: application/json; charset=utf-8`。
 3. 统一使用 Python 脚本发送请求，避免 bash 编码问题。
 
@@ -82,6 +83,25 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 - **返回**: `list` 数组，每项为查询结果的一行（字段名为 key）
 - **安全限制**: 仅允许 `SELECT` 开头的 SQL，禁止 INSERT/UPDATE/DELETE/DROP 等
 
+### 5. 查询 Docker Compose 服务日志
+
+- **路径**: `/api/DockerServiceLogs`
+- **参数**:
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `docker_id` | int | 是 | Docker Compose 配置 ID（关联 tbl_docker_compose 表） |
+| `command` | string | 是 | 日志查询命令，必须以 `docker compose logs` 开头 |
+
+- **返回**: `logs` 字段，包含日志文本内容
+- **安全限制**: command 必须以 `docker compose logs` 开头
+- **超时**: 40 秒
+
+示例 command：
+- `docker compose logs nginx` — 查看 nginx 服务日志
+- `docker compose logs --tail 100 nginx` — 查看 nginx 最近 100 行日志
+- `docker compose logs --since 30m nginx php-fpm` — 查看 nginx 和 php-fpm 最近 30 分钟日志
+
 ## 推荐工作流
 
 ### 场景 1：上传文件到远程项目
@@ -104,6 +124,14 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 1. 已知表名时，直接调用 `/api/MysqlQuery` 执行 `SELECT * FROM table_name LIMIT 10`
 2. 需要了解字段含义时，先调 `/api/MysqlTableStructure`
 
+
+### 场景 4：查询 Docker 服务日志
+
+1. 向用户确认 `base_url`、`Token`、`docker_id`
+2. 确认要查询的服务名和日志条件（如 `--tail 100`）
+3. 拼接 command（必须以 `docker compose logs` 开头）
+4. 调用 `/api/DockerServiceLogs`
+5. 返回 `logs` 字段中的日志内容
 ## Python 调用脚本
 
 使用前需先向用户获取 `base_url`、`token`、`git_id`、`mysql_id`，然后替换脚本中的占位值。
