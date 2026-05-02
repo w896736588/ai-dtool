@@ -31,23 +31,24 @@ description: Use when operating the dtool 接口开发模块 and the task involv
 
 ### 场景 0：先检查当前分支改动的接口，再补接口文档
 
-1. 先在仓库根目录运行变更文件脚本，筛出当前分支相对基分支的改动文件：
-   - Windows / PowerShell：`powershell -File skills/dtool-api/scripts/show-branch-diff.ps1 [base-branch]`
-   - Linux / macOS / bash：`bash skills/dtool-api/scripts/show-branch-diff.sh [base-branch]`
-2. 重点关注接口相关文件，按“接口定义与入口优先”原则筛选，不要绑定当前仓库路径：
+1. 基分支必须向用户确认后再传入脚本参数，禁止自行默认为 `master`、`main` 或其他任何分支名。
+2. 先在仓库根目录运行变更文件脚本，筛出当前分支相对基分支的改动文件（基分支必须作为参数传入）：
+   - Windows / PowerShell：`powershell -File skills/dtool-api/scripts/show-branch-diff.ps1 <基分支>`
+   - Linux / macOS / bash：`bash skills/dtool-api/scripts/show-branch-diff.sh <基分支>`
+3. 重点关注接口相关文件，按”接口定义与入口优先”原则筛选，不要绑定当前仓库路径：
    - `.php` 文件，尤其是控制器、路由、请求类、资源类、服务入口等
    - `.go` 文件，尤其是 controller、router、handler、service entry、request binding、response struct 等
    - 用户明确指定的接口实现文件、路由文件、控制器文件
    - 只有当前端文件里直接定义了接口地址、请求参数或返回字段映射时，才把它们作为辅助参考，而不是主依据
-3. 对每个疑似有接口变更的文件，再查看单文件 diff：
-   - Windows / PowerShell：`powershell -File skills/dtool-api/scripts/show-file-diff.ps1 <file-path> [base-branch]`
-   - Linux / macOS / bash：`bash skills/dtool-api/scripts/show-file-diff.sh <file-path> [base-branch]`
-4. 从 diff 中确认以下信息后，再开始写接口文档：
+4. 对每个疑似有接口变更的文件，再查看单文件 diff（基分支必须作为参数传入）：
+   - Windows / PowerShell：`powershell -File skills/dtool-api/scripts/show-file-diff.ps1 <基分支> <file-path>`
+   - Linux / macOS / bash：`bash skills/dtool-api/scripts/show-file-diff.sh <基分支> <file-path>`
+5. 从 diff 中确认以下信息后，再开始写接口文档：
    - 是否新增接口、修改 URI、修改 method、修改请求参数、修改响应字段
    - 后端控制器实际如何接收参数，以决定 `content_type`、`query_params`、`body_form`、`body_json`、`body_raw`
    - 返回结构里哪些字段需要写入 `take_result`
-5. 如果变更里同时包含非接口文件，优先聚焦接口语义变更，不要把纯样式、dist、构建产物误当成接口改动
-6. 在没有确认 diff 之前，不得直接假设接口文档需要新增或修改
+6. 如果变更里同时包含非接口文件，优先聚焦接口语义变更，不要把纯样式、dist、构建产物误当成接口改动
+7. 在没有确认 diff 之前，不得直接假设接口文档需要新增或修改
 
 ### 场景 1：只做层级查询
 
@@ -304,10 +305,10 @@ description: Use when operating the dtool 接口开发模块 and the task involv
 需要自动执行导入/更新时，可优先查看：
 
 - `scripts/sync_api_by_uri.py`
-- `scripts/show-branch-diff.ps1`
-- `scripts/show-file-diff.ps1`
-- `scripts/show-branch-diff.sh`
-- `scripts/show-file-diff.sh`
+- `scripts/show-branch-diff.ps1`（需传入基分支参数）
+- `scripts/show-file-diff.ps1`（需传入基分支参数和文件路径）
+- `scripts/show-branch-diff.sh`（需传入基分支参数）
+- `scripts/show-file-diff.sh`（需传入基分支参数和文件路径）
 
 使用前仍要先确认：
 

@@ -28,6 +28,7 @@ type DevConfig struct {
 	DockerID     int    `json:"docker_id"`
 	MysqlID      int    `json:"mysql_id"`
 	LocalDir     string `json:"local_dir"`
+	ParentBranch string `json:"parent_branch"`
 }
 
 // ApiDevEntry 接口开发条目，对应一个集合+文件夹组合。

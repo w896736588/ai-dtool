@@ -1516,6 +1516,9 @@ func taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo map[string]any) string {
 		if cfg.LocalDir != "" {
 			sb.WriteString(fmt.Sprintf("- **本地目录**: %s\n", cfg.LocalDir))
 		}
+		if cfg.ParentBranch != "" {
+			sb.WriteString(fmt.Sprintf("- **父分支**: %s（用于提取当前分支改动文件）\n", cfg.ParentBranch))
+		}
 		collectionName := taskWorkflowQueryNameByID("tbl_api_collection", cfg.CollectionID)
 		if cfg.CollectionID > 0 {
 			dirName := taskWorkflowQueryNameByID("tbl_api_dir", cfg.DirID)

@@ -64,7 +64,7 @@
                 preview-theme="github"
                 :preview="true"
                 :toolbars="promptEditorToolbars"
-                style="height: 560px;"
+                height="840px"
               />
             </div>
 
@@ -93,7 +93,7 @@
                 preview-theme="github"
                 :preview="true"
                 :toolbars="promptEditorToolbars"
-                style="height: 560px;"
+                height="840px"
               />
             </div>
           </div>
@@ -121,7 +121,7 @@
                 preview-theme="github"
                 :preview="true"
                 :toolbars="promptEditorToolbars"
-                style="height: 560px;"
+                height="840px"
               />
             </div>
           </div>
@@ -149,7 +149,7 @@
                 preview-theme="github"
                 :preview="true"
                 :toolbars="promptEditorToolbars"
-                style="height: 560px;"
+                height="840px"
               />
             </div>
           </div>

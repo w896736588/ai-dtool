@@ -446,6 +446,16 @@
                       />
                     </el-form-item>
                   </el-col>
+                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="父分支" label-width="72px">
+                      <el-input
+                        v-model="cfg.parent_branch"
+                        clearable
+                        style="width: 100%"
+                        placeholder="输入父分支名称（可选）"
+                      />
+                    </el-form-item>
+                  </el-col>
                 </el-row>
               </div>
               <el-button type="primary" plain size="small" @click="addDevConfig">
@@ -554,7 +564,7 @@ function createHomeTaskDefaultForm() {
     task_status: HOME_TASK_STATUS_TODO,
     start_date: getTodayDateText(),
     tapd_url: '',
-    dev_configs: [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', mysql_id: '', local_dir: '' }],
+    dev_configs: [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', mysql_id: '', local_dir: '', parent_branch: '' }],
   }
 }
 
@@ -761,7 +771,7 @@ export default {
       this.loadHomeTaskApiFoldersForCollection(cfg.collection_id)
     },
     addDevConfig() {
-      this.homeTaskForm.dev_configs.push({ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '' })
+      this.homeTaskForm.dev_configs.push({ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '', parent_branch: '' })
     },
     removeDevConfig(idx) {
       this.homeTaskForm.dev_configs.splice(idx, 1)
@@ -834,6 +844,7 @@ export default {
           docker_id: Number(cfg.docker_id || 0) || '',
           mysql_id: Number(cfg.mysql_id || 0) || '',
           local_dir: String(cfg.local_dir || ''),
+          parent_branch: String(cfg.parent_branch || ''),
         }))
       } else {
         let gitIds = Array.isArray(task.git_ids) && task.git_ids.length > 0
@@ -853,6 +864,7 @@ export default {
             docker_id: '',
             mysql_id: Number(task.mysql_id || 0) || '',
             local_dir: '',
+            parent_branch: '',
           })
         }
       }
@@ -982,6 +994,9 @@ export default {
           const dirName = dirPath.split(/[/\\]/).filter(Boolean).pop() || dirPath
           group.push({ type: 'local_dir', label: dirName, fullPath: dirPath, tagType: DEV_CONFIG_TAG_TYPE_DIR })
         }
+        if (String(cfg.parent_branch || '').trim() !== '') {
+          group.push({ type: 'parent_branch', label: '分支: ' + String(cfg.parent_branch).trim(), tagType: '' })
+        }
         if (group.length > 0) {
           groups.push(group)
         }
@@ -1017,7 +1032,7 @@ export default {
         return
       }
       const validConfigs = this.homeTaskForm.dev_configs
-        .filter(cfg => Number(cfg.git_id || 0) > 0 || Number(cfg.collection_id || 0) > 0 || Number(cfg.docker_id || 0) > 0 || Number(cfg.mysql_id || 0) > 0 || String(cfg.local_dir || '').trim() !== '')
+        .filter(cfg => Number(cfg.git_id || 0) > 0 || Number(cfg.collection_id || 0) > 0 || Number(cfg.docker_id || 0) > 0 || Number(cfg.mysql_id || 0) > 0 || String(cfg.local_dir || '').trim() !== '' || String(cfg.parent_branch || '').trim() !== '')
         .map(cfg => ({
           git_id: Number(cfg.git_id || 0),
           collection_id: Number(cfg.collection_id || 0),
@@ -1025,6 +1040,7 @@ export default {
           docker_id: Number(cfg.docker_id || 0),
           mysql_id: Number(cfg.mysql_id || 0),
           local_dir: String(cfg.local_dir || '').trim(),
+          parent_branch: String(cfg.parent_branch || '').trim(),
         }))
       this.homeTaskSaving = true
       this.homeTaskOperatingType = HOME_TASK_OPERATE_SAVE
