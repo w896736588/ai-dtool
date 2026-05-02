@@ -178,6 +178,7 @@ func gitRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/GitUploadFile`, controller.GitUploadFile)                 //上传文件到Git项目
 	tGin.GinPost(`/api/GitCurrentBranch`, controller.GitCurrentBranchById)       //通过git_id查询当前分支
 	tGin.GinPost(`/api/GitPull`, controller.GitPull)                             //通过git_id拉取当前分支最新代码
+	tGin.GinPost(`/api/GitChangeBranchById`, controller.GitChangeBranchById)     //通过git_id切换分支
 }
 
 // MySQL查询相关

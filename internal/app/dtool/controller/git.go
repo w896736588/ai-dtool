@@ -1327,3 +1327,63 @@ func GitPull(c *gin.Context) {
 	gstool.FmtPrintlnLogTime(`[GitPull] 拉取完成 git_id=%s`, gitId)
 	gsgin.GinResponseSuccess(c, ``, result)
 }
+
+// GitChangeBranchById 通过 git_id 切换分支
+func GitChangeBranchById(c *gin.Context) {
+	reqMap := make(map[string]interface{})
+	if err := gsgin.GinPostBody(c, &reqMap); err != nil {
+		gsgin.GinResponseError(c, `请求参数错误`, nil)
+		return
+	}
+	gitId := cast.ToString(reqMap[`git_id`])
+	branchName := cast.ToString(reqMap[`branch_name`])
+	if branchName == `` {
+		gsgin.GinResponseError(c, `branch_name不能为空`, nil)
+		return
+	}
+	gitInfo, sshClient, err := getGitInfoByGitId(gitId)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	codePath := cast.ToString(gitInfo[`code_path`])
+	gstool.FmtPrintlnLogTime(`[GitChangeBranchById] 开始切换分支 git_id=%s code_path=%s branch=%s`, gitId, codePath, branchName)
+
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+		gstool.FmtPrintlnLogTime(`[GitChangeBranchById] 前置环境处理失败 err=%s`, prepareErr.Error())
+		gsgin.GinResponseError(c, prepareErr.Error(), nil)
+		return
+	}
+
+	// 先查询当前分支
+	command1 := p_shell.NewCommand()
+	command1.Init()
+	command1.Cd(codePath)
+	command1.GitShowBranch()
+	currentBranch, _ := sshClient.RunCommandWait(command1.GetCommand().ToStr(), getGitOperationTimeout(gitOperationBranchChange))
+	currentBranch = CleanBranchName(currentBranch)
+
+	command := p_shell.NewCommand()
+	command.Cd(codePath)
+	command.GitIgnoreAll()
+	command.GitCleanAll()
+	command.GitFetch()
+	command.GitPull()
+	currentBranch = strings.Replace(currentBranch, "\n", "", -1)
+	if currentBranch != branchName {
+		command.GitCheckout(branchName)
+	}
+	command.GitPullOrigin(branchName)
+	command.Echo(`当前分支：`)
+	command.GitShowBranch()
+	command.Echo(`远程分支：`)
+	command.GitShowOriginBranch()
+	result, runErr := sshClient.RunCommandWait(command.GetCommand().ToStr(), getGitOperationTimeout(gitOperationBranchChange))
+	if runErr != nil {
+		gstool.FmtPrintlnLogTime(`[GitChangeBranchById] 切换分支失败 err=%s result=%q`, runErr.Error(), result)
+		gsgin.GinResponseError(c, runErr.Error(), result)
+		return
+	}
+	gstool.FmtPrintlnLogTime(`[GitChangeBranchById] 切换分支完成 git_id=%s branch=%s`, gitId, branchName)
+	gsgin.GinResponseSuccess(c, ``, result)
+}

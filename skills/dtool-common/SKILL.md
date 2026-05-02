@@ -1,6 +1,6 @@
 ---
 name: dtool-common
-description: Use when operating the dtool 通用工具模块 and the task involves uploading files to remote servers, Git branch operations (listing branches, pulling code), querying database tables (MySQL/Pgsql), querying table structures, or executing SQL SELECT queries.
+description: Use when operating the dtool 通用工具模块 and the task involves uploading files to remote servers, Git branch operations (listing branches, pulling code, switching branches), querying database tables (MySQL/Pgsql), querying table structures, or executing SQL SELECT queries.
 ---
 
 # dtool 通用工具技能
@@ -128,6 +128,20 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 
 - **返回**: 文本内容，包含当前分支和远程分支信息
 
+### 8. 切换分支
+
+通过 git_id 自动解析 SSH 连接和项目路径，切换到指定分支（执行 git checkout . + clean + fetch + pull + checkout branch + pull origin branch）。
+
+- **路径**: `/api/GitChangeBranchById`
+- **参数**:
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `git_id` | string | 是 | Git 配置 ID（关联 tbl_git 表，自动获取 SSH 连接和 code_path） |
+| `branch_name` | string | 是 | 要切换到的分支名（如 `master`、`dev`、`feature_xxx`） |
+
+- **返回**: 文本内容，包含当前分支和远程分支信息
+
 ## 推荐工作流
 
 ### 场景 1：上传文件到远程项目
@@ -170,6 +184,13 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 1. 向用户确认 `base_url`、`Token`、`git_id`
 2. 调用 `/api/GitPull`
 3. 返回当前分支和远程分支信息
+
+### 场景 7：切换 Git 分支
+
+1. 向用户确认 `base_url`、`Token`、`git_id`
+2. 确认要切换的目标分支名 `branch_name`
+3. 调用 `/api/GitChangeBranchById`
+4. 返回切换后的当前分支和远程分支信息
 ## Python 调用脚本
 
 使用前需先向用户获取 `base_url`、`token`、`git_id`、`mysql_id`，然后替换脚本中的占位值。

@@ -286,6 +286,32 @@ def git_pull(git_id):
 
 
 # ============================================================
+# 9. 通过 git_id 切换分支
+# ============================================================
+def git_change_branch_by_id(git_id, branch_name):
+    """
+    通过 git_id 切换到指定分支
+
+    参数:
+        git_id: Git 配置 ID（关联 tbl_git 表）
+        branch_name: 要切换到的分支名（如 master、dev、feature_xxx）
+    """
+    result = call_api("/api/GitChangeBranchById", {
+        "git_id": git_id,
+        "branch_name": branch_name,
+    })
+    if result.get("code") == 0:
+        output = result.get("data", "")
+        if output:
+            print(output)
+        else:
+            print(f"已切换到分支 {branch_name}")
+    else:
+        print(f"切换分支失败: {result.get('msg')}")
+    return result
+
+
+# ============================================================
 # 使用示例
 # ============================================================
 if __name__ == "__main__":
@@ -322,3 +348,7 @@ if __name__ == "__main__":
 
     # 示例8: 拉取当前分支最新代码（需提供 git_id）
     # git_pull("1")
+
+    # 示例9: 切换分支（需提供 git_id 和目标分支名）
+    # git_change_branch_by_id("1", "master")
+    # git_change_branch_by_id("1", "dev")
