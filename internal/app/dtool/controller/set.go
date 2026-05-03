@@ -1487,6 +1487,11 @@ func SetHomeTaskConfigGet(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	devEnvironment, err := homeTaskConfigValue(define.HomeTaskConfigDevEnvironment)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`home_task_daily_report_prompt`:   dailyReportPrompt,
 		`home_task_daily_report_model_id`: cast.ToInt(dailyReportModelID),
@@ -1499,6 +1504,7 @@ func SetHomeTaskConfigGet(c *gin.Context) {
 		`home_task_prompt_api_gen`:        promptApiGen,
 		`home_task_prompt_api_test`:       promptApiTest,
 		`home_task_prompt_design`:         promptDesign,
+		`home_task_dev_environment`:       devEnvironment,
 	})
 }
 
@@ -1510,6 +1516,7 @@ var promptConfigKeys = map[string]string{
 	define.HomeTaskConfigPromptApiGen:      `接口生成提示词`,
 	define.HomeTaskConfigPromptApiTest:     `接口自动化测试提示词`,
 	define.HomeTaskConfigPromptDesign:      `开发设计提示词`,
+	define.HomeTaskConfigDevEnvironment:    `开发环境`,
 }
 
 // saveHomeTaskPromptWithLog 保存提示词配置并记录变更日志（仅当值真正变化时才写日志）。
@@ -1598,6 +1605,12 @@ func SetHomeTaskConfigSave(c *gin.Context) {
 	homeTaskPromptDesign := strings.TrimSpace(cast.ToString(dataMap[`home_task_prompt_design`]))
 	saveHomeTaskPromptWithLog(define.HomeTaskConfigPromptDesign, `开发设计提示词`, homeTaskPromptDesign, `工作流-开发设计提示词模板`)
 	if err := common.DbMain.HomeTaskConfigSave(`开发设计提示词`, define.HomeTaskConfigPromptDesign, homeTaskPromptDesign, `工作流-开发设计提示词模板`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskDevEnvironment := strings.TrimSpace(cast.ToString(dataMap[`home_task_dev_environment`]))
+	saveHomeTaskPromptWithLog(define.HomeTaskConfigDevEnvironment, `开发环境`, homeTaskDevEnvironment, `工作流-开发环境描述`)
+	if err := common.DbMain.HomeTaskConfigSave(`开发环境`, define.HomeTaskConfigDevEnvironment, homeTaskDevEnvironment, `工作流-开发环境描述`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}

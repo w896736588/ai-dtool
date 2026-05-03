@@ -1,169 +1,218 @@
 <template>
   <div class="set-config-page">
-    <div class="set-config-header">
-      <h3 class="set-config-title">工作日报 AI 设置</h3>
-      <p class="set-config-desc">这里维护任务清单右侧"AI 生成工作日报"按钮使用的模型和提示词。</p>
-    </div>
+    <!-- 工作日报 AI 设置 -->
+    <div v-show="activeTab === 'daily-report' || !activeTab">
+      <div class="set-config-header">
+        <h3 class="set-config-title">工作日报 AI 设置</h3>
+        <p class="set-config-desc">这里维护任务清单右侧"AI 生成工作日报"按钮使用的模型和提示词。</p>
+      </div>
 
-    <div class="set-config-table-card">
-      <el-form label-width="120px" class="memory-config-form">
-        <el-form-item label="日报模型">
-          <el-select
-            v-model="form.home_task_daily_report_model_id"
-            clearable
-            filterable
-            style="width: 100%;"
-            placeholder="请选择用于生成工作日报的 LLM 模型"
-          >
-            <el-option
-              v-for="item in aiModelList"
-              :key="item.id"
-              :label="buildModelLabel(item)"
-              :value="item.id"
+      <div class="set-config-table-card">
+        <el-form label-width="120px" class="memory-config-form">
+          <el-form-item label="日报模型">
+            <el-select
+              v-model="form.home_task_daily_report_model_id"
+              clearable
+              filterable
+              style="width: 100%;"
+              placeholder="请选择用于生成工作日报的 LLM 模型"
+            >
+              <el-option
+                v-for="item in aiModelList"
+                :key="item.id"
+                :label="buildModelLabel(item)"
+                :value="item.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="日报提示词">
+            <MdEditor
+              v-model="form.home_task_daily_report_prompt"
+              preview-theme="github"
+              :preview="true"
+              :toolbars="promptEditorToolbars"
+              style="height: 480px;"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="日报提示词">
-          <MdEditor
-            v-model="form.home_task_daily_report_prompt"
-            preview-theme="github"
-            :preview="true"
-            :toolbars="promptEditorToolbars"
-            style="height: 480px;"
-          />
-        </el-form-item>
-        <el-form-item>
-          <pl-button type="primary" @click="saveConfig">保存工作日报配置</pl-button>
-          <pl-button @click="showChangeLog">改动记录</pl-button>
-        </el-form-item>
-      </el-form>
-    </div>
-
-    <div class="set-config-header" style="margin-top: 24px;">
-      <h3 class="set-config-title">工作流提示词模板</h3>
-      <p class="set-config-desc">
-        编辑工作流中使用的提示词模板，可点击下方占位符复制后粘贴到模板中。
-      </p>
-    </div>
-
-    <div class="prompt-placeholder-bar">
-      <span class="prompt-placeholder-bar__label">内置占位符：</span>
-      <span
-        v-for="ph in promptPlaceholders"
-        :key="ph.value"
-        class="prompt-placeholder-tag"
-        @click="copyPlaceholder(ph)"
-      >
-        {{ ph.label }}
-        <el-icon class="prompt-placeholder-tag__icon"><CopyDocument /></el-icon>
-      </span>
-    </div>
-
-    <div class="set-config-table-card">
-      <el-tabs v-model="activePromptTab" class="prompt-template-tabs">
-        <el-tab-pane label="需求分析设计提示词" name="dev">
-          <MdEditor
-            v-model="form.home_task_prompt_dev"
-            preview-theme="github"
-            :preview="true"
-            :toolbars="promptEditorToolbars"
-            style="height: 480px;"
-          />
-        </el-tab-pane>
-        <el-tab-pane label="开发设计提示词" name="design">
-          <MdEditor
-            v-model="form.home_task_prompt_design"
-            preview-theme="github"
-            :preview="true"
-            :toolbars="promptEditorToolbars"
-            style="height: 480px;"
-          />
-        </el-tab-pane>
-        <el-tab-pane label="接口生成提示词" name="api_gen">
-          <MdEditor
-            v-model="form.home_task_prompt_api_gen"
-            preview-theme="github"
-            :preview="true"
-            :toolbars="promptEditorToolbars"
-            style="height: 480px;"
-          />
-        </el-tab-pane>
-        <el-tab-pane label="接口自动化测试提示词" name="api_test">
-          <MdEditor
-            v-model="form.home_task_prompt_api_test"
-            preview-theme="github"
-            :preview="true"
-            :toolbars="promptEditorToolbars"
-            style="height: 480px;"
-          />
-        </el-tab-pane>
-      </el-tabs>
-      <div style="padding-top: 12px;">
-        <pl-button type="primary" @click="savePromptConfig">保存提示词模板配置</pl-button>
-        <pl-button @click="showChangeLog">改动记录</pl-button>
+          </el-form-item>
+          <el-form-item>
+            <pl-button type="primary" @click="saveConfig">保存工作日报配置</pl-button>
+            <pl-button @click="showChangeLog">改动记录</pl-button>
+          </el-form-item>
+        </el-form>
       </div>
     </div>
 
-    <div class="set-config-header" style="margin-top: 24px;">
-      <h3 class="set-config-title">TAPD 需求抓取配置</h3>
-      <p class="set-config-desc">
-        从自定义网页中选择一个链接，用于在任务中快速跳转到 TAPD 登录页。
-      </p>
+    <!-- 工作流提示词模板 -->
+    <div v-show="activeTab === 'prompt-template'">
+      <div class="set-config-header">
+        <h3 class="set-config-title">工作流提示词模板</h3>
+        <p class="set-config-desc">
+          编辑工作流中使用的提示词模板，可点击下方占位符复制后粘贴到模板中。
+        </p>
+      </div>
+
+      <div class="prompt-placeholder-bar">
+        <span class="prompt-placeholder-bar__label">内置占位符：</span>
+        <span
+          v-for="ph in promptPlaceholders"
+          :key="ph.value"
+          class="prompt-placeholder-tag"
+          @click="copyPlaceholder(ph)"
+        >
+          {{ ph.label }}
+          <el-icon class="prompt-placeholder-tag__icon"><CopyDocument /></el-icon>
+        </span>
+      </div>
+
+      <div class="set-config-table-card">
+        <el-tabs v-model="activePromptTab" class="prompt-template-tabs">
+          <el-tab-pane label="需求分析设计提示词" name="dev">
+            <MdEditor
+              v-model="form.home_task_prompt_dev"
+              preview-theme="github"
+              :preview="true"
+              :toolbars="promptEditorToolbars"
+              style="height: 480px;"
+            />
+          </el-tab-pane>
+          <el-tab-pane label="开发设计提示词" name="design">
+            <MdEditor
+              v-model="form.home_task_prompt_design"
+              preview-theme="github"
+              :preview="true"
+              :toolbars="promptEditorToolbars"
+              style="height: 480px;"
+            />
+          </el-tab-pane>
+          <el-tab-pane label="接口生成提示词" name="api_gen">
+            <MdEditor
+              v-model="form.home_task_prompt_api_gen"
+              preview-theme="github"
+              :preview="true"
+              :toolbars="promptEditorToolbars"
+              style="height: 480px;"
+            />
+          </el-tab-pane>
+          <el-tab-pane label="接口自动化测试提示词" name="api_test">
+            <MdEditor
+              v-model="form.home_task_prompt_api_test"
+              preview-theme="github"
+              :preview="true"
+              :toolbars="promptEditorToolbars"
+              style="height: 480px;"
+            />
+          </el-tab-pane>
+        </el-tabs>
+        <div style="padding-top: 12px;">
+          <pl-button type="primary" @click="savePromptConfig">保存提示词模板配置</pl-button>
+          <pl-button @click="showChangeLog">改动记录</pl-button>
+        </div>
+      </div>
     </div>
 
-    <div class="set-config-table-card">
-      <el-form label-width="120px" class="memory-config-form">
-        <el-form-item label="自定义网页">
-          <el-select
-            v-model="form.home_task_tapd_smart_link_id"
-            clearable
-            filterable
-            style="width: 100%;"
-            placeholder="请选择自定义网页"
-            @change="onSmartLinkChange"
-          >
-            <el-option
-              v-for="item in smartLinkList"
-              :key="item.id"
-              :label="item.name"
-              :value="item.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="网页链接">
-          <el-select
-            v-model="form.home_task_tapd_link_label"
-            clearable
-            filterable
-            style="width: 100%;"
-            placeholder="请选择具体链接"
-          >
-            <el-option
-              v-for="(link, idx) in currentLinkOptions"
-              :key="idx"
-              :label="link.label"
-              :value="link.label"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="CSS选择器">
-          <el-input
-            v-model="form.home_task_tapd_css_selector"
-            placeholder="如 .content-wrapper 或 #main"
-          />
-        </el-form-item>
-        <el-form-item label="等待秒数">
-          <el-input-number
-            v-model="form.home_task_tapd_wait_seconds"
-            :min="1"
-            :max="30"
-          />
-        </el-form-item>
-        <el-form-item>
-          <pl-button type="primary" @click="saveTapdConfig">保存 TAPD 需求抓取配置</pl-button>
-        </el-form-item>
-      </el-form>
+    <!-- 开发环境 -->
+    <div v-show="activeTab === 'dev-environment'">
+      <div class="set-config-header">
+        <h3 class="set-config-title">开发环境</h3>
+        <p class="set-config-desc">
+          描述当前项目的开发环境信息，支持 Markdown 语法。保存后可在工作流提示词中使用
+          <code style="color:#3d6b3d;background:#eef4ec;padding:1px 6px;border-radius:3px;">{开发环境}</code>
+          占位符引用此内容。
+        </p>
+      </div>
+
+      <div class="prompt-placeholder-bar">
+        <span class="prompt-placeholder-bar__label">内置占位符：</span>
+        <span
+          v-for="ph in devEnvironmentPlaceholders"
+          :key="ph.value"
+          class="prompt-placeholder-tag"
+          @click="copyPlaceholder(ph)"
+        >
+          {{ ph.label }}
+          <el-icon class="prompt-placeholder-tag__icon"><CopyDocument /></el-icon>
+        </span>
+      </div>
+
+      <div class="set-config-table-card">
+        <MdEditor
+          v-model="form.home_task_dev_environment"
+          preview-theme="github"
+          :preview="true"
+          :toolbars="promptEditorToolbars"
+          style="height: 360px;"
+        />
+        <div style="padding-top: 12px;">
+          <pl-button type="primary" @click="saveDevEnvironmentConfig">保存开发环境配置</pl-button>
+          <pl-button @click="showChangeLog">改动记录</pl-button>
+        </div>
+      </div>
     </div>
+
+    <!-- TAPD 需求抓取配置 -->
+    <div v-show="activeTab === 'tapd'">
+      <div class="set-config-header">
+        <h3 class="set-config-title">TAPD 需求抓取配置</h3>
+        <p class="set-config-desc">
+          从自定义网页中选择一个链接，用于在任务中快速跳转到 TAPD 登录页。
+        </p>
+      </div>
+
+      <div class="set-config-table-card">
+        <el-form label-width="120px" class="memory-config-form">
+          <el-form-item label="自定义网页">
+            <el-select
+              v-model="form.home_task_tapd_smart_link_id"
+              clearable
+              filterable
+              style="width: 100%;"
+              placeholder="请选择自定义网页"
+              @change="onSmartLinkChange"
+            >
+              <el-option
+                v-for="item in smartLinkList"
+                :key="item.id"
+                :label="item.name"
+                :value="item.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="网页链接">
+            <el-select
+              v-model="form.home_task_tapd_link_label"
+              clearable
+              filterable
+              style="width: 100%;"
+              placeholder="请选择具体链接"
+            >
+              <el-option
+                v-for="(link, idx) in currentLinkOptions"
+                :key="idx"
+                :label="link.label"
+                :value="link.label"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="CSS选择器">
+            <el-input
+              v-model="form.home_task_tapd_css_selector"
+              placeholder="如 .content-wrapper 或 #main"
+            />
+          </el-form-item>
+          <el-form-item label="等待秒数">
+            <el-input-number
+              v-model="form.home_task_tapd_wait_seconds"
+              :min="1"
+              :max="30"
+            />
+          </el-form-item>
+          <el-form-item>
+            <pl-button type="primary" @click="saveTapdConfig">保存 TAPD 需求抓取配置</pl-button>
+          </el-form-item>
+        </el-form>
+      </div>
+    </div>
+
     <!-- 提示词改动记录弹窗 -->
     <el-dialog v-model="changeLogVisible" title="提示词改动记录" width="720px" >
       <el-table :data="changeLogList" stripe max-height="480">
@@ -211,6 +260,7 @@ const PROMPT_PLACEHOLDERS = [
   { label: '开发项目配置', value: '{开发项目配置}' },
   { label: 'dtool-api地址', value: '{dtool-api地址}' },
   { label: 'dtool-common地址', value: '{dtool-common地址}' },
+  { label: '开发环境', value: '{开发环境}' },
 ]
 
 const PROMPT_EDITOR_TOOLBARS = [
@@ -222,6 +272,12 @@ const PROMPT_EDITOR_TOOLBARS = [
 export default {
   name: 'HomeTaskReportSetting',
   emits: ['changed'],
+  props: {
+    activeTab: {
+      type: String,
+      default: '',
+    },
+  },
   data() {
     return {
       aiModelList: [],
@@ -239,6 +295,7 @@ export default {
         home_task_tapd_link_label: '',
         home_task_tapd_css_selector: '',
         home_task_tapd_wait_seconds: 3,
+        home_task_dev_environment: '',
       },
       promptPlaceholders: PROMPT_PLACEHOLDERS,
       promptEditorToolbars: PROMPT_EDITOR_TOOLBARS,
@@ -251,6 +308,9 @@ export default {
     }
   },
   computed: {
+    devEnvironmentPlaceholders() {
+      return PROMPT_PLACEHOLDERS.filter(ph => ph.value !== '{开发环境}')
+    },
     currentLinkOptions() {
       if (!this.form.home_task_tapd_smart_link_id) return []
       const smartLink = this.smartLinkList.find(item => item.id === this.form.home_task_tapd_smart_link_id)
@@ -308,6 +368,7 @@ export default {
         this.form.home_task_tapd_link_label = response.Data.home_task_tapd_link_label || ''
         this.form.home_task_tapd_css_selector = response.Data.home_task_tapd_css_selector || ''
         this.form.home_task_tapd_wait_seconds = response.Data.home_task_tapd_wait_seconds || 3
+        this.form.home_task_dev_environment = response.Data.home_task_dev_environment || ''
       })
     },
     saveConfig() {
@@ -337,6 +398,15 @@ export default {
         }
       })
     },
+    saveDevEnvironmentConfig() {
+      const payload = this.buildFullPayload()
+      set.HomeTaskConfigSave(payload, (response) => {
+        if (response.ErrCode === 0) {
+          this.$helperNotify.success('开发环境配置已保存')
+          this.$emit('changed')
+        }
+      })
+    },
     buildFullPayload() {
       return {
         home_task_daily_report_model_id: this.form.home_task_daily_report_model_id,
@@ -350,6 +420,7 @@ export default {
         home_task_tapd_link_label: this.form.home_task_tapd_link_label,
         home_task_tapd_css_selector: this.form.home_task_tapd_css_selector,
         home_task_tapd_wait_seconds: this.form.home_task_tapd_wait_seconds,
+        home_task_dev_environment: this.form.home_task_dev_environment,
       }
     },
     copyPlaceholder(placeholder) {

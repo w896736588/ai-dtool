@@ -12,4 +12,5 @@ const (
 	HomeTaskConfigPromptApiGen       = `home_task_prompt_api_gen`
 	HomeTaskConfigPromptApiTest      = `home_task_prompt_api_test`
 	HomeTaskConfigPromptDesign       = `home_task_prompt_design`
+	HomeTaskConfigDevEnvironment     = `home_task_dev_environment`
 )

@@ -1325,6 +1325,7 @@ func resolveTaskWorkflowPrompts(c *gin.Context, homeTaskInfo map[string]any, wor
 // buildTaskWorkflowPlaceholderMap 根据任务信息构建占位符替换映射。
 func buildTaskWorkflowPlaceholderMap(c *gin.Context, homeTaskInfo map[string]any, workflowInfo map[string]any) map[string]string {
 	apiHost := taskWorkflowBuildAPIHost(c)
+	devEnvironment, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigDevEnvironment)
 	result := map[string]string{
 		`{需求文档地址}`:         taskWorkflowBuildShareURL(c, workflowInfo, apiHost),
 		`{接口开发API地址}`:      apiHost,
@@ -1333,6 +1334,11 @@ func buildTaskWorkflowPlaceholderMap(c *gin.Context, homeTaskInfo map[string]any
 		`{dtool-api地址}`:    filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-api`),
 		`{dtool-common地址}`: filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-common`),
 	}
+	// 先解析开发环境内容中的其他占位符，再将其加入映射。
+	for key, value := range result {
+		devEnvironment = strings.ReplaceAll(devEnvironment, key, value)
+	}
+	result[`{开发环境}`] = devEnvironment
 	return result
 }
 

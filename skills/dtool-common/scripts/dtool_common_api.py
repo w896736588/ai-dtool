@@ -312,6 +312,49 @@ def git_change_branch_by_id(git_id, branch_name):
 
 
 # ============================================================
+# 10. 网页截图
+# ============================================================
+def screenshot(url, full_page=False, width=1920, height=1080, timeout=30, selector="", save_path=""):
+    """
+    对指定网页进行截图，返回 base64 编码的 PNG 图片
+
+    参数:
+        url: 目标网页地址 (必填)
+        full_page: 是否截取完整页面 (默认 False，仅截取可视区域)
+        width: 视口宽度 (默认 1920)
+        height: 视口高度 (默认 1080)
+        timeout: 导航超时秒数 (默认 30)
+        selector: CSS 选择器，截取指定元素 (可选)
+        save_path: 保存为本地文件的路径 (可选，不填则不保存)
+    """
+    payload = {
+        "url": url,
+        "full_page": full_page,
+        "width": width,
+        "height": height,
+        "timeout": timeout,
+    }
+    if selector:
+        payload["selector"] = selector
+    result = call_api("/api/Screenshot", payload)
+    if result.get("code") == 0:
+        data = result.get("data", {})
+        image_base64 = data.get("image", "")
+        if save_path and image_base64:
+            import base64
+            with open(save_path, "wb") as f:
+                f.write(base64.b64decode(image_base64))
+            print(f"截图已保存到: {save_path}")
+        else:
+            print(f"截图成功 (url={data.get('url')}, "
+                  f"full_page={data.get('full_page')}, "
+                  f"尺寸={data.get('width')}x{data.get('height')})")
+    else:
+        print(f"截图失败: {result.get('msg')}")
+    return result
+
+
+# ============================================================
 # 使用示例
 # ============================================================
 if __name__ == "__main__":
@@ -352,3 +395,8 @@ if __name__ == "__main__":
     # 示例9: 切换分支（需提供 git_id 和目标分支名）
     # git_change_branch_by_id("1", "master")
     # git_change_branch_by_id("1", "dev")
+
+    # 示例10: 网页截图
+    # screenshot("https://www.baidu.com")
+    # screenshot("https://www.baidu.com", full_page=True, save_path="page.png")
+    # screenshot("https://www.baidu.com", selector="#main-content", save_path="element.png")

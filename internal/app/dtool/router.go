@@ -48,6 +48,7 @@ func InitRouter(tGin *p_gin.Gin) {
 	variableRouter(tGin)
 	smartLink(tGin)
 	docker(tGin)
+	screenshotRouter(tGin)
 	api(tGin)
 	apiUse(tGin)
 	tGin.GinPost(`/test/multiformdata`, func(c *gin.Context) {
@@ -511,4 +512,8 @@ func apiUse(tGin *p_gin.Gin) {
 		sse.UnRegister()
 	}
 	tGin.SseRoute(`/sse`, openFunc, closeFunc)
+}
+
+func screenshotRouter(tGin *p_gin.Gin) {
+	tGin.GinPost(`/api/Screenshot`, controller.Screenshot)
 }

@@ -17,7 +17,20 @@
       </div>
     </header>
     <div class="home-task-setting-body">
-      <HomeTaskReportSetting />
+      <div class="home-task-setting-tabs">
+        <div
+          v-for="tab in tabs"
+          :key="tab.name"
+          class="home-task-setting-tab"
+          :class="{ 'home-task-setting-tab--active': activeTab === tab.name }"
+          @click="activeTab = tab.name"
+        >
+          {{ tab.label }}
+        </div>
+      </div>
+      <div class="home-task-setting-content">
+        <HomeTaskReportSetting :active-tab="activeTab" />
+      </div>
     </div>
   </div>
 </template>
@@ -27,12 +40,25 @@ import { HomeFilled } from '@element-plus/icons-vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 import HomeTaskReportSetting from '@/components/set/home_task_report.vue'
 
+const TABS = [
+  { name: 'daily-report', label: '工作日报 AI' },
+  { name: 'prompt-template', label: '工作流提示词' },
+  { name: 'dev-environment', label: '开发环境提示词' },
+  { name: 'tapd', label: 'TAPD 抓取' },
+]
+
 export default {
   name: 'HomeTaskSettingPage',
   components: {
     HomeFilled,
     GitActionButton,
     HomeTaskReportSetting,
+  },
+  data() {
+    return {
+      activeTab: TABS[0].name,
+      tabs: TABS,
+    }
   },
   methods: {
     goHome() {
@@ -49,9 +75,10 @@ export default {
 
 <style scoped>
 .home-task-setting-page {
-  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: #f7f8f6;
-  padding: 0;
 }
 
 .home-task-setting-header {
@@ -61,9 +88,7 @@ export default {
   padding: 16px 28px;
   background: #fff;
   border-bottom: 1px solid #e4e7ed;
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  flex-shrink: 0;
 }
 
 .home-task-setting-header__eyebrow {
@@ -86,6 +111,48 @@ export default {
 }
 
 .home-task-setting-body {
-  padding: 24px 28px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  margin: 12px 16px 16px;
+  border-radius: 10px;
+  border: 1px solid #e8e8e0;
+  overflow: hidden;
+}
+
+.home-task-setting-tabs {
+  display: flex;
+  border-bottom: 1px solid #e4e7ed;
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+
+.home-task-setting-tab {
+  padding: 12px 18px;
+  font-size: 14px;
+  color: #606266;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+  white-space: nowrap;
+}
+
+.home-task-setting-tab:hover {
+  color: #3a7a3a;
+}
+
+.home-task-setting-tab--active {
+  color: #3a7a3a;
+  font-weight: 600;
+  border-bottom-color: #3a7a3a;
+}
+
+.home-task-setting-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px;
 }
 </style>
