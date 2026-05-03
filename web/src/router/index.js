@@ -148,6 +148,12 @@ const router = createRouter({
       meta: { keepAlive: false },
     },
     {
+      path: '/HomeTaskSetting',
+      name: 'home-task-setting',
+      component: () => import('../components/HomeTaskSettingPage.vue'),
+      meta: { keepAlive: false },
+    },
+    {
       path: '/MemoryFragmentShare',
       name: 'memory-fragment-share',
       component: () => import('../components/memory/MemoryFragmentShare.vue'),

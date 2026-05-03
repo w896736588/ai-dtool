@@ -208,7 +208,7 @@ const PROMPT_PLACEHOLDERS = [
   { label: '需求文档地址', value: '{需求文档地址}' },
   { label: '接口开发API地址', value: '{接口开发API地址}' },
   { label: '接口开发API的token', value: '{接口开发API的token}' },
-  { label: '开发配置', value: '{开发配置}' },
+  { label: '开发项目配置', value: '{开发项目配置}' },
   { label: 'dtool-api地址', value: '{dtool-api地址}' },
   { label: 'dtool-common地址', value: '{dtool-common地址}' },
 ]

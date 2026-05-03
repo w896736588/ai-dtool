@@ -1329,7 +1329,7 @@ func buildTaskWorkflowPlaceholderMap(c *gin.Context, homeTaskInfo map[string]any
 		`{需求文档地址}`:         taskWorkflowBuildShareURL(c, workflowInfo, apiHost),
 		`{接口开发API地址}`:      apiHost,
 		`{接口开发API的token}`:  taskWorkflowBuildAPIToken(c),
-		`{开发配置}`:           taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo),
+		`{开发项目配置}`:         taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo),
 		`{dtool-api地址}`:    filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-api`),
 		`{dtool-common地址}`: filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-common`),
 	}

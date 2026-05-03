@@ -6,7 +6,7 @@
           <div class="home-task-panel__title">任务清单</div>
         </div>
         <div class="home-task-toolbar__actions">
-          <GitActionButton compact variant="warning" @click="openHomeTaskReportSettingsDialog">
+          <GitActionButton compact variant="warning" @click="openHomeTaskSettingsPage">
             设置
           </GitActionButton>
           <GitActionButton compact variant="info" :loading="homeTaskGeneratingDailyReport" @click="generateHomeTaskDailyReport">
@@ -320,7 +320,7 @@
         </el-row>
         <el-row :gutter="12">
           <el-col :span="24">
-            <el-form-item label="开发配置">
+            <el-form-item label="开发项目配置">
               <div v-for="(cfg, cfgIdx) in homeTaskForm.dev_configs" :key="cfgIdx" style="border: 1px solid #e4e7ed; border-radius: 4px; padding: 12px 12px 4px; margin-bottom: 10px; position: relative;">
                 <el-button
                   v-if="homeTaskForm.dev_configs.length > 1"
@@ -459,7 +459,7 @@
                 </el-row>
               </div>
               <el-button type="primary" plain size="small" @click="addDevConfig">
-                + 添加开发配置
+                + 添加开发项目配置
               </el-button>
             </el-form-item>
           </el-col>
@@ -477,14 +477,6 @@
       </template>
     </el-dialog>
 
-    <SettingsDialog
-      v-model="homeTaskReportSettingsDialogVisible"
-      title="任务清单设置"
-      width="80%"
-      @closed="refreshHomeTaskReportSettings"
-    >
-      <HomeTaskReportSetting ref="homeTaskReportSetting" />
-    </SettingsDialog>
   </div>
 </template>
 
@@ -496,8 +488,6 @@ import mysqlSetApi from '@/utils/base/mysql_set'
 import apiManagement from '@/utils/base/api'
 import dockerApi from '@/utils/base/compose'
 import GitActionButton from "@/components/base/GitActionButton.vue"
-import SettingsDialog from '@/components/base/SettingsDialog.vue'
-import HomeTaskReportSetting from '@/components/set/home_task_report.vue'
 
 const HOME_TASK_TAB_ACTIVE = 'active'
 const HOME_TASK_TAB_ARCHIVED = 'archived'
@@ -585,7 +575,6 @@ export default {
       HOME_TASK_DAILY_REPORT_BUTTON_TEXT,
       homeTaskActiveTab: HOME_TASK_TAB_ACTIVE,
       homeTaskDialogVisible: false,
-      homeTaskReportSettingsDialogVisible: false,
       homeTaskLoadingActive: false,
       homeTaskLoadingArchived: false,
       homeTaskGeneratingDailyReport: false,
@@ -787,21 +776,9 @@ export default {
       this.loadHomeTaskDockerList()
       this.homeTaskDialogVisible = true
     },
-    openHomeTaskReportSettingsDialog() {
-      this.homeTaskReportSettingsDialogVisible = true
-      this.$nextTick(() => {
-        if (this.$refs.homeTaskReportSetting && this.$refs.homeTaskReportSetting.loadConfig) {
-          this.$refs.homeTaskReportSetting.loadConfig()
-        }
-        if (this.$refs.homeTaskReportSetting && this.$refs.homeTaskReportSetting.loadAiModelList) {
-          this.$refs.homeTaskReportSetting.loadAiModelList()
-        }
-      })
-    },
-    refreshHomeTaskReportSettings() {
-      if (this.$refs.homeTaskReportSetting && this.$refs.homeTaskReportSetting.loadConfig) {
-        this.$refs.homeTaskReportSetting.loadConfig()
-      }
+    openHomeTaskSettingsPage() {
+      const routeInfo = this.$router.resolve({ path: '/HomeTaskSetting' })
+      window.open(routeInfo.href, '_blank')
     },
     generateHomeTaskDailyReport() {
       if (this.homeTaskGeneratingDailyReport) {
@@ -1242,8 +1219,6 @@ export default {
   },
   components: {
     GitActionButton,
-    SettingsDialog,
-    HomeTaskReportSetting,
   },
 }
 </script>
