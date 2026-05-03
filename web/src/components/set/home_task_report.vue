@@ -43,7 +43,7 @@
     </div>
 
     <!-- 工作流提示词模板 -->
-    <div v-show="activeTab === 'prompt-template'">
+    <div v-show="activeTab === 'prompt-template'" class="prompt-template-section">
       <div class="set-config-header">
         <h3 class="set-config-title">工作流提示词模板</h3>
         <p class="set-config-desc">
@@ -64,7 +64,7 @@
         </span>
       </div>
 
-      <div class="set-config-table-card">
+      <div class="set-config-table-card prompt-template-card">
         <el-tabs v-model="activePromptTab" class="prompt-template-tabs">
           <el-tab-pane label="需求分析设计提示词" name="dev">
             <MdEditor
@@ -72,7 +72,7 @@
               preview-theme="github"
               :preview="true"
               :toolbars="promptEditorToolbars"
-              style="height: 480px;"
+              class="prompt-template-editor"
             />
           </el-tab-pane>
           <el-tab-pane label="开发设计提示词" name="design">
@@ -81,7 +81,7 @@
               preview-theme="github"
               :preview="true"
               :toolbars="promptEditorToolbars"
-              style="height: 480px;"
+              class="prompt-template-editor"
             />
           </el-tab-pane>
           <el-tab-pane label="接口生成提示词" name="api_gen">
@@ -90,7 +90,7 @@
               preview-theme="github"
               :preview="true"
               :toolbars="promptEditorToolbars"
-              style="height: 480px;"
+              class="prompt-template-editor"
             />
           </el-tab-pane>
           <el-tab-pane label="接口自动化测试提示词" name="api_test">
@@ -99,11 +99,11 @@
               preview-theme="github"
               :preview="true"
               :toolbars="promptEditorToolbars"
-              style="height: 480px;"
+              class="prompt-template-editor"
             />
           </el-tab-pane>
         </el-tabs>
-        <div style="padding-top: 12px;">
+        <div class="prompt-template-footer">
           <pl-button type="primary" @click="savePromptConfig">保存提示词模板配置</pl-button>
           <pl-button @click="showChangeLog">改动记录</pl-button>
         </div>
@@ -469,3 +469,44 @@ export default {
 </script>
 
 <style scoped src="@/css/components/set/home_task_report.css"></style>
+
+<style>
+.prompt-template-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.prompt-template-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.prompt-template-card .el-tabs {
+  display: flex;
+  flex-direction: column;
+}
+
+.prompt-template-card .el-tabs__header {
+  /* 二级 Tab 头部必须固定在内容上方，避免被 flex 顺序挤到底部。 */
+  /* Keep nested tab headers above the content instead of being pushed to the bottom. */
+  order: -1;
+  flex-shrink: 0;
+}
+
+.prompt-template-card .el-tabs__content {
+  overflow: visible;
+}
+
+.prompt-template-card .el-tab-pane {
+  height: auto;
+}
+
+.prompt-template-editor {
+  min-height: 480px;
+}
+
+.prompt-template-footer {
+  padding-top: 12px;
+  flex-shrink: 0;
+}
+</style>

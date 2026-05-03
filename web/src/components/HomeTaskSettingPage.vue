@@ -75,7 +75,9 @@ export default {
 
 <style scoped>
 .home-task-setting-page {
-  height: 100vh;
+  /* 页面高度改为自适应，避免内部 Tab 内容被固定视口裁切。 */
+  /* Use adaptive page height so nested tab content is not clipped by the viewport. */
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   background: #f7f8f6;
@@ -112,14 +114,13 @@ export default {
 
 .home-task-setting-body {
   flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
   background: #fff;
   margin: 12px 16px 16px;
   border-radius: 10px;
   border: 1px solid #e8e8e0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .home-task-setting-tabs {
@@ -151,8 +152,7 @@ export default {
 
 .home-task-setting-content {
   flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
   padding: 16px 20px;
 }
 </style>
