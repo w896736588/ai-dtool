@@ -768,6 +768,110 @@ func boolToInt(value bool) int {
 	return 0
 }
 
+// SearchFragmentsOr 使用 OR 逻辑搜索片段（任一关键词匹配即返回），用于 AI 智能搜索。
+func (h *Service) SearchFragmentsOr(keywords []string, limit int) ([]map[string]any, error) {
+	searchRoot := filepath.Join(h.root, `fragments`)
+	// 逐关键词搜索，用并集合并结果
+	matchMap := make(map[string][]string)
+	for _, token := range keywords {
+		tokenMatches, err := h.runRipgrepToken(searchRoot, token)
+		if err != nil {
+			// rg 不可用时回退到标题搜索
+			return h.searchByTitleOr(keywords, limit), nil
+		}
+		for path, snippets := range tokenMatches {
+			matchMap[path] = append(matchMap[path], snippets...)
+		}
+	}
+
+	type searchRow struct {
+		fragment Fragment
+		score    int
+	}
+	rowList := make([]searchRow, 0, len(matchMap))
+	for path, snippets := range matchMap {
+		fragment, ok := h.getFragmentByPath(path)
+		if !ok || fragment.IsDeleted {
+			continue
+		}
+		score := len(uniqueStrings(snippets))
+		titleText := strings.ToLower(fragment.Title)
+		for _, token := range keywords {
+			if strings.Contains(titleText, token) {
+				score += 3
+			}
+		}
+		rowList = append(rowList, searchRow{fragment: fragment, score: score})
+	}
+	sort.SliceStable(rowList, func(i, j int) bool {
+		if rowList[i].score != rowList[j].score {
+			return rowList[i].score > rowList[j].score
+		}
+		return rowList[i].fragment.UpdatedAt.After(rowList[j].fragment.UpdatedAt)
+	})
+	if limit <= 0 {
+		limit = 200
+	}
+	result := make([]map[string]any, 0, min(limit, len(rowList)))
+	for idx, item := range rowList {
+		if idx >= limit {
+			break
+		}
+		result = append(result, map[string]any{
+			`id`:        item.fragment.ID,
+			`title`:     item.fragment.Title,
+			`file_path`: item.fragment.FilePath,
+		})
+	}
+	return result, nil
+}
+
+// searchByTitleOr 使用 OR 逻辑按标题搜索（rg 不可用时的回退方案）。
+func (h *Service) searchByTitleOr(keywords []string, limit int) []map[string]any {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	result := make([]map[string]any, 0)
+	for _, fragment := range h.byID {
+		if fragment.IsDeleted {
+			continue
+		}
+		titleText := strings.ToLower(fragment.Title)
+		matched := false
+		for _, token := range keywords {
+			if strings.Contains(titleText, token) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		result = append(result, map[string]any{
+			`id`:        fragment.ID,
+			`title`:     fragment.Title,
+			`file_path`: fragment.FilePath,
+		})
+		if limit > 0 && len(result) >= limit {
+			break
+		}
+	}
+	return result
+}
+
+// ReadFragmentContent 根据文件路径读取片段正文内容（不含 frontmatter）。
+func (h *Service) ReadFragmentContent(filePath string) (string, error) {
+	body, err := os.ReadFile(filePath)
+	if err != nil {
+		return ``, err
+	}
+	content := normalizeLineBreaks(string(body))
+	_, markdownBody, err := parseFrontMatter(content)
+	if err != nil {
+		return ``, err
+	}
+	return strings.TrimSpace(markdownBody), nil
+}
+
 func min(left, right int) int {
 	if left < right {
 		return left

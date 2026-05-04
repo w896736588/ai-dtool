@@ -140,6 +140,55 @@
           @tab-click="handleTabChange"
         >
           <el-tab-pane
+            v-if="aiSearchTabVisible"
+            name="ai_search"
+          >
+            <template #label>
+              <span class="tab-label">AI 搜索: {{ aiSearchQuery }}</span>
+            </template>
+            <div class="ai-search-panel">
+              <div class="ai-search-timeline">
+                <div v-for="(event, index) in aiSearchEvents" :key="index"
+                  :class="['ai-search-step', `ai-search-step--` + event.status]"
+                >
+                  <div class="ai-search-step-icon">
+                    <el-icon v-if="event.status === 'running'" class="is-loading"><Loading /></el-icon>
+                    <el-icon v-else-if="event.status === 'done'"><Check /></el-icon>
+                  </div>
+                  <div class="ai-search-step-content">
+                    <div v-if="event.message" class="ai-search-step-message">{{ event.message }}</div>
+                    <div v-if="event.step === 'keywords' && event.status === 'done' && event.data" class="ai-search-step-data">
+                      关键词：{{ (event.data.keywords || []).join('、') }}
+                    </div>
+                    <div v-if="event.step === 'search' && event.status === 'done' && event.data" class="ai-search-step-data">
+                      找到 {{ event.data.total }} 个相关片段
+                    </div>
+                    <div v-if="event.step === 'judge' && event.status === 'done' && event.data" class="ai-search-step-data">
+                      选中 {{ event.data.selected_count }} 个片段进行详细分析
+                    </div>
+                    <div v-if="event.step === 'read' && event.status === 'running' && event.data" class="ai-search-step-data">
+                      读取中 {{ event.data.current }}/{{ event.data.total }}：{{ event.data.title }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-if="aiSearchAnswer" class="ai-search-answer">
+                <div class="ai-search-answer-header">搜索结果</div>
+                <div class="ai-search-answer-content markdown-body" v-html="renderMarkdown(aiSearchAnswer)"></div>
+              </div>
+              <div v-if="aiSearchReferencedFragments.length > 0 && !aiSearchLoading" class="ai-search-references">
+                <div class="ai-search-references-title">相关片段</div>
+                <div v-for="ref in aiSearchReferencedFragments" :key="ref.id"
+                  class="ai-search-reference-item"
+                >
+                  <a href="javascript:void(0)" @click="openFragment(ref.id)">{{ ref.title || '未命名片段' }}</a>
+                </div>
+              </div>
+              <div v-if="aiSearchLoading && !aiSearchAnswer" v-loading="true" class="ai-search-loading"></div>
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane
             v-if="searchTabVisible"
             name="search"
           >
@@ -305,6 +354,8 @@ import MemorySettingPage from '@/components/set/memory.vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 import SettingsDialog from '@/components/base/SettingsDialog.vue'
 import sseDistribute from '@/utils/base/sse_distribute'
+import base from '@/utils/base'
+import { marked } from 'marked'
 const {
   isMemoryFragmentTabName,
   activateMemorySaveFeedback,
@@ -319,6 +370,8 @@ const TAG_FILTER_TOGGLE_MIN_COUNT = 10
 const SEARCH_TAB_NAME = 'search'
 // TRASH_TAB_NAME 统一定义回收站标签页名称，避免散落硬编码。
 const TRASH_TAB_NAME = 'trash'
+// AI_SEARCH_TAB_NAME 统一定义 AI 智能搜索标签页名称。
+const AI_SEARCH_TAB_NAME = 'ai_search'
 // KEYWORD_SEARCH_MODE 统一定义关键词搜索模式值，避免散落硬编码。
 const KEYWORD_SEARCH_MODE = 'keyword'
 // SEMANTIC_SEARCH_MODE 统一定义语义搜索模式值，避免散落硬编码。
@@ -387,6 +440,13 @@ export default {
       sidebarFilterTimer: null,
       sidebarFilterLoading: false,
       sidebarFilterResults: [],
+      aiSearchTabVisible: false,
+      aiSearchQuery: '',
+      aiSearchEvents: [],
+      aiSearchAnswer: '',
+      aiSearchLoading: false,
+      aiSearchSseClient: null,
+      aiSearchReferencedFragments: [],
     }
   },
   computed: {
@@ -460,6 +520,7 @@ export default {
     this.unbindGlobalSaveShortcut()
     this.unregisterMemoryFragmentUpdatesSse()
     this.unregisterMemoryFragmentStatusSse()
+    this.stopAiSearchSse()
     this.clearSaveFeedbackTimers()
   },
   watch: {
@@ -771,7 +832,7 @@ export default {
       if (!this.memoryConfigured) {
         return
       }
-      if (this.activeTab === SEARCH_TAB_NAME || this.activeTab === TRASH_TAB_NAME) {
+      if (this.activeTab === SEARCH_TAB_NAME || this.activeTab === TRASH_TAB_NAME || this.activeTab === AI_SEARCH_TAB_NAME) {
         return
       }
       const hasActiveFragmentTab = this.fragmentTabs.some(item => item.name === this.activeTab)
@@ -858,6 +919,10 @@ export default {
     submitSearch() {
       if (this.searchQuery.trim() === '') {
         this.clearFilter()
+        return
+      }
+      if (this.searchMode === SEMANTIC_SEARCH_MODE) {
+        this.openAiSearchTab(this.searchQuery.trim())
         return
       }
       this.submittedSearchQuery = this.searchQuery.trim()
@@ -1276,6 +1341,19 @@ export default {
     },
     // closeTab 关闭一个编辑 tab 或搜索结果 tab。
     closeTab(tabName) {
+      if (tabName === AI_SEARCH_TAB_NAME) {
+        this.aiSearchTabVisible = false
+        this.stopAiSearchSse()
+        this.aiSearchEvents = []
+        this.aiSearchAnswer = ''
+        this.aiSearchLoading = false
+        this.aiSearchReferencedFragments = []
+        if (this.activeTab === AI_SEARCH_TAB_NAME) {
+          this.activeTab = ''
+          this.ensureDefaultFragmentTab()
+        }
+        return
+      }
       if (tabName === SEARCH_TAB_NAME) {
         this.searchTabVisible = false
         this.searchResults = []
@@ -1309,6 +1387,96 @@ export default {
     },
     goHome() {
       this.$router.push('/Dashboard')
+    },
+    // openAiSearchTab 打开 AI 智能搜索 tab 并启动 SSE 连接。
+    openAiSearchTab(query) {
+      this.stopAiSearchSse()
+      this.aiSearchQuery = query
+      this.aiSearchTabVisible = true
+      this.aiSearchEvents = []
+      this.aiSearchAnswer = ''
+      this.aiSearchLoading = true
+      this.aiSearchReferencedFragments = []
+      this.activeTab = AI_SEARCH_TAB_NAME
+      this.$nextTick(() => {
+        this.startAiSearchSse(query)
+      })
+    },
+    // startAiSearchSse 创建 EventSource 连接到 AI 搜索 SSE 端点。
+    startAiSearchSse(query) {
+      const sseHost = base.GetSseApiHost()
+      if (!sseHost) {
+        this.aiSearchEvents.push({ step: 'error', status: 'error', message: 'SSE 连接不可用', data: null })
+        this.aiSearchLoading = false
+        return
+      }
+      const params = 'query=' + encodeURIComponent(query) + '&token=' + encodeURIComponent(base.GetSafeToken()) + '&t=' + Date.now()
+      const url = sseHost + '/api/MemoryFragmentAiSearch?' + params
+      const eventSource = new EventSource(url)
+      this.aiSearchSseClient = eventSource
+
+      eventSource.onmessage = (event) => {
+        const rawData = event.data
+        if (rawData === '[DONE]' || rawData === '[CONNECT]') {
+          return
+        }
+        try {
+          const parsed = JSON.parse(rawData)
+          if (parsed.step) {
+            this.handleAiSearchEvent(parsed)
+            return
+          }
+        } catch (e) {
+          // 非 JSON，当作 answer 流式文本
+        }
+        this.aiSearchAnswer += rawData
+      }
+
+      eventSource.onerror = () => {
+        this.aiSearchLoading = false
+        this.stopAiSearchSse()
+      }
+    },
+    // stopAiSearchSse 关闭 AI 搜索 SSE 连接。
+    stopAiSearchSse() {
+      if (this.aiSearchSseClient) {
+        this.aiSearchSseClient.close()
+        this.aiSearchSseClient = null
+      }
+    },
+    // handleAiSearchEvent 处理 AI 搜索 SSE 事件。
+    handleAiSearchEvent(event) {
+      if (event.step === 'answer' && event.status === 'streaming') {
+        this.aiSearchAnswer += event.data || ''
+        return
+      }
+      if (event.step === 'answer' && event.status === 'running') {
+        if (event.message) {
+          this.aiSearchEvents.push(event)
+        }
+        return
+      }
+      this.aiSearchEvents.push(event)
+      if (event.step === 'done') {
+        this.aiSearchLoading = false
+        this.stopAiSearchSse()
+        if (event.data && event.data.referenced_fragments) {
+          this.aiSearchReferencedFragments = event.data.referenced_fragments
+        }
+      }
+      if (event.step === 'error') {
+        this.aiSearchLoading = false
+        this.stopAiSearchSse()
+      }
+    },
+    // renderMarkdown 将 Markdown 文本渲染为 HTML。
+    renderMarkdown(content) {
+      if (!content) return ''
+      try {
+        return marked(content || '')
+      } catch (e) {
+        return this.escapeHtml(content)
+      }
     },
   }
 }

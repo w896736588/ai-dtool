@@ -482,6 +482,16 @@ func apiUse(tGin *p_gin.Gin) {
 		}
 		sse.UnRegister()
 	})
+	// AI 智能搜索 SSE 端点
+	tGin.SseRoute(`/api/MemoryFragmentAiSearch`, func(urlValues url.Values, stopC chan int, c *gin.Context) (*gsgin.Sse, error) {
+		return controller.MemoryFragmentAiSearch(urlValues, stopC, c)
+	}, func(sse *gsgin.Sse) {
+		_ = sse.SendToChan(gstool.JsonEncode(p_define.SseData{
+			Data: "[DONE]",
+			Type: p_define.SseContentTypeMsg,
+		}))
+		sse.UnRegister()
+	})
 	openFunc := func(urlValues url.Values, stopC chan int, c *gin.Context) (*gsgin.Sse, error) {
 		clientId := urlValues.Get(`client_id`)
 		sseC := gsgin.SseGetByClientId(clientId)

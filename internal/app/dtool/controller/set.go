@@ -937,6 +937,11 @@ func SetMemoryConfigGet(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	aiSearchModelID, err := memoryConfigValue(define.MemoryConfigAiSearchModelID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`db_dir`:                            mainDBConfig.Dir,
 		`db_name`:                           mainDBConfig.DBName,
@@ -951,6 +956,7 @@ func SetMemoryConfigGet(c *gin.Context) {
 		`memory_config_file`:                memoryConfigFilePath(),
 		`memory_arrange_prompt`:             arrangePrompt,
 		`memory_arrange_model_id`:           cast.ToInt(arrangeModelID),
+		`memory_ai_search_model_id`:         cast.ToInt(aiSearchModelID),
 		`safe_password`:                     component.ConfigViper.GetString(`safe.password`),
 		`run_mode`:                          component.EnvClient.SmartLinkConfig.RunMode,
 		`client_version`:                    component.EnvClient.SmartLinkConfig.ClientVersion,
@@ -983,6 +989,22 @@ func SetMemoryConfigSave(c *gin.Context) {
 		return
 	}
 	if err := common.DbMain.MemoryConfigSave(`记忆整理模型`, define.MemoryConfigArrangeModelID, cast.ToString(memoryArrangeModelID), `知识片段 AI 整理所用模型 id`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	memoryAiSearchModelID := cast.ToInt(dataMap[`memory_ai_search_model_id`])
+	if memoryAiSearchModelID > 0 {
+		modelInfo, err := common.DbMain.AiModelInfo(memoryAiSearchModelID)
+		if err != nil {
+			gsgin.GinResponseError(c, `AI 搜索模型不存在`, nil)
+			return
+		}
+		if strings.ToLower(cast.ToString(modelInfo[`model_type`])) != `llm` {
+			gsgin.GinResponseError(c, `AI 搜索仅支持选择 LLM 模型`, nil)
+			return
+		}
+	}
+	if err := common.DbMain.MemoryConfigSave(`AI搜索模型`, define.MemoryConfigAiSearchModelID, cast.ToString(memoryAiSearchModelID), `知识片段 AI 智能搜索所用模型 id`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}

@@ -308,6 +308,23 @@
             placeholder="请输入 AI 整理提示词"
           />
         </el-form-item>
+        <el-divider content-position="left">AI 智能搜索</el-divider>
+        <el-form-item label="搜索模型">
+          <el-select
+            v-model="form.memory_ai_search_model_id"
+            clearable
+            filterable
+            style="width: 100%;"
+            placeholder="请选择用于知识片段 AI 智能搜索的 LLM 模型"
+          >
+            <el-option
+              v-for="item in aiModelList"
+              :key="item.id"
+              :label="buildModelLabel(item)"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <GitActionButton type="primary" @click="saveAiConfig">保存 AI 配置</GitActionButton>
         </el-form-item>
@@ -375,6 +392,7 @@ export default {
         memory_config_file: '',
         memory_arrange_model_id: null,
         memory_arrange_prompt: DEFAULT_MEMORY_ARRANGE_PROMPT,
+        memory_ai_search_model_id: null,
         safe_password: '',
         run_mode: 'server',
       },
@@ -467,6 +485,7 @@ export default {
         this.form.memory_config_file = response.Data.memory_config_file || ''
         this.form.memory_arrange_model_id = response.Data.memory_arrange_model_id || null
         this.form.memory_arrange_prompt = response.Data.memory_arrange_prompt || DEFAULT_MEMORY_ARRANGE_PROMPT
+        this.form.memory_ai_search_model_id = response.Data.memory_ai_search_model_id || null
         this.form.safe_password = response.Data.safe_password || ''
         this.form.run_mode = response.Data.run_mode || 'server'
       })
@@ -545,6 +564,7 @@ export default {
       const payload = {
         memory_arrange_model_id: this.form.memory_arrange_model_id,
         memory_arrange_prompt: this.form.memory_arrange_prompt,
+        memory_ai_search_model_id: this.form.memory_ai_search_model_id,
       }
       set.MemoryConfigSave(payload, (response) => {
         if (response.__loginRequired) {

@@ -94,6 +94,8 @@ type MemoryFragmentStore interface {
 	MemoryFragmentTagList() ([]map[string]any, error)
 	MemoryFragmentSearch(mode, query string, selectedTags []string, limit int) ([]map[string]any, error)
 	MemoryFragmentBatchInfoByPaths(paths []string) []map[string]any
+	SearchFragmentsOr(keywords []string, limit int) ([]map[string]any, error)
+	ReadFragmentContent(filePath string) (string, error)
 }
 
 func NewMemoryStore() *MemoryStore {
