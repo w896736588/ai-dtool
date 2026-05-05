@@ -1616,7 +1616,7 @@ export default {
     },
     // toggleStepExpand 切换步骤详情的展开/收起状态。
     toggleStepExpand(step) {
-      this.$set(this.aiSearchExpandedSteps, step, !this.aiSearchExpandedSteps[step])
+      this.aiSearchExpandedSteps[step] = !this.aiSearchExpandedSteps[step]
     },
     // getStepLabel 返回步骤的中文名称。
     getStepLabel(step) {
