@@ -513,7 +513,6 @@ export default {
       aiSearchLoading: false,
       aiSearchSseClient: null,
       aiSearchReferencedFragments: [],
-      aiSearchStepStartTimes: {},
       aiSearchStepElapsed: {},
       aiSearchExpandedSteps: {},
       aiSearchStepTimerId: null,
@@ -568,6 +567,7 @@ export default {
     }
   },
   mounted() {
+    this.aiSearchStepStartTimes = {}
     this.bindGlobalSaveShortcut()
     this.registerMemoryFragmentUpdatesSse()
     this.registerMemoryFragmentStatusSse()
@@ -1574,29 +1574,37 @@ export default {
         return
       }
       this.aiSearchStepStartTimes[step] = Date.now()
-      if (!this.aiSearchStepTimerId) {
-        this.aiSearchStepTimerId = setInterval(() => {
-          const now = Date.now()
-          const updated = {}
-          for (const s in this.aiSearchStepStartTimes) {
-            updated[s] = Math.floor((now - this.aiSearchStepStartTimes[s]) / 1000)
-          }
-          this.aiSearchStepElapsed = updated
-        }, 1000)
+      this.ensureStepTimer()
+    },
+    // ensureStepTimer 确保全局步骤计时器在运行。
+    ensureStepTimer() {
+      if (this.aiSearchStepTimerId) {
+        return
       }
+      this.aiSearchStepTimerId = setInterval(() => {
+        const startTimes = this.aiSearchStepStartTimes
+        const keys = Object.keys(startTimes)
+        if (keys.length === 0) {
+          return
+        }
+        const now = Date.now()
+        const updated = {}
+        keys.forEach(s => {
+          updated[s] = Math.floor((now - startTimes[s]) / 1000)
+        })
+        this.aiSearchStepElapsed = updated
+      }, 1000)
     },
     // stopStepTimer 停止指定步骤的计时器。
     stopStepTimer(step) {
-      if (this.aiSearchStepStartTimes[step]) {
-        const elapsed = Math.floor((Date.now() - this.aiSearchStepStartTimes[step]) / 1000)
-        this.aiSearchStepElapsed[step] = elapsed
-        delete this.aiSearchStepStartTimes[step]
+      if (!this.aiSearchStepStartTimes[step]) {
+        return
       }
-      // 如果没有正在运行的步骤了，清除全局定时器
-      if (Object.keys(this.aiSearchStepStartTimes).length === 0 && this.aiSearchStepTimerId) {
-        clearInterval(this.aiSearchStepTimerId)
-        this.aiSearchStepTimerId = null
-      }
+      const elapsed = Math.floor((Date.now() - this.aiSearchStepStartTimes[step]) / 1000)
+      const newElapsed = Object.assign({}, this.aiSearchStepElapsed)
+      newElapsed[step] = elapsed
+      this.aiSearchStepElapsed = newElapsed
+      delete this.aiSearchStepStartTimes[step]
     },
     // clearAllStepTimers 清除所有步骤计时器。
     clearAllStepTimers() {
@@ -1608,7 +1616,7 @@ export default {
     },
     // toggleStepExpand 切换步骤详情的展开/收起状态。
     toggleStepExpand(step) {
-      this.aiSearchExpandedSteps[step] = !this.aiSearchExpandedSteps[step]
+      this.$set(this.aiSearchExpandedSteps, step, !this.aiSearchExpandedSteps[step])
     },
     // getStepLabel 返回步骤的中文名称。
     getStepLabel(step) {
