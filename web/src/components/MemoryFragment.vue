@@ -1,4 +1,4 @@
-﻿<template>
+﻿﻿<template>
   <div class="memory-page">
     <aside v-if="memoryConfigured && !sidebarCollapsed" class="memory-sidebar">
       <div class="sidebar-header">
@@ -151,23 +151,86 @@
                 <div v-for="(event, index) in aiSearchEvents" :key="index"
                   :class="['ai-search-step', `ai-search-step--` + event.status]"
                 >
-                  <div class="ai-search-step-icon">
-                    <el-icon v-if="event.status === 'running'" class="is-loading"><Loading /></el-icon>
-                    <el-icon v-else-if="event.status === 'done'"><Check /></el-icon>
+                  <div class="ai-search-step-row">
+                    <div class="ai-search-step-icon">
+                      <el-icon v-if="event.status === 'running'" class="is-loading"><Loading /></el-icon>
+                      <el-icon v-else-if="event.status === 'done'" class="ai-search-step-done-icon"><Check /></el-icon>
+                      <el-icon v-else-if="event.status === 'error'" class="ai-search-step-error-icon"><Close /></el-icon>
+                    </div>
+                    <div class="ai-search-step-content">
+                      <span v-if="event.status === 'running'" class="ai-search-step-message">
+                        {{ event.message || getStepLabel(event.step) }}（已用时 {{ aiSearchStepElapsed[event.step] || 0 }} 秒）...
+                      </span>
+                      <span v-else-if="event.status === 'done'" class="ai-search-step-message ai-search-step-done-text">
+                        {{ getStepDoneText(event) }}
+                      </span>
+                      <span v-else-if="event.status === 'error'" class="ai-search-step-message ai-search-step-error-text">
+                        {{ event.message }}
+                      </span>
+                    </div>
+                    <button
+                      v-if="event.status === 'done' && canExpandStep(event)"
+                      class="ai-search-step-expand-btn"
+                      @click="toggleStepExpand(event.step)"
+                    >
+                      <el-icon :size="12">
+                        <component :is="aiSearchExpandedSteps[event.step] ? 'ArrowDown' : 'ArrowRight'" />
+                      </el-icon>
+                    </button>
                   </div>
-                  <div class="ai-search-step-content">
-                    <div v-if="event.message" class="ai-search-step-message">{{ event.message }}</div>
-                    <div v-if="event.step === 'keywords' && event.status === 'done' && event.data" class="ai-search-step-data">
-                      关键词：{{ (event.data.keywords || []).join('、') }}
+                  <div v-if="event.step === 'read' && event.status === 'running' && event.data" class="ai-search-step-progress">
+                    读取中 {{ event.data.current }}/{{ event.data.total }}：{{ event.data.title }}
+                  </div>
+                  <div v-if="aiSearchExpandedSteps[event.step] && event.status === 'done'" class="ai-search-step-detail-panel">
+                    <div v-if="event.step === 'keywords'" class="ai-search-detail-section">
+                      <div class="ai-search-detail-label">提示词</div>
+                      <pre class="ai-search-detail-code">{{ event.prompt }}</pre>
+                      <div class="ai-search-detail-label">AI 回复</div>
+                      <pre class="ai-search-detail-code">{{ event.response }}</pre>
+                      <div v-if="event.data && event.data.keywords" class="ai-search-detail-label">解析出的关键词</div>
+                      <div v-if="event.data && event.data.keywords" class="ai-search-detail-keywords">
+                        <span v-for="kw in event.data.keywords" :key="kw" class="ai-search-detail-keyword-chip">{{ kw }}</span>
+                      </div>
                     </div>
-                    <div v-if="event.step === 'search' && event.status === 'done' && event.data" class="ai-search-step-data">
-                      找到 {{ event.data.total }} 个相关片段
+                    <div v-if="event.step === 'search'" class="ai-search-detail-section">
+                      <div class="ai-search-detail-label">搜索关键词</div>
+                      <pre class="ai-search-detail-code">{{ event.prompt }}</pre>
+                      <div v-if="event.data && event.data.fragments && event.data.fragments.length > 0" class="ai-search-detail-label">
+                        找到的片段（{{ event.data.fragments.length }} 个）
+                      </div>
+                      <div v-if="event.data && event.data.fragments" class="ai-search-detail-fragments">
+                        <a v-for="frag in event.data.fragments" :key="frag.id" class="ai-search-detail-fragment-link"
+                          href="javascript:void(0)" @click="openFragment(frag.id)"
+                        >{{ frag.title || '未命名片段' }}</a>
+                      </div>
                     </div>
-                    <div v-if="event.step === 'judge' && event.status === 'done' && event.data" class="ai-search-step-data">
-                      选中 {{ event.data.selected_count }} 个片段进行详细分析
+                    <div v-if="event.step === 'judge'" class="ai-search-detail-section">
+                      <div class="ai-search-detail-label">提示词</div>
+                      <pre class="ai-search-detail-code">{{ event.prompt }}</pre>
+                      <div class="ai-search-detail-label">AI 回复</div>
+                      <pre class="ai-search-detail-code">{{ event.response }}</pre>
+                      <div v-if="event.data && event.data.selected_fragments" class="ai-search-detail-label">
+                        选中的片段（{{ event.data.selected_fragments.length }} 个）
+                      </div>
+                      <div v-if="event.data && event.data.selected_fragments" class="ai-search-detail-fragments">
+                        <a v-for="frag in event.data.selected_fragments" :key="frag.id" class="ai-search-detail-fragment-link"
+                          href="javascript:void(0)" @click="openFragment(frag.id)"
+                        >{{ frag.title || '未命名片段' }}</a>
+                      </div>
                     </div>
-                    <div v-if="event.step === 'read' && event.status === 'running' && event.data" class="ai-search-step-data">
-                      读取中 {{ event.data.current }}/{{ event.data.total }}：{{ event.data.title }}
+                    <div v-if="event.step === 'read'" class="ai-search-detail-section">
+                      <div v-if="event.data && event.data.read_fragments" class="ai-search-detail-label">
+                        已读取片段（{{ event.data.read_fragments.length }} 个，共 {{ event.data.total_chars || 0 }} 字）
+                      </div>
+                      <div v-if="event.data && event.data.read_fragments" class="ai-search-detail-fragments">
+                        <a v-for="frag in event.data.read_fragments" :key="frag.id" class="ai-search-detail-fragment-link"
+                          href="javascript:void(0)" @click="openFragment(frag.id)"
+                        >{{ frag.title || '未命名片段' }}</a>
+                      </div>
+                    </div>
+                    <div v-if="event.step === 'answer'" class="ai-search-detail-section">
+                      <div class="ai-search-detail-label">用户问题</div>
+                      <pre class="ai-search-detail-code">{{ event.prompt }}</pre>
                     </div>
                   </div>
                 </div>
@@ -346,7 +409,7 @@
 </template>
 
 <script>
-import { Check, DArrowLeft, DArrowRight, Delete, HomeFilled, Loading, Plus, Search } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowRight, Check, Close, DArrowLeft, DArrowRight, Delete, HomeFilled, Loading, Plus, Search } from '@element-plus/icons-vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
 import MemoryEditor from '@/components/memory/MemoryEditor.vue'
 import MemoryHistoryDialog from '@/components/memory/MemoryHistoryDialog.vue'
@@ -388,7 +451,10 @@ const MEMORY_FRAGMENT_SSE_ACTION_DELETE = 'delete'
 export default {
   name: 'MemoryFragment',
   components: {
+    ArrowDown,
+    ArrowRight,
     Check,
+    Close,
     DArrowLeft,
     DArrowRight,
     Delete,
@@ -447,6 +513,10 @@ export default {
       aiSearchLoading: false,
       aiSearchSseClient: null,
       aiSearchReferencedFragments: [],
+      aiSearchStepStartTimes: {},
+      aiSearchStepElapsed: {},
+      aiSearchExpandedSteps: {},
+      aiSearchStepTimerId: null,
     }
   },
   computed: {
@@ -521,6 +591,7 @@ export default {
     this.unregisterMemoryFragmentUpdatesSse()
     this.unregisterMemoryFragmentStatusSse()
     this.stopAiSearchSse()
+    this.clearAllStepTimers()
     this.clearSaveFeedbackTimers()
   },
   watch: {
@@ -1391,12 +1462,16 @@ export default {
     // openAiSearchTab 打开 AI 智能搜索 tab 并启动 SSE 连接。
     openAiSearchTab(query) {
       this.stopAiSearchSse()
+      this.clearAllStepTimers()
       this.aiSearchQuery = query
       this.aiSearchTabVisible = true
       this.aiSearchEvents = []
       this.aiSearchAnswer = ''
       this.aiSearchLoading = true
       this.aiSearchReferencedFragments = []
+      this.aiSearchStepStartTimes = {}
+      this.aiSearchStepElapsed = {}
+      this.aiSearchExpandedSteps = {}
       this.activeTab = AI_SEARCH_TAB_NAME
       this.$nextTick(() => {
         this.startAiSearchSse(query)
@@ -1435,6 +1510,7 @@ export default {
       eventSource.onerror = () => {
         this.aiSearchLoading = false
         this.stopAiSearchSse()
+        this.clearAllStepTimers()
       }
     },
     // stopAiSearchSse 关闭 AI 搜索 SSE 连接。
@@ -1454,12 +1530,34 @@ export default {
         if (event.message) {
           this.aiSearchEvents.push(event)
         }
+        this.startStepTimer(event.step)
         return
       }
-      this.aiSearchEvents.push(event)
+      // 同一步骤可能有多条 running（如 read 进度更新），只保留最后一条
+      if (event.status === 'running' && event.step !== 'done') {
+        // 去掉同 step 之前的 running 事件，只保留最新进度
+        const prevRunningIdx = this.aiSearchEvents.findLastIndex(e => e.step === event.step && e.status === 'running')
+        if (prevRunningIdx >= 0) {
+          this.aiSearchEvents.splice(prevRunningIdx, 1, event)
+        } else {
+          this.aiSearchEvents.push(event)
+        }
+        this.startStepTimer(event.step)
+      } else if (event.status === 'done' && event.step !== 'done') {
+        const runningIdx = this.aiSearchEvents.findLastIndex(e => e.step === event.step && e.status === 'running')
+        if (runningIdx >= 0) {
+          this.aiSearchEvents.splice(runningIdx, 1, event)
+        } else {
+          this.aiSearchEvents.push(event)
+        }
+        this.stopStepTimer(event.step)
+      } else {
+        this.aiSearchEvents.push(event)
+      }
       if (event.step === 'done') {
         this.aiSearchLoading = false
         this.stopAiSearchSse()
+        this.clearAllStepTimers()
         if (event.data && event.data.referenced_fragments) {
           this.aiSearchReferencedFragments = event.data.referenced_fragments
         }
@@ -1467,7 +1565,95 @@ export default {
       if (event.step === 'error') {
         this.aiSearchLoading = false
         this.stopAiSearchSse()
+        this.clearAllStepTimers()
       }
+    },
+    // startStepTimer 为指定步骤启动已用时间计时器。
+    startStepTimer(step) {
+      if (this.aiSearchStepStartTimes[step]) {
+        return
+      }
+      this.aiSearchStepStartTimes[step] = Date.now()
+      if (!this.aiSearchStepTimerId) {
+        this.aiSearchStepTimerId = setInterval(() => {
+          const now = Date.now()
+          const updated = {}
+          for (const s in this.aiSearchStepStartTimes) {
+            updated[s] = Math.floor((now - this.aiSearchStepStartTimes[s]) / 1000)
+          }
+          this.aiSearchStepElapsed = updated
+        }, 1000)
+      }
+    },
+    // stopStepTimer 停止指定步骤的计时器。
+    stopStepTimer(step) {
+      if (this.aiSearchStepStartTimes[step]) {
+        const elapsed = Math.floor((Date.now() - this.aiSearchStepStartTimes[step]) / 1000)
+        this.aiSearchStepElapsed[step] = elapsed
+        delete this.aiSearchStepStartTimes[step]
+      }
+      // 如果没有正在运行的步骤了，清除全局定时器
+      if (Object.keys(this.aiSearchStepStartTimes).length === 0 && this.aiSearchStepTimerId) {
+        clearInterval(this.aiSearchStepTimerId)
+        this.aiSearchStepTimerId = null
+      }
+    },
+    // clearAllStepTimers 清除所有步骤计时器。
+    clearAllStepTimers() {
+      if (this.aiSearchStepTimerId) {
+        clearInterval(this.aiSearchStepTimerId)
+        this.aiSearchStepTimerId = null
+      }
+      this.aiSearchStepStartTimes = {}
+    },
+    // toggleStepExpand 切换步骤详情的展开/收起状态。
+    toggleStepExpand(step) {
+      this.aiSearchExpandedSteps[step] = !this.aiSearchExpandedSteps[step]
+    },
+    // getStepLabel 返回步骤的中文名称。
+    getStepLabel(step) {
+      const labels = {
+        keywords: '扩展搜索关键词',
+        search: '搜索知识片段',
+        judge: '评估片段相关性',
+        read: '读取片段内容',
+        answer: '生成综合回答',
+      }
+      return labels[step] || step
+    },
+    // getStepDoneText 返回步骤完成时的摘要文字。
+    getStepDoneText(event) {
+      const label = this.getStepLabel(event.step)
+      const parts = [label]
+      if (event.duration_ms) {
+        parts.push(`用时 ${this.formatDuration(event.duration_ms)}`)
+      }
+      if (event.input_tokens || event.output_tokens) {
+        parts.push(`输入 ${event.input_tokens || 0} token，输出 ${event.output_tokens || 0} token`)
+      }
+      if (event.step === 'search' && event.data && event.data.total !== undefined) {
+        parts.splice(1, 0, `找到 ${event.data.total} 个片段`)
+      }
+      if (event.step === 'judge' && event.data && event.data.selected_count !== undefined) {
+        parts.splice(1, 0, `选中 ${event.data.selected_count} 个片段`)
+      }
+      if (event.step === 'read' && event.data && event.data.read_fragments) {
+        parts.splice(1, 0, `读取 ${event.data.read_fragments.length} 个片段`)
+      }
+      if (event.step === 'keywords' && event.data && event.data.keywords) {
+        parts.splice(1, 0, `生成 ${event.data.keywords.length} 个关键词`)
+      }
+      return parts.join('，')
+    },
+    // canExpandStep 判断步骤是否可以展开查看详情。
+    canExpandStep(event) {
+      if (event.prompt) return true
+      if (event.response) return true
+      if (event.data && event.data.fragments && event.data.fragments.length > 0) return true
+      if (event.data && event.data.selected_fragments && event.data.selected_fragments.length > 0) return true
+      if (event.data && event.data.read_fragments && event.data.read_fragments.length > 0) return true
+      if (event.data && event.data.keywords && event.data.keywords.length > 0) return true
+      return false
     },
     // renderMarkdown 将 Markdown 文本渲染为 HTML。
     renderMarkdown(content) {
@@ -1477,6 +1663,13 @@ export default {
       } catch (e) {
         return this.escapeHtml(content)
       }
+    },
+    // formatDuration 将毫秒格式化为可读的时间文本。
+    formatDuration(ms) {
+      if (!ms || ms <= 0) return '-'
+      if (ms < 1000) return ms + 'ms'
+      const seconds = (ms / 1000).toFixed(1)
+      return seconds + 's'
     },
   }
 }

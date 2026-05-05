@@ -844,20 +844,22 @@
 }
 
 .ai-search-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 6px 0;
-  color: #666;
+  padding: 4px 0;
   font-size: 13px;
 }
 
 .ai-search-step--done {
-  color: #67c23a;
+  color: #333;
 }
 
 .ai-search-step--error {
   color: #f56c6c;
+}
+
+.ai-search-step-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .ai-search-step-icon {
@@ -869,6 +871,14 @@
   justify-content: center;
 }
 
+.ai-search-step-done-icon {
+  color: #67c23a;
+}
+
+.ai-search-step-error-icon {
+  color: #f56c6c;
+}
+
 .ai-search-step-content {
   flex: 1;
   min-width: 0;
@@ -878,10 +888,113 @@
   font-weight: 500;
 }
 
-.ai-search-step-data {
+.ai-search-step-done-text {
+  color: #333;
+}
+
+.ai-search-step-error-text {
+  color: #f56c6c;
+}
+
+.ai-search-step-expand-btn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  padding: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.ai-search-step-expand-btn:hover {
+  color: #5f7d56;
+  background: #f0f5ec;
+}
+
+.ai-search-step-progress {
+  margin-left: 26px;
+  margin-top: 2px;
   color: #909399;
   font-size: 12px;
-  margin-top: 2px;
+}
+
+.ai-search-step-detail-panel {
+  margin: 4px 0 8px 26px;
+  padding: 10px 12px;
+  border-left: 3px solid #cfe0c8;
+  background: #f9fbf7;
+  border-radius: 0 6px 6px 0;
+}
+
+.ai-search-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-search-detail-label {
+  color: #606266;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.ai-search-detail-label:first-child {
+  margin-top: 0;
+}
+
+.ai-search-detail-code {
+  margin: 0;
+  padding: 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #606266;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.ai-search-detail-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-search-detail-keyword-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #ecf5e9;
+  color: #4a7c3f;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ai-search-detail-fragments {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ai-search-detail-fragment-link {
+  display: block;
+  color: #409eff;
+  text-decoration: none;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.ai-search-detail-fragment-link:hover {
+  text-decoration: underline;
 }
 
 .ai-search-answer {

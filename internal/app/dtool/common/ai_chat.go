@@ -19,6 +19,12 @@ const (
 	aiChatRequestTimeout = 5 * time.Minute
 )
 
+// AiChatUsage 记录单次 AI 请求的 token 使用量。
+type AiChatUsage struct {
+	InputTokens  int
+	OutputTokens int
+}
+
 // AIChatByModel 使用模型发起一次 AI 请求。
 func (h *CSqlite) AIChatByModel(modelID int, systemPrompt, userPrompt string) (string, map[string]any, error) {
 	modelInfo, requestURL, apiKey, err := h.aiChatBuildRequest(modelID)
@@ -66,6 +72,55 @@ func (h *CSqlite) AIChatByModel(modelID int, systemPrompt, userPrompt string) (s
 	inputTokens, outputTokens := h.extractTokenUsage(string(responseBody))
 	h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, string(responseBody), ``, costTimeMs, inputTokens, outputTokens)
 	return strings.TrimSpace(content), modelInfo, nil
+}
+
+// AIChatByModelWithUsage 使用模型发起一次 AI 请求，同时返回 token 用量和耗时。
+func (h *CSqlite) AIChatByModelWithUsage(modelID int, systemPrompt, userPrompt string) (string, map[string]any, *AiChatUsage, int64, error) {
+	modelInfo, requestURL, apiKey, err := h.aiChatBuildRequest(modelID)
+	if err != nil {
+		return ``, nil, nil, 0, err
+	}
+	bodyMap := map[string]any{
+		`model`: cast.ToString(modelInfo[`model`]),
+		`messages`: []map[string]string{
+			{`role`: `system`, `content`: systemPrompt},
+			{`role`: `user`, `content`: userPrompt},
+		},
+	}
+	bodyBytes, _ := json.Marshal(bodyMap)
+	request, err := http.NewRequest(http.MethodPost, requestURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return ``, nil, nil, 0, err
+	}
+	request.Header.Set(`Authorization`, `Bearer `+apiKey)
+	request.Header.Set(`Content-Type`, `application/json`)
+	client := &http.Client{Timeout: aiChatRequestTimeout}
+	startTime := time.Now()
+	response, err := client.Do(request)
+	costTimeMs := time.Since(startTime).Milliseconds()
+	if err != nil {
+		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, 0, ``, err.Error(), costTimeMs)
+		return ``, nil, nil, costTimeMs, err
+	}
+	defer response.Body.Close()
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, ``, err.Error(), costTimeMs)
+		return ``, nil, nil, costTimeMs, err
+	}
+	if response.StatusCode >= 300 {
+		errMsg := `AI 请求失败: ` + string(responseBody)
+		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, string(responseBody), errMsg, costTimeMs)
+		return ``, nil, nil, costTimeMs, errors.New(errMsg)
+	}
+	content := p_common.ExtractOpenAiMessage(string(responseBody))
+	if strings.TrimSpace(content) == `` {
+		content = string(responseBody)
+	}
+	inputTokens, outputTokens := h.extractTokenUsage(string(responseBody))
+	h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, string(responseBody), ``, costTimeMs, inputTokens, outputTokens)
+	usage := &AiChatUsage{InputTokens: inputTokens, OutputTokens: outputTokens}
+	return strings.TrimSpace(content), modelInfo, usage, costTimeMs, nil
 }
 
 // AIChatStreamByModel 使用模型发起流式 AI 请求。
@@ -275,26 +330,26 @@ func (h *CSqlite) logAIRequest(
 	headersJSON, _ := json.Marshal(headers)
 
 	logData := map[string]any{
-		`provider_id`:      providerID,
-		`provider_name`:    providerName,
-		`model_id`:         modelID,
-		`model_name`:       modelName,
-		`model`:            model,
-		`model_type`:       modelType,
-		`request_format`:   requestFormat,
-		`base_url`:         baseURL,
-		`request_url`:      requestURL,
-		`request_method`:   method,
-		`request_params`:   string(requestParamsJSON),
-		`request_headers`: string(headersJSON),
+		`provider_id`:          providerID,
+		`provider_name`:        providerName,
+		`model_id`:             modelID,
+		`model_name`:           modelName,
+		`model`:                model,
+		`model_type`:           modelType,
+		`request_format`:       requestFormat,
+		`base_url`:             baseURL,
+		`request_url`:          requestURL,
+		`request_method`:       method,
+		`request_params`:       string(requestParamsJSON),
+		`request_headers`:      string(headersJSON),
 		`response_status_code`: statusCode,
-		`response_body`:    responseBody,
-		`input_tokens`:    inputTk,
-		`output_tokens`:   outputTk,
-		`cost_time_ms`:    costTimeMs,
-		`success`:         success,
-		`error_message`:   errMsg,
-		`create_time`:     time.Now().Unix(),
+		`response_body`:        responseBody,
+		`input_tokens`:         inputTk,
+		`output_tokens`:        outputTk,
+		`cost_time_ms`:         costTimeMs,
+		`success`:              success,
+		`error_message`:        errMsg,
+		`create_time`:          time.Now().Unix(),
 	}
 
 	// 异步写入日志，避免阻塞主流程

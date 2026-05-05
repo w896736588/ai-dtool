@@ -355,6 +355,161 @@ def screenshot(url, full_page=False, width=1920, height=1080, timeout=30, select
 
 
 # ============================================================
+# 11. 创建知识片段
+# 知识片段是 dtool 中用于持久化存储项目经验、开发规则、会议纪要等
+# 结构化知识的载体。每个片段包含标题、Markdown 内容和标签，
+# 以文件形式存储在 memory 目录中，支持 Git 版本管理。
+# ============================================================
+def memory_fragment_create(title, content, tags=None):
+    """
+    创建一个新的知识片段
+
+    知识片段用于记录项目中的经验知识，如开发规范、常见问题解决方案、
+    架构设计决策等。创建后可通过搜索接口按关键词检索。
+
+    参数:
+        title: 片段标题（必填），简明扼要描述片段内容，如 "API开发规范"
+        content: 片段内容（必填），支持 Markdown 格式，可包含代码块、列表等
+        tags: 标签列表（可选），用于分类，如 ["规则", "后端"]
+
+    示例:
+        memory_fragment_create("API开发规范", "所有接口使用POST方法...", ["规则", "后端"])
+        memory_fragment_create("会议纪要", "2026-05-05 讨论了...")
+    """
+    payload = {
+        "title": title,
+        "content": content,
+    }
+    if tags:
+        payload["tags"] = tags
+    result = call_api("/api/MemoryFragmentSave", payload)
+    if result.get("code") == 0:
+        data = result.get("data", {})
+        print(f"创建成功: id={data.get('id')}, title={data.get('title')}")
+    else:
+        print(f"创建失败: {result.get('msg')}")
+    return result
+
+
+# ============================================================
+# 12. 编辑知识片段
+# ============================================================
+def memory_fragment_edit(fragment_id, title=None, content=None, tags=None):
+    """
+    编辑已有的知识片段（只更新传入的字段，未传的字段保持不变）
+
+    参数:
+        fragment_id: 片段 ID（必填）
+        title: 新标题（可选，不传则不修改）
+        content: 新内容（可选，不传则不修改）
+        tags: 新标签列表（可选，不传则不修改）
+
+    示例:
+        memory_fragment_edit("abc123", title="新标题")
+        memory_fragment_edit("abc123", content="更新后的内容", tags=["规则"])
+        memory_fragment_edit("abc123", title="标题", content="内容", tags=["标签"])
+    """
+    # 先获取当前片段信息，用于填充未传入的字段
+    info_result = call_api("/api/MemoryFragmentInfo", {"id": fragment_id})
+    if info_result.get("code") != 0:
+        print(f"获取片段信息失败: {info_result.get('msg')}")
+        return info_result
+
+    current = info_result.get("data", {})
+    payload = {
+        "id": fragment_id,
+        "title": title if title is not None else current.get("title", ""),
+        "content": content if content is not None else current.get("content", ""),
+    }
+    if tags is not None:
+        payload["tags"] = tags
+    elif current.get("tags"):
+        payload["tags"] = current.get("tags")
+
+    result = call_api("/api/MemoryFragmentSave", payload)
+    if result.get("code") == 0:
+        data = result.get("data", {})
+        print(f"编辑成功: id={data.get('id')}, title={data.get('title')}")
+    else:
+        print(f"编辑失败: {result.get('msg')}")
+    return result
+
+
+# ============================================================
+# 13. 查询知识片段明细
+# ============================================================
+def memory_fragment_info(fragment_id):
+    """
+    根据片段 ID 查询知识片段的完整内容（标题、内容、标签、创建/更新时间等）
+
+    参数:
+        fragment_id: 片段 ID（必填）
+
+    示例:
+        memory_fragment_info("abc123")
+    """
+    result = call_api("/api/MemoryFragmentInfo", {"id": fragment_id})
+    if result.get("code") == 0:
+        data = result.get("data", {})
+        print(f"ID: {data.get('id')}")
+        print(f"标题: {data.get('title')}")
+        print(f"内容:\n{data.get('content')}")
+        tags = data.get("tags", [])
+        if tags:
+            print(f"标签: {', '.join(tags)}")
+        print(f"创建时间: {data.get('create_time_desc', '')}")
+        print(f"更新时间: {data.get('update_time_desc', '')}")
+    else:
+        print(f"查询失败: {result.get('msg')}")
+    return result
+
+
+# ============================================================
+# 14. 搜索知识片段（多关键词 AND 搜索）
+# ============================================================
+def memory_fragment_search(query, limit=20):
+    """
+    搜索知识片段，支持多个关键词（空格分隔，AND 逻辑）
+
+    后端会将 query 按空格拆分为多个关键词，要求片段的标题或内容
+    同时包含所有关键词才会返回。匹配结果按相关度排序（标题命中
+    加分 > 标签命中 > 内容命中）。
+
+    参数:
+        query: 搜索关键词，多个关键词用空格分隔（必填）
+               例如 "数据库 迁移" 表示搜索同时包含"数据库"和"迁移"的片段
+        limit: 返回结果数量上限（默认 20）
+
+    示例:
+        memory_fragment_search("数据库迁移")          # 单关键词
+        memory_fragment_search("数据库 迁移")          # 多关键词 AND: 同时包含"数据库"和"迁移"
+        memory_fragment_search("API 规范 前端")        # 三个关键词 AND
+        memory_fragment_search("迁移", limit=5)        # 限制返回5条
+    """
+    result = call_api("/api/MemoryFragmentSearch", {
+        "query": query,
+        "limit": limit,
+    })
+    if result.get("code") == 0:
+        fragments = result.get("data", {}).get("list", [])
+        if not fragments:
+            print(f"未找到包含 '{query}' 的知识片段")
+        else:
+            print(f"找到 {len(fragments)} 个匹配的知识片段:")
+            for i, frag in enumerate(fragments, 1):
+                title = frag.get("title", "")
+                frag_id = frag.get("id", "")
+                tags = ", ".join(frag.get("tags", []))
+                update_time = frag.get("update_time_desc", "")
+                print(f"  {i}. [{frag_id}] {title}" +
+                      (f"  [{tags}]" if tags else "") +
+                      (f"  {update_time}" if update_time else ""))
+    else:
+        print(f"搜索失败: {result.get('msg')}")
+    return result
+
+
+# ============================================================
 # 使用示例
 # ============================================================
 if __name__ == "__main__":

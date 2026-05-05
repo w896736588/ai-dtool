@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
@@ -24,10 +25,15 @@ const (
 
 // aiSearchEvent 定义 SSE 搜索步骤事件。
 type aiSearchEvent struct {
-	Step    string `json:"step"`
-	Status  string `json:"status"`
-	Message string `json:"message"`
-	Data    any    `json:"data,omitempty"`
+	Step         string `json:"step"`
+	Status       string `json:"status"`
+	Message      string `json:"message"`
+	Data         any    `json:"data,omitempty"`
+	DurationMs   int64  `json:"duration_ms,omitempty"`
+	InputTokens  int    `json:"input_tokens,omitempty"`
+	OutputTokens int    `json:"output_tokens,omitempty"`
+	Prompt       string `json:"prompt,omitempty"`
+	Response     string `json:"response,omitempty"`
 }
 
 // MemoryFragmentAiSearch 是 AI 智能搜索的 SSE 端点处理器。
@@ -83,8 +89,8 @@ func runAiSearchFlow(query string, memoryDB common.MemoryFragmentStore, modelID 
 	defer close(stopC)
 
 	// ---- 步骤1: AI 生成扩展关键词 ----
-	sendSearchEvent(sse, `keywords`, `running`, `正在分析您的问题...`, nil)
-	keywordsText, _, err := common.DbMain.AIChatByModel(modelID, aiSearchKeywordSystemPrompt, buildKeywordGenPrompt(query))
+	sendSearchEvent(sse, `keywords`, `running`, `正在扩展搜索关键词...`, nil)
+	keywordsText, _, kwUsage, kwDuration, err := common.DbMain.AIChatByModelWithUsage(modelID, aiSearchKeywordSystemPrompt, buildKeywordGenPrompt(query))
 	if err != nil {
 		sendSearchEvent(sse, `error`, `error`, `关键词生成失败: `+err.Error(), nil)
 		return
@@ -96,16 +102,29 @@ func runAiSearchFlow(query string, memoryDB common.MemoryFragmentStore, modelID 
 	if len(keywords) == 0 {
 		keywords = []string{query}
 	}
-	sendSearchEvent(sse, `keywords`, `done`, ``, map[string]any{`keywords`: keywords})
+	sendSearchDoneEvent(sse, `keywords`, ``, map[string]any{`keywords`: keywords}, buildKeywordGenPrompt(query), keywordsText, kwDuration, kwUsage)
 
 	// ---- 步骤2: rg 搜索片段（OR 逻辑）----
 	sendSearchEvent(sse, `search`, `running`, `正在搜索知识片段...`, nil)
+	searchStart := time.Now()
 	results, err := memoryDB.SearchFragmentsOr(keywords, 200)
+	searchDuration := time.Since(searchStart).Milliseconds()
 	if err != nil {
 		sendSearchEvent(sse, `error`, `error`, `搜索失败: `+err.Error(), nil)
 		return
 	}
-	sendSearchEvent(sse, `search`, `done`, ``, map[string]any{`total`: len(results)})
+	// 构建片段摘要列表供前端展示
+	searchFragments := make([]map[string]any, 0, len(results))
+	for _, item := range results {
+		searchFragments = append(searchFragments, map[string]any{
+			`id`:    item[`id`],
+			`title`: item[`title`],
+		})
+	}
+	sendSearchDoneEvent(sse, `search`, ``, map[string]any{
+		`total`:     len(results),
+		`fragments`: searchFragments,
+	}, strings.Join(keywords, `, `), ``, searchDuration, nil)
 
 	if len(results) == 0 {
 		// 无结果时让 AI 流式回答
@@ -126,6 +145,10 @@ func runAiSearchFlow(query string, memoryDB common.MemoryFragmentStore, modelID 
 	sendSearchEvent(sse, `judge`, `running`, `正在评估片段相关性...`, nil)
 	allSelected := make([]map[string]any, 0)
 	totalPages := (len(results) + aiSearchBatchSize - 1) / aiSearchBatchSize
+	var judgeTotalDuration int64
+	var judgeTotalUsage *common.AiChatUsage
+	judgePromptBuilder := strings.Builder{}
+	judgeResponseBuilder := strings.Builder{}
 
 	for page := 0; page*aiSearchBatchSize < len(results); page++ {
 		if aiSearchStopped(stopC) {
@@ -142,7 +165,17 @@ func runAiSearchFlow(query string, memoryDB common.MemoryFragmentStore, modelID 
 		}
 
 		judgePrompt := buildTitleJudgePrompt(query, titles)
-		judgeText, _, err := common.DbMain.AIChatByModel(modelID, aiSearchJudgeSystemPrompt, judgePrompt)
+		judgePromptBuilder.WriteString(judgePrompt)
+		judgePromptBuilder.WriteString("\n---\n")
+		judgeText, _, judgeUsage, judgeDuration, err := common.DbMain.AIChatByModelWithUsage(modelID, aiSearchJudgeSystemPrompt, judgePrompt)
+		judgeTotalDuration += judgeDuration
+		if judgeUsage != nil {
+			if judgeTotalUsage == nil {
+				judgeTotalUsage = &common.AiChatUsage{}
+			}
+			judgeTotalUsage.InputTokens += judgeUsage.InputTokens
+			judgeTotalUsage.OutputTokens += judgeUsage.OutputTokens
+		}
 		if err != nil {
 			sendSearchEvent(sse, `error`, `error`, `标题评估失败: `+err.Error(), nil)
 			return
@@ -150,6 +183,8 @@ func runAiSearchFlow(query string, memoryDB common.MemoryFragmentStore, modelID 
 		if aiSearchStopped(stopC) {
 			return
 		}
+		judgeResponseBuilder.WriteString(judgeText)
+		judgeResponseBuilder.WriteString("\n")
 		selectedIndices := parseTitleJudgeResponse(judgeText, len(batch))
 		for _, idx := range selectedIndices {
 			if idx >= 0 && idx < len(batch) {
@@ -161,17 +196,34 @@ func runAiSearchFlow(query string, memoryDB common.MemoryFragmentStore, modelID 
 		if end < len(results) {
 			remaining := len(results) - end
 			continuePrompt := buildContinuePrompt(query, remaining)
-			continueText, _, err := common.DbMain.AIChatByModel(modelID, aiSearchJudgeSystemPrompt, continuePrompt)
-			if err != nil || !parseContinueResponse(continueText) {
+			continueText, _, contUsage, contDuration, contErr := common.DbMain.AIChatByModelWithUsage(modelID, aiSearchJudgeSystemPrompt, continuePrompt)
+			judgeTotalDuration += contDuration
+			if contUsage != nil {
+				if judgeTotalUsage == nil {
+					judgeTotalUsage = &common.AiChatUsage{}
+				}
+				judgeTotalUsage.InputTokens += contUsage.InputTokens
+				judgeTotalUsage.OutputTokens += contUsage.OutputTokens
+			}
+			if contErr != nil || !parseContinueResponse(continueText) {
 				break
 			}
 		}
 	}
-	sendSearchEvent(sse, `judge`, `done`, ``, map[string]any{
-		`selected_count`: len(allSelected),
-		`page`:           1,
-		`total_pages`:    totalPages,
-	})
+	// 选中片段摘要列表
+	selectedFragments := make([]map[string]any, 0, len(allSelected))
+	for _, item := range allSelected {
+		selectedFragments = append(selectedFragments, map[string]any{
+			`id`:    item[`id`],
+			`title`: item[`title`],
+		})
+	}
+	sendSearchDoneEvent(sse, `judge`, ``, map[string]any{
+		`selected_count`:     len(allSelected),
+		`total`:              len(results),
+		`total_pages`:        totalPages,
+		`selected_fragments`: selectedFragments,
+	}, judgePromptBuilder.String(), judgeResponseBuilder.String(), judgeTotalDuration, judgeTotalUsage)
 
 	if aiSearchStopped(stopC) {
 		return
@@ -179,8 +231,10 @@ func runAiSearchFlow(query string, memoryDB common.MemoryFragmentStore, modelID 
 
 	// ---- 步骤4: 读取选中片段内容 ----
 	sendSearchEvent(sse, `read`, `running`, `正在读取片段内容...`, nil)
+	readStart := time.Now()
 	collectedContent := strings.Builder{}
 	totalWritten := 0
+	readFragmentList := make([]map[string]any, 0, len(allSelected))
 	for i, item := range allSelected {
 		if aiSearchStopped(stopC) {
 			return
@@ -209,13 +263,21 @@ func runAiSearchFlow(query string, memoryDB common.MemoryFragmentStore, modelID 
 		}
 		collectedContent.WriteString(fmt.Sprintf("## %s\n\n%s\n\n---\n\n", title, content))
 		totalWritten += len(content)
+		readFragmentList = append(readFragmentList, map[string]any{
+			`id`:    item[`id`],
+			`title`: title,
+		})
 		sendSearchEvent(sse, `read`, `running`, ``, map[string]any{
 			`current`: i + 1,
 			`total`:   len(allSelected),
 			`title`:   title,
 		})
 	}
-	sendSearchEvent(sse, `read`, `done`, ``, nil)
+	readDuration := time.Since(readStart).Milliseconds()
+	sendSearchDoneEvent(sse, `read`, ``, map[string]any{
+		`read_fragments`: readFragmentList,
+		`total_chars`:    totalWritten,
+	}, fmt.Sprintf(`共读取 %d 个片段`, len(readFragmentList)), ``, readDuration, nil)
 
 	if aiSearchStopped(stopC) {
 		return
@@ -223,6 +285,7 @@ func runAiSearchFlow(query string, memoryDB common.MemoryFragmentStore, modelID 
 
 	// ---- 步骤5: 流式生成综合回答 ----
 	sendSearchEvent(sse, `answer`, `running`, `正在生成回答...`, nil)
+	answerStart := time.Now()
 	synthesizePrompt := buildSynthesizePrompt(query, collectedContent.String())
 	_, _, err = common.DbMain.AIChatStreamByModel(modelID, aiSearchSynthesizeSystemPrompt, synthesizePrompt, func(chunk string) {
 		if aiSearchStopped(stopC) {
@@ -232,6 +295,11 @@ func runAiSearchFlow(query string, memoryDB common.MemoryFragmentStore, modelID 
 			sendSearchEvent(sse, `answer`, `streaming`, ``, chunk)
 		}
 	})
+	answerDuration := time.Since(answerStart).Milliseconds()
+	if aiSearchStopped(stopC) {
+		return
+	}
+	sendSearchDoneEvent(sse, `answer`, `回答生成完成`, nil, query, ``, answerDuration, nil)
 	if err != nil {
 		sendSearchEvent(sse, `error`, `error`, `回答生成失败: `+err.Error(), nil)
 		return
@@ -257,6 +325,24 @@ func sendSearchEvent(sse *gsgin.Sse, step, status, message string, data any) {
 		Status:  status,
 		Message: message,
 		Data:    data,
+	}
+	_ = sse.SendToChan(gstool.JsonEncode(event))
+}
+
+// sendSearchDoneEvent 发送步骤完成事件，附带耗时、token、完整提示词和回复。
+func sendSearchDoneEvent(sse *gsgin.Sse, step, message string, data any, prompt, response string, durationMs int64, usage *common.AiChatUsage) {
+	event := aiSearchEvent{
+		Step:       step,
+		Status:     `done`,
+		Message:    message,
+		Data:       data,
+		Prompt:     prompt,
+		Response:   response,
+		DurationMs: durationMs,
+	}
+	if usage != nil {
+		event.InputTokens = usage.InputTokens
+		event.OutputTokens = usage.OutputTokens
 	}
 	_ = sse.SendToChan(gstool.JsonEncode(event))
 }

@@ -1,11 +1,11 @@
 ---
 name: dtool-common
-description: Use when operating the dtool 通用工具模块 and the task involves uploading files to remote servers, Git branch operations (listing branches, pulling code, switching branches), querying database tables (MySQL/Pgsql), querying table structures, or executing SQL SELECT queries.
+description: Use when operating the dtool 通用工具模块 and the task involves uploading files to remote servers, Git branch operations (listing branches, pulling code, switching branches), querying database tables (MySQL/Pgsql), querying table structures, executing SQL SELECT queries, or managing knowledge fragments (creating, editing, searching).
 ---
 
 # dtool 通用工具技能
 
-提供远程文件上传、Git 分支查询与代码拉取、数据库表查询（MySQL/Pgsql）、表结构查询、SQL 查询等通用接口。
+提供远程文件上传、Git 分支查询与代码拉取、数据库表查询（MySQL/Pgsql）、表结构查询、SQL 查询、知识片段管理等通用接口。
 
 ## 强制约束
 
@@ -142,6 +142,81 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 
 - **返回**: 文本内容，包含当前分支和远程分支信息
 
+## 知识片段接口
+
+**知识片段** 是 dtool 中用于持久化存储项目知识的载体。每个片段以 Markdown 文件形式存储在 memory 目录中，包含标题、正文内容和标签。典型用途包括：记录开发规范与约定、保存技术决策及其背景、沉淀问题排查经验、存储会议纪要等。片段支持 Git 版本管理，可按关键词搜索、分类标签筛选。
+
+### 9. 创建知识片段
+
+创建一个新的知识片段。不传 `id` 即为新建，接口会自动生成唯一 ID 并持久化为 Markdown 文件。
+
+- **路径**: `/api/MemoryFragmentSave`
+- **参数**:
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `title` | string | 是 | 片段标题，简明扼要描述内容主题，如 `"数据库迁移规范"` |
+| `content` | string | 是 | 片段正文，支持 Markdown 格式（代码块、列表、表格等） |
+| `tags` | string[] | 否 | 分类标签，用于后续按标签筛选，如 `["规范", "数据库"]` |
+
+- **返回**: 新建的片段对象，包含 `id`、`title`、`content`、`tags`、`create_time_desc`、`update_time_desc` 等字段
+- **示例**: 创建一个开发规范片段
+  ```json
+  {
+    "title": "API开发规范",
+    "content": "## 接口规范\n\n1. 所有接口使用 POST 方法\n2. 统一返回 {code, msg, data} 结构",
+    "tags": ["规范", "后端"]
+  }
+  ```
+
+### 10. 编辑知识片段
+
+编辑已有的知识片段。传入 `id` 加上需要修改的字段，未传入的字段保持原值不变。
+
+- **路径**: `/api/MemoryFragmentSave`
+- **参数**:
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `id` | string | 是 | 要编辑的片段 ID |
+| `title` | string | 否 | 新标题（不传则不修改） |
+| `content` | string | 否 | 新正文内容（不传则不修改） |
+| `tags` | string[] | 否 | 新标签列表（不传则不修改） |
+
+- **返回**: 更新后的片段对象
+- **注意**: Python 脚本中的 `memory_fragment_edit` 会先调用查询接口获取当前值，自动填充未传入的字段，确保只更新指定字段
+
+### 11. 查询知识片段明细
+
+根据片段 ID 查询完整的知识片段内容，包括标题、正文、标签、创建和更新时间。
+
+- **路径**: `/api/MemoryFragmentInfo`
+- **参数**:
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `id` | string | 是 | 片段 ID |
+
+- **返回**: 片段对象，包含 `id`、`title`、`content`、`tags`、`create_time_desc`、`update_time_desc` 等字段
+
+### 12. 搜索知识片段（多关键词 AND）
+
+按关键词搜索知识片段的标题和内容。支持多个关键词，**用空格分隔，之间为 AND 关系**（即所有关键词必须同时匹配才会返回结果）。结果按相关度排序：标题命中权重最高，标签次之，内容命中最低。
+
+- **路径**: `/api/MemoryFragmentSearch`
+- **参数**:
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `query` | string | 是 | 搜索关键词，多个关键词用空格分隔表示 AND 查询。如 `"数据库 迁移"` 表示同时包含"数据库"和"迁移"的片段 |
+| `limit` | number | 否 | 返回结果数量上限（默认 20） |
+
+- **返回**: `list` 数组，每项包含 `id`、`title`、`content`、`tags`、`update_time_desc`、`score`（匹配得分）等字段
+- **示例**:
+  - 单关键词: `{"query": "迁移"}` — 搜索包含"迁移"的片段
+  - 多关键词 AND: `{"query": "数据库 迁移"}` — 搜索同时包含"数据库"和"迁移"的片段
+  - 三关键词 AND: `{"query": "API 规范 前端"}` — 搜索同时包含这三个词的片段
+
 ## 推荐工作流
 
 ### 场景 1：上传文件到远程项目
@@ -191,6 +266,36 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 2. 确认要切换的目标分支名 `branch_name`
 3. 调用 `/api/GitChangeBranchById`
 4. 返回切换后的当前分支和远程分支信息
+
+### 场景 8：创建知识片段
+
+1. 向用户确认 `base_url`、`Token`
+2. 确认片段标题 `title` 和内容 `content`（支持 Markdown）
+3. 确认是否需要标签 `tags`（可选，用于分类）
+4. 调用 `/api/MemoryFragmentSave`（不传 `id`）
+5. 返回新创建的片段信息（含自动生成的 `id`）
+
+### 场景 9：编辑知识片段
+
+1. 向用户确认 `base_url`、`Token`
+2. 确认要编辑的片段 ID（可通过搜索接口获取）
+3. 确认需要修改的字段（`title`、`content`、`tags`，未传的字段保持不变）
+4. 调用 `/api/MemoryFragmentSave`（传入 `id` + 要修改的字段）
+5. 返回更新后的片段信息
+
+### 场景 10：查询知识片段明细
+
+1. 向用户确认 `base_url`、`Token`
+2. 确认要查询的片段 ID
+3. 调用 `/api/MemoryFragmentInfo`
+4. 返回片段完整内容（标题、正文、标签、时间等）
+
+### 场景 11：搜索知识片段
+
+1. 向用户确认 `base_url`、`Token`
+2. 确认搜索关键词（多个关键词用空格分隔，AND 逻辑）
+3. 调用 `/api/MemoryFragmentSearch`
+4. 返回匹配的知识片段列表（按相关度排序）
 ## Python 调用脚本
 
 使用前需先向用户获取 `base_url`、`token`、`git_id`、`mysql_id`，然后替换脚本中的占位值。
