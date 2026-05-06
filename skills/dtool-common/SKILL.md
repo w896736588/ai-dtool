@@ -5,7 +5,7 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 
 # dtool 通用工具技能
 
-提供远程文件上传、Git 分支查询与代码拉取、数据库表查询（MySQL/Pgsql）、表结构查询、SQL 查询、知识片段管理等通用接口。
+提供远程文件上传、Git 分支查询与代码拉取、数据库表查询（MySQL/Pgsql）、表结构查询、SQL 查询、知识片段管理、分支变更文件查看等通用接口。
 
 ## 强制约束
 
@@ -296,6 +296,28 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 2. 确认搜索关键词（多个关键词用空格分隔，AND 逻辑）
 3. 调用 `/api/MemoryFragmentSearch`
 4. 返回匹配的知识片段列表（按相关度排序）
+## Git 分支变更查看脚本
+
+用于查看当前分支相对基分支的改动文件列表和单文件 diff（类似 GitLab MR 文件列表），跨平台通用。
+
+### 查看分支改动文件列表
+
+```bash
+python skills/dtool-common/scripts/show_branch_diff.py <基分支>
+```
+
+### 查看单文件 diff
+
+```bash
+python skills/dtool-common/scripts/show_file_diff.py <基分支> <文件路径>
+```
+
+### API 接口按 URI 同步脚本
+
+按 URI 在 dtool 接口开发模块中执行"导入或更新"操作：
+
+- `skills/dtool-common/scripts/sync_api_by_uri.py`
+
 ## Python 调用脚本
 
 使用前需先向用户获取 `base_url`、`token`、`git_id`、`mysql_id`，然后替换脚本中的占位值。
