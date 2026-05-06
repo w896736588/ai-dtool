@@ -37,21 +37,6 @@
                     <span>开始时间：{{ task.start_time_desc || '-' }}</span>
                     <span>最后操作：{{ task.last_operated_at_desc || '-' }}</span>
                     <a v-if="task.tapd_url" :href="task.tapd_url" target="_blank" class="home-task-card__tapd-link">TAPD需求</a>
-                    <div v-if="getHomeTaskDevConfigTags(task).length > 0" class="home-task-card__config-tags">
-                      <div v-for="(group, gIdx) in getHomeTaskDevConfigTags(task)" :key="gIdx" class="home-task-config-group">
-                        <el-tag
-                          v-for="(tag, tagIdx) in group"
-                          :key="tagIdx"
-                          size="small"
-                          effect="plain"
-                          :type="tag.tagType"
-                          class="home-task-config-tag"
-                          @click.stop="navigateToDevConfig(tag)"
-                        >
-                          {{ tag.label }}
-                        </el-tag>
-                      </div>
-                    </div>
                     <span class="home-task-card__status-group">
                       <el-tag size="small" effect="light" :type="getHomeTaskStatusTagType(task.task_status)">
                         {{ task.task_status }}
@@ -67,6 +52,29 @@
                       </el-tag>
                     </span>
                   </div>
+                  <table v-if="getHomeTaskDevConfigTags(task).length > 0" class="home-task-config-table">
+                    <thead>
+                      <tr>
+                        <th v-for="col in homeTaskConfigTableColumns" :key="col.key" class="home-task-config-table__header">{{ col.label }}</th>
+                      </tr>
+                    </thead>
+                    <tr v-for="(group, gIdx) in getHomeTaskDevConfigTags(task)" :key="gIdx">
+                      <td v-for="col in homeTaskConfigTableColumns" :key="col.key" class="home-task-config-table__cell">
+                        <template v-for="(tag, tagIdx) in group" :key="tagIdx">
+                          <el-tag
+                            v-if="tag.type === col.key"
+                            size="small"
+                            effect="plain"
+                            :type="tag.tagType"
+                            class="home-task-config-tag"
+                            @click.stop="navigateToDevConfig(tag)"
+                          >
+                            {{ tag.label }}
+                          </el-tag>
+                        </template>
+                      </td>
+                    </tr>
+                  </table>
                 </div>
                 <div class="home-task-card__actions">
                   <GitActionButton
@@ -145,22 +153,30 @@
                     <span>开始时间：{{ task.start_time_desc || '-' }}</span>
                     <span>最后操作：{{ task.last_operated_at_desc || '-' }}</span>
                     <a v-if="task.tapd_url" :href="task.tapd_url" target="_blank" class="home-task-card__tapd-link">TAPD需求</a>
-                    <div v-if="getHomeTaskDevConfigTags(task).length > 0" class="home-task-card__config-tags">
-                      <div v-for="(group, gIdx) in getHomeTaskDevConfigTags(task)" :key="gIdx" class="home-task-config-group">
-                        <el-tag
-                          v-for="(tag, tagIdx) in group"
-                          :key="tagIdx"
-                          size="small"
-                          effect="plain"
-                          :type="tag.tagType"
-                          class="home-task-config-tag"
-                          @click.stop="navigateToDevConfig(tag)"
-                        >
-                          {{ tag.label }}
-                        </el-tag>
-                      </div>
-                    </div>
                   </div>
+                  <table v-if="getHomeTaskDevConfigTags(task).length > 0" class="home-task-config-table">
+                    <thead>
+                      <tr>
+                        <th v-for="col in homeTaskConfigTableColumns" :key="col.key" class="home-task-config-table__header">{{ col.label }}</th>
+                      </tr>
+                    </thead>
+                    <tr v-for="(group, gIdx) in getHomeTaskDevConfigTags(task)" :key="gIdx">
+                      <td v-for="col in homeTaskConfigTableColumns" :key="col.key" class="home-task-config-table__cell">
+                        <template v-for="(tag, tagIdx) in group" :key="tagIdx">
+                          <el-tag
+                            v-if="tag.type === col.key"
+                            size="small"
+                            effect="plain"
+                            :type="tag.tagType"
+                            class="home-task-config-tag"
+                            @click.stop="navigateToDevConfig(tag)"
+                          >
+                            {{ tag.label }}
+                          </el-tag>
+                        </template>
+                      </td>
+                    </tr>
+                  </table>
                 </div>
                 <div class="home-task-card__status-group">
                   <el-tag size="small" effect="light" :type="getHomeTaskStatusTagType(task.task_status)">
@@ -599,6 +615,14 @@ export default {
       homeTaskMysqlLoading: false,
       homeTaskDockerList: [],
       homeTaskDockerLoading: false,
+      homeTaskConfigTableColumns: [
+        { key: 'git', label: 'Git仓库' },
+        { key: 'api', label: '接口集合' },
+        { key: 'docker', label: 'Docker' },
+        { key: 'mysql', label: 'Db' },
+        { key: 'local_dir', label: '本地目录' },
+        { key: 'parent_branch', label: '父分支' },
+      ],
     }
   },
   computed: {
