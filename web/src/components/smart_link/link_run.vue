@@ -54,6 +54,9 @@
           <GitActionButton variant="info" @click="downloadPath">
             <el-icon><Download /></el-icon>下载目录
           </GitActionButton>
+          <GitActionButton variant="info" @click="openDataDir">
+            <el-icon><FolderOpened /></el-icon>数据存储
+          </GitActionButton>
         </template>
         <GitActionButton variant="info" @click="drawerVisibleMarkdown = true">
           <el-icon><QuestionFilled /></el-icon>帮助文档
@@ -269,7 +272,7 @@ import LinkConfigEditor from "@/components/smart_link/LinkConfigEditor.vue";
 import GitActionButton from "@/components/base/GitActionButton.vue";
 import SettingsDialog from '@/components/base/SettingsDialog.vue'
 import AccountSettingPage from '@/components/set/account.vue'
-import { Plus, Tools, Refresh, Download, QuestionFilled, Setting, Notebook, Delete, User } from '@element-plus/icons-vue'
+import { Plus, Tools, Refresh, Download, QuestionFilled, Setting, Notebook, Delete, User, FolderOpened } from '@element-plus/icons-vue'
 
 const { mergeSavedSmartLinkIntoList } = require('@/utils/smart_link_config_sync.cjs')
 const { DEFAULT_RUNTIME_CONFIG, buildRuntimeApiUrl, buildRuntimeRequestOptions, resolveRuntimeRefreshActions } = require('@/utils/smart_link_runtime.cjs')
@@ -293,6 +296,7 @@ export default {
     Notebook,
     Delete,
     User,
+    FolderOpened,
     LinkConfigEditor,
     GitActionButton,
     SettingsDialog,
@@ -1052,6 +1056,14 @@ export default {
           if (!_that.applyNodeInstallTip(response)) {
             _that.$helperNotify.error('失败')
           }
+        }
+      })
+    },
+    openDataDir: function () {
+      let _that = this
+      smart_link_set.SmartLinkOpenDataDir(function (response) {
+        if (response.ErrCode !== 0) {
+          _that.$helperNotify.error(response.ErrMsg || '打开失败')
         }
       })
     },

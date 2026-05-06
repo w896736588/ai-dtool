@@ -1327,13 +1327,17 @@ func buildTaskWorkflowPlaceholderMap(c *gin.Context, homeTaskInfo map[string]any
 	apiHost := taskWorkflowBuildAPIHost(c)
 	devEnvironment, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigDevEnvironment)
 	result := map[string]string{
-		`{需求文档地址}`:         taskWorkflowBuildShareURL(c, workflowInfo, apiHost),
-		`{接口开发API地址}`:      apiHost,
-		`{接口开发API的token}`:  taskWorkflowBuildAPIToken(c),
-		`{开发项目配置}`:         taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo),
-		`{开发配置}`:           taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo),
-		`{dtool-api地址}`:    filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-api`),
-		`{dtool-common地址}`: filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-common`),
+		`{需求文档地址}`:            taskWorkflowBuildShareURL(c, workflowInfo, apiHost),
+		`{接口开发API地址}`:         apiHost,
+		`{接口开发API的token}`:     taskWorkflowBuildAPIToken(c),
+		`{开发项目配置}`:            taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo),
+		`{开发配置}`:              taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo),
+		`{dtool-api地址}`:       filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-api`),
+		`{dtool-common地址}`:    filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-common`),
+		`{tool-playwright地址}`: filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-playwright`),
+		`{自定义网页}`:             taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo, `smart_link`),
+		`{网页标签}`:              taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo, `smart_link_label`),
+		`{账号}`:                taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo, `smart_link_account`),
 	}
 	// 先解析开发环境内容中的其他占位符，再将其加入映射。
 	for key, value := range result {
@@ -1541,6 +1545,46 @@ func taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo map[string]any) string {
 		mysqlName := taskWorkflowQueryNameByID("tbl_mysql", cfg.MysqlID)
 		if cfg.MysqlID > 0 {
 			sb.WriteString(fmt.Sprintf("- **MySQL**: %s（ID: %d）\n", mysqlName, cfg.MysqlID))
+		}
+		smartLinkName := taskWorkflowQueryNameByID("tbl_smart_link", cfg.SmartLinkID)
+		if cfg.SmartLinkID > 0 {
+			sb.WriteString(fmt.Sprintf("- **自定义网页**: %s（ID: %d）\n", smartLinkName, cfg.SmartLinkID))
+		}
+		if cfg.SmartLinkLabel != "" {
+			sb.WriteString(fmt.Sprintf("- **网页标签**: %s\n", cfg.SmartLinkLabel))
+		}
+		if cfg.SmartLinkAccount != "" {
+			sb.WriteString(fmt.Sprintf("- **账号**: %s\n", cfg.SmartLinkAccount))
+		}
+	}
+	return sb.String()
+}
+
+// taskWorkflowBuildDevConfigsFieldMarkdown 提取所有 dev_configs 中指定字段的值，构建 markdown 列表。
+func taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo map[string]any, field string) string {
+	devConfigs := homeTaskDevConfigs(homeTaskInfo)
+	if len(devConfigs) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i, cfg := range devConfigs {
+		var val string
+		switch field {
+		case `smart_link`:
+			if cfg.SmartLinkID > 0 {
+				name := taskWorkflowQueryNameByID("tbl_smart_link", cfg.SmartLinkID)
+				val = fmt.Sprintf("%s（ID: %d）", name, cfg.SmartLinkID)
+			}
+		case `smart_link_label`:
+			val = cfg.SmartLinkLabel
+		case `smart_link_account`:
+			val = cfg.SmartLinkAccount
+		}
+		if val != "" {
+			if sb.Len() > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(fmt.Sprintf("- 配置%d: %s", i+1, val))
 		}
 	}
 	return sb.String()

@@ -68,11 +68,20 @@ func SmartLinkDownloadPath(c *gin.Context) {
 	}
 	err := component.PlaywrightClient.SmartLinkDownloadPath()
 	if err != nil {
-		gsgin.GinResponseError(c, fmt.Sprintf(`释放失败 %s`, err.Error()), nil)
+		gsgin.GinResponseError(c, fmt.Sprintf(`打开失败 %s`, err.Error()), nil)
 		return
 	}
-	gsgin.GinResponseSuccess(c, `释放成功`, ``)
+	gsgin.GinResponseSuccess(c, `打开成功`, ``)
 	return
+}
+
+func SmartLinkOpenDataDir(c *gin.Context) {
+	err := p_common.TOsClient.OpenDirWindows(gstool.DirPathFormatToWindows(component.EnvClient.WebkitDataPath))
+	if err != nil {
+		gsgin.GinResponseError(c, fmt.Sprintf(`打开失败 %s`, err.Error()), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, `打开成功`, ``)
 }
 
 // SmartLinkList 获取列表

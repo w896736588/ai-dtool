@@ -24,10 +24,11 @@ func buildAccountKey(userName string) string {
 	return `account_user_` + userName
 }
 
-func buildDirectoryMappingKey(smartLinkID int, label, accountKey string) string {
+func buildDirectoryMappingKey(smartLinkID int, label, channel, accountKey string) string {
 	keyParts := []string{
 		fmt.Sprintf(`smart_link_%d`, smartLinkID),
 		`label_` + strings.TrimSpace(label),
+		`channel_` + channel,
 	}
 	if accountKey != `` {
 		keyParts = append(keyParts, accountKey)
@@ -92,7 +93,7 @@ func GetRunParams(id int, label, userName, password string, openType int, openNu
 	runParams.CombineType = define.CombineTypeFix
 	runParams.OpenNum = cast.ToInt(math.Max(1, cast.ToFloat64(openNum)))
 	runParams.AccountKey = buildAccountKey(userName)
-	runParams.DirectoryMappingKey = buildDirectoryMappingKey(runParams.Id, label, runParams.AccountKey)
+	runParams.DirectoryMappingKey = buildDirectoryMappingKey(runParams.Id, label, runParams.Channel, runParams.AccountKey)
 	if openType != 0 {
 		runParams.OpenType = define.OpenType(openType)
 	} else {

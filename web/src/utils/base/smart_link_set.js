@@ -34,6 +34,10 @@ function SmartLinkDownloadPath(sseDistributeId , callBack){
     base.BasePost('/api/SmartLinkDownloadPath', {sse_distribute_id : sseDistributeId} , callBack)
 }
 
+function SmartLinkOpenDataDir(callBack){
+    base.BasePost('/api/SmartLinkOpenDataDir', {} , callBack)
+}
+
 function SmartLinkRun(runParams , callBack){
     base.BasePost('/api/SmartLinkRun', runParams, callBack)
 }
@@ -63,4 +67,5 @@ export default {
     SmartLinkChromeUpdate,
     SmartLinkRecycle,
     SmartLinkDownloadPath,
+    SmartLinkOpenDataDir,
 }

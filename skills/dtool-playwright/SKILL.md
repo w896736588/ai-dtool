@@ -5,9 +5,10 @@ description: Use when operating the dtool 自定义网页 / Playwright 模块 an
 
 # dtool Playwright 技能
 
-- 提供 dtool 自定义网页登录准备接口的使用说明，适用于“先调用 `/api/ai/browser/session/open` 完成登录，再把 `userDataDir` 交给 AI 原生 Playwright 接管”的场景。
-- 这个 skill 不再使用 `browser_session_id + action/pages/close` 模型。
-- `dtool-playwright` 不在 Skill 列表中，使用时直接内联 Python 调用其 API，Windows 路径用 `r'...'` 原始字符串。
+- 提供 dtool 自定义网页登录准备接口的使用说明。
+- 支持两种模式：
+  - **MCP 模式（推荐）**：服务端保持浏览器存活，AI 通过 MCP 工具直接操作，无需每步开关浏览器和截图。
+  - **Playwright 模式（旧）**：服务端返回 userDataDir，AI 用原生 Playwright 接管。
 
 ## 强制约束
 
@@ -19,31 +20,13 @@ description: Use when operating the dtool 自定义网页 / Playwright 模块 an
    - **账号信息**：如果该链接依赖账号，确认使用哪个账号名
 2. 所有请求统一使用 `POST`，`Content-Type: application/json; charset=utf-8`。
 3. 统一使用 Python 脚本发送请求，避免 bash/PowerShell 编码问题。
-4. 接口执行完成后，服务端会关闭准备阶段浏览器，再返回 `userDataDir`，AI 后续必须自己用原生 Playwright 重新接管。
-5. 如果目标 smart-link 配置为“不保存用户数据”，该接口不能返回可复用目录，AI 不能继续原生接管。
+4. 如果目标 smart-link 配置为"不保存用户数据"，该接口不能返回可复用目录，AI 不能继续原生接管。
 
-## 接口说明
+## 模式一：MCP Server（推荐）
 
-### `POST /api/ai/browser/session/open`
+设置 `enable_mcp: true`，服务端登录后保持浏览器存活，创建 MCP SSE Server。AI 通过 MCP 工具直接操作浏览器。
 
-作用：
-
-- 按 `smart_link_id + label + 可选账号` 执行自定义网页流程
-- 使用 Chromium 持久化目录完成登录态准备
-- 关闭准备阶段浏览器
-- 返回 `userDataDir`、账号信息、站点信息、自定义网页标识，供 AI 直接使用原生 Playwright
-
-请求体：
-
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `smart_link_id` | int | 是 | 自定义网页配置 ID |
-| `label` | string | 是 | 自定义网页中的链接 label |
-| `account` | string | 否 | 账号名，如 `"tester"` |
-| `open_type` | int | 否 | 打开方式，`0` 表示沿用配置值 |
-| `reuse_if_open` | bool | 否 | 兼容保留字段，默认 `true` |
-
-请求示例：
+### 请求体（新增 `enable_mcp` 字段）
 
 ```json
 {
@@ -51,88 +34,81 @@ description: Use when operating the dtool 自定义网页 / Playwright 模块 an
   "label": "登录后首页",
   "account": "tester",
   "open_type": 0,
-  "reuse_if_open": true
+  "reuse_if_open": true,
+  "enable_mcp": true
 }
 ```
 
-响应重点字段：
-
-| 字段 | 说明 |
-|---|---|
-| `browser_type` | 固定为 `chromium` |
-| `source_browser_closed` | 准备阶段浏览器是否已关闭 |
-| `user_data_dir` | AI 后续原生 Playwright 要使用的目录 |
-| `user_data_index` | 数据目录索引 |
-| `smart_link.id` | 自定义网页配置 ID |
-| `smart_link.label` | 链接 label |
-| `site.domain` | 站点域名 |
-| `site.url` | 打开的站点 URL |
-| `account.id` | 账号 ID |
-| `account.user_name` | 账号用户名 |
-| `native_playwright.mode` | 固定为 `launch_persistent_context` |
-
-响应示例：
+### MCP 模式响应示例
 
 ```json
 {
   "browser_type": "chromium",
-  "source_browser_closed": true,
-  "native_playwright": {
-    "mode": "launch_persistent_context",
-    "user_data_dir": "C:/path/to/profile/4"
-  },
+  "source_browser_closed": false,
   "user_data_dir": "C:/path/to/profile/4",
   "user_data_index": 4,
-  "smart_link": {
-    "id": 12,
-    "label": "登录后首页"
+  "smart_link": { "id": 12, "label": "登录后首页" },
+  "site": { "domain": "example.com", "url": "https://example.com/dashboard" },
+  "current_page": { "url": "https://example.com/dashboard", "title": "控制台" },
+  "mcp": {
+    "enabled": true,
+    "session_id": "mcp-br-12345",
+    "sse_endpoint": "http://127.0.0.1:17170/mcp/ai-browser/mcp-br-12345/sse",
+    "msg_endpoint": "http://127.0.0.1:17170/mcp/ai-browser/mcp-br-12345/message"
   },
-  "site": {
-    "domain": "example.com",
-    "url": "https://example.com/dashboard"
-  },
-  "account": {
-    "id": 3,
-    "user_name": "tester",
-    "account_key": "account_id_3"
-  },
-  "current_page": {
-    "url": "https://example.com/dashboard",
-    "title": "控制台"
-  }
+  "usage_hint": "MCP模式：浏览器保持存活，AI通过MCP SSE端点直接调用browser_snapshot/browser_click等工具操作浏览器，无需重新打开浏览器"
 }
 ```
 
-## “二次附着”说明
-
-二次附着指的是：
-
-- 一个 Chromium 进程已经占用了某个 `userDataDir`
-- 另一个 Playwright / Chromium 进程又试图用同一个目录启动
-
-这通常会冲突，所以当前设计里服务端会先关闭准备阶段浏览器，再把目录交给 AI，避免目录仍被占用。
-
-## AI 推荐工作流
-
-### 场景 1：让自定义网页负责登录，AI 原生接管
+### MCP 工作流
 
 1. 确认 `base_url`、`Token`、`smart_link_id`、`label`、`account`
-2. 如果链接依赖账号，确认账号名
-3. 调用 `/api/ai/browser/session/open`
-4. 从返回里读取 `user_data_dir`
-5. AI 在本地直接用 Playwright Chromium `launchPersistentContext(userDataDir)` 接管
-6. 后续所有点击、输入、截图、断言都走原生 Playwright
+2. 调用 `/api/ai/browser/session/open`，设置 `enable_mcp: true`
+3. 从响应中获取 `mcp.sse_endpoint` 和 `mcp.msg_endpoint`
+4. 将 MCP SSE 端点配置到 AI 客户端（如 Claude Code、Cursor）
+5. AI 通过 MCP 工具操作浏览器：
 
-### 场景 2：自动化测试
+| 工具 | 说明 |
+|---|---|
+| `browser_snapshot` | 获取页面 Accessibility Tree（毫秒级，无需截图） |
+| `browser_click` | 点击元素（用 ref 或 role+name 定位） |
+| `browser_type` | 在输入框中输入文本 |
+| `browser_fill` | 清空输入框并填入新文本 |
+| `browser_navigate` | 导航到 URL |
+| `browser_select_option` | 选择下拉选项 |
+| `browser_screenshot` | 截图（仅最终验证用） |
+| `browser_close` | 关闭浏览器会话 |
 
-1. 调 `/api/ai/browser/session/open`
-2. 读取 `user_data_dir`
-3. 在测试代码中 `launchPersistentContext(userDataDir)`
-4. 自己写原生 Playwright 测试步骤和断言
+6. 典型操作流程：`browser_snapshot` → 分析结构 → `browser_click(ref="e3")` → `browser_snapshot` → 继续
+7. 完成后调用 `browser_close` 关闭会话（或 30 分钟无操作自动关闭）
 
-## 原生 Playwright 接管示例
+### MCP 工具调用示例
 
-Python：
+```
+AI 调用 browser_snapshot
+→ 返回:
+- page
+  - heading "用户登录" [level=1]
+  - textbox "用户名" [ref=e1, value=""]
+  - textbox "密码" [ref=e2, value=""]
+  - button "登录" [ref=e3]
+  - link "忘记密码" [ref=e4]
+
+AI 分析后调用 browser_fill: {ref: "e1", text: "admin"}
+AI 调用 browser_fill: {ref: "e2", text: "password123"}
+AI 调用 browser_click: {ref: "e3"}
+```
+
+## 模式二：原生 Playwright（旧模式）
+
+不设置 `enable_mcp`，服务端登录后关闭浏览器，返回 `userDataDir`，AI 用原生 Playwright 接管。
+
+### 会话持久化约束
+
+1. **禁止每个动作都重新打开浏览器**。AI 必须在单个 `with sync_playwright() as p:` 上下文中完成所有操作。
+2. **禁止用截图来分析页面结构**。使用 `page.accessibility.snapshot()` 或 `page.evaluate()` 分析页面。
+
+### 原生 Playwright 接管示例
 
 ```python
 from playwright.sync_api import sync_playwright
@@ -147,27 +123,28 @@ with sync_playwright() as p:
     )
     page = context.pages[0] if context.pages else context.new_page()
     page.goto("https://example.com/dashboard")
-    print(page.title())
+
+    # 用无障碍树分析页面结构（毫秒级）
+    snapshot = page.accessibility.snapshot()
+    print(snapshot)
+
+    # 用 locator 直接操作元素
+    page.get_by_role("button", name="提交").click()
+    page.get_by_label("用户名").fill("test")
 ```
 
-Node.js：
+## 接口详情
 
-```js
-const { chromium } = require("playwright");
+### `POST /api/ai/browser/session/open`
 
-async function main() {
-  const userDataDir = "C:/path/to/profile/4";
-  const context = await chromium.launchPersistentContext(userDataDir, {
-    headless: false,
-    viewport: null,
-  });
-  const page = context.pages()[0] || await context.newPage();
-  await page.goto("https://example.com/dashboard");
-  console.log(await page.title());
-}
-
-main();
-```
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `smart_link_id` | int | 是 | 自定义网页配置 ID |
+| `label` | string | 是 | 自定义网页中的链接 label |
+| `account` | string | 否 | 账号名 |
+| `open_type` | int | 否 | 打开方式，`0` 沿用配置值 |
+| `reuse_if_open` | bool | 否 | 兼容保留字段，默认 `true` |
+| `enable_mcp` | bool | 否 | 启用 MCP 模式，默认 `false` |
 
 ## Python 调用脚本
 

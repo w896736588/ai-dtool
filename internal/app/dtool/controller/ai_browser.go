@@ -3,9 +3,11 @@ package controller
 import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
+	"dev_tool/internal/app/dtool/mcp"
 	"dev_tool/internal/app/dtool/plw"
 	"fmt"
 	"strings"
+	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
@@ -20,6 +22,9 @@ type aiBrowserOpenRequest struct {
 	Account     string `json:"account"`
 	OpenType    int    `json:"open_type"`
 	ReuseIfOpen *bool  `json:"reuse_if_open"`
+	// EnableMCP 为 true 时，登录完成后保持浏览器存活并创建 MCP Server，
+	// AI 通过 MCP SSE 直接调用工具操作浏览器，无需每步重新打开。
+	EnableMCP bool `json:"enable_mcp"`
 }
 
 type aiBrowserResolvedAccount struct {
@@ -64,6 +69,15 @@ func AIBrowserSessionOpen(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	// 确保在任何返回路径下都关闭浏览器，避免残留进程锁住 userDataDir 导致 AI 侧崩溃
+	// MCP 模式下不关闭，由 MCP 会话管理生命周期
+	if !req.EnableMCP {
+		defer func() {
+			if closeErr := closeAIBrowserPreparedContext(contextList, contextPage); closeErr != nil {
+				component.PlaywrightClient.Log.Errof("关闭AI浏览器session失败: %v", closeErr)
+			}
+		}()
+	}
 
 	page := findContextPageForDomain(contextPage, runParams.Domain)
 	reused := page != nil
@@ -81,12 +95,30 @@ func AIBrowserSessionOpen(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	time.Sleep(3 * time.Second)
+	// 等待登录后的页面跳转完成（如点击登录按钮后的重定向）
+	component.PlaywrightClient.WaitForLoadState(page, runParams.LocatorTimeout)
 
 	response := buildAIBrowserProfileResponse(req, runParams, contextPage, page, accountInfo, reused)
-	if closeErr := closeAIBrowserPreparedContext(contextList, contextPage); closeErr != nil {
-		gsgin.GinResponseError(c, closeErr.Error(), response)
-		return
+
+	// MCP 模式：创建 MCP SSE 会话，保持浏览器存活
+	if req.EnableMCP {
+		baseURL := fmt.Sprintf("http://%s", c.Request.Host)
+		browserSession, mcpErr := mcp.CreateSession(contextPage, page, baseURL)
+		if mcpErr != nil {
+			gsgin.GinResponseError(c, fmt.Sprintf("创建MCP会话失败: %v", mcpErr), nil)
+			return
+		}
+		response["mcp"] = map[string]any{
+			"enabled":      true,
+			"session_id":   browserSession.ID,
+			"sse_endpoint": fmt.Sprintf("%s/mcp/ai-browser/%s/sse", baseURL, browserSession.ID),
+			"msg_endpoint": fmt.Sprintf("%s/mcp/ai-browser/%s/message", baseURL, browserSession.ID),
+		}
+		response["source_browser_closed"] = false
+		response["usage_hint"] = "MCP模式：浏览器保持存活，AI通过MCP SSE端点直接调用browser_snapshot/browser_click等工具操作浏览器，无需重新打开浏览器"
 	}
+
 	gsgin.GinResponseSuccess(c, "", response)
 }
 
@@ -99,12 +131,15 @@ func buildAIBrowserProfileResponse(req aiBrowserOpenRequest, runParams *plw.Play
 	if accountInfo.UserName == "" && accountInfo.ID == 0 && accountInfo.AccountKey == "" {
 		accountPayload = map[string]any{}
 	}
+	executablePath := component.PlaywrightClient.Pw.Chromium.ExecutablePath()
 	return map[string]any{
 		"browser_type":          "chromium",
 		"source_browser_closed": true,
 		"native_playwright": map[string]any{
-			"mode":          "launch_persistent_context",
-			"user_data_dir": contextPage.UserDataPath,
+			"mode":            "launch_persistent_context",
+			"user_data_dir":   contextPage.UserDataPath,
+			"executable_path": executablePath,
+			"channel":         runParams.Channel,
 		},
 		"user_data_dir":   contextPage.UserDataPath,
 		"user_data_index": contextPage.UserDataIndex,
@@ -122,7 +157,7 @@ func buildAIBrowserProfileResponse(req aiBrowserOpenRequest, runParams *plw.Play
 			"url":   (*page).URL(),
 			"title": safePageTitle(page),
 		},
-		"usage_hint": "AI应使用Playwright Chromium的launchPersistentContext(userDataDir)重新接管该目录",
+		"usage_hint": "AI应使用Playwright的launchPersistentContext(userDataDir, executablePath)重新接管该目录，必须使用返回的executable_path以确保浏览器版本一致",
 	}
 }
 

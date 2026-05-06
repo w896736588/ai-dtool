@@ -473,6 +473,69 @@
                     </el-form-item>
                   </el-col>
                 </el-row>
+                <el-row :gutter="12">
+                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="自定义网页" label-width="72px">
+                      <el-select
+                        v-model="cfg.smart_link_id"
+                        clearable
+                        filterable
+                        style="width: 100%"
+                        placeholder="选择自定义网页（可选）"
+                        :loading="homeTaskSmartLinkLoading"
+                        @change="handleDevConfigSmartLinkChange(cfgIdx)"
+                      >
+                        <el-option
+                          v-for="item in homeTaskSmartLinkList"
+                          :key="item.id"
+                          :label="item.name"
+                          :value="Number(item.id)"
+                        />
+                      </el-select>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="网页标签" label-width="72px">
+                      <el-select
+                        v-model="cfg.smart_link_label"
+                        clearable
+                        filterable
+                        style="width: 100%"
+                        placeholder="选择标签（可选）"
+                        :disabled="!cfg.smart_link_id"
+                        @change="handleDevConfigSmartLinkLabelChange(cfgIdx)"
+                      >
+                        <el-option
+                          v-for="link in getDevConfigSmartLinkLabels(cfgIdx)"
+                          :key="link.label"
+                          :label="link.label"
+                          :value="link.label"
+                        />
+                      </el-select>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+                <el-row :gutter="12">
+                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="账号" label-width="72px">
+                      <el-select
+                        v-model="cfg.smart_link_account"
+                        clearable
+                        filterable
+                        style="width: 100%"
+                        placeholder="选择账号（可选）"
+                        :disabled="!cfg.smart_link_label"
+                      >
+                        <el-option
+                          v-for="acct in getDevConfigSmartLinkAccounts(cfgIdx)"
+                          :key="acct.user_name"
+                          :label="acct.user_name"
+                          :value="acct.user_name"
+                        />
+                      </el-select>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
               </div>
               <el-button type="primary" plain size="small" @click="addDevConfig">
                 + 添加开发项目配置
@@ -503,6 +566,7 @@ import gitApi from '@/utils/base/git'
 import mysqlSetApi from '@/utils/base/mysql_set'
 import apiManagement from '@/utils/base/api'
 import dockerApi from '@/utils/base/compose'
+import smartLinkSetApi from '@/utils/base/smart_link_set'
 import GitActionButton from "@/components/base/GitActionButton.vue"
 
 const HOME_TASK_TAB_ACTIVE = 'active'
@@ -570,7 +634,7 @@ function createHomeTaskDefaultForm() {
     task_status: HOME_TASK_STATUS_TODO,
     start_date: getTodayDateText(),
     tapd_url: '',
-    dev_configs: [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', mysql_id: '', local_dir: '', parent_branch: '' }],
+    dev_configs: [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', mysql_id: '', local_dir: '', parent_branch: '', smart_link_id: '', smart_link_label: '', smart_link_account: '' }],
   }
 }
 
@@ -615,6 +679,8 @@ export default {
       homeTaskMysqlLoading: false,
       homeTaskDockerList: [],
       homeTaskDockerLoading: false,
+      homeTaskSmartLinkList: [],
+      homeTaskSmartLinkLoading: false,
       homeTaskConfigTableColumns: [
         { key: 'git', label: 'Git仓库' },
         { key: 'api', label: '接口集合' },
@@ -622,6 +688,9 @@ export default {
         { key: 'mysql', label: 'Db' },
         { key: 'local_dir', label: '本地目录' },
         { key: 'parent_branch', label: '父分支' },
+        { key: 'smart_link', label: '自定义网页' },
+        { key: 'smart_link_label', label: '网页标签' },
+        { key: 'smart_link_account', label: '账号' },
       ],
     }
   },
@@ -650,6 +719,7 @@ export default {
     this.loadHomeTaskMysqlList()
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
+    this.loadHomeTaskSmartLinkList()
   },
   activated() {
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
@@ -658,6 +728,7 @@ export default {
     this.loadHomeTaskApiCollections()
     this.loadHomeTaskDockerList()
     this.loadHomeTaskMysqlList()
+    this.loadHomeTaskSmartLinkList()
   },
   methods: {
     handleHomeTaskTabChange(tabName) {
@@ -783,8 +854,49 @@ export default {
       cfg.dir_id = 0
       this.loadHomeTaskApiFoldersForCollection(cfg.collection_id)
     },
+    loadHomeTaskSmartLinkList() {
+      this.homeTaskSmartLinkLoading = true
+      smartLinkSetApi.SmartLinkList((response) => {
+        this.homeTaskSmartLinkLoading = false
+        if (!(response && response.ErrCode === 0)) {
+          return
+        }
+        const rawList = Array.isArray(response.Data?.smart_link_list) ? response.Data.smart_link_list : []
+        this.homeTaskSmartLinkList = rawList.map(item => {
+          let linkList = []
+          try {
+            linkList = JSON.parse(item.links || '[]')
+          } catch (e) { /* ignore */ }
+          return { ...item, linkList }
+        })
+      })
+    },
+    getDevConfigSmartLinkLabels(cfgIdx) {
+      const cfg = this.homeTaskForm.dev_configs[cfgIdx]
+      if (!cfg || !cfg.smart_link_id) return []
+      const smartLink = this.homeTaskSmartLinkList.find(s => Number(s.id) === Number(cfg.smart_link_id))
+      if (!smartLink) return []
+      return Array.isArray(smartLink.linkList) ? smartLink.linkList : []
+    },
+    getDevConfigSmartLinkAccounts(cfgIdx) {
+      const cfg = this.homeTaskForm.dev_configs[cfgIdx]
+      if (!cfg || !cfg.smart_link_label) return []
+      const labels = this.getDevConfigSmartLinkLabels(cfgIdx)
+      const link = labels.find(l => l.label === cfg.smart_link_label)
+      if (!link) return []
+      return Array.isArray(link.userList) ? link.userList : []
+    },
+    handleDevConfigSmartLinkChange(cfgIdx) {
+      const cfg = this.homeTaskForm.dev_configs[cfgIdx]
+      cfg.smart_link_label = ''
+      cfg.smart_link_account = ''
+    },
+    handleDevConfigSmartLinkLabelChange(cfgIdx) {
+      const cfg = this.homeTaskForm.dev_configs[cfgIdx]
+      cfg.smart_link_account = ''
+    },
     addDevConfig() {
-      this.homeTaskForm.dev_configs.push({ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '', parent_branch: '' })
+      this.homeTaskForm.dev_configs.push({ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '', parent_branch: '', smart_link_id: '', smart_link_label: '', smart_link_account: '' })
     },
     removeDevConfig(idx) {
       this.homeTaskForm.dev_configs.splice(idx, 1)
@@ -798,6 +910,7 @@ export default {
       this.loadHomeTaskApiCollections()
       this.loadHomeTaskMysqlList()
       this.loadHomeTaskDockerList()
+      this.loadHomeTaskSmartLinkList()
       this.homeTaskDialogVisible = true
     },
     openHomeTaskSettingsPage() {
@@ -846,6 +959,9 @@ export default {
           mysql_id: Number(cfg.mysql_id || 0) || '',
           local_dir: String(cfg.local_dir || ''),
           parent_branch: String(cfg.parent_branch || ''),
+          smart_link_id: Number(cfg.smart_link_id || 0) || '',
+          smart_link_label: String(cfg.smart_link_label || ''),
+          smart_link_account: String(cfg.smart_link_account || ''),
         }))
       } else {
         let gitIds = Array.isArray(task.git_ids) && task.git_ids.length > 0
@@ -866,11 +982,14 @@ export default {
             mysql_id: Number(task.mysql_id || 0) || '',
             local_dir: '',
             parent_branch: '',
+            smart_link_id: '',
+            smart_link_label: '',
+            smart_link_account: '',
           })
         }
       }
       if (devConfigs.length === 0) {
-        devConfigs = [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '' }]
+        devConfigs = [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '', parent_branch: '', smart_link_id: '', smart_link_label: '', smart_link_account: '' }]
       }
       this.homeTaskForm = {
         id: Number(task.id || 0),
@@ -884,6 +1003,7 @@ export default {
       this.loadHomeTaskApiCollections()
       this.loadHomeTaskMysqlList()
       this.loadHomeTaskDockerList()
+      this.loadHomeTaskSmartLinkList()
       for (const cfg of devConfigs) {
         if (cfg.collection_id > 0) {
           this.loadHomeTaskApiFoldersForCollection(cfg.collection_id)
@@ -998,6 +1118,18 @@ export default {
         if (String(cfg.parent_branch || '').trim() !== '') {
           group.push({ type: 'parent_branch', label: '分支: ' + String(cfg.parent_branch).trim(), tagType: '' })
         }
+        if (Number(cfg.smart_link_id || 0) > 0) {
+          const sl = this.homeTaskSmartLinkList.find(s => Number(s.id) === Number(cfg.smart_link_id))
+          if (sl) {
+            group.push({ type: 'smart_link', label: sl.name, id: Number(cfg.smart_link_id), tagType: '' })
+          }
+        }
+        if (String(cfg.smart_link_label || '').trim() !== '') {
+          group.push({ type: 'smart_link_label', label: String(cfg.smart_link_label).trim(), tagType: 'info' })
+        }
+        if (String(cfg.smart_link_account || '').trim() !== '') {
+          group.push({ type: 'smart_link_account', label: String(cfg.smart_link_account).trim(), tagType: 'warning' })
+        }
         if (group.length > 0) {
           groups.push(group)
         }
@@ -1026,6 +1158,8 @@ export default {
         path = '/Docker'
       } else if (tag.type === 'mysql') {
         path = '/Set'
+      } else if (tag.type === 'smart_link') {
+        path = '/Link'
       }
       if (!path) return
       const routeInfo = this.$router.resolve({ path })
@@ -1041,7 +1175,7 @@ export default {
         return
       }
       const validConfigs = this.homeTaskForm.dev_configs
-        .filter(cfg => Number(cfg.git_id || 0) > 0 || Number(cfg.collection_id || 0) > 0 || Number(cfg.docker_id || 0) > 0 || Number(cfg.mysql_id || 0) > 0 || String(cfg.local_dir || '').trim() !== '' || String(cfg.parent_branch || '').trim() !== '')
+        .filter(cfg => Number(cfg.git_id || 0) > 0 || Number(cfg.collection_id || 0) > 0 || Number(cfg.docker_id || 0) > 0 || Number(cfg.mysql_id || 0) > 0 || String(cfg.local_dir || '').trim() !== '' || String(cfg.parent_branch || '').trim() !== '' || Number(cfg.smart_link_id || 0) > 0)
         .map(cfg => ({
           git_id: Number(cfg.git_id || 0),
           collection_id: Number(cfg.collection_id || 0),
@@ -1050,6 +1184,9 @@ export default {
           mysql_id: Number(cfg.mysql_id || 0),
           local_dir: String(cfg.local_dir || '').trim(),
           parent_branch: String(cfg.parent_branch || '').trim(),
+          smart_link_id: Number(cfg.smart_link_id || 0),
+          smart_link_label: String(cfg.smart_link_label || '').trim(),
+          smart_link_account: String(cfg.smart_link_account || '').trim(),
         }))
       this.homeTaskSaving = true
       this.homeTaskOperatingType = HOME_TASK_OPERATE_SAVE

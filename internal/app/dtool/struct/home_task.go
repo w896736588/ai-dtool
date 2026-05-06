@@ -20,15 +20,18 @@ type HomeTaskSaveRequest struct {
 	DevConfigs       string `json:"dev_configs"`
 }
 
-// DevConfig 开发配置条目，组合了 Git 仓库、接口集合/文件夹、Docker 和 MySQL 配置。
+// DevConfig 开发配置条目，组合了 Git 仓库、接口集合/文件夹、Docker、MySQL 配置、自定义网页。
 type DevConfig struct {
-	GitID        int    `json:"git_id"`
-	CollectionID int    `json:"collection_id"`
-	DirID        int    `json:"dir_id"`
-	DockerID     int    `json:"docker_id"`
-	MysqlID      int    `json:"mysql_id"`
-	LocalDir     string `json:"local_dir"`
-	ParentBranch string `json:"parent_branch"`
+	GitID            int    `json:"git_id"`
+	CollectionID     int    `json:"collection_id"`
+	DirID            int    `json:"dir_id"`
+	DockerID         int    `json:"docker_id"`
+	MysqlID          int    `json:"mysql_id"`
+	LocalDir         string `json:"local_dir"`
+	ParentBranch     string `json:"parent_branch"`
+	SmartLinkID      int    `json:"smart_link_id"`
+	SmartLinkLabel   string `json:"smart_link_label"`
+	SmartLinkAccount string `json:"smart_link_account"`
 }
 
 // ApiDevEntry 接口开发条目，对应一个集合+文件夹组合。

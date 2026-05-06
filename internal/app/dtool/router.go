@@ -3,6 +3,7 @@ package dtool
 import (
 	"dev_tool/internal/app/dtool/controller"
 	"dev_tool/internal/app/dtool/define"
+	"dev_tool/internal/app/dtool/mcp"
 	"dev_tool/internal/app/dtool/middleware"
 	"dev_tool/internal/pkg/p_define"
 	"dev_tool/internal/pkg/p_gin"
@@ -26,6 +27,9 @@ func InitRouter(tGin *p_gin.Gin) {
 
 	// 2. 注册 SafeAuth 中间件到所有后续路由
 	tGin.UseMiddleware(middleware.SafeAuthMiddleware())
+
+	// MCP SSE 端点放在白名单之后、SafeAuth 之前，因为 MCP 客户端不携带 Token
+	mcpRouter(tGin)
 
 	toolRouter(tGin)
 	redisRouter(tGin)
@@ -385,6 +389,7 @@ func smartLink(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/SmartLinkChromeDownload`, controller.SmartLinkUpWebkit)
 	tGin.GinPost(`/api/SmartLinkRecycle`, controller.SmartLinkRecycle)
 	tGin.GinPost(`/api/SmartLinkDownloadPath`, controller.SmartLinkDownloadPath)
+	tGin.GinPost(`/api/SmartLinkOpenDataDir`, controller.SmartLinkOpenDataDir)
 	tGin.GinPost(`/api/SmartLinkLocatorAutoExtract`, controller.SmartLinkLocatorAutoExtract)
 	// 本地客户端相关接口
 	tGin.GinGet(`/api/smart-link/runtime-config`, controller.SmartLinkRuntimeConfig)
@@ -530,4 +535,13 @@ func apiUse(tGin *p_gin.Gin) {
 
 func screenshotRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Screenshot`, controller.Screenshot)
+}
+
+// mcpRouter 注册 AI 浏览器 MCP SSE 路由。
+// MCP 会话的 SSE 和 Message 端点需要在白名单中（无 Token 鉴权），
+// 因为 MCP 客户端通常不会携带自定义 Token 头。
+func mcpRouter(tGin *p_gin.Gin) {
+	mcp.RegisterGinRoutesDirect(tGin)
+	// 启动过期会话清理，30 分钟无操作自动关闭
+	mcp.StartCleanupTimer(30 * time.Minute)
 }
