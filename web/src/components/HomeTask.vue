@@ -1005,6 +1005,14 @@ export default {
       return groups
     },
     navigateToDevConfig(tag) {
+      if (tag.type === 'local_dir') {
+        homeTaskApi.OpenLocalDir(tag.fullPath, (response) => {
+          if (!(response && response.ErrCode === 0)) {
+            this.$helperNotify.error(response?.ErrMsg || '打开目录失败')
+          }
+        })
+        return
+      }
       let path = ''
       if (tag.type === 'git') {
         path = '/Git'

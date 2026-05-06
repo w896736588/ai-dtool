@@ -40,6 +40,11 @@ function LocalDirList(dirPath, callBack) {
   base.BasePost('/api/Set/LocalDirList', { path: dirPath || '' }, callBack)
 }
 
+// OpenLocalDir 使用系统文件管理器打开指定本地目录。
+function OpenLocalDir(dirPath, callBack) {
+  base.BasePost('/api/Set/OpenLocalDir', { path: dirPath }, callBack)
+}
+
 export default {
   HomeTaskList,
   HomeTaskSave,
@@ -49,4 +54,5 @@ export default {
   HomeTaskInfo,
   HomeTaskDailyReportGenerate,
   LocalDirList,
+  OpenLocalDir,
 }

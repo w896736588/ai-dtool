@@ -7,7 +7,9 @@ import (
 	"dev_tool/internal/app/dtool/define"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -1716,6 +1718,39 @@ func listWindowsDrives() ([]map[string]any, error) {
 		}
 	}
 	return drives, nil
+}
+
+// SetOpenLocalDir 使用系统文件管理器打开指定本地目录。
+func SetOpenLocalDir(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	dirPath := strings.TrimSpace(cast.ToString(dataMap[`path`]))
+	if dirPath == `` {
+		gsgin.GinResponseError(c, `路径不能为空`, nil)
+		return
+	}
+	info, statErr := os.Stat(dirPath)
+	if statErr != nil {
+		gsgin.GinResponseError(c, fmt.Sprintf(`路径不可访问: %s`, statErr.Error()), nil)
+		return
+	}
+	if !info.IsDir() {
+		gsgin.GinResponseError(c, `指定路径不是目录`, nil)
+		return
+	}
+	var cmd *exec.Cmd
+	if runtime.GOOS == `windows` {
+		cmd = exec.Command(`explorer`, dirPath)
+	} else if runtime.GOOS == `darwin` {
+		cmd = exec.Command(`open`, dirPath)
+	} else {
+		cmd = exec.Command(`xdg-open`, dirPath)
+	}
+	if runErr := cmd.Start(); runErr != nil {
+		gsgin.GinResponseError(c, fmt.Sprintf(`打开目录失败: %s`, runErr.Error()), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
 // SetPromptChangeLogList 返回提示词变更日志（最近 20 条）。
