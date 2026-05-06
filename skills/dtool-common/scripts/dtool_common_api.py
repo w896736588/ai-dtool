@@ -33,12 +33,23 @@ def call_api(path, payload):
     try:
         with request.urlopen(req, timeout=60) as resp:
             result = json.loads(resp.read().decode("utf-8"))
-            return result
+            return _normalize_response(result)
     except error.HTTPError as exc:
         body_text = exc.read().decode("utf-8", errors="replace")
         return {"code": -1, "msg": f"HTTP {exc.code}", "data": body_text}
     except Exception as exc:
         return {"code": -1, "msg": str(exc), "data": None}
+
+
+def _normalize_response(result):
+    """将后端返回的 ErrCode/ErrMsg/Data 统一映射为 code/msg/data"""
+    if "ErrCode" in result:
+        result["code"] = result.get("ErrCode")
+    if "ErrMsg" in result:
+        result["msg"] = result.get("ErrMsg")
+    if "Data" in result:
+        result["data"] = result.get("Data")
+    return result
 
 
 # ============================================================

@@ -1078,14 +1078,20 @@ export default {
     },
     updateHomeTaskInList(updatedTask) {
       const taskId = Number(updatedTask.id || 0)
+      const parsedTask = {
+        ...updatedTask,
+        git_ids: safeParseJSON(updatedTask.git_ids, []),
+        api_dev_entries: safeParseJSON(updatedTask.api_dev_entries, []),
+        dev_configs: safeParseJSON(updatedTask.dev_configs, []),
+      }
       const activeIndex = this.homeTaskActiveList.findIndex(t => Number(t.id) === taskId)
       if (activeIndex >= 0) {
-        this.homeTaskActiveList[activeIndex] = { ...this.homeTaskActiveList[activeIndex], ...updatedTask }
+        this.homeTaskActiveList[activeIndex] = { ...this.homeTaskActiveList[activeIndex], ...parsedTask }
         return
       }
       const archivedIndex = this.homeTaskArchivedList.findIndex(t => Number(t.id) === taskId)
       if (archivedIndex >= 0) {
-        this.homeTaskArchivedList[archivedIndex] = { ...this.homeTaskArchivedList[archivedIndex], ...updatedTask }
+        this.homeTaskArchivedList[archivedIndex] = { ...this.homeTaskArchivedList[archivedIndex], ...parsedTask }
       }
     },
     triggerHomeTaskEditFeedback(taskId) {
