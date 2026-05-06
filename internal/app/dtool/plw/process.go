@@ -270,8 +270,8 @@ func (h *Process) PBoolResult() (define.ProcessCode, string, error) {
 		}
 	} else {
 		//根据上面的执行来判断
-		h.Check.OutKeyBoolResult()
-		h.runParams.StreamFunc(h.Name, `根据check_key判断是否存在成功,`+h.OutKey+`,`+fmt.Sprintf(`%t`, h.BoolResultMap[h.OutKey]))
+		checkDetail := h.Check.OutKeyBoolResult()
+		h.runParams.StreamFunc(h.Name, fmt.Sprintf(`check_key判断: %s，%s=%t`, checkDetail, h.OutKey, h.BoolResultMap[h.OutKey]))
 	}
 	return define.ProcessOk, ``, nil
 }

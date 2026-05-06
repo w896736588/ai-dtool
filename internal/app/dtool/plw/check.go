@@ -1,6 +1,7 @@
 package plw
 
 import (
+	"fmt"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"strings"
 )
@@ -21,33 +22,30 @@ func NewCheck(outKey, checks string, boolResultMap map[string]bool, log *gstool.
 	}
 }
 
-func (h *Check) OutKeyBoolResult() {
+func (h *Check) OutKeyBoolResult() string {
 	h.log.Debugf(`OutKey %s`, h.OutKey)
 	if h.OutKey == `` {
-		return
+		return ``
 	}
 	if strings.Contains(h.Checks, `!=`) { //不等于
 		checkList := strings.Split(h.Checks, `!=`)
 		if len(checkList) != 2 {
-			return
+			return fmt.Sprintf(`判断条件格式错误: %s`, h.Checks)
 		}
 		leftCheck := strings.TrimSpace(checkList[0])
 		rightCheck := strings.TrimSpace(checkList[1])
-		if leftCheck != rightCheck {
-			h.BoolResultMap[h.OutKey] = true
-		} else {
-			h.BoolResultMap[h.OutKey] = false
-		}
+		result := leftCheck != rightCheck
+		h.BoolResultMap[h.OutKey] = result
+		return fmt.Sprintf(`判断条件: "%s" != "%s"`, leftCheck, rightCheck)
 	} else if strings.Contains(h.Checks, `==`) { //等于
 		checkList := strings.Split(h.Checks, `==`)
 		leftCheck := strings.TrimSpace(checkList[0])
 		rightCheck := strings.TrimSpace(checkList[1])
-		if leftCheck != rightCheck {
-			h.BoolResultMap[h.OutKey] = false
-		} else {
-			h.BoolResultMap[h.OutKey] = true
-		}
+		result := leftCheck == rightCheck
+		h.BoolResultMap[h.OutKey] = result
+		return fmt.Sprintf(`判断条件: "%s" == "%s"`, leftCheck, rightCheck)
 	}
+	return fmt.Sprintf(`无匹配操作符: %s`, h.Checks)
 }
 
 func (h *Check) AllowCheckKey() bool {

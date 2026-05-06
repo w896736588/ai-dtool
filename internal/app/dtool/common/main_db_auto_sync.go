@@ -223,7 +223,7 @@ func (h *MainDBAutoSync) ScheduleSync() {
 	h.nextSyncTime = scheduledAt
 	h.mu.Unlock()
 
-	gstool.FmtPrintlnLogTime(`主库自动同步已排期，%d 分钟后执行 scheduled_at=%d`, config.AutoSyncMinutes, scheduledAt)
+	//gstool.FmtPrintlnLogTime(`主库自动同步已排期，%d 分钟后执行 scheduled_at=%d`, config.AutoSyncMinutes, scheduledAt)
 }
 
 // Config 返回当前配置快照。
@@ -294,7 +294,7 @@ func (h *MainDBAutoSync) handleFileEvent(event fsnotify.Event, config MainDBAuto
 		return
 	}
 
-	gstool.FmtPrintlnLogTime(`主库自动同步检测到目标文件变更 file=%s op=%s target_db=%s`, event.Name, formatFSNotifyOp(event.Op), filepath.Join(config.Dir, config.DBName))
+	//gstool.FmtPrintlnLogTime(`主库自动同步检测到目标文件变更 file=%s op=%s target_db=%s`, event.Name, formatFSNotifyOp(event.Op), filepath.Join(config.Dir, config.DBName))
 	if _, err := h.ensurePendingTask(config); err != nil {
 		gstool.FmtPrintlnLogTime(`主库自动同步创建待处理任务失败 dir=%s file=%s err=%s`, config.Dir, config.DBName, err.Error())
 	}

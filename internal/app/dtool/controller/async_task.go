@@ -521,3 +521,78 @@ func buildAsyncHomeTaskTapdScrapeResultWithLog(tapdURL, memoryFragmentID string,
 
 	return zipResult, nil
 }
+
+// AsyncTaskRetry 重试失败的异步任务，根据任务类型从 request_payload 提取参数并重新调度。 // AsyncTaskRetry retries a failed async task by resetting its status and re-dispatching.
+func AsyncTaskRetry(c *gin.Context) {
+	db, ok := asyncTaskDBOrResponse(c)
+	if !ok {
+		return
+	}
+	request := _struct.AsyncTaskInfoRequest{}
+	_ = gsgin.GinPostBody(c, &request)
+	info, err := db.AsyncTaskInfo(request.ID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	taskStatus := strings.TrimSpace(cast.ToString(info[`task_status`]))
+	if taskStatus != common.AsyncTaskStatusFailed {
+		gsgin.GinResponseError(c, `只能重试失败状态的任务`, nil)
+		return
+	}
+	taskType := strings.TrimSpace(cast.ToString(info[`task_type`]))
+	taskID := cast.ToInt(info[`id`])
+	requestPayloadMap, parseErr := asyncTaskDecodePayload(cast.ToString(info[`request_payload`]))
+	if parseErr != nil {
+		gsgin.GinResponseError(c, `解析任务参数失败: `+parseErr.Error(), nil)
+		return
+	}
+	// 重置任务状态为 pending。
+	if resetErr := db.AsyncTaskResetForRetry(taskID); resetErr != nil {
+		gsgin.GinResponseError(c, resetErr.Error(), nil)
+		return
+	}
+	BroadcastAsyncTasksUpdate()
+	// 根据任务类型重新调度后台执行。
+	asyncTaskBackgroundRunner(taskID, func() {
+		switch taskType {
+		case asyncTaskTypeHomeTaskTapdScrape:
+			tapdURL := cast.ToString(requestPayloadMap[`tapd_url`])
+			memoryFragmentID := cast.ToString(requestPayloadMap[`memory_fragment_id`])
+			runAsyncTaskAndPersistResult(taskID, func() (map[string]any, error) {
+				return buildAsyncHomeTaskTapdScrapeResultWithLog(tapdURL, memoryFragmentID, func(step, message string) {
+					appendAsyncTaskRunLog(taskID, step, message)
+					BroadcastAsyncTasksUpdate()
+				})
+			})
+		case asyncTaskTypeMemoryFragmentArrange:
+			fragmentID := cast.ToString(requestPayloadMap[`fragment_id`])
+			title := cast.ToString(requestPayloadMap[`title`])
+			content := cast.ToString(requestPayloadMap[`content`])
+			runAsyncTaskAndPersistResult(taskID, func() (map[string]any, error) {
+				resultMap, buildErr := buildAsyncMemoryArrangeResult(title, content)
+				if buildErr != nil {
+					return nil, buildErr
+				}
+				resultMap[`fragment_id`] = fragmentID
+				return resultMap, nil
+			})
+		case asyncTaskTypeHomeTaskDailyReport:
+			taskList, listErr := common.DbMain.HomeTaskListTodayUpdated()
+			if listErr != nil {
+				_ = db.AsyncTaskMarkFailed(taskID, listErr.Error())
+				BroadcastAsyncTasksUpdate()
+				return
+			}
+			reportTime := time.Now().Unix()
+			runAsyncTaskAndPersistResult(taskID, func() (map[string]any, error) {
+				return buildAsyncHomeTaskDailyReportResult(taskList, reportTime)
+			})
+		default:
+			_ = db.AsyncTaskMarkFailed(taskID, `不支持重试的任务类型: `+taskType)
+			BroadcastAsyncTasksUpdate()
+		}
+	})
+	updatedInfo, _ := db.AsyncTaskInfo(taskID)
+	gsgin.GinResponseSuccess(c, ``, updatedInfo)
+}

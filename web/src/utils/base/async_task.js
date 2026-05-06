@@ -29,9 +29,17 @@ function AsyncTaskDelete(id, callBack) {
   }, callBack)
 }
 
+// AsyncTaskRetry 重试失败的异步任务。 // AsyncTaskRetry retries a failed async task.
+function AsyncTaskRetry(id, callBack) {
+  base.BasePost('/api/AsyncTaskRetry', {
+    id: id,
+  }, callBack)
+}
+
 export default {
   AsyncTaskList,
   AsyncTaskInfo,
   AsyncTaskAction,
   AsyncTaskDelete,
+  AsyncTaskRetry,
 }

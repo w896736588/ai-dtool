@@ -138,6 +138,17 @@ func (h *CSqlite) AsyncTaskMarkFinal(id int, status string) error {
 	})
 }
 
+// AsyncTaskResetForRetry 重置失败任务为 pending 状态，清空错误信息和结果，供重试使用。 // AsyncTaskResetForRetry resets a failed task back to pending so it can be re-executed.
+func (h *CSqlite) AsyncTaskResetForRetry(id int) error {
+	return h.asyncTaskUpdateStatus(id, AsyncTaskStatusPending, map[string]any{
+		`result_payload`: ``,
+		`error_message`:  ``,
+		`run_logs`:       ``,
+		`start_time`:     0,
+		`finish_time`:    0,
+	})
+}
+
 // AsyncTaskUpdateRequestPayload 更新任务请求参数，供可恢复任务刷新调度信息。 // Update request payload so resumable tasks can refresh schedule metadata.
 func (h *CSqlite) AsyncTaskUpdateRequestPayload(id int, requestPayload string) error {
 	return h.asyncTaskUpdateStatus(id, ``, map[string]any{

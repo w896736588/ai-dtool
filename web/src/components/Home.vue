@@ -314,6 +314,14 @@
                 >
                   源码
                 </GitActionButton>
+                 <GitActionButton
+                              v-if="asyncTaskDetail.task_status === ASYNC_TASK_STATUS_FAILED"
+                              compact
+                              :loading="asyncTaskRetrying"
+                              @click="retryAsyncTask"
+                            >
+                              重试
+                            </GitActionButton>
               </div>
             </div>
             <MarkdownRenderer
@@ -337,6 +345,14 @@
             </div>
           </div>
           <div class="async-task-detail__actions">
+            <GitActionButton
+              v-if="asyncTaskDetail.task_status === ASYNC_TASK_STATUS_FAILED"
+              compact
+              :loading="asyncTaskRetrying"
+              @click="retryAsyncTask"
+            >
+              重试
+            </GitActionButton>
             <GitActionButton
               v-if="asyncTaskDetail.task_status === ASYNC_TASK_STATUS_AWAIT_CONFIRM && asyncTaskDetail.task_type === ASYNC_TASK_TYPE_DAILY_REPORT"
               compact
@@ -472,6 +488,7 @@ export default {
       ASYNC_TASK_ACTION_DISCARD,
       ASYNC_TASK_STATUS_AWAIT_CONFIRM,
       ASYNC_TASK_STATUS_PENDING,
+      ASYNC_TASK_STATUS_FAILED,
       ASYNC_TASK_TYPE_DAILY_REPORT,
       ASYNC_TASK_TYPE_MEMORY_ARRANGE,
       ASYNC_TASK_TYPE_MAIN_DB_SYNC,
@@ -481,6 +498,7 @@ export default {
       asyncTaskLoading: false,
       asyncTaskActing: false,
       asyncTaskDeleting: false,
+      asyncTaskRetrying: false,
       asyncTaskSelectedId: 0,
       asyncTaskList: [],
       asyncTaskDetail: {},
@@ -897,6 +915,24 @@ export default {
         }
         this.loadAsyncTaskSummary(false)
         this.$helperNotify.success('异步任务记录已删除')
+      })
+    },
+    // retryAsyncTask 重试失败的异步任务。
+    retryAsyncTask() {
+      const taskId = Number(this.asyncTaskDetail?.id || 0)
+      if (taskId <= 0) {
+        return
+      }
+      this.asyncTaskRetrying = true
+      asyncTaskApi.AsyncTaskRetry(taskId, (response) => {
+        this.asyncTaskRetrying = false
+        if (!(response && response.ErrCode === 0 && response.Data)) {
+          this.$helperNotify.error(response?.ErrMsg || '异步任务重试失败')
+          return
+        }
+        this.asyncTaskDetail = this.normalizeAsyncTaskDetail(response.Data)
+        this.loadAsyncTaskSummary(false)
+        this.$helperNotify.success('异步任务已重新执行')
       })
     },
     // getAsyncTaskTypeText 统一格式化异步任务类型文案。

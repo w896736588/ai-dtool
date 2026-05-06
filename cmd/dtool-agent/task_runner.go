@@ -103,7 +103,7 @@ func (t *TaskRunner) executeTask(taskData define.AgentTaskExecuteData) {
 
 	// 构造 StreamFunc：将日志实时回传
 	streamFunc := func(name, message string) {
-		gstool.FmtPrintlnLogTime(`任务日志 task_id=%s step=%s message=%s`, taskID, name, message)
+		gstool.FmtPrintlnLogTime(`[%s] %s`, name, message)
 		t.wsClient.SendTaskLog(taskID, sseDistributeId, name, message)
 	}
 

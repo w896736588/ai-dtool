@@ -310,6 +310,7 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/AsyncTaskInfo`, controller.AsyncTaskInfo)
 	tGin.GinPost(`/api/AsyncTaskAction`, controller.AsyncTaskAction)
 	tGin.GinPost(`/api/AsyncTaskDelete`, controller.AsyncTaskDelete)
+	tGin.GinPost(`/api/AsyncTaskRetry`, controller.AsyncTaskRetry)
 }
 
 func homeTask(tGin *p_gin.Gin) {
