@@ -726,133 +726,51 @@
 
         <div class="structured-locator-inline-field">
           <div class="structured-locator-inline-field__label">
-            <div class="structured-locator-inline-field__title">编辑模式</div>
-            <div class="structured-locator-inline-field__desc">普通场景优先用简单模式；复杂页面再切高级模式。</div>
+            <div class="structured-locator-inline-field__title">主元素定位方式</div>
+            <div class="structured-locator-inline-field__desc">固定为 CSS / XPath，填写可直接传入 Locator 的匹配值。</div>
           </div>
           <div class="structured-locator-inline-field__control">
-            <el-select v-model="baseLocatorDialog.draft.locator_editor_mode">
-              <el-option label="简单模式" value="simple" />
-              <el-option label="高级模式" value="advanced" />
-            </el-select>
+            <el-input model-value="CSS / XPath" readonly />
           </div>
         </div>
 
-        <template v-if="baseLocatorDialog.draft.locator_editor_mode === 'advanced'">
-          <div class="structured-locator-section">
-            <div class="structured-locator-section__title">1. 主元素</div>
-            <div class="structured-locator-grid">
-              <el-select v-model="baseLocatorDialog.draft.locator_advanced_form.kind" placeholder="请选择查找方式">
-                <el-option
-                  v-for="option in structuredLocatorKindOptions"
-                  :key="`dialog-advanced-${option.value}`"
-                  :label="option.label"
-                  :value="option.value"
-                />
-              </el-select>
-              <el-input
-                v-model="baseLocatorDialog.draft.locator_advanced_form.value"
-                :placeholder="getStructuredLocatorPrimaryPlaceholder(baseLocatorDialog.draft.locator_advanced_form.kind)"
-              />
-            </div>
+        <div class="structured-locator-section">
+          <div class="structured-locator-section__title">1. 主元素</div>
+          <div class="structured-locator-grid">
+            <el-input
+              v-model="baseLocatorDialog.draft.locator_structured_form.value"
+              :placeholder="getStructuredLocatorPrimaryPlaceholder('css')"
+            />
           </div>
-          <div class="structured-locator-section">
-            <div class="structured-locator-section__title">2. 结果提取</div>
-            <div class="structured-locator-grid">
-              <el-select v-model="baseLocatorDialog.draft.locator_advanced_form.pick_mode" placeholder="多个结果时怎么处理">
-                <el-option label="默认" value="none" />
-                <el-option label="只取第一个" value="first" />
-                <el-option label="只取最后一个" value="last" />
-                <el-option label="取第 N 个" value="nth" />
-              </el-select>
-              <el-input-number
-                v-model="baseLocatorDialog.draft.locator_advanced_form.nth"
-                :min="0"
-                :step="1"
-                controls-position="right"
-                :disabled="baseLocatorDialog.draft.locator_advanced_form.pick_mode !== 'nth'"
-              />
-            </div>
+        </div>
+        <div class="structured-locator-section">
+          <div class="structured-locator-section__title">2. 结果提取</div>
+          <div class="structured-locator-grid">
+            <el-select v-model="baseLocatorDialog.draft.locator_structured_form.pick_mode" placeholder="多个结果时怎么处理">
+              <el-option label="默认" value="none" />
+              <el-option label="只取第一个" value="first" />
+              <el-option label="只取最后一个" value="last" />
+              <el-option label="取第 N 个" value="nth" />
+            </el-select>
+            <el-input-number
+              v-model="baseLocatorDialog.draft.locator_structured_form.nth"
+              :min="0"
+              :step="1"
+              controls-position="right"
+              :disabled="baseLocatorDialog.draft.locator_structured_form.pick_mode !== 'nth'"
+            />
           </div>
-          <div class="structured-locator-section">
-            <div class="structured-locator-section__title">3. 过滤条件</div>
-            <div class="structured-locator-grid">
-              <el-input v-model="baseLocatorDialog.draft.locator_advanced_form.has_text" placeholder="包含文本" />
-              <el-input v-model="baseLocatorDialog.draft.locator_advanced_form.has_not_text" placeholder="不包含文本" />
-            </div>
-            <div class="structured-locator-grid structured-locator-grid--stacked">
-              <div class="structured-locator-filter-pair">
-                <el-select v-model="baseLocatorDialog.draft.locator_advanced_form.has_kind" placeholder="包含子元素查找方式">
-                  <el-option
-                    v-for="option in structuredLocatorKindOptions"
-                    :key="`dialog-has-${option.value}`"
-                    :label="option.label"
-                    :value="option.value"
-                  />
-                </el-select>
-                <el-input v-model="baseLocatorDialog.draft.locator_advanced_form.has_value" placeholder="必须包含的子元素" />
-              </div>
-              <div class="structured-locator-filter-pair">
-                <el-select v-model="baseLocatorDialog.draft.locator_advanced_form.has_not_kind" placeholder="不包含子元素查找方式">
-                  <el-option
-                    v-for="option in structuredLocatorKindOptions"
-                    :key="`dialog-has-not-${option.value}`"
-                    :label="option.label"
-                    :value="option.value"
-                  />
-                </el-select>
-                <el-input v-model="baseLocatorDialog.draft.locator_advanced_form.has_not_value" placeholder="不能包含的子元素" />
-              </div>
-            </div>
-          </div>
-        </template>
-
-        <template v-else>
-          <div class="structured-locator-section">
-            <div class="structured-locator-section__title">1. 先选要找什么</div>
-            <div class="structured-locator-grid">
-              <el-select v-model="baseLocatorDialog.draft.locator_structured_form.kind" placeholder="请选择查找方式">
-                <el-option
-                  v-for="option in structuredLocatorKindOptions"
-                  :key="`dialog-${option.value}`"
-                  :label="option.label"
-                  :value="option.value"
-                />
-              </el-select>
-              <el-input
-                v-model="baseLocatorDialog.draft.locator_structured_form.value"
-                :placeholder="getStructuredLocatorPrimaryPlaceholder(baseLocatorDialog.draft.locator_structured_form.kind)"
-              />
-            </div>
-          </div>
-          <div class="structured-locator-section">
-            <div class="structured-locator-section__title">2. 结果提取</div>
-            <div class="structured-locator-grid">
-              <el-select v-model="baseLocatorDialog.draft.locator_structured_form.pick_mode" placeholder="多个结果时怎么处理">
-                <el-option label="默认" value="none" />
-                <el-option label="只取第一个" value="first" />
-                <el-option label="只取最后一个" value="last" />
-                <el-option label="取第 N 个" value="nth" />
-              </el-select>
-              <el-input-number
-                v-model="baseLocatorDialog.draft.locator_structured_form.nth"
-                :min="0"
-                :step="1"
-                controls-position="right"
-                :disabled="baseLocatorDialog.draft.locator_structured_form.pick_mode !== 'nth'"
-              />
-            </div>
-          </div>
-        </template>
+        </div>
       </div>
     </div>
     <template #footer>
       <GitActionButton @click="baseLocatorDialog.visible = false">取消</GitActionButton>
-      <GitActionButton variant="info" @click="openAutoExtractDialog">自动提取</GitActionButton>
+      <GitActionButton variant="info" @click="openAutoExtractDialog">AI自动提取定位</GitActionButton>
       <GitActionButton @click="saveBaseLocatorDialog">保存定位</GitActionButton>
     </template>
   </el-dialog>
 
-  <el-dialog v-model="autoExtractDialog.visible" title="AI 自动提取基础定位" width="760px">
+  <el-dialog v-model="autoExtractDialog.visible" title="AI 自动提取定位" width="760px">
     <el-form label-position="top" class="auto-extract-form">
       <div class="structured-locator-grid">
         <el-form-item label="服务商">
@@ -932,6 +850,7 @@ const {
   createBaseLocatorMeta,
   deserializeLocatorConfigToFormMeta,
   isLocatorConfigPayload,
+  normalizeBaseLocatorMeta,
 } = require('../../utils/smart_link_locator_config.cjs')
 const {
   formatStructuredLocator,
@@ -1315,6 +1234,9 @@ export default {
   methods: {
     createSignature(payload) {
       return JSON.stringify(payload || {})
+    },
+    normalizeBaseLocatorDraft(baseLocator) {
+      return normalizeBaseLocatorMeta(baseLocator)
     },
     syncFromModel(value) {
       const normalizedValue = {
@@ -1956,27 +1878,29 @@ export default {
       })
     },
     applyAutoExtractPayload(payload) {
-      const form = payload && payload.locator_structured_form ? payload.locator_structured_form : null
-      if (!payload || payload.locator_editor_mode !== 'simple' || !form || !String(form.kind || '').trim()) {
+      const locatorValue = String(payload && payload.value || '').trim()
+      if (!locatorValue) {
         ElMessage.error('AI 返回格式不正确，请检查原始返回内容。')
         return
       }
-      this.baseLocatorDialog.draft = {
-        ...createBaseLocatorMeta(),
+      this.baseLocatorDialog.draft = this.normalizeBaseLocatorDraft({
         locator_editor_mode: 'simple',
         locator_structured_form: {
           ...createStructuredLocatorForm(),
-          ...form,
+          kind: 'css',
+          value: locatorValue === 'NOT_FOUND' ? '' : locatorValue,
         },
-        locator_advanced_form: createAdvancedStructuredLocatorForm(),
+      })
+      if (locatorValue === 'NOT_FOUND') {
+        ElMessage.warning('AI 未能可靠定位，请手动补充定位表达式。')
+        return
       }
       this.autoExtractDialog.visible = false
-      ElMessage.success('基础定位已自动填入表单。')
+      ElMessage.success('AI 自动提取定位结果已填入表单。')
     },
     describeBaseLocator(baseLocator) {
-      const payload = baseLocator && baseLocator.locator_editor_mode === 'advanced'
-        ? this.buildAdvancedLocatorPayloadByForm(baseLocator.locator_advanced_form)
-        : this.buildStructuredLocatorPayloadByForm(baseLocator && baseLocator.locator_structured_form)
+      const normalizedBaseLocator = this.normalizeBaseLocatorDraft(baseLocator)
+      const payload = this.buildStructuredLocatorPayloadByForm(normalizedBaseLocator.locator_structured_form)
       return formatStructuredLocator(payload)
     },
     openBaseLocatorDialog(targetType, index, title) {
@@ -1999,11 +1923,11 @@ export default {
         targetType,
         targetIndex: index,
         title,
-        draft: JSON.parse(JSON.stringify(source || createBaseLocatorMeta())),
+        draft: JSON.parse(JSON.stringify(this.normalizeBaseLocatorDraft(source || createBaseLocatorMeta()))),
       }
     },
     saveBaseLocatorDialog() {
-      const draft = JSON.parse(JSON.stringify(this.baseLocatorDialog.draft || createBaseLocatorMeta()))
+      const draft = JSON.parse(JSON.stringify(this.normalizeBaseLocatorDraft(this.baseLocatorDialog.draft || createBaseLocatorMeta())))
       if (this.baseLocatorDialog.targetType === 'bool_result' && this.formMeta.bool_result_rules[this.baseLocatorDialog.targetIndex]) {
         this.formMeta.bool_result_rules[this.baseLocatorDialog.targetIndex].base_locator = draft
       } else if (this.baseLocatorDialog.targetType === 'text_content' && this.formMeta.text_content_locators[this.baseLocatorDialog.targetIndex]) {

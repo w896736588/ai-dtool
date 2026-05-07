@@ -535,11 +535,6 @@ func AsyncTaskRetry(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	taskStatus := strings.TrimSpace(cast.ToString(info[`task_status`]))
-	if taskStatus != common.AsyncTaskStatusFailed {
-		gsgin.GinResponseError(c, `只能重试失败状态的任务`, nil)
-		return
-	}
 	taskType := strings.TrimSpace(cast.ToString(info[`task_type`]))
 	taskID := cast.ToInt(info[`id`])
 	requestPayloadMap, parseErr := asyncTaskDecodePayload(cast.ToString(info[`request_payload`]))

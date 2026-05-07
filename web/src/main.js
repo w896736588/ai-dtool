@@ -135,11 +135,24 @@ window.ResizeObserver = class ResizeObserver extends _ResizeObserver{
 }
 
 import sse from '@/utils/base/sse_distribute'
-sse.InitFromLoginStatus(function (){
-  console.log('打开链接')
-}, function (e){
-  console.log('链接错误', e && e.message)
-}, function (){
-  console.log('链接关闭')
-})
+
+// 不需要 SSE 连接的独立页面路由（这些页面不依赖 SSE 推送，无需占用浏览器连接数）
+const SSE_EXCLUDED_ROUTES = ['/HomeTaskSetting', '/ApiDocument', '/TaskWorkflow']
+
+function shouldInitSse() {
+  const hash = window.location.hash
+  if (!hash) return true
+  const route = hash.startsWith('#') ? hash.slice(1) : hash
+  return !SSE_EXCLUDED_ROUTES.some(r => route.startsWith(r))
+}
+
+if (shouldInitSse()) {
+  sse.InitFromLoginStatus(function (){
+    console.log('打开链接')
+  }, function (e){
+    console.log('链接错误', e && e.message)
+  }, function (){
+    console.log('链接关闭')
+  })
+}
 

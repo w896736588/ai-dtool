@@ -315,7 +315,7 @@
                   源码
                 </GitActionButton>
                  <GitActionButton
-                              v-if="asyncTaskDetail.task_status === ASYNC_TASK_STATUS_FAILED"
+
                               compact
                               :loading="asyncTaskRetrying"
                               @click="retryAsyncTask"
@@ -346,7 +346,7 @@
           </div>
           <div class="async-task-detail__actions">
             <GitActionButton
-              v-if="asyncTaskDetail.task_status === ASYNC_TASK_STATUS_FAILED"
+
               compact
               :loading="asyncTaskRetrying"
               @click="retryAsyncTask"

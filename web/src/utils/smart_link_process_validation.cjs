@@ -6,6 +6,7 @@ const {
 const {
   createBaseLocatorMeta,
   isLocatorConfigPayload,
+  normalizeBaseLocatorMeta,
 } = require('./smart_link_locator_config.cjs')
 
 const PROCESS_ITEM_FIELD_GUIDES = {
@@ -316,14 +317,17 @@ function validateLocatorField(formMeta) {
 }
 
 function validateBaseLocatorMeta(baseLocator) {
-  const meta = {
+  const meta = normalizeBaseLocatorMeta({
     locator_editor_mode: 'simple',
     locator_structured_form: createBaseLocatorMeta().locator_structured_form,
     locator_advanced_form: createBaseLocatorMeta().locator_advanced_form,
     ...(baseLocator || {}),
+  })
+  if (normalizeText(meta.locator_editor_mode) !== 'simple') {
+    return '基础定位只支持 CSS / XPath 这类可直接用于 Locator 的定位表达式。'
   }
-  if (normalizeText(meta.locator_editor_mode) === 'advanced') {
-    return validateAdvancedLocatorField(meta.locator_advanced_form)
+  if (normalizeText(meta.locator_structured_form && meta.locator_structured_form.kind) !== 'css') {
+    return '主元素定位方式固定为 CSS / XPath。'
   }
   return validateLocatorField(meta)
 }

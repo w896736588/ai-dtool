@@ -21,27 +21,63 @@ function createBaseLocatorMeta() {
   }
 }
 
-function createBaseLocatorFromPayload(payload, fallback = {}) {
-  const editorState = deserializeLocatorEditorState(payload, {
-    preferAdvanced: fallback.locator_editor_mode === 'advanced',
-  })
+function normalizeBaseLocatorMeta(baseLocator, fallback = {}) {
+  const meta = {
+    ...createBaseLocatorMeta(),
+    ...(baseLocator || {}),
+    ...(fallback || {}),
+  }
+  const simpleForm = {
+    ...createSimpleLocatorForm(),
+    ...(meta.locator_structured_form || {}),
+  }
+  const advancedForm = {
+    ...createAdvancedLocatorForm(),
+    ...(meta.locator_advanced_form || {}),
+  }
+
+  if (!normalizeText(simpleForm.value) && normalizeText(advancedForm.value)) {
+    simpleForm.value = normalizeText(advancedForm.value)
+    simpleForm.pick_mode = normalizeText(advancedForm.pick_mode) || simpleForm.pick_mode
+    simpleForm.nth = Number(advancedForm.nth || 0)
+    simpleForm.timeout_mills = Number(advancedForm.timeout_mills || simpleForm.timeout_mills)
+  }
+  if (simpleForm.pick_mode === 'nth') {
+    simpleForm.nth = Number(simpleForm.nth || 0)
+  } else {
+    simpleForm.nth = 0
+  }
+  simpleForm.kind = 'css'
+  simpleForm.method = 'locator'
+  simpleForm.target_text = ''
+  simpleForm.exact = false
+
   return {
+    ...meta,
+    locator_editor_mode: 'simple',
+    locator_structured_form: simpleForm,
+    locator_advanced_form: {
+      ...createAdvancedLocatorForm(),
+      kind: 'css',
+      method: 'locator',
+    },
+  }
+}
+
+function createBaseLocatorFromPayload(payload, fallback = {}) {
+  const editorState = deserializeLocatorEditorState(payload, { preferAdvanced: false })
+  return normalizeBaseLocatorMeta({
     ...createBaseLocatorMeta(),
     ...fallback,
     locator_editor_mode: editorState.mode,
     locator_structured_form: editorState.simpleForm,
     locator_advanced_form: editorState.advancedForm,
-  }
+  })
 }
 
 function buildBaseLocatorQuery(baseLocator) {
-  const meta = {
-    ...createBaseLocatorMeta(),
-    ...(baseLocator || {}),
-  }
-  return meta.locator_editor_mode === 'advanced'
-    ? buildAdvancedLocatorPayload(meta.locator_advanced_form)
-    : buildSimpleLocatorPayload(meta.locator_structured_form)
+  const meta = normalizeBaseLocatorMeta(baseLocator)
+  return buildSimpleLocatorPayload(meta.locator_structured_form)
 }
 
 function buildLocatorConfigByType(type, formMeta = {}) {
@@ -130,7 +166,7 @@ function deserializeLocatorConfigToFormMeta(rawValue) {
       text_content_locators: payload.locators.map((item) => ({
         id: item.id || '',
         on_found: normalizeText(item.on_found) || 'extract_text',
-        base_locator: createBaseLocatorFromPayload(item.query, { locator_editor_mode: 'advanced' }),
+        base_locator: createBaseLocatorFromPayload(item.query),
       })),
     }
   }
@@ -165,5 +201,6 @@ module.exports = {
   createBaseLocatorMeta,
   deserializeLocatorConfigToFormMeta,
   isLocatorConfigPayload,
+  normalizeBaseLocatorMeta,
   parseStructuredLocatorPayload,
 }

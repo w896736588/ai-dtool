@@ -129,6 +129,9 @@ func GetRunParams(id int, label, userName, password string, openType int, openNu
 	runParams.GetPageTimeout = 3000
 	runParams.ListenCurls = make(map[string]*p_curl.CurlRun)
 	runParams.FilterUris = strings.Split(cast.ToString(smartLink[`filter_uris`]), "\n")
+	if runParams.StreamFunc == nil {
+		runParams.StreamFunc = func(_, _ string) {}
+	}
 	return runParams, nil
 }
 

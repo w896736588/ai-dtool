@@ -397,10 +397,8 @@ export default {
 <style scoped>
 .task-workflow-page {
   height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(150, 190, 160, 0.18), transparent 32%),
-    linear-gradient(180deg, #f4f0e8 0%, #f7f5ef 48%, #eef4ec 100%);
-  padding: 28px;
+  background: #fafaf7;
+  padding: 16px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -408,50 +406,47 @@ export default {
 }
 
 .task-workflow-shell {
-  max-width: 1240px;
-  margin: 0 auto;
   width: 100%;
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  gap: 12px;
 }
 
 .task-workflow-header {
   display: flex;
   justify-content: space-between;
-  gap: 20px;
+  gap: 16px;
   align-items: flex-start;
-  padding: 28px;
-  border-radius: 24px;
-  background: rgba(255, 252, 246, 0.92);
-  box-shadow: 0 18px 50px rgba(88, 94, 72, 0.08);
-  border: 1px solid rgba(114, 129, 101, 0.12);
-  margin-bottom: 20px;
+  padding: 20px 24px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e8e8e0;
+  flex-shrink: 0;
 }
 
 .task-workflow-header__eyebrow {
   font-size: 12px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #7b8167;
-  margin-bottom: 8px;
+  color: #909399;
+  margin-bottom: 4px;
 }
 
 .task-workflow-header__title {
   margin: 0;
-  font-size: 30px;
-  line-height: 1.2;
-  color: #2f3a2e;
+  font-size: 22px;
+  line-height: 1.3;
+  color: #303133;
 }
 
 .task-workflow-header__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 10px;
-  color: #5e6553;
-  font-size: 14px;
+  gap: 12px;
+  margin-top: 6px;
+  color: #909399;
+  font-size: 13px;
 }
 
 .task-workflow-header__link {
@@ -465,39 +460,41 @@ export default {
 
 .task-workflow-header__actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .task-workflow-home-btn {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  border: 1px solid rgba(122, 136, 114, 0.18);
-  background: rgba(255, 255, 255, 0.6);
-  color: #5e6553;
+  border: 1px solid #e0e0d8;
+  background: #fff;
+  color: #909399;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 0.2s, color 0.2s;
+  transition: border-color 0.2s, color 0.2s;
 }
 
 .task-workflow-home-btn:hover {
-  background: #eef3e7;
+  border-color: #3a7a3a;
   color: #3a7a3a;
 }
 
 .task-workflow-alert {
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
 .task-workflow-tabs {
-  background: rgba(255, 255, 255, 0.78);
-  border-radius: 24px;
-  padding: 18px 20px 24px;
-  box-shadow: 0 16px 42px rgba(68, 86, 63, 0.08);
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px 20px 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e8e8e0;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -522,13 +519,13 @@ export default {
 .task-workflow-tab {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   height: 100%;
 }
 
 .task-workflow-toolbar {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -539,29 +536,29 @@ export default {
 }
 
 .task-workflow-stat-card {
-  border-radius: 18px;
-  padding: 18px;
-  background: linear-gradient(180deg, rgba(253, 252, 247, 0.96), rgba(242, 248, 240, 0.96));
-  border: 1px solid rgba(120, 136, 108, 0.14);
+  border-radius: 12px;
+  padding: 16px;
+  background: #fafaf7;
+  border: 1px solid #e8e8e0;
 }
 
 .task-workflow-stat-card__label {
   font-size: 13px;
-  color: #70765f;
-  margin-bottom: 8px;
+  color: #909399;
+  margin-bottom: 6px;
 }
 
 .task-workflow-stat-card__value {
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 700;
-  color: #2f3b2f;
+  color: #303133;
 }
 
 .task-workflow-card {
-  border-radius: 20px;
-  padding: 18px;
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(122, 136, 114, 0.12);
+  border-radius: 12px;
+  padding: 16px;
+  background: #fafaf7;
+  border: 1px solid #e8e8e0;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -575,8 +572,8 @@ export default {
 
 .task-workflow-card__label {
   font-size: 13px;
-  color: #6b725d;
-  margin-bottom: 10px;
+  color: #909399;
+  margin-bottom: 8px;
 }
 
 .task-workflow-card__header {
@@ -584,19 +581,19 @@ export default {
   justify-content: space-between;
   gap: 12px;
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .task-workflow-card__title {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
-  color: #2d352e;
+  color: #303133;
 }
 
 .task-workflow-card__hint {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   font-size: 13px;
-  color: #6d735f;
+  color: #909399;
 }
 
 .task-workflow-card__switch {
@@ -610,15 +607,16 @@ export default {
 
 .task-workflow-inline {
   display: flex;
-  gap: 10px;
+  gap: 8px;
 }
 
 .task-workflow-markdown {
   max-height: 720px;
   overflow: auto;
-  background: #fcfbf7;
-  border-radius: 14px;
+  background: #fff;
+  border-radius: 8px;
   padding: 12px;
+  border: 1px solid #e8e8e0;
 }
 
 .task-workflow-markdown--compact {
@@ -627,88 +625,89 @@ export default {
 
 .task-workflow-summary-list {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .task-workflow-summary-list--compact {
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .task-workflow-summary-item {
   min-width: 140px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: #f9f7f1;
-  color: #626958;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #fafaf7;
+  border: 1px solid #e8e8e0;
+  color: #909399;
   display: flex;
   justify-content: space-between;
-  gap: 14px;
+  gap: 12px;
 }
 
 .task-workflow-summary-item strong {
-  color: #2f3a2e;
+  color: #303133;
 }
 
 .task-workflow-history-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .task-workflow-history-item {
   display: grid;
   grid-template-columns: 1.2fr 1fr 1fr;
   gap: 12px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: #f8f5ee;
-  color: #455241;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #fafaf7;
+  border: 1px solid #e8e8e0;
+  color: #606266;
   cursor: pointer;
-  transition: background-color 0.2s ease, transform 0.2s ease;
+  transition: background-color 0.2s ease;
 }
 
 .task-workflow-history-item:hover {
-  background: #f1ecdf;
-  transform: translateY(-1px);
+  background: #f0f0e8;
 }
 
 .task-workflow-history-item--active {
   background: #e8f0e3;
-  box-shadow: inset 0 0 0 1px rgba(77, 120, 68, 0.18);
+  border-color: #3a7a3a;
 }
 
 .task-workflow-detail-tabs {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .task-workflow-history-report {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .task-workflow-ui-assist {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .task-workflow-ui-assist__item {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  color: #55614f;
+  color: #606266;
   font-size: 13px;
 }
 
 .task-workflow-ui-assist__tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .task-workflow-ui-assist__list {
@@ -718,20 +717,21 @@ export default {
 }
 
 .task-workflow-ui-assist__list-item {
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: #f6f3ec;
-  color: #445340;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #fafaf7;
+  border: 1px solid #e8e8e0;
+  color: #606266;
   font-size: 12px;
 }
 
 .task-workflow-ui-assist__tag {
   display: inline-flex;
   align-items: center;
-  padding: 6px 10px;
+  padding: 4px 10px;
   border-radius: 999px;
   background: #eef3e7;
-  color: #40533d;
+  color: #3a7a3a;
   font-size: 12px;
 }
 
@@ -740,10 +740,10 @@ export default {
 }
 
 .task-workflow-report-table {
-  border: 1px solid rgba(122, 136, 114, 0.14);
-  border-radius: 16px;
+  border: 1px solid #e8e8e0;
+  border-radius: 8px;
   overflow: hidden;
-  background: #fcfbf7;
+  background: #fff;
 }
 
 .task-workflow-report-table__head,
@@ -751,20 +751,20 @@ export default {
   display: grid;
   grid-template-columns: 1.6fr 1.4fr 0.8fr 0.8fr 0.8fr;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 10px 14px;
   align-items: center;
 }
 
 .task-workflow-report-table__head {
-  background: #eef3e7;
-  color: #55614f;
+  background: #fafaf7;
+  color: #909399;
   font-size: 13px;
   font-weight: 600;
 }
 
 .task-workflow-report-table__row {
-  border-top: 1px solid rgba(122, 136, 114, 0.1);
-  color: #344034;
+  border-top: 1px solid #e8e8e0;
+  color: #606266;
   font-size: 13px;
 }
 
@@ -776,7 +776,7 @@ export default {
 }
 
 .task-workflow-report-table__sub {
-  color: #7a725f;
+  color: #909399;
   font-size: 12px;
   word-break: break-all;
 }
@@ -793,12 +793,12 @@ export default {
 
 @media (max-width: 900px) {
   .task-workflow-page {
-    padding: 16px;
+    padding: 12px;
   }
 
   .task-workflow-header {
     flex-direction: column;
-    padding: 20px;
+    padding: 16px;
   }
 
   .task-workflow-card__header {

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/plw"
 	"errors"
@@ -213,11 +214,20 @@ func getFirstAccountFromSmartLink(smartLinkID int, label string) (string, string
 	return "", ""
 }
 
-// dispatchScrapeTaskAndAwait 派发抓取任务给 Agent 并同步等待结果，不依赖 gin.Context。
+// dispatchScrapeTaskAndAwait 派发抓取任务并同步等待结果，不依赖 gin.Context。
+// server 模式下直接在本机执行抓取；local_client 模式下通过 WebSocket 下发 Agent。
 func dispatchScrapeTaskAndAwait(smartLinkID int, label, jumpURL, cssSelector string, waitSeconds int) (define.AgentTaskResultFileUploadResponse, error) {
+	// 从 smart_link 的 links 中找到对应 label，再通过 account_list 关联的账号组取第一个账号。
+	accountUserName, accountPassword := getFirstAccountFromSmartLink(smartLinkID, label)
+
+	runParams, runParamsErr := plw.GetRunParams(smartLinkID, label, accountUserName, accountPassword, 0, 1, make(map[string]string))
+	if runParamsErr != nil {
+		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("构建运行参数失败: %w", runParamsErr)
+	}
+
 	cfg := getSmartLinkConfig()
 	if cfg.RunMode != define.SmartLinkRunModeLocalClient {
-		return define.AgentTaskResultFileUploadResponse{}, errors.New("当前运行模式不是本地客户端模式")
+		return dispatchScrapeTaskLocal(runParams, jumpURL, cssSelector, waitSeconds)
 	}
 
 	info := GlobalClientRegistry.GetLatest()
@@ -229,14 +239,6 @@ func dispatchScrapeTaskAndAwait(smartLinkID int, label, jumpURL, cssSelector str
 	}
 	if info.Status == define.SmartLinkClientStatusPreparingRuntime {
 		return define.AgentTaskResultFileUploadResponse{}, errors.New("SMART_LINK_CLIENT_PREPARING_RUNTIME")
-	}
-
-	// 从 smart_link 的 links 中找到对应 label，再通过 account_list 关联的账号组取第一个账号。
-	accountUserName, accountPassword := getFirstAccountFromSmartLink(smartLinkID, label)
-
-	runParams, runParamsErr := plw.GetRunParams(smartLinkID, label, accountUserName, accountPassword, 0, 1, make(map[string]string))
-	if runParamsErr != nil {
-		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("构建运行参数失败: %w", runParamsErr)
 	}
 
 	now := time.Now().Unix()
@@ -366,4 +368,24 @@ func SmartLinkTaskResultFileUpload(c *gin.Context) {
 	gstool.FmtPrintlnLogTime(`[SmartLinkTaskResultFileUpload][07] 保存上传文件成功 task_id=%s saved_file_name=%s download_url=%s size=%d`, taskID, resp.FileName, resp.DownloadURL, len(content))
 
 	gsgin.GinResponseSuccess(c, "", resp)
+}
+
+// dispatchScrapeTaskLocal 在 server 模式下直接在本机通过 Playwright 执行抓取，无需 Agent。
+func dispatchScrapeTaskLocal(runParams *plw.PlaywrightRunParams, jumpURL, cssSelector string, waitSeconds int) (define.AgentTaskResultFileUploadResponse, error) {
+	scrapeConfig := define.AgentTaskScrapeConfig{
+		JumpURL:     jumpURL,
+		CssSelector: cssSelector,
+		WaitSeconds: waitSeconds,
+	}
+	result, err := plw.RunScrapeToMarkdown(runParams, scrapeConfig, component.PlaywrightClient.Log)
+	if err != nil {
+		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("本地抓取执行失败: %w", err)
+	}
+	now := time.Now().Unix()
+	taskID := "scrape_task_" + cast.ToString(now)
+	resp, saveErr := saveSmartLinkScrapeResultFile(taskID, result.FileName, result.ZipBytes)
+	if saveErr != nil {
+		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("保存抓取结果失败: %w", saveErr)
+	}
+	return resp, nil
 }
