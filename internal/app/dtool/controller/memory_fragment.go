@@ -132,12 +132,25 @@ func MemoryFragmentList(c *gin.Context) {
 	}
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	list, err := memoryDB.MemoryFragmentList(cast.ToInt(dataMap[`limit`]))
+	limit := cast.ToInt(dataMap[`limit`])
+	offset := cast.ToInt(dataMap[`offset`])
+	if limit <= 0 {
+		limit = 10
+	}
+	// 多查一条用于判断是否还有更多数据
+	list, err := memoryDB.MemoryFragmentList(limit+1, offset)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	gsgin.GinResponseSuccess(c, ``, list)
+	hasMore := len(list) > limit
+	if hasMore {
+		list = list[:limit]
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`:     list,
+		`has_more`: hasMore,
+	})
 }
 
 // MemoryFragmentInfo 查询单个知识片段详情。

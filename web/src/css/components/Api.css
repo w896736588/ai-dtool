@@ -500,3 +500,7 @@
     min-height: 500px;
   }
 }
+
+.node-label--archive {
+  color: #f56c6c;
+}

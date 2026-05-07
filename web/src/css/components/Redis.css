@@ -241,6 +241,23 @@
   overflow: hidden;
 }
 
+.key-scrollbar :deep(.el-scrollbar__thumb) {
+  background: #9fb39a !important;
+  border-radius: 999px !important;
+  opacity: 0.7 !important;
+  transition: opacity 0.2s ease;
+}
+
+.key-scrollbar :deep(.el-scrollbar__thumb:hover) {
+  background: #869c82 !important;
+  opacity: 1 !important;
+}
+
+.key-scrollbar :deep(.el-scrollbar__bar) {
+  background: #edf3e8 !important;
+  border-radius: 999px;
+}
+
 .key-scrollbar :deep(.el-scrollbar__view) {
   min-height: 100%;
 }

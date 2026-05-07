@@ -195,18 +195,24 @@ func ApiDeleteApi(c *gin.Context) {
 func ApiDeleteDir(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToInt(dataMap[`id`]) == 0 {
-		gsgin.GinResponseError(c, `请选择集合`, nil)
+	folderId := cast.ToInt(dataMap[`id`])
+	collectionId := cast.ToInt(dataMap[`collection_id`])
+	if folderId == 0 {
+		gsgin.GinResponseError(c, `请选择文件夹`, nil)
 		return
-	} else {
-		_, _ = common.DbMain.Client.QuickDelete(`tbl_api_dir`,
-			map[string]any{
-				`id`: dataMap[`id`],
-			}).Exec()
 	}
-	go BroadcastApiChange(c.GetHeader("SseClientId"), `folder_deleted`, map[string]any{
-		`collection_id`: cast.ToInt(dataMap[`collection_id`]),
-		`folder_id`:     cast.ToInt(dataMap[`id`]),
+	// 软删除：标记为归档，记录原始集合ID
+	_, err := common.DbMain.Client.ExecBySql(
+		`UPDATE tbl_api_dir SET archived = 1, original_collection_id = ?, update_time = ? WHERE id = ?`,
+		collectionId, time.Now().Unix(), folderId,
+	).Exec()
+	if err != nil {
+		gsgin.GinResponseError(c, `删除失败 `+err.Error(), nil)
+		return
+	}
+	go BroadcastApiChange(c.GetHeader("SseClientId"), `folder_archived`, map[string]any{
+		`collection_id`: collectionId,
+		`folder_id`:     folderId,
 	})
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
@@ -309,7 +315,7 @@ select d.id,
        count(a.id) as child_count
 from tbl_api_dir d
 left join tbl_api a on a.folder_id = d.id
-where d.collection_id = ?
+where d.collection_id = ? and d.archived = 0
 group by d.id, d.collection_id, d.name, d.headers, d.env_id, d.create_time, d.update_time
 order by d.id asc`, collectionId).All()
 	result := make([]map[string]any, 0, len(list))
@@ -1164,4 +1170,84 @@ func ApiFolderDetail(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`dir`: dir,
 	})
+}
+
+// ApiArchiveFolderList 查询所有已归档的文件夹列表。
+func ApiArchiveFolderList(c *gin.Context) {
+	list, _ := common.DbMain.Client.QueryBySql(`
+select d.id,
+       d.name,
+       d.headers,
+       d.env_id,
+       d.original_collection_id,
+       d.create_time,
+       d.update_time,
+       count(a.id) as child_count
+from tbl_api_dir d
+left join tbl_api a on a.folder_id = d.id
+where d.archived = 1
+group by d.id, d.name, d.headers, d.env_id, d.original_collection_id, d.create_time, d.update_time
+order by d.update_time desc`).All()
+	result := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		result = append(result, buildFolderBasicInfo(item))
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: result,
+	})
+}
+
+// ApiRestoreFolder 从归档中恢复文件夹到原集合。
+func ApiRestoreFolder(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	folderId := cast.ToInt(dataMap[`id`])
+	if folderId == 0 {
+		gsgin.GinResponseError(c, `请选择文件夹`, nil)
+		return
+	}
+	folderInfo, _ := common.DbMain.Client.QueryBySql(
+		`SELECT original_collection_id FROM tbl_api_dir WHERE id = ?`, folderId,
+	).One()
+	if folderInfo == nil {
+		gsgin.GinResponseError(c, `文件夹不存在`, nil)
+		return
+	}
+	originalCollectionId := cast.ToInt(folderInfo[`original_collection_id`])
+	if originalCollectionId == 0 {
+		gsgin.GinResponseError(c, `无法确定原集合，请手动迁移`, nil)
+		return
+	}
+	_, _ = common.DbMain.Client.QueryBySql(
+		`UPDATE tbl_api_dir SET archived = 0, collection_id = ?, update_time = ? WHERE id = ?`,
+		originalCollectionId, time.Now().Unix(), folderId,
+	).Exec()
+	go BroadcastApiChange(c.GetHeader("SseClientId"), `folder_restored`, map[string]any{
+		`collection_id`: originalCollectionId,
+		`folder_id`:     folderId,
+	})
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+// ApiPermanentDeleteDir 永久删除归档文件夹及其下所有接口。
+func ApiPermanentDeleteDir(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	folderId := cast.ToInt(dataMap[`id`])
+	if folderId == 0 {
+		gsgin.GinResponseError(c, `请选择文件夹`, nil)
+		return
+	}
+	// 删除该文件夹下的所有接口
+	_, _ = common.DbMain.Client.QueryBySql(
+		`DELETE FROM tbl_api WHERE folder_id = ?`, folderId,
+	).Exec()
+	// 删除文件夹
+	_, _ = common.DbMain.Client.QueryBySql(
+		`DELETE FROM tbl_api_dir WHERE id = ? AND archived = 1`, folderId,
+	).Exec()
+	go BroadcastApiChange(c.GetHeader("SseClientId"), `folder_permanent_deleted`, map[string]any{
+		`folder_id`: folderId,
+	})
+	gsgin.GinResponseSuccess(c, ``, nil)
 }

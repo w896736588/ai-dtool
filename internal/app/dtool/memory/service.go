@@ -83,12 +83,12 @@ func (h *Service) IndexReady() bool {
 
 // FragmentCount 返回正常片段数量。
 func (h *Service) FragmentCount() int {
-	return len(h.listByDeleted(false, 0))
+	return len(h.listByDeleted(false, 0, 0))
 }
 
 // TrashCount 返回回收站片段数量。
 func (h *Service) TrashCount() int {
-	return len(h.listByDeleted(true, 0))
+	return len(h.listByDeleted(true, 0, 0))
 }
 
 // StartWatching 启动目录监听。
@@ -126,13 +126,13 @@ func (h *Service) StopWatching() error {
 }
 
 // MemoryFragmentList 查询正常片段列表。
-func (h *Service) MemoryFragmentList(limit int) ([]map[string]any, error) {
-	return h.listByDeleted(false, limit), nil
+func (h *Service) MemoryFragmentList(limit, offset int) ([]map[string]any, error) {
+	return h.listByDeleted(false, limit, offset), nil
 }
 
 // MemoryFragmentTrashList 查询回收站列表。
 func (h *Service) MemoryFragmentTrashList(limit int) ([]map[string]any, error) {
-	return h.listByDeleted(true, limit), nil
+	return h.listByDeleted(true, limit, 0), nil
 }
 
 // MemoryFragmentInfo 查询单个片段详情。
@@ -274,11 +274,11 @@ func (h *Service) MemoryFragmentTagList() ([]map[string]any, error) {
 func (h *Service) MemoryFragmentSearch(_ string, query string, _ []string, limit int) ([]map[string]any, error) {
 	query = normalizeSearchQuery(query)
 	if query == `` {
-		return h.listByDeleted(false, limit), nil
+		return h.listByDeleted(false, limit, 0), nil
 	}
 	tokenList := strings.Fields(query)
 	if len(tokenList) == 0 {
-		return h.listByDeleted(false, limit), nil
+		return h.listByDeleted(false, limit, 0), nil
 	}
 	if _, err := exec.LookPath(`rg`); err != nil {
 		return h.searchByTitleOnly(tokenList, limit), nil
@@ -286,7 +286,7 @@ func (h *Service) MemoryFragmentSearch(_ string, query string, _ []string, limit
 	return h.searchWithRipgrep(tokenList, limit)
 }
 
-func (h *Service) listByDeleted(isDeleted bool, limit int) []map[string]any {
+func (h *Service) listByDeleted(isDeleted bool, limit, offset int) []map[string]any {
 	h.mu.RLock()
 	rowList := make([]Fragment, 0, len(h.byID))
 	for _, fragment := range h.byID {
@@ -302,6 +302,11 @@ func (h *Service) listByDeleted(isDeleted bool, limit int) []map[string]any {
 		}
 		return rowList[i].UpdatedAt.After(rowList[j].UpdatedAt)
 	})
+	if offset > 0 && offset < len(rowList) {
+		rowList = rowList[offset:]
+	} else if offset >= len(rowList) {
+		rowList = nil
+	}
 	if limit > 0 && len(rowList) > limit {
 		rowList = rowList[:limit]
 	}

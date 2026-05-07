@@ -6,9 +6,10 @@ function MemoryFragmentStatus(callBack) {
 }
 
 // MemoryFragmentList 查询知识片段列表。
-function MemoryFragmentList(limit, callBack) {
+function MemoryFragmentList(limit, offset, callBack) {
   base.BasePost('/api/MemoryFragmentList', {
     limit: limit,
+    offset: offset,
   }, callBack)
 }
 

@@ -218,7 +218,7 @@ const PROMPT_EDITOR_TOOLBARS = [
 ]
 
 const WORKFLOW_NODES = [
-  { key: 'requirement-fetch', label: '抓取TAPD需求', desc: '自动登录和解析tapd需求到知识片段' },
+  { key: 'requirement-fetch', label: '抓取TAPD需求', desc: '自动登录和解析tapd需求到知识片段，转为markdown格式供AI解析' },
   { key: 'requirement', label: '需求分析', desc: '编写提示词，AI自动结合数据库和代码分析需求，形成开发文档' },
   { key: 'design', label: '开发执行', desc: '编写提示词，AI自动结合数据库，代码和开发文档进行开发' },
   { key: 'api-dev', label: '接口生成', desc: '编写提示词，AI自动获取登录态，将所有改动接口写入接口开发中' },
@@ -807,6 +807,64 @@ export default {
 .task-workflow-card :deep(.md-editor-input-wrapper),
 .task-workflow-card :deep(.md-editor-preview-wrapper) {
   overflow: auto;
+}
+
+/* MdEditor 滚动条绿色 */
+.task-workflow-card :deep(.md-editor) {
+  --md-scrollbar-bg-color: #edf3e8;
+  --md-scrollbar-thumb-color: #9fb39a;
+  --md-scrollbar-thumb-hover-color: #869c82;
+  --md-scrollbar-thumb-active-color: #7a8f76;
+}
+
+.task-workflow-card :deep(.md-editor .md-editor-preview ::-webkit-scrollbar) {
+  width: 10px !important;
+  height: 10px !important;
+}
+
+.task-workflow-card :deep(.md-editor .md-editor-preview ::-webkit-scrollbar-track) {
+  background: #edf3e8 !important;
+  border-radius: 999px !important;
+}
+
+.task-workflow-card :deep(.md-editor .md-editor-preview ::-webkit-scrollbar-thumb) {
+  background: #9fb39a !important;
+  border: 2px solid #edf3e8 !important;
+  border-radius: 999px !important;
+}
+
+.task-workflow-card :deep(.md-editor .md-editor-preview ::-webkit-scrollbar-thumb:hover) {
+  background: #869c82 !important;
+}
+
+.task-workflow-card :deep(.md-editor .md-editor-preview ::-webkit-scrollbar-corner) {
+  background: #edf3e8 !important;
+}
+
+/* fragment-view 原生滚动条绿色 */
+.task-workflow-fragment-view {
+  scrollbar-width: thin;
+  scrollbar-color: #9fb39a #edf3e8;
+}
+
+.task-workflow-fragment-view::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.task-workflow-fragment-view::-webkit-scrollbar-track {
+  background: #edf3e8;
+  border-radius: 999px;
+}
+
+.task-workflow-fragment-view::-webkit-scrollbar-thumb {
+  background: #9fb39a;
+  border: 2px solid #edf3e8;
+  border-radius: 999px;
+}
+
+.task-workflow-fragment-view::-webkit-scrollbar-thumb:hover {
+  background: #869c82;
 }
 
 .task-workflow-card__header {

@@ -515,4 +515,37 @@ export default {
   padding-top: 12px;
   flex-shrink: 0;
 }
+
+/* MdEditor 预览区域绿色滚动条 —— 覆盖 md-editor-v3 的 CSS 变量 */
+.set-config-page .md-editor {
+  --md-scrollbar-bg-color: #edf3e8;
+  --md-scrollbar-thumb-color: #9fb39a;
+  --md-scrollbar-thumb-hover-color: #869c82;
+  --md-scrollbar-thumb-active-color: #7a8f76;
+}
+
+/* 同时覆盖原生滚动条样式 */
+.set-config-page .md-editor .md-editor-preview ::-webkit-scrollbar {
+  width: 10px !important;
+  height: 10px !important;
+}
+
+.set-config-page .md-editor .md-editor-preview ::-webkit-scrollbar-track {
+  background: #edf3e8 !important;
+  border-radius: 999px !important;
+}
+
+.set-config-page .md-editor .md-editor-preview ::-webkit-scrollbar-thumb {
+  background: #9fb39a !important;
+  border: 2px solid #edf3e8 !important;
+  border-radius: 999px !important;
+}
+
+.set-config-page .md-editor .md-editor-preview ::-webkit-scrollbar-thumb:hover {
+  background: #869c82 !important;
+}
+
+.set-config-page .md-editor .md-editor-preview ::-webkit-scrollbar-corner {
+  background: #edf3e8 !important;
+}
 </style>

@@ -2,6 +2,7 @@ package common
 
 import (
 	"dev_tool/internal/app/dtool/define"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -261,4 +262,32 @@ func isValidHomeTaskStatus(taskStatus string) bool {
 // isValidHomeTaskArchived 校验首页任务归档值是否合法。
 func isValidHomeTaskArchived(isArchived int) bool {
 	return isArchived == define.HomeTaskArchivedNo || isArchived == define.HomeTaskArchivedYes
+}
+
+// HomeTaskLastDevConfigByGitId 根据 git_id 查找最近一个包含该 Git 仓库的任务，返回匹配的 dev_config。
+func (h *CSqlite) HomeTaskLastDevConfigByGitId(gitID int) (map[string]any, error) {
+	if gitID <= 0 {
+		return nil, errors.New(`git_id不合法`)
+	}
+	// 查询所有未归档任务，按 id 倒序，取最近匹配的一条。
+	list, err := h.Client.QueryBySql(homeTaskListQuerySQL, define.HomeTaskArchivedNo).All()
+	if err != nil {
+		return nil, err
+	}
+	for _, task := range list {
+		devConfigsStr := cast.ToString(task[`dev_configs`])
+		if devConfigsStr == `` || devConfigsStr == `[]` {
+			continue
+		}
+		var configs []map[string]any
+		if err := json.Unmarshal([]byte(devConfigsStr), &configs); err != nil {
+			continue
+		}
+		for _, cfg := range configs {
+			if cast.ToInt(cfg[`git_id`]) == gitID {
+				return cfg, nil
+			}
+		}
+	}
+	return map[string]any{}, nil
 }

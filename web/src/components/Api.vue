@@ -13,36 +13,6 @@
             <pl-button class="toolbar-btn toolbar-btn-small" size="small" type="primary" plain @click="drawerVisibleMarkdown = true">
               <el-icon><QuestionFilled /></el-icon>文档
             </pl-button>
-            <el-popover placement="bottom-end" :width="360" trigger="click">
-              <template #reference>
-                <pl-button class="toolbar-btn toolbar-btn-mini" size="small" type="info" plain>
-                  <el-icon><Tools /></el-icon>Skills安装
-                </pl-button>
-              </template>
-              <div class="skill-install-popover">
-                <div class="skill-install-title">dtool-api-import-update 安装</div>
-                <div class="skill-install-text">把下面 ZIP 地址发给编辑器 AI，让它按 ZIP 安装 skills。</div>
-                <div class="skill-install-feature">
-                  功能说明：安装后可通过 AI 直接在此工具中生成接口（支持集合/文件夹选择、按 URI 导入或更新）。
-                </div>
-                <el-input :model-value="skillInstallZipUrl" readonly class="skill-install-url" />
-                <div class="skill-install-actions">
-                  <pl-button size="small" type="primary" plain @click="copyText(skillInstallZipUrl, 'ZIP 地址已复制')">复制 ZIP 地址</pl-button>
-                  <pl-button size="small" type="primary" plain @click="copyText(skillInstallPrompt, 'AI 安装提示已复制')">复制安装提示</pl-button>
-                  <el-link :href="skillInstallZipUrl" target="_blank" type="primary">打开链接</el-link>
-                </div>
-                <el-input
-                  type="textarea"
-                  :rows="2"
-                  readonly
-                  class="skill-install-url"
-                  :model-value="'请先安装这个 skills zip：' + skillInstallZipUrl + '。'"
-                />
-              </div>
-            </el-popover>
-            <pl-button class="toolbar-btn toolbar-btn-mini" size="small" type="success" plain @click="copyApiHostAndToken">
-              <el-icon><CopyDocument /></el-icon>复制API地址
-            </pl-button>
           </div>
         </div>
         <div class="collection-list">
@@ -71,6 +41,7 @@
                 <div class="tree-node" @dblclick.stop="handleNodeDoubleClick(data)">
                   <span class="node-icon">
                     <el-icon v-if="data.type === 'collection'"><Files/></el-icon>
+                    <el-icon v-else-if="data.type === 'archive'"><FolderOpened/></el-icon>
                     <el-icon v-else-if="data.type === 'folder'"><Folder/></el-icon>
                     <!--                    <el-icon v-else><Document /></el-icon>-->
                   </span>
@@ -78,6 +49,9 @@
                       node.label + '(' + getNodeChildCount(data) + ')'
                     }}</span>
                   <span v-if="data.type === 'collection'" :title="node.label + '(' + getNodeChildCount(data) + ')'" class="node-label" style="font-weight: 800;"><el-tag size="small" type="info" class="node-id-tag">{{ data.id }}</el-tag>{{
+                      node.label + '(' + getNodeChildCount(data) + ')'
+                    }}</span>
+                  <span v-if="data.type === 'archive'" :title="node.label + '(' + getNodeChildCount(data) + ')'" class="node-label node-label--archive" style="font-weight: 800;">{{
                       node.label + '(' + getNodeChildCount(data) + ')'
                     }}</span>
                   <span v-if="data.type === 'api'" :title="node.label" class="node-label">
@@ -115,7 +89,7 @@
                       </template>
                     </el-dropdown>
                   </span>
-                  <span v-else-if="data.type === 'folder'" class="node-actions">
+                  <span v-else-if="data.type === 'folder' && !data.is_archived" class="node-actions">
                     <el-dropdown>
                       <pl-button class="node-action-trigger" link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
@@ -124,6 +98,19 @@
                         <el-dropdown-menu>
                           <el-dropdown-item command="copy_api" icon="CopyDocument" @click="handleFolderCreateApi()">创建接口</el-dropdown-item>
                           <el-dropdown-item command="delete_folder" icon="Delete" style="color:red;" @click="handleFolderDelete(data)">删除</el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
+                  </span>
+                  <span v-else-if="data.type === 'folder' && data.is_archived" class="node-actions">
+                    <el-dropdown>
+                      <pl-button class="node-action-trigger" link type="primary" @click.stop>
+                        <el-icon><More/></el-icon>
+                      </pl-button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item icon="RefreshLeft" @click="handleRestoreFolder(data)">恢复</el-dropdown-item>
+                          <el-dropdown-item icon="Delete" style="color:red;" @click="handlePermanentDeleteFolder(data)">永久删除</el-dropdown-item>
                         </el-dropdown-menu>
                       </template>
                     </el-dropdown>
@@ -443,7 +430,7 @@
 </template>
 
 <script>
-import {FolderOpened, Folder, Document, More, Plus, QuestionFilled, Tools, CopyDocument} from '@element-plus/icons-vue'
+import {FolderOpened, Folder, Document, More, Plus, QuestionFilled, Tools, CopyDocument, RefreshLeft} from '@element-plus/icons-vue'
 import CollectionBasicInfo from './api/CollectionBasicInfo'
 import CollectionEnvironment from './api/CollectionEnvironment'
 import FolderDetail from './api/FolderDetail'
@@ -467,6 +454,7 @@ export default {
     QuestionFilled,
     Tools,
     CopyDocument,
+    RefreshLeft,
     CollectionBasicInfo,
     CollectionEnvironment,
     FolderDetail,
@@ -660,6 +648,18 @@ export default {
         if (collectionId) {
           this.refreshCollectionFolders(collectionId)
         }
+      } else if (changeType === 'folder_archived') {
+        if (collectionId) {
+          this.refreshCollectionFolders(collectionId)
+        }
+        this.refreshArchiveNode()
+      } else if (changeType === 'folder_restored') {
+        if (collectionId) {
+          this.refreshCollectionFolders(collectionId)
+        }
+        this.refreshArchiveNode()
+      } else if (changeType === 'folder_permanent_deleted') {
+        this.refreshArchiveNode()
       }
     },
 
@@ -1391,6 +1391,8 @@ export default {
           _that.treeData = (res.Data.list || []).map((collection) => _that.normalizeCollectionNode(collection))
           // 加载集合树后按本地缓存恢复排序
           _that.applyTreeSortCache()
+          // 末尾追加虚拟归档集合节点
+          _that.pushArchiveNode()
           _that.initTreeExpansion()
         } else {
           _that.$message.error(res.ErrMsg)
@@ -1423,6 +1425,10 @@ export default {
       }
       if (data.type === 'collection') {
         resolve(await this.ensureCollectionFoldersLoaded(data))
+        return
+      }
+      if (data.type === 'archive') {
+        resolve(await this.loadArchiveFolders(data))
         return
       }
       if (data.type === 'folder') {
@@ -1601,6 +1607,9 @@ export default {
     // 允许拖拽的节点类型（集合/文件夹/接口）
     allowTreeNodeDrag(draggingNode) {
       const dragData = draggingNode && draggingNode.data ? draggingNode.data : {}
+      if (dragData.type === 'archive' || dragData.is_archived) {
+        return false
+      }
       return dragData.type === 'collection' || dragData.type === 'folder' || dragData.type === 'api'
     },
     // 控制可放置位置：仅支持同类型、同层级排序，不支持 inner
@@ -1777,7 +1786,7 @@ export default {
     },
     // 处理节点双击：集合和文件夹双击时切换展开/收起
     handleNodeDoubleClick(data) {
-      if (!data || (data.type !== 'collection' && data.type !== 'folder')) {
+      if (!data || (data.type !== 'collection' && data.type !== 'folder' && data.type !== 'archive')) {
         return
       }
       const treeRef = this.$refs.collectionTreeRef
@@ -2102,21 +2111,36 @@ export default {
     },
 
     handleFolderDelete: function (folder) {
-      console.log('删除文件夹', folder)
       let _that = this
-      _that.confirmDeleteAction('文件夹', folder.name || folder.label || `#${folder.id}`, () => {
+      const safeName = _that.escapeHtml(folder.name || folder.label || `#${folder.id}`)
+      const message = `
+        <div>
+          <div>此文件夹将移入归档，可随时恢复。</div>
+          <div style="margin-top: 8px; color: #e6a23c; font-weight: 600;">
+            文件夹：${safeName}
+          </div>
+        </div>
+      `
+      _that.$confirm(message, '移入归档', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+        dangerouslyUseHTMLString: true,
+      }).then(() => {
         Api.DeleteDir(folder, function (res) {
           if (res.ErrCode === 0) {
-            // 关闭该文件夹及其下所有接口的 tab
             _that.closeWorkspaceTabsByFolder(folder.id)
             _that.refreshCollectionFolders(folder.collection_id).finally(() => {
               _that.syncTreeSortCacheFromTree()
+              _that.refreshArchiveNode()
             })
-            _that.$message.success('删除成功')
+            _that.$message.success('已移入归档')
           } else {
             _that.$message.error(res.ErrMsg)
           }
         })
+      }).catch(() => {
+        _that.$message.info('已取消')
       })
     },
     handleFolderCreateApi: function () {
@@ -2396,6 +2420,95 @@ export default {
           await _that.openWorkspaceTab(newApiNode, { reload: true })
         })
         _that.$message.success('接口复制成功')
+      })
+    },
+    // 追加虚拟归档集合节点到树末尾
+    pushArchiveNode() {
+      let _that = this
+      const archiveNode = {
+        id: -1,
+        uniqueid: 'archive:-1',
+        type: 'archive',
+        name: '归档',
+        children: [],
+        isLeaf: false,
+        loaded: false,
+        loading: false,
+        child_count: 0,
+      }
+      _that.pushUniqueByKey(_that.treeData, archiveNode, 'uniqueid')
+    },
+    // 加载归档文件夹列表
+    async loadArchiveFolders(archiveNode) {
+      if (!archiveNode || archiveNode.loading) {
+        return archiveNode.children || []
+      }
+      archiveNode.loading = true
+      try {
+        const data = await this.requestApi('ArchiveFolderList', {})
+        archiveNode.children = (data.list || []).map((folder) => {
+          return {
+            ...this.normalizeFolderNode(folder, 0),
+            is_archived: true,
+            original_collection_id: folder.original_collection_id,
+          }
+        })
+        archiveNode.child_count = archiveNode.children.length
+        archiveNode.isLeaf = archiveNode.child_count <= 0
+        archiveNode.loaded = true
+        this.syncTreeNodeChildren(archiveNode.uniqueid, archiveNode.children)
+        return archiveNode.children
+      } finally {
+        archiveNode.loading = false
+      }
+    },
+    // 刷新归档节点
+    async refreshArchiveNode() {
+      const archiveNode = this.treeData.find((node) => node.type === 'archive')
+      if (!archiveNode) {
+        return
+      }
+      archiveNode.loaded = false
+      archiveNode.children = []
+      this.syncTreeNodeChildren(archiveNode.uniqueid, [])
+      const treeRef = this.$refs.collectionTreeRef
+      if (treeRef) {
+        const treeNode = treeRef.getNode(archiveNode)
+        if (treeNode && treeNode.expanded) {
+          await this.loadArchiveFolders(archiveNode)
+        }
+      }
+    },
+    // 恢复归档文件夹
+    handleRestoreFolder(folder) {
+      let _that = this
+      Api.RestoreFolder({ id: folder.id }, function (res) {
+        if (res.ErrCode === 0) {
+          _that.closeWorkspaceTabsByFolder(folder.id)
+          _that.refreshArchiveNode()
+          const collectionId = folder.original_collection_id
+          if (collectionId) {
+            _that.refreshCollectionFolders(collectionId)
+          }
+          _that.$message.success('恢复成功')
+        } else {
+          _that.$message.error(res.ErrMsg)
+        }
+      })
+    },
+    // 永久删除归档文件夹
+    handlePermanentDeleteFolder(folder) {
+      let _that = this
+      _that.confirmDeleteAction('归档文件夹', folder.name || folder.label || `#${folder.id}`, () => {
+        Api.PermanentDeleteDir({ id: folder.id }, function (res) {
+          if (res.ErrCode === 0) {
+            _that.closeWorkspaceTabsByFolder(folder.id)
+            _that.refreshArchiveNode()
+            _that.$message.success('已永久删除')
+          } else {
+            _that.$message.error(res.ErrMsg)
+          }
+        })
       })
     }
   }

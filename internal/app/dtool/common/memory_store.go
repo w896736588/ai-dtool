@@ -83,7 +83,7 @@ type MemoryStore struct {
 
 // MemoryFragmentStore 定义知识片段运行时存储接口。
 type MemoryFragmentStore interface {
-	MemoryFragmentList(limit int) ([]map[string]any, error)
+	MemoryFragmentList(limit, offset int) ([]map[string]any, error)
 	MemoryFragmentTrashList(limit int) ([]map[string]any, error)
 	MemoryFragmentInfo(id any) (map[string]any, error)
 	MemoryFragmentSave(id any, title, content string, tags []string) (map[string]any, error)

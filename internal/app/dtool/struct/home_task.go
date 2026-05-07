@@ -61,3 +61,8 @@ type HomeTaskStatusQuickUpdateRequest struct {
 type HomeTaskDeleteRequest struct {
 	ID int `json:"id"`
 }
+
+// HomeTaskLastDevConfigByGitIdRequest 根据 Git 仓库 ID 查找最近匹配的 dev_config 请求。
+type HomeTaskLastDevConfigByGitIdRequest struct {
+	GitID int `json:"git_id"`
+}

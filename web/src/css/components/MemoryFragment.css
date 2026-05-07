@@ -72,6 +72,23 @@
   flex: 1;
 }
 
+.sidebar-scroll :deep(.el-scrollbar__thumb) {
+  background: #9fb39a !important;
+  border-radius: 999px !important;
+  opacity: 0.7 !important;
+  transition: opacity 0.2s ease;
+}
+
+.sidebar-scroll :deep(.el-scrollbar__thumb:hover) {
+  background: #869c82 !important;
+  opacity: 1 !important;
+}
+
+.sidebar-scroll :deep(.el-scrollbar__bar) {
+  background: #edf3e8 !important;
+  border-radius: 999px;
+}
+
 .sidebar-filter-row {
   padding: 6px 10px 0;
 }
@@ -90,6 +107,9 @@
   padding: 10px 14px 8px;
   border-top: 1px solid #ecece4;
   background: #f9faf6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .memory-home-btn {
@@ -111,6 +131,11 @@
   background: #eef3e7;
   color: #3a7a3a;
   border-color: #c5d4b8;
+}
+
+.sidebar-count-badge {
+  font-size: 12px;
+  color: #999;
 }
 
 .sidebar-git-footer {
@@ -411,6 +436,25 @@
 
 .sidebar-item.is-updated-older .sidebar-item-time {
   color: #9ba298;
+}
+
+.sidebar-load-status {
+  padding: 10px 0 6px;
+  text-align: center;
+}
+
+.sidebar-load-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #999;
+  font-size: 12px;
+}
+
+.sidebar-load-nomore {
+  color: #bbb;
+  font-size: 12px;
 }
 
 .sidebar-item-path {

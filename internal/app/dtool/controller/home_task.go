@@ -184,6 +184,18 @@ func HomeTaskDelete(c *gin.Context) {
 }
 
 // HomeTaskDailyReportGenerate 创建首页工作日报异步任务。 // HomeTaskDailyReportGenerate creates an async home-task daily report task.
+
+// HomeTaskLastDevConfigByGitId 根据 Git 仓库 ID 查找最近一个使用该仓库的任务的开发配置。
+func HomeTaskLastDevConfigByGitId(c *gin.Context) {
+	request := _struct.HomeTaskLastDevConfigByGitIdRequest{}
+	_ = gsgin.GinPostBody(c, &request)
+	cfg, err := common.DbMain.HomeTaskLastDevConfigByGitId(request.GitID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, cfg)
+}
 func HomeTaskDailyReportGenerate(c *gin.Context) {
 	if _, ok := memoryDBOrResponse(c); !ok {
 		return

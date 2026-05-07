@@ -99,6 +99,18 @@ function FolderDetail(data , callBack){
     base.BasePost('/api/FolderDetail', data , callBack)
 }
 
+function ArchiveFolderList(data , callBack){
+    base.BasePost('/api/ArchiveFolderList', data , callBack)
+}
+
+function RestoreFolder(data , callBack){
+    base.BasePost('/api/RestoreFolder', data , callBack)
+}
+
+function PermanentDeleteDir(data , callBack){
+    base.BasePost('/api/PermanentDeleteDir', data , callBack)
+}
+
 export default {
     CreateCollection,
     Collections,
@@ -123,4 +135,7 @@ export default {
     ApiTakeJsonResult,
     ApiImportJson,
     FolderDetail,
+    ArchiveFolderList,
+    RestoreFolder,
+    PermanentDeleteDir,
 }

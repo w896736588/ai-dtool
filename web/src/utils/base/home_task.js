@@ -45,6 +45,11 @@ function OpenLocalDir(dirPath, callBack) {
   base.BasePost('/api/Set/OpenLocalDir', { path: dirPath }, callBack)
 }
 
+// HomeTaskLastDevConfigByGitId 根据 Git 仓库 ID 查找最近匹配的开发配置。
+function HomeTaskLastDevConfigByGitId(gitId, callBack) {
+  base.BasePost('/api/HomeTaskLastDevConfigByGitId', { git_id: gitId }, callBack)
+}
+
 export default {
   HomeTaskList,
   HomeTaskSave,
@@ -55,4 +60,5 @@ export default {
   HomeTaskDailyReportGenerate,
   LocalDirList,
   OpenLocalDir,
+  HomeTaskLastDevConfigByGitId,
 }

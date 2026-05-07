@@ -21,7 +21,7 @@
         </div>
       </div>
 
-      <el-scrollbar v-show="!sidebarCollapsed" class="sidebar-scroll">
+      <el-scrollbar ref="sidebarScrollRef" v-show="!sidebarCollapsed" class="sidebar-scroll" @scroll="handleSidebarScroll">
         <div class="sidebar-filter-row">
           <el-input
             v-model="sidebarFilterQuery"
@@ -76,6 +76,13 @@
             <el-icon><Check /></el-icon>
           </div>
         </button>
+        <div v-if="fragmentLoadingMore || !fragmentListHasMore" class="sidebar-load-status">
+          <span v-if="fragmentLoadingMore" class="sidebar-load-loading">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>加载中...</span>
+          </span>
+          <span v-else-if="!fragmentListHasMore && fragmentList.length > 0" class="sidebar-load-nomore">没有更多了</span>
+        </div>
       </el-scrollbar>
 
       <div v-if="!sidebarCollapsed" class="sidebar-footer">
@@ -84,17 +91,7 @@
             <el-icon :size="13"><HomeFilled /></el-icon>
           </button>
         </el-tooltip>
-      </div>
-
-      <div v-if="memoryGitRepoEnabled && !sidebarCollapsed" class="sidebar-git-footer">
-        <div class="sidebar-footer-row">
-          <span class="sidebar-footer-label">{{ pushStatusLabel }}</span>
-          <span class="sidebar-footer-value">{{ pushStatusDesc }}</span>
-        </div>
-        <div v-if="lastPushError" class="sidebar-footer-row sidebar-footer-error">
-          <span class="sidebar-footer-label">失败原因</span>
-          <span class="sidebar-footer-value">{{ lastPushError }}</span>
-        </div>
+        <span v-if="fragmentTotalCount > 0" class="sidebar-count-badge">{{ fragmentList.length }}/{{ fragmentTotalCount }}</span>
       </div>
     </aside>
 
@@ -479,6 +476,11 @@ export default {
   data() {
     return {
       fragmentList: [],
+      fragmentPageSize: 10,
+      fragmentOffset: 0,
+      fragmentHasMore: true,
+      fragmentLoadingMore: false,
+      fragmentTotalCount: 0,
       trashList: [],
       searchResults: [],
       searchQuery: '',
@@ -549,20 +551,7 @@ export default {
     trashTabLabel() {
       return `回收站${this.trashList.length > 0 ? ` (${this.trashList.length})` : ''}`
     },
-    // pushStatusLabel 返回记忆库 push 状态标签，优先展示下一次 push。
-    pushStatusLabel() {
-      return this.nextPushTime > 0 ? '下一次 push 记忆库' : '上一次 push 记忆库'
-    },
-    // pushStatusDesc 返回记忆库 push 状态文案，优先展示下一次 push 倒计时。
-    pushStatusDesc() {
-      if (this.nextPushTime > 0) {
-        return this.formatRelativeTime(this.nextPushTime, 'future')
-      }
-      if (this.lastPushTime > 0) {
-        return this.formatRelativeTime(this.lastPushTime, 'past')
-      }
-      return this.lastPushTimeDesc || '-'
-    },
+    // searchPlaceholder 根据搜索模式返回对应的输入框提示文本。
     // searchPlaceholder 根据搜索模式返回对应的输入框提示文本。
     searchPlaceholder() {
       if (this.searchMode === 'semantic') {
@@ -574,6 +563,11 @@ export default {
     filteredFragmentList() {
       if (!this.sidebarFilterQuery.trim()) return this.fragmentList
       return this.sidebarFilterResults
+    },
+    // fragmentListHasMore 侧边栏列表是否还有更多数据可加载。
+    fragmentListHasMore() {
+      if (this.sidebarFilterQuery.trim()) return false
+      return this.fragmentHasMore
     }
   },
   mounted() {
@@ -678,6 +672,7 @@ export default {
       this.lastPushTime = data && data.last_push_time ? Number(data.last_push_time) : 0
       this.lastPushTimeDesc = data && data.last_push_time_desc ? data.last_push_time_desc : '-'
       this.lastPushError = data && data.last_push_error ? data.last_push_error : ''
+      this.fragmentTotalCount = data && data.fragment_count ? Number(data.fragment_count) : 0
       if (!this.memoryConfigured) {
         this.fragmentList = []
         this.trashList = []
@@ -817,24 +812,6 @@ export default {
       }, this.saveFeedbackDurationMs)
     },
 
-    // formatRelativeTime 把 unix 秒时间格式化为“xx小时xx分钟前/后”。
-    formatRelativeTime(unixTime, direction) {
-      const targetTime = Number(unixTime || 0)
-      if (targetTime <= 0) {
-        return '-'
-      }
-      const now = this.statusNowTick
-      let diffSeconds = direction === 'future' ? targetTime - now : now - targetTime
-      if (diffSeconds <= 0) {
-        return direction === 'future' ? '1分钟内' : '刚刚'
-      }
-      diffSeconds = Math.ceil(diffSeconds / 60) * 60
-      const totalMinutes = Math.floor(diffSeconds / 60)
-      const hours = Math.floor(totalMinutes / 60)
-      const minutes = totalMinutes % 60
-      const durationText = hours > 0 ? `${hours}小时${minutes}分钟` : `${minutes}分钟`
-      return direction === 'future' ? `${durationText}后` : `${durationText}前`
-    },
     // copyFragmentPath 复制知识片段所属文件路径。
     async copyFragmentPath(filePath) {
       if (!filePath || !navigator.clipboard) {
@@ -857,6 +834,7 @@ export default {
         this.lastPushTime = response.Data && response.Data.last_push_time ? Number(response.Data.last_push_time) : 0
         this.lastPushTimeDesc = response.Data && response.Data.last_push_time_desc ? response.Data.last_push_time_desc : '-'
         this.lastPushError = response.Data && response.Data.last_push_error ? response.Data.last_push_error : ''
+        this.fragmentTotalCount = response.Data && response.Data.fragment_count ? Number(response.Data.fragment_count) : 0
         if (!this.memoryConfigured) {
           this.fragmentList = []
           this.trashList = []
@@ -876,25 +854,47 @@ export default {
         this.tryOpenRouteFragmentOnEntry()
       })
     },
-    // loadFragmentList 加载左侧片段列表。
-    loadFragmentList() {
+    // loadFragmentList 加载左侧片段列表，append 为 true 时追加到现有列表。
+    loadFragmentList(append = false) {
       if (!this.memoryConfigured) {
         return
       }
-      MemoryFragmentApi.MemoryFragmentList(0, (response) => {
-        this.fragmentList = Array.isArray(response.Data) ? response.Data : []
+      if (this.fragmentLoadingMore) {
+        return
+      }
+      if (append && !this.fragmentHasMore) {
+        return
+      }
+      const offset = append ? this.fragmentOffset : 0
+      if (!append) {
+        this.fragmentOffset = 0
+        this.fragmentHasMore = true
+      }
+      this.fragmentLoadingMore = true
+      MemoryFragmentApi.MemoryFragmentList(this.fragmentPageSize, offset, (response) => {
+        this.fragmentLoadingMore = false
+        const list = Array.isArray(response.Data && response.Data.list) ? response.Data.list : (Array.isArray(response.Data) ? response.Data : [])
+        const hasMore = typeof response.Data === 'object' && response.Data !== null && 'has_more' in response.Data ? response.Data.has_more : false
+        if (append) {
+          this.fragmentList = this.fragmentList.concat(list)
+        } else {
+          this.fragmentList = list
+        }
+        this.fragmentOffset = offset + list.length
+        this.fragmentHasMore = hasMore
         this.ensureDefaultFragmentTab()
       })
     },
-    // loadFragmentListPreservingOrder 加载最新数据但保持侧边栏列表的原有顺序，避免过滤状态下保存后顺序跳动。
+    // loadFragmentListPreservingOrder 重置分页并加载最新数据，保持侧边栏列表的原有顺序。
     loadFragmentListPreservingOrder() {
       if (!this.memoryConfigured) {
         return
       }
       const currentOrderIds = this.fragmentList.map(item => this.normalizeFragmentId(item.id || item.file_id))
-      MemoryFragmentApi.MemoryFragmentList(0, (response) => {
-        const newList = Array.isArray(response.Data) ? response.Data : []
-        const newMap = new Map(newList.map(item => [this.normalizeFragmentId(item.id || item.file_id), item]))
+      MemoryFragmentApi.MemoryFragmentList(this.fragmentPageSize, 0, (response) => {
+        const rawList = Array.isArray(response.Data && response.Data.list) ? response.Data.list : (Array.isArray(response.Data) ? response.Data : [])
+        const hasMore = typeof response.Data === 'object' && response.Data !== null && 'has_more' in response.Data ? response.Data.has_more : false
+        const newMap = new Map(rawList.map(item => [this.normalizeFragmentId(item.id || item.file_id), item]))
         const ordered = []
         currentOrderIds.forEach(id => {
           const item = newMap.get(id)
@@ -905,8 +905,29 @@ export default {
         })
         newMap.forEach(item => ordered.push(item))
         this.fragmentList = ordered
+        this.fragmentOffset = ordered.length
+        this.fragmentHasMore = hasMore
         this.ensureDefaultFragmentTab()
       })
+    },
+    // loadMoreFragments 上拉加载更多片段。
+    loadMoreFragments() {
+      this.loadFragmentList(true)
+    },
+    // handleSidebarScroll 监听侧边栏滚动事件，到达底部时触发加载更多。
+    handleSidebarScroll({ scrollTop }) {
+      const scrollbarEl = this.$refs.sidebarScrollRef
+      if (!scrollbarEl) {
+        return
+      }
+      const wrap = scrollbarEl.wrapRef
+      if (!wrap) {
+        return
+      }
+      const distanceToBottom = wrap.scrollHeight - wrap.clientHeight - scrollTop
+      if (distanceToBottom < 60) {
+        this.loadMoreFragments()
+      }
     },
     // ensureDefaultFragmentTab 在没有激活片段时自动打开列表中的第一个知识片段。
     ensureDefaultFragmentTab() {

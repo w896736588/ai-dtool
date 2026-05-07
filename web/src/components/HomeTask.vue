@@ -358,6 +358,7 @@
                         style="width: 100%"
                         placeholder="选择Git仓库（可选）"
                         :loading="homeTaskGitRepoLoading"
+                        @change="handleDevConfigGitChange(cfgIdx)"
                       >
                         <el-option-group
                           v-for="group in homeTaskGitRepoGroupedOptions"
@@ -894,6 +895,36 @@ export default {
     handleDevConfigSmartLinkLabelChange(cfgIdx) {
       const cfg = this.homeTaskForm.dev_configs[cfgIdx]
       cfg.smart_link_account = ''
+    },
+    handleDevConfigGitChange(cfgIdx) {
+      const cfg = this.homeTaskForm.dev_configs[cfgIdx]
+      const gitId = Number(cfg.git_id || 0)
+      // 清空 Git 时不填充
+      if (gitId <= 0) {
+        return
+      }
+      homeTaskApi.HomeTaskLastDevConfigByGitId(gitId, (response) => {
+        if (!(response && response.ErrCode === 0) || !response.Data) {
+          return
+        }
+        const lastCfg = response.Data
+        // 仅在新建任务时自动填充，编辑时保留用户已设置的值
+        if (this.homeTaskForm.id > 0) {
+          return
+        }
+        cfg.docker_id = Number(lastCfg.docker_id || 0) || ''
+        cfg.collection_id = Number(lastCfg.collection_id || 0) || ''
+        cfg.mysql_id = Number(lastCfg.mysql_id || 0) || ''
+        cfg.local_dir = String(lastCfg.local_dir || '')
+        cfg.parent_branch = String(lastCfg.parent_branch || '')
+        cfg.smart_link_id = Number(lastCfg.smart_link_id || 0) || ''
+        cfg.smart_link_label = String(lastCfg.smart_link_label || '')
+        cfg.smart_link_account = String(lastCfg.smart_link_account || '')
+        // 如果有接口集合，加载对应的文件夹列表
+        if (cfg.collection_id > 0) {
+          this.loadHomeTaskApiFoldersForCollection(cfg.collection_id)
+        }
+      })
     },
     addDevConfig() {
       this.homeTaskForm.dev_configs.push({ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '', parent_branch: '', smart_link_id: '', smart_link_label: '', smart_link_account: '' })

@@ -322,6 +322,7 @@ func homeTask(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/HomeTaskStatusQuickUpdate`, controller.HomeTaskStatusQuickUpdate)
 	tGin.GinPost(`/api/HomeTaskDelete`, controller.HomeTaskDelete)
 	tGin.GinPost(`/api/HomeTaskDailyReportGenerate`, controller.HomeTaskDailyReportGenerate)
+	tGin.GinPost(`/api/HomeTaskLastDevConfigByGitId`, controller.HomeTaskLastDevConfigByGitId)
 }
 
 func taskWorkflow(tGin *p_gin.Gin) {
@@ -457,6 +458,9 @@ func api(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/ApiBatchImport`, controller.ApiBatchImport)
 	tGin.GinPost(`/api/FolderDetail`, controller.ApiFolderDetail)
 	tGin.GinPost(`/api/ApiMove`, controller.ApiMoveApi)
+	tGin.GinPost(`/api/ArchiveFolderList`, controller.ApiArchiveFolderList)
+	tGin.GinPost(`/api/RestoreFolder`, controller.ApiRestoreFolder)
+	tGin.GinPost(`/api/PermanentDeleteDir`, controller.ApiPermanentDeleteDir)
 }
 
 func apiUse(tGin *p_gin.Gin) {
