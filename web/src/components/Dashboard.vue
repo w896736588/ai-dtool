@@ -3995,6 +3995,13 @@ export default {
       scrollToBottom()
     }
 
+    // handleVisibilityChange 浏览器 tab 切换回来时自动聚焦输入框
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        focusInputOnHome()
+      }
+    }
+
     watch(filteredCommands, (commandList) => {
       if (!showCommands.value) {
         return
@@ -4013,6 +4020,7 @@ export default {
       loadCommandHistoryCache()
       handleHomeAppear()
       initSseConnection()
+      document.addEventListener('visibilitychange', handleVisibilityChange)
     })
 
     // keep-alive 组件重新激活时，自动让首页输入框获得焦点
@@ -4023,6 +4031,7 @@ export default {
     onUnmounted(() => {
       // 只取消注册回调，不关闭 SSE 连接（其他页面可能还在使用）
       sseDistribute.UnRegisterReceive(sseDistributeId.value)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     })
 
     return {
