@@ -41,7 +41,7 @@
       <el-tab-pane :label="'Url参数(' + (isArray(apiForm.query_params_data) ? apiForm.query_params_data.length : 0) + ')'" name="params">
         <key-value-editor :list="apiForm.query_params_data" @update="handleSaveUrls"/>
       </el-tab-pane>
-      <el-tab-pane v-if="apiForm.method !== 'GET'" :label="'请求体(' + (isArray(apiForm.body_form_data) ? apiForm.body_form_data.length : 0) + ')'" name="body">
+      <el-tab-pane v-if="apiForm.method !== 'GET'" :label="'请求体(' + bodyParamsCount + ')'" name="body">
         <!-- 请求体内容（同原逻辑） -->
         <div style="width: 100%">
           <el-radio-group v-model="apiForm.content_type" class="detail-segmented" size="small" @change="handleSave">
@@ -427,6 +427,30 @@ export default {
     },
     responseHeadersData() {
       return this.normalizeHeadersData(this.apiForm?.last_result_data?.response_headers)
+    },
+    // 统计请求体参数数量：JSON类型解析key数量，其他类型取form_data长度
+    bodyParamsCount() {
+      if (this.apiForm.content_type === 'application/json') {
+        const jsonData = this.apiForm.body_json_data
+        if (typeof jsonData === 'string') {
+          try {
+            const parsed = JSON.parse(jsonData)
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              return Object.keys(parsed).length
+            }
+            if (Array.isArray(parsed)) {
+              return parsed.length
+            }
+          } catch (e) {
+            return 0
+          }
+        }
+        if (jsonData && typeof jsonData === 'object' && !Array.isArray(jsonData)) {
+          return Object.keys(jsonData).length
+        }
+        return 0
+      }
+      return this.isArray(this.apiForm.body_form_data) ? this.apiForm.body_form_data.length : 0
     },
   },
   expose: ['InitApiDetail', 'handleExecute'],

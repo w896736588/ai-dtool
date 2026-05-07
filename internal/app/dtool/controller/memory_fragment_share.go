@@ -155,6 +155,7 @@ func buildShareHTML(title, updateTime, expireAt, bodyHTML string) string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>%s</title>
+<style>body{font-size:14px;line-height:1.7}h1{font-size:20px}h2{font-size:18px}h3{font-size:16px}h4{font-size:15px}</style>
 </head>
 <body>
 <main>

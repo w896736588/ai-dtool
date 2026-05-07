@@ -5,18 +5,6 @@
         <div class="task-workflow-header__main">
           <div class="task-workflow-header__eyebrow">任务工作流程</div>
           <h1 class="task-workflow-header__title">{{ homeTask.name || `任务 #${taskId}` }}</h1>
-          <div class="task-workflow-header__meta">
-            <span>状态：{{ workflow.status || '-' }}</span>
-            <span>阶段：{{ workflow.current_stage || '-' }}</span>
-            <a
-              v-if="homeTask.tapd_url"
-              :href="homeTask.tapd_url"
-              target="_blank"
-              class="task-workflow-header__link"
-            >
-              打开 TAPD
-            </a>
-          </div>
         </div>
         <div class="task-workflow-header__actions">
           <el-tooltip content="返回首页" placement="bottom">
@@ -55,8 +43,8 @@
           }"
           @click="activeNode = node.key"
         >
-          <span class="task-workflow-node__index">{{ node.index }}</span>
           <span class="task-workflow-node__label">{{ node.label }}</span>
+          <span class="task-workflow-node__desc">{{ node.desc }}</span>
         </button>
       </section>
 
@@ -74,28 +62,7 @@
                 </GitActionButton>
               </div>
             </div>
-            <div class="task-workflow-summary-list task-workflow-summary-list--compact">
-              <div class="task-workflow-summary-item">
-                <span>知识片段</span>
-                <strong>{{ requirementFragmentTitle }}</strong>
-              </div>
-              <div class="task-workflow-summary-item">
-                <span>TAPD 地址</span>
-                <strong>{{ homeTask.tapd_url || '-' }}</strong>
-              </div>
-              <div class="task-workflow-summary-item">
-                <span>SmartLink</span>
-                <strong>{{ requirementFetchConfig.smart_link_id || '-' }}</strong>
-              </div>
-              <div class="task-workflow-summary-item">
-                <span>网页标签</span>
-                <strong>{{ requirementFetchConfig.label || '-' }}</strong>
-              </div>
-              <div class="task-workflow-summary-item">
-                <span>等待秒数</span>
-                <strong>{{ requirementFetchConfig.wait_seconds || '-' }}</strong>
-              </div>
-            </div>
+
             <div v-if="workflow.requirement_fetch_error" class="task-workflow-card__hint task-workflow-card__hint--error">
               最近错误：{{ workflow.requirement_fetch_error }}
             </div>
@@ -251,11 +218,11 @@ const PROMPT_EDITOR_TOOLBARS = [
 ]
 
 const WORKFLOW_NODES = [
-  { key: 'requirement-fetch', label: '抓取TAPD需求', index: '01' },
-  { key: 'requirement', label: '需求文档MD', index: '02' },
-  { key: 'design', label: '开发设计', index: '03' },
-  { key: 'api-dev', label: '接口开发生成', index: '04' },
-  { key: 'api-test-fix', label: '接口自动化测试修复', index: '05' },
+  { key: 'requirement-fetch', label: '抓取TAPD需求', desc: '自动登录和解析tapd需求到知识片段' },
+  { key: 'requirement', label: '需求分析', desc: '编写提示词，AI自动结合数据库和代码分析需求，形成开发文档' },
+  { key: 'design', label: '开发执行', desc: '编写提示词，AI自动结合数据库，代码和开发文档进行开发' },
+  { key: 'api-dev', label: '接口生成', desc: '编写提示词，AI自动获取登录态，将所有改动接口写入接口开发中' },
+  { key: 'api-test-fix', label: '自动化测试+修复', desc: '编写提示词，AI自动根据接口开发中的接口设计测试流程，自动上传代码+自动重启服务+自动修复BUG，支持多项目联调' },
 ]
 
 export default {
@@ -625,7 +592,7 @@ export default {
 <style scoped>
 .task-workflow-page {
   height: 100vh;
-  background: #fafaf7;
+  background: linear-gradient(180deg, #fdfdfb 0%, #f8faf5 100%);
   padding: 16px;
   box-sizing: border-box;
   display: flex;
@@ -726,16 +693,16 @@ export default {
 
 .task-workflow-node {
   border: 1px solid #e8e8e0;
-  border-radius: 14px;
+  border-radius: 8px;
   background: #fff;
-  min-height: 78px;
+  min-height: 50px;
   padding: 14px 16px;
   text-align: left;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .task-workflow-node:hover {
@@ -771,6 +738,13 @@ export default {
   line-height: 1.4;
   color: #303133;
   font-weight: 600;
+}
+
+.task-workflow-node__desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #909399;
+  font-weight: 400;
 }
 
 .task-workflow-content {
