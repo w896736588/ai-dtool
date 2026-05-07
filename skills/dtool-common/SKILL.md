@@ -84,6 +84,19 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 - **返回**: `list` 数组，每项为查询结果的一行（字段名为 key）
 - **安全限制**: 仅允许 `SELECT` 开头的 SQL，禁止 INSERT/UPDATE/DELETE/DROP 等
 
+### 4.1 执行数据库写入
+
+- **路径**: `/api/MysqlExec`
+- **参数**:
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `mysql_id` | string | 是 | 数据库配置 ID（支持 MySQL 和 Pgsql） |
+| `sql` | string | 是 | SQL 语句（允许 INSERT、UPDATE，禁止 DROP 等危险操作） |
+
+- **返回**: 执行结果，包含影响行数等信息
+- **安全限制**: 允许 INSERT、UPDATE，禁止 DROP、TRUNCATE、ALTER 等危险语句
+
 ### 5. 查询 Docker Compose 服务日志
 
 - **路径**: `/api/DockerServiceLogs`
@@ -258,6 +271,12 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 1. 已知表名时，直接调用 `/api/MysqlQuery` 执行 `SELECT * FROM table_name LIMIT 10`
 2. 需要了解字段含义时，先调 `/api/MysqlTableStructure`
 
+### 场景 3.1：写入数据库
+
+1. 向用户确认 `base_url`、`Token`、`mysql_id`
+2. 确认要执行的 INSERT 或 UPDATE 语句
+3. 调用 `/api/MysqlExec`
+4. 返回执行结果
 
 ### 场景 4：查询 Docker 服务日志
 

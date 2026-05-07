@@ -213,6 +213,60 @@ func MysqlQuery(c *gin.Context) {
 	})
 }
 
+// MysqlExec 执行数据库写入（支持INSERT/UPDATE，禁止DROP等危险操作）
+// 参数：mysql_id(数据库配置ID), sql(写入SQL)
+func MysqlExec(c *gin.Context) {
+	reqMap := make(map[string]interface{})
+	if err := gsgin.GinPostBody(c, &reqMap); err != nil {
+		gsgin.GinResponseError(c, `请求参数错误`, nil)
+		return
+	}
+
+	mysqlId := cast.ToString(reqMap[`mysql_id`])
+	sql := strings.TrimSpace(cast.ToString(reqMap[`sql`]))
+
+	if mysqlId == `` {
+		gsgin.GinResponseError(c, `mysql_id不能为空`, nil)
+		return
+	}
+	if sql == `` {
+		gsgin.GinResponseError(c, `sql不能为空`, nil)
+		return
+	}
+	if !isAllowedWriteSql(sql) {
+		gsgin.GinResponseError(c, `仅支持INSERT、UPDATE操作，禁止DROP/TRUNCATE/ALTER等危险语句`, nil)
+		return
+	}
+
+	_, dbClient, err := getDbClient(mysqlId)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	rowsAffected, execErr := dbClient.ExecBySql(sql).Exec()
+	if execErr != nil {
+		gsgin.GinResponseError(c, `执行失败: `+execErr.Error(), nil)
+		return
+	}
+
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`rows_affected`: rowsAffected,
+	})
+}
+
+// isAllowedWriteSql 检查SQL是否为允许的写入语句（INSERT/UPDATE）
+func isAllowedWriteSql(sql string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(sql))
+	dangerous := []string{`DROP`, `TRUNCATE`, `ALTER`, `DELETE`, `CREATE`, `GRANT`, `REVOKE`}
+	for _, d := range dangerous {
+		if strings.HasPrefix(upper, d) {
+			return false
+		}
+	}
+	return strings.HasPrefix(upper, `INSERT`) || strings.HasPrefix(upper, `UPDATE`)
+}
+
 // isSafeTableName 校验表名只包含安全字符，防止SQL注入
 func isSafeTableName(name string) bool {
 	ok, _ := regexp.MatchString(`^[A-Za-z0-9_\.]+$`, name)

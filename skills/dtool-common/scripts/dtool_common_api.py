@@ -184,6 +184,33 @@ def mysql_query(sql):
 
 
 # ============================================================
+# 4.1 执行数据库写入（INSERT/UPDATE，支持 MySQL/Pgsql）
+# ============================================================
+def mysql_exec(sql):
+    """
+    执行数据库写入操作（支持 MySQL 和 Pgsql）
+
+    允许 INSERT、UPDATE 语句，禁止 DROP、TRUNCATE、ALTER 等危险操作。
+
+    参数:
+        sql: INSERT 或 UPDATE 语句
+
+    示例:
+        mysql_exec("INSERT INTO users (name, age) VALUES ('test', 20)")
+        mysql_exec("UPDATE users SET age = 21 WHERE name = 'test'")
+    """
+    result = call_api("/api/MysqlExec", {
+        "mysql_id": MYSQL_ID,
+        "sql": sql,
+    })
+    if result.get("code") == 0:
+        print(f"执行成功: {result.get('data', '')}")
+    else:
+        print(f"执行失败: {result.get('msg')}")
+    return result
+
+
+# ============================================================
 # 5. 重启 Docker Compose 服务
 # ============================================================
 def docker_service_restart(docker_id, service):

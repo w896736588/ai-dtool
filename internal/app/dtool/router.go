@@ -187,6 +187,7 @@ func mysqlRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/MysqlTables`, controller.MysqlTables)                 //查询MySQL所有表
 	tGin.GinPost(`/api/MysqlTableStructure`, controller.MysqlTableStructure) //查询MySQL表结构
 	tGin.GinPost(`/api/MysqlQuery`, controller.MysqlQuery)                   //执行MySQL查询
+	tGin.GinPost(`/api/MysqlExec`, controller.MysqlExec)                     //执行MySQL写入
 }
 
 // gitlab token相关
