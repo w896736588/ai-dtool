@@ -281,10 +281,11 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	for i := 0; i < openNum; i++ {
 		go func() {
 			//生成一个唯一ID
-			runUniqueId := p_common.TBaseClient.GetUnique(`playwright_run_`)
+			//runUniqueId := p_common.TBaseClient.GetUnique(`playwright_run_`)
 			streamFunc := func(name, msg string) {
 				//输出到前端
-				sse.Send(p_common.TMarkDownClient.Bold(label+`,`+runUniqueId) + ` ` + name + ` ` + msg + "\n")
+				gstool.FmtPrintlnLogTime(name + ` ` + msg)
+				//sse.Send(p_common.TMarkDownClient.Bold(label+`,`+runUniqueId) + ` ` + name + ` ` + msg + "\n")
 			}
 			streamFunc(`构建run_params`, `开始`)
 			runParams, runParamsErr := plw.GetRunParams(id, label, userName, password, openType, openNum, replaceList)
