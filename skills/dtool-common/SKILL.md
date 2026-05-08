@@ -1,11 +1,11 @@
 ---
 name: dtool-common
-description: Use when operating the dtool 通用工具模块 and the task involves uploading files to remote servers, Git branch operations (listing branches, pulling code, switching branches), querying database tables (MySQL/Pgsql), querying table structures, executing SQL SELECT queries, or managing knowledge fragments (creating, editing, searching).
+description: Use when operating the dtool 通用工具模块 and the task involves uploading files to remote servers, Git branch operations (listing branches, pulling code, switching branches), querying database tables (MySQL/Pgsql), querying table structures, executing SQL SELECT queries, or updating knowledge fragments by file path.
 ---
 
 # dtool 通用工具技能
 
-- 提供远程文件上传、Git 分支查询与代码拉取、数据库表查询（MySQL/Pgsql）、表结构查询、SQL 查询、知识片段管理、分支变更文件查看等通用接口。
+- 提供远程文件上传、Git 分支查询与代码拉取、数据库表查询（MySQL/Pgsql）、表结构查询、SQL 查询、知识片段更新（按文件路径）、分支变更文件查看等通用接口。
 - 新增浏览器登录后抓取接口请求头能力，可在登录完成后刷新页面并返回首个接口请求的 headers。
 - dtool-common 不在 Skill 列表中，使用时直接内联 Python 调用其 API，Windows 路径用 r'...' 原始字符串。
 ## 强制约束
@@ -158,80 +158,33 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 
 ## 知识片段接口
 
-**知识片段** 是 dtool 中用于持久化存储项目知识的载体。每个片段以 Markdown 文件形式存储在 memory 目录中，包含标题、正文内容和标签。典型用途包括：记录开发规范与约定、保存技术决策及其背景、沉淀问题排查经验、存储会议纪要等。片段支持 Git 版本管理，可按关键词搜索、分类标签筛选。
+知识片段以 Markdown 文件形式存储，按 `{年份}/{月份}/{uuid}.md` 的目录结构组织。通过传入相对于知识片段文件夹（`fragments/`）的路径来定位和更新片段。
 
-### 9. 创建知识片段
+### 9. 更新知识片段（按文件路径）
 
-创建一个新的知识片段。不传 `id` 即为新建，接口会自动生成唯一 ID 并持久化为 Markdown 文件。
+通过传入相对于知识片段文件夹的文件路径更新片段内容。Python 脚本会自动从路径中提取片段 ID 并调用保存接口。
 
 - **路径**: `/api/MemoryFragmentSave`
+- **Python 函数**: `memory_fragment_update_by_path(relative_path, content, title=None)`
 - **参数**:
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `title` | string | 是 | 片段标题，简明扼要描述内容主题，如 `"数据库迁移规范"` |
-| `content` | string | 是 | 片段正文，支持 Markdown 格式（代码块、列表、表格等） |
-| `tags` | string[] | 否 | 分类标签，用于后续按标签筛选，如 `["规范", "数据库"]` |
+| `relative_path` | string | 是 | 相对于知识片段文件夹（`fragments/`）的路径，如 `"2026/05/a59db79a-3e4d-4f37-a02d-1bf87cc0c590.md"` |
+| `content` | string | 是 | 新的 Markdown 正文内容 |
+| `title` | string | 否 | 新标题（不传则不修改） |
 
-- **返回**: 新建的片段对象，包含 `id`、`title`、`content`、`tags`、`create_time_desc`、`update_time_desc` 等字段
-- **示例**: 创建一个开发规范片段
-  ```json
-  {
-    "title": "API开发规范",
-    "content": "## 接口规范\n\n1. 所有接口使用 POST 方法\n2. 统一返回 {code, msg, data} 结构",
-    "tags": ["规范", "后端"]
-  }
+- **返回**: 更新后的片段对象，包含 `id`、`title`、`content`、`update_time_desc` 等字段
+- **注意**: 函数内部从 `relative_path` 的文件名（去掉 `.md` 后缀）提取片段 ID，然后调用 `/api/MemoryFragmentSave`
+- **示例**:
+  ```python
+  memory_fragment_update_by_path(
+      "2026/05/a59db79a-3e4d-4f37-a02d-1bf87cc0c590.md",
+      "## 更新后的内容\n\n新的正文...",
+  )
   ```
 
-### 10. 编辑知识片段
-
-编辑已有的知识片段。传入 `id` 加上需要修改的字段，未传入的字段保持原值不变。
-
-- **路径**: `/api/MemoryFragmentSave`
-- **参数**:
-
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `id` | string | 是 | 要编辑的片段 ID |
-| `title` | string | 否 | 新标题（不传则不修改） |
-| `content` | string | 否 | 新正文内容（不传则不修改） |
-| `tags` | string[] | 否 | 新标签列表（不传则不修改） |
-
-- **返回**: 更新后的片段对象
-- **注意**: Python 脚本中的 `memory_fragment_edit` 会先调用查询接口获取当前值，自动填充未传入的字段，确保只更新指定字段
-
-### 11. 查询知识片段明细
-
-根据片段 ID 查询完整的知识片段内容，包括标题、正文、标签、创建和更新时间。
-
-- **路径**: `/api/MemoryFragmentInfo`
-- **参数**:
-
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `id` | string | 是 | 片段 ID |
-
-- **返回**: 片段对象，包含 `id`、`title`、`content`、`tags`、`create_time_desc`、`update_time_desc` 等字段
-
-### 12. 搜索知识片段（多关键词 AND）
-
-按关键词搜索知识片段的标题和内容。支持多个关键词，**用空格分隔，之间为 AND 关系**（即所有关键词必须同时匹配才会返回结果）。结果按相关度排序：标题命中权重最高，标签次之，内容命中最低。
-
-- **路径**: `/api/MemoryFragmentSearch`
-- **参数**:
-
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `query` | string | 是 | 搜索关键词，多个关键词用空格分隔表示 AND 查询。如 `"数据库 迁移"` 表示同时包含"数据库"和"迁移"的片段 |
-| `limit` | number | 否 | 返回结果数量上限（默认 20） |
-
-- **返回**: `list` 数组，每项包含 `id`、`title`、`content`、`tags`、`update_time_desc`、`score`（匹配得分）等字段
-- **示例**:
-  - 单关键词: `{"query": "迁移"}` — 搜索包含"迁移"的片段
-  - 多关键词 AND: `{"query": "数据库 迁移"}` — 搜索同时包含"数据库"和"迁移"的片段
-- 三关键词 AND: `{"query": "API 规范 前端"}` — 搜索同时包含这三个词的片段
-
-### 13. 登录后抓取首个接口请求头
+### 10. 登录后抓取首个接口请求头
 
 使用与 `browser_profile_open` 一致的参数，服务端完成网页登录后会自动刷新当前页，抓取首个 `xhr/fetch` 接口请求的 request headers，返回后自动关闭浏览器。
 

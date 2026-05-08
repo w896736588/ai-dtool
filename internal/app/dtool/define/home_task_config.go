@@ -15,4 +15,5 @@ const (
 	HomeTaskConfigDevEnvironment     = `home_task_dev_environment`
 	HomeTaskConfigBranchNamePrompt   = `home_task_branch_name_prompt`
 	HomeTaskConfigBranchNameModelID  = `home_task_branch_name_model_id`
+	HomeTaskConfigPromptPlainTextReq = `home_task_prompt_plain_text_requirement`
 )

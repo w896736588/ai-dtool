@@ -52,8 +52,23 @@
         <div v-if="activeNode === 'requirement-fetch'" class="task-workflow-tab">
           <div class="task-workflow-card">
             <div class="task-workflow-card__header">
-              <div class="task-workflow-card__title">抓取 TAPD 需求内容</div>
+              <div class="task-workflow-card__title">抓取 TAPD 需求</div>
               <div class="task-workflow-card__switch">
+                <div class="task-workflow-inner-tabs">
+                  <button
+                    :class="['task-workflow-inner-tab', { 'task-workflow-inner-tab--active': requirementFetchActiveTab === 'tapd-fetch' }]"
+                    @click="requirementFetchActiveTab = 'tapd-fetch'"
+                  >抓取 TAPD 需求内容</button>
+                  <button
+                    :class="['task-workflow-inner-tab', { 'task-workflow-inner-tab--active': requirementFetchActiveTab === 'plain-text-prompt' }]"
+                    @click="requirementFetchActiveTab = 'plain-text-prompt'"
+                  >纯文本需求提示词</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-show="requirementFetchActiveTab === 'tapd-fetch'" class="task-workflow-tapd-fetch-section">
+              <div class="task-workflow-card__switch" style="margin-bottom: 12px;">
                 <GitActionButton compact :loading="requirementFetchRunning" @click="triggerRequirementFetch(false)">
                   重新抓取
                 </GitActionButton>
@@ -61,24 +76,48 @@
                   打开知识片段
                 </GitActionButton>
               </div>
+              <div v-if="workflow.requirement_fetch_error" class="task-workflow-card__hint task-workflow-card__hint--error">
+                最近错误：{{ workflow.requirement_fetch_error }}
+              </div>
+              <div v-if="!homeTask.tapd_url" class="task-workflow-card__hint">
+                当前任务未配置 TAPD 地址，无法自动抓取。
+              </div>
+              <div class="task-workflow-fragment-view">
+                <iframe
+                  v-if="requirementShareUrl"
+                  :src="requirementShareUrl"
+                  class="task-workflow-fragment-view__iframe"
+                  title="需求知识片段预览"
+                />
+                <div v-else class="task-workflow-fragment-view__empty">
+                  知识片段分享链接生成中...
+                </div>
+              </div>
             </div>
 
-            <div v-if="workflow.requirement_fetch_error" class="task-workflow-card__hint task-workflow-card__hint--error">
-              最近错误：{{ workflow.requirement_fetch_error }}
-            </div>
-            <div v-if="!homeTask.tapd_url" class="task-workflow-card__hint">
-              当前任务未配置 TAPD 地址，无法自动抓取。
-            </div>
-            <div class="task-workflow-fragment-view">
-              <iframe
-                v-if="requirementShareUrl"
-                :src="requirementShareUrl"
-                class="task-workflow-fragment-view__iframe"
-                title="需求知识片段预览"
-              />
-              <div v-else class="task-workflow-fragment-view__empty">
-                知识片段分享链接生成中...
+            <div v-show="requirementFetchActiveTab === 'plain-text-prompt'" class="task-workflow-prompt-section">
+              <div class="task-workflow-card__switch" style="margin-bottom: 12px;">
+                <GitActionButton compact :loading="promptSaving === 'plain_text_requirement'" @click="savePrompts('plain_text_requirement')">
+                  保存提示词
+                </GitActionButton>
+                <GitActionButton compact @click="copyText(workflow.prompt_plain_text_requirement || '', '提示词已复制')">
+                  复制提示词
+                </GitActionButton>
+                <GitActionButton compact variant="warning" :loading="promptRestoring === 'plain_text_requirement'" @click="restorePrompts('plain_text_requirement')">
+                  还原为默认提示词
+                </GitActionButton>
+                <GitActionButton compact variant="info" @click="openPlainTextReqFragment" :disabled="!plainTextReqFragmentId">
+                  打开知识片段
+                </GitActionButton>
               </div>
+              <MdEditor
+                v-model="workflow.prompt_plain_text_requirement"
+                class="task-workflow-prompt-editor"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                height="100%"
+              />
             </div>
           </div>
         </div>
@@ -250,6 +289,7 @@ export default {
       workflowSseDistributeId: '',
       promptSaving: '',
       promptRestoring: '',
+      requirementFetchActiveTab: 'tapd-fetch',
       promptEditorToolbars: PROMPT_EDITOR_TOOLBARS,
     }
   },
@@ -272,6 +312,9 @@ export default {
     requirementFragmentId() {
       return String(this.workflow.requirement_fragment_id || '').trim()
     },
+    plainTextReqFragmentId() {
+      return String(this.workflow.plain_text_requirement_fragment_id || '').trim()
+    },
     requirementFragmentTitle() {
       return String(this.requirementFragment.title || '').trim() || (this.requirementFragmentId ? `#${this.requirementFragmentId}` : '-')
     },
@@ -289,6 +332,7 @@ export default {
       this.requirementFetchAutoTriggered = false
       this.requirementFetchLogs = []
       this.activeNode = 'requirement-fetch'
+      this.requirementFetchActiveTab = 'tapd-fetch'
       this.unregisterWorkflowSse()
       this.loadWorkflowPage()
     },
@@ -298,7 +342,10 @@ export default {
       if (!(e.ctrlKey && e.key === 's')) return
       e.preventDefault()
       const nodeToPrompt = { requirement: 'requirement', design: 'design', 'api-dev': 'api_dev', 'api-test-fix': 'api_test' }
-      const promptType = nodeToPrompt[this.activeNode]
+      let promptType = nodeToPrompt[this.activeNode]
+      if (this.activeNode === 'requirement-fetch' && this.requirementFetchActiveTab === 'plain-text-prompt') {
+        promptType = 'plain_text_requirement'
+      }
       if (promptType) {
         this.savePrompts(promptType)
       }
@@ -312,6 +359,7 @@ export default {
     reloadWorkflowPage() {
       this.requirementFetchAutoTriggered = false
       this.requirementFetchLogs = []
+      this.requirementFetchActiveTab = 'tapd-fetch'
       this.loadWorkflowPage()
     },
     loadWorkflowPage() {
@@ -380,12 +428,15 @@ export default {
       })
     },
     replaceRequirementShareUrlPlaceholder() {
-      if (!this.requirementShareUrl || !this.workflow.prompt_requirement) {
+      if (!this.requirementShareUrl) {
         return
       }
       const placeholder = '{需求文档地址}'
-      if (this.workflow.prompt_requirement.includes(placeholder)) {
+      if (this.workflow.prompt_requirement && this.workflow.prompt_requirement.includes(placeholder)) {
         this.workflow.prompt_requirement = this.workflow.prompt_requirement.replaceAll(placeholder, this.requirementShareUrl)
+      }
+      if (this.workflow.prompt_plain_text_requirement && this.workflow.prompt_plain_text_requirement.includes(placeholder)) {
+        this.workflow.prompt_plain_text_requirement = this.workflow.prompt_plain_text_requirement.replaceAll(placeholder, this.requirementShareUrl)
       }
     },
     ensureWorkflowSse() {
@@ -493,6 +544,20 @@ export default {
       })
       window.open(routeInfo.href, '_blank')
     },
+    openPlainTextReqFragment() {
+      if (!this.plainTextReqFragmentId) {
+        this.$helperNotify.error('当前工作流未绑定纯文本需求知识片段')
+        return
+      }
+      const routeInfo = this.$router.resolve({
+        path: '/MemoryFragment',
+        query: {
+          fragment_id: this.plainTextReqFragmentId,
+          hide_menu: '1',
+        },
+      })
+      window.open(routeInfo.href, '_blank')
+    },
     savePrompts(promptType) {
       if (this.promptSaving || this.workflowId <= 0) {
         return
@@ -504,6 +569,7 @@ export default {
         prompt_api_dev: this.workflow.prompt_api_dev || '',
         prompt_api_test: this.workflow.prompt_api_test || '',
         prompt_design: this.workflow.prompt_design || '',
+        prompt_plain_text_requirement: this.workflow.prompt_plain_text_requirement || '',
       }, (response) => {
         this.promptSaving = ''
         if (!(response && response.ErrCode === 0)) {
@@ -934,6 +1000,49 @@ export default {
   overflow: auto;
   min-height: 0;
   flex: 1;
+}
+
+.task-workflow-inner-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.task-workflow-inner-tab {
+  padding: 4px 12px;
+  font-size: 13px;
+  border: 1px solid #e8e8e0;
+  border-radius: 6px;
+  background: #fff;
+  color: #606266;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.task-workflow-inner-tab:hover {
+  border-color: #b7c9a8;
+  color: #3a7a3a;
+}
+
+.task-workflow-inner-tab--active {
+  background: #3a7a3a;
+  color: #fff;
+  border-color: #3a7a3a;
+}
+
+.task-workflow-tapd-fetch-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.task-workflow-prompt-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
 }
 
 .task-workflow-fragment-view__iframe {

@@ -1394,6 +1394,8 @@ export default {
           // 末尾追加虚拟归档集合节点
           _that.pushArchiveNode()
           _that.initTreeExpansion()
+          // 处理从任务清单跳转过来的初始导航
+          _that.handleInitialNavigation()
         } else {
           _that.$message.error(res.ErrMsg)
         }
@@ -1412,6 +1414,41 @@ export default {
       _that.$nextTick(() => {
         _that.restoreExpandedNodes(expandedStateCache.expandedKeys)
       })
+    },
+    // 处理从任务清单跳转过来的初始导航（通过 query 参数定位集合/文件夹）
+    async handleInitialNavigation() {
+      const query = this.$route.query
+      const collectionId = parseInt(query.collection_id || 0)
+      if (collectionId <= 0) return
+
+      await this.$nextTick()
+
+      const collectionNode = this.findCollectionNode(collectionId)
+      if (!collectionNode) return
+
+      // 加载集合下的文件夹
+      await this.ensureCollectionFoldersLoaded(collectionNode)
+
+      const treeRef = this.$refs.collectionTreeRef
+      if (!treeRef) return
+
+      // 展开集合节点
+      const collectionTreeNode = treeRef.getNode(collectionNode.uniqueid)
+      if (collectionTreeNode) {
+        collectionTreeNode.expand()
+      }
+
+      const folderId = parseInt(query.folder_id || 0)
+      if (folderId > 0) {
+        const folderNode = this.findFolderNode(collectionId, folderId)
+        if (folderNode) {
+          treeRef.setCurrentKey(folderNode.uniqueid)
+          this.openWorkspaceTab(folderNode, { reload: true })
+          return
+        }
+      }
+      treeRef.setCurrentKey(collectionNode.uniqueid)
+      this.openWorkspaceTab(collectionNode, { reload: true })
     },
     async loadTreeNode(node, resolve) {
       if (!node || node.level === 0) {

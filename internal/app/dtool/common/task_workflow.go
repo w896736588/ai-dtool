@@ -102,6 +102,27 @@ func (h *CSqlite) TaskWorkflowBindDevPlanFragment(workflowID int, fragmentID str
 	return err
 }
 
+// TaskWorkflowBindPlainTextReqFragment 绑定纯文本需求片段 id。
+func (h *CSqlite) TaskWorkflowBindPlainTextReqFragment(workflowID int, fragmentID string) error {
+	if workflowID <= 0 {
+		return errors.New(`工作流id不能为空`)
+	}
+	fragmentID = strings.TrimSpace(fragmentID)
+	if fragmentID == `` {
+		return errors.New(`纯文本需求片段id不能为空`)
+	}
+	if _, err := h.TaskWorkflowInfo(workflowID); err != nil {
+		return err
+	}
+	_, err := h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
+		`id`: workflowID,
+	}, map[string]any{
+		`plain_text_requirement_fragment_id`: fragmentID,
+		`update_time`:                        time.Now().Unix(),
+	}).Exec()
+	return err
+}
+
 // TaskWorkflowCreateRun 创建一条工作流测试/计划运行记录。
 func (h *CSqlite) TaskWorkflowCreateRun(workflowID int, runType, triggerSource, requirementSnapshotMD, devPlanSnapshotMD string, coverageReport, testPlan, testReport map[string]any, summaryMD string) (map[string]any, error) {
 	if workflowID <= 0 {
@@ -202,7 +223,7 @@ func (h *CSqlite) TaskWorkflowRunList(workflowID int) ([]map[string]any, error) 
 }
 
 // TaskWorkflowUpdatePrompts 更新工作流的提示词。
-func (h *CSqlite) TaskWorkflowUpdatePrompts(workflowID int, promptRequirement, promptApiDev, promptApiTest, promptDesign string) error {
+func (h *CSqlite) TaskWorkflowUpdatePrompts(workflowID int, promptRequirement, promptApiDev, promptApiTest, promptDesign, promptPlainTextRequirement string) error {
 	if workflowID <= 0 {
 		return errors.New(`工作流id不能为空`)
 	}
@@ -212,11 +233,12 @@ func (h *CSqlite) TaskWorkflowUpdatePrompts(workflowID int, promptRequirement, p
 	_, err := h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
 		`id`: workflowID,
 	}, map[string]any{
-		`prompt_requirement`: promptRequirement,
-		`prompt_api_dev`:     promptApiDev,
-		`prompt_api_test`:    promptApiTest,
-		`prompt_design`:      promptDesign,
-		`update_time`:        time.Now().Unix(),
+		`prompt_requirement`:            promptRequirement,
+		`prompt_api_dev`:                promptApiDev,
+		`prompt_api_test`:               promptApiTest,
+		`prompt_design`:                 promptDesign,
+		`prompt_plain_text_requirement`: promptPlainTextRequirement,
+		`update_time`:                   time.Now().Unix(),
 	}).Exec()
 	return err
 }

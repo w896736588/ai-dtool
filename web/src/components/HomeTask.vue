@@ -62,30 +62,21 @@
                       <td v-for="col in homeTaskConfigTableColumns" :key="col.key" class="home-task-config-table__cell">
                         <template v-for="(tag, tagIdx) in group" :key="tagIdx">
                           <el-tooltip
-                            v-if="tag.type === col.key && tag.type === 'branch_name'"
+                            v-if="tag.type === col.key"
                             :content="tag.label"
                             placement="top"
+                            :disabled="tag.label.length <= HOME_TASK_CONFIG_TAG_MAX_LENGTH"
                           >
                             <el-tag
                               size="small"
                               effect="plain"
                               :type="tag.tagType"
-                              class="home-task-config-tag home-task-config-tag--copy"
-                              @click.stop="copyHomeTaskBranchName(tag.label)"
+                              :class="['home-task-config-tag', tag.type === 'branch_name' ? 'home-task-config-tag--copy' : '']"
+                              @click.stop="tag.type === 'branch_name' ? copyHomeTaskBranchName(tag.label) : navigateToDevConfig(tag)"
                             >
-                              {{ tag.label.length > 15 ? tag.label.slice(0, 15) + '...' : tag.label }}
+                              {{ tag.label.length > HOME_TASK_CONFIG_TAG_MAX_LENGTH ? tag.label.slice(0, HOME_TASK_CONFIG_TAG_MAX_LENGTH) + '...' : tag.label }}
                             </el-tag>
                           </el-tooltip>
-                          <el-tag
-                            v-else-if="tag.type === col.key"
-                            size="small"
-                            effect="plain"
-                            :type="tag.tagType"
-                            class="home-task-config-tag"
-                            @click.stop="navigateToDevConfig(tag)"
-                          >
-                            {{ tag.label }}
-                          </el-tag>
                         </template>
                       </td>
                     </tr>
@@ -179,30 +170,21 @@
                       <td v-for="col in homeTaskConfigTableColumns" :key="col.key" class="home-task-config-table__cell">
                         <template v-for="(tag, tagIdx) in group" :key="tagIdx">
                           <el-tooltip
-                            v-if="tag.type === col.key && tag.type === 'branch_name'"
+                            v-if="tag.type === col.key"
                             :content="tag.label"
                             placement="top"
+                            :disabled="tag.label.length <= HOME_TASK_CONFIG_TAG_MAX_LENGTH"
                           >
                             <el-tag
                               size="small"
                               effect="plain"
                               :type="tag.tagType"
-                              class="home-task-config-tag home-task-config-tag--copy"
-                              @click.stop="copyHomeTaskBranchName(tag.label)"
+                              :class="['home-task-config-tag', tag.type === 'branch_name' ? 'home-task-config-tag--copy' : '']"
+                              @click.stop="tag.type === 'branch_name' ? copyHomeTaskBranchName(tag.label) : navigateToDevConfig(tag)"
                             >
-                              {{ tag.label.length > 15 ? tag.label.slice(0, 15) + '...' : tag.label }}
+                              {{ tag.label.length > HOME_TASK_CONFIG_TAG_MAX_LENGTH ? tag.label.slice(0, HOME_TASK_CONFIG_TAG_MAX_LENGTH) + '...' : tag.label }}
                             </el-tag>
                           </el-tooltip>
-                          <el-tag
-                            v-else-if="tag.type === col.key"
-                            size="small"
-                            effect="plain"
-                            :type="tag.tagType"
-                            class="home-task-config-tag"
-                            @click.stop="navigateToDevConfig(tag)"
-                          >
-                            {{ tag.label }}
-                          </el-tag>
                         </template>
                       </td>
                     </tr>
@@ -647,6 +629,7 @@ const HOME_TASK_DAILY_REPORT_BUTTON_TEXT = 'AI 生成工作日报'
 const HOME_TASK_DAILY_REPORT_SUCCESS_MESSAGE = '工作日报任务已加入异步任务列表'
 const HOME_TASK_DAILY_REPORT_FAILED_MESSAGE = '工作日报生成失败'
 const HOME_TASK_ACTION_COMMAND_STATUS_PREFIX = 'status:'
+const HOME_TASK_CONFIG_TAG_MAX_LENGTH = 15
 const HOME_TASK_STATUS_OPTIONS = [
   HOME_TASK_STATUS_TODO,
   HOME_TASK_STATUS_DEVELOPING,
@@ -702,6 +685,7 @@ export default {
       HOME_TASK_ACTION_COMMAND_UNARCHIVE,
       HOME_TASK_EDIT_BUTTON_TEXT,
       HOME_TASK_DAILY_REPORT_BUTTON_TEXT,
+      HOME_TASK_CONFIG_TAG_MAX_LENGTH,
       homeTaskActiveTab: HOME_TASK_TAB_ACTIVE,
       homeTaskDialogVisible: false,
       homeTaskLoadingActive: false,
@@ -1253,11 +1237,16 @@ export default {
       if (tag.type === 'git') {
         path = '/Git'
       } else if (tag.type === 'api') {
-        if (tag.folderId > 0) {
-          path = '/ApiDocument/' + tag.folderId
-        } else {
-          path = '/Api'
+        const query = {}
+        if (tag.collectionId > 0) {
+          query.collection_id = String(tag.collectionId)
         }
+        if (tag.folderId > 0) {
+          query.folder_id = String(tag.folderId)
+        }
+        const routeInfo = this.$router.resolve({ path: '/Api', query })
+        window.open(routeInfo.href, '_blank')
+        return
       } else if (tag.type === 'docker') {
         path = '/Docker'
       } else if (tag.type === 'mysql') {

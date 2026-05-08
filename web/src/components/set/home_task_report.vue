@@ -66,6 +66,15 @@
 
       <div class="set-config-table-card prompt-template-card">
         <el-tabs v-model="activePromptTab" class="prompt-template-tabs">
+          <el-tab-pane label="纯文本TAPD需求提示词" name="plain_text_requirement">
+            <MdEditor
+              v-model="form.home_task_prompt_plain_text_requirement"
+              preview-theme="github"
+              :preview="true"
+              :toolbars="promptEditorToolbars"
+              class="prompt-template-editor"
+            />
+          </el-tab-pane>
           <el-tab-pane label="需求分析设计提示词" name="dev">
             <MdEditor
               v-model="form.home_task_prompt_dev"
@@ -312,6 +321,7 @@ const DEFAULT_HOME_TASK_DAILY_REPORT_PROMPT = '请基于当前活跃任务生成
 
 const PROMPT_PLACEHOLDERS = [
   { label: '需求文档地址', value: '{需求文档地址}' },
+  { label: '需求文档纯文本地址', value: '{需求文档纯文本地址}' },
   { label: '接口开发API地址', value: '{接口开发API地址}' },
   { label: '接口开发API的token', value: '{接口开发API的token}' },
   { label: '开发项目配置', value: '{开发项目配置}' },
@@ -359,6 +369,7 @@ export default {
         home_task_dev_environment: '',
         home_task_branch_name_prompt: '',
         home_task_branch_name_model_id: null,
+        home_task_prompt_plain_text_requirement: '',
       },
       promptPlaceholders: PROMPT_PLACEHOLDERS,
       promptEditorToolbars: PROMPT_EDITOR_TOOLBARS,
@@ -440,6 +451,7 @@ export default {
         this.form.home_task_dev_environment = response.Data.home_task_dev_environment || ''
         this.form.home_task_branch_name_prompt = response.Data.home_task_branch_name_prompt || ''
         this.form.home_task_branch_name_model_id = response.Data.home_task_branch_name_model_id || null
+        this.form.home_task_prompt_plain_text_requirement = response.Data.home_task_prompt_plain_text_requirement || ''
       })
     },
     saveConfig() {
@@ -503,6 +515,7 @@ export default {
         home_task_dev_environment: this.form.home_task_dev_environment,
         home_task_branch_name_prompt: this.form.home_task_branch_name_prompt,
         home_task_branch_name_model_id: this.form.home_task_branch_name_model_id,
+        home_task_prompt_plain_text_requirement: this.form.home_task_prompt_plain_text_requirement,
       }
     },
     copyPlaceholder(placeholder) {

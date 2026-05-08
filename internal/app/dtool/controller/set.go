@@ -1540,6 +1540,11 @@ func SetHomeTaskConfigGet(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	promptPlainTextRequirement, err := homeTaskConfigValue(define.HomeTaskConfigPromptPlainTextReq)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
 	devEnvironment, err := homeTaskConfigValue(define.HomeTaskConfigDevEnvironment)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -1556,33 +1561,35 @@ func SetHomeTaskConfigGet(c *gin.Context) {
 		return
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`home_task_daily_report_prompt`:   dailyReportPrompt,
-		`home_task_daily_report_model_id`: cast.ToInt(dailyReportModelID),
-		`home_task_fragment_prompt`:       fragmentPrompt,
-		`home_task_tapd_smart_link_id`:    cast.ToInt(tapdSmartLinkID),
-		`home_task_tapd_link_label`:       tapdLinkLabel,
-		`home_task_tapd_css_selector`:     tapdCssSelector,
-		`home_task_tapd_wait_seconds`:     cast.ToInt(tapdWaitSeconds),
-		`home_task_prompt_dev`:            promptDev,
-		`home_task_prompt_api_gen`:        promptApiGen,
-		`home_task_prompt_api_test`:       promptApiTest,
-		`home_task_prompt_design`:         promptDesign,
-		`home_task_dev_environment`:       devEnvironment,
-		`home_task_branch_name_prompt`:    branchNamePrompt,
-		`home_task_branch_name_model_id`:  cast.ToInt(branchNameModelID),
+		`home_task_daily_report_prompt`:           dailyReportPrompt,
+		`home_task_daily_report_model_id`:         cast.ToInt(dailyReportModelID),
+		`home_task_fragment_prompt`:               fragmentPrompt,
+		`home_task_tapd_smart_link_id`:            cast.ToInt(tapdSmartLinkID),
+		`home_task_tapd_link_label`:               tapdLinkLabel,
+		`home_task_tapd_css_selector`:             tapdCssSelector,
+		`home_task_tapd_wait_seconds`:             cast.ToInt(tapdWaitSeconds),
+		`home_task_prompt_dev`:                    promptDev,
+		`home_task_prompt_api_gen`:                promptApiGen,
+		`home_task_prompt_api_test`:               promptApiTest,
+		`home_task_prompt_design`:                 promptDesign,
+		`home_task_prompt_plain_text_requirement`: promptPlainTextRequirement,
+		`home_task_dev_environment`:               devEnvironment,
+		`home_task_branch_name_prompt`:            branchNamePrompt,
+		`home_task_branch_name_model_id`:          cast.ToInt(branchNameModelID),
 	})
 }
 
 // promptConfigKeys 需要记录变更日志的提示词配置 key 及其中文名称。
 var promptConfigKeys = map[string]string{
-	define.HomeTaskConfigDailyReportPrompt: `工作日报提示词`,
-	define.HomeTaskConfigFragmentPrompt:    `任务知识片段提示词`,
-	define.HomeTaskConfigPromptDev:         `需求分析设计提示词`,
-	define.HomeTaskConfigPromptApiGen:      `接口生成提示词`,
-	define.HomeTaskConfigPromptApiTest:     `接口自动化测试提示词`,
-	define.HomeTaskConfigPromptDesign:      `开发设计提示词`,
-	define.HomeTaskConfigDevEnvironment:    `开发环境`,
-	define.HomeTaskConfigBranchNamePrompt:  `分支名生成提示词`,
+	define.HomeTaskConfigDailyReportPrompt:  `工作日报提示词`,
+	define.HomeTaskConfigFragmentPrompt:     `任务知识片段提示词`,
+	define.HomeTaskConfigPromptDev:          `需求分析设计提示词`,
+	define.HomeTaskConfigPromptApiGen:       `接口生成提示词`,
+	define.HomeTaskConfigPromptApiTest:      `接口自动化测试提示词`,
+	define.HomeTaskConfigPromptDesign:       `开发设计提示词`,
+	define.HomeTaskConfigPromptPlainTextReq: `纯文本TAPD需求提示词`,
+	define.HomeTaskConfigDevEnvironment:     `开发环境`,
+	define.HomeTaskConfigBranchNamePrompt:   `分支名生成提示词`,
 }
 
 // saveHomeTaskPromptWithLog 保存提示词配置并记录变更日志（仅当值真正变化时才写日志）。
@@ -1671,6 +1678,12 @@ func SetHomeTaskConfigSave(c *gin.Context) {
 	homeTaskPromptDesign := strings.TrimSpace(cast.ToString(dataMap[`home_task_prompt_design`]))
 	saveHomeTaskPromptWithLog(define.HomeTaskConfigPromptDesign, `开发设计提示词`, homeTaskPromptDesign, `工作流-开发设计提示词模板`)
 	if err := common.DbMain.HomeTaskConfigSave(`开发设计提示词`, define.HomeTaskConfigPromptDesign, homeTaskPromptDesign, `工作流-开发设计提示词模板`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskPromptPlainTextRequirement := strings.TrimSpace(cast.ToString(dataMap[`home_task_prompt_plain_text_requirement`]))
+	saveHomeTaskPromptWithLog(define.HomeTaskConfigPromptPlainTextReq, `纯文本TAPD需求提示词`, homeTaskPromptPlainTextRequirement, `工作流-纯文本TAPD需求提示词模板`)
+	if err := common.DbMain.HomeTaskConfigSave(`纯文本TAPD需求提示词`, define.HomeTaskConfigPromptPlainTextReq, homeTaskPromptPlainTextRequirement, `工作流-纯文本TAPD需求提示词模板`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
