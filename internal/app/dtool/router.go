@@ -307,6 +307,7 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/MemoryFragmentOrganize`, controller.MemoryFragmentOrganize)
 	tGin.GinPost(`/api/MemoryFragmentShareCreate`, controller.MemoryFragmentShareCreate)
 	tGin.GinPost(`/api/MemoryFragmentImageUpload`, controller.MemoryFragmentImageUpload)
+	tGin.GinPost(`/api/MemoryFragmentUploadZip`, controller.MemoryFragmentUploadZip)
 	tGin.GinPost(`/api/MemoryFragmentBatchInfoByPaths`, controller.MemoryFragmentBatchInfoByPaths)
 	tGin.GinPost(`/api/AsyncTaskList`, controller.AsyncTaskList)
 	tGin.GinPost(`/api/AsyncTaskInfo`, controller.AsyncTaskInfo)

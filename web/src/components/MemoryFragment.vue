@@ -3,6 +3,11 @@
     <aside v-if="memoryConfigured && !sidebarCollapsed" class="memory-sidebar">
       <div class="sidebar-header">
         <div class="sidebar-header-actions">
+          <pl-button plain size="small" @click="triggerUploadZip" :loading="zipUploading">
+            <el-icon><Upload /></el-icon>
+            上传ZIP
+          </pl-button>
+          <input ref="zipFileInput" type="file" accept=".zip" style="display:none" @change="handleZipUpload" />
           <pl-button plain size="small" @click="searchDialogVisible = true">
             <el-icon><Search /></el-icon>
             搜索
@@ -415,7 +420,7 @@
 </template>
 
 <script>
-import { ArrowDown, ArrowRight, Check, Close, DArrowLeft, DArrowRight, Delete, HomeFilled, Loading, Plus, Search } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowRight, Check, Close, DArrowLeft, DArrowRight, Delete, HomeFilled, Loading, Plus, Search, Upload } from '@element-plus/icons-vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
 import MemoryEditor from '@/components/memory/MemoryEditor.vue'
 import MemoryHistoryDialog from '@/components/memory/MemoryHistoryDialog.vue'
@@ -528,6 +533,7 @@ export default {
       aiSearchStepElapsed: {},
       aiSearchExpandedSteps: {},
       aiSearchStepTimerId: null,
+      zipUploading: false,
     }
   },
   computed: {
@@ -1245,6 +1251,31 @@ export default {
       return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     },
     // createFragment 创建一个新片段并自动打开。
+    // triggerUploadZip 触发隐藏的文件选择框。
+    triggerUploadZip() {
+      if (!this.memoryConfigured || this.zipUploading) {
+        return
+      }
+      this.$refs.zipFileInput.click()
+    },
+    // handleZipUpload 处理 ZIP 文件上传，成功后创建片段并打开。
+    handleZipUpload(event) {
+      const file = event.target.files[0]
+      if (!file) {
+        return
+      }
+      this.zipUploading = true
+      MemoryFragmentApi.MemoryFragmentUploadZip(file, (response) => {
+        this.zipUploading = false
+        // 重置 input，允许重复选择同一文件
+        event.target.value = ''
+        if (response.ErrCode !== 0 || !response.Data) {
+          return
+        }
+        this.loadFragmentList()
+        this.upsertFragmentTab(response.Data, true)
+      })
+    },
     createFragment() {
       if (!this.memoryConfigured) {
         return

@@ -1,11 +1,13 @@
 package controller
 
 import (
+	"archive/zip"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_define"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -608,4 +610,93 @@ func MemoryFragmentImageServe(c *gin.Context) {
 		return
 	}
 	c.File(imagePath)
+}
+
+// MemoryFragmentUploadZip 上传 ZIP 文件，解析 content.md + images/，创建知识片段。
+func MemoryFragmentUploadZip(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	file, err := c.FormFile(`file`)
+	if err != nil {
+		gsgin.GinResponseError(c, `上传失败:`+err.Error(), nil)
+		return
+	}
+	if !strings.HasSuffix(strings.ToLower(file.Filename), `.zip`) {
+		gsgin.GinResponseError(c, `仅支持 .zip 文件`, nil)
+		return
+	}
+
+	// 保存到临时文件
+	tmpDir := os.TempDir()
+	tmpPath := filepath.Join(tmpDir, fmt.Sprintf(`fragment_upload_%d.zip`, time.Now().UnixMicro()))
+	if err := c.SaveUploadedFile(file, tmpPath); err != nil {
+		gsgin.GinResponseError(c, `保存临时文件失败:`+err.Error(), nil)
+		return
+	}
+	defer os.Remove(tmpPath)
+
+	// 解压 ZIP
+	reader, err := zip.OpenReader(tmpPath)
+	if err != nil {
+		gsgin.GinResponseError(c, `打开 ZIP 文件失败:`+err.Error(), nil)
+		return
+	}
+	defer reader.Close()
+
+	// 读取 content.md
+	var markdownContent string
+	for _, f := range reader.File {
+		if f.Name == `content.md` {
+			rc, openErr := f.Open()
+			if openErr != nil {
+				gsgin.GinResponseError(c, `打开 content.md 失败:`+openErr.Error(), nil)
+				return
+			}
+			content, readErr := io.ReadAll(rc)
+			_ = rc.Close()
+			if readErr != nil {
+				gsgin.GinResponseError(c, `读取 content.md 失败:`+readErr.Error(), nil)
+				return
+			}
+			markdownContent = string(content)
+			break
+		}
+	}
+	if markdownContent == `` {
+		gsgin.GinResponseError(c, `ZIP 中未找到 content.md`, nil)
+		return
+	}
+
+	// 从 content.md 提取标题（第一个 # 行）
+	title := `导入的知识片段`
+	lines := strings.Split(markdownContent, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, `# `) {
+			title = strings.TrimPrefix(trimmed, `# `)
+			break
+		}
+	}
+
+	// 保存图片并重写路径
+	memoryDir := component.MemoryRuntime.Config().Dir
+	pathMapping, imgErr := saveScrapeImagesToMemoryDir(&reader.Reader, memoryDir)
+	if imgErr != nil {
+		gsgin.GinResponseError(c, `保存图片失败:`+imgErr.Error(), nil)
+		return
+	}
+	markdownContent = rewriteScrapeImagePaths(markdownContent, pathMapping)
+	markdownContent = prefixMemoryImagePaths(markdownContent)
+
+	// 创建知识片段
+	info, saveErr := memoryDB.MemoryFragmentSave(``, title, markdownContent, nil)
+	if saveErr != nil {
+		gsgin.GinResponseError(c, `创建片段失败:`+saveErr.Error(), nil)
+		return
+	}
+	component.MemoryRuntime.ScheduleSync()
+	broadcastMemoryFragmentUpsert(info)
+	gsgin.GinResponseSuccess(c, ``, info)
 }

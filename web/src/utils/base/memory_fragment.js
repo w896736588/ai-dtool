@@ -113,6 +113,13 @@ function MemoryFragmentImageUpload(file, callBack) {
   base.BasePostForm('/api/MemoryFragmentImageUpload', form, callBack)
 }
 
+// MemoryFragmentUploadZip 上传 ZIP 文件，解析 content.md + images/ 创建知识片段。
+function MemoryFragmentUploadZip(file, callBack) {
+  const form = new FormData()
+  form.append('file', file)
+  base.BasePostForm('/api/MemoryFragmentUploadZip', form, callBack)
+}
+
 // MemoryFragmentBatchInfoByPaths 批量按文件路径查询片段摘要（id + title）。
 function MemoryFragmentBatchInfoByPaths(paths, callBack) {
   base.BasePost('/api/MemoryFragmentBatchInfoByPaths', {
@@ -137,5 +144,6 @@ export default {
   MemoryFragmentShareCreate,
   MemoryFragmentShareInfo,
   MemoryFragmentImageUpload,
+  MemoryFragmentUploadZip,
   MemoryFragmentBatchInfoByPaths,
 }
