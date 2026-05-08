@@ -153,6 +153,24 @@
 - `data.dir`
 - `data.dir.children[]` 为接口列表
 
+### 5. 通过文件夹 ID 获取接口文档（Markdown）：`/api/FolderApisMarkdown`
+
+用途：
+
+- 通过文件夹 ID 获取该文件夹下所有接口的 Markdown 格式文档，格式与前端"复制所有接口(Markdown)"按钮完全一致
+
+请求：
+
+```json
+{
+  "folder_id": 12
+}
+```
+
+关键返回：
+
+- `data.markdown` — 完整的 Markdown 字符串，包含文件夹下所有接口的文档
+
 ## 三、接口列表与详情相关
 
 ### 1. 按集合和文件夹查询接口：`/api/Apis`

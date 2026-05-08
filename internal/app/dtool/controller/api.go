@@ -5,6 +5,7 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_curl"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -1250,4 +1251,274 @@ func ApiPermanentDeleteDir(c *gin.Context) {
 		`folder_id`: folderId,
 	})
 	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+// parseJsonArrayMap 解析 JSON 数组字符串为 map 切片。
+func parseJsonArrayMap(s string) []map[string]any {
+	result := make([]map[string]any, 0)
+	if s == `` {
+		return result
+	}
+	_ = gstool.JsonDecode(s, &result)
+	return result
+}
+
+// formatMarkdownTimestamp 格式化 Unix 时间戳为可读字符串。
+func formatMarkdownTimestamp(unixTimestamp int64) string {
+	if unixTimestamp == 0 {
+		return `未知时间`
+	}
+	return time.Unix(unixTimestamp, 0).Format(`2006-01-02 15:04:05`)
+}
+
+// formatMarkdownBlockquote 将内容格式化为 Markdown 引用块。
+func formatMarkdownBlockquote(content string) string {
+	if content == `` {
+		return ``
+	}
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if line == `` {
+			lines[i] = `>`
+		} else {
+			lines[i] = `> ` + line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// formatEnterToMarkdown 将换行符替换为 <br> 并合并多余空格。
+func formatEnterToMarkdown(data string) string {
+	if data == `` {
+		return ``
+	}
+	replacer := strings.NewReplacer("\r\n", "<br>", "\n", "<br>", "\r", "<br>")
+	result := replacer.Replace(data)
+	var sb strings.Builder
+	prevSpace := false
+	for _, r := range result {
+		if r == ' ' {
+			if prevSpace {
+				continue
+			}
+			prevSpace = true
+		} else {
+			prevSpace = false
+		}
+		sb.WriteRune(r)
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+// formatJsonBodyStr 格式化 JSON 字符串为缩进格式。
+func formatJsonBodyStr(s string) string {
+	var obj any
+	if gstool.JsonDecode(s, &obj) == nil {
+		b, err := json.MarshalIndent(obj, "", "  ")
+		if err == nil {
+			return string(b)
+		}
+	}
+	return s
+}
+
+// formatJsonValue 格式化任意值为缩进 JSON 字符串。
+func formatJsonValue(val any) string {
+	b, err := json.MarshalIndent(val, "", "  ")
+	if err == nil {
+		return string(b)
+	}
+	return fmt.Sprintf("%v", val)
+}
+
+// hasApiBodyContent 判断接口是否有请求体内容。
+func hasApiBodyContent(apiItem map[string]any) bool {
+	contentType := cast.ToString(apiItem[`content_type`])
+	if contentType == `application/json` {
+		bodyJson := cast.ToString(apiItem[`body_json`])
+		if bodyJson != `` {
+			var parsed map[string]any
+			if gstool.JsonDecode(bodyJson, &parsed) == nil && len(parsed) > 0 {
+				return true
+			}
+		}
+	} else if contentType == `application/x-www-form-urlencoded` || contentType == `multipart/form-data` {
+		bodyForm := cast.ToString(apiItem[`body_form`])
+		if bodyForm != `` {
+			parsed := make([]map[string]any, 0)
+			if gstool.JsonDecode(bodyForm, &parsed) == nil && len(parsed) > 0 {
+				return true
+			}
+		}
+	}
+	if bodyRaw := cast.ToString(apiItem[`body_raw`]); bodyRaw != `` {
+		return true
+	}
+	return false
+}
+
+// replaceApiEnvVars 替换 URL 中的环境变量占位符。
+func replaceApiEnvVars(url string, envItems []map[string]any) string {
+	for _, item := range envItems {
+		key := cast.ToString(item[`key`])
+		value := cast.ToString(item[`value`])
+		if key != `` && value != `` {
+			url = strings.ReplaceAll(url, `$`+key+`$`, value)
+		}
+	}
+	return url
+}
+
+// ApiFolderApisMarkdown 通过文件夹 ID 获取接口文档（Markdown 格式），格式与前端"复制所有接口(Markdown)"按钮一致。
+func ApiFolderApisMarkdown(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	folderId := cast.ToInt(dataMap[`folder_id`])
+	if folderId <= 0 {
+		gsgin.GinResponseError(c, `请选择文件夹`, nil)
+		return
+	}
+	// 查询文件夹信息
+	dir, _ := common.DbMain.Client.QuickQuery(`tbl_api_dir`, `*`, map[string]any{
+		`id`: folderId,
+	}).One()
+	if len(dir) == 0 {
+		gsgin.GinResponseError(c, `文件夹不存在`, nil)
+		return
+	}
+	folderName := cast.ToString(dir[`name`])
+	// 查询文件夹下所有接口（按权重和ID排序，与前端一致）
+	apis, _ := common.DbMain.Client.QuickQuery(`tbl_api`, `*`, map[string]any{
+		`folder_id`: folderId,
+	}).Order(`weight,id asc`).All()
+	// 预加载文件夹环境变量，用于 URL 占位符替换
+	dirEnvId := cast.ToInt(dir[`env_id`])
+	dirEnvItems := make([]map[string]any, 0)
+	if dirEnvId > 0 {
+		dirEnvItems, _ = common.DbMain.Client.QuickQuery(`tbl_api_env_item`, `*`, map[string]any{
+			`env_id`: dirEnvId,
+		}).All()
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(`## %s 接口文档`, folderName))
+	sb.WriteString("\n\n")
+
+	for i, apiItem := range apis {
+		// API 标题
+		sb.WriteString(fmt.Sprintf(`### %d. %s`, i+1, cast.ToString(apiItem[`name`])))
+		sb.WriteString("\n\n")
+		// 基本信息表格
+		sb.WriteString("| 项目 | 详情 |\n")
+		sb.WriteString("| --- | --- |\n")
+		apiMethod := cast.ToString(apiItem[`method`])
+		apiUrl := cast.ToString(apiItem[`url`])
+		contentType := cast.ToString(apiItem[`content_type`])
+		// 替换环境变量：接口自身有环境时用自身的，否则继承文件夹环境
+		apiEnvId := cast.ToInt(apiItem[`env_id`])
+		if apiEnvId > 0 && apiEnvId != dirEnvId {
+			apiEnvItems, _ := common.DbMain.Client.QuickQuery(`tbl_api_env_item`, `*`, map[string]any{
+				`env_id`: apiEnvId,
+			}).All()
+			apiUrl = replaceApiEnvVars(apiUrl, apiEnvItems)
+		} else {
+			apiUrl = replaceApiEnvVars(apiUrl, dirEnvItems)
+		}
+		sb.WriteString(fmt.Sprintf("| 请求URL | `%s` `%s` |\n", apiMethod, apiUrl))
+		hasBody := hasApiBodyContent(apiItem)
+		if hasBody {
+			sb.WriteString(fmt.Sprintf("| 请求类型 | `%s` |\n", contentType))
+		}
+		sb.WriteString(fmt.Sprintf("| 创建时间 | %s |\n", formatMarkdownTimestamp(cast.ToInt64(apiItem[`create_time`]))))
+		sb.WriteString("\n")
+		// 备注（描述）
+		desc := cast.ToString(apiItem[`desc`])
+		if desc != `` {
+			sb.WriteString("备注\n\n")
+			sb.WriteString(formatMarkdownBlockquote(desc))
+			sb.WriteString("\n\n")
+		}
+		// 请求参数
+		queryParams := parseJsonArrayMap(cast.ToString(apiItem[`query_params`]))
+		if len(queryParams) > 0 {
+			sb.WriteString("请求参数\n\n")
+			sb.WriteString("| 字段名 | 类型 | 值 | 描述 |\n")
+			sb.WriteString("| --- | --- | --- | --- |\n")
+			for _, param := range queryParams {
+				sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n",
+					cast.ToString(param[`field`]),
+					cast.ToString(param[`type`]),
+					cast.ToString(param[`value`]),
+					formatEnterToMarkdown(cast.ToString(param[`description`]))))
+			}
+			sb.WriteString("\n")
+		}
+		// 请求体
+		if hasBody {
+			sb.WriteString("请求体\n\n")
+			if contentType == `application/json` {
+				bodyJson := cast.ToString(apiItem[`body_json`])
+				var parsed map[string]any
+				if gstool.JsonDecode(bodyJson, &parsed) == nil && len(parsed) > 0 {
+					sb.WriteString("json\n")
+					sb.WriteString(formatJsonBodyStr(bodyJson))
+					sb.WriteString("\n\n")
+				}
+			} else if contentType == `application/x-www-form-urlencoded` || contentType == `multipart/form-data` {
+				bodyForm := parseJsonArrayMap(cast.ToString(apiItem[`body_form`]))
+				if len(bodyForm) > 0 {
+					sb.WriteString("| 字段名 | 类型 | 值 | 描述 |\n")
+					sb.WriteString("| --- | --- | --- | --- |\n")
+					for _, param := range bodyForm {
+						sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n",
+							cast.ToString(param[`field`]),
+							cast.ToString(param[`type`]),
+							cast.ToString(param[`value`]),
+							formatEnterToMarkdown(cast.ToString(param[`description`]))))
+					}
+					sb.WriteString("\n")
+				}
+			} else if bodyRaw := cast.ToString(apiItem[`body_raw`]); bodyRaw != `` {
+				sb.WriteString("\n" + bodyRaw + "\n```\n\n")
+			}
+		}
+		// 返回结果说明
+		takeResultData := parseJsonArrayMap(cast.ToString(apiItem[`take_result`]))
+		if len(takeResultData) > 0 {
+			sb.WriteString("返回结果说明\n\n")
+			sb.WriteString("| 字段名 | 类型 | 说明 |\n")
+			sb.WriteString("| --- | --- | --- |\n")
+			for _, item := range takeResultData {
+				sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n",
+					cast.ToString(item[`key`]),
+					cast.ToString(item[`type`]),
+					cast.ToString(item[`desc`])))
+			}
+			sb.WriteString("\n")
+		}
+		// 返回结果示例
+		lastResult := cast.ToString(apiItem[`last_result`])
+		if lastResult != `` && lastResult != `{}` && lastResult != `null` {
+			sb.WriteString("返回结果示例\n\n")
+			var lastResultData map[string]any
+			if gstool.JsonDecode(lastResult, &lastResultData) == nil {
+				if resultVal, exists := lastResultData[`result`]; exists {
+					sb.WriteString(formatMarkdownBlockquote(formatJsonValue(resultVal)))
+				} else {
+					sb.WriteString(formatMarkdownBlockquote(formatJsonValue(lastResultData)))
+				}
+			} else {
+				sb.WriteString(formatMarkdownBlockquote(lastResult))
+			}
+			sb.WriteString("\n\n")
+		}
+		// 分隔线（除最后一个接口外）
+		if i < len(apis)-1 {
+			sb.WriteString("---\n\n")
+		}
+	}
+
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`markdown`: sb.String(),
+	})
 }

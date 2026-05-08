@@ -463,6 +463,7 @@ func api(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/ArchiveFolderList`, controller.ApiArchiveFolderList)
 	tGin.GinPost(`/api/RestoreFolder`, controller.ApiRestoreFolder)
 	tGin.GinPost(`/api/PermanentDeleteDir`, controller.ApiPermanentDeleteDir)
+	tGin.GinPost(`/api/FolderApisMarkdown`, controller.ApiFolderApisMarkdown)
 }
 
 func apiUse(tGin *p_gin.Gin) {

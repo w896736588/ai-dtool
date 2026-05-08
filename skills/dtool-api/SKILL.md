@@ -84,6 +84,7 @@ description: Use when operating the dtool 接口开发模块 and the task involv
 6. 生成代码：`/api/ApiCode`
 7. 提取 JSON 路径：`/api/ApiTakeJsonResult`
 8. 下移权重：`/api/ApiWeightDown`
+9. 获取文件夹接口文档（Markdown）：`/api/FolderApisMarkdown`
 
 ### 场景 6：执行接口（运行接口并获取结果）
 
