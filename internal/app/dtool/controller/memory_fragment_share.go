@@ -154,20 +154,20 @@ func buildShareHTML(title, updateTime, expireAt, bodyHTML string) string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>%s</title>
-<style>body{font-size:14px;line-height:1.7}h1{font-size:20px}h2{font-size:18px}h3{font-size:16px}h4{font-size:15px}</style>
+<title>{{TITLE}}</title>
+<style>body{font-size:14px;line-height:1.7;max-width:960px;margin:0 auto;padding:16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}h1{font-size:20px}h2{font-size:18px}h3{font-size:16px}h4{font-size:15px}table{border-collapse:collapse;width:100%;margin:1em 0}th,td{border:1px solid #d0d7de;padding:6px 13px;text-align:left}th{font-weight:600;background-color:#f6f8fa}tr:nth-child(2n){background-color:#f6f8fa}blockquote{border-left:4px solid #d0d7de;padding:0 1em;color:#656d76;margin:0}code{background-color:#f6f8fa;padding:2px 6px;border-radius:4px;font-size:13px}pre{background-color:#f6f8fa;padding:16px;border-radius:6px;overflow-x:auto}pre code{background:none;padding:0}hr{border:none;border-top:1px solid #d0d7de;margin:24px 0}</style>
 </head>
 <body>
 <main>
 <article>
 <header>
-<h1>%s</h1>
+<h1>{{TITLE}}</h1>
 <div>
-%s
+{{META}}
 </div>
 </header>
 <section>
-%s
+{{BODY}}
 </section>
 </article>
 </main>
@@ -183,10 +183,10 @@ func buildShareHTML(title, updateTime, expireAt, bodyHTML string) string {
 	}
 	metaStr := strings.Join(metaParts, "\n")
 
-	return fmt.Sprintf(tpl,
-		template.HTMLEscapeString(title),
-		template.HTMLEscapeString(title),
-		metaStr,
-		bodyHTML,
+	r := strings.NewReplacer(
+		`{{TITLE}}`, template.HTMLEscapeString(title),
+		`{{META}}`, metaStr,
+		`{{BODY}}`, bodyHTML,
 	)
+	return r.Replace(tpl)
 }

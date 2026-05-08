@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const memoryFragmentShareTTL = 24 * time.Hour
+const memoryFragmentShareTTL = 7 * 24 * time.Hour
 const memoryFragmentShareFileName = `.memory_fragment_shares.json`
 
 var memoryFragmentShareStoreRegistry sync.Map
