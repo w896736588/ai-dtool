@@ -249,6 +249,10 @@
   transform: translateY(-1px);
 }
 
+.home-task-config-tag--copy {
+  cursor: copy;
+}
+
 .home-task-card__memory {
   margin-top: 14px;
   padding: 12px 14px;

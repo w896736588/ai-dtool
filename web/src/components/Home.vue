@@ -22,7 +22,7 @@
         </el-menu-item>
         <el-menu-item index="/HomeTask">
           <el-icon><List /></el-icon>
-          <span>Task</span>
+          <span>Workflow</span>
         </el-menu-item>
         <el-menu-item v-if="checkModuleOpen('redis')" index="/Redis">
           <el-icon><Coin /></el-icon>
@@ -50,7 +50,7 @@
         </el-menu-item>
         <el-menu-item v-if="checkModuleOpen('memory_fragment')" index="/MemoryFragment">
           <el-icon><Memo /></el-icon>
-          <span>Knowlange</span>
+          <span>Knowledge</span>
           <div v-if="gitPendingStatus.memoryPending" class="menu-countdown-bar">
             <div class="menu-countdown-bar__fill" :style="{ width: memoryCountdownPercent + '%' }"></div>
           </div>

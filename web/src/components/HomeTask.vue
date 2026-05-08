@@ -61,8 +61,23 @@
                     <tr v-for="(group, gIdx) in getHomeTaskDevConfigTags(task)" :key="gIdx">
                       <td v-for="col in homeTaskConfigTableColumns" :key="col.key" class="home-task-config-table__cell">
                         <template v-for="(tag, tagIdx) in group" :key="tagIdx">
+                          <el-tooltip
+                            v-if="tag.type === col.key && tag.type === 'branch_name'"
+                            :content="tag.label"
+                            placement="top"
+                          >
+                            <el-tag
+                              size="small"
+                              effect="plain"
+                              :type="tag.tagType"
+                              class="home-task-config-tag home-task-config-tag--copy"
+                              @click.stop="copyHomeTaskBranchName(tag.label)"
+                            >
+                              {{ tag.label.length > 15 ? tag.label.slice(0, 15) + '...' : tag.label }}
+                            </el-tag>
+                          </el-tooltip>
                           <el-tag
-                            v-if="tag.type === col.key"
+                            v-else-if="tag.type === col.key"
                             size="small"
                             effect="plain"
                             :type="tag.tagType"
@@ -163,8 +178,23 @@
                     <tr v-for="(group, gIdx) in getHomeTaskDevConfigTags(task)" :key="gIdx">
                       <td v-for="col in homeTaskConfigTableColumns" :key="col.key" class="home-task-config-table__cell">
                         <template v-for="(tag, tagIdx) in group" :key="tagIdx">
+                          <el-tooltip
+                            v-if="tag.type === col.key && tag.type === 'branch_name'"
+                            :content="tag.label"
+                            placement="top"
+                          >
+                            <el-tag
+                              size="small"
+                              effect="plain"
+                              :type="tag.tagType"
+                              class="home-task-config-tag home-task-config-tag--copy"
+                              @click.stop="copyHomeTaskBranchName(tag.label)"
+                            >
+                              {{ tag.label.length > 15 ? tag.label.slice(0, 15) + '...' : tag.label }}
+                            </el-tag>
+                          </el-tooltip>
                           <el-tag
-                            v-if="tag.type === col.key"
+                            v-else-if="tag.type === col.key"
                             size="small"
                             effect="plain"
                             :type="tag.tagType"
@@ -1238,6 +1268,11 @@ export default {
       if (!path) return
       const routeInfo = this.$router.resolve({ path })
       window.open(routeInfo.href, '_blank')
+    },
+    copyHomeTaskBranchName(branchName) {
+      navigator.clipboard.writeText(branchName).then(() => {
+        this.$message.success('已复制分支名')
+      })
     },
     saveHomeTask() {
       if (this.homeTaskSaving) {
