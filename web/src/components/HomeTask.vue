@@ -41,15 +41,7 @@
                       <el-tag size="small" effect="light" :type="getHomeTaskStatusTagType(task.task_status)">
                         {{ task.task_status }}
                       </el-tag>
-                      <el-tag
-                        v-if="hasHomeTaskMemoryFragment(task)"
-                        size="small"
-                        effect="plain"
-                        class="home-task-memory-link-tag"
-                        @click.stop="openHomeTaskMemoryFragment(task)"
-                      >
-                        {{ getHomeTaskMemoryTagText(task) }}
-                      </el-tag>
+
                     </span>
                   </div>
                   <table v-if="getHomeTaskDevConfigTags(task).length > 0" class="home-task-config-table">
@@ -296,7 +288,7 @@
     <el-dialog
       v-model="homeTaskDialogVisible"
       :title="homeTaskDialogTitle"
-      width="920px"
+      width="70%"
       top="5vh"
       class="home-task-dialog"
       destroy-on-close
@@ -496,7 +488,7 @@
                           placeholder="输入或AI生成分支名"
                         />
                         <el-button
-                          type="success"
+                          class="home-task-ai-btn"
                           :loading="cfg._branchGenerating"
                           @click="generateBranchName(cfgIdx)"
                         >
@@ -966,6 +958,22 @@ export default {
         this.$helperNotify.error('请先填写任务名称')
         return
       }
+      const branchName = String(cfg.branch_name || '').trim()
+      if (branchName) {
+        this.$confirm('当前分支名不为空，重新生成将覆盖已有内容，是否继续？', '提示', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        }).then(() => {
+          this._doGenerateBranchName(cfgIdx)
+        }).catch(() => {})
+        return
+      }
+      this._doGenerateBranchName(cfgIdx)
+    },
+    _doGenerateBranchName(cfgIdx) {
+      const cfg = this.homeTaskForm.dev_configs[cfgIdx]
+      const taskName = String(this.homeTaskForm.name || '').trim()
       cfg._branchGenerating = true
       homeTaskApi.HomeTaskBranchNameGenerate(taskName, String(cfg.parent_branch || '').trim(), (response) => {
         cfg._branchGenerating = false

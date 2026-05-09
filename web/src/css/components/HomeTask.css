@@ -320,6 +320,23 @@
   border-color: #b8d4b0;
 }
 
+.home-task-ai-btn {
+  border-radius: 8px !important;
+  border-color: #d8ded2 !important;
+  background: #f6f8f3 !important;
+  color: #4f804f !important;
+}
+
+.home-task-ai-btn:hover {
+  background: #eef4ea !important;
+  border-color: #bfd1bf !important;
+  color: #3f6f3f !important;
+}
+
+.home-task-ai-btn.is-loading {
+  opacity: 0.7;
+}
+
 .home-task-dialog__footer {
   display: flex;
   justify-content: flex-end;
