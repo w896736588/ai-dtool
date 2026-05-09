@@ -1574,9 +1574,9 @@ func taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo map[string]any) string {
 		if cfg.BranchName != "" {
 			sb.WriteString(fmt.Sprintf("- **分支名**: %s\n", cfg.BranchName))
 		}
-		if cfg.RuleEntryFile != "" {
-			sb.WriteString(fmt.Sprintf("- **项目规则文件**: 你必须加载 `%s` 这个规则文件\n", cfg.RuleEntryFile))
-		}
+		//if cfg.RuleEntryFile != "" {
+		//	sb.WriteString(fmt.Sprintf("- **项目规则文件**: 你必须加载 `%s` 这个规则文件\n", cfg.RuleEntryFile))
+		//}
 		collectionName := taskWorkflowQueryNameByID("tbl_api_collection", cfg.CollectionID)
 		if cfg.CollectionID > 0 {
 			dirName := taskWorkflowQueryNameByID("tbl_api_dir", cfg.DirID)
