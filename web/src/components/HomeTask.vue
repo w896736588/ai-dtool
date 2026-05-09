@@ -151,6 +151,20 @@
                     <span>开始时间：{{ task.start_time_desc || '-' }}</span>
                     <span>最后操作：{{ task.last_operated_at_desc || '-' }}</span>
                     <a v-if="task.tapd_url" :href="task.tapd_url" target="_blank" class="home-task-card__tapd-link">TAPD需求</a>
+                    <span class="home-task-card__status-group">
+                      <el-tag size="small" effect="light" :type="getHomeTaskStatusTagType(task.task_status)">
+                        {{ task.task_status }}
+                      </el-tag>
+                      <el-tag
+                        v-if="hasHomeTaskMemoryFragment(task)"
+                        size="small"
+                        effect="plain"
+                        class="home-task-memory-link-tag"
+                        @click.stop="openHomeTaskMemoryFragment(task)"
+                      >
+                        {{ getHomeTaskMemoryTagText(task) }}
+                      </el-tag>
+                    </span>
                   </div>
                   <table v-if="getHomeTaskDevConfigTags(task).length > 0" class="home-task-config-table">
                     <thead>
@@ -182,104 +196,63 @@
                     </tr>
                   </table>
                 </div>
-                <div class="home-task-card__status-group">
-                  <el-tag size="small" effect="light" :type="getHomeTaskStatusTagType(task.task_status)">
-                    {{ task.task_status }}
-                  </el-tag>
-                  <el-tag
-                    v-if="hasHomeTaskMemoryFragment(task)"
-                    size="small"
-                    effect="plain"
-                    class="home-task-memory-link-tag"
-                    @click.stop="openHomeTaskMemoryFragment(task)"
-                  >
-                    {{ getHomeTaskMemoryTagText(task) }}
-                  </el-tag>
-                </div>
-              </div>
-              <div v-if="hasHomeTaskMemoryFragment(task)" class="home-task-card__memory">
-                <div class="home-task-card__memory-label">关联知识片段</div>
-                <div class="home-task-card__memory-title">
-                  {{ task.memory_fragment?.title || `#${task.memory_fragment_id}` }}
-                </div>
-                <div v-if="task.memory_fragment?.content" class="home-task-card__memory-content">
-                  <pre class="memory-content-text">{{ getFragmentPreview(task.memory_fragment.content, task.id) }}</pre>
-                  <button
-                    v-if="isFragmentExpandable(task.memory_fragment.content)"
-                    type="button"
-                    class="memory-content-toggle"
-                    @click="toggleFragmentExpand(task.id)"
-                  >
-                    {{ homeTaskExpandedFragments[task.id] ? '收起' : '展开' }}
-                  </button>
-                </div>
-                <div v-if="Array.isArray(task.memory_fragment?.tags) && task.memory_fragment.tags.length > 0" class="home-task-card__memory-tags">
-                  <el-tag
-                    v-for="tag in task.memory_fragment.tags"
-                    :key="`${task.id}-${tag}`"
-                    size="small"
-                    effect="plain"
-                  >
-                    {{ tag }}
-                  </el-tag>
-                </div>
-              </div>
-              <div class="home-task-card__actions">
-                <GitActionButton
-                  compact
-                  variant="primary"
-                  :disabled="isHomeTaskBusy(task.id)"
-                  @click="openTaskWorkflow(task)"
-                >
-                  工作流程
-                </GitActionButton>
-                <el-dropdown
-                  trigger="click"
-                  :disabled="isHomeTaskBusy(task.id)"
-                  @command="handleHomeTaskActionCommand(task, $event)"
-                >
+                <div class="home-task-card__actions">
                   <GitActionButton
                     compact
-                    :loading="isHomeTaskBusy(task.id, HOME_TASK_OPERATE_STATUS) || isHomeTaskBusy(task.id, HOME_TASK_OPERATE_ARCHIVE)"
-                    :variant="getHomeTaskActionButtonVariant(task.task_status)"
+                    variant="primary"
+                    :disabled="isHomeTaskBusy(task.id)"
+                    @click="openTaskWorkflow(task)"
                   >
-                    状态变更
+                    工作流程
                   </GitActionButton>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item
-                        v-for="status in homeTaskStatusOptions"
-                        :key="status"
-                        :command="buildHomeTaskStatusCommand(status)"
-                        :disabled="task.task_status === status"
-                      >
-                        {{ status }}
-                      </el-dropdown-item>
-                      <el-dropdown-item :command="HOME_TASK_ACTION_COMMAND_UNARCHIVE">
-                        取消归档
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-                <GitActionButton
-                  compact
-                  variant="info"
-                  :disabled="isHomeTaskBusy(task.id)"
-                  @click="editHomeTask(task)"
-                >
-                  {{ HOME_TASK_EDIT_BUTTON_TEXT }}
-                </GitActionButton>
-                <GitActionButton
-                  compact
-                  variant="danger"
-                  :loading="isHomeTaskBusy(task.id, HOME_TASK_OPERATE_DELETE)"
-                  :disabled="isHomeTaskBusy(task.id) && !isHomeTaskBusy(task.id, HOME_TASK_OPERATE_DELETE)"
-                  @click="deleteHomeTask(task)"
-                >
-                  删除任务
-                </GitActionButton>
+                  <el-dropdown
+                    trigger="click"
+                    :disabled="isHomeTaskBusy(task.id)"
+                    @command="handleHomeTaskActionCommand(task, $event)"
+                  >
+                    <GitActionButton
+                      compact
+                      :loading="isHomeTaskBusy(task.id, HOME_TASK_OPERATE_STATUS) || isHomeTaskBusy(task.id, HOME_TASK_OPERATE_ARCHIVE)"
+                      :variant="getHomeTaskActionButtonVariant(task.task_status)"
+                    >
+                      状态变更
+                    </GitActionButton>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item
+                          v-for="status in homeTaskStatusOptions"
+                          :key="status"
+                          :command="buildHomeTaskStatusCommand(status)"
+                          :disabled="task.task_status === status"
+                        >
+                          {{ status }}
+                        </el-dropdown-item>
+                        <el-dropdown-item :command="HOME_TASK_ACTION_COMMAND_UNARCHIVE">
+                          取消归档
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                  <GitActionButton
+                    compact
+                    variant="info"
+                    :disabled="isHomeTaskBusy(task.id)"
+                    @click="editHomeTask(task)"
+                  >
+                    {{ HOME_TASK_EDIT_BUTTON_TEXT }}
+                  </GitActionButton>
+                  <GitActionButton
+                    compact
+                    variant="danger"
+                    :loading="isHomeTaskBusy(task.id, HOME_TASK_OPERATE_DELETE)"
+                    :disabled="isHomeTaskBusy(task.id) && !isHomeTaskBusy(task.id, HOME_TASK_OPERATE_DELETE)"
+                    @click="deleteHomeTask(task)"
+                  >
+                    删除任务
+                  </GitActionButton>
+                </div>
               </div>
-            </div>
+                          </div>
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -352,6 +325,9 @@
                 >
                   移除
                 </el-button>
+                <div class="home-task-config-divider">
+                  <span class="home-task-config-divider__text">Git项目节点</span>
+                </div>
                 <el-row :gutter="12">
                   <el-col :xs="24" :sm="12" :md="12">
                     <el-form-item label="Git仓库" label-width="72px">
@@ -399,6 +375,58 @@
                     </el-form-item>
                   </el-col>
                   <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="Db" label-width="72px">
+                      <el-select
+                        v-model="cfg.mysql_id"
+                        clearable
+                        filterable
+                        style="width: 100%"
+                        placeholder="选择Db配置（可选）"
+                        :loading="homeTaskMysqlLoading"
+                      >
+                        <el-option
+                          v-for="item in homeTaskMysqlList"
+                          :key="item.id"
+                          :label="item.name"
+                          :value="Number(item.id)"
+                        />
+                      </el-select>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="分支名" label-width="72px">
+                      <div style="display: flex; gap: 8px; width: 100%;">
+                        <el-input
+                          v-model="cfg.branch_name"
+                          clearable
+                          placeholder="输入或AI生成分支名"
+                        />
+                        <el-button
+                          class="home-task-ai-btn"
+                          :loading="cfg._branchGenerating"
+                          @click="generateBranchName(cfgIdx)"
+                        >
+                          AI生成
+                        </el-button>
+                      </div>
+                    </el-form-item>
+                  </el-col>
+                                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="规则入口" label-width="72px">
+                      <el-input
+                        v-model="cfg.rule_entry_file"
+                        clearable
+                        style="width: 100%"
+                        placeholder="规则入口文件路径（可选）"
+                      />
+                    </el-form-item>
+                  </el-col>
+</el-row>
+                <div class="home-task-config-divider">
+                  <span class="home-task-config-divider__text">接口开发节点</span>
+                </div>
+                <el-row :gutter="12">
+                  <el-col :xs="24" :sm="12" :md="12">
                     <el-form-item label="接口集合" label-width="72px">
                       <el-select
                         v-model="cfg.collection_id"
@@ -438,67 +466,13 @@
                       </el-select>
                     </el-form-item>
                   </el-col>
-                  <el-col :xs="24" :sm="12" :md="12">
-                    <el-form-item label="Db" label-width="72px">
-                      <el-select
-                        v-model="cfg.mysql_id"
-                        clearable
-                        filterable
-                        style="width: 100%"
-                        placeholder="选择Db配置（可选）"
-                        :loading="homeTaskMysqlLoading"
-                      >
-                        <el-option
-                          v-for="item in homeTaskMysqlList"
-                          :key="item.id"
-                          :label="item.name"
-                          :value="Number(item.id)"
-                        />
-                      </el-select>
-                    </el-form-item>
-                  </el-col>
-                  <el-col :xs="24" :sm="12" :md="12">
-                    <el-form-item label="本地目录" label-width="72px">
-                      <el-input
-                        v-model="cfg.local_dir"
-                        clearable
-                        style="width: 100%"
-                        placeholder="输入本地项目目录路径（可选）"
-                      />
-                    </el-form-item>
-                  </el-col>
-                  <el-col :xs="24" :sm="12" :md="12">
-                    <el-form-item label="父分支" label-width="72px">
-                      <el-input
-                        v-model="cfg.parent_branch"
-                        clearable
-                        style="width: 100%"
-                        placeholder="输入父分支名称（可选）"
-                      />
-                    </el-form-item>
-                  </el-col>
                 </el-row>
+                <div class="home-task-config-divider">
+                  <span class="home-task-config-divider__text">自定义网页</span>
+                </div>
                 <el-row :gutter="12">
                   <el-col :xs="24" :sm="12" :md="12">
-                    <el-form-item label="分支名" label-width="72px">
-                      <div style="display: flex; gap: 8px; width: 100%;">
-                        <el-input
-                          v-model="cfg.branch_name"
-                          clearable
-                          placeholder="输入或AI生成分支名"
-                        />
-                        <el-button
-                          class="home-task-ai-btn"
-                          :loading="cfg._branchGenerating"
-                          @click="generateBranchName(cfgIdx)"
-                        >
-                          AI生成
-                        </el-button>
-                      </div>
-                    </el-form-item>
-                  </el-col>
-                  <el-col :xs="24" :sm="12" :md="12">
-                    <el-form-item label="自定义网页" label-width="72px">
+                    <el-form-item label="网页" label-width="72px">
                       <el-select
                         v-model="cfg.smart_link_id"
                         clearable
@@ -509,10 +483,10 @@
                         @change="handleDevConfigSmartLinkChange(cfgIdx)"
                       >
                         <el-option
-                          v-for="item in homeTaskSmartLinkList"
-                          :key="item.id"
-                          :label="item.name"
-                          :value="Number(item.id)"
+                              v-for="item in homeTaskSmartLinkList"
+                              :key="item.id"
+                              :label="item.name"
+                              :value="Number(item.id)"
                         />
                       </el-select>
                     </el-form-item>
@@ -529,16 +503,14 @@
                         @change="handleDevConfigSmartLinkLabelChange(cfgIdx)"
                       >
                         <el-option
-                          v-for="link in getDevConfigSmartLinkLabels(cfgIdx)"
-                          :key="link.label"
-                          :label="link.label"
-                          :value="link.label"
+                              v-for="link in getDevConfigSmartLinkLabels(cfgIdx)"
+                              :key="link.label"
+                              :label="link.label"
+                              :value="link.label"
                         />
                       </el-select>
                     </el-form-item>
                   </el-col>
-                </el-row>
-                <el-row :gutter="12">
                   <el-col :xs="24" :sm="12" :md="12">
                     <el-form-item label="账号" label-width="72px">
                       <el-select
@@ -550,10 +522,10 @@
                         :disabled="!cfg.smart_link_label"
                       >
                         <el-option
-                          v-for="acct in getDevConfigSmartLinkAccounts(cfgIdx)"
-                          :key="acct.user_name"
-                          :label="acct.user_name"
-                          :value="acct.user_name"
+                              v-for="acct in getDevConfigSmartLinkAccounts(cfgIdx)"
+                              :key="acct.user_name"
+                              :label="acct.user_name"
+                              :value="acct.user_name"
                         />
                       </el-select>
                     </el-form-item>
@@ -658,7 +630,7 @@ function createHomeTaskDefaultForm() {
     task_status: HOME_TASK_STATUS_TODO,
     start_date: getTodayDateText(),
     tapd_url: '',
-    dev_configs: [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', mysql_id: '', local_dir: '', parent_branch: '', branch_name: '', _branchGenerating: false, smart_link_id: '', smart_link_label: '', smart_link_account: '' }],
+    dev_configs: [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', mysql_id: '', local_dir: '', parent_branch: '', branch_name: '', rule_entry_file: '', _branchGenerating: false, smart_link_id: '', smart_link_label: '', smart_link_account: '' }],
   }
 }
 
@@ -942,6 +914,7 @@ export default {
         cfg.mysql_id = Number(lastCfg.mysql_id || 0) || ''
         cfg.local_dir = String(lastCfg.local_dir || '')
         cfg.parent_branch = String(lastCfg.parent_branch || '')
+        cfg.rule_entry_file = String(lastCfg.rule_entry_file || '')
         cfg.smart_link_id = Number(lastCfg.smart_link_id || 0) || ''
         cfg.smart_link_label = String(lastCfg.smart_link_label || '')
         cfg.smart_link_account = String(lastCfg.smart_link_account || '')
@@ -987,7 +960,7 @@ export default {
     },
 
     addDevConfig() {
-      this.homeTaskForm.dev_configs.push({ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '', parent_branch: '', branch_name: '', _branchGenerating: false, smart_link_id: '', smart_link_label: '', smart_link_account: '' })
+      this.homeTaskForm.dev_configs.push({ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '', parent_branch: '', branch_name: '', rule_entry_file: '', _branchGenerating: false, smart_link_id: '', smart_link_label: '', smart_link_account: '' })
     },
     removeDevConfig(idx) {
       this.homeTaskForm.dev_configs.splice(idx, 1)
@@ -1051,6 +1024,7 @@ export default {
           local_dir: String(cfg.local_dir || ''),
           parent_branch: String(cfg.parent_branch || ''),
           branch_name: String(cfg.branch_name || ''),
+          rule_entry_file: String(cfg.rule_entry_file || ''),
           smart_link_id: Number(cfg.smart_link_id || 0) || '',
           smart_link_label: String(cfg.smart_link_label || ''),
           smart_link_account: String(cfg.smart_link_account || ''),
@@ -1075,6 +1049,7 @@ export default {
             local_dir: '',
             parent_branch: '',
             branch_name: '',
+            rule_entry_file: '',
             smart_link_id: '',
             smart_link_label: '',
             smart_link_account: '',
@@ -1082,7 +1057,7 @@ export default {
         }
       }
       if (devConfigs.length === 0) {
-        devConfigs = [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '', parent_branch: '', branch_name: '', _branchGenerating: false, smart_link_id: '', smart_link_label: '', smart_link_account: '' }]
+        devConfigs = [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '', parent_branch: '', branch_name: '', rule_entry_file: '', _branchGenerating: false, smart_link_id: '', smart_link_label: '', smart_link_account: '' }]
       }
       this.homeTaskForm = {
         id: Number(task.id || 0),
@@ -1281,7 +1256,7 @@ export default {
         return
       }
       const validConfigs = this.homeTaskForm.dev_configs
-        .filter(cfg => Number(cfg.git_id || 0) > 0 || Number(cfg.collection_id || 0) > 0 || Number(cfg.docker_id || 0) > 0 || Number(cfg.mysql_id || 0) > 0 || String(cfg.local_dir || '').trim() !== '' || String(cfg.parent_branch || '').trim() !== '' || String(cfg.branch_name || '').trim() !== '' || Number(cfg.smart_link_id || 0) > 0)
+        .filter(cfg => Number(cfg.git_id || 0) > 0 || Number(cfg.collection_id || 0) > 0 || Number(cfg.docker_id || 0) > 0 || Number(cfg.mysql_id || 0) > 0 || String(cfg.local_dir || '').trim() !== '' || String(cfg.parent_branch || '').trim() !== '' || String(cfg.branch_name || '').trim() !== '' || String(cfg.rule_entry_file || '').trim() !== '' || Number(cfg.smart_link_id || 0) > 0)
         .map(cfg => ({
           git_id: Number(cfg.git_id || 0),
           collection_id: Number(cfg.collection_id || 0),
@@ -1291,6 +1266,7 @@ export default {
           local_dir: String(cfg.local_dir || '').trim(),
           parent_branch: String(cfg.parent_branch || '').trim(),
           branch_name: String(cfg.branch_name || '').trim(),
+          rule_entry_file: String(cfg.rule_entry_file || '').trim(),
           smart_link_id: Number(cfg.smart_link_id || 0),
           smart_link_label: String(cfg.smart_link_label || '').trim(),
           smart_link_account: String(cfg.smart_link_account || '').trim(),

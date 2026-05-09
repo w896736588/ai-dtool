@@ -30,6 +30,7 @@ type DevConfig struct {
 	LocalDir         string `json:"local_dir"`
 	ParentBranch     string `json:"parent_branch"`
 	BranchName       string `json:"branch_name"`
+	RuleEntryFile    string `json:"rule_entry_file"`
 	SmartLinkID      int    `json:"smart_link_id"`
 	SmartLinkLabel   string `json:"smart_link_label"`
 	SmartLinkAccount string `json:"smart_link_account"`

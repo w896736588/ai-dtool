@@ -337,6 +337,35 @@
   opacity: 0.7;
 }
 
+.home-task-config-divider {
+  display: flex;
+  align-items: center;
+  margin: 8px 0 12px;
+  gap: 8px;
+}
+
+.home-task-config-divider::before,
+.home-task-config-divider::after {
+  content: '';
+  height: 1px;
+  background: #dce3d6;
+}
+
+.home-task-config-divider::before {
+  width: 16px;
+}
+
+.home-task-config-divider::after {
+  flex: 1;
+}
+
+.home-task-config-divider__text {
+  font-size: 12px;
+  color: #7a8974;
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+}
+
 .home-task-dialog__footer {
   display: flex;
   justify-content: flex-end;
