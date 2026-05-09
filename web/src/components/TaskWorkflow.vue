@@ -49,7 +49,69 @@
       </section>
 
       <section class="task-workflow-content">
-        <div v-if="activeNode === 'requirement-fetch'" class="task-workflow-tab">
+        <div v-if="activeNode === 'task-config'" class="task-workflow-tab">
+          <div class="task-workflow-card task-workflow-config-card">
+            <div class="task-workflow-card__header">
+              <div class="task-workflow-card__title">任务配置</div>
+            </div>
+            <div class="task-workflow-config-content">
+              <div class="task-workflow-config-section">
+                <div class="task-workflow-config-section__title">基本信息</div>
+                <el-descriptions :column="2" border size="small">
+                  <el-descriptions-item label="任务名称">{{ homeTask.name || '-' }}</el-descriptions-item>
+                  <el-descriptions-item label="任务状态">
+                    <el-tag size="small" effect="light" :type="getTaskStatusTagType(homeTask.task_status)">{{ homeTask.task_status || '-' }}</el-tag>
+                    <el-dropdown trigger="click" @command="handleTaskStatusChange" style="margin-left: 8px;">
+                      <el-button size="small" :loading="statusUpdating" text type="primary">
+                        切换状态
+                      </el-button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item
+                            v-for="status in taskStatusOptions"
+                            :key="status"
+                            :command="status"
+                            :disabled="homeTask.task_status === status"
+                          >
+                            {{ status }}
+                          </el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
+                  </el-descriptions-item>
+                  <el-descriptions-item label="开始日期">{{ homeTask.start_time_desc || '-' }}</el-descriptions-item>
+                  <el-descriptions-item label="TAPD地址">
+                    <a v-if="homeTask.tapd_url" :href="homeTask.tapd_url" target="_blank" class="task-workflow-config-link">{{ homeTask.tapd_url }}</a>
+                    <span v-else>-</span>
+                  </el-descriptions-item>
+                  <el-descriptions-item label="使用工作流程">{{ Number(homeTask.use_workflow || 0) === 1 ? '是' : '否' }}</el-descriptions-item>
+                  <el-descriptions-item label="最后操作">{{ homeTask.last_operated_at_desc || '-' }}</el-descriptions-item>
+                </el-descriptions>
+              </div>
+              <div v-if="parsedTaskDevConfigs.length > 0" class="task-workflow-config-section">
+                <div class="task-workflow-config-section__title">开发项目配置</div>
+                <div v-for="(cfg, idx) in parsedTaskDevConfigs" :key="idx" class="task-workflow-config-dev">
+                  <div v-if="parsedTaskDevConfigs.length > 1" class="task-workflow-config-dev__index">配置 #{{ idx + 1 }}</div>
+                  <el-descriptions :column="2" border size="small">
+                    <el-descriptions-item label="Git仓库">{{ getTaskConfigName('git', cfg.git_id) }}</el-descriptions-item>
+                    <el-descriptions-item label="Docker">{{ getTaskConfigName('docker', cfg.docker_id) }}</el-descriptions-item>
+                    <el-descriptions-item label="Db">{{ getTaskConfigName('mysql', cfg.mysql_id) }}</el-descriptions-item>
+                    <el-descriptions-item label="接口集合">{{ getTaskConfigApiLabel(cfg) }}</el-descriptions-item>
+                    <el-descriptions-item label="本地目录">{{ cfg.local_dir || '-' }}</el-descriptions-item>
+                    <el-descriptions-item label="父分支">{{ cfg.parent_branch || '-' }}</el-descriptions-item>
+                    <el-descriptions-item label="分支名">{{ cfg.branch_name || '-' }}</el-descriptions-item>
+                    <el-descriptions-item label="规则入口">{{ cfg.rule_entry_file || '-' }}</el-descriptions-item>
+                    <el-descriptions-item label="自定义网页">{{ getTaskConfigName('smart_link', cfg.smart_link_id) }}</el-descriptions-item>
+                    <el-descriptions-item label="网页标签">{{ cfg.smart_link_label || '-' }}</el-descriptions-item>
+                    <el-descriptions-item label="账号">{{ cfg.smart_link_account || '-' }}</el-descriptions-item>
+                  </el-descriptions>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="activeNode === 'requirement-fetch'" class="task-workflow-tab">
           <div class="task-workflow-card">
             <div class="task-workflow-card__header">
               <div class="task-workflow-card__title">抓取 TAPD 需求</div>
@@ -245,8 +307,14 @@ import { HomeFilled } from '@element-plus/icons-vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
 import taskWorkflowApi from '@/utils/base/task_workflow'
+import homeTaskApi from '@/utils/base/home_task'
 import baseUtils from '@/utils/base'
 import sseDistribute from '@/utils/base/sse_distribute'
+import gitApi from '@/utils/base/git'
+import mysqlSetApi from '@/utils/base/mysql_set'
+import apiManagement from '@/utils/base/api'
+import dockerApi from '@/utils/base/compose'
+import smartLinkSetApi from '@/utils/base/smart_link_set'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 
@@ -256,7 +324,29 @@ const PROMPT_EDITOR_TOOLBARS = [
   'codeRow', 'table', 'preview', 'fullscreen',
 ]
 
+const TASK_STATUS_TODO = '待开始'
+const TASK_STATUS_DEVELOPING = '开发中'
+const TASK_STATUS_SELF_TESTING = '自测中'
+const TASK_STATUS_SELF_TESTED = '自测完'
+const TASK_STATUS_PENDING_INTEGRATION = '待对接'
+const TASK_STATUS_INTEGRATING = '对接中'
+const TASK_STATUS_TESTING = '测试中'
+const TASK_STATUS_RELEASING = '上线中'
+const TASK_STATUS_ONLINE = '已上线'
+const TASK_STATUS_OPTIONS = [
+  TASK_STATUS_TODO,
+  TASK_STATUS_DEVELOPING,
+  TASK_STATUS_SELF_TESTING,
+  TASK_STATUS_SELF_TESTED,
+  TASK_STATUS_PENDING_INTEGRATION,
+  TASK_STATUS_INTEGRATING,
+  TASK_STATUS_TESTING,
+  TASK_STATUS_RELEASING,
+  TASK_STATUS_ONLINE,
+]
+
 const WORKFLOW_NODES = [
+  { key: 'task-config', label: '任务配置', desc: '查看当前任务的所有配置信息' },
   { key: 'requirement-fetch', label: '1.抓取TAPD需求', desc: '自动登录和解析tapd需求到知识片段，转为markdown格式供AI解析' },
   { key: 'requirement', label: '2.需求分析', desc: '编写提示词，AI自动结合数据库和代码分析需求，形成开发文档' },
   { key: 'design', label: '3.开发执行', desc: '编写提示词，AI自动结合数据库，代码和开发文档进行开发' },
@@ -291,6 +381,14 @@ export default {
       promptRestoring: '',
       requirementFetchActiveTab: 'tapd-fetch',
       promptEditorToolbars: PROMPT_EDITOR_TOOLBARS,
+      taskStatusOptions: TASK_STATUS_OPTIONS,
+      statusUpdating: false,
+      taskConfigGitRepoList: [],
+      taskConfigDockerList: [],
+      taskConfigMysqlList: [],
+      taskConfigCollectionList: [],
+      taskConfigSmartLinkList: [],
+      taskConfigApiFolderMap: {},
     }
   },
   computed: {
@@ -318,9 +416,20 @@ export default {
     requirementFragmentTitle() {
       return String(this.requirementFragment.title || '').trim() || (this.requirementFragmentId ? `#${this.requirementFragmentId}` : '-')
     },
+    parsedTaskDevConfigs() {
+      const raw = this.homeTask.dev_configs
+      if (!raw) return []
+      try {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+        return Array.isArray(parsed) ? parsed : []
+      } catch {
+        return []
+      }
+    },
   },
   mounted() {
     this.loadWorkflowPage()
+    this.loadTaskConfigLookupData()
     window.addEventListener('keydown', this.handleCtrlS)
   },
   beforeUnmount() {
@@ -328,6 +437,17 @@ export default {
     this.unregisterWorkflowSse()
   },
   watch: {
+    parsedTaskDevConfigs: {
+      handler(configs) {
+        for (const cfg of configs) {
+          const colId = Number(cfg.collection_id || 0)
+          if (colId > 0) {
+            this.loadTaskConfigApiFoldersForCollection(colId)
+          }
+        }
+      },
+      immediate: true,
+    },
     '$route.params.taskId'() {
       this.requirementFetchAutoTriggered = false
       this.requirementFetchLogs = []
@@ -651,6 +771,109 @@ export default {
       }
       return new Date(value * 1000).toLocaleString()
     },
+    loadTaskConfigLookupData() {
+      gitApi.GitConfigList({}, (response) => {
+        if (response && response.ErrCode === 0) {
+          this.taskConfigGitRepoList = Array.isArray(response.Data?.git_list) ? response.Data.git_list : []
+        }
+      })
+      mysqlSetApi.MysqlList((response) => {
+        if (response && response.ErrCode === 0) {
+          this.taskConfigMysqlList = Array.isArray(response.Data) ? response.Data : []
+        }
+      })
+      apiManagement.CollectionListBasic({}, (response) => {
+        if (response && response.ErrCode === 0) {
+          this.taskConfigCollectionList = Array.isArray(response.Data?.list) ? response.Data.list : []
+        }
+      })
+      dockerApi.DockerComposeList({}, (response) => {
+        if (response && response.ErrCode === 0) {
+          this.taskConfigDockerList = Array.isArray(response.Data?.list) ? response.Data.list : []
+        }
+      })
+      smartLinkSetApi.SmartLinkList((response) => {
+        if (response && response.ErrCode === 0) {
+          this.taskConfigSmartLinkList = Array.isArray(response.Data?.smart_link_list) ? response.Data.smart_link_list : []
+        }
+      })
+    },
+    loadTaskConfigApiFoldersForCollection(collectionId) {
+      if (!collectionId) return
+      if (this.taskConfigApiFolderMap[collectionId]) return
+      apiManagement.CollectionFoldersBasic({ collection_id: collectionId }, (response) => {
+        if (response && response.ErrCode === 0) {
+          const list = Array.isArray(response.Data?.list) ? response.Data.list : []
+          this.taskConfigApiFolderMap = { ...this.taskConfigApiFolderMap, [collectionId]: list }
+        }
+      })
+    },
+    getTaskConfigName(type, id) {
+      const numId = Number(id || 0)
+      if (numId <= 0) return '-'
+      if (type === 'git') {
+        const item = this.taskConfigGitRepoList.find(r => Number(r.id) === numId)
+        return item ? item.name : String(id)
+      }
+      if (type === 'docker') {
+        const item = this.taskConfigDockerList.find(d => Number(d.id) === numId)
+        return item ? item.name : String(id)
+      }
+      if (type === 'mysql') {
+        const item = this.taskConfigMysqlList.find(m => Number(m.id) === numId)
+        return item ? item.name : String(id)
+      }
+      if (type === 'smart_link') {
+        const item = this.taskConfigSmartLinkList.find(s => Number(s.id) === numId)
+        return item ? item.name : String(id)
+      }
+      return String(id)
+    },
+    getTaskConfigApiLabel(cfg) {
+      const colId = Number(cfg.collection_id || 0)
+      if (colId <= 0) return '-'
+      const col = this.taskConfigCollectionList.find(c => Number(c.id) === colId)
+      if (!col) return String(cfg.collection_id)
+      let label = col.name
+      const dirId = Number(cfg.dir_id || 0)
+      if (dirId > 0) {
+        const folders = this.taskConfigApiFolderMap[colId] || []
+        const dir = folders.find(d => Number(d.id) === dirId)
+        if (dir) {
+          label += '/' + dir.name
+        }
+      }
+      return label
+    },
+    handleTaskStatusChange(newStatus) {
+      if (this.statusUpdating || this.taskId <= 0) return
+      if (!newStatus || this.homeTask.task_status === newStatus) return
+      this.statusUpdating = true
+      homeTaskApi.HomeTaskStatusQuickUpdate(this.taskId, newStatus, (response) => {
+        this.statusUpdating = false
+        if (!(response && response.ErrCode === 0)) {
+          this.$helperNotify.error(response?.ErrMsg || '状态切换失败')
+          return
+        }
+        this.$helperNotify.success('状态已切换')
+        this.homeTask = { ...this.homeTask, task_status: newStatus }
+      })
+    },
+    getTaskStatusTagType(taskStatus) {
+      if (taskStatus === TASK_STATUS_DEVELOPING) {
+        return 'success'
+      }
+      if (taskStatus === TASK_STATUS_SELF_TESTING || taskStatus === TASK_STATUS_TESTING) {
+        return 'warning'
+      }
+      if (taskStatus === TASK_STATUS_TODO) {
+        return 'info'
+      }
+      if (taskStatus === TASK_STATUS_ONLINE) {
+        return 'info'
+      }
+      return ''
+    },
   },
 }
 </script>
@@ -752,7 +975,7 @@ export default {
 
 .task-workflow-nodes {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
   flex-shrink: 0;
 }
@@ -1060,6 +1283,44 @@ export default {
   justify-content: center;
   color: #909399;
   font-size: 13px;
+}
+
+.task-workflow-config-card {
+  overflow: auto;
+}
+
+.task-workflow-config-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.task-workflow-config-section__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 8px;
+}
+
+.task-workflow-config-dev {
+  margin-bottom: 12px;
+}
+
+.task-workflow-config-dev__index {
+  font-size: 13px;
+  font-weight: 600;
+  color: #3a7a3a;
+  margin-bottom: 6px;
+}
+
+.task-workflow-config-link {
+  color: #3a7a3a;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.task-workflow-config-link:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 1100px) {

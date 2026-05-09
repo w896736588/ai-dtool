@@ -320,6 +320,7 @@
                 :inactive-value="HOME_TASK_USE_WORKFLOW_NO"
                 active-text="是"
                 inactive-text="否"
+                style="--el-switch-on-color: #3a7a3a; --el-color-primary: #3a7a3a"
               />
             </el-form-item>
           </el-col>
