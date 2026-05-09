@@ -412,21 +412,21 @@ func splitRunPorts(raw string) []string {
 	return ret
 }
 
-func resolveRunPorts(cfg *viper.Viper) ([]string, string) {
+func resolveRunPorts(cfg *viper.Viper) ([]string, []string) {
 	apiPorts := splitRunPorts(cfg.GetString(`run.api_port`))
 	if len(apiPorts) == 0 {
 		apiPorts = splitRunPorts(cfg.GetString(`run.ports`))
 	}
 
-	ssePort := strings.TrimSpace(cfg.GetString(`run.sse_port`))
-	if ssePort == `` && len(apiPorts) > 0 {
-		ssePort = apiPorts[0]
+	ssePorts := splitRunPorts(cfg.GetString(`run.sse_port`))
+	if len(ssePorts) == 0 && len(apiPorts) > 0 {
+		ssePorts = []string{apiPorts[0]}
 	}
-	return apiPorts, ssePort
+	return apiPorts, ssePorts
 }
 
-func mergeRunPorts(apiPorts []string, ssePort string) []string {
-	ret := make([]string, 0, len(apiPorts)+1)
+func mergeRunPorts(apiPorts []string, ssePorts []string) []string {
+	ret := make([]string, 0, len(apiPorts)+len(ssePorts))
 	seen := make(map[string]bool)
 	for _, port := range apiPorts {
 		port = strings.TrimSpace(port)
@@ -436,20 +436,23 @@ func mergeRunPorts(apiPorts []string, ssePort string) []string {
 		seen[port] = true
 		ret = append(ret, port)
 	}
-	ssePort = strings.TrimSpace(ssePort)
-	if ssePort != `` && !seen[ssePort] {
-		ret = append(ret, ssePort)
+	for _, ssePort := range ssePorts {
+		ssePort = strings.TrimSpace(ssePort)
+		if ssePort != `` && !seen[ssePort] {
+			seen[ssePort] = true
+			ret = append(ret, ssePort)
+		}
 	}
 	return ret
 }
 
 func initGin() {
 	host := component.ConfigViper.GetString(`run.host`)
-	apiPorts, ssePort := resolveRunPorts(component.ConfigViper)
-	ports := mergeRunPorts(apiPorts, ssePort)
+	apiPorts, ssePorts := resolveRunPorts(component.ConfigViper)
+	ports := mergeRunPorts(apiPorts, ssePorts)
 	component.EnvClient.Ports = ports
 	component.EnvClient.ApiPorts = apiPorts
-	component.EnvClient.SsePort = ssePort
+	component.EnvClient.SsePorts = ssePorts
 	gin.DefaultWriter = io.Discard
 	if err := controller.CleanupPortsByPreference(ports, []string{AppName}); err != nil {
 		gstool.FmtPrintlnLogTime(`启动前端口清理失败 %s`, err.Error())
@@ -459,7 +462,7 @@ func initGin() {
 			gstool.FmtPrintlnLogTime(`端口已被占用 %s`, host+`:`+port)
 			return
 		}
-		tGin := &p_gin.Gin{}
+		tGin := &p_gin.Gin{Port: port}
 		tGin.SetMode(gin.DebugMode)
 		tGin.GinInit(host, port)
 		tGin.GinSetAllowCrossDomain()
@@ -470,10 +473,10 @@ func initGin() {
 			tGin.GinStatic(`/css`, component.EnvClient.WebConfig.WebPath+`/css`)
 			tGin.GinLoadHTMLFiles(component.EnvClient.WebConfig.WebPath + `/index.html`)
 			tGin.GinGet(`/`, func(context *gin.Context) {
-				cfg := gstool.JsonEncode(map[string]string{
-					"port":     port,
-					"host":     host,
-					"sse_port": ssePort,
+				cfg := gstool.JsonEncode(map[string]any{
+					"port":      port,
+					"host":      host,
+					"sse_ports": ssePorts,
 				})
 				context.HTML(200, `index.html`, gin.H{"serverConfig": template.JS(string(cfg))})
 			})

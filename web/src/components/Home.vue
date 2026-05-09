@@ -631,7 +631,7 @@ export default {
           return
         }
         const data = response.Data || {}
-        _that.initSseAfterLoginStatus(data.sse_port)
+        _that.initSseAfterLoginStatus(data.sse_ports)
         // enabled=false：未启用密码保护，直接进入
         if (!data.enabled) {
           return
@@ -644,9 +644,9 @@ export default {
         _that.showSafeLogin()
       })
     },
-    initSseAfterLoginStatus: function (ssePort) {
-      sseDistribute.Create(ssePort)
-      sseDistribute.ReceiveMessage()
+    initSseAfterLoginStatus: function (ssePorts) {
+      // sse_distribute 内部会查询可用端口，无可用时自动弹窗
+      sseDistribute.ConnectToAvailablePort()
     },
     // 显示 Safe 登录弹窗
     showSafeLogin: function (options) {

@@ -6,12 +6,10 @@ import (
 	"dev_tool/internal/app/dtool/middleware"
 	"dev_tool/internal/pkg/p_define"
 	"dev_tool/internal/pkg/p_gin"
-	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
@@ -508,39 +506,14 @@ func apiUse(tGin *p_gin.Gin) {
 		}))
 		sse.UnRegister()
 	})
-	openFunc := func(urlValues url.Values, stopC chan int, c *gin.Context) (*gsgin.Sse, error) {
-		clientId := urlValues.Get(`client_id`)
-		sseC := gsgin.SseGetByClientId(clientId)
-		if sseC != nil {
-			return nil, errors.New(`已存在链接`)
-		}
-		sse := gsgin.SseRegister(clientId, stopC, c)
-		//发送一个事件 前端才会建立连接
-		_ = sse.SendToChan(define.SseConnect)
-		// 中文注释：Shell 连接状态复用普通 SSE 通道推送，无需单独订阅 shell_connections client_id。
-		// English comment: Shell connection status now rides on the normal SSE channel for this client.
-		controller.BindShellConnectionsSSE(sse, stopC, 5*time.Second)
-		// 中文注释：异步任务状态复用普通 SSE 通道推送，页面加载时初始化一次，后续后端主动推送。
-		// English comment: Async task status now rides on the normal SSE channel for this client.
-		controller.BindAsyncTasksSSE(sse, stopC, 5*time.Second)
-		// 中文注释：记忆库状态复用普通 SSE 通道推送，替代原来的轮询方式。
-		// English comment: Memory fragment status now rides on the normal SSE channel for this client.
-		controller.BindMemoryFragmentStatusSSE(sse, stopC, 10*time.Second)
-		// 中文注释：本地客户端状态复用普通 SSE 通道推送，替代前端 5s 轮询。
-		// English comment: Smart-link client status now rides on the normal SSE channel for this client.
-		controller.BindSmartLinkClientStatusSSE(sse, stopC, 5*time.Second)
-		// 中文注释：Git 待提交状态及倒计时复用普通 SSE 通道推送，替代前端 10s 轮询。
-		// English comment: Git pending status and countdown now ride on the normal SSE channel for this client.
-		controller.BindGitPendingStatusSSE(sse, stopC, 5*time.Second)
-		// 中文注释：SSE 连接数定时推送，前端右下角展示连接数指示器。
-		// English comment: Periodically push SSE connection count so the frontend can display the indicator.
-		controller.BindConnectionCountSSE(sse, stopC, 5*time.Second)
-		return sse, nil
+	// SSE 可用端口查询接口（所有 gin 实例均可访问）
+	tGin.GinPost(`/api/SseAvailablePort`, controller.SseAvailablePort)
+	// 判断当前 gin 实例是否是 SSE 端口，仅 SSE 端口才注册 /sse 路由
+	if controller.IsSsePort(tGin.Port) {
+		openFunc := controller.BuildSseOpenFunc(tGin.Port)
+		closeFunc := controller.BuildSseCloseFunc()
+		tGin.SseRoute(`/sse`, openFunc, closeFunc)
 	}
-	closeFunc := func(sse *gsgin.Sse) {
-		sse.UnRegister()
-	}
-	tGin.SseRoute(`/sse`, openFunc, closeFunc)
 }
 
 func screenshotRouter(tGin *p_gin.Gin) {

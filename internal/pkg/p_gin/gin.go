@@ -12,6 +12,7 @@ import (
 type Gin struct {
 	gin   *gsgin.GSGin //API接口
 	IsRun bool
+	Port  string // 监听端口号
 }
 
 func (h *Gin) GinInit(host, port string) *gsgin.GSGin {

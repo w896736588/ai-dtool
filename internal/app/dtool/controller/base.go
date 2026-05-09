@@ -51,16 +51,16 @@ func getConfiguredAPIPorts(cfg *viper.Viper) []string {
 	return splitConfiguredPorts(cfg.GetString(`run.ports`))
 }
 
-func getConfiguredSsePort(cfg *viper.Viper) string {
-	ssePort := strings.TrimSpace(cfg.GetString(`run.sse_port`))
-	if ssePort != `` {
-		return ssePort
+func getConfiguredSsePorts(cfg *viper.Viper) []string {
+	ssePorts := splitConfiguredPorts(cfg.GetString(`run.sse_port`))
+	if len(ssePorts) > 0 {
+		return ssePorts
 	}
 	apiPorts := getConfiguredAPIPorts(cfg)
 	if len(apiPorts) == 0 {
-		return ``
+		return nil
 	}
-	return apiPorts[0]
+	return []string{apiPorts[0]}
 }
 
 func buildLoginStatusData(cfg *viper.Viper, enabled bool, loggedIn bool, expireAt int64) map[string]any {
@@ -69,7 +69,7 @@ func buildLoginStatusData(cfg *viper.Viper, enabled bool, loggedIn bool, expireA
 		`logged_in`: loggedIn,
 		`expire_at`: expireAt,
 		`api_port`:  getConfiguredAPIPorts(cfg),
-		`sse_port`:  getConfiguredSsePort(cfg),
+		`sse_ports`: getConfiguredSsePorts(cfg),
 	}
 }
 
@@ -79,7 +79,7 @@ func buildLoginData(cfg *viper.Viper, enabled bool, token string, expireAt int64
 		`token`:     token,
 		`expire_at`: expireAt,
 		`api_port`:  getConfiguredAPIPorts(cfg),
-		`sse_port`:  getConfiguredSsePort(cfg),
+		`sse_ports`: getConfiguredSsePorts(cfg),
 		`local_ip`:  GetLANIP(),
 	}
 }

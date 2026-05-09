@@ -3,6 +3,7 @@ const SseClientId = 'sse_client_id'
 import t from "@/utils/base/type";
 import base from '@/utils/base'
 import store from "@/utils/base/store"
+import { ElMessageBox } from 'element-plus'
 
 let SseConn = null
 let SseReceiveIdFunc = {}
@@ -10,6 +11,7 @@ let SseReceiveIdFunc = {}
 let sseClientId = ''
 let sseUrl = ''
 let initFromLoginStatusPromise = null
+let sseLimitDialogShown = false
 //全局获取sse 客户端id
 function GetSseClientId(){
     return sseClientId
@@ -20,7 +22,7 @@ function Create(ssePort) {
     }
     const nextClientId = sseClientId || base.GenerateId(SseClientId)
     let params = 'client_id=' + nextClientId + '&token=' + encodeURIComponent(base.GetSafeToken())
-    const sseHost = base.GetSseApiHost()
+    const sseHost = base.GetSseApiHost(ssePort || undefined)
     if (!sseHost) {
         return false
     }
@@ -106,6 +108,40 @@ function Close() {
     SseReceiveIdFunc = {}
 }
 
+// showSseLimitDialog 无可用端口时弹窗确认是否关闭页面，防重复弹出
+function showSseLimitDialog() {
+    if (sseLimitDialogShown) return
+    sseLimitDialogShown = true
+    ElMessageBox.confirm('SSE连接数已超限，无可用端口。是否关闭此页面？', '连接超限', {
+        confirmButtonText: '关闭页面',
+        cancelButtonText: '继续停留',
+        type: 'warning'
+    }).then(() => {
+        window.close()
+    }).catch(() => {})
+}
+
+// fetchAvailableSsePort 调用后端接口获取一个可用的 SSE 端口
+// 返回 Promise<string|null>，null 表示无可用端口
+function fetchAvailableSsePort() {
+    return new Promise(resolve => {
+        base.BasePost('/api/SseAvailablePort', {}, function (response) {
+            if (response.ErrCode !== 0 || !response.Data || !response.Data.sse_ports) {
+                resolve(null)
+                return
+            }
+            const ports = response.Data.sse_ports || []
+            for (let i = 0; i < ports.length; i++) {
+                if (ports[i].available) {
+                    resolve(ports[i].port)
+                    return
+                }
+            }
+            resolve(null)
+        })
+    })
+}
+
 function InitFromLoginStatus(openFunc, errorFunc, closeFunc) {
     if (initFromLoginStatusPromise) {
         return initFromLoginStatusPromise
@@ -117,23 +153,51 @@ function InitFromLoginStatus(openFunc, errorFunc, closeFunc) {
                 return
             }
             const data = response.Data || {}
-            const created = Create(data.sse_port)
-            if (created) {
-                if (openFunc) {
-                    OpenFunc(openFunc)
-                }
-                if (errorFunc) {
-                    ErrorFunc(errorFunc)
-                }
-                if (closeFunc) {
-                    CloseFunc(closeFunc)
-                }
-                ReceiveMessage()
+            // 优先使用后端返回的 sse_ports 数组
+            const ssePorts = data.sse_ports || []
+            if (ssePorts.length === 0) {
+                resolve(false)
+                return
             }
-            resolve(created)
+            connectWithAvailablePort(openFunc, errorFunc, closeFunc, resolve)
         })
     })
     return initFromLoginStatusPromise
+}
+
+// connectWithAvailablePort 查询可用端口并建连
+function connectWithAvailablePort(openFunc, errorFunc, closeFunc, resolve) {
+    fetchAvailableSsePort().then(availablePort => {
+        if (!availablePort) {
+            showSseLimitDialog()
+            if (errorFunc) {
+                errorFunc(new Event('error'))
+            }
+            resolve(false)
+            return
+        }
+        const created = Create(availablePort)
+        if (created) {
+            if (openFunc) {
+                OpenFunc(openFunc)
+            }
+            if (errorFunc) {
+                ErrorFunc(errorFunc)
+            }
+            if (closeFunc) {
+                CloseFunc(closeFunc)
+            }
+            ReceiveMessage()
+        }
+        resolve(created)
+    })
+}
+
+// ConnectToAvailablePort 直接查询可用端口并建连（不重复调 BaseLoginStatus）
+function ConnectToAvailablePort(openFunc, errorFunc, closeFunc) {
+    return new Promise(resolve => {
+        connectWithAvailablePort(openFunc, errorFunc, closeFunc, resolve)
+    })
 }
 
 //获取分发id
@@ -149,6 +213,7 @@ export default {
     Close,
     Create,
     InitFromLoginStatus,
+    ConnectToAvailablePort,
     CloseFunc,
     ReceiveMessage,
     GetSseDistributeId,

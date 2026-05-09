@@ -5,9 +5,9 @@
       v-if="sseConnectionCount > 0"
       class="sse-connection-indicator"
       :style="{ backgroundColor: sseConnectionColor }"
-      :title="'当前 SSE 连接数: ' + sseConnectionCount"
+      :title="'当前 SSE 连接数: ' + sseConnectionCount + '/' + sseConnectionTotal"
     >
-      SSE {{ sseConnectionCount }}
+      SSE {{ sseConnectionCount }}/{{ sseConnectionTotal }}
     </div>
   </div>
 </template>
@@ -23,13 +23,16 @@ export default {
   data() {
     return {
       sseConnectionCount: 0,
+      sseConnectionTotal: 0,
     }
   },
   computed: {
     sseConnectionColor() {
-      const count = this.sseConnectionCount
-      if (count >= 5) return '#F56C6C'
-      if (count === 4) return '#E6A23C'
+      const total = this.sseConnectionTotal
+      if (!total) return '#67C23A'
+      const pct = Math.round((this.sseConnectionCount / total) * 100)
+      if (pct >= 100) return '#F56C6C'
+      if (pct >= 90) return '#E6A23C'
       return '#67C23A'
     },
   },
@@ -47,8 +50,9 @@ export default {
   methods: {
     registerSseConnectionCount() {
       sseDistribute.RegisterReceive(SseConnectionCountId, (data) => {
-        if (typeof data === 'number') {
-          this.sseConnectionCount = data
+        if (data && typeof data === 'object') {
+          this.sseConnectionCount = data.count || 0
+          this.sseConnectionTotal = data.total || 0
         }
       })
     },

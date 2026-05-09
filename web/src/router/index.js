@@ -18,7 +18,7 @@ const router = createRouter({
           components: {
             home: () => import('../components/Dashboard'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: '命令行' },
         },
         {
           path: '/Redis',
@@ -26,7 +26,7 @@ const router = createRouter({
           components: {
             home: () => import('../components/Redis'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: 'Redis' },
         },
         {
           path: '/Supervisor',
@@ -34,7 +34,7 @@ const router = createRouter({
           components: {
             home: () => import('../components/Supervisor'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: 'Supervisor' },
         },
         {
           path: '/Git',
@@ -42,16 +42,15 @@ const router = createRouter({
           components: {
             home: () => import('../components/Git'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: '分支管理' },
         },
         {
           path: '/CommonActions',
           name: 'CommonActions',
           components: {
-            // 独立主菜单页 / Standalone main menu page.
             home: () => import('../components/tools/CommonActions.vue'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: '常用操作' },
         },
         {
           path: '/Variable',
@@ -59,7 +58,7 @@ const router = createRouter({
           components: {
             home: () => import('../components/Variable'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: '自定义脚本' },
         },
         {
           path: '/Link',
@@ -67,7 +66,7 @@ const router = createRouter({
           components: {
             home: () => import('../components/Link'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: '自定义网页' },
         },
         {
           path: '/Set',
@@ -75,7 +74,7 @@ const router = createRouter({
           components: {
             home: () => import('../components/Set'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: '设置' },
         },
         {
           path: '/Tools',
@@ -83,7 +82,7 @@ const router = createRouter({
           components: {
             home: () => import('../components/Tools'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: '工具' },
         },
         {
           path: '/Docker',
@@ -91,7 +90,7 @@ const router = createRouter({
           components: {
             home: () => import('../components/Docker'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: '容器管理' },
         },
         {
           path: '/Markdown',
@@ -99,7 +98,7 @@ const router = createRouter({
           components: {
             home: () => import('../components/Markdown'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: 'Markdown' },
         },
         {
           path: '/MemoryFragment',
@@ -107,7 +106,7 @@ const router = createRouter({
           components: {
             home: () => import('../components/MemoryFragment'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: '知识片段' },
         },
         {
           path: '/shellout',
@@ -115,7 +114,7 @@ const router = createRouter({
           components: {
             home: () => import('../components/ShellOut'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: '日志监控' },
         },
         {
           path: '/Api',
@@ -123,7 +122,7 @@ const router = createRouter({
           components: {
             home: () => import('../components/Api'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: '接口管理' },
         },
         {
           path: '/HomeTask',
@@ -131,7 +130,7 @@ const router = createRouter({
           components: {
             home: () => import('../components/HomeTask'),
           },
-          meta: { keepAlive: true },
+          meta: { keepAlive: true, title: '工作流程' },
         },
       ],
     },
@@ -139,25 +138,25 @@ const router = createRouter({
       path: '/ApiDocument/:folderId',
       name: 'api-document',
       component: () => import('../components/ApiDocumentPage'),
-      meta: { keepAlive: false },
+      meta: { keepAlive: false, title: '接口文档' },
     },
     {
       path: '/TaskWorkflow/:taskId',
       name: 'task-workflow',
       component: () => import('../components/TaskWorkflow.vue'),
-      meta: { keepAlive: false },
+      meta: { keepAlive: false, title: '工作流程' },
     },
     {
       path: '/HomeTaskSetting',
       name: 'home-task-setting',
       component: () => import('../components/HomeTaskSettingPage.vue'),
-      meta: { keepAlive: false },
+      meta: { keepAlive: false, title: '任务设置' },
     },
     {
       path: '/MemoryFragmentShare',
       name: 'memory-fragment-share',
       component: () => import('../components/memory/MemoryFragmentShare.vue'),
-      meta: { keepAlive: false },
+      meta: { keepAlive: false, title: '知识片段分享' },
     },
     {
       path: '/fullpage',
@@ -165,15 +164,16 @@ const router = createRouter({
       mode: 'hash', // 使用 hash 模式 / Use hash mode for local routes.
       component: fullPageShellOut,
       meta: {
-        fullScreen: true, // 全屏页标记 / Full screen page marker.
+        fullScreen: true,
+        title: '日志监控',
       },
     },
   ],
 })
 
-// 全局导航守卫：根据当前路由名称动态设置页面标题
+// 全局导航守卫：根据当前路由的 meta.title 动态设置页面标题
 router.afterEach((to) => {
-  const title = to.name || to.path
+  const title = to.meta?.title || to.name || to.path
   if (title) {
     document.title = title
   }

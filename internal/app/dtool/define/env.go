@@ -45,7 +45,7 @@ type Env struct {
 	PythonCommand      string           // Python 命令 python command / Python executable command
 	Ports              []string         // gin 端口 ports / gin ports
 	ApiPorts           []string         // API 端口 api ports / API ports
-	SsePort            string           // SSE 端口 sse port / SSE port
+	SsePorts           []string         // SSE 端口列表 sse ports / SSE port list
 	ConfigBase         *Base            // 基础配置 base config / base configuration
 	DbConfig           *DbConfig        // 主库配置 main db config / main database configuration
 	LogDbConfig        *DbConfig        // 日志库配置 log db config / log database configuration

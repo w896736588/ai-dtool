@@ -150,7 +150,7 @@ if (shouldInitSse()) {
   sse.InitFromLoginStatus(function (){
     console.log('打开链接')
   }, function (e){
-    console.log('链接错误', e && e.message)
+    // 无可用端口时的弹窗已在 sse_distribute.js 内统一处理
   }, function (){
     console.log('链接关闭')
   })
