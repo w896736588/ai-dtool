@@ -12,8 +12,8 @@
         active-text-color="#3a7a3a"
         background-color="#f5f5f0"
         text-color="#5a5a5a"
-        router
         class="sidebar-menu"
+        @click="onMenuNativeClick"
         @select="handleSelect"
       >
         <el-menu-item index="/Dashboard">
@@ -461,6 +461,7 @@ export default {
       safeLoginChecked: false,
       safeLoginMessage: '',
       menuName: '/Dashboard',
+      menuCtrlKey: false,
       minHeightMap: {},
       showShellMap: ['/Git', '/Consumer', '/WechatKefu'],
       tags: [],
@@ -1158,6 +1159,9 @@ export default {
         }, 500)
       }
     },
+    onMenuNativeClick(event) {
+      this.menuCtrlKey = event.ctrlKey || event.metaKey
+    },
     handleSelect(key, keyPath) {
       if (keyPath[0].indexOf('Doc-') >= 0) {
         return
@@ -1165,7 +1169,15 @@ export default {
       if (keyPath[0].indexOf('Ignore-') >= 0) {
         return;
       }
+      // Ctrl/Cmd+Click: 在新标签页打开
+      if (this.menuCtrlKey) {
+        const resolved = this.$router.resolve(keyPath[0])
+        window.open(resolved.href, '_blank')
+        this.menuCtrlKey = false
+        return
+      }
       this.menuName = keyPath[0]
+      this.$router.push(keyPath[0])
     },
   },
   beforeUnmount() {

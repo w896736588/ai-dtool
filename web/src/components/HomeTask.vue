@@ -1,22 +1,27 @@
 <template>
   <div class="home-task-page">
-    <div class="home-task-page__body">
-      <div class="home-task-panel__header">
-        <div class="home-task-panel__heading">
-          <div class="home-task-panel__title">任务清单</div>
-        </div>
-        <div class="home-task-toolbar__actions">
-          <GitActionButton compact variant="warning" @click="openHomeTaskSettingsPage">
-            设置
-          </GitActionButton>
-          <GitActionButton compact variant="info" :loading="homeTaskGeneratingDailyReport" @click="generateHomeTaskDailyReport">
-            {{ HOME_TASK_DAILY_REPORT_BUTTON_TEXT }}
-          </GitActionButton>
-          <GitActionButton compact @click="openCreateHomeTaskDialog">
-            新增任务
-          </GitActionButton>
-        </div>
+    <div class="home-task-header-card">
+      <div class="home-task-header-title">
+        <svg class="home-task-header-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 11L12 14L22 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M21 12V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V5C3 3.89543 3.89543 3 5 3H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>任务清单</span>
       </div>
+      <div class="home-task-header-actions">
+        <GitActionButton compact variant="warning" @click="openHomeTaskSettingsPage">
+          设置
+        </GitActionButton>
+        <GitActionButton compact variant="info" :loading="homeTaskGeneratingDailyReport" @click="generateHomeTaskDailyReport">
+          {{ HOME_TASK_DAILY_REPORT_BUTTON_TEXT }}
+        </GitActionButton>
+        <GitActionButton compact @click="openCreateHomeTaskDialog">
+          新增任务
+        </GitActionButton>
+      </div>
+    </div>
+
+    <div class="home-task-content-card">
 
       <el-tabs v-model="homeTaskActiveTab" class="home-task-tabs" @tab-change="handleHomeTaskTabChange">
         <el-tab-pane label="活跃中" :name="HOME_TASK_TAB_ACTIVE">
@@ -57,7 +62,7 @@
                             v-if="tag.type === col.key"
                             :content="tag.label"
                             placement="top"
-                            :disabled="tag.label.length <= HOME_TASK_CONFIG_TAG_MAX_LENGTH"
+                            :disabled="tag.type === 'branch_name' || tag.type === 'local_dir' || tag.label.length <= HOME_TASK_CONFIG_TAG_MAX_LENGTH"
                           >
                             <el-tag
                               size="small"
@@ -66,7 +71,7 @@
                               :class="['home-task-config-tag', tag.type === 'branch_name' ? 'home-task-config-tag--copy' : '']"
                               @click.stop="tag.type === 'branch_name' ? copyHomeTaskBranchName(tag.label) : navigateToDevConfig(tag)"
                             >
-                              {{ tag.label.length > HOME_TASK_CONFIG_TAG_MAX_LENGTH ? tag.label.slice(0, HOME_TASK_CONFIG_TAG_MAX_LENGTH) + '...' : tag.label }}
+                              {{ (tag.type === 'branch_name' || tag.type === 'local_dir') ? tag.label : (tag.label.length > HOME_TASK_CONFIG_TAG_MAX_LENGTH ? tag.label.slice(0, HOME_TASK_CONFIG_TAG_MAX_LENGTH) + '...' : tag.label) }}
                             </el-tag>
                           </el-tooltip>
                         </template>
@@ -180,7 +185,7 @@
                             v-if="tag.type === col.key"
                             :content="tag.label"
                             placement="top"
-                            :disabled="tag.label.length <= HOME_TASK_CONFIG_TAG_MAX_LENGTH"
+                            :disabled="tag.type === 'branch_name' || tag.type === 'local_dir' || tag.label.length <= HOME_TASK_CONFIG_TAG_MAX_LENGTH"
                           >
                             <el-tag
                               size="small"
@@ -189,7 +194,7 @@
                               :class="['home-task-config-tag', tag.type === 'branch_name' ? 'home-task-config-tag--copy' : '']"
                               @click.stop="tag.type === 'branch_name' ? copyHomeTaskBranchName(tag.label) : navigateToDevConfig(tag)"
                             >
-                              {{ tag.label.length > HOME_TASK_CONFIG_TAG_MAX_LENGTH ? tag.label.slice(0, HOME_TASK_CONFIG_TAG_MAX_LENGTH) + '...' : tag.label }}
+                              {{ (tag.type === 'branch_name' || tag.type === 'local_dir') ? tag.label : (tag.label.length > HOME_TASK_CONFIG_TAG_MAX_LENGTH ? tag.label.slice(0, HOME_TASK_CONFIG_TAG_MAX_LENGTH) + '...' : tag.label) }}
                             </el-tag>
                           </el-tooltip>
                         </template>
@@ -328,7 +333,7 @@
         <el-row :gutter="12" v-if="homeTaskForm.use_workflow === HOME_TASK_USE_WORKFLOW_YES">
           <el-col :span="24">
             <el-form-item label="开发项目配置">
-              <div v-for="(cfg, cfgIdx) in homeTaskForm.dev_configs" :key="cfgIdx" style="border: 1px solid #e4e7ed; border-radius: 4px; padding: 12px 12px 4px; margin-bottom: 10px; position: relative;">
+              <div v-for="(cfg, cfgIdx) in homeTaskForm.dev_configs" :key="cfgIdx" style="border: 2px solid #c8d5b9; border-radius: 4px; padding: 12px 12px 4px; margin-bottom: 10px; position: relative;">
                 <el-button
                   v-if="homeTaskForm.dev_configs.length > 1"
                   type="danger"
@@ -425,7 +430,27 @@
                       </div>
                     </el-form-item>
                   </el-col>
-                                  <el-col :xs="24" :sm="12" :md="12">
+                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="本地目录" label-width="72px">
+                      <el-input
+                        v-model="cfg.local_dir"
+                        clearable
+                        style="width: 100%"
+                        placeholder="本地项目目录路径（可选）"
+                      />
+                    </el-form-item>
+                  </el-col>
+                  <el-col :xs="24" :sm="12" :md="12">
+                    <el-form-item label="父分支" label-width="72px">
+                      <el-input
+                        v-model="cfg.parent_branch"
+                        clearable
+                        style="width: 100%"
+                        placeholder="父分支名称（可选）"
+                      />
+                    </el-form-item>
+                  </el-col>
+                                  <el-col v-if="false" :xs="24" :sm="12" :md="12">
                     <el-form-item label="规则入口" label-width="72px">
                       <el-input
                         v-model="cfg.rule_entry_file"
@@ -700,14 +725,9 @@ export default {
       homeTaskConfigTableColumns: [
         { key: 'git', label: 'Git仓库' },
         { key: 'api', label: '接口集合' },
-        { key: 'docker', label: 'Docker' },
-        { key: 'mysql', label: 'Db' },
-        { key: 'local_dir', label: '本地目录' },
         { key: 'parent_branch', label: '父分支' },
         { key: 'branch_name', label: '分支名' },
-        { key: 'smart_link', label: '自定义网页' },
-        { key: 'smart_link_label', label: '网页标签' },
-        { key: 'smart_link_account', label: '账号' },
+        { key: 'local_dir', label: '本地目录' },
       ],
     }
   },
@@ -1200,8 +1220,7 @@ export default {
         }
         if (String(cfg.local_dir || '').trim() !== '') {
           const dirPath = String(cfg.local_dir).trim()
-          const dirName = dirPath.split(/[/\\]/).filter(Boolean).pop() || dirPath
-          group.push({ type: 'local_dir', label: dirName, fullPath: dirPath, tagType: DEV_CONFIG_TAG_TYPE_DIR })
+          group.push({ type: 'local_dir', label: dirPath, fullPath: dirPath, tagType: DEV_CONFIG_TAG_TYPE_DIR })
         }
         if (String(cfg.parent_branch || '').trim() !== '') {
           group.push({ type: 'parent_branch', label: '分支: ' + String(cfg.parent_branch).trim(), tagType: '' })
