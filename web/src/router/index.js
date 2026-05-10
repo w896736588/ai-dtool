@@ -132,6 +132,22 @@ const router = createRouter({
           },
           meta: { keepAlive: true, title: '工作流程' },
         },
+        {
+          path: '/Mcp',
+          name: 'Mcp',
+          components: {
+            home: () => import('../components/mcp/McpList'),
+          },
+          meta: { keepAlive: true, title: 'MCP' },
+        },
+        {
+          path: '/Mcp/:mcpType',
+          name: 'McpBinding',
+          components: {
+            home: () => import('../components/mcp/McpBinding'),
+          },
+          meta: { keepAlive: false, title: 'MCP 绑定' },
+        },
       ],
     },
     {

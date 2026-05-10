@@ -49,6 +49,7 @@ func InitRouter(tGin *p_gin.Gin) {
 	screenshotRouter(tGin)
 	api(tGin)
 	apiUse(tGin)
+	mcp(tGin)
 	tGin.GinPost(`/test/multiformdata`, func(c *gin.Context) {
 		// 解析 multipart/form-data
 		form, err := c.MultipartForm()
@@ -518,4 +519,17 @@ func apiUse(tGin *p_gin.Gin) {
 
 func screenshotRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Screenshot`, controller.Screenshot)
+}
+
+// mcp 路由
+func mcp(tGin *p_gin.Gin) {
+	tGin.GinPost(`/api/McpTypeList`, controller.McpTypeList)
+	tGin.GinPost(`/api/McpBindingList`, controller.McpBindingList)
+	tGin.GinPost(`/api/McpBindingAdd`, controller.McpBindingAdd)
+	tGin.GinPost(`/api/McpBindingRemove`, controller.McpBindingRemove)
+	tGin.GinPost(`/api/McpBindingInstruction`, controller.McpBindingInstruction)
+	tGin.GinPost(`/api/McpAgentTargetList`, controller.McpAgentTargetList)
+	tGin.GinPost(`/api/McpAgentTargetSave`, controller.McpAgentTargetSave)
+	tGin.GinPost(`/api/McpAgentTargetDelete`, controller.McpAgentTargetDelete)
+	tGin.GinPost(`/api/McpConfigPreview`, controller.McpConfigPreview)
 }
