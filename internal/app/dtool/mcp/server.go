@@ -82,6 +82,10 @@ func CreateSession(contextPage *plw.ContextPage, page *playwright.Page, baseURL 
 	session.SseServer = sseSrv
 
 	globalSessionManager.sessions.Store(sessionID, session)
+
+	// 启动浏览器存活健康检查，定期检测浏览器是否被用户关闭
+	go session.monitorHealth()
+
 	return session, nil
 }
 
@@ -100,14 +104,17 @@ func RemoveSession(sessionID string) {
 	initSessionManager()
 	if val, ok := globalSessionManager.sessions.LoadAndDelete(sessionID); ok {
 		s := val.(*BrowserSession)
+		gstool.FmtPrintlnLogTime("[MCP清理] 开始清理session: %s", sessionID)
 		if s.ContextPage != nil && s.ContextPage.Context != nil && *s.ContextPage.Context != nil {
 			if err := (*s.ContextPage.Context).Close(); err != nil {
-				component.PlaywrightClient.Log.Errof("关闭MCP浏览器会话失败: %v", err)
+				gstool.FmtPrintlnLogTime("关闭MCP浏览器会话失败: %v", err)
 			}
 		}
 		if s.OnClose != nil {
+			gstool.FmtPrintlnLogTime("[MCP清理] 执行OnClose回调(释放端口), session: %s", sessionID)
 			s.OnClose()
 		}
+		gstool.FmtPrintlnLogTime("[MCP清理] session清理完成: %s", sessionID)
 	}
 }
 
@@ -190,11 +197,66 @@ func StartCleanupTimer(maxIdle time.Duration) {
 			globalSessionManager.sessions.Range(func(key, value any) bool {
 				s := value.(*BrowserSession)
 				if now.Sub(s.LastActiveAt) > maxIdle {
-					component.PlaywrightClient.Log.Infof("清理过期MCP会话: %s", s.ID)
+					gstool.FmtPrintlnLogTime("清理过期MCP会话: %s", s.ID)
 					RemoveSession(s.ID)
 				}
 				return true
 			})
 		}
 	}()
+}
+
+// monitorHealth 定期检查浏览器是否存活，浏览器关闭后自动清理会话并释放端口
+func (s *BrowserSession) monitorHealth() {
+	defer func() {
+		if r := recover(); r != nil {
+			gstool.FmtPrintlnLogTime("[MCP健康检查] goroutine panic: %v", r)
+		}
+	}()
+	gstool.FmtPrintlnLogTime("[MCP健康检查] 启动浏览器存活监控, session: %s", s.ID)
+
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if s.isBrowserClosed() {
+			gstool.FmtPrintlnLogTime("[MCP健康检查] 浏览器已关闭，清理session: %s", s.ID)
+			RemoveSession(s.ID)
+			return
+		}
+		if _, ok := GetSession(s.ID); !ok {
+			gstool.FmtPrintlnLogTime("[MCP健康检查] session已不存在，停止监控: %s", s.ID)
+			return
+		}
+	}
+}
+
+// isBrowserClosed 检测此会话的浏览器是否已被关闭
+func (s *BrowserSession) isBrowserClosed() (closed bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			gstool.FmtPrintlnLogTime("[MCP健康检查] isBrowserClosed panic(视为浏览器已关闭): %v, session: %s", r, s.ID)
+			closed = true
+		}
+	}()
+
+	if s.ContextPage == nil || s.ContextPage.Context == nil || *s.ContextPage.Context == nil {
+		gstool.FmtPrintlnLogTime("[MCP健康检查] ContextPage为空, session: %s", s.ID)
+		return true
+	}
+
+	pages := s.ContextPage.Pages()
+	if len(pages) == 0 {
+		gstool.FmtPrintlnLogTime("[MCP健康检查] 页面列表为空(浏览器可能已关闭), session: %s", s.ID)
+		return true
+	}
+
+	for _, p := range pages {
+		if !p.IsClosed() {
+			return false
+		}
+	}
+
+	gstool.FmtPrintlnLogTime("[MCP健康检查] 所有页面已关闭(%d个), session: %s", len(pages), s.ID)
+	return true
 }

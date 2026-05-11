@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
+	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 )
@@ -571,6 +572,7 @@ func McpChromeDevtoolsConfigToggleUsed(c *gin.Context) {
 
 // ReleaseChromeDevtoolsPort 释放调试端口
 func ReleaseChromeDevtoolsPort(port int) {
+	gstool.FmtPrintlnLogTime("[MCP端口释放] 开始释放端口 %d", port)
 	now := time.Now().Unix()
 	_, _ = common.DbMain.Client.QuickUpdate(chromeDevtoolsConfigTable, map[string]any{
 		`port`: port,
@@ -578,4 +580,5 @@ func ReleaseChromeDevtoolsPort(port int) {
 		`is_used`:     cast.ToInt(0),
 		`update_time`: now,
 	}).Exec()
+	gstool.FmtPrintlnLogTime("[MCP端口释放] 端口 %d 已标记为未使用", port)
 }

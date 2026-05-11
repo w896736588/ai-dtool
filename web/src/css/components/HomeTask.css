@@ -286,6 +286,27 @@
   cursor: copy;
 }
 
+.home-task-config-tag-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.home-task-dir-status {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: 2px;
+}
+
+.home-task-dir-status--ok {
+  color: #4caf50;
+}
+
+.home-task-dir-status--err {
+  color: #e53935;
+}
+
 .home-task-card__memory {
   margin-top: 14px;
   padding: 12px 14px;

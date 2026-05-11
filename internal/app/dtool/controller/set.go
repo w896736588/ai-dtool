@@ -1819,6 +1819,26 @@ func SetOpenLocalDir(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
+// SetLocalDirBatchCheck 批量检查本地目录是否存在。
+func SetLocalDirBatchCheck(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	pathsRaw, _ := dataMap[`paths`].([]any)
+	result := make(map[string]bool, len(pathsRaw))
+	for _, p := range pathsRaw {
+		dirPath := strings.TrimSpace(cast.ToString(p))
+		if dirPath == `` {
+			continue
+		}
+		if _, ok := result[dirPath]; ok {
+			continue
+		}
+		info, statErr := os.Stat(dirPath)
+		result[dirPath] = statErr == nil && info.IsDir()
+	}
+	gsgin.GinResponseSuccess(c, ``, result)
+}
+
 // SetPromptChangeLogList 返回提示词变更日志（最近 20 条）。
 func SetPromptChangeLogList(c *gin.Context) {
 	list, err := common.DbMain.PromptChangeLogList(20)

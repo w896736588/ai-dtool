@@ -45,6 +45,11 @@ function OpenLocalDir(dirPath, callBack) {
   base.BasePost('/api/Set/OpenLocalDir', { path: dirPath }, callBack)
 }
 
+// LocalDirBatchCheck 批量检查本地目录是否存在。
+function LocalDirBatchCheck(paths, callBack) {
+  base.BasePost('/api/Set/LocalDirBatchCheck', { paths: paths }, callBack)
+}
+
 // HomeTaskLastDevConfigByGitId 根据 Git 仓库 ID 查找最近匹配的开发配置。
 function HomeTaskLastDevConfigByGitId(gitId, callBack) {
   base.BasePost('/api/HomeTaskLastDevConfigByGitId', { git_id: gitId }, callBack)
@@ -65,6 +70,7 @@ export default {
   HomeTaskDailyReportGenerate,
   LocalDirList,
   OpenLocalDir,
+  LocalDirBatchCheck,
   HomeTaskLastDevConfigByGitId,
   HomeTaskBranchNameGenerate,
 }

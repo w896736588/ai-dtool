@@ -64,15 +64,21 @@
                             placement="top"
                             :disabled="tag.type === 'branch_name' || tag.type === 'local_dir' || tag.label.length <= HOME_TASK_CONFIG_TAG_MAX_LENGTH"
                           >
-                            <el-tag
-                              size="small"
-                              effect="plain"
-                              :type="tag.tagType"
-                              :class="['home-task-config-tag', tag.type === 'branch_name' ? 'home-task-config-tag--copy' : '']"
-                              @click.stop="tag.type === 'branch_name' ? copyHomeTaskBranchName(tag.label) : navigateToDevConfig(tag)"
-                            >
-                              {{ (tag.type === 'branch_name' || tag.type === 'local_dir') ? tag.label : (tag.label.length > HOME_TASK_CONFIG_TAG_MAX_LENGTH ? tag.label.slice(0, HOME_TASK_CONFIG_TAG_MAX_LENGTH) + '...' : tag.label) }}
-                            </el-tag>
+                            <span class="home-task-config-tag-wrapper">
+                              <el-tag
+                                size="small"
+                                effect="plain"
+                                :type="tag.tagType"
+                                :class="['home-task-config-tag', tag.type === 'branch_name' ? 'home-task-config-tag--copy' : '']"
+                                @click.stop="tag.type === 'branch_name' ? copyHomeTaskBranchName(tag.label) : navigateToDevConfig(tag)"
+                              >
+                                {{ (tag.type === 'branch_name' || tag.type === 'local_dir') ? tag.label : (tag.label.length > HOME_TASK_CONFIG_TAG_MAX_LENGTH ? tag.label.slice(0, HOME_TASK_CONFIG_TAG_MAX_LENGTH) + '...' : tag.label) }}
+                              </el-tag>
+                              <span v-if="tag.type === 'local_dir' && homeTaskLocalDirStatusMap[tag.label] !== undefined" class="home-task-dir-status" :class="homeTaskLocalDirStatusMap[tag.label] ? 'home-task-dir-status--ok' : 'home-task-dir-status--err'">
+                                <svg v-if="homeTaskLocalDirStatusMap[tag.label]" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                                <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                              </span>
+                            </span>
                           </el-tooltip>
                         </template>
                       </td>
@@ -187,15 +193,21 @@
                             placement="top"
                             :disabled="tag.type === 'branch_name' || tag.type === 'local_dir' || tag.label.length <= HOME_TASK_CONFIG_TAG_MAX_LENGTH"
                           >
-                            <el-tag
-                              size="small"
-                              effect="plain"
-                              :type="tag.tagType"
-                              :class="['home-task-config-tag', tag.type === 'branch_name' ? 'home-task-config-tag--copy' : '']"
-                              @click.stop="tag.type === 'branch_name' ? copyHomeTaskBranchName(tag.label) : navigateToDevConfig(tag)"
-                            >
-                              {{ (tag.type === 'branch_name' || tag.type === 'local_dir') ? tag.label : (tag.label.length > HOME_TASK_CONFIG_TAG_MAX_LENGTH ? tag.label.slice(0, HOME_TASK_CONFIG_TAG_MAX_LENGTH) + '...' : tag.label) }}
-                            </el-tag>
+                            <span class="home-task-config-tag-wrapper">
+                              <el-tag
+                                size="small"
+                                effect="plain"
+                                :type="tag.tagType"
+                                :class="['home-task-config-tag', tag.type === 'branch_name' ? 'home-task-config-tag--copy' : '']"
+                                @click.stop="tag.type === 'branch_name' ? copyHomeTaskBranchName(tag.label) : navigateToDevConfig(tag)"
+                              >
+                                {{ (tag.type === 'branch_name' || tag.type === 'local_dir') ? tag.label : (tag.label.length > HOME_TASK_CONFIG_TAG_MAX_LENGTH ? tag.label.slice(0, HOME_TASK_CONFIG_TAG_MAX_LENGTH) + '...' : tag.label) }}
+                              </el-tag>
+                              <span v-if="tag.type === 'local_dir' && homeTaskLocalDirStatusMap[tag.label] !== undefined" class="home-task-dir-status" :class="homeTaskLocalDirStatusMap[tag.label] ? 'home-task-dir-status--ok' : 'home-task-dir-status--err'">
+                                <svg v-if="homeTaskLocalDirStatusMap[tag.label]" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                                <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                              </span>
+                            </span>
                           </el-tooltip>
                         </template>
                       </td>
@@ -710,6 +722,7 @@ export default {
       homeTaskEditFeedbackMap: {},
       homeTaskEditFeedbackTimers: {},
       homeTaskEditFeedbackDurationMs: 1000,
+      homeTaskLocalDirStatusMap: {},
       homeTaskGitRepoList: [],
       homeTaskGitRepoLoading: false,
       homeTaskApiCollectionList: [],
@@ -812,6 +825,8 @@ export default {
             }
           }
         }
+        // 批量检查本地目录是否存在
+        this.checkLocalDirExists(taskList)
       })
     },
     refreshAllHomeTaskList() {
@@ -1501,6 +1516,26 @@ export default {
     },
     getHomeTaskActionButtonVariant(taskStatus) {
       return 'primary'
+    },
+    // 批量检查任务列表中的本地目录是否存在
+    checkLocalDirExists(taskList) {
+      const paths = []
+      for (const t of taskList) {
+        if (Array.isArray(t.dev_configs)) {
+          for (const cfg of t.dev_configs) {
+            const dir = String(cfg.local_dir || '').trim()
+            if (dir && !paths.includes(dir)) {
+              paths.push(dir)
+            }
+          }
+        }
+      }
+      if (paths.length === 0) return
+      homeTaskApi.LocalDirBatchCheck(paths, (response) => {
+        if (response && response.ErrCode === 0 && response.Data) {
+          this.homeTaskLocalDirStatusMap = { ...this.homeTaskLocalDirStatusMap, ...response.Data }
+        }
+      })
     },
     toggleFragmentExpand(taskId) {
       this.homeTaskExpandedFragments[taskId] = !this.homeTaskExpandedFragments[taskId]
