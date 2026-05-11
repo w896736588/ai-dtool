@@ -27,6 +27,7 @@ type BrowserSession struct {
 	SseServer    *mcpserver.SSEServer
 	CreatedAt    time.Time
 	LastActiveAt time.Time
+	OnClose      func() // 浏览器关闭时的回调（用于释放调试端口等资源）
 	snapshot     *AccessibilitySnapshot
 	mu           sync.Mutex
 	log          *gstool.GsSlog
@@ -103,6 +104,9 @@ func RemoveSession(sessionID string) {
 			if err := (*s.ContextPage.Context).Close(); err != nil {
 				component.PlaywrightClient.Log.Errof("关闭MCP浏览器会话失败: %v", err)
 			}
+		}
+		if s.OnClose != nil {
+			s.OnClose()
 		}
 	}
 }

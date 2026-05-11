@@ -3,6 +3,7 @@ package controller
 import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
+	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/mcp"
 	"dev_tool/internal/app/dtool/plw"
 	"fmt"
@@ -74,6 +75,18 @@ func AIBrowserSessionOpen(c *gin.Context) {
 	}
 	runParams.StreamFunc = func(string, string) {}
 
+	// MCP 模式：分配一个未使用的 Chrome DevTools 调试端口
+	var debugPortConfig *define.McpChromeDevtoolsConfigItem
+	if req.EnableMCP {
+		debugPortConfig, err = GetUnusedChromeDevtoolsPort()
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+		runParams.ExtraBrowserArgs = append(runParams.ExtraBrowserArgs,
+			fmt.Sprintf("--remote-debugging-port=%d", debugPortConfig.Port))
+	}
+
 	contextList := plw.NewContextList(component.PlaywrightClient.Log)
 	contextPage, boolCleanFirstBlank, err := contextList.GetContextSaveUserData(runParams)
 	if err != nil {
@@ -120,6 +133,11 @@ func AIBrowserSessionOpen(c *gin.Context) {
 			gsgin.GinResponseError(c, fmt.Sprintf("创建MCP会话失败: %v", mcpErr), nil)
 			return
 		}
+		if debugPortConfig != nil {
+			browserSession.OnClose = func() {
+				ReleaseChromeDevtoolsPort(debugPortConfig.Port)
+			}
+		}
 		response["mcp"] = map[string]any{
 			"enabled":      true,
 			"session_id":   browserSession.ID,
@@ -127,7 +145,15 @@ func AIBrowserSessionOpen(c *gin.Context) {
 			"msg_endpoint": fmt.Sprintf("%s/mcp/ai-browser/%s/message", baseURL, browserSession.ID),
 		}
 		response["source_browser_closed"] = false
-		response["usage_hint"] = "MCP模式：浏览器保持存活，AI通过MCP SSE端点直接调用browser_snapshot/browser_click等工具操作浏览器，无需重新打开浏览器"
+		if debugPortConfig != nil {
+			response["debug_port"] = debugPortConfig.Port
+			response["debug_port_config"] = map[string]string{
+				"name":        debugPortConfig.Name,
+				"port":        fmt.Sprintf("%d", debugPortConfig.Port),
+				"browser_url": fmt.Sprintf("http://127.0.0.1:%d", debugPortConfig.Port),
+			}
+		}
+		response["usage_hint"] = "MCP模式：浏览器保持存活，已开启Chrome DevTools调试端口，可通过chrome-devtools-mcp连接浏览器，也可通过MCP SSE端点操作浏览器"
 	}
 
 	gsgin.GinResponseSuccess(c, "", response)

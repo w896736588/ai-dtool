@@ -59,6 +59,26 @@ function McpConfigPreview(agentTargetId, callBack) {
   }, callBack)
 }
 
+// McpChromeDevtoolsConfigList 获取 Chrome DevTools 配置列表
+function McpChromeDevtoolsConfigList(callBack) {
+  base.BasePost('/api/McpChromeDevtoolsConfigList', {}, callBack)
+}
+
+// McpChromeDevtoolsConfigSave 新增/编辑 Chrome DevTools 配置
+function McpChromeDevtoolsConfigSave(data, callBack) {
+  base.BasePost('/api/McpChromeDevtoolsConfigSave', data, callBack)
+}
+
+// McpChromeDevtoolsConfigDelete 删除 Chrome DevTools 配置
+function McpChromeDevtoolsConfigDelete(id, callBack) {
+  base.BasePost('/api/McpChromeDevtoolsConfigDelete', { id: id }, callBack)
+}
+
+// McpChromeDevtoolsConfigToggleUsed 切换 Chrome DevTools 端口使用状态
+function McpChromeDevtoolsConfigToggleUsed(id, callBack) {
+  base.BasePost('/api/McpChromeDevtoolsConfigToggleUsed', { id: id }, callBack)
+}
+
 export default {
   McpTypeList,
   McpBindingList,
@@ -69,4 +89,8 @@ export default {
   McpAgentTargetSave,
   McpAgentTargetDelete,
   McpConfigPreview,
+  McpChromeDevtoolsConfigList,
+  McpChromeDevtoolsConfigSave,
+  McpChromeDevtoolsConfigDelete,
+  McpChromeDevtoolsConfigToggleUsed,
 }

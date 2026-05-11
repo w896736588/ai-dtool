@@ -4,6 +4,7 @@ import (
 	"dev_tool/internal/app/dtool/business"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -386,4 +387,195 @@ func mcpBuildInstruction(mcpType, mappingKey, userDataDir string) string {
 		return ""
 	}
 	return typeDef.Name + " MCP: " + mappingKey + "\n用户数据目录: " + userDataDir + "\n\n通过 MCP 的 " + strings.ReplaceAll(mcpType, "-", "_") + " 工具操作此浏览器，登录态独立隔离。"
+}
+
+const chromeDevtoolsConfigTable = `tbl_chrome_devtools_config`
+
+// McpChromeDevtoolsConfigList 返回所有 Chrome DevTools 调试端口配置
+func McpChromeDevtoolsConfigList(c *gin.Context) {
+	rows, err := common.DbMain.Client.QueryBySql(
+		`SELECT * FROM ` + chromeDevtoolsConfigTable + ` ORDER BY id`,
+	).All()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	items := make([]define.McpChromeDevtoolsConfigItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, define.McpChromeDevtoolsConfigItem{
+			Id:         cast.ToInt(row["id"]),
+			Name:       cast.ToString(row["name"]),
+			Port:       cast.ToInt(row["port"]),
+			Remark:     cast.ToString(row["remark"]),
+			IsUsed:     cast.ToInt(row["is_used"]),
+			CreateTime: cast.ToInt64(row["create_time"]),
+			UpdateTime: cast.ToInt64(row["update_time"]),
+		})
+	}
+	gsgin.GinResponseSuccess(c, "", items)
+}
+
+// McpChromeDevtoolsConfigSave 新增或编辑 Chrome DevTools 调试端口配置
+func McpChromeDevtoolsConfigSave(c *gin.Context) {
+	var req define.McpChromeDevtoolsConfigRequest
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, "请求参数错误", nil)
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" || req.Port <= 0 {
+		gsgin.GinResponseError(c, "名称和端口不能为空", nil)
+		return
+	}
+
+	now := time.Now().Unix()
+	if req.Id > 0 {
+		// 编辑：检查端口是否被其他记录占用
+		existRow, _ := common.DbMain.Client.QueryBySql(
+			`SELECT id FROM `+chromeDevtoolsConfigTable+` WHERE port = ? AND id != ?`, req.Port, req.Id,
+		).One()
+		if len(existRow) > 0 {
+			gsgin.GinResponseError(c, "端口已被其他配置使用", nil)
+			return
+		}
+		_, err := common.DbMain.Client.QuickUpdate(chromeDevtoolsConfigTable, map[string]any{
+			`id`: req.Id,
+		}, map[string]any{
+			`name`:        req.Name,
+			`port`:        req.Port,
+			`remark`:      req.Remark,
+			`update_time`: now,
+		}).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+	} else {
+		// 新增：检查端口唯一性
+		existRow, _ := common.DbMain.Client.QueryBySql(
+			`SELECT id FROM `+chromeDevtoolsConfigTable+` WHERE port = ?`, req.Port,
+		).One()
+		if len(existRow) > 0 {
+			gsgin.GinResponseError(c, "端口已存在", nil)
+			return
+		}
+		_, err := common.DbMain.Client.QuickCreate(chromeDevtoolsConfigTable, map[string]any{
+			`name`:        req.Name,
+			`port`:        req.Port,
+			`remark`:      req.Remark,
+			`create_time`: now,
+			`update_time`: now,
+		}).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+	}
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// McpChromeDevtoolsConfigDelete 删除 Chrome DevTools 调试端口配置
+func McpChromeDevtoolsConfigDelete(c *gin.Context) {
+	var req define.McpChromeDevtoolsConfigRequest
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, "请求参数错误", nil)
+		return
+	}
+	if req.Id <= 0 {
+		gsgin.GinResponseError(c, "id 不能为空", nil)
+		return
+	}
+	_, err := common.DbMain.Client.QueryBySql(
+		`DELETE FROM `+chromeDevtoolsConfigTable+` WHERE id = ?`, req.Id,
+	).Exec()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// GetUnusedChromeDevtoolsPort 获取第一个未使用的调试端口并标记为已使用，返回该配置
+func GetUnusedChromeDevtoolsPort() (*define.McpChromeDevtoolsConfigItem, error) {
+	row, err := common.DbMain.Client.QueryBySql(
+		`SELECT * FROM ` + chromeDevtoolsConfigTable + ` WHERE is_used = 0 ORDER BY id`,
+	).One()
+	if err != nil {
+		return nil, err
+	}
+	if len(row) == 0 {
+		return nil, fmt.Errorf("没有可用的调试端口配置")
+	}
+
+	now := time.Now().Unix()
+	_, err = common.DbMain.Client.QuickUpdate(chromeDevtoolsConfigTable, map[string]any{
+		`id`: cast.ToInt(row["id"]),
+	}, map[string]any{
+		`is_used`:     cast.ToInt(1),
+		`update_time`: now,
+	}).Exec()
+	if err != nil {
+		return nil, fmt.Errorf("标记端口使用状态失败: %w", err)
+	}
+
+	return &define.McpChromeDevtoolsConfigItem{
+		Id:     cast.ToInt(row["id"]),
+		Name:   cast.ToString(row["name"]),
+		Port:   cast.ToInt(row["port"]),
+		Remark: cast.ToString(row["remark"]),
+		IsUsed: cast.ToInt(1),
+	}, nil
+}
+
+// McpChromeDevtoolsConfigToggleUsed 切换端口使用状态
+func McpChromeDevtoolsConfigToggleUsed(c *gin.Context) {
+	var req define.McpChromeDevtoolsConfigRequest
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, "请求参数错误", nil)
+		return
+	}
+	if req.Id <= 0 {
+		gsgin.GinResponseError(c, "id 不能为空", nil)
+		return
+	}
+
+	// 查询当前状态
+	row, err := common.DbMain.Client.QueryBySql(
+		`SELECT is_used FROM `+chromeDevtoolsConfigTable+` WHERE id = ?`, req.Id,
+	).One()
+	if err != nil || len(row) == 0 {
+		gsgin.GinResponseError(c, "配置不存在", nil)
+		return
+	}
+
+	currentUsed := cast.ToInt(row["is_used"])
+	newUsed := cast.ToInt(0)
+	if currentUsed == 0 {
+		newUsed = cast.ToInt(1)
+	}
+
+	now := time.Now().Unix()
+	_, err = common.DbMain.Client.QuickUpdate(chromeDevtoolsConfigTable, map[string]any{
+		`id`: req.Id,
+	}, map[string]any{
+		`is_used`:     newUsed,
+		`update_time`: now,
+	}).Exec()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", map[string]int{
+		"is_used": newUsed,
+	})
+}
+
+// ReleaseChromeDevtoolsPort 释放调试端口
+func ReleaseChromeDevtoolsPort(port int) {
+	now := time.Now().Unix()
+	_, _ = common.DbMain.Client.QuickUpdate(chromeDevtoolsConfigTable, map[string]any{
+		`port`: port,
+	}, map[string]any{
+		`is_used`:     cast.ToInt(0),
+		`update_time`: now,
+	}).Exec()
 }

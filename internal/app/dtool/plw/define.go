@@ -40,6 +40,7 @@ type PlaywrightRunParams struct {
 	StopEchoTips            bool                                             //是否停止输出执行过程到sse 当大模型正在回复时，不需要再将执行过程输出到sse
 	SmartLinkLastStore      SmartLinkLastStore                               //目录历史存储，服务端用DB，agent通过接口代理实现
 	SmartLinkDirectoryStore SmartLinkDirectoryStore                          //固定目录映射存储，服务端用DB，agent通过接口代理实现
+	ExtraBrowserArgs        []string                                         //额外浏览器启动参数（如 --remote-debugging-port=9222）
 }
 
 type ShowCookie struct {

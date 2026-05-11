@@ -407,9 +407,9 @@ func (h *ContextPageList) GetContextSaveUserData(runParams *PlaywrightRunParams)
 				Username: runParams.BrowserAuthUsername,
 				Password: runParams.BrowserAuthPassword,
 			},
-			Args: []string{
+			Args: append([]string{
 				`--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36`, //隐藏无头
-			},
+			}, runParams.ExtraBrowserArgs...),
 			IgnoreDefaultArgs: []string{
 				`--enable-automation`,
 				`--disable-infobars`,                            //禁用“正在使用自动化软件”提示信息栏。
@@ -435,9 +435,9 @@ func (h *ContextPageList) GetContextSaveUserData(runParams *PlaywrightRunParams)
 			IgnoreHttpsErrors: playwright.Bool(true),
 			Locale:            playwright.String(`zh-CN`),
 			Timeout:           &runParams.GetPageTimeout,
-			Args: []string{
+			Args: append([]string{
 				`--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36`, //隐藏无头
-			},
+			}, runParams.ExtraBrowserArgs...),
 			IgnoreDefaultArgs: []string{
 				`--enable-automation`,
 				`--disable-infobars`,                            //禁用“正在使用自动化软件”提示信息栏。

@@ -70,3 +70,22 @@ type McpAgentTargetRequest struct {
 	ConfigFilename string `json:"config_filename,omitempty"`
 	ConfigDir      string `json:"config_dir,omitempty"`
 }
+
+// McpChromeDevtoolsConfigItem Chrome DevTools 调试端口配置列表项
+type McpChromeDevtoolsConfigItem struct {
+	Id         int    `json:"id"`
+	Name       string `json:"name"`
+	Port       int    `json:"port"`
+	Remark     string `json:"remark"`
+	IsUsed     int    `json:"is_used"`
+	CreateTime int64  `json:"create_time"`
+	UpdateTime int64  `json:"update_time"`
+}
+
+// McpChromeDevtoolsConfigRequest Chrome DevTools 配置 CRUD 请求体
+type McpChromeDevtoolsConfigRequest struct {
+	Id     int    `json:"id,omitempty"`
+	Name   string `json:"name,omitempty"`
+	Port   int    `json:"port,omitempty"`
+	Remark string `json:"remark,omitempty"`
+}

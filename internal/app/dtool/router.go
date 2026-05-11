@@ -532,4 +532,8 @@ func mcp(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/McpAgentTargetSave`, controller.McpAgentTargetSave)
 	tGin.GinPost(`/api/McpAgentTargetDelete`, controller.McpAgentTargetDelete)
 	tGin.GinPost(`/api/McpConfigPreview`, controller.McpConfigPreview)
+	tGin.GinPost(`/api/McpChromeDevtoolsConfigList`, controller.McpChromeDevtoolsConfigList)
+	tGin.GinPost(`/api/McpChromeDevtoolsConfigSave`, controller.McpChromeDevtoolsConfigSave)
+	tGin.GinPost(`/api/McpChromeDevtoolsConfigDelete`, controller.McpChromeDevtoolsConfigDelete)
+	tGin.GinPost(`/api/McpChromeDevtoolsConfigToggleUsed`, controller.McpChromeDevtoolsConfigToggleUsed)
 }
