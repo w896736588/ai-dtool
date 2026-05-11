@@ -330,6 +330,33 @@
           </div>
         </div>
 
+        <div v-else-if="activeNode === 'browser-test'" class="task-workflow-tab">
+          <div class="task-workflow-card">
+            <div class="task-workflow-card__header">
+              <div class="task-workflow-card__title">需求核对浏览器测试提示词</div>
+              <div class="task-workflow-card__switch">
+                <GitActionButton compact :loading="promptSaving === 'browser_test'" @click="savePrompts('browser_test')">
+                  保存提示词
+                </GitActionButton>
+                <GitActionButton compact @click="copyText(workflow.prompt_browser_test || '', '提示词已复制')">
+                  复制提示词
+                </GitActionButton>
+                <GitActionButton compact variant="warning" :loading="promptRestoring === 'browser_test'" @click="restorePrompts('browser_test')">
+                  还原为默认提示词
+                </GitActionButton>
+              </div>
+            </div>
+            <MdEditor
+              v-model="workflow.prompt_browser_test"
+              class="task-workflow-prompt-editor"
+              preview-theme="github"
+              :preview="true"
+              :toolbars="promptEditorToolbars"
+              height="100%"
+            />
+          </div>
+        </div>
+
         <div v-else class="task-workflow-tab">
           <div class="task-workflow-card">
             <div class="task-workflow-card__header">
@@ -411,6 +438,7 @@ const WORKFLOW_NODES = [
   { key: 'design', label: '3.开发执行', desc: '编写提示词，AI自动结合数据库，代码和开发文档进行开发' },
   { key: 'api-dev', label: '4.接口生成', desc: '编写提示词，AI自动获取登录态，将所有改动接口写入接口开发中' },
   { key: 'api-test-fix', label: '5.自动化测试+修复', desc: '编写提示词，AI自动根据接口开发中的接口设计测试流程，自动上传代码+自动重启服务+自动修复BUG，支持多项目联调' },
+  { key: 'browser-test', label: '6.需求核对浏览器测试', desc: '编写提示词，AI核对浏览器测试结果是否满足需求' },
 ]
 
 export default {
@@ -536,7 +564,7 @@ export default {
     handleCtrlS(e) {
       if (!(e.ctrlKey && e.key === 's')) return
       e.preventDefault()
-      const nodeToPrompt = { requirement: 'requirement', design: 'design', 'api-dev': 'api_dev', 'api-test-fix': 'api_test' }
+      const nodeToPrompt = { requirement: 'requirement', design: 'design', 'api-dev': 'api_dev', 'api-test-fix': 'api_test', 'browser-test': 'browser_test' }
       let promptType = nodeToPrompt[this.activeNode]
       if (this.activeNode === 'requirement-fetch' && this.requirementFetchActiveTab === 'plain-text-prompt') {
         promptType = 'plain_text_requirement'
@@ -797,6 +825,7 @@ export default {
         prompt_design: this.workflow.prompt_design || '',
         prompt_plain_text_requirement: this.workflow.prompt_plain_text_requirement || '',
         prompt_design_plan_requirement: this.workflow.prompt_design_plan_requirement || '',
+        prompt_browser_test: this.workflow.prompt_browser_test || '',
       }, (response) => {
         this.promptSaving = ''
         if (!(response && response.ErrCode === 0)) {
@@ -1082,7 +1111,7 @@ export default {
 
 .task-workflow-nodes {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 10px;
   flex-shrink: 0;
 }

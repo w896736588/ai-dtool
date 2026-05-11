@@ -590,9 +590,9 @@ func buildTaskWorkflowResponse(c *gin.Context, workflowInfo map[string]any) (map
 	}
 	// 新创建的工作流提示词为空时，从配置模板初始化。
 	workflowID := cast.ToInt(workflowInfo[`id`])
-	if workflowID > 0 && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_requirement`])) == `` && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_api_dev`])) == `` && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_api_test`])) == `` && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_design`])) == `` && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_plain_text_requirement`])) == `` && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_design_plan_requirement`])) == `` {
+	if workflowID > 0 && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_requirement`])) == `` && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_api_dev`])) == `` && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_api_test`])) == `` && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_design`])) == `` && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_plain_text_requirement`])) == `` && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_design_plan_requirement`])) == `` && strings.TrimSpace(cast.ToString(workflowInfo[`prompt_browser_test`])) == `` {
 		prompts := resolveTaskWorkflowPrompts(c, homeTaskInfo, workflowInfo)
-		_ = common.DbMain.TaskWorkflowUpdatePrompts(workflowID, prompts[`requirement`], prompts[`api_dev`], prompts[`api_test`], prompts[`design`], prompts[`plain_text_requirement`], prompts[`design_plan_requirement`])
+		_ = common.DbMain.TaskWorkflowUpdatePrompts(workflowID, prompts[`requirement`], prompts[`api_dev`], prompts[`api_test`], prompts[`design`], prompts[`plain_text_requirement`], prompts[`design_plan_requirement`], prompts[`browser_test`])
 		updatedInfo, updateErr := common.DbMain.TaskWorkflowInfo(workflowID)
 		if updateErr == nil {
 			workflowInfo = updatedInfo
@@ -1269,6 +1269,7 @@ func TaskWorkflowPromptsSave(c *gin.Context) {
 		request.PromptDesign,
 		request.PromptPlainTextRequirement,
 		request.PromptDesignPlanRequirement,
+		request.PromptBrowserTest,
 	)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -1315,6 +1316,7 @@ func TaskWorkflowPromptsRestore(c *gin.Context) {
 		prompts[`design`],
 		prompts[`plain_text_requirement`],
 		prompts[`design_plan_requirement`],
+		prompts[`browser_test`],
 	); updateErr != nil {
 		gsgin.GinResponseError(c, updateErr.Error(), nil)
 		return
@@ -1338,6 +1340,7 @@ func resolveTaskWorkflowPrompts(c *gin.Context, homeTaskInfo map[string]any, wor
 	promptDesign, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigPromptDesign)
 	promptPlainTextRequirement, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigPromptPlainTextReq)
 	promptDesignPlanRequirement, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigPromptDesignPlanReq)
+	promptBrowserTest, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigPromptBrowserTest)
 	return map[string]string{
 		`requirement`:             taskWorkflowResolvePlaceholders(promptDev, placeholders),
 		`api_dev`:                 taskWorkflowResolvePlaceholders(promptApiGen, placeholders),
@@ -1345,6 +1348,7 @@ func resolveTaskWorkflowPrompts(c *gin.Context, homeTaskInfo map[string]any, wor
 		`design`:                  taskWorkflowResolvePlaceholders(promptDesign, placeholders),
 		`plain_text_requirement`:  taskWorkflowResolvePlaceholders(promptPlainTextRequirement, placeholders),
 		`design_plan_requirement`: taskWorkflowResolvePlaceholders(promptDesignPlanRequirement, placeholders),
+		`browser_test`:            taskWorkflowResolvePlaceholders(promptBrowserTest, placeholders),
 	}
 }
 
@@ -1356,6 +1360,7 @@ func buildTaskWorkflowPlaceholderMap(c *gin.Context, homeTaskInfo map[string]any
 		`{需求文档地址}`:            taskWorkflowBuildShareURL(c, workflowInfo, apiHost),
 		`{需求文档纯文本地址}`:         taskWorkflowBuildPlainTextShareURL(c, workflowInfo, apiHost),
 		`{需求文档纯文本文件相对地址}`:     taskWorkflowBuildPlainTextFragmentRelativePath(workflowInfo),
+		`{需求设计方案文档地址}`:        taskWorkflowBuildDesignPlanShareURL(c, workflowInfo, apiHost),
 		`{需求设计方案文件相对地址}`:      taskWorkflowBuildDesignPlanFragmentRelativePath(workflowInfo),
 		`{接口开发API地址}`:         apiHost,
 		`{接口开发API的token}`:     taskWorkflowBuildAPIToken(c),
@@ -1929,6 +1934,31 @@ func ensureTaskWorkflowDesignPlanReqFragment(workflowInfo map[string]any, homeTa
 		return
 	}
 	workflowInfo[`design_plan_requirement_fragment_id`] = fragmentFileID
+}
+
+// taskWorkflowBuildDesignPlanShareURL 为需求设计方案知识片段生成分享链接。
+func taskWorkflowBuildDesignPlanShareURL(c *gin.Context, workflowInfo map[string]any, apiHost string) string {
+	fragmentID := strings.TrimSpace(cast.ToString(workflowInfo[`design_plan_requirement_fragment_id`]))
+	if fragmentID == `` || component.MemoryRuntime == nil {
+		return ``
+	}
+	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
+		return ``
+	}
+	if _, err := component.MemoryRuntime.DB().MemoryFragmentInfo(fragmentID); err != nil {
+		return ``
+	}
+	shareStore := memoryFragmentShareStoreForRoot(component.MemoryRuntime.Config().Dir)
+	share, err := shareStore.Create(fragmentID, time.Now())
+	if err != nil {
+		return ``
+	}
+	if apiHost == `` {
+		return ``
+	}
+	shareURL, _ := url.Parse(apiHost)
+	shareURL.Path = `/share/` + url.PathEscape(share.Token)
+	return shareURL.String()
 }
 
 // taskWorkflowBuildDesignPlanFragmentRelativePath 为需求设计方案知识片段构建相对于 fragments/ 目录的相对路径。

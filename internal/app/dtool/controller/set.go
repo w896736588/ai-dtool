@@ -1545,6 +1545,11 @@ func SetHomeTaskConfigGet(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	promptBrowserTest, err := homeTaskConfigValue(define.HomeTaskConfigPromptBrowserTest)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
 	devEnvironment, err := homeTaskConfigValue(define.HomeTaskConfigDevEnvironment)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -1573,6 +1578,7 @@ func SetHomeTaskConfigGet(c *gin.Context) {
 		`home_task_prompt_api_test`:               promptApiTest,
 		`home_task_prompt_design`:                 promptDesign,
 		`home_task_prompt_plain_text_requirement`: promptPlainTextRequirement,
+		`home_task_prompt_browser_test`:           promptBrowserTest,
 		`home_task_dev_environment`:               devEnvironment,
 		`home_task_branch_name_prompt`:            branchNamePrompt,
 		`home_task_branch_name_model_id`:          cast.ToInt(branchNameModelID),
@@ -1588,6 +1594,7 @@ var promptConfigKeys = map[string]string{
 	define.HomeTaskConfigPromptApiTest:      `接口自动化测试提示词`,
 	define.HomeTaskConfigPromptDesign:       `开发设计提示词`,
 	define.HomeTaskConfigPromptPlainTextReq: `纯文本TAPD需求提示词`,
+	define.HomeTaskConfigPromptBrowserTest:  `需求核对浏览器测试提示词`,
 	define.HomeTaskConfigDevEnvironment:     `开发环境`,
 	define.HomeTaskConfigBranchNamePrompt:   `分支名生成提示词`,
 }
@@ -1684,6 +1691,12 @@ func SetHomeTaskConfigSave(c *gin.Context) {
 	homeTaskPromptPlainTextRequirement := strings.TrimSpace(cast.ToString(dataMap[`home_task_prompt_plain_text_requirement`]))
 	saveHomeTaskPromptWithLog(define.HomeTaskConfigPromptPlainTextReq, `纯文本TAPD需求提示词`, homeTaskPromptPlainTextRequirement, `工作流-纯文本TAPD需求提示词模板`)
 	if err := common.DbMain.HomeTaskConfigSave(`纯文本TAPD需求提示词`, define.HomeTaskConfigPromptPlainTextReq, homeTaskPromptPlainTextRequirement, `工作流-纯文本TAPD需求提示词模板`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskPromptBrowserTest := strings.TrimSpace(cast.ToString(dataMap[`home_task_prompt_browser_test`]))
+	saveHomeTaskPromptWithLog(define.HomeTaskConfigPromptBrowserTest, `需求核对浏览器测试提示词`, homeTaskPromptBrowserTest, `工作流-需求核对浏览器测试提示词模板`)
+	if err := common.DbMain.HomeTaskConfigSave(`需求核对浏览器测试提示词`, define.HomeTaskConfigPromptBrowserTest, homeTaskPromptBrowserTest, `工作流-需求核对浏览器测试提示词模板`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}

@@ -244,7 +244,7 @@ func (h *CSqlite) TaskWorkflowRunList(workflowID int) ([]map[string]any, error) 
 }
 
 // TaskWorkflowUpdatePrompts 更新工作流的提示词。
-func (h *CSqlite) TaskWorkflowUpdatePrompts(workflowID int, promptRequirement, promptApiDev, promptApiTest, promptDesign, promptPlainTextRequirement, promptDesignPlanRequirement string) error {
+func (h *CSqlite) TaskWorkflowUpdatePrompts(workflowID int, promptRequirement, promptApiDev, promptApiTest, promptDesign, promptPlainTextRequirement, promptDesignPlanRequirement, promptBrowserTest string) error {
 	if workflowID <= 0 {
 		return errors.New(`工作流id不能为空`)
 	}
@@ -260,6 +260,7 @@ func (h *CSqlite) TaskWorkflowUpdatePrompts(workflowID int, promptRequirement, p
 		`prompt_design`:                  promptDesign,
 		`prompt_plain_text_requirement`:  promptPlainTextRequirement,
 		`prompt_design_plan_requirement`: promptDesignPlanRequirement,
+		`prompt_browser_test`:            promptBrowserTest,
 		`update_time`:                    time.Now().Unix(),
 	}).Exec()
 	return err

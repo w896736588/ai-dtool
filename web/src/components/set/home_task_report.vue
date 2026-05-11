@@ -75,15 +75,7 @@
               class="prompt-template-editor"
             />
           </el-tab-pane>
-          <el-tab-pane label="需求设计方案提示词" name="design_plan_requirement">
-            <MdEditor
-              v-model="form.home_task_prompt_design_plan_requirement"
-              preview-theme="github"
-              :preview="true"
-              :toolbars="promptEditorToolbars"
-              class="prompt-template-editor"
-            />
-          </el-tab-pane>
+
           <el-tab-pane label="需求分析设计提示词" name="dev">
             <MdEditor
               v-model="form.home_task_prompt_dev"
@@ -114,6 +106,15 @@
           <el-tab-pane label="接口自动化测试提示词" name="api_test">
             <MdEditor
               v-model="form.home_task_prompt_api_test"
+              preview-theme="github"
+              :preview="true"
+              :toolbars="promptEditorToolbars"
+              class="prompt-template-editor"
+            />
+          </el-tab-pane>
+          <el-tab-pane label="需求核对浏览器测试提示词" name="browser_test">
+            <MdEditor
+              v-model="form.home_task_prompt_browser_test"
               preview-theme="github"
               :preview="true"
               :toolbars="promptEditorToolbars"
@@ -332,6 +333,7 @@ const PROMPT_PLACEHOLDERS = [
   { label: '需求文档地址', value: '{需求文档地址}' },
   { label: '需求文档纯文本地址', value: '{需求文档纯文本地址}' },
   { label: '需求文档纯文本文件相对地址', value: '{需求文档纯文本文件相对地址}' },
+  { label: '需求设计方案文档地址', value: '{需求设计方案文档地址}' },
   { label: '需求设计方案文件相对地址', value: '{需求设计方案文件相对地址}' },
   { label: '接口开发API地址', value: '{接口开发API地址}' },
   { label: '接口开发API的token', value: '{接口开发API的token}' },
@@ -372,6 +374,7 @@ export default {
         home_task_prompt_dev: '',
         home_task_prompt_api_gen: '',
         home_task_prompt_api_test: '',
+        home_task_prompt_browser_test: '',
         home_task_prompt_design: '',
         home_task_tapd_smart_link_id: null,
         home_task_tapd_link_label: '',
@@ -455,6 +458,7 @@ export default {
         this.form.home_task_prompt_dev = response.Data.home_task_prompt_dev || ''
         this.form.home_task_prompt_api_gen = response.Data.home_task_prompt_api_gen || ''
         this.form.home_task_prompt_api_test = response.Data.home_task_prompt_api_test || ''
+        this.form.home_task_prompt_browser_test = response.Data.home_task_prompt_browser_test || ''
         this.form.home_task_prompt_design = response.Data.home_task_prompt_design || ''
         this.form.home_task_tapd_smart_link_id = response.Data.home_task_tapd_smart_link_id || null
         this.form.home_task_tapd_link_label = response.Data.home_task_tapd_link_label || ''
@@ -520,6 +524,7 @@ export default {
         home_task_prompt_dev: this.form.home_task_prompt_dev,
         home_task_prompt_api_gen: this.form.home_task_prompt_api_gen,
         home_task_prompt_api_test: this.form.home_task_prompt_api_test,
+        home_task_prompt_browser_test: this.form.home_task_prompt_browser_test,
         home_task_prompt_design: this.form.home_task_prompt_design,
         home_task_tapd_smart_link_id: this.form.home_task_tapd_smart_link_id,
         home_task_tapd_link_label: this.form.home_task_tapd_link_label,

@@ -4,7 +4,7 @@
     <aside v-if="!hideAppSidebar" class="sidebar">
       <div class="sidebar-header">
         <span class="logo">🛠️</span>
-        <span class="title">DevTools</span>
+        <span class="title">DTools</span>
       </div>
       
       <el-menu
