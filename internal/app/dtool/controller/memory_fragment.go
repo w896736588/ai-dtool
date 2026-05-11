@@ -2,6 +2,7 @@ package controller
 
 import (
 	"archive/zip"
+	"dev_tool/internal/app/dtool/business"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
@@ -706,4 +707,19 @@ func MemoryFragmentUploadZip(c *gin.Context) {
 	component.MemoryRuntime.ScheduleSync()
 	broadcastMemoryFragmentUpsert(info)
 	gsgin.GinResponseSuccess(c, ``, info)
+}
+
+// MemoryGitPull 手动拉取记忆库远程仓库最新内容。
+func MemoryGitPull(c *gin.Context) {
+	config := business.ReadMemoryConfigFromINI()
+	if !config.GitRepoEnabled {
+		gsgin.GinResponseError(c, `记忆库未开启 Git 同步`, nil)
+		return
+	}
+	memoryGit := business.NewMemoryGit()
+	if err := memoryGit.Pull(config.Dir); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, `拉取成功`, nil)
 }

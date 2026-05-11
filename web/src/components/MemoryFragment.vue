@@ -103,6 +103,20 @@
           </button>
         </el-tooltip>
         <span v-if="fragmentTotalCount > 0" class="sidebar-count-badge">{{ fragmentList.length }}/{{ fragmentTotalCount }}</span>
+        <template v-if="memoryGitRepoEnabled">
+          <span class="sidebar-git-actions">
+            <el-tooltip content="拉取" placement="top">
+              <button class="memory-git-action-btn" :disabled="gitActionLoading" @click="handleGitPull">
+                <el-icon :size="13"><Download /></el-icon>
+              </button>
+            </el-tooltip>
+            <el-tooltip content="推送" placement="top">
+              <button class="memory-git-action-btn" :disabled="gitActionLoading" @click="handleGitPush">
+                <el-icon :size="13"><Upload /></el-icon>
+              </button>
+            </el-tooltip>
+          </span>
+        </template>
       </div>
     </aside>
 
@@ -426,8 +440,9 @@
 </template>
 
 <script>
-import { ArrowDown, ArrowRight, Check, Close, DArrowLeft, DArrowRight, Delete, HomeFilled, Loading, Plus, Search, Setting, Upload } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowRight, Check, Close, DArrowLeft, DArrowRight, Delete, Download, HomeFilled, Loading, Plus, Search, Setting, Upload } from '@element-plus/icons-vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
+import set from '@/utils/base/git_set'
 import MemoryEditor from '@/components/memory/MemoryEditor.vue'
 import MemoryHistoryDialog from '@/components/memory/MemoryHistoryDialog.vue'
 import MemorySettingPage from '@/components/set/memory.vue'
@@ -475,6 +490,7 @@ export default {
     DArrowLeft,
     DArrowRight,
     Delete,
+    Download,
     HomeFilled,
     Plus,
     Search,
@@ -512,6 +528,7 @@ export default {
       memoryConfigured: true,
       memoryGitRepoEnabled: false,
       memoryIsGitRepo: false,
+      gitActionLoading: false,
       nextPushTime: 0,
       lastPushTime: 0,
       lastPushTimeDesc: '-',
@@ -1758,6 +1775,37 @@ export default {
       if (ms < 1000) return ms + 'ms'
       const seconds = (ms / 1000).toFixed(1)
       return seconds + 's'
+    },
+    // handleGitPull 执行 git pull 拉取记忆库最新内容。
+    handleGitPull() {
+      this.gitActionLoading = true
+      MemoryFragmentApi.MemoryGitPull((response) => {
+        this.gitActionLoading = false
+        if (response.__loginRequired) return
+        if (response.ErrCode !== 0) {
+          this.$message.error(response.ErrMsg || '拉取失败')
+          return
+        }
+        this.$message.success('拉取成功')
+        this.loadFragmentList(true)
+      })
+    },
+    // handleGitPush 执行 git commit + push 推送记忆库变更。
+    handleGitPush() {
+      this.gitActionLoading = true
+      set.RuntimeDatabaseGitSync({ target: 'memory' }, (response) => {
+        this.gitActionLoading = false
+        if (response.__loginRequired) return
+        if (response.ErrCode !== 0) {
+          this.$message.error(response.ErrMsg || '推送失败')
+          return
+        }
+        if (!response.Data || !response.Data.changed) {
+          this.$message.info('未检测到变更，无需推送')
+          return
+        }
+        this.$message.success('推送成功')
+      })
     },
   }
 }

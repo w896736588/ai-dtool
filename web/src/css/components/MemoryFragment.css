@@ -144,6 +144,38 @@
   color: #999;
 }
 
+.memory-git-action-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid #ddd;
+  background: #fff;
+  color: #777;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.memory-git-action-btn:hover:not(:disabled) {
+  background: #eef3e7;
+  color: #3a7a3a;
+  border-color: #c5d4b8;
+}
+
+.memory-git-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sidebar-git-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
 .sidebar-git-footer {
   display: flex;
   flex-direction: column;

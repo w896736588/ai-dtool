@@ -128,6 +128,11 @@ function MemoryFragmentBatchInfoByPaths(paths, callBack) {
   }, callBack)
 }
 
+// MemoryGitPull 手动拉取记忆库远程仓库最新内容。
+function MemoryGitPull(callBack) {
+  base.BasePost('/api/MemoryGitPull', {}, callBack)
+}
+
 export default {
   GitPendingStatus,
   MemoryFragmentStatus,
@@ -147,4 +152,5 @@ export default {
   MemoryFragmentImageUpload,
   MemoryFragmentUploadZip,
   MemoryFragmentBatchInfoByPaths,
+  MemoryGitPull,
 }
