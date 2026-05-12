@@ -40,15 +40,17 @@
             'task-workflow-node--success': node.key === 'requirement-fetch' && activeNode === node.key && requirementFetchStatus === 'success',
             'task-workflow-node--failed': node.key === 'requirement-fetch' && activeNode === node.key && requirementFetchStatus === 'failed',
             'task-workflow-node--running': node.key === 'requirement-fetch' && activeNode === node.key && requirementFetchStatus === 'running',
+            'task-workflow-node--status-pending': getNodeStatus(node.key) === 'pending',
+            'task-workflow-node--status-running': getNodeStatus(node.key) === 'running',
             'task-workflow-node--status-completed': getNodeStatus(node.key) === 'completed',
             'task-workflow-node--status-skipped': getNodeStatus(node.key) === 'skipped',
-            'task-workflow-node--status-running': getNodeStatus(node.key) === 'running',
           }"
           @click="activeNode = node.key"
         >
           <span class="task-workflow-node__status-icon">
             <span v-if="getNodeStatus(node.key) === 'completed'" class="status-icon status-icon--completed">&#10003;</span>
             <span v-else-if="getNodeStatus(node.key) === 'skipped'" class="status-icon status-icon--skipped">&#10003;</span>
+            <span v-else-if="getNodeStatus(node.key) === 'pending'" class="status-icon status-icon--pending"></span>
             <span v-else class="status-icon status-icon--running"></span>
           </span>
           <span class="task-workflow-node__label">{{ node.label }}</span>
@@ -202,6 +204,15 @@
                   <template #icon><el-icon><Link /></el-icon></template>
                   打开知识片段
                 </GitActionButton>
+                <div class="task-workflow-node-status-inline">
+                  <span class="task-workflow-node-status-inline__label">当前步骤状态</span>
+                  <button
+                    class="task-workflow-node-status-inline__btn"
+                    :class="'task-workflow-node-status-inline__btn--' + getNodeStatus('requirement-fetch')"
+                    :disabled="nodeStatusSaving"
+                    @click="cycleNodeStatus('requirement-fetch')"
+                  >{{ getNodeStatusLabel('requirement-fetch') }}</button>
+                </div>
               </div>
               <MdEditor
                 v-model="workflow.prompt_plain_text_requirement"
@@ -212,15 +223,6 @@
                 height="100%"
               />
             </div>
-          </div>
-          <div class="task-workflow-node-status-bar">
-            <span class="task-workflow-node-status-bar__label">当前步骤状态</span>
-            <button
-              class="task-workflow-node-status-bar__btn"
-              :class="'task-workflow-node-status-bar__btn--' + getNodeStatus('requirement-fetch')"
-              :disabled="nodeStatusSaving"
-              @click="cycleNodeStatus('requirement-fetch')"
-            >{{ getNodeStatusLabel('requirement-fetch') }}</button>
           </div>
         </div>
 
@@ -252,6 +254,15 @@
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'requirement'" @click="restorePrompts('requirement')">
                   还原为默认提示词
                 </GitActionButton>
+                <div class="task-workflow-node-status-inline">
+                  <span class="task-workflow-node-status-inline__label">当前步骤状态</span>
+                  <button
+                    class="task-workflow-node-status-inline__btn"
+                    :class="'task-workflow-node-status-inline__btn--' + getNodeStatus('requirement')"
+                    :disabled="nodeStatusSaving"
+                    @click="cycleNodeStatus('requirement')"
+                  >{{ getNodeStatusLabel('requirement') }}</button>
+                </div>
               </div>
               <div class="task-workflow-card__hint">
                 当前片段：{{ requirementFragmentTitle }}
@@ -282,6 +293,15 @@
                   <template #icon><el-icon><Link /></el-icon></template>
                   打开知识片段
                 </GitActionButton>
+                <div class="task-workflow-node-status-inline">
+                  <span class="task-workflow-node-status-inline__label">当前步骤状态</span>
+                  <button
+                    class="task-workflow-node-status-inline__btn"
+                    :class="'task-workflow-node-status-inline__btn--' + getNodeStatus('requirement')"
+                    :disabled="nodeStatusSaving"
+                    @click="cycleNodeStatus('requirement')"
+                  >{{ getNodeStatusLabel('requirement') }}</button>
+                </div>
               </div>
               <MdEditor
                 v-model="workflow.prompt_design_plan_requirement"
@@ -292,15 +312,6 @@
                 height="100%"
               />
             </div>
-          </div>
-          <div class="task-workflow-node-status-bar">
-            <span class="task-workflow-node-status-bar__label">当前步骤状态</span>
-            <button
-              class="task-workflow-node-status-bar__btn"
-              :class="'task-workflow-node-status-bar__btn--' + getNodeStatus('requirement')"
-              :disabled="nodeStatusSaving"
-              @click="cycleNodeStatus('requirement')"
-            >{{ getNodeStatusLabel('requirement') }}</button>
           </div>
         </div>
 
@@ -319,6 +330,15 @@
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'design'" @click="restorePrompts('design')">
                   还原为默认提示词
                 </GitActionButton>
+                <div class="task-workflow-node-status-inline">
+                  <span class="task-workflow-node-status-inline__label">当前步骤状态</span>
+                  <button
+                    class="task-workflow-node-status-inline__btn"
+                    :class="'task-workflow-node-status-inline__btn--' + getNodeStatus('design')"
+                    :disabled="nodeStatusSaving"
+                    @click="cycleNodeStatus('design')"
+                  >{{ getNodeStatusLabel('design') }}</button>
+                </div>
               </div>
             </div>
             <MdEditor
@@ -329,15 +349,6 @@
               :toolbars="promptEditorToolbars"
               height="100%"
             />
-          </div>
-          <div class="task-workflow-node-status-bar">
-            <span class="task-workflow-node-status-bar__label">当前步骤状态</span>
-            <button
-              class="task-workflow-node-status-bar__btn"
-              :class="'task-workflow-node-status-bar__btn--' + getNodeStatus('design')"
-              :disabled="nodeStatusSaving"
-              @click="cycleNodeStatus('design')"
-            >{{ getNodeStatusLabel('design') }}</button>
           </div>
         </div>
 
@@ -363,6 +374,15 @@
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'api_dev'" @click="restorePrompts('api_dev')">
                   还原为默认提示词
                 </GitActionButton>
+                <div class="task-workflow-node-status-inline">
+                  <span class="task-workflow-node-status-inline__label">当前步骤状态</span>
+                  <button
+                    class="task-workflow-node-status-inline__btn"
+                    :class="'task-workflow-node-status-inline__btn--' + getNodeStatus('api-dev')"
+                    :disabled="nodeStatusSaving"
+                    @click="cycleNodeStatus('api-dev')"
+                  >{{ getNodeStatusLabel('api-dev') }}</button>
+                </div>
               </div>
             </div>
             <MdEditor
@@ -374,14 +394,42 @@
               height="100%"
             />
           </div>
-          <div class="task-workflow-node-status-bar">
-            <span class="task-workflow-node-status-bar__label">当前步骤状态</span>
-            <button
-              class="task-workflow-node-status-bar__btn"
-              :class="'task-workflow-node-status-bar__btn--' + getNodeStatus('api-dev')"
-              :disabled="nodeStatusSaving"
-              @click="cycleNodeStatus('api-dev')"
-            >{{ getNodeStatusLabel('api-dev') }}</button>
+        </div>
+
+        <div v-else-if="activeNode === 'code-review'" class="task-workflow-tab">
+          <div class="task-workflow-card">
+            <div class="task-workflow-card__header">
+              <div class="task-workflow-card__title">代码检查提示词</div>
+              <div class="task-workflow-card__switch">
+                <GitActionButton compact :loading="promptSaving === 'code_review'" @click="savePrompts('code_review')">
+                  保存提示词
+                </GitActionButton>
+                <GitActionButton compact @click="copyText(workflow.prompt_code_review || '', '提示词已复制')">
+                  <template #icon><el-icon><CopyDocument /></el-icon></template>
+                  复制提示词
+                </GitActionButton>
+                <GitActionButton compact variant="warning" :loading="promptRestoring === 'code_review'" @click="restorePrompts('code_review')">
+                  还原为默认提示词
+                </GitActionButton>
+                <div class="task-workflow-node-status-inline">
+                  <span class="task-workflow-node-status-inline__label">当前步骤状态</span>
+                  <button
+                    class="task-workflow-node-status-inline__btn"
+                    :class="'task-workflow-node-status-inline__btn--' + getNodeStatus('code-review')"
+                    :disabled="nodeStatusSaving"
+                    @click="cycleNodeStatus('code-review')"
+                  >{{ getNodeStatusLabel('code-review') }}</button>
+                </div>
+              </div>
+            </div>
+            <MdEditor
+              v-model="workflow.prompt_code_review"
+              class="task-workflow-prompt-editor"
+              preview-theme="github"
+              :preview="true"
+              :toolbars="promptEditorToolbars"
+              height="100%"
+            />
           </div>
         </div>
 
@@ -400,6 +448,15 @@
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'browser_test'" @click="restorePrompts('browser_test')">
                   还原为默认提示词
                 </GitActionButton>
+                <div class="task-workflow-node-status-inline">
+                  <span class="task-workflow-node-status-inline__label">当前步骤状态</span>
+                  <button
+                    class="task-workflow-node-status-inline__btn"
+                    :class="'task-workflow-node-status-inline__btn--' + getNodeStatus('browser-test')"
+                    :disabled="nodeStatusSaving"
+                    @click="cycleNodeStatus('browser-test')"
+                  >{{ getNodeStatusLabel('browser-test') }}</button>
+                </div>
               </div>
             </div>
             <MdEditor
@@ -410,15 +467,6 @@
               :toolbars="promptEditorToolbars"
               height="100%"
             />
-          </div>
-          <div class="task-workflow-node-status-bar">
-            <span class="task-workflow-node-status-bar__label">当前步骤状态</span>
-            <button
-              class="task-workflow-node-status-bar__btn"
-              :class="'task-workflow-node-status-bar__btn--' + getNodeStatus('browser-test')"
-              :disabled="nodeStatusSaving"
-              @click="cycleNodeStatus('browser-test')"
-            >{{ getNodeStatusLabel('browser-test') }}</button>
           </div>
         </div>
 
@@ -437,6 +485,15 @@
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'api_test'" @click="restorePrompts('api_test')">
                   还原为默认提示词
                 </GitActionButton>
+                <div class="task-workflow-node-status-inline">
+                  <span class="task-workflow-node-status-inline__label">当前步骤状态</span>
+                  <button
+                    class="task-workflow-node-status-inline__btn"
+                    :class="'task-workflow-node-status-inline__btn--' + getNodeStatus('api-test-fix')"
+                    :disabled="nodeStatusSaving"
+                    @click="cycleNodeStatus('api-test-fix')"
+                  >{{ getNodeStatusLabel('api-test-fix') }}</button>
+                </div>
               </div>
             </div>
             <MdEditor
@@ -447,15 +504,6 @@
               :toolbars="promptEditorToolbars"
               height="100%"
             />
-          </div>
-          <div class="task-workflow-node-status-bar">
-            <span class="task-workflow-node-status-bar__label">当前步骤状态</span>
-            <button
-              class="task-workflow-node-status-bar__btn"
-              :class="'task-workflow-node-status-bar__btn--' + getNodeStatus('api-test-fix')"
-              :disabled="nodeStatusSaving"
-              @click="cycleNodeStatus('api-test-fix')"
-            >{{ getNodeStatusLabel('api-test-fix') }}</button>
           </div>
         </div>
       </section>
@@ -486,18 +534,20 @@ const PROMPT_EDITOR_TOOLBARS = [
 ]
 
 // 节点状态常量
+const NODE_STATUS_PENDING = 'pending'
+const NODE_STATUS_RUNNING = 'running'
 const NODE_STATUS_COMPLETED = 'completed'
 const NODE_STATUS_SKIPPED = 'skipped'
-const NODE_STATUS_RUNNING = 'running'
 
 // 节点状态选项（切换按钮循环顺序）
-const NODE_STATUS_OPTIONS = [NODE_STATUS_COMPLETED, NODE_STATUS_SKIPPED, NODE_STATUS_RUNNING]
+const NODE_STATUS_OPTIONS = [NODE_STATUS_PENDING, NODE_STATUS_RUNNING, NODE_STATUS_COMPLETED, NODE_STATUS_SKIPPED]
 
 // 节点状态文案映射
 const NODE_STATUS_LABELS = {
+  [NODE_STATUS_PENDING]: '待执行',
+  [NODE_STATUS_RUNNING]: '执行中',
   [NODE_STATUS_COMPLETED]: '已完成',
   [NODE_STATUS_SKIPPED]: '已跳过',
-  [NODE_STATUS_RUNNING]: '执行中',
 }
 
 const TASK_STATUS_TODO = '待开始'
@@ -528,7 +578,8 @@ const WORKFLOW_NODES = [
   { key: 'design', label: '3.开发执行', desc: '编写提示词，AI自动结合数据库，代码和开发文档进行开发' },
   { key: 'api-dev', label: '4.接口生成', desc: '编写提示词，AI自动获取登录态，将所有改动接口写入接口开发中' },
   { key: 'api-test-fix', label: '5.自动化测试+修复', desc: '编写提示词，AI自动根据接口开发中的接口设计测试流程，自动上传代码+自动重启服务+自动修复BUG，支持多项目联调' },
-  { key: 'browser-test', label: '6.需求核对浏览器测试', desc: '编写提示词，AI核对浏览器测试结果是否满足需求' },
+  { key: 'code-review', label: '6.代码检查', desc: '让AI进行code review' },
+  { key: 'browser-test', label: '7.需求核对浏览器测试', desc: '编写提示词，AI核对浏览器测试结果是否满足需求' },
 ]
 
 export default {
@@ -624,7 +675,7 @@ export default {
     getNodeStatus() {
       return (nodeKey) => {
         if (nodeKey === 'task-config') return NODE_STATUS_COMPLETED
-        return this.nodeStatuses[nodeKey] || NODE_STATUS_RUNNING
+        return this.nodeStatuses[nodeKey] || NODE_STATUS_PENDING
       }
     },
     // 查找第一个"执行中"状态的节点 key
@@ -673,7 +724,7 @@ export default {
     handleCtrlS(e) {
       if (!(e.ctrlKey && e.key === 's')) return
       e.preventDefault()
-      const nodeToPrompt = { requirement: 'requirement', design: 'design', 'api-dev': 'api_dev', 'api-test-fix': 'api_test', 'browser-test': 'browser_test' }
+      const nodeToPrompt = { requirement: 'requirement', design: 'design', 'api-dev': 'api_dev', 'api-test-fix': 'api_test', 'code-review': 'code_review', 'browser-test': 'browser_test' }
       let promptType = nodeToPrompt[this.activeNode]
       if (this.activeNode === 'requirement-fetch' && this.requirementFetchActiveTab === 'plain-text-prompt') {
         promptType = 'plain_text_requirement'
@@ -767,7 +818,7 @@ export default {
     },
     // 获取节点状态文案
     getNodeStatusLabel(nodeKey) {
-      return NODE_STATUS_LABELS[this.getNodeStatus(nodeKey)] || '执行中'
+      return NODE_STATUS_LABELS[this.getNodeStatus(nodeKey)] || '待执行'
     },
     loadRequirementFragment(done) {
       const fragmentId = this.requirementFragmentId
@@ -1001,6 +1052,7 @@ export default {
         prompt_plain_text_requirement: this.workflow.prompt_plain_text_requirement || '',
         prompt_design_plan_requirement: this.workflow.prompt_design_plan_requirement || '',
         prompt_browser_test: this.workflow.prompt_browser_test || '',
+        prompt_code_review: this.workflow.prompt_code_review || '',
       }, (response) => {
         this.promptSaving = ''
         if (!(response && response.ErrCode === 0)) {
@@ -1286,7 +1338,7 @@ export default {
 
 .task-workflow-nodes {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 10px;
   flex-shrink: 0;
 }
@@ -1696,6 +1748,12 @@ export default {
   color: #fff;
 }
 
+.status-icon--pending {
+  background: #909399;
+  width: 14px;
+  height: 14px;
+}
+
 .status-icon--running {
   background: #409eff;
   width: 14px;
@@ -1703,6 +1761,9 @@ export default {
 }
 
 /* 节点按钮状态边框色 */
+.task-workflow-node--status-pending {
+  border-left: 3px solid #909399;
+}
 .task-workflow-node--status-completed {
   border-left: 3px solid #67c23a;
 }
@@ -1715,25 +1776,22 @@ export default {
   border-left: 3px solid #409eff;
 }
 
-/* 节点状态切换栏 */
-.task-workflow-node-status-bar {
+/* 节点状态切换（内联，位于还原为默认提示词右侧） */
+.task-workflow-node-status-inline {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  padding: 10px 16px;
-  background: #fafaf7;
-  border: 1px solid #e8e8e0;
-  border-radius: 8px;
+  gap: 8px;
+  margin-left: auto;
   flex-shrink: 0;
 }
 
-.task-workflow-node-status-bar__label {
+.task-workflow-node-status-inline__label {
   font-size: 13px;
   color: #909399;
+  white-space: nowrap;
 }
 
-.task-workflow-node-status-bar__btn {
+.task-workflow-node-status-inline__btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1746,38 +1804,48 @@ export default {
   transition: all 0.2s ease;
 }
 
-.task-workflow-node-status-bar__btn:disabled {
+.task-workflow-node-status-inline__btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.task-workflow-node-status-bar__btn--completed {
+.task-workflow-node-status-inline__btn--completed {
   background: #f0f9eb;
   color: #67c23a;
   border-color: #c2e7b0;
 }
 
-.task-workflow-node-status-bar__btn--completed:hover:not(:disabled) {
+.task-workflow-node-status-inline__btn--completed:hover:not(:disabled) {
   background: #e1f3d8;
 }
 
-.task-workflow-node-status-bar__btn--skipped {
+.task-workflow-node-status-inline__btn--skipped {
   background: #fdf6ec;
   color: #e6a23c;
   border-color: #f5dab1;
 }
 
-.task-workflow-node-status-bar__btn--skipped:hover:not(:disabled) {
+.task-workflow-node-status-inline__btn--skipped:hover:not(:disabled) {
   background: #faecd8;
 }
 
-.task-workflow-node-status-bar__btn--running {
+.task-workflow-node-status-inline__btn--running {
   background: #ecf5ff;
   color: #409eff;
   border-color: #b3d8ff;
 }
 
-.task-workflow-node-status-bar__btn--running:hover:not(:disabled) {
+.task-workflow-node-status-inline__btn--running:hover:not(:disabled) {
   background: #d9ecff;
+}
+
+.task-workflow-node-status-inline__btn--pending {
+  background: #f4f4f5;
+  color: #909399;
+  border-color: #d4d4d8;
+}
+
+.task-workflow-node-status-inline__btn--pending:hover:not(:disabled) {
+  background: #e9e9eb;
 }
 </style>
