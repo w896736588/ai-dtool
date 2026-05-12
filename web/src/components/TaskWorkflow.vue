@@ -40,9 +40,17 @@
             'task-workflow-node--success': node.key === 'requirement-fetch' && activeNode === node.key && requirementFetchStatus === 'success',
             'task-workflow-node--failed': node.key === 'requirement-fetch' && activeNode === node.key && requirementFetchStatus === 'failed',
             'task-workflow-node--running': node.key === 'requirement-fetch' && activeNode === node.key && requirementFetchStatus === 'running',
+            'task-workflow-node--status-completed': getNodeStatus(node.key) === 'completed',
+            'task-workflow-node--status-skipped': getNodeStatus(node.key) === 'skipped',
+            'task-workflow-node--status-running': getNodeStatus(node.key) === 'running',
           }"
           @click="activeNode = node.key"
         >
+          <span class="task-workflow-node__status-icon">
+            <span v-if="getNodeStatus(node.key) === 'completed'" class="status-icon status-icon--completed">&#10003;</span>
+            <span v-else-if="getNodeStatus(node.key) === 'skipped'" class="status-icon status-icon--skipped">&#10003;</span>
+            <span v-else class="status-icon status-icon--running"></span>
+          </span>
           <span class="task-workflow-node__label">{{ node.label }}</span>
           <span class="task-workflow-node__desc">{{ node.desc }}</span>
         </button>
@@ -201,6 +209,15 @@
               />
             </div>
           </div>
+          <div class="task-workflow-node-status-bar">
+            <span class="task-workflow-node-status-bar__label">当前步骤状态</span>
+            <button
+              class="task-workflow-node-status-bar__btn"
+              :class="'task-workflow-node-status-bar__btn--' + getNodeStatus('requirement-fetch')"
+              :disabled="nodeStatusSaving"
+              @click="cycleNodeStatus('requirement-fetch')"
+            >{{ getNodeStatusLabel('requirement-fetch') }}</button>
+          </div>
         </div>
 
         <div v-else-if="activeNode === 'requirement'" class="task-workflow-tab">
@@ -268,6 +285,15 @@
               />
             </div>
           </div>
+          <div class="task-workflow-node-status-bar">
+            <span class="task-workflow-node-status-bar__label">当前步骤状态</span>
+            <button
+              class="task-workflow-node-status-bar__btn"
+              :class="'task-workflow-node-status-bar__btn--' + getNodeStatus('requirement')"
+              :disabled="nodeStatusSaving"
+              @click="cycleNodeStatus('requirement')"
+            >{{ getNodeStatusLabel('requirement') }}</button>
+          </div>
         </div>
 
         <div v-else-if="activeNode === 'design'" class="task-workflow-tab">
@@ -294,6 +320,15 @@
               :toolbars="promptEditorToolbars"
               height="100%"
             />
+          </div>
+          <div class="task-workflow-node-status-bar">
+            <span class="task-workflow-node-status-bar__label">当前步骤状态</span>
+            <button
+              class="task-workflow-node-status-bar__btn"
+              :class="'task-workflow-node-status-bar__btn--' + getNodeStatus('design')"
+              :disabled="nodeStatusSaving"
+              @click="cycleNodeStatus('design')"
+            >{{ getNodeStatusLabel('design') }}</button>
           </div>
         </div>
 
@@ -328,6 +363,15 @@
               height="100%"
             />
           </div>
+          <div class="task-workflow-node-status-bar">
+            <span class="task-workflow-node-status-bar__label">当前步骤状态</span>
+            <button
+              class="task-workflow-node-status-bar__btn"
+              :class="'task-workflow-node-status-bar__btn--' + getNodeStatus('api-dev')"
+              :disabled="nodeStatusSaving"
+              @click="cycleNodeStatus('api-dev')"
+            >{{ getNodeStatusLabel('api-dev') }}</button>
+          </div>
         </div>
 
         <div v-else-if="activeNode === 'browser-test'" class="task-workflow-tab">
@@ -354,6 +398,15 @@
               :toolbars="promptEditorToolbars"
               height="100%"
             />
+          </div>
+          <div class="task-workflow-node-status-bar">
+            <span class="task-workflow-node-status-bar__label">当前步骤状态</span>
+            <button
+              class="task-workflow-node-status-bar__btn"
+              :class="'task-workflow-node-status-bar__btn--' + getNodeStatus('browser-test')"
+              :disabled="nodeStatusSaving"
+              @click="cycleNodeStatus('browser-test')"
+            >{{ getNodeStatusLabel('browser-test') }}</button>
           </div>
         </div>
 
@@ -382,6 +435,15 @@
               height="100%"
             />
           </div>
+          <div class="task-workflow-node-status-bar">
+            <span class="task-workflow-node-status-bar__label">当前步骤状态</span>
+            <button
+              class="task-workflow-node-status-bar__btn"
+              :class="'task-workflow-node-status-bar__btn--' + getNodeStatus('api-test-fix')"
+              :disabled="nodeStatusSaving"
+              @click="cycleNodeStatus('api-test-fix')"
+            >{{ getNodeStatusLabel('api-test-fix') }}</button>
+          </div>
         </div>
       </section>
     </div>
@@ -409,6 +471,21 @@ const PROMPT_EDITOR_TOOLBARS = [
   'unorderedList', 'orderedList', 'task', 'link', 'code',
   'codeRow', 'table', 'preview', 'fullscreen',
 ]
+
+// 节点状态常量
+const NODE_STATUS_COMPLETED = 'completed'
+const NODE_STATUS_SKIPPED = 'skipped'
+const NODE_STATUS_RUNNING = 'running'
+
+// 节点状态选项（切换按钮循环顺序）
+const NODE_STATUS_OPTIONS = [NODE_STATUS_COMPLETED, NODE_STATUS_SKIPPED, NODE_STATUS_RUNNING]
+
+// 节点状态文案映射
+const NODE_STATUS_LABELS = {
+  [NODE_STATUS_COMPLETED]: '已完成',
+  [NODE_STATUS_SKIPPED]: '已跳过',
+  [NODE_STATUS_RUNNING]: '执行中',
+}
 
 const TASK_STATUS_TODO = '待开始'
 const TASK_STATUS_DEVELOPING = '开发中'
@@ -478,6 +555,8 @@ export default {
       taskConfigCollectionList: [],
       taskConfigSmartLinkList: [],
       taskConfigApiFolderMap: {},
+      nodeStatuses: {},
+      nodeStatusSaving: false,
     }
   },
   computed: {
@@ -528,6 +607,22 @@ export default {
         return []
       }
     },
+    // 获取某个节点的状态，task-config 固定为 completed
+    getNodeStatus() {
+      return (nodeKey) => {
+        if (nodeKey === 'task-config') return NODE_STATUS_COMPLETED
+        return this.nodeStatuses[nodeKey] || NODE_STATUS_RUNNING
+      }
+    },
+    // 查找第一个"执行中"状态的节点 key
+    firstRunningNodeKey() {
+      for (const node of this.workflowNodes) {
+        if (node.key !== 'task-config' && this.getNodeStatus(node.key) === NODE_STATUS_RUNNING) {
+          return node.key
+        }
+      }
+      return 'task-config'
+    },
   },
   mounted() {
     this.loadWorkflowPage()
@@ -553,6 +648,7 @@ export default {
     '$route.params.taskId'() {
       this.requirementFetchAutoTriggered = false
       this.requirementFetchLogs = []
+      this.nodeStatuses = {}
       this.activeNode = 'requirement-fetch'
       this.requirementFetchActiveTab = 'tapd-fetch'
       this.requirementActiveTab = 'requirement-prompt'
@@ -586,6 +682,7 @@ export default {
       this.requirementFetchAutoTriggered = false
       this.requirementFetchLogs = []
       this.requirementFetchActiveTab = 'tapd-fetch'
+      this.nodeStatuses = {}
       this.loadWorkflowPage()
     },
     loadWorkflowPage() {
@@ -602,6 +699,7 @@ export default {
           return
         }
         this.applyWorkflowPayload(response.Data)
+        this.activeNode = this.firstRunningNodeKey
         this.loadRequirementFragment(() => {
           this.loading = false
           this.ensureWorkflowSse()
@@ -614,6 +712,49 @@ export default {
       this.homeTask = data.home_task || this.homeTask || {}
       this.workflowId = Number(this.workflow.id || 0)
       this.requirementFetchConfig = data.requirement_fetch_config || this.requirementFetchConfig || {}
+      this.parseNodeStatuses()
+    },
+    // 解析后端返回的 node_statuses JSON 字符串
+    parseNodeStatuses() {
+      const raw = String(this.workflow.node_statuses || '').trim()
+      if (!raw) {
+        this.nodeStatuses = {}
+        return
+      }
+      try {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+        this.nodeStatuses = (parsed && typeof parsed === 'object') ? parsed : {}
+      } catch {
+        this.nodeStatuses = {}
+      }
+    },
+    // 切换节点状态（循环：执行中 -> 已完成 -> 已跳过 -> 执行中）
+    cycleNodeStatus(nodeKey) {
+      if (nodeKey === 'task-config' || this.nodeStatusSaving) return
+      const current = this.getNodeStatus(nodeKey)
+      const currentIdx = NODE_STATUS_OPTIONS.indexOf(current)
+      const nextIdx = (currentIdx + 1) % NODE_STATUS_OPTIONS.length
+      const nextStatus = NODE_STATUS_OPTIONS[nextIdx]
+      const updated = { ...this.nodeStatuses, [nodeKey]: nextStatus }
+      this.saveNodeStatuses(updated)
+    },
+    // 保存节点状态到后端
+    saveNodeStatuses(updatedStatuses) {
+      if (this.workflowId <= 0) return
+      this.nodeStatusSaving = true
+      const jsonStr = JSON.stringify(updatedStatuses)
+      taskWorkflowApi.TaskWorkflowNodeStatusUpdate(this.workflowId, jsonStr, (response) => {
+        this.nodeStatusSaving = false
+        if (!(response && response.ErrCode === 0)) {
+          this.$helperNotify.error(response?.ErrMsg || '节点状态保存失败')
+          return
+        }
+        this.nodeStatuses = updatedStatuses
+      })
+    },
+    // 获取节点状态文案
+    getNodeStatusLabel(nodeKey) {
+      return NODE_STATUS_LABELS[this.getNodeStatus(nodeKey)] || '执行中'
     },
     loadRequirementFragment(done) {
       const fragmentId = this.requirementFragmentId
@@ -1505,5 +1646,125 @@ export default {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* 节点状态图标 */
+.task-workflow-node {
+  position: relative;
+}
+
+.task-workflow-node__status-icon {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-icon--completed {
+  background: #67c23a;
+  color: #fff;
+}
+
+.status-icon--skipped {
+  background: #e6a23c;
+  color: #fff;
+}
+
+.status-icon--running {
+  background: #409eff;
+  width: 14px;
+  height: 14px;
+}
+
+/* 节点按钮状态边框色 */
+.task-workflow-node--status-completed {
+  border-left: 3px solid #67c23a;
+}
+
+.task-workflow-node--status-skipped {
+  border-left: 3px solid #e6a23c;
+}
+
+.task-workflow-node--status-running {
+  border-left: 3px solid #409eff;
+}
+
+/* 节点状态切换栏 */
+.task-workflow-node-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: #fafaf7;
+  border: 1px solid #e8e8e0;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.task-workflow-node-status-bar__label {
+  font-size: 13px;
+  color: #909399;
+}
+
+.task-workflow-node-status-bar__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.task-workflow-node-status-bar__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.task-workflow-node-status-bar__btn--completed {
+  background: #f0f9eb;
+  color: #67c23a;
+  border-color: #c2e7b0;
+}
+
+.task-workflow-node-status-bar__btn--completed:hover:not(:disabled) {
+  background: #e1f3d8;
+}
+
+.task-workflow-node-status-bar__btn--skipped {
+  background: #fdf6ec;
+  color: #e6a23c;
+  border-color: #f5dab1;
+}
+
+.task-workflow-node-status-bar__btn--skipped:hover:not(:disabled) {
+  background: #faecd8;
+}
+
+.task-workflow-node-status-bar__btn--running {
+  background: #ecf5ff;
+  color: #409eff;
+  border-color: #b3d8ff;
+}
+
+.task-workflow-node-status-bar__btn--running:hover:not(:disabled) {
+  background: #d9ecff;
 }
 </style>

@@ -340,6 +340,23 @@ func (h *CSqlite) TaskWorkflowMarkRequirementFetchFailed(workflowID int, sourceU
 	return err
 }
 
+// TaskWorkflowUpdateNodeStatuses 更新工作流节点状态。
+func (h *CSqlite) TaskWorkflowUpdateNodeStatuses(workflowID int, nodeStatuses string) error {
+	if workflowID <= 0 {
+		return errors.New(`工作流id不能为空`)
+	}
+	if _, err := h.TaskWorkflowInfo(workflowID); err != nil {
+		return err
+	}
+	_, err := h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
+		`id`: workflowID,
+	}, map[string]any{
+		`node_statuses`: strings.TrimSpace(nodeStatuses),
+		`update_time`:   time.Now().Unix(),
+	}).Exec()
+	return err
+}
+
 // TaskWorkflowBindApiDocFragment 绑定接口文档片段 id。
 func (h *CSqlite) TaskWorkflowBindApiDocFragment(workflowID int, fragmentID string) error {
 	if workflowID <= 0 {

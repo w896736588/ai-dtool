@@ -1257,6 +1257,37 @@ func taskWorkflowBuildUIAssistSummaryMarkdown(uiAssistReport map[string]any) str
 		"- 下载地址：" + cast.ToString(uiAssistReport[`download_url`]) + "\n"
 }
 
+// TaskWorkflowNodeStatusUpdate 更新工作流节点状态。
+func TaskWorkflowNodeStatusUpdate(c *gin.Context) {
+	if common.DbMain == nil || common.DbMain.Client == nil {
+		gsgin.GinResponseError(c, `主库未初始化`, nil)
+		return
+	}
+	request := _struct.TaskWorkflowNodeStatusUpdateRequest{}
+	_ = gsgin.GinPostBody(c, &request)
+	if request.WorkflowID <= 0 {
+		gsgin.GinResponseError(c, `workflow_id不能为空`, nil)
+		return
+	}
+	if strings.TrimSpace(request.NodeStatuses) == `` {
+		gsgin.GinResponseError(c, `node_statuses不能为空`, nil)
+		return
+	}
+	err := common.DbMain.TaskWorkflowUpdateNodeStatuses(request.WorkflowID, request.NodeStatuses)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	updatedInfo, err := common.DbMain.TaskWorkflowInfo(request.WorkflowID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`workflow`: updatedInfo,
+	})
+}
+
 // TaskWorkflowPromptsSave 保存工作流提示词。
 func TaskWorkflowPromptsSave(c *gin.Context) {
 	if common.DbMain == nil || common.DbMain.Client == nil {

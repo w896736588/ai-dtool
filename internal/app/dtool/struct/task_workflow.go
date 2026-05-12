@@ -59,3 +59,9 @@ type TaskWorkflowPromptsRestoreRequest struct {
 type TaskWorkflowRequirementFetchRequest struct {
 	WorkflowID int `json:"workflow_id"`
 }
+
+// TaskWorkflowNodeStatusUpdateRequest 更新工作流节点状态请求。
+type TaskWorkflowNodeStatusUpdateRequest struct {
+	WorkflowID   int    `json:"workflow_id"`
+	NodeStatuses string `json:"node_statuses"`
+}

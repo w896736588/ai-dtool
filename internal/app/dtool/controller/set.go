@@ -84,19 +84,21 @@ func SetSshAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `host`, `port`, `username`, `password`, `home`})
-	if cast.ToString(updateData[`db_type`]) == `` {
-		updateData[`db_type`] = DbTypeMysql
-	}
+	var err error
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
-		_, _ = common.DbMain.Client.QuickCreate(`tbl_ssh`, updateData).Exec()
+		_, err = common.DbMain.Client.QuickCreate(`tbl_ssh`, updateData).Exec()
 	} else {
 		updateData[`update_time`] = time.Now().Unix()
-		_, _ = common.DbMain.Client.QuickUpdate(`tbl_ssh`,
+		_, err = common.DbMain.Client.QuickUpdate(`tbl_ssh`,
 			map[string]any{
 				`id`: dataMap[`id`],
 			}, updateData).Exec()
+	}
+	if err != nil {
+		gsgin.GinResponseError(c, `保存失败: `+err.Error(), nil)
+		return
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }

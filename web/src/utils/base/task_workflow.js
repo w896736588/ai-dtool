@@ -40,6 +40,14 @@ function TaskWorkflowApiDocReset(workflowId, callBack) {
   }, callBack)
 }
 
+// TaskWorkflowNodeStatusUpdate 更新工作流节点状态。
+function TaskWorkflowNodeStatusUpdate(workflowId, nodeStatuses, callBack) {
+  base.BasePost('/api/task/workflow/node-status/update', {
+    workflow_id: workflowId,
+    node_statuses: nodeStatuses,
+  }, callBack)
+}
+
 export default {
   TaskWorkflowCreateOrGet,
   TaskWorkflowInfo,
@@ -47,4 +55,5 @@ export default {
   TaskWorkflowPromptsRestore,
   TaskWorkflowRequirementFetch,
   TaskWorkflowApiDocReset,
+  TaskWorkflowNodeStatusUpdate,
 }

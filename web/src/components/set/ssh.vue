@@ -154,12 +154,12 @@ export default defineComponent({
     const EditSsh = function (){
       set.SshAdd(state.editSshConfig , function (response){
         if(response.ErrCode === 0){
+          state.dialogEditSsh = false
           SshList()
+          SetInit()
         }else{
-          instance.$helperNotify.success(response.ErrMsg)
+          instance.$helperNotify.error(response.ErrMsg)
         }
-        state.dialogEditSsh = false
-        SetInit()
       })
     }
 
