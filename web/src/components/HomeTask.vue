@@ -93,7 +93,15 @@
                     v-if="Number(task.use_workflow) !== HOME_TASK_USE_WORKFLOW_NO"
                     @click="openTaskWorkflow(task)"
                   >
-                    工作流程
+                    <template #icon>
+                      <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="4" width="7" height="7" rx="1.5"/>
+                        <path d="M9 7.5h4"/>
+                        <polyline points="12 5.5 14 7.5 12 9.5"/>
+                        <rect x="15" y="4" width="7" height="7" rx="1.5"/>
+                      </svg>
+                    </template>
+                    工作流程 {{ getHomeTaskWorkflowCountText(task) }}
                   </GitActionButton>
                   <el-dropdown
                     trigger="click"
@@ -222,7 +230,15 @@
                     v-if="Number(task.use_workflow) !== HOME_TASK_USE_WORKFLOW_NO"
                     @click="openTaskWorkflow(task)"
                   >
-                    工作流程
+                    <template #icon>
+                      <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="4" width="7" height="7" rx="1.5"/>
+                        <path d="M9 7.5h4"/>
+                        <polyline points="12 5.5 14 7.5 12 9.5"/>
+                        <rect x="15" y="4" width="7" height="7" rx="1.5"/>
+                      </svg>
+                    </template>
+                    工作流程 {{ getHomeTaskWorkflowCountText(task) }}
                   </GitActionButton>
                   <el-dropdown
                     trigger="click"
@@ -613,6 +629,7 @@ import mysqlSetApi from '@/utils/base/mysql_set'
 import apiManagement from '@/utils/base/api'
 import dockerApi from '@/utils/base/compose'
 import smartLinkSetApi from '@/utils/base/smart_link_set'
+import taskWorkflowApi from '@/utils/base/task_workflow'
 import GitActionButton from "@/components/base/GitActionButton.vue"
 
 const HOME_TASK_TAB_ACTIVE = 'active'
@@ -647,6 +664,15 @@ const HOME_TASK_ACTION_COMMAND_STATUS_PREFIX = 'status:'
 const HOME_TASK_CONFIG_TAG_MAX_LENGTH = 15
 const HOME_TASK_USE_WORKFLOW_YES = 1
 const HOME_TASK_USE_WORKFLOW_NO = 0
+const HOME_TASK_WORKFLOW_NODE_KEYS = [
+  'requirement-fetch',
+  'requirement',
+  'design',
+  'api-dev',
+  'api-test-fix',
+  'code-review',
+  'browser-test',
+]
 const HOME_TASK_STATUS_OPTIONS = [
   HOME_TASK_STATUS_TODO,
   HOME_TASK_STATUS_DEVELOPING,
@@ -722,6 +748,7 @@ export default {
       homeTaskEditFeedbackMap: {},
       homeTaskEditFeedbackTimers: {},
       homeTaskEditFeedbackDurationMs: 1000,
+      homeTaskWorkflowCountMap: {},
       homeTaskLocalDirStatusMap: {},
       homeTaskGitRepoList: [],
       homeTaskGitRepoLoading: false,
@@ -814,6 +841,7 @@ export default {
           this.homeTaskArchivedList = taskList
         } else {
           this.homeTaskActiveList = taskList
+          this.loadHomeTaskWorkflowCounts(taskList)
         }
         // 预加载 dev_configs 中引用的 API 文件夹
         for (const t of taskList) {
@@ -1552,6 +1580,50 @@ export default {
     isFragmentExpandable(content) {
       const maxLength = 100
       return content && content.length > maxLength
+    },
+    loadHomeTaskWorkflowCounts(taskList) {
+      const workflowTaskIds = []
+      for (const task of taskList) {
+        if (Number(task.use_workflow) !== HOME_TASK_USE_WORKFLOW_NO) {
+          workflowTaskIds.push(Number(task.id))
+        }
+      }
+      if (workflowTaskIds.length === 0) return
+      taskWorkflowApi.TaskWorkflowBatchNodeStatus(workflowTaskIds, (response) => {
+        if (!(response && response.ErrCode === 0 && response.Data)) return
+        const nodeStatusesMap = response.Data.node_statuses_map || {}
+        const newMap = { ...this.homeTaskWorkflowCountMap }
+        for (const task of taskList) {
+          const taskId = Number(task.id)
+          if (Number(task.use_workflow) === HOME_TASK_USE_WORKFLOW_NO) continue
+          const raw = String(nodeStatusesMap[String(taskId)] || '').trim()
+          let nodeStatuses = {}
+          if (raw) {
+            try {
+              nodeStatuses = JSON.parse(raw)
+            } catch (e) { /* ignore */ }
+          }
+          let completed = 0
+          let skipped = 0
+          for (const key of HOME_TASK_WORKFLOW_NODE_KEYS) {
+            const status = nodeStatuses[key] || 'pending'
+            if (status === 'skipped') {
+              skipped++
+            } else if (status === 'completed') {
+              completed++
+            }
+          }
+          const total = HOME_TASK_WORKFLOW_NODE_KEYS.length
+          const nonSkipped = total - skipped
+          newMap[taskId] = completed + '/' + nonSkipped
+        }
+        this.homeTaskWorkflowCountMap = newMap
+      })
+    },
+    getHomeTaskWorkflowCountText(task) {
+      const taskId = Number(task?.id || 0)
+      const display = this.homeTaskWorkflowCountMap[taskId]
+      return display || ''
     },
   },
   components: {

@@ -2173,3 +2173,25 @@ func TaskWorkflowApiDocReset(c *gin.Context) {
 		`fragment_id`: fragmentID,
 	})
 }
+
+// TaskWorkflowBatchNodeStatus 批量查询工作流节点状态。
+func TaskWorkflowBatchNodeStatus(c *gin.Context) {
+	if common.DbMain == nil || common.DbMain.Client == nil {
+		gsgin.GinResponseError(c, `主库未初始化`, nil)
+		return
+	}
+	request := _struct.TaskWorkflowBatchNodeStatusRequest{}
+	_ = gsgin.GinPostBody(c, &request)
+	if len(request.HomeTaskIDs) == 0 {
+		gsgin.GinResponseSuccess(c, ``, map[string]any{})
+		return
+	}
+	nodeStatusesMap, err := common.DbMain.TaskWorkflowBatchNodeStatusesByHomeTaskIDs(request.HomeTaskIDs)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`node_statuses_map`: nodeStatusesMap,
+	})
+}

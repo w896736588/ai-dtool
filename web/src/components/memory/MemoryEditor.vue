@@ -65,6 +65,19 @@
                     <el-icon><Download /></el-icon>
                   </GitActionButton>
                 </el-tooltip>
+                <el-tooltip :content="uploadZipUpdateButtonText" placement="top">
+                  <GitActionButton
+                    variant="info"
+                    compact
+                    class="toolbar-icon-button"
+                    :loading="zipUpdating"
+                    :aria-label="uploadZipUpdateButtonText"
+                    @click="triggerUpdateZip"
+                  >
+                    <el-icon><Upload /></el-icon>
+                  </GitActionButton>
+                </el-tooltip>
+                <input ref="updateZipFileInput" type="file" accept=".zip" style="display:none" @change="handleUpdateZip" />
                 <el-tooltip :content="saveButtonText" placement="top">
                   <GitActionButton
                     compact
@@ -293,7 +306,7 @@
 <script>
 import { MdEditor, MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
-import { Check, CopyDocument, Download, Edit, MagicStick, MoreFilled, Search, Share, View } from '@element-plus/icons-vue'
+import { Check, CopyDocument, Download, Edit, MagicStick, MoreFilled, Search, Share, Upload, View } from '@element-plus/icons-vue'
 import DiffMarkdown from '@/components/base/diff_markwodn.vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
@@ -364,6 +377,8 @@ const COPY_PATH_BUTTON_TEXT = '复制文件地址'
 const COPY_CONTENT_BUTTON_TEXT = '复制'
 // DOWNLOAD_ZIP_BUTTON_TEXT 统一定义下载 ZIP 按钮文案。
 const DOWNLOAD_ZIP_BUTTON_TEXT = '下载ZIP'
+// UPLOAD_ZIP_UPDATE_BUTTON_TEXT 统一定义上传 ZIP 更新按钮文案。
+const UPLOAD_ZIP_UPDATE_BUTTON_TEXT = '上传ZIP更新'
 // INLINE_TAG_VISIBLE_LIMIT / 内容区右侧最多展示的标签数量 / Max visible inline tags beside content actions.
 const INLINE_TAG_VISIBLE_LIMIT = 5
 // TOOLBAR_ACTION_HISTORY_COMMAND / 工具栏下拉历史记录命令 / Dropdown command for history action.
@@ -401,6 +416,7 @@ export default {
       Search,
       Share,
       View,
+      Upload,
     DiffMarkdown,
     GitActionButton,
   },
@@ -434,6 +450,7 @@ export default {
       saving: false,
       sharing: false,
       organizing: false,
+      zipUpdating: false,
       applyingOrganizeResult: false,
       contentEditMode: false,
       organizeDialogVisible: false,
@@ -446,6 +463,7 @@ export default {
       copyPathButtonText: COPY_PATH_BUTTON_TEXT,
       copyContentButtonText: COPY_CONTENT_BUTTON_TEXT,
       downloadZipButtonText: DOWNLOAD_ZIP_BUTTON_TEXT,
+      uploadZipUpdateButtonText: UPLOAD_ZIP_UPDATE_BUTTON_TEXT,
       historyButtonText: HISTORY_BUTTON_TEXT,
       deleteButtonText: DELETE_BUTTON_TEXT,
       saveButtonText: SAVE_BUTTON_TEXT,
@@ -715,6 +733,36 @@ export default {
         return
       }
       MemoryFragmentApi.MemoryFragmentDownloadZip(this.draftFragment.id)
+    },
+    // triggerUpdateZip 触发隐藏的文件选择框以上传 ZIP 更新当前片段。
+    triggerUpdateZip() {
+      if (this.zipUpdating) {
+        return
+      }
+      this.$refs.updateZipFileInput.click()
+    },
+    // handleUpdateZip 处理 ZIP 文件上传，解析后覆盖更新当前片段。
+    handleUpdateZip(event) {
+      const file = event.target.files[0]
+      if (!file) {
+        return
+      }
+      if (!this.draftFragment.id) {
+        this.$helperNotify.error('请先保存片段后再上传更新')
+        event.target.value = ''
+        return
+      }
+      this.zipUpdating = true
+      const apiBaseURL = base.GetAbsoluteApiHost()
+      MemoryFragmentApi.MemoryFragmentUpdateZip(this.draftFragment.id, file, apiBaseURL, (response) => {
+        this.zipUpdating = false
+        event.target.value = ''
+        if (response.ErrCode !== 0 || !response.Data) {
+          return
+        }
+        this.$emit('saved', response.Data)
+        this.$helperNotify.success('ZIP更新成功')
+      })
     },
     // handleShareLink 创建 24 小时只读分享链接并复制到剪贴板。
     handleShareLink() {

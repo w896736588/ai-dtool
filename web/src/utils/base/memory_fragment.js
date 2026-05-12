@@ -121,6 +121,15 @@ function MemoryFragmentUploadZip(file, apiBaseURL, callBack) {
   base.BasePostForm('/api/MemoryFragmentUploadZip', form, callBack)
 }
 
+// MemoryFragmentUpdateZip 上传 ZIP 文件更新已有知识片段。
+function MemoryFragmentUpdateZip(id, file, apiBaseURL, callBack) {
+  const form = new FormData()
+  form.append('id', id)
+  form.append('file', file)
+  form.append('api_base_url', apiBaseURL)
+  base.BasePostForm('/api/MemoryFragmentUpdateZip', form, callBack)
+}
+
 // MemoryFragmentBatchInfoByPaths 批量按文件路径查询片段摘要（id + title）。
 function MemoryFragmentBatchInfoByPaths(paths, callBack) {
   base.BasePost('/api/MemoryFragmentBatchInfoByPaths', {
@@ -137,6 +146,13 @@ function MemoryFragmentDownloadZip(id) {
   document.body.appendChild(anchor)
   anchor.click()
   document.body.removeChild(anchor)
+}
+
+// MemoryFragmentReferences 查询知识片段被工作流程和其他片段引用的情况。
+function MemoryFragmentReferences(fragmentIds, callBack) {
+  base.BasePost('/api/MemoryFragmentReferences', {
+    fragment_ids: fragmentIds,
+  }, callBack)
 }
 
 // MemoryGitPull 手动拉取记忆库远程仓库最新内容。
@@ -162,7 +178,9 @@ export default {
   MemoryFragmentShareInfo,
   MemoryFragmentImageUpload,
   MemoryFragmentUploadZip,
+  MemoryFragmentUpdateZip,
   MemoryFragmentDownloadZip,
   MemoryFragmentBatchInfoByPaths,
+  MemoryFragmentReferences,
   MemoryGitPull,
 }

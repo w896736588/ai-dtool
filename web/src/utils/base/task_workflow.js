@@ -40,6 +40,13 @@ function TaskWorkflowApiDocReset(workflowId, callBack) {
   }, callBack)
 }
 
+// TaskWorkflowBatchNodeStatus 批量查询工作流节点状态。
+function TaskWorkflowBatchNodeStatus(homeTaskIds, callBack) {
+  base.BasePost('/api/task/workflow/batch-node-status', {
+    home_task_ids: homeTaskIds,
+  }, callBack)
+}
+
 // TaskWorkflowNodeStatusUpdate 更新工作流节点状态。
 function TaskWorkflowNodeStatusUpdate(workflowId, nodeStatuses, callBack) {
   base.BasePost('/api/task/workflow/node-status/update', {
@@ -49,6 +56,7 @@ function TaskWorkflowNodeStatusUpdate(workflowId, nodeStatuses, callBack) {
 }
 
 export default {
+  TaskWorkflowBatchNodeStatus,
   TaskWorkflowCreateOrGet,
   TaskWorkflowInfo,
   TaskWorkflowPromptsSave,

@@ -358,6 +358,28 @@ func (h *CSqlite) TaskWorkflowUpdateNodeStatuses(workflowID int, nodeStatuses st
 	return err
 }
 
+// TaskWorkflowBatchNodeStatusesByHomeTaskIDs 根据 home_task_id 列表批量查询工作流 node_statuses。
+func (h *CSqlite) TaskWorkflowBatchNodeStatusesByHomeTaskIDs(homeTaskIDs []int) (map[int]string, error) {
+	result := map[int]string{}
+	if len(homeTaskIDs) == 0 {
+		return result, nil
+	}
+	placeholders := make([]string, 0, len(homeTaskIDs))
+	args := make([]any, 0, len(homeTaskIDs))
+	for _, id := range homeTaskIDs {
+		placeholders = append(placeholders, `?`)
+		args = append(args, id)
+	}
+	list, err := h.Client.QueryBySql(`select home_task_id, node_statuses from tbl_task_workflow where home_task_id in (`+strings.Join(placeholders, `,`)+`)`, args...).All()
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range list {
+		result[cast.ToInt(row[`home_task_id`])] = strings.TrimSpace(cast.ToString(row[`node_statuses`]))
+	}
+	return result, nil
+}
+
 // TaskWorkflowBindApiDocFragment 绑定接口文档片段 id。
 func (h *CSqlite) TaskWorkflowBindApiDocFragment(workflowID int, fragmentID string) error {
 	if workflowID <= 0 {

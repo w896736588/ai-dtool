@@ -66,3 +66,8 @@ type TaskWorkflowNodeStatusUpdateRequest struct {
 	WorkflowID   int    `json:"workflow_id"`
 	NodeStatuses string `json:"node_statuses"`
 }
+
+// TaskWorkflowBatchNodeStatusRequest 批量查询工作流节点状态请求。
+type TaskWorkflowBatchNodeStatusRequest struct {
+	HomeTaskIDs []int `json:"home_task_ids"`
+}

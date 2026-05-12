@@ -2,6 +2,7 @@ package controller
 
 import (
 	"archive/zip"
+	"bytes"
 	"dev_tool/internal/app/dtool/business"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -825,4 +827,207 @@ func MemoryGitPull(c *gin.Context) {
 		return
 	}
 	gsgin.GinResponseSuccess(c, `拉取成功`, nil)
+}
+
+// MemoryFragmentUpdateZip 上传 ZIP 文件更新已有知识片段，解析 content.md + images/ 覆盖更新。
+func MemoryFragmentUpdateZip(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	fragmentID := strings.TrimSpace(c.PostForm(`id`))
+	if fragmentID == `` || fragmentID == `0` {
+		gsgin.GinResponseError(c, `片段ID不能为空`, nil)
+		return
+	}
+	// 确认片段存在
+	_, infoErr := memoryDB.MemoryFragmentInfo(fragmentID)
+	if infoErr != nil {
+		gsgin.GinResponseError(c, `片段不存在:`+infoErr.Error(), nil)
+		return
+	}
+
+	file, err := c.FormFile(`file`)
+	if err != nil {
+		gsgin.GinResponseError(c, `上传失败:`+err.Error(), nil)
+		return
+	}
+	if !strings.HasSuffix(strings.ToLower(file.Filename), `.zip`) {
+		gsgin.GinResponseError(c, `仅支持 .zip 文件`, nil)
+		return
+	}
+	apiBaseURL := strings.TrimRight(c.PostForm(`api_base_url`), `/`)
+
+	tmpDir := os.TempDir()
+	tmpPath := filepath.Join(tmpDir, fmt.Sprintf(`fragment_update_%d.zip`, time.Now().UnixMicro()))
+	if err := c.SaveUploadedFile(file, tmpPath); err != nil {
+		gsgin.GinResponseError(c, `保存临时文件失败:`+err.Error(), nil)
+		return
+	}
+	defer os.Remove(tmpPath)
+
+	reader, err := zip.OpenReader(tmpPath)
+	if err != nil {
+		gsgin.GinResponseError(c, `打开 ZIP 文件失败:`+err.Error(), nil)
+		return
+	}
+	defer reader.Close()
+
+	var markdownContent string
+	for _, f := range reader.File {
+		if f.Name == `content.md` {
+			rc, openErr := f.Open()
+			if openErr != nil {
+				gsgin.GinResponseError(c, `打开 content.md 失败:`+openErr.Error(), nil)
+				return
+			}
+			content, readErr := io.ReadAll(rc)
+			_ = rc.Close()
+			if readErr != nil {
+				gsgin.GinResponseError(c, `读取 content.md 失败:`+readErr.Error(), nil)
+				return
+			}
+			markdownContent = string(content)
+			break
+		}
+	}
+	if markdownContent == `` {
+		gsgin.GinResponseError(c, `ZIP 中未找到 content.md`, nil)
+		return
+	}
+
+	title := ``
+	lines := strings.Split(markdownContent, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, `# `) {
+			title = strings.TrimPrefix(trimmed, `# `)
+			break
+		}
+	}
+
+	memoryDir := component.MemoryRuntime.Config().Dir
+	pathMapping, imgErr := saveScrapeImagesToMemoryDir(&reader.Reader, memoryDir)
+	if imgErr != nil {
+		gsgin.GinResponseError(c, `保存图片失败:`+imgErr.Error(), nil)
+		return
+	}
+	markdownContent = rewriteScrapeImagePaths(markdownContent, pathMapping)
+	if apiBaseURL != `` {
+		markdownContent = strings.ReplaceAll(markdownContent, "(/memory/images/", "("+apiBaseURL+"/memory/images/")
+	} else {
+		markdownContent = prefixMemoryImagePaths(markdownContent)
+	}
+
+	info, saveErr := memoryDB.MemoryFragmentSave(fragmentID, title, markdownContent, nil)
+	if saveErr != nil {
+		gsgin.GinResponseError(c, `更新片段失败:`+saveErr.Error(), nil)
+		return
+	}
+	component.MemoryRuntime.ScheduleSync()
+	broadcastMemoryFragmentUpsert(info)
+	gsgin.GinResponseSuccess(c, ``, info)
+}
+
+const (
+	// fragmentRefTypeFragment 表示引用来源为其他知识片段。
+	fragmentRefTypeFragment = `fragment`
+)
+
+// MemoryFragmentReferences 查询知识片段被哪些位置引用（工作流程 + 其他片段）。
+func MemoryFragmentReferences(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	idsRaw, _ := dataMap[`fragment_ids`].([]any)
+	fragmentIDs := make([]string, 0, len(idsRaw))
+	for _, item := range idsRaw {
+		id := strings.TrimSpace(cast.ToString(item))
+		if id != `` {
+			fragmentIDs = append(fragmentIDs, id)
+		}
+	}
+
+	// 初始化结果，确保每个 fragment_id 都有数组（即使为空）。
+	result := make(map[string][]map[string]any)
+	for _, fid := range fragmentIDs {
+		result[fid] = []map[string]any{}
+	}
+
+	if len(fragmentIDs) == 0 {
+		gsgin.GinResponseSuccess(c, ``, result)
+		return
+	}
+
+	// 1. 查工作流程引用。
+	workflowRefs, err := common.DbMain.HomeTaskFragmentReferences(fragmentIDs)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	for fid, refs := range workflowRefs {
+		for _, ref := range refs {
+			result[fid] = append(result[fid], map[string]any{
+				`type`: ref.Type,
+				`id`:   ref.ID,
+				`name`: ref.Name,
+			})
+		}
+	}
+
+	// 2. 用 rg 在记忆库搜索片段间引用（rg 不可用时跳过）。
+	_ = component.MemoryRuntime.EnsureConfigured()
+	memoryDB := component.MemoryRuntime.DB()
+	if memoryDB != nil {
+		for _, fid := range fragmentIDs {
+			fragmentRefs := searchFragmentRefsByRg(component.MemoryRuntime.Config().Dir, fid, memoryDB)
+			result[fid] = append(result[fid], fragmentRefs...)
+		}
+	}
+
+	gsgin.GinResponseSuccess(c, ``, result)
+}
+
+// rgAvailable 缓存 rg 是否可用的检测结果。
+var rgAvailable = !func() bool {
+	_, err := exec.LookPath(`rg`)
+	return err != nil
+}()
+
+// searchFragmentRefsByRg 用 rg 在记忆库目录搜索引用指定片段的其他片段。
+func searchFragmentRefsByRg(memoryDir, fragmentID string, memoryDB common.MemoryFragmentStore) []map[string]any {
+	if !rgAvailable {
+		return nil
+	}
+	if strings.TrimSpace(memoryDir) == `` || strings.TrimSpace(fragmentID) == `` {
+		return nil
+	}
+	cmd := exec.Command(`rg`, `-l`, `--fixed-strings`, fragmentID, memoryDir, `--glob`, `*.md`)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil
+	}
+	paths := strings.Split(strings.ReplaceAll(strings.TrimSpace(stdout.String()), "\r", ""), "\n")
+	if len(paths) == 0 {
+		return nil
+	}
+	// 批量查询匹配文件的片段信息。
+	infos := memoryDB.MemoryFragmentBatchInfoByPaths(paths)
+	refs := make([]map[string]any, 0, len(infos))
+	for _, info := range infos {
+		refID := strings.TrimSpace(cast.ToString(info[`id`]))
+		if refID == `` {
+			refID = strings.TrimSpace(cast.ToString(info[`file_id`]))
+		}
+		if refID == `` || refID == fragmentID {
+			continue
+		}
+		refs = append(refs, map[string]any{
+			`type`:  fragmentRefTypeFragment,
+			`id`:    refID,
+			`title`: cast.ToString(info[`title`]),
+		})
+	}
+	return refs
 }

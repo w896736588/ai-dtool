@@ -83,6 +83,20 @@
             </span>
             <div class="sidebar-item-time">{{ item.update_time_desc || '-' }}</div>
           </div>
+          <div v-if="fragmentRefCount(item.id) > 0" class="sidebar-item-refs" @click.stop="toggleFragmentRefs(item.id)">
+            <span class="sidebar-item-refs-badge">被 {{ fragmentRefCount(item.id) }} 个位置使用</span>
+            <div v-if="expandedFragmentRefs[normalizeFragmentId(item.id)]" class="sidebar-item-refs-list">
+              <div
+                v-for="ref in getFragmentRefs(item.id)"
+                :key="ref.type + '-' + ref.id"
+                class="sidebar-item-refs-item"
+                @click.stop="openFragmentRef(ref)"
+              >
+                <span class="sidebar-item-refs-type">{{ ref.type === 'workflow' ? '工作流程' : '知识片段' }}</span>
+                <span class="sidebar-item-refs-name">{{ ref.name || ref.title }}</span>
+              </div>
+            </div>
+          </div>
           <div v-if="saveFeedbackMap[item.id]" class="sidebar-item-check" aria-hidden="true">
             <el-icon><Check /></el-icon>
           </div>
@@ -558,6 +572,8 @@ export default {
       aiSearchExpandedSteps: {},
       aiSearchStepTimerId: null,
       zipUploading: false,
+      fragmentReferences: {},
+      expandedFragmentRefs: {},
     }
   },
   computed: {
@@ -920,6 +936,9 @@ export default {
         this.fragmentOffset = offset + list.length
         this.fragmentHasMore = hasMore
         this.ensureDefaultFragmentTab()
+        // 批量查询当前列表片段的引用信息。
+        const ids = list.map(item => this.normalizeFragmentId(item.id || item.file_id)).filter(Boolean)
+        this.loadFragmentReferences(ids)
       })
     },
     // loadFragmentListPreservingOrder 重置分页并加载最新数据，保持侧边栏列表的原有顺序。
@@ -1818,6 +1837,46 @@ export default {
       if (this.isEmbedded || String(this.$route.query.hide_sidebar || '') === '1') {
         this.sidebarCollapsed = true
       }
+    },
+    // fragmentRefCount 返回指定片段被引用的次数。
+    fragmentRefCount(fragmentId) {
+      const refs = this.getFragmentRefs(fragmentId)
+      return refs.length
+    },
+    // getFragmentRefs 返回指定片段的引用列表。
+    getFragmentRefs(fragmentId) {
+      const normalized = this.normalizeFragmentId(fragmentId)
+      if (!normalized) return []
+      return this.fragmentReferences[normalized] || []
+    },
+    // toggleFragmentRefs 展开/收起片段的引用列表。
+    toggleFragmentRefs(fragmentId) {
+      const normalized = this.normalizeFragmentId(fragmentId)
+      if (!normalized) return
+      this.expandedFragmentRefs[normalized] = !this.expandedFragmentRefs[normalized]
+    },
+    // openFragmentRef 根据引用类型跳转到工作流程或打开知识片段。
+    openFragmentRef(ref) {
+      if (!ref) return
+      if (ref.type === 'workflow') {
+        const routeData = this.$router.resolve({ path: '/TaskWorkflow/' + ref.id })
+        window.open(routeData.href, '_blank')
+        return
+      }
+      if (ref.type === 'fragment') {
+        this.openFragment(ref.id)
+      }
+    },
+    // loadFragmentReferences 批量查询片段引用信息。
+    loadFragmentReferences(fragmentIds) {
+      if (!fragmentIds || fragmentIds.length === 0) return
+      MemoryFragmentApi.MemoryFragmentReferences(fragmentIds, (response) => {
+        if (response.ErrCode !== 0) return
+        const data = response.Data || {}
+        Object.keys(data).forEach((fid) => {
+          this.fragmentReferences[fid] = data[fid] || []
+        })
+      })
     },
   }
 }

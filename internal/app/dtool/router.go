@@ -308,8 +308,10 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/MemoryFragmentShareCreate`, controller.MemoryFragmentShareCreate)
 	tGin.GinPost(`/api/MemoryFragmentImageUpload`, controller.MemoryFragmentImageUpload)
 	tGin.GinPost(`/api/MemoryFragmentUploadZip`, controller.MemoryFragmentUploadZip)
+	tGin.GinPost(`/api/MemoryFragmentUpdateZip`, controller.MemoryFragmentUpdateZip)
 	tGin.GinGet(`/api/MemoryFragmentDownloadZip`, controller.MemoryFragmentDownloadZip)
 	tGin.GinPost(`/api/MemoryFragmentBatchInfoByPaths`, controller.MemoryFragmentBatchInfoByPaths)
+	tGin.GinPost(`/api/MemoryFragmentReferences`, controller.MemoryFragmentReferences)
 	tGin.GinPost(`/api/MemoryGitPull`, controller.MemoryGitPull)
 	tGin.GinPost(`/api/AsyncTaskList`, controller.AsyncTaskList)
 	tGin.GinPost(`/api/AsyncTaskInfo`, controller.AsyncTaskInfo)
@@ -349,6 +351,7 @@ func taskWorkflow(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/task/workflow/prompts/restore`, controller.TaskWorkflowPromptsRestore)
 	tGin.GinPost(`/api/task/workflow/api-doc/reset`, controller.TaskWorkflowApiDocReset)
 	tGin.GinPost(`/api/task/workflow/node-status/update`, controller.TaskWorkflowNodeStatusUpdate)
+	tGin.GinPost(`/api/task/workflow/batch-node-status`, controller.TaskWorkflowBatchNodeStatus)
 }
 
 func shellOut(tGin *p_gin.Gin) {
