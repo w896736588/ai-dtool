@@ -130,6 +130,16 @@
               class="prompt-template-editor"
             />
           </el-tab-pane>
+
+          <el-tab-pane label="问题修改提示词" name="issue_fix">
+            <MdEditor
+              v-model="form.home_task_prompt_issue_fix"
+              preview-theme="github"
+              :preview="true"
+              :toolbars="promptEditorToolbars"
+              class="prompt-template-editor"
+            />
+          </el-tab-pane>
         </el-tabs>
         <div class="prompt-template-footer">
           <pl-button type="primary" @click="savePromptConfig">保存提示词模板配置</pl-button>
@@ -395,6 +405,7 @@ export default {
         home_task_branch_name_model_id: null,
         home_task_prompt_plain_text_requirement: '',
         home_task_prompt_design_plan_requirement: '',
+        home_task_prompt_issue_fix: '',
       },
       promptPlaceholders: PROMPT_PLACEHOLDERS,
       promptEditorToolbars: PROMPT_EDITOR_TOOLBARS,
@@ -480,6 +491,7 @@ export default {
         this.form.home_task_branch_name_model_id = response.Data.home_task_branch_name_model_id || null
         this.form.home_task_prompt_plain_text_requirement = response.Data.home_task_prompt_plain_text_requirement || ''
         this.form.home_task_prompt_design_plan_requirement = response.Data.home_task_prompt_design_plan_requirement || ''
+        this.form.home_task_prompt_issue_fix = response.Data.home_task_prompt_issue_fix || ''
       })
     },
     saveConfig() {
@@ -547,6 +559,7 @@ export default {
         home_task_branch_name_model_id: this.form.home_task_branch_name_model_id,
         home_task_prompt_plain_text_requirement: this.form.home_task_prompt_plain_text_requirement,
         home_task_prompt_design_plan_requirement: this.form.home_task_prompt_design_plan_requirement,
+        home_task_prompt_issue_fix: this.form.home_task_prompt_issue_fix,
       }
     },
     copyPlaceholder(placeholder) {
