@@ -18,6 +18,9 @@
           <GitActionButton compact :loading="loading" @click="reloadWorkflowPage">
             刷新
           </GitActionButton>
+          <GitActionButton compact variant="warning" @click="openIssueFixDialog">
+            问题修改提示词
+          </GitActionButton>
         </div>
       </header>
 
@@ -528,6 +531,40 @@
         </div>
       </div>
     </el-dialog>
+
+    <el-dialog
+      v-model="issueFixDialogVisible"
+      title="问题修改提示词"
+      width="900px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <div class="task-workflow-issue-fix">
+        <div class="task-workflow-issue-fix__input">
+          <div class="task-workflow-issue-fix__label">改动要求</div>
+          <el-input
+            v-model="issueFixInput"
+            type="textarea"
+            :rows="4"
+            placeholder="请描述需要修改的问题"
+          />
+        </div>
+        <div class="task-workflow-issue-fix__output">
+          <div class="task-workflow-issue-fix__label">完整提示词</div>
+          <MdEditor
+            v-model="issueFixCombinedText"
+            preview-theme="github"
+            :preview="true"
+            :toolbars="['preview', 'fullscreen']"
+            class="task-workflow-issue-fix__editor"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="issueFixDialogVisible = false">关闭</el-button>
+        <el-button type="primary" @click="copyIssueFixText">复制到剪贴板</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -645,6 +682,9 @@ export default {
       fragmentDialogUrl: '',
       fragmentDialogTitle: '',
       fragmentDialogLoading: false,
+      issueFixDialogVisible: false,
+      issueFixInput: '',
+      issueFixResolvedTemplate: '',
     }
   },
   computed: {
@@ -710,6 +750,14 @@ export default {
         }
       }
       return 'task-config'
+    },
+    issueFixCombinedText() {
+      const input = (this.issueFixInput || '').trim()
+      const template = (this.issueFixResolvedTemplate || '').trim()
+      if (!input && !template) return ''
+      if (!input) return template
+      if (!template) return input
+      return input + '\n\n' + template
     },
   },
   mounted() {
@@ -1150,6 +1198,20 @@ export default {
         this.$helperNotify.error('复制失败')
       }
       document.body.removeChild(textArea)
+    },
+    openIssueFixDialog() {
+      this.issueFixDialogVisible = true
+      this.issueFixInput = ''
+      this.issueFixResolvedTemplate = ''
+      if (this.workflowId <= 0) return
+      taskWorkflowApi.TaskWorkflowIssueFixResolve(this.workflowId, (response) => {
+        if (response && response.ErrCode === 0 && response.Data) {
+          this.issueFixResolvedTemplate = response.Data.prompt || ''
+        }
+      })
+    },
+    copyIssueFixText() {
+      this.copyText(this.issueFixCombinedText, '已复制到剪贴板')
     },
     formatUnixTime(unixTime) {
       const value = Number(unixTime || 0)
@@ -1914,5 +1976,21 @@ export default {
   justify-content: center;
   color: #909399;
   font-size: 14px;
+}
+
+.task-workflow-issue-fix__input {
+  margin-bottom: 16px;
+}
+.task-workflow-issue-fix__label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+  margin-bottom: 8px;
+}
+.task-workflow-issue-fix__output {
+  margin-top: 16px;
+}
+.task-workflow-issue-fix__editor {
+  min-height: 300px;
 }
 </style>
