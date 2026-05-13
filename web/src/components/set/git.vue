@@ -9,8 +9,14 @@
         <pl-button @click="ShowGitGroup">Git分组</pl-button>
       </div>
     </div>
+    <div class="set-config-filter-row">
+      <el-select v-model="state.filterGroupId" placeholder="按分组筛选" style="width: 200px" clearable>
+        <el-option label="全部" :value="0" />
+        <el-option v-for="item in state.gitGroupList" :key="item.id" :label="item.name" :value="item.id" />
+      </el-select>
+    </div>
     <div class="set-config-table-card">
-      <el-table :data="state.gitList" class="set-config-table">
+      <el-table :data="filteredGitList" class="set-config-table">
         <el-table-column prop="id" label="#id" width="80" />
         <el-table-column prop="name" label="名称" min-width="120" />
         <el-table-column prop="ssh_name" label="SSH" width="140" />
@@ -114,7 +120,7 @@
   </div>
 </template>
 <script>
-import {defineComponent , getCurrentInstance , reactive , onActivated } from 'vue';
+import {defineComponent , getCurrentInstance , reactive , computed , onActivated } from 'vue';
 import ssh_set from '../../utils/base/ssh_set'
 import set from '../../utils/base/git_set'
 import common from '../../utils/common'
@@ -258,7 +264,14 @@ export default defineComponent({
       quickDir : '',
       loading : {
         quick : false
+      },
+      filterGroupId: 0,
+    })
+    const filteredGitList = computed(() => {
+      if (!state.filterGroupId || state.filterGroupId === 0) {
+        return state.gitList
       }
+      return state.gitList.filter(item => parseInt(item.git_group_id) === state.filterGroupId)
     })
     //初始化
     GitList()
@@ -272,6 +285,7 @@ export default defineComponent({
       DeleteGit,
       ShowQuickAddGit,
       ShowGitGroup,
+      filteredGitList,
       GitQuickList,
       QuickEditGit,
       FilterQuickList,

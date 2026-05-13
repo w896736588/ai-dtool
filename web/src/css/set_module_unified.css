@@ -36,6 +36,10 @@
   border-radius: 8px;
 }
 
+.set-config-filter-row {
+  margin-bottom: 12px;
+}
+
 .set-config-table-card {
   background: #fff;
   border: 1px solid #e8e8e0;
