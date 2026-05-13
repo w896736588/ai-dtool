@@ -21,10 +21,9 @@
       </div>
     </div>
 
-    <div class="home-task-content-card">
-
+    <div class="home-task-tabs-bar">
       <el-tabs v-model="homeTaskActiveTab" class="home-task-tabs" @tab-change="handleHomeTaskTabChange">
-        <el-tab-pane label="活跃中" :name="HOME_TASK_TAB_ACTIVE">
+        <el-tab-pane :label="'活跃中 (' + homeTaskActiveList.length + ')'" :name="HOME_TASK_TAB_ACTIVE">
           <div v-loading="homeTaskLoadingActive" class="home-task-list">
             <div v-if="homeTaskActiveList.length === 0" class="home-task-empty">
               当前没有未归档任务
@@ -153,7 +152,7 @@
             </div>
           </div>
         </el-tab-pane>
-        <el-tab-pane label="归档" :name="HOME_TASK_TAB_ARCHIVED">
+        <el-tab-pane :label="'归档 (' + homeTaskArchivedList.length + ')'" :name="HOME_TASK_TAB_ARCHIVED">
           <div v-loading="homeTaskLoadingArchived" class="home-task-list">
             <div v-if="homeTaskArchivedList.length === 0" class="home-task-empty">
               当前没有归档任务

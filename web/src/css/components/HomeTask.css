@@ -38,7 +38,7 @@
   gap: 8px;
 }
 
-.home-task-content-card {
+.home-task-tabs-bar {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -46,7 +46,7 @@
   background: #ffffff;
   border: 1px solid #e8e8e0;
   border-radius: 12px;
-  padding: 16px 18px;
+  padding: 0 18px;
   overflow: hidden;
 }
 
@@ -69,9 +69,14 @@
   flex-direction: column;
 }
 
+.home-task-tabs :deep(.el-tabs__header) {
+  order: -1;
+}
+
 .home-task-tabs :deep(.el-tabs__content) {
   flex: 1;
   min-height: 0;
+  order: 0;
 }
 
 .home-task-tabs :deep(.el-tab-pane) {
@@ -451,8 +456,8 @@
     flex-wrap: wrap;
   }
 
-  .home-task-content-card {
-    padding: 14px;
+  .home-task-tabs-bar {
+    padding: 0 14px;
   }
 
   .home-task-card__header {
