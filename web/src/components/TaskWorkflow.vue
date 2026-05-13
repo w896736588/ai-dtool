@@ -539,6 +539,9 @@
       :close-on-click-modal="false"
       destroy-on-close
     >
+      <div class="task-workflow-issue-fix__close-bar">
+        <el-button @click="issueFixDialogVisible = false" type="danger">关闭</el-button>
+      </div>
       <div class="task-workflow-issue-fix">
         <div class="task-workflow-issue-fix__input">
           <div class="task-workflow-issue-fix__label">改动要求</div>
@@ -563,7 +566,6 @@
       <template #footer>
         <el-button @click="issueFixDialogVisible = false">关闭</el-button>
         <el-button type="primary" @click="copyIssueFixText">复制到剪贴板</el-button>
-        <el-button @click="issueFixDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>
@@ -1979,6 +1981,11 @@ export default {
   font-size: 14px;
 }
 
+.task-workflow-issue-fix__close-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
 .task-workflow-issue-fix__input {
   margin-bottom: 16px;
 }
