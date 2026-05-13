@@ -1,1 +1,17 @@
 @import "@/css/set_module_unified.css";
+
+.ssh-status-loading {
+  display: inline-flex;
+  align-items: center;
+  color: #909399;
+}
+.ssh-status-loading .el-icon {
+  font-size: 16px;
+}
+.ssh-status-ok {
+  color: #67c23a;
+}
+.ssh-status-err {
+  color: #f56c6c;
+  font-size: 12px;
+}

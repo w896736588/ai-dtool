@@ -216,6 +216,7 @@ func setGroupRouter(tGin *p_gin.Gin) {
 // 设置相关
 func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/SshList`, controller.SetSshList)
+	tGin.GinPost(`/api/Set/SshStatus`, controller.SetSshStatus)
 	tGin.GinPost(`/api/Set/SshAdd`, controller.SetSshAdd)
 	tGin.GinPost(`/api/Set/SshDelete`, controller.SetSshDelete)
 	tGin.GinPost(`/api/Set/GitList`, controller.SetGitList)

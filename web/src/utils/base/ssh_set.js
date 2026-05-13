@@ -24,8 +24,12 @@ function SshDelete(data , callBack){
 function ReconnectConnection(shellClientId, callBack){
     base.BasePost('/api/shellOutReconnect', {shell_client_id: shellClientId} , callBack)
 }
+function SshStatus(ids, callBack){
+    base.BasePost('/api/Set/SshStatus', {ssh_ids: ids}, callBack)
+}
 export default {
     SshList,
+    SshStatus,
     SshAdd,
     SshDelete,
     ReconnectConnection,

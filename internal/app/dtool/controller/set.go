@@ -1867,6 +1867,63 @@ func SetLocalDirBatchCheck(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
+// SetSshStatus 根据传入的 ssh_id 列表批量检测连接状态，返回 id→状态 的 map。
+func SetSshStatus(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	sshIdsRaw, _ := dataMap[`ssh_ids`].([]any)
+	if len(sshIdsRaw) == 0 {
+		gsgin.GinResponseSuccess(c, ``, map[string]string{})
+		return
+	}
+	// 收集 ID 列表并去重
+	idSet := make(map[int]bool)
+	for _, idRaw := range sshIdsRaw {
+		idSet[cast.ToInt(idRaw)] = true
+	}
+	ids := make([]int, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	// 按 ID 查 tbl_ssh
+	all, allErr := common.DbMain.Client.QuickQuery(`tbl_ssh`, `*`, nil).All()
+	if allErr != nil {
+		gsgin.GinResponseError(c, allErr.Error(), nil)
+		return
+	}
+	sshConfigs := make(map[int]map[string]any)
+	for _, row := range all {
+		rowID := cast.ToInt(row[`id`])
+		if idSet[rowID] {
+			sshConfigs[rowID] = row
+		}
+	}
+	// 并发检测连接状态
+	task := gstask.NewTask()
+	for id, cfg := range sshConfigs {
+		callBack := gstask.CallbackFunc{
+			Func: func() *gstask.Result {
+				return testSshConn(cfg)
+			},
+			Timeout: 3 * time.Second,
+			Id:      cast.ToString(id),
+		}
+		task.Add(callBack)
+	}
+	resultList := task.RunAll()
+	// 组装结果
+	statusMap := make(map[string]string)
+	for _, result := range resultList {
+		sshID := result.Id
+		if result.Err != nil {
+			statusMap[sshID] = result.Err.Error()
+		} else {
+			statusMap[sshID] = `success`
+		}
+	}
+	gsgin.GinResponseSuccess(c, ``, statusMap)
+}
+
 // SetPromptChangeLogList 返回提示词变更日志（最近 20 条）。
 func SetPromptChangeLogList(c *gin.Context) {
 	list, err := common.DbMain.PromptChangeLogList(20)

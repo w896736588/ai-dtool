@@ -19,7 +19,15 @@
             <code class="set-mono">{{ scope.row.home || "-" }}</code>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="连接状态" width="100" />
+        <el-table-column label="连接状态" width="120">
+          <template #default="scope">
+            <span v-if="state.sshStatusMap[scope.row.id] === undefined" class="ssh-status-loading">
+              <el-icon class="is-loading"><Loading /></el-icon>
+            </span>
+            <span v-else-if="state.sshStatusMap[scope.row.id] === 'success'" class="ssh-status-ok">连接成功</span>
+            <span v-else class="ssh-status-err">{{ state.sshStatusMap[scope.row.id] }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="当前连接数" width="120" align="center">
           <template #default="scope">
             <pl-button type="primary" link @click="ShowConnections(scope.row)">{{ GetConnectionCount(scope.row.id) }}</pl-button>
@@ -90,6 +98,7 @@
 </template>
 <script>
 import {defineExpose , defineComponent , inject , defineEmits , getCurrentInstance , reactive , onMounted , onBeforeUnmount} from 'vue';
+import {Loading} from '@element-plus/icons-vue'
 import set from '../../utils/base/ssh_set'
 import common from '../../utils/common'
 import Init  from '@/utils/base/set_init'
@@ -117,10 +126,23 @@ export default defineComponent({
     const SshList = function (){
       set.SshList(function (response){
         if(response.ErrCode === 0){
-          // Sort by ID ascending
           state.sshList = response.Data.sort((a, b) => a.id - b.id)
+          LoadSshStatus()
         }
-      }, {is_check_connection: 1})
+      })
+    }
+    // 异步加载连接状态
+    const LoadSshStatus = function (){
+      if(!state.sshList || state.sshList.length === 0){
+        return
+      }
+      const ids = state.sshList.map(item => item.id)
+      state.sshStatusMap = {}
+      set.SshStatus(ids, function (response){
+        if(response.ErrCode === 0 && response.Data){
+          state.sshStatusMap = response.Data
+        }
+      })
     }
     // 处理SSE推送的连接状态更新
     const handleConnectionsUpdate = function (data){
@@ -222,6 +244,7 @@ export default defineComponent({
       connections : [],
       allConnections : [],
       selectedSshId : null,
+      sshStatusMap : {},
     })
     //初始化
     SshList()
