@@ -2195,3 +2195,36 @@ func TaskWorkflowBatchNodeStatus(c *gin.Context) {
 		`node_statuses_map`: nodeStatusesMap,
 	})
 }
+
+// TaskWorkflowIssueFixResolve 解析问题修改提示词模板。
+func TaskWorkflowIssueFixResolve(c *gin.Context) {
+	var req _struct.TaskWorkflowInfoRequest
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if req.WorkflowID <= 0 {
+		gsgin.GinResponseError(c, `工作流id不能为空`, nil)
+		return
+	}
+	workflowInfo, err := common.DbMain.TaskWorkflowInfo(req.WorkflowID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskInfo, err := common.DbMain.HomeTaskRow(cast.ToInt(workflowInfo[`home_task_id`]))
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	template, err := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigPromptIssueFix)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	placeholders := buildTaskWorkflowPlaceholderMap(c, homeTaskInfo, workflowInfo)
+	resolved := taskWorkflowResolvePlaceholders(template, placeholders)
+	gsgin.GinResponseSuccess(c, ``, map[string]string{
+		`prompt`: resolved,
+	})
+}
