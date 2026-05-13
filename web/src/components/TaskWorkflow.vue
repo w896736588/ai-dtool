@@ -563,6 +563,7 @@
       <template #footer>
         <el-button @click="issueFixDialogVisible = false">关闭</el-button>
         <el-button type="primary" @click="copyIssueFixText">复制到剪贴板</el-button>
+        <el-button @click="issueFixDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>
