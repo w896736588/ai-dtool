@@ -68,6 +68,18 @@
         <el-form-item label="连接超时时间(秒)">
           <el-input v-model="state.editSshConfig.connect_timeout" type="number" autocomplete="off" placeholder="3" />
         </el-form-item>
+        <el-form-item label="连接后执行命令">
+          <el-input
+            v-model="state.editSshConfig.post_connect_cmds"
+            type="textarea"
+            :rows="4"
+            placeholder="连接成功后执行的命令，每行一条；留空则默认执行 pwd"
+            autocomplete="off"
+          />
+        </el-form-item>
+        <el-form-item label="命令超时(秒)">
+          <el-input v-model="state.editSshConfig.cmd_timeout" type="number" autocomplete="off" placeholder="3" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <div class="dialog-footer">
