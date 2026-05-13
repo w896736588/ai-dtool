@@ -48,7 +48,7 @@ func SetSshList(c *gin.Context) {
 				Func: func() *gstask.Result {
 					return testSshConn(sshValue)
 				},
-				Timeout: 3 * time.Second,
+				Timeout: getSshTimeout(sshValue),
 				Id:      cast.ToString(sshValue[`id`]),
 			}
 			task.Add(callBack)
@@ -83,7 +83,7 @@ func SetSshList(c *gin.Context) {
 func SetSshAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `host`, `port`, `username`, `password`, `home`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `host`, `port`, `username`, `password`, `home`, `connect_timeout`})
 	var err error
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
@@ -429,6 +429,14 @@ func testRedisConn(redisConfig map[string]any) *gstask.Result {
 		Err:    nil,
 		Result: redisConfig[`id`],
 	}
+}
+
+func getSshTimeout(sshConfig map[string]any) time.Duration {
+	timeout := cast.ToInt(sshConfig["connect_timeout"])
+	if timeout <= 0 {
+		return 3 * time.Second
+	}
+	return time.Duration(timeout) * time.Second
 }
 
 func testSshConn(sshConfig map[string]any) *gstask.Result {
@@ -1905,7 +1913,7 @@ func SetSshStatus(c *gin.Context) {
 			Func: func() *gstask.Result {
 				return testSshConn(cfg)
 			},
-			Timeout: 3 * time.Second,
+			Timeout: getSshTimeout(cfg),
 			Id:      cast.ToString(id),
 		}
 		task.Add(callBack)

@@ -29,8 +29,14 @@ type Shell struct {
 const shellIdleTimeout = 30 * time.Minute
 const shellIdleCleanTicker = 30 * time.Second
 
-// shellConnectTimeout 控制单次 SSH 建连探活的最长等待时间。
-const shellConnectTimeout = 3 * time.Second
+// getSshConnectTimeout 从 SSH 配置中读取连接超时时间，未配置时默认 3 秒。
+func getSshConnectTimeout(sshConfig map[string]any) time.Duration {
+	timeout := cast.ToInt(sshConfig["connect_timeout"])
+	if timeout <= 0 {
+		return 3 * time.Second
+	}
+	return time.Duration(timeout) * time.Second
+}
 
 // shellConnectMaxAttempts 控制 SSH 建连失败后的最大重试次数。
 const shellConnectMaxAttempts = 3
@@ -200,12 +206,13 @@ func (h *Shell) createShellClient(sshConfig map[string]any, shellClientId string
 
 		gsShell.SetPtyConfig(gsssh.PtyConfig{Echo: 0})
 		gsShell.SetMaxBufferSize(2 * 1024 * 1024)
-		gstool.FmtPrintlnLogTime(`[Shell.createShellClient][02] 准备执行SSH探活命令 shell_client_id=%s command=pwd timeout=%s attempt=%d/%d`, shellClientId, shellConnectTimeout.String(), attempt, shellConnectMaxAttempts)
+		connectTimeout := getSshConnectTimeout(sshConfig)
+		gstool.FmtPrintlnLogTime(`[Shell.createShellClient][02] 准备执行SSH探活命令 shell_client_id=%s command=pwd timeout=%s attempt=%d/%d`, shellClientId, connectTimeout.String(), attempt, shellConnectMaxAttempts)
 		if canSendSse(sse) {
 			sse.Send(fmt.Sprintf(" [ssh] 正在建立SSH连接 %s:%s（第%d/%d次）\n",
 				host, port, attempt, shellConnectMaxAttempts))
 		}
-		pwdResult, err := gsShell.RunCommandWait("pwd", shellConnectTimeout)
+		pwdResult, err := gsShell.RunCommandWait("pwd", connectTimeout)
 		if err != nil {
 			gstool.FmtPrintlnLogTime(`[Shell.createShellClient][03] SSH探活失败 shell_client_id=%s attempt=%d/%d result_len=%d result=%q err=%s`, shellClientId, attempt, shellConnectMaxAttempts, len(pwdResult), pwdResult, err.Error())
 			lastErr = err

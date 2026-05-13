@@ -46,7 +46,7 @@
     </div>
 
     <el-dialog v-model="state.dialogEditSsh" title="编辑SSH配置" width="520">
-      <el-form :model="state.starForm" label-width="90px">
+      <el-form :model="state.starForm" label-width="130px">
         <el-form-item label="名称">
           <el-input v-model="state.editSshConfig.name" autocomplete="off" />
         </el-form-item>
@@ -64,6 +64,9 @@
         </el-form-item>
         <el-form-item label="家目录">
           <el-input v-model="state.editSshConfig.home" type="text" autocomplete="off" />
+        </el-form-item>
+        <el-form-item label="连接超时时间(秒)">
+          <el-input v-model="state.editSshConfig.connect_timeout" type="number" autocomplete="off" placeholder="3" />
         </el-form-item>
       </el-form>
       <template #footer>
