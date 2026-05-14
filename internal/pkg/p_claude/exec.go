@@ -5,12 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/spf13/cast"
 )
+
+// maxScanTokenSize bufio.Scanner 最大缓冲区大小（10MB）。
+// stream-json 输出中单行可能远超默认 64KB（尤其是工具调用结果）。
+const maxScanTokenSize = 10 * 1024 * 1024
 
 // RunClaudeStream 执行 claude 命令并逐行推送解析后的消息。
 // callback 每收到一行 stream-json 时同步调用。
@@ -19,26 +24,38 @@ func RunClaudeStream(ctx context.Context, cfg RunConfig, callback func(msg Strea
 	args := buildArgs(cfg)
 	env := buildEnv(cfg)
 
+	log.Printf("[claude-exec] 启动进程, dir=%s model=%s", cfg.WorkingDir, cfg.Model)
+
 	cmd := exec.CommandContext(ctx, `claude`, args...)
 	cmd.Dir = cfg.WorkingDir
 	cmd.Env = env
+	cmd.Stderr = os.Stderr
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		log.Printf("[claude-exec] stdout pipe 失败: %v", err)
 		return ``, fmt.Errorf("stdout pipe failed: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
+		log.Printf("[claude-exec] 启动失败: %v", err)
 		return ``, fmt.Errorf("claude start failed: %w", err)
 	}
+	log.Printf("[claude-exec] 进程已启动, pid=%d", cmd.Process.Pid)
 
 	sessionID := ``
 	sessionExtracted := false
+	lineCount := 0
 	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, maxScanTokenSize), maxScanTokenSize)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == `` {
 			continue
+		}
+		lineCount++
+		if lineCount <= 3 {
+			log.Printf("[claude-exec] 收到第%d行(len=%d): %.200s", lineCount, len(line), line)
 		}
 		msg := parseLine(line)
 		callback(msg)
@@ -46,12 +63,20 @@ func RunClaudeStream(ctx context.Context, cfg RunConfig, callback func(msg Strea
 		if !sessionExtracted && cfg.SessionID == `` {
 			if sid := extractSessionIDFromLine(line); sid != `` {
 				sessionID = sid
+				log.Printf("[claude-exec] 提取到 session_id=%s", sid)
 				sessionExtracted = true
 			}
 		}
 	}
 
-	_ = cmd.Wait()
+	log.Printf("[claude-exec] scanner 循环结束, 总行数=%d", lineCount)
+	if err := scanner.Err(); err != nil {
+		log.Printf("[claude-exec] scanner 错误: %v", err)
+		return sessionID, fmt.Errorf("scan stdout: %w", err)
+	}
+
+	waitErr := cmd.Wait()
+	log.Printf("[claude-exec] 进程结束, waitErr=%v", waitErr)
 	return sessionID, nil
 }
 

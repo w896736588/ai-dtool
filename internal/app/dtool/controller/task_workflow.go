@@ -2682,8 +2682,15 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 
 	ctx := context.Background()
 	sessionExtracted := false
+	callbackCount := 0
+
+	gstool.FmtPrintlnLogTime("[chat-run] chat_id=%d 开始RunClaudeStream dir=%s model=%s", chatID, localDir, modelName)
 
 	_, err := p_claude.RunClaudeStream(ctx, cfg, func(msg p_claude.StreamMessage) {
+		callbackCount++
+		if callbackCount <= 3 {
+			gstool.FmtPrintlnLogTime("[chat-run] callback:%d type=%s subtype=%s len=%d", callbackCount, msg.Type, msg.Subtype, len(msg.RawJSON))
+		}
 		_ = common.DbMain.TaskWorkflowChatAppendOutput(chatID, msg.RawJSON)
 		broadcastChatOutput(chatID, msg.RawJSON)
 
@@ -2694,6 +2701,9 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 			}
 		}
 	})
+
+	gstool.FmtPrintlnLogTime("[chat-run] chat_id=%d RunClaudeStream结束 callbackCount=%d err=%v", chatID, callbackCount, err)
+
 	if err != nil {
 		errJSON, _ := json.Marshal(map[string]string{
 			`type`: `error`,
