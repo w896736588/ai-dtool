@@ -63,10 +63,12 @@ function TaskWorkflowIssueFixResolve(workflowId, callBack) {
 }
 
 // TaskWorkflowChatSend 发送对话到 claude code。
-function TaskWorkflowChatSend(workflowId, prompt, callBack) {
+function TaskWorkflowChatSend(workflowId, prompt, modelId, localDir, callBack) {
   base.BasePost('/api/task/workflow/chat/send', {
     workflow_id: workflowId,
     prompt: prompt,
+    model_id: modelId,
+    local_dir: localDir,
   }, callBack)
 }
 
@@ -89,6 +91,13 @@ function TaskWorkflowChatList(workflowId, callBack) {
 function TaskWorkflowChatDetail(chatId, callBack) {
   base.BasePost('/api/task/workflow/chat/detail', {
     chat_id: chatId,
+  }, callBack)
+}
+
+// TaskWorkflowChatDirs 获取可用的工作目录列表。
+function TaskWorkflowChatDirs(workflowId, callBack) {
+  base.BasePost('/api/task/workflow/chat/dirs', {
+    workflow_id: workflowId,
   }, callBack)
 }
 
@@ -123,6 +132,7 @@ export default {
   TaskWorkflowChatContinue,
   TaskWorkflowChatList,
   TaskWorkflowChatDetail,
+  TaskWorkflowChatDirs,
   TaskWorkflowZcodeSave,
   TaskWorkflowZcodeGet,
   TaskWorkflowZcodeDelete,

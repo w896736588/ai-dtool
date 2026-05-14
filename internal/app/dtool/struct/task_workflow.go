@@ -76,6 +76,13 @@ type TaskWorkflowBatchNodeStatusRequest struct {
 type TaskWorkflowChatSendRequest struct {
 	WorkflowID int    `json:"workflow_id"`
 	Prompt     string `json:"prompt"`
+	ModelID    int    `json:"model_id"`
+	LocalDir   string `json:"local_dir"`
+}
+
+// TaskWorkflowChatDirsRequest 获取可选工作目录列表请求。
+type TaskWorkflowChatDirsRequest struct {
+	WorkflowID int `json:"workflow_id"`
 }
 
 // TaskWorkflowChatContinueRequest 继续已有对话请求。

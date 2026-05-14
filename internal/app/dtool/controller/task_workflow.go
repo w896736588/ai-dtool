@@ -1,18 +1,18 @@
 package controller
 
 import (
-	"bufio"
+	"context"
 	"dev_tool/internal/app/dtool/api"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	_struct "dev_tool/internal/app/dtool/struct"
+	"dev_tool/internal/pkg/p_claude"
 	"dev_tool/internal/pkg/p_define"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -2278,40 +2278,37 @@ func TaskWorkflowChatSend(c *gin.Context) {
 		gsgin.GinResponseError(c, `提示词不能为空`, nil)
 		return
 	}
+	if req.ModelID <= 0 {
+		gsgin.GinResponseError(c, `请选择模型`, nil)
+		return
+	}
+	if strings.TrimSpace(req.LocalDir) == `` {
+		gsgin.GinResponseError(c, `请选择工作目录`, nil)
+		return
+	}
 
-	workflowInfo, err := common.DbMain.TaskWorkflowInfo(req.WorkflowID)
+	// 校验模型信息
+	modelInfo, err := common.DbMain.AiModelInfo(req.ModelID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	homeTaskInfo, err := common.DbMain.HomeTaskRow(cast.ToInt(workflowInfo[`home_task_id`]))
-	if err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
+	providerType := strings.ToLower(cast.ToString(modelInfo[`provider_type`]))
+	if providerType != `anthropic` {
+		gsgin.GinResponseError(c, `仅支持 anthropic (Claude Code) 服务商的模型`, nil)
 		return
 	}
-	devConfigs := homeTaskDevConfigs(homeTaskInfo)
-	var localDir string
-	for _, cfg := range devConfigs {
-		if strings.TrimSpace(cfg.LocalDir) != `` {
-			localDir = strings.TrimSpace(cfg.LocalDir)
-			break
-		}
-	}
-	if localDir == `` {
-		gsgin.GinResponseError(c, `开发配置中没有本地目录，无法执行 claude code`, nil)
-		return
-	}
+	baseURL := strings.TrimSpace(cast.ToString(modelInfo[`base_url`]))
+	apiKey := strings.TrimSpace(cast.ToString(modelInfo[`api_key`]))
+	modelName := strings.TrimSpace(cast.ToString(modelInfo[`model`]))
 
-	chatID, err := common.DbMain.TaskWorkflowChatCreate(req.WorkflowID, req.Prompt)
+	chatID, err := common.DbMain.TaskWorkflowChatCreate(req.WorkflowID, req.Prompt, req.ModelID, req.LocalDir)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 
-	// 查找匹配的 zcode settings 路径
-	settingsPath := zcodeLookupSettingsPath(localDir)
-
-	go runClaudeCommand(chatID, localDir, req.Prompt, false, ``, settingsPath)
+	go runClaudeCommand(chatID, req.LocalDir, req.Prompt, false, ``, req.ModelID, baseURL, apiKey, modelName)
 
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`chat_id`: chatID,
@@ -2344,36 +2341,29 @@ func TaskWorkflowChatContinue(c *gin.Context) {
 		gsgin.GinResponseError(c, `对话未找到有效的 session_id`, nil)
 		return
 	}
-
-	workflowInfo, err := common.DbMain.TaskWorkflowInfo(cast.ToInt(chatInfo[`workflow_id`]))
-	if err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
-	}
-	homeTaskInfo, err := common.DbMain.HomeTaskRow(cast.ToInt(workflowInfo[`home_task_id`]))
-	if err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
-	}
-	devConfigs := homeTaskDevConfigs(homeTaskInfo)
-	var localDir string
-	for _, cfg := range devConfigs {
-		if strings.TrimSpace(cfg.LocalDir) != `` {
-			localDir = strings.TrimSpace(cfg.LocalDir)
-			break
-		}
-	}
+	localDir := cast.ToString(chatInfo[`local_dir`])
 	if localDir == `` {
-		gsgin.GinResponseError(c, `开发配置中没有本地目录`, nil)
+		gsgin.GinResponseError(c, `对话未找到工作目录`, nil)
 		return
 	}
+	modelID := cast.ToInt(chatInfo[`model_id`])
+	if modelID <= 0 {
+		gsgin.GinResponseError(c, `对话未找到模型配置`, nil)
+		return
+	}
+
+	modelInfo, err := common.DbMain.AiModelInfo(modelID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	baseURL := strings.TrimSpace(cast.ToString(modelInfo[`base_url`]))
+	apiKey := strings.TrimSpace(cast.ToString(modelInfo[`api_key`]))
+	modelName := strings.TrimSpace(cast.ToString(modelInfo[`model`]))
 
 	_ = common.DbMain.TaskWorkflowChatMarkRunning(int64(req.ChatID))
 
-	// 查找匹配的 zcode settings 路径
-	settingsPath := zcodeLookupSettingsPath(localDir)
-
-	go runClaudeCommand(int64(req.ChatID), localDir, req.Prompt, true, sessionID, settingsPath)
+	go runClaudeCommand(int64(req.ChatID), localDir, req.Prompt, true, sessionID, modelID, baseURL, apiKey, modelName)
 
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`chat_id`: req.ChatID,
@@ -2400,6 +2390,8 @@ func TaskWorkflowChatList(c *gin.Context) {
 		ID        int64  `json:"id"`
 		SessionID string `json:"session_id"`
 		Prompt    string `json:"prompt"`
+		ModelID   int    `json:"model_id"`
+		LocalDir  string `json:"local_dir"`
 		Status    string `json:"status"`
 		CreatedAt string `json:"created_at"`
 	}
@@ -2409,6 +2401,8 @@ func TaskWorkflowChatList(c *gin.Context) {
 			ID:        cast.ToInt64(row[`id`]),
 			SessionID: cast.ToString(row[`session_id`]),
 			Prompt:    cast.ToString(row[`prompt`]),
+			ModelID:   cast.ToInt(row[`model_id`]),
+			LocalDir:  cast.ToString(row[`local_dir`]),
 			Status:    cast.ToString(row[`status`]),
 			CreatedAt: cast.ToString(row[`created_at`]),
 		})
@@ -2449,9 +2443,57 @@ func TaskWorkflowChatDetail(c *gin.Context) {
 		`chat_id`:    info[`id`],
 		`session_id`: info[`session_id`],
 		`prompt`:     info[`prompt`],
+		`model_id`:   info[`model_id`],
+		`local_dir`:  info[`local_dir`],
 		`status`:     info[`status`],
 		`created_at`: info[`created_at`],
 		`lines`:      lines,
+	})
+}
+
+// TaskWorkflowChatDirs 获取当前任务可选的工作目录列表。
+func TaskWorkflowChatDirs(c *gin.Context) {
+	var req _struct.TaskWorkflowChatDirsRequest
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if req.WorkflowID <= 0 {
+		gsgin.GinResponseError(c, `工作流id不能为空`, nil)
+		return
+	}
+
+	workflowInfo, err := common.DbMain.TaskWorkflowInfo(req.WorkflowID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	homeTaskInfo, err := common.DbMain.HomeTaskRow(cast.ToInt(workflowInfo[`home_task_id`]))
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	devConfigs := homeTaskDevConfigs(homeTaskInfo)
+	seen := map[string]bool{}
+	dirs := make([]string, 0)
+	for _, cfg := range devConfigs {
+		dir := strings.TrimSpace(cfg.LocalDir)
+		if dir == `` || seen[dir] {
+			continue
+		}
+		if info, statErr := os.Stat(dir); statErr != nil || !info.IsDir() {
+			continue
+		}
+		seen[dir] = true
+		dirs = append(dirs, dir)
+	}
+	if len(dirs) == 0 {
+		gsgin.GinResponseError(c, `开发配置中没有可用的本地目录`, nil)
+		return
+	}
+
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`dirs`: dirs,
 	})
 }
 
@@ -2617,79 +2659,76 @@ func taskWorkflowBuildZcodeMarkdown() string {
 }
 
 // runClaudeCommand 后台执行 claude 命令并捕获输出。
-func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sessionID, settingsPath string) {
-	args := []string{}
-	if isResume {
-		args = append(args, `--resume`, sessionID)
-	}
-	args = append(args,
-		`-p`, prompt,
-		`--add-dir`, localDir,
-		`--model`, `deepseek-v4-pro[1m]`,
-		`--permission-mode`, `bypassPermissions`,
-		`--output-format`, `stream-json`,
-		`--include-partial-messages`,
-		`--verbose`,
-	)
-	if settingsPath != `` {
-		args = append(args, `--settings`, settingsPath)
+func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sessionID string, modelID int, baseURL, apiKey, modelName string) {
+	cfg := p_claude.RunConfig{
+		Prompt:      prompt,
+		SessionID:   sessionID,
+		Model:       modelName,
+		BaseURL:     baseURL,
+		APIKey:      apiKey,
+		WorkingDir:  localDir,
+		UserDataDir: p_claude.DefaultUserDataDir,
 	}
 
-	// 构建命令展示字符串
-	displayParts := []string{`claude`}
-	for _, a := range args {
-		escaped := strings.ReplaceAll(a, `\`, `\\`)
-		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
-		displayParts = append(displayParts, `"`+escaped+`"`)
-	}
-	cmdDisplay := strings.Join(displayParts, ` `)
-
-	cmdLineBytes, _ := json.Marshal(map[string]string{
+	// 记录命令行
+	cmdDisplay := buildClaudeCmdDisplay(cfg, isResume)
+	cmdLineJSON, _ := json.Marshal(map[string]string{
 		`type`:    `system`,
 		`subtype`: `command`,
 		`text`:    cmdDisplay,
 	})
-	_ = common.DbMain.TaskWorkflowChatAppendOutput(chatID, string(cmdLineBytes))
-	broadcastChatOutput(chatID, string(cmdLineBytes))
+	_ = common.DbMain.TaskWorkflowChatAppendOutput(chatID, string(cmdLineJSON))
+	broadcastChatOutput(chatID, string(cmdLineJSON))
 
-	cmd := exec.Command(`claude`, args...)
-	cmd.Dir = localDir
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = common.DbMain.TaskWorkflowChatAppendOutput(chatID, fmt.Sprintf(`{"error":"stdout pipe failed: %s"}`, err.Error()))
-		_ = common.DbMain.TaskWorkflowChatMarkCompleted(chatID)
-		return
-	}
-
-	if err := cmd.Start(); err != nil {
-		_ = common.DbMain.TaskWorkflowChatAppendOutput(chatID, fmt.Sprintf(`{"error":"start failed: %s"}`, err.Error()))
-		_ = common.DbMain.TaskWorkflowChatMarkCompleted(chatID)
-		return
-	}
-
+	ctx := context.Background()
 	sessionExtracted := false
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == `` {
-			continue
-		}
 
-		_ = common.DbMain.TaskWorkflowChatAppendOutput(chatID, line)
-		broadcastChatOutput(chatID, line)
+	_, err := p_claude.RunClaudeStream(ctx, cfg, func(msg p_claude.StreamMessage) {
+		_ = common.DbMain.TaskWorkflowChatAppendOutput(chatID, msg.RawJSON)
+		broadcastChatOutput(chatID, msg.RawJSON)
 
-		if !sessionExtracted && !isResume {
-			if sid := extractSessionID(line); sid != `` {
+		if !sessionExtracted && !isResume && msg.Type == `system` && msg.Subtype == `init` {
+			if sid, ok := msg.Data[`session_id`].(string); ok && sid != `` {
 				_ = common.DbMain.TaskWorkflowChatUpdateSessionID(chatID, sid)
 				sessionExtracted = true
 			}
 		}
+	})
+	if err != nil {
+		errJSON, _ := json.Marshal(map[string]string{
+			`type`: `error`,
+			`text`: err.Error(),
+		})
+		_ = common.DbMain.TaskWorkflowChatAppendOutput(chatID, string(errJSON))
+		broadcastChatOutput(chatID, string(errJSON))
 	}
 
-	_ = cmd.Wait()
 	_ = common.DbMain.TaskWorkflowChatMarkCompleted(chatID)
 	broadcastChatOutput(chatID, fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
+}
+
+// buildClaudeCmdDisplay 构建命令展示字符串。
+func buildClaudeCmdDisplay(cfg p_claude.RunConfig, isResume bool) string {
+	parts := []string{`claude`}
+	if isResume {
+		parts = append(parts, `--resume`, cfg.SessionID)
+	}
+	parts = append(parts,
+		`-p`, `"`+truncateForDisplay(cfg.Prompt, 80)+`"`,
+		`--add-dir`, cfg.WorkingDir,
+		`--model`, cfg.Model,
+		`--output-format`, `stream-json`,
+		`--verbose`,
+	)
+	return strings.Join(parts, ` `)
+}
+
+// truncateForDisplay 截断超长文本用于展示。
+func truncateForDisplay(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + `...`
 }
 
 // taskWorkflowAutoCompleteNode 自动将指定节点标记为已完成。

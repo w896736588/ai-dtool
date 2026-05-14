@@ -165,6 +165,7 @@
         <el-form-item label="请求格式">
           <el-select v-model="state.editProvider.request_format" style="width: 100%;">
             <el-option label="openai" value="openai"/>
+            <el-option label="anthropic (Claude Code)" value="anthropic"/>
           </el-select>
         </el-form-item>
         <el-form-item label="基础域名">

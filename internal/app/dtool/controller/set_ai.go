@@ -48,8 +48,8 @@ func SetAiProviderAdd(c *gin.Context) {
 	if requestFormat == `` {
 		requestFormat = `openai`
 	}
-	if requestFormat != `openai` {
-		gsgin.GinResponseError(c, `请求格式仅支持 openai`, nil)
+	if requestFormat != `openai` && requestFormat != `anthropic` {
+		gsgin.GinResponseError(c, `请求格式仅支持 openai 或 anthropic`, nil)
 		return
 	}
 	updateData[`base_url`] = normalizeAiProviderBaseURL(cast.ToString(updateData[`base_url`]))
@@ -317,26 +317,26 @@ func logTestRequestToDb(
 	headersJSON, _ := json.Marshal(requestHeaders)
 
 	logData := map[string]any{
-		`provider_id`:            providerID,
-		`provider_name`:          providerName,
+		`provider_id`:          providerID,
+		`provider_name`:        providerName,
 		`model_id`:             modelID,
 		`model_name`:           modelName,
 		`model`:                model,
 		`model_type`:           modelType,
-		`request_format`:        requestFormat,
-		`base_url`:            baseURL,
-		`request_url`:         requestURL,
+		`request_format`:       requestFormat,
+		`base_url`:             baseURL,
+		`request_url`:          requestURL,
 		`request_method`:       method,
 		`request_params`:       string(requestParamsJSON),
 		`request_headers`:      string(headersJSON),
 		`response_status_code`: statusCode,
-		`response_body`:       responseBody,
-		`input_tokens`:        0,
+		`response_body`:        responseBody,
+		`input_tokens`:         0,
 		`output_tokens`:        0,
-		`cost_time_ms`:        costTimeMs,
-		`success`:             success,
-		`error_message`:       errMsg,
-		`create_time`:         time.Now().Unix(),
+		`cost_time_ms`:         costTimeMs,
+		`success`:              success,
+		`error_message`:        errMsg,
+		`create_time`:          time.Now().Unix(),
 	}
 
 	// 异步写入日志

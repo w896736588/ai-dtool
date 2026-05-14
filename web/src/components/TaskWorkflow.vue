@@ -587,6 +587,43 @@
         <el-button type="primary" @click="copyIssueFixText">复制到剪贴板</el-button>
       </template>
     </el-dialog>
+
+    <!-- 对话配置弹窗 -->
+    <el-dialog
+      v-model="chatConfigDialogVisible"
+      title="Claude Code 对话配置"
+      width="500px"
+      destroy-on-close
+    >
+      <el-form label-width="100px">
+        <el-form-item label="工作目录">
+          <el-select v-model="chatConfigLocalDir" style="width: 100%;" placeholder="请选择工作目录">
+            <el-option
+              v-for="(dir, idx) in chatConfigDirs"
+              :key="idx"
+              :label="dir"
+              :value="dir"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="模型">
+          <el-select v-model="chatConfigModelId" style="width: 100%;" placeholder="请选择模型">
+            <el-option
+              v-for="m in chatConfigModels"
+              :key="m.id"
+              :label="m.name + ' (' + m.model + ')'"
+              :value="m.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="chatConfigDialogVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="!chatConfigModelId || !chatConfigLocalDir" @click="startClaudeChat">
+          开始对话
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 
     <!-- 历史对话列表弹窗 -->
@@ -627,6 +664,11 @@
       destroy-on-close
       @closed="closeChatDetail"
     >
+      <div v-if="chatDetailModelName || chatDetailLocalDir" style="margin-bottom: 12px; color: #888; font-size: 12px;">
+        <span v-if="chatDetailModelName">模型: {{ chatDetailModelName }}</span>
+        <span v-if="chatDetailModelName && chatDetailLocalDir"> | </span>
+        <span v-if="chatDetailLocalDir">目录: {{ chatDetailLocalDir }}</span>
+      </div>
       <div class="chat-detail-container" style="max-height: 70vh; overflow-y: auto; background: #1e1e1e; border-radius: 8px; padding: 16px; color: #d4d4d4; font-family: 'Consolas', monospace; font-size: 13px;">
         <div v-if="chatDetailMessages.length === 0 && chatDetailStatus === 'running'" style="text-align: center; padding: 40px; color: #888;">
           <div>等待 claude code 响应...</div>
@@ -746,6 +788,7 @@ import homeTaskApi from '@/utils/base/home_task'
 import baseUtils from '@/utils/base'
 import sseDistribute from '@/utils/base/sse_distribute'
 import chatParser from '@/utils/chat_parser'
+import aiSet from '@/utils/base/ai_set'
 import gitApi from '@/utils/base/git'
 import mysqlSetApi from '@/utils/base/mysql_set'
 import apiManagement from '@/utils/base/api'
@@ -871,6 +914,14 @@ export default {
       sendingToClaude: false,
       chatContinueInput: '',
       chatContinueLoading: false,
+      chatConfigDialogVisible: false,
+      chatConfigModelId: 0,
+      chatConfigLocalDir: '',
+      chatConfigDirs: [],
+      chatConfigModels: [],
+      _pendingChatPrompt: '',
+      chatDetailModelName: '',
+      chatDetailLocalDir: '',
       // zcode 配置
       zcodeConfigDialogVisible: false,
       zcodeDirInput: '',
@@ -1492,6 +1543,8 @@ export default {
           this.chatDetailPrompt = data.prompt || ''
           this.chatDetailSessionId = data.session_id || ''
           this.chatDetailStatus = data.status || ''
+          this.chatDetailModelName = data.model_id ? '#' + data.model_id : ''
+          this.chatDetailLocalDir = data.local_dir || ''
           this.chatDetailMessages = chatParser.parseChatLines(data.lines || [])
         }
       })
@@ -1531,19 +1584,44 @@ export default {
       this.chatDetailId = 0
       this.chatContinueInput = ''
     },
-    // 发送到 claude code
+    // 打开对话配置弹窗
     sendToClaudeCode() {
       const prompt = this.issueFixCombinedText
       if (!prompt || !prompt.trim()) {
         this.$helperNotify.warning('提示词为空，无法发送')
         return
       }
+      this._pendingChatPrompt = prompt
+      // 加载模型列表
+      aiSet.AiModelList({}, (res) => {
+        if (res.ErrCode === 0) {
+          this.chatConfigModels = (res.Data || []).filter(m =>
+            (m.request_format || m.provider_type || '') === 'anthropic' && (m.model_type || 'llm') === 'llm'
+          )
+        }
+      })
+      // 加载可用目录
+      taskWorkflowApi.TaskWorkflowChatDirs(this.workflowId, (res) => {
+        if (res.ErrCode === 0) {
+          this.chatConfigDirs = res.Data.dirs || []
+          if (this.chatConfigDirs.length > 0) {
+            this.chatConfigLocalDir = this.chatConfigDirs[0]
+          }
+        }
+      })
+      this.chatConfigDialogVisible = true
+    },
+    // 执行对话配置，开始对话
+    startClaudeChat() {
+      const prompt = this._pendingChatPrompt
+      if (!prompt || !this.chatConfigModelId || !this.chatConfigLocalDir) return
       this.sendingToClaude = true
-      taskWorkflowApi.TaskWorkflowChatSend(this.workflowId, prompt, (res) => {
+      taskWorkflowApi.TaskWorkflowChatSend(this.workflowId, prompt, this.chatConfigModelId, this.chatConfigLocalDir, (res) => {
         this.sendingToClaude = false
         if (res.ErrCode === 0 && res.Data) {
           const chatId = res.Data.chat_id
           this.$helperNotify.success('已发送到 claude code 执行')
+          this.chatConfigDialogVisible = false
           this.issueFixDialogVisible = false
           this.chatDetailId = chatId
           this.chatDetailStatus = 'running'
