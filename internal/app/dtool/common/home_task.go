@@ -407,3 +407,33 @@ func (h *CSqlite) HomeTaskLastDevConfigByGitId(gitID int) (map[string]any, error
 	}
 	return map[string]any{}, nil
 }
+
+// HomeTaskZcodeSessionIdAppend 向任务追加一个 zcode 对话 sessionId（末尾去重）。
+func (h *CSqlite) HomeTaskZcodeSessionIdAppend(id int, sessionID string) error {
+	row, err := h.HomeTaskRow(id)
+	if err != nil {
+		return err
+	}
+	if row == nil {
+		return errors.New(`任务不存在`)
+	}
+	existing := cast.ToString(row[`zcode_session_ids`])
+	lines := strings.Split(existing, "\n")
+	// 取最后一行，若与新增 sessionId 相同则跳过
+	if len(lines) > 0 {
+		last := strings.TrimSpace(lines[len(lines)-1])
+		if last == strings.TrimSpace(sessionID) {
+			return nil
+		}
+	}
+	newVal := sessionID
+	if existing != `` {
+		newVal = existing + "\n" + sessionID
+	}
+	_, err = h.Client.QuickUpdate(`tbl_home_task`, map[string]any{
+		`id`: id,
+	}, map[string]any{
+		`zcode_session_ids`: newVal,
+	}).Exec()
+	return err
+}

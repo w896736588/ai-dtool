@@ -1423,7 +1423,8 @@ func buildTaskWorkflowPlaceholderMap(c *gin.Context, homeTaskInfo map[string]any
 	for key, value := range result {
 		devEnvironment = strings.ReplaceAll(devEnvironment, key, value)
 	}
-	result[`{开发环境}`] = devEnvironment
+	taskID := cast.ToString(homeTaskInfo[`id`])
+	result[`{开发环境}`] = devEnvironment + "\n\n任务ID: " + taskID
 	result[`{zcode配置列表}`] = taskWorkflowBuildZcodeMarkdown()
 	return result
 }

@@ -75,3 +75,9 @@ type HomeTaskBranchNameGenerateRequest struct {
 	TaskName     string `json:"task_name"`
 	ParentBranch string `json:"parent_branch"`
 }
+
+// HomeTaskZcodeSessionIdAppendRequest 追加 zcode sessionId 请求。
+type HomeTaskZcodeSessionIdAppendRequest struct {
+	ID        int    `json:"id"`
+	SessionID string `json:"session_id"`
+}

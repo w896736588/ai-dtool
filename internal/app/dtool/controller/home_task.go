@@ -515,3 +515,25 @@ func HomeTaskBranchNameGenerate(c *gin.Context) {
 		"branch_name": result,
 	})
 }
+
+// HomeTaskZcodeSessionIdAppend 向任务追加一个 zcode 对话 sessionId。
+func HomeTaskZcodeSessionIdAppend(c *gin.Context) {
+	var req _struct.HomeTaskZcodeSessionIdAppendRequest
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if req.ID <= 0 {
+		gsgin.GinResponseError(c, `任务id不能为空`, nil)
+		return
+	}
+	if strings.TrimSpace(req.SessionID) == `` {
+		gsgin.GinResponseError(c, `session_id不能为空`, nil)
+		return
+	}
+	if err := common.DbMain.HomeTaskZcodeSessionIdAppend(req.ID, strings.TrimSpace(req.SessionID)); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, `已追加`, nil)
+}

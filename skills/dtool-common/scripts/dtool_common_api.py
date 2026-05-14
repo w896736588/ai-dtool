@@ -475,6 +475,33 @@ def memory_fragment_update_by_path(relative_path, content, title=None):
     return result
 
 
+
+
+# ============================================================
+# 12. 向任务追加 zcode 对话 sessionId
+# ============================================================
+def append_zcode_session_id(task_id, session_id):
+    """
+    向指定任务追加一个 zcode 对话 sessionId（末尾去重）
+
+    参数:
+        task_id: 首页任务 ID（整数）
+        session_id: zcode 对话的 sessionId（字符串）
+
+    示例:
+        append_zcode_session_id(1, "171ea720-318a-4f68-bec9-b699097d3d80")
+    """
+    result = call_api("/api/HomeTaskZcodeSessionIdAppend", {
+        "id": task_id,
+        "session_id": session_id,
+    })
+    if result.get("code") == 0:
+        print(f"追加成功: task_id={task_id}, session_id={session_id}")
+    else:
+        print(f"追加失败: {result.get('msg')}")
+    return result
+
+
 # ============================================================
 # 使用示例
 # ============================================================
