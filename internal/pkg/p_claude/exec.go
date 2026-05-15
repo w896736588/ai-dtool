@@ -95,6 +95,7 @@ func buildArgs(cfg RunConfig) []string {
 		`--output-format`, `stream-json`,
 		`--include-partial-messages`,
 		`--verbose`,
+		`--permission-mode`, `bypassPermissions`,
 	)
 	if cfg.Model != `` {
 		args = append(args, `--model`, cfg.Model)
@@ -122,9 +123,10 @@ func parseLine(line string) StreamMessage {
 	msg := StreamMessage{RawJSON: line}
 	var raw map[string]any
 	if err := json.Unmarshal([]byte(line), &raw); err != nil {
-		msg.Type = `parse_error`
-		msg.Data = map[string]any{`error`: err.Error(), `line`: line}
-		// 生成合法 JSON 作为 RawJSON，确保前端和数据库可解析
+		// stream-json 模式下偶有非 JSON 文本行（如帮助信息、中文提示），
+		// 不视为错误，直接透传原始内容作为普通文本展示
+		msg.Type = `raw_text`
+		msg.Data = map[string]any{`text`: line}
 		if errJSON, e := json.Marshal(msg); e == nil {
 			msg.RawJSON = string(errJSON)
 		}

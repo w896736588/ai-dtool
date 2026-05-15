@@ -129,6 +129,9 @@ function parseChatLines(lines) {
     } else if (lineType === 'parse_error') {
       const data = obj.data || {}
       messages.push({ type: 'parse_error', text: data.line || obj.line || '', error: data.error || '' })
+    } else if (lineType === 'raw_text') {
+      const data = obj.data || {}
+      messages.push({ type: 'raw_text', text: data.text || obj.text || '' })
     } else if (lineType === 'error') {
       messages.push({ type: 'error', text: obj.text || '' })
     }

@@ -5,6 +5,19 @@
         <div class="task-workflow-header__main">
           <div class="task-workflow-header__eyebrow">任务工作流程</div>
           <h1 class="task-workflow-header__title">{{ homeTask.name || `任务 #${taskId}` }}</h1>
+          <div v-if="parsedTaskDevConfigs.length > 0" class="task-workflow-header__meta">
+            <div v-for="(cfg, idx) in parsedTaskDevConfigs" :key="idx" class="task-workflow-header__dev-row">
+              <span class="task-workflow-header__dev-item">Git仓库: {{ getTaskConfigName('git', cfg.git_id) }}</span>
+              <span class="task-workflow-header__dev-sep">|</span>
+              <span class="task-workflow-header__dev-item">接口集合: {{ getTaskConfigApiLabel(cfg) }}</span>
+              <span class="task-workflow-header__dev-sep">|</span>
+              <span class="task-workflow-header__dev-item">父分支: {{ cfg.parent_branch || '-' }}</span>
+              <span class="task-workflow-header__dev-sep">|</span>
+              <span class="task-workflow-header__dev-item">分支名: <span class="task-workflow-header__branch" @click="copyText(cfg.branch_name, '分支名已复制')" :title="cfg.branch_name">{{ cfg.branch_name || '-' }}</span></span>
+              <span class="task-workflow-header__dev-sep">|</span>
+              <span class="task-workflow-header__dev-item">本地目录: {{ cfg.local_dir || '-' }}</span>
+            </div>
+          </div>
         </div>
         <div class="task-workflow-header__actions">
           <el-tooltip content="返回首页" placement="bottom">
@@ -551,13 +564,11 @@
       <div class="task-workflow-issue-fix__close-bar">
         <el-button @click="issueFixDialogVisible = false" type="danger">关闭</el-button>
       </div>
-      <!--
         <div style="margin-bottom: 12px; display: flex; gap: 8px;">
           <el-button type="primary" :loading="sendingToClaude" @click="sendToClaudeCode">
             发送到 claude code 执行
           </el-button>
         </div>
-        -->
         <div v-if="issueFixZcodeMappings.length > 0" style="margin-bottom: 12px;">
           <div style="font-size: 13px; color: #909399; margin-bottom: 4px;">当前任务本地目录对应的 Settings 配置</div>
           <el-table :data="issueFixZcodeMappings" border size="small" max-height="160">
@@ -928,6 +939,7 @@ export default {
       chatDetailStatus: '',
       chatDetailMessages: [],
       chatDetailSSERegistered: false,
+      chatDetailSSELines: [], // SSE 累积的原始行，用于全量重解析
       sendingToClaude: false,
       chatContinueInput: '',
       chatContinueLoading: false,
@@ -1571,6 +1583,7 @@ export default {
       if (this.chatDetailSSERegistered) return
       this.chatDetailSSERegistered = true
       const sseId = 'task_workflow_chat_' + chatId
+      this.chatDetailSSELines = []
       sseDistribute.RegisterReceive(sseId, (data) => {
         if (data && data.line) {
           const line = data.line
@@ -1580,13 +1593,13 @@ export default {
               this.chatDetailStatus = 'completed'
               this.chatDetailSSERegistered = false
               sseDistribute.UnRegisterReceive(sseId)
+              // 最终用全量数据重新解析一次，确保状态性事件（message_start→deltas→message_stop）完整
+              this.chatDetailMessages = chatParser.parseChatLines(this.chatDetailSSELines)
               return
             }
           } catch (e) { /* ignore parse errors */ }
-          const newMsgs = chatParser.parseChatLines([line])
-          if (newMsgs.length > 0) {
-            this.chatDetailMessages = [...this.chatDetailMessages, ...newMsgs]
-          }
+          this.chatDetailSSELines.push(line)
+          this.chatDetailMessages = chatParser.parseChatLines(this.chatDetailSSELines)
         }
       })
     },
@@ -1598,6 +1611,7 @@ export default {
         this.chatDetailSSERegistered = false
       }
       this.chatDetailMessages = []
+      this.chatDetailSSELines = []
       this.chatDetailId = 0
       this.chatContinueInput = ''
     },
@@ -1856,11 +1870,39 @@ export default {
 
 .task-workflow-header__meta {
   display: flex;
+  flex-direction: column;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 4px;
   margin-top: 6px;
   color: #909399;
   font-size: 13px;
+}
+
+.task-workflow-header__dev-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.task-workflow-header__dev-item {
+  white-space: nowrap;
+}
+
+.task-workflow-header__dev-sep {
+  color: #dcdfe6;
+  font-size: 12px;
+}
+
+.task-workflow-header__branch {
+  color: #3a7a3a;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.task-workflow-header__branch:hover {
+  color: #2d5f2d;
+  text-decoration: underline;
 }
 
 .task-workflow-header__link {

@@ -2726,10 +2726,19 @@ func buildClaudeCmdDisplay(cfg p_claude.RunConfig, isResume bool) string {
 	parts = append(parts,
 		`-p`, `"`+truncateForDisplay(cfg.Prompt, 80)+`"`,
 		`--add-dir`, cfg.WorkingDir,
-		`--model`, cfg.Model,
-		`--output-format`, `stream-json`,
-		`--verbose`,
 	)
+	if cfg.Model != `` {
+		parts = append(parts, `--model`, cfg.Model)
+	}
+	parts = append(parts,
+		`--output-format`, `stream-json`,
+		`--include-partial-messages`,
+		`--verbose`,
+		`--permission-mode`, `bypassPermissions`,
+	)
+	if cfg.UserDataDir != `` {
+		parts = append(parts, `--user-data-dir`, cfg.UserDataDir)
+	}
 	return strings.Join(parts, ` `)
 }
 
