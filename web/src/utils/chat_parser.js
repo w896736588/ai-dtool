@@ -11,6 +11,8 @@ function parseChatLines(lines) {
     try {
       obj = JSON.parse(line)
     } catch (e) {
+      // 非 JSON 行直接显示原始文本，不丢弃任何内容
+      messages.push({ type: 'raw_text', text: line })
       continue
     }
 
@@ -124,6 +126,11 @@ function parseChatLines(lines) {
       if (obj.subtype === 'completed') {
         messages.push({ type: 'chat_completed', text: '对话已完成' })
       }
+    } else if (lineType === 'parse_error') {
+      const data = obj.data || {}
+      messages.push({ type: 'parse_error', text: data.line || obj.line || '', error: data.error || '' })
+    } else if (lineType === 'error') {
+      messages.push({ type: 'error', text: obj.text || '' })
     }
   }
 

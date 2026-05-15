@@ -77,6 +77,9 @@ func RunClaudeStream(ctx context.Context, cfg RunConfig, callback func(msg Strea
 
 	waitErr := cmd.Wait()
 	log.Printf("[claude-exec] 进程结束, waitErr=%v", waitErr)
+	if waitErr != nil {
+		return sessionID, fmt.Errorf("claude exited with error: %w", waitErr)
+	}
 	return sessionID, nil
 }
 
@@ -121,6 +124,10 @@ func parseLine(line string) StreamMessage {
 	if err := json.Unmarshal([]byte(line), &raw); err != nil {
 		msg.Type = `parse_error`
 		msg.Data = map[string]any{`error`: err.Error(), `line`: line}
+		// 生成合法 JSON 作为 RawJSON，确保前端和数据库可解析
+		if errJSON, e := json.Marshal(msg); e == nil {
+			msg.RawJSON = string(errJSON)
+		}
 		return msg
 	}
 	msg.Type = cast.ToString(raw[`type`])

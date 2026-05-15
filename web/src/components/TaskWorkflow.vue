@@ -24,9 +24,11 @@
           <GitActionButton compact @click="openChatHistoryDialog">
             历史对话
           </GitActionButton>
+          <!--
           <GitActionButton compact variant="success" @click="openZcodeConfigDialog">
             zcode配置
           </GitActionButton>
+          -->
         </div>
       </header>
 
@@ -549,11 +551,13 @@
       <div class="task-workflow-issue-fix__close-bar">
         <el-button @click="issueFixDialogVisible = false" type="danger">关闭</el-button>
       </div>
+      <!--
         <div style="margin-bottom: 12px; display: flex; gap: 8px;">
           <el-button type="primary" :loading="sendingToClaude" @click="sendToClaudeCode">
             发送到 claude code 执行
           </el-button>
         </div>
+        -->
         <div v-if="issueFixZcodeMappings.length > 0" style="margin-bottom: 12px;">
           <div style="font-size: 13px; color: #909399; margin-bottom: 4px;">当前任务本地目录对应的 Settings 配置</div>
           <el-table :data="issueFixZcodeMappings" border size="small" max-height="160">
@@ -730,6 +734,19 @@
           <!-- chat_completed -->
           <div v-else-if="msg.type === 'chat_completed'" style="color: #6a9955; text-align: center; padding: 16px;">
             ✔ {{ msg.text }}
+          </div>
+          <!-- raw_text: 非 JSON 文本行 -->
+          <div v-else-if="msg.type === 'raw_text'" style="white-space: pre-wrap; color: #ce9178; padding: 4px 0; word-break: break-all;">{{ msg.text }}</div>
+          <!-- parse_error: 后端解析错误 -->
+          <div v-else-if="msg.type === 'parse_error'" style="background: #5a1d1d; border-left: 3px solid #f44747; border-radius: 4px; padding: 8px 12px; margin: 4px 0;">
+            <div style="color: #f44747; font-weight: bold;">解析错误</div>
+            <div v-if="msg.error" style="color: #ce9178; font-size: 11px; margin-top: 4px;">{{ msg.error }}</div>
+            <pre style="white-space: pre-wrap; font-size: 12px; margin-top: 4px; color: #d4d4d4;">{{ msg.text }}</pre>
+          </div>
+          <!-- error: claude 进程错误 -->
+          <div v-else-if="msg.type === 'error'" style="background: #5a1d1d; border-left: 3px solid #f44747; border-radius: 4px; padding: 8px 12px; margin: 4px 0;">
+            <span style="color: #f44747;">错误: </span>
+            <span style="color: #d4d4d4;">{{ msg.text }}</span>
           </div>
         </div>
       </div>
