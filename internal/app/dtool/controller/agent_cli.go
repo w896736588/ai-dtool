@@ -25,12 +25,13 @@ func AgentCliList(c *gin.Context) {
 	for _, row := range rows {
 		item := define.AgentCliStatusItem{
 			AgentCliItem: define.AgentCliItem{
-				Id:           cast.ToInt(row["id"]),
-				Name:         cast.ToString(row["name"]),
-				Type:         cast.ToString(row["type"]),
-				SettingsPath: cast.ToString(row["settings_path"]),
-				CreatedAt:    cast.ToInt64(row["created_at"]),
-				UpdatedAt:    cast.ToInt64(row["updated_at"]),
+				Id:                cast.ToInt(row["id"]),
+				Name:              cast.ToString(row["name"]),
+				Type:              cast.ToString(row["type"]),
+				SettingsPath:      cast.ToString(row["settings_path"]),
+				ThinkingCollapsed: cast.ToInt(row["thinking_collapsed"]),
+				CreatedAt:         cast.ToInt64(row["created_at"]),
+				UpdatedAt:         cast.ToInt64(row["updated_at"]),
 			},
 		}
 
@@ -66,8 +67,8 @@ func AgentCliSave(c *gin.Context) {
 
 	if req.Id > 0 {
 		_, err := common.DbMain.Client.ExecBySql(
-			`UPDATE tbl_agent_cli SET name = ?, type = ?, settings_path = ?, updated_at = ? WHERE id = ?`,
-			req.Name, req.Type, req.SettingsPath, now, req.Id,
+			`UPDATE tbl_agent_cli SET name = ?, type = ?, settings_path = ?, thinking_collapsed = ?, updated_at = ? WHERE id = ?`,
+			req.Name, req.Type, req.SettingsPath, req.ThinkingCollapsed, now, req.Id,
 		).Exec()
 		if err != nil {
 			gsgin.GinResponseError(c, err.Error(), nil)
@@ -82,8 +83,8 @@ func AgentCliSave(c *gin.Context) {
 			req.Type = define.AgentCliTypeClaudeCodeCli
 		}
 		_, err := common.DbMain.Client.ExecBySql(
-			`INSERT INTO tbl_agent_cli (name, type, settings_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-			name, req.Type, req.SettingsPath, now, now,
+			`INSERT INTO tbl_agent_cli (name, type, settings_path, thinking_collapsed, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			name, req.Type, req.SettingsPath, req.ThinkingCollapsed, now, now,
 		).Exec()
 		if err != nil {
 			gsgin.GinResponseError(c, err.Error(), nil)

@@ -7,20 +7,22 @@ const (
 
 // AgentCliItem 列表项
 type AgentCliItem struct {
-	Id           int    `json:"id"`
-	Name         string `json:"name"`
-	Type         string `json:"type"`
-	SettingsPath string `json:"settings_path"`
-	CreatedAt    int64  `json:"created_at"`
-	UpdatedAt    int64  `json:"updated_at"`
+	Id                int    `json:"id"`
+	Name              string `json:"name"`
+	Type              string `json:"type"`
+	SettingsPath      string `json:"settings_path"`
+	ThinkingCollapsed int    `json:"thinking_collapsed"`
+	CreatedAt         int64  `json:"created_at"`
+	UpdatedAt         int64  `json:"updated_at"`
 }
 
 // AgentCliSaveRequest 新建/编辑请求
 type AgentCliSaveRequest struct {
-	Id           int    `json:"id,omitempty"`
-	Name         string `json:"name,omitempty"`
-	Type         string `json:"type,omitempty"`
-	SettingsPath string `json:"settings_path,omitempty"`
+	Id                int    `json:"id,omitempty"`
+	Name              string `json:"name,omitempty"`
+	Type              string `json:"type,omitempty"`
+	SettingsPath      string `json:"settings_path,omitempty"`
+	ThinkingCollapsed int    `json:"thinking_collapsed,omitempty"`
 }
 
 // AgentCliDeleteRequest 删除请求

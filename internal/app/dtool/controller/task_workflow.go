@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"dev_tool/internal/app/dtool/api"
+	"dev_tool/internal/app/dtool/business"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
@@ -2304,10 +2305,11 @@ func TaskWorkflowChatStreamOpen(urlValues url.Values, stopC chan int, c *gin.Con
 	baseURL := strings.TrimSpace(cast.ToString(modelInfo[`base_url`]))
 	apiKey := strings.TrimSpace(cast.ToString(modelInfo[`api_key`]))
 	modelName := strings.TrimSpace(cast.ToString(modelInfo[`model`]))
+	settingsPath := cast.ToString(chatInfo[`settings_path`])
 
 	distributeID := define.SseTaskWorkflowChatPrefix + chatIDStr
 	sse := gsgin.SseRegister(distributeID, stopC, c)
-	go runClaudeCommand(chatID, localDir, prompt, isContinue, sessionID, modelID, baseURL, apiKey, modelName, sse, stopC)
+	go runClaudeCommand(chatID, localDir, prompt, isContinue, sessionID, modelID, baseURL, apiKey, modelName, settingsPath, sse, stopC)
 	return sse, nil
 }
 
@@ -2342,6 +2344,27 @@ func TaskWorkflowChatSend(c *gin.Context) {
 		req.CliType = `claude`
 	}
 
+	settingsPath := `` // Agent CLI 的 settings.json 路径
+
+	// 若指定了 agent_cli_id，读取其配置
+	if req.AgentCliId > 0 {
+		cliRow, err := common.DbMain.Client.QueryBySql(
+			`SELECT * FROM tbl_agent_cli WHERE id = ?`, req.AgentCliId,
+		).One()
+		if err != nil || len(cliRow) == 0 {
+			gsgin.GinResponseError(c, `Agent Cli 实例不存在`, nil)
+			return
+		}
+		settingsPath = cast.ToString(cliRow["settings_path"])
+		// 若未传 model_name，从 Agent CLI 的 settings.json 中读取
+		if strings.TrimSpace(req.ModelName) == `` {
+			exists, content, _ := business.ReadAgentCliSettings(settingsPath)
+			if exists {
+				req.ModelName, _ = business.GetAgentCliSettingsSummary(content)
+			}
+		}
+	}
+
 	// 根据 model_name 或 model_id 获取模型记录
 	modelID := req.ModelID
 	if modelID <= 0 {
@@ -2359,7 +2382,7 @@ func TaskWorkflowChatSend(c *gin.Context) {
 	// prompt_type 为可选，仅在非空时追踪 chat_session_ids
 	promptType := strings.TrimSpace(req.PromptType)
 
-	chatID, err := common.DbMain.TaskWorkflowChatCreate(req.WorkflowID, req.Prompt, promptType, req.CliType, modelID, req.LocalDir)
+	chatID, err := common.DbMain.TaskWorkflowChatCreate(req.WorkflowID, req.Prompt, promptType, req.CliType, modelID, req.LocalDir, settingsPath)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -2792,7 +2815,7 @@ func taskWorkflowBuildZcodeMarkdown() string {
 }
 
 // runClaudeCommand 后台执行 claude 命令并将输出推送到专用 SSE。
-func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sessionID string, modelID int, baseURL, apiKey, modelName string, sse *gsgin.Sse, stopC chan int) {
+func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sessionID string, modelID int, baseURL, apiKey, modelName, settingsPath string, sse *gsgin.Sse, stopC chan int) {
 	defer func() {
 		if r := recover(); r != nil {
 			gstool.FmtPrintlnLogTime("[chat-run] chat_id=%d panic: %v", chatID, r)
@@ -2801,7 +2824,11 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 				_ = sse.SendToChan(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
 			}
 		}
-		close(stopC)
+		// stopC 可能已被 SSE 框架关闭，使用 recover 防止二次 close panic
+		func() {
+			defer func() { recover() }()
+			close(stopC)
+		}()
 	}()
 
 	// sendLine 发送一行输出到专用 SSE。
@@ -2812,13 +2839,14 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 		}
 	}
 	cfg := p_claude.RunConfig{
-		Prompt:      prompt,
-		SessionID:   sessionID,
-		Model:       modelName,
-		BaseURL:     baseURL,
-		APIKey:      apiKey,
-		WorkingDir:  localDir,
-		UserDataDir: p_claude.DefaultUserDataDir,
+		Prompt:       prompt,
+		SessionID:    sessionID,
+		Model:        modelName,
+		BaseURL:      baseURL,
+		APIKey:       apiKey,
+		WorkingDir:   localDir,
+		UserDataDir:  p_claude.DefaultUserDataDir,
+		SettingsPath: settingsPath,
 	}
 
 	// 记录命令行
@@ -2887,6 +2915,9 @@ func buildClaudeCmdDisplay(cfg p_claude.RunConfig, isResume bool) string {
 	)
 	if cfg.UserDataDir != `` {
 		parts = append(parts, `--user-data-dir`, cfg.UserDataDir)
+	}
+	if cfg.SettingsPath != `` {
+		parts = append(parts, `--settings`, cfg.SettingsPath)
 	}
 	return strings.Join(parts, ` `)
 }

@@ -28,6 +28,10 @@
             <span class="agent-cli-card__body-label">McpServers:</span>
             <span>{{ item.mcp_server_count || 0 }} 个</span>
           </div>
+          <div class="agent-cli-card__body-item agent-cli-card__body-switch">
+            <span class="agent-cli-card__body-label">思考折叠:</span>
+            <el-switch v-model="item.thinking_collapsed" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" size="small" @change="toggleThinkingCollapsed(item)" />
+          </div>
         </div>
         <div class="agent-cli-card__footer">
           <el-button size="small" @click="configureMcp(item)">配置DevtoolsMcp</el-button>
@@ -189,6 +193,18 @@ export default {
         base_url: 'https://api.deepseek.com/anthropic',
       }
       this.deepSeekDialogVisible = true
+    },
+    toggleThinkingCollapsed(item) {
+      const data = {
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        settings_path: item.settings_path,
+        thinking_collapsed: item.thinking_collapsed,
+      }
+      agentCliApi.AgentCliSave(data, () => {
+        // 静默保存，无需提示
+      })
     },
     saveDeepSeek() {
       if (!this.deepSeekForm.api_key.trim()) {

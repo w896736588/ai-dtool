@@ -872,16 +872,23 @@
       </template>
     </el-dialog>
 
-    <!-- 执行提示词弹窗 -->
+    <!-- 执行任务弹窗 -->
     <el-dialog
       v-model="promptExecDialogVisible"
-      title="发送到 Claude Code 执行"
+      title="执行任务"
       width="450px"
       destroy-on-close
     >
       <el-form label-width="80px">
-        <el-form-item label="模型">
-          <el-input v-model="promptExecModelName" placeholder="例如: deepseek-v4-pro[1m]" />
+        <el-form-item label="cli">
+          <el-select v-model="promptExecCliId" style="width: 100%;" placeholder="请选择 Agent CLI 实例" @change="onPromptExecCliChange">
+            <el-option
+              v-for="cli in promptExecCliList"
+              :key="cli.id"
+              :label="cli.name + ' (' + cli.current_model + ')'"
+              :value="cli.id"
+            />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -946,7 +953,7 @@
                     <pre v-if="!msg._thinkingCollapsed" style="white-space: pre-wrap; margin-top: 4px; color: #999;">{{ msg.thinking }}</pre>
                   </div>
                   <div v-for="(block, bi) in msg.content" :key="bi">
-                    <div v-if="block.type === 'text'" style="white-space: pre-wrap; line-height: 1.5;">{{ block.text }}</div>
+                    <div v-if="block.type === 'text'" class="markdown-body chat-markdown-body" v-html="renderMarkdown(block.text)"></div>
                     <div v-else-if="block.type === 'tool_use'" style="background: #1a3a1a; border-radius: 4px; padding: 8px; margin: 4px 0;">
                       <span style="color: #4ec9b0;">🔧 {{ block.name }}</span>
                       <pre style="white-space: pre-wrap; font-size: 12px; color: #ce9178; margin-top: 4px;">{{ block.input }}</pre>
@@ -960,7 +967,7 @@
                   <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶' : '▼' }} 工具执行结果</span>
                   <pre v-if="!msg.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto;">{{ msg.text }}</pre>
                 </div>
-                <div v-else-if="msg.type === 'assistant_text'" style="white-space: pre-wrap; line-height: 1.5;">{{ msg.text }}</div>
+                <div v-else-if="msg.type === 'assistant_text'" class="markdown-body chat-markdown-body" v-html="renderMarkdown(msg.text)"></div>
                 <div v-else-if="msg.type === 'assistant_thinking'" style="color: #888; font-size: 12px;">
                   <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶ 思考' : '▼ 思考' }}</span>
                   <pre v-if="!msg.collapsed" style="white-space: pre-wrap; margin-top: 4px;">{{ msg.text }}</pre>
@@ -1031,8 +1038,10 @@ import mysqlSetApi from '@/utils/base/mysql_set'
 import apiManagement from '@/utils/base/api'
 import dockerApi from '@/utils/base/compose'
 import smartLinkSetApi from '@/utils/base/smart_link_set'
+import agentCliApi from '@/utils/base/agent_cli'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
+import MarkdownIt from 'markdown-it'
 
 const PROMPT_EDITOR_TOOLBARS = [
   'bold', 'italic', 'strikeThrough', 'title', 'quote',
@@ -1096,6 +1105,9 @@ const WORKFLOW_NODES = [
   { key: 'code-review', label: '6.代码检查', desc: '让AI进行code review' },
   { key: 'browser-test', label: '7.需求核对浏览器测试', desc: '编写提示词，AI核对浏览器测试结果是否满足需求' },
 ]
+
+// markdown-it 实例，用于在"执行历史"对话框中渲染 markdown（包括表格）
+const md = new MarkdownIt({ html: true, breaks: true, linkify: true })
 
 export default {
   name: 'TaskWorkflow',
@@ -1164,9 +1176,10 @@ export default {
       chatConfigLocalDir: '',
       chatConfigDirs: [],
       chatConfigModels: [],
-      // 执行提示词
+      // 执行任务
       promptExecDialogVisible: false,
-      promptExecModelName: 'deepseek-v4-pro[1m]',
+      promptExecCliId: 0,
+      promptExecCliList: [],
       promptExecLoading: false,
       promptExecPromptType: '',
       promptExecPromptValue: '',
@@ -1797,6 +1810,7 @@ export default {
     },
     // 点击左侧列表行，加载右侧详情
     onChatRowClick(row) {
+      if (this.chatDetailId === row.id) return
       this.chatDetailId = row.id
       this.chatDetailStatus = row.status
       this.chatDetailAutoScroll = true
@@ -1950,7 +1964,7 @@ export default {
       const prompt = this._pendingChatPrompt
       if (!prompt || !this.chatConfigModelId || !this.chatConfigLocalDir) return
       this.sendingToClaude = true
-      taskWorkflowApi.TaskWorkflowChatSend(this.workflowId, prompt, null, 'issue_fix', this.chatConfigLocalDir, 'claude', this.chatConfigModelId, (res) => {
+      taskWorkflowApi.TaskWorkflowChatSend(this.workflowId, prompt, null, 'issue_fix', this.chatConfigLocalDir, 'claude', this.chatConfigModelId, 0, (res) => {
         this.sendingToClaude = false
         if (res.ErrCode === 0 && res.Data) {
           const chatId = res.Data.chat_id
@@ -1986,7 +2000,7 @@ export default {
         }
       })
     },
-    // 打开执行提示词弹窗
+    // 打开执行任务弹窗
     openPromptExecDialog(promptType, promptValue) {
       if (!promptValue || !promptValue.trim()) {
         this.$helperNotify.warning('提示词为空，无法执行')
@@ -1994,14 +2008,26 @@ export default {
       }
       this.promptExecPromptType = promptType
       this.promptExecPromptValue = promptValue
-      this.promptExecModelName = 'deepseek-v4-pro[1m]'
+      this.promptExecCliId = 0
       this.promptExecDialogVisible = true
+      // 加载 Agent CLI 列表
+      agentCliApi.AgentCliList((res) => {
+        if (res.ErrCode === 0 && res.Data) {
+          this.promptExecCliList = res.Data.list || []
+          if (this.promptExecCliList.length === 1) {
+            this.promptExecCliId = this.promptExecCliList[0].id
+          }
+        }
+      })
     },
-    // 执行提示词到 claude code
+    // CLI 选中变更
+    onPromptExecCliChange() {
+      // 占位，后续可扩展
+    },
+    // 执行任务
     execPromptToClaude() {
-      const modelName = (this.promptExecModelName || '').trim()
-      if (!modelName) {
-        this.$helperNotify.warning('请输入模型名称')
+      if (!this.promptExecCliId) {
+        this.$helperNotify.warning('请选择 CLI 实例')
         return
       }
       // 获取第一个可用目录
@@ -2020,11 +2046,12 @@ export default {
         taskWorkflowApi.TaskWorkflowChatSend(
           this.workflowId,
           this.promptExecPromptValue,
-          modelName,
+          null,
           this.promptExecPromptType,
           localDir,
           'claude',
           0,
+          this.promptExecCliId,
           (chatRes) => {
             this.promptExecLoading = false
             if (chatRes.ErrCode === 0 && chatRes.Data) {
@@ -2076,6 +2103,7 @@ export default {
     },
     // 点击执行历史列表项
     onPromptChatRowClick(row) {
+      if (this.promptChatDetailId === row.id) return
       this.promptChatDetailId = row.id
       this.chatDetailId = row.id
       this.chatDetailStatus = row.status
@@ -2138,6 +2166,11 @@ export default {
     statusText(status) {
       const map = { running: '执行中', completed: '已完成', error: '异常', interrupted: '中断' }
       return map[status] || status || '-'
+    },
+    // 将 markdown 文本渲染为 HTML，用于"执行历史"对话框中显示表格等格式
+    renderMarkdown(text) {
+      if (!text) return ''
+      return md.render(text)
     },
     formatUnixTime(unixTime) {
       const value = Number(unixTime || 0)
@@ -3210,6 +3243,88 @@ export default {
   padding-top: 10px;
   border-top: 1px solid #ebeef5;
   flex-shrink: 0;
+}
+
+/* 执行历史对话框中 markdown 内容样式（暗色主题，覆盖全局 .markdown-body） */
+.chat-markdown-body {
+  word-wrap: break-word;
+  color: #d4d4d4;
+  background-color: transparent;
+}
+
+.chat-markdown-body p,
+.chat-markdown-body h1,
+.chat-markdown-body h2,
+.chat-markdown-body h3,
+.chat-markdown-body h4,
+.chat-markdown-body h5,
+.chat-markdown-body h6,
+.chat-markdown-body ul,
+.chat-markdown-body ol,
+.chat-markdown-body li {
+  color: #d4d4d4;
+  background-color: transparent;
+}
+
+.chat-markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+}
+
+.chat-markdown-body th,
+.chat-markdown-body td {
+  padding: 6px 12px;
+  border: 1px solid #555;
+  text-align: left;
+}
+
+.chat-markdown-body th {
+  font-weight: 600;
+  background-color: #3a3a3a;
+  color: #e0e0e0;
+}
+
+.chat-markdown-body td {
+  background-color: #2d2d2d;
+}
+
+.chat-markdown-body tr:hover td {
+  background-color: #383838;
+}
+
+.chat-markdown-body code {
+  font-family: 'Consolas', monospace;
+  font-size: 0.9em;
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  color: #ce9178;
+}
+
+.chat-markdown-body pre {
+  background-color: #1e1e1e;
+  border-radius: 4px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.chat-markdown-body pre code {
+  padding: 0;
+  background: transparent;
+  color: #d4d4d4;
+}
+
+.chat-markdown-body a {
+  color: #4fc3f7;
+}
+
+.chat-markdown-body blockquote {
+  border-left: 3px solid #555;
+  margin: 8px 0;
+  padding: 0 12px;
+  color: #999;
 }
 
 /* 接口开发弹窗 */

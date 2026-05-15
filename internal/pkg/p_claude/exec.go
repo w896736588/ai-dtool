@@ -116,6 +116,9 @@ func buildArgs(cfg RunConfig) []string {
 	if cfg.UserDataDir != `` {
 		args = append(args, `--user-data-dir`, cfg.UserDataDir)
 	}
+	if cfg.SettingsPath != `` {
+		args = append(args, `--settings`, cfg.SettingsPath)
+	}
 	return args
 }
 

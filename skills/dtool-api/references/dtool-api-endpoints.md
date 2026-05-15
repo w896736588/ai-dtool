@@ -566,7 +566,6 @@ $变量Key$
 
 ```json
 {
-  "name": "域名",
   "collection_id": 1,
   "env_id": 5,
   "desc": "网关地址",
@@ -580,7 +579,6 @@ $变量Key$
 ```json
 {
   "id": 21,
-  "name": "域名",
   "collection_id": 1,
   "env_id": 5,
   "desc": "网关地址",

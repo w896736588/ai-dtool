@@ -68,6 +68,15 @@
   color: #909399;
 }
 
+.agent-cli-card__body-switch {
+  margin-top: 2px;
+  align-items: center;
+}
+
+.agent-cli-card__body-switch .el-switch__label {
+  font-size: 11px;
+}
+
 .agent-cli-card__footer {
   margin-top: 12px;
   padding-top: 12px;

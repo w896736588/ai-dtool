@@ -438,7 +438,7 @@ func ApiCreateCollectionEnvItem(c *gin.Context) {
 		gsgin.GinResponseError(c, `请选择集合和环境`, nil)
 		return
 	}
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `collection_id`, `env_id`, `desc`, `key`, `value`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`collection_id`, `env_id`, `desc`, `key`, `value`})
 	if cast.ToInt(dataMap[`id`]) == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()

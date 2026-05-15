@@ -81,6 +81,7 @@ type TaskWorkflowChatSendRequest struct {
 	CliType    string `json:"cli_type"`
 	ModelName  string `json:"model_name"`
 	LocalDir   string `json:"local_dir"`
+	AgentCliId int    `json:"agent_cli_id"`
 }
 
 // TaskWorkflowChatDirsRequest 获取可选工作目录列表请求。
