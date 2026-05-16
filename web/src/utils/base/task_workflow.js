@@ -76,6 +76,13 @@ function TaskWorkflowChatSend(workflowId, prompt, modelName, promptType, localDi
   }, callBack)
 }
 
+// TaskWorkflowChatStop 停止运行中的对话。
+function TaskWorkflowChatStop(chatId, callBack) {
+  base.BasePost('/api/task/workflow/chat/stop', {
+    chat_id: chatId,
+  }, callBack)
+}
+
 // TaskWorkflowChatContinue 继续已有对话。
 function TaskWorkflowChatContinue(chatId, prompt, callBack) {
   base.BasePost('/api/task/workflow/chat/continue', {
@@ -141,6 +148,7 @@ export default {
   TaskWorkflowNodeStatusUpdate,
   TaskWorkflowIssueFixResolve,
   TaskWorkflowChatSend,
+  TaskWorkflowChatStop,
   TaskWorkflowChatContinue,
   TaskWorkflowChatList,
   TaskWorkflowChatDetail,

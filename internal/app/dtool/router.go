@@ -358,6 +358,7 @@ func taskWorkflow(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/task/workflow/issue-fix/resolve`, controller.TaskWorkflowIssueFixResolve)
 	tGin.GinPost(`/api/task/workflow/chat/send`, controller.TaskWorkflowChatSend)
 	tGin.GinPost(`/api/task/workflow/chat/continue`, controller.TaskWorkflowChatContinue)
+	tGin.GinPost(`/api/task/workflow/chat/stop`, controller.TaskWorkflowChatStop)
 	tGin.GinPost(`/api/task/workflow/chat/list`, controller.TaskWorkflowChatList)
 	tGin.GinPost(`/api/task/workflow/chat/detail`, controller.TaskWorkflowChatDetail)
 	tGin.GinPost(`/api/task/workflow/chat/dirs`, controller.TaskWorkflowChatDirs)

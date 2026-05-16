@@ -117,6 +117,11 @@ type TaskWorkflowZcodeProjectItem struct {
 	SettingsPath  string `json:"settings_path"`
 }
 
+// TaskWorkflowChatStopRequest 停止运行中的对话请求。
+type TaskWorkflowChatStopRequest struct {
+	ChatID int `json:"chat_id"`
+}
+
 // TaskWorkflowChatListByPromptTypeRequest 按提示词类型查询对话列表请求。
 type TaskWorkflowChatListByPromptTypeRequest struct {
 	WorkflowID int    `json:"workflow_id"`

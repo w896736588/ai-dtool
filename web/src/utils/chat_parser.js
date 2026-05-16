@@ -41,6 +41,8 @@ function parseChatLines(lines) {
           content: [],
           thinking: '',
           usage: null,
+          _thinkingTiming: { startMs: 0, durationMs: 0 },
+          _thinkingCollapsed: false,
         }
       } else if (eventType === 'content_block_start') {
         if (!currentMessage) continue

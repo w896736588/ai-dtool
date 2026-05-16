@@ -695,20 +695,20 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="模型">
-          <el-select v-model="chatConfigModelId" style="width: 100%;" placeholder="请选择模型">
+        <el-form-item label="cli">
+          <el-select v-model="chatConfigCliId" style="width: 100%;" placeholder="请选择 Agent CLI 实例">
             <el-option
-              v-for="m in chatConfigModels"
-              :key="m.id"
-              :label="m.name + ' (' + m.model + ')'"
-              :value="m.id"
+              v-for="cli in chatConfigCliList"
+              :key="cli.id"
+              :label="cli.name + ' (' + cli.current_model + ')'"
+              :value="cli.id"
             />
           </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="chatConfigDialogVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!chatConfigModelId || !chatConfigLocalDir" @click="startClaudeChat">
+        <el-button type="primary" :disabled="!chatConfigCliId || !chatConfigLocalDir" @click="startClaudeChat">
           开始对话
         </el-button>
       </template>
@@ -743,85 +743,85 @@
             请选择一条对话
           </div>
           <template v-else>
-            <div v-if="chatDetailModelName || chatDetailLocalDir" style="margin-bottom: 12px; color: #888; font-size: 12px;">
+            <div v-if="chatDetailModelName || chatDetailLocalDir" style="margin-bottom: 12px; color: #909399; font-size: 12px;">
               <span v-if="chatDetailModelName">模型: {{ chatDetailModelName }}</span>
               <span v-if="chatDetailModelName && chatDetailLocalDir"> | </span>
               <span v-if="chatDetailLocalDir">目录: {{ chatDetailLocalDir }}</span>
             </div>
             <div ref="chatDetailContainer" class="chat-detail-container" @scroll="onChatDetailScroll">
-              <div v-if="chatDetailMessages.length === 0 && chatDetailStatus === 'running'" style="text-align: center; padding: 40px; color: #888;">
+              <div v-if="chatDetailMessages.length === 0 && chatDetailStatus === 'running'" style="text-align: center; padding: 40px; color: #909399;">
                 <div>等待 claude code 响应...</div>
               </div>
               <div v-for="(msg, idx) in chatDetailMessages" :key="idx" style="margin-bottom: 8px;">
                 <!-- system_init -->
-                <div v-if="msg.type === 'system_init'" style="color: #6a9955; font-size: 12px; padding: 4px 0;">
+                <div v-if="msg.type === 'system_init'" style="color: #67c23a; font-size: 12px; padding: 4px 0;">
                   ✔ {{ msg.text }} | model: {{ msg.model }}
                 </div>
                 <!-- system_command -->
-                <div v-else-if="msg.type === 'system_command'" style="background: #1e1e3f; border-radius: 4px; padding: 8px 12px; margin: 4px 0; color: #ce9178; font-size: 12px; word-break: break-all;">
-                  <span style="color: #569cd6;">$</span> {{ msg.text }}
+                <div v-else-if="msg.type === 'system_command'" style="background: #f0f2f5; border-radius: 4px; padding: 8px 12px; margin: 4px 0; color: #303133; font-size: 12px; word-break: break-all; font-family: Consolas, monospace;">
+                  <span style="color: #409eff;">$</span> {{ msg.text }}
                 </div>
                 <!-- system_hook -->
-                <div v-else-if="msg.type === 'system_hook'" style="color: #888; font-size: 12px;">
+                <div v-else-if="msg.type === 'system_hook'" style="color: #909399; font-size: 12px;">
                   <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶' : '▼' }} {{ msg.text }}</span>
                 </div>
                 <!-- system (generic) -->
-                <div v-else-if="msg.type === 'system'" style="color: #888; font-size: 11px;">{{ msg.text }}</div>
+                <div v-else-if="msg.type === 'system'" style="color: #909399; font-size: 11px;">{{ msg.text }}</div>
                 <!-- assistant message -->
-                <div v-else-if="msg.type === 'assistant'" style="background: #2d2d2d; border-radius: 8px; padding: 12px; margin: 8px 0;">
+                <div v-else-if="msg.type === 'assistant'" style="background: #fff; border: 1px solid #ebeef5; border-radius: 8px; padding: 12px; margin: 8px 0;">
                   <!-- thinking -->
-                  <div v-if="msg.thinking" style="color: #888; font-size: 12px; margin-bottom: 8px;">
+                  <div v-if="msg.thinking" style="color: #909399; font-size: 12px; margin-bottom: 8px;">
                     <span @click="msg._thinkingCollapsed = !msg._thinkingCollapsed" style="cursor: pointer; font-weight: bold;">
-                      {{ msg._thinkingCollapsed ? '▶ 思考过程' : '▼ 思考过程' }}
+                      {{ msg._thinkingCollapsed ? '▶ 思考过程' + (msg._thinkingTiming && msg._thinkingTiming.durationMs ? ' (' + (msg._thinkingTiming.durationMs / 1000).toFixed(1) + 's)' : '') : '▼ 思考过程' }}
                     </span>
-                    <pre v-if="!msg._thinkingCollapsed" style="white-space: pre-wrap; margin-top: 4px; color: #999;">{{ msg.thinking }}</pre>
+                    <pre v-if="!msg._thinkingCollapsed" style="white-space: pre-wrap; margin-top: 4px; color: #606266;">{{ msg.thinking }}</pre>
                   </div>
                   <!-- content blocks -->
                   <div v-for="(block, bi) in msg.content" :key="bi">
-                    <div v-if="block.type === 'text'" style="white-space: pre-wrap; line-height: 1.5;">{{ block.text }}</div>
-                    <div v-else-if="block.type === 'tool_use'" style="background: #1a3a1a; border-radius: 4px; padding: 8px; margin: 4px 0;">
-                      <span style="color: #4ec9b0;">🔧 {{ block.name }}</span>
-                      <pre style="white-space: pre-wrap; font-size: 12px; color: #ce9178; margin-top: 4px;">{{ block.input }}</pre>
+                    <div v-if="block.type === 'text'" style="white-space: pre-wrap; line-height: 1.6;">{{ block.text }}</div>
+                    <div v-else-if="block.type === 'tool_use'" style="background: #f0f9eb; border-radius: 4px; padding: 8px; margin: 4px 0;">
+                      <span style="color: #67c23a; font-weight: 500;">🔧 {{ block.name }}</span>
+                      <pre style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ block.input }}</pre>
                     </div>
                   </div>
                   <!-- usage -->
-                  <div v-if="msg.usage" style="color: #888; font-size: 11px; margin-top: 8px; border-top: 1px solid #444; padding-top: 4px;">
+                  <div v-if="msg.usage" style="color: #909399; font-size: 11px; margin-top: 8px; border-top: 1px solid #ebeef5; padding-top: 4px;">
                     input: {{ msg.usage.input_tokens }} | output: {{ msg.usage.output_tokens }}
                   </div>
                 </div>
                 <!-- tool_result -->
-                <div v-else-if="msg.type === 'tool_result'" style="color: #888; font-size: 12px;">
+                <div v-else-if="msg.type === 'tool_result'" style="color: #909399; font-size: 12px;">
                   <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶' : '▼' }} 工具执行结果</span>
-                  <pre v-if="!msg.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto;">{{ msg.text }}</pre>
+                  <pre v-if="!msg.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto; font-family: Consolas, monospace;">{{ msg.text }}</pre>
                 </div>
                 <!-- assistant_text -->
-                <div v-else-if="msg.type === 'assistant_text'" style="white-space: pre-wrap; line-height: 1.5;">{{ msg.text }}</div>
+                <div v-else-if="msg.type === 'assistant_text'" style="white-space: pre-wrap; line-height: 1.6;">{{ msg.text }}</div>
                 <!-- assistant_thinking -->
-                <div v-else-if="msg.type === 'assistant_thinking'" style="color: #888; font-size: 12px;">
+                <div v-else-if="msg.type === 'assistant_thinking'" style="color: #909399; font-size: 12px;">
                   <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶ 思考' : '▼ 思考' }}</span>
                   <pre v-if="!msg.collapsed" style="white-space: pre-wrap; margin-top: 4px;">{{ msg.text }}</pre>
                 </div>
                 <!-- result -->
-                <div v-else-if="msg.type === 'result'" style="color: #6a9955; font-size: 12px; border-top: 1px solid #444; padding-top: 8px; margin-top: 8px;">
+                <div v-else-if="msg.type === 'result'" style="color: #67c23a; font-size: 12px; border-top: 1px solid #ebeef5; padding-top: 8px; margin-top: 8px;">
                   {{ msg.isError ? '✘ 错误' : '✔ 完成' }} | 耗时: {{ (msg.durationMs / 1000).toFixed(1) }}s | {{ msg.numTurns }} 轮
                   <span v-if="msg.usage"> | input: {{ msg.usage.input_tokens }} output: {{ msg.usage.output_tokens }}</span>
                 </div>
                 <!-- chat_completed -->
-                <div v-else-if="msg.type === 'chat_completed'" style="color: #6a9955; text-align: center; padding: 16px;">
+                <div v-else-if="msg.type === 'chat_completed'" style="color: #67c23a; text-align: center; padding: 16px;">
                   ✔ {{ msg.text }}
                 </div>
                 <!-- raw_text: 非 JSON 文本行 -->
-                <div v-else-if="msg.type === 'raw_text'" style="white-space: pre-wrap; color: #ce9178; padding: 4px 0; word-break: break-all;">{{ msg.text }}</div>
+                <div v-else-if="msg.type === 'raw_text'" style="white-space: pre-wrap; color: #e6a23c; padding: 4px 0; word-break: break-all; font-family: Consolas, monospace;">{{ msg.text }}</div>
                 <!-- parse_error: 后端解析错误 -->
-                <div v-else-if="msg.type === 'parse_error'" style="background: #5a1d1d; border-left: 3px solid #f44747; border-radius: 4px; padding: 8px 12px; margin: 4px 0;">
-                  <div style="color: #f44747; font-weight: bold;">解析错误</div>
-                  <div v-if="msg.error" style="color: #ce9178; font-size: 11px; margin-top: 4px;">{{ msg.error }}</div>
-                  <pre style="white-space: pre-wrap; font-size: 12px; margin-top: 4px; color: #d4d4d4;">{{ msg.text }}</pre>
+                <div v-else-if="msg.type === 'parse_error'" style="background: #fef0f0; border-left: 3px solid #f56c6c; border-radius: 4px; padding: 8px 12px; margin: 4px 0;">
+                  <div style="color: #f56c6c; font-weight: bold;">解析错误</div>
+                  <div v-if="msg.error" style="color: #e6a23c; font-size: 11px; margin-top: 4px;">{{ msg.error }}</div>
+                  <pre style="white-space: pre-wrap; font-size: 12px; margin-top: 4px; color: #303133;">{{ msg.text }}</pre>
                 </div>
                 <!-- error: claude 进程错误 -->
-                <div v-else-if="msg.type === 'error'" style="background: #5a1d1d; border-left: 3px solid #f44747; border-radius: 4px; padding: 8px 12px; margin: 4px 0;">
-                  <span style="color: #f44747;">错误: </span>
-                  <span style="color: #d4d4d4;">{{ msg.text }}</span>
+                <div v-else-if="msg.type === 'error'" style="background: #fef0f0; border-left: 3px solid #f56c6c; border-radius: 4px; padding: 8px 12px; margin: 4px 0;">
+                  <span style="color: #f56c6c;">错误: </span>
+                  <span style="color: #303133;">{{ msg.text }}</span>
                 </div>
               </div>
             </div>
@@ -832,10 +832,10 @@
               <el-input
                 v-model="chatContinueInput"
                 placeholder="输入新消息继续对话..."
-                @keyup.enter="continueChat"
+                @keyup.enter="chatDetailStatus !== 'error' && chatDetailStatus !== 'interrupted' ? continueChat : null"
                 style="flex: 1;"
               />
-              <el-button type="primary" :loading="chatContinueLoading" @click="continueChat">发送</el-button>
+              <el-button v-if="chatDetailStatus !== 'error' && chatDetailStatus !== 'interrupted'" type="primary" :loading="chatContinueLoading" @click="continueChat">发送</el-button>
             </div>
           </template>
         </div>
@@ -925,76 +925,77 @@
         <div class="chat-combined-detail">
           <div v-if="!promptChatDetailId" class="chat-combined-detail__placeholder">请选择一条执行记录</div>
           <template v-else>
-            <div v-if="chatDetailModelName || chatDetailLocalDir" style="margin-bottom: 12px; color: #888; font-size: 12px;">
+            <div v-if="chatDetailModelName || chatDetailLocalDir" style="margin-bottom: 12px; color: #909399; font-size: 12px;">
               <span v-if="chatDetailModelName">模型: {{ chatDetailModelName }}</span>
               <span v-if="chatDetailModelName &amp;&amp; chatDetailLocalDir"> | </span>
               <span v-if="chatDetailLocalDir">目录: {{ chatDetailLocalDir }}</span>
             </div>
             <div ref="promptChatDetailContainer" class="chat-detail-container" @scroll="onPromptChatDetailScroll">
-              <div v-if="chatDetailMessages.length === 0 &amp;&amp; chatDetailStatus === 'running'" style="text-align: center; padding: 40px; color: #888;">
+              <div v-if="chatDetailMessages.length === 0 &amp;&amp; chatDetailStatus === 'running'" style="text-align: center; padding: 40px; color: #909399;">
                 <div>等待 claude code 响应...</div>
               </div>
               <div v-for="(msg, idx) in chatDetailMessages" :key="idx" style="margin-bottom: 8px;">
-                <div v-if="msg.type === 'system_init'" style="color: #6a9955; font-size: 12px; padding: 4px 0;">
+                <div v-if="msg.type === 'system_init'" style="color: #67c23a; font-size: 12px; padding: 4px 0;">
                   ✔ {{ msg.text }} | model: {{ msg.model }}
                 </div>
-                <div v-else-if="msg.type === 'system_command'" style="background: #1e1e3f; border-radius: 4px; padding: 8px 12px; margin: 4px 0; color: #ce9178; font-size: 12px; word-break: break-all;">
-                  <span style="color: #569cd6;">$</span> {{ msg.text }}
+                <div v-else-if="msg.type === 'system_command'" style="background: #f0f2f5; border-radius: 4px; padding: 8px 12px; margin: 4px 0; color: #303133; font-size: 12px; word-break: break-all; font-family: Consolas, monospace;">
+                  <span style="color: #409eff;">$</span> {{ msg.text }}
                 </div>
-                <div v-else-if="msg.type === 'system_hook'" style="color: #888; font-size: 12px;">
+                <div v-else-if="msg.type === 'system_hook'" style="color: #909399; font-size: 12px;">
                   <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶' : '▼' }} {{ msg.text }}</span>
                 </div>
-                <div v-else-if="msg.type === 'system'" style="color: #888; font-size: 11px;">{{ msg.text }}</div>
-                <div v-else-if="msg.type === 'assistant'" style="background: #2d2d2d; border-radius: 8px; padding: 12px; margin: 8px 0;">
-                  <div v-if="msg.thinking" style="color: #888; font-size: 12px; margin-bottom: 8px;">
+                <div v-else-if="msg.type === 'system'" style="color: #909399; font-size: 11px;">{{ msg.text }}</div>
+                <div v-else-if="msg.type === 'assistant'" style="background: #fff; border: 1px solid #ebeef5; border-radius: 8px; padding: 12px; margin: 8px 0;">
+                  <div v-if="msg.thinking" style="color: #909399; font-size: 12px; margin-bottom: 8px;">
                     <span @click="msg._thinkingCollapsed = !msg._thinkingCollapsed" style="cursor: pointer; font-weight: bold;">
-                      {{ msg._thinkingCollapsed ? '▶ 思考过程' : '▼ 思考过程' }}
+                      {{ msg._thinkingCollapsed ? '▶ 思考过程' + (msg._thinkingTiming && msg._thinkingTiming.durationMs ? ' (' + (msg._thinkingTiming.durationMs / 1000).toFixed(1) + 's)' : '') : '▼ 思考过程' }}
                     </span>
-                    <pre v-if="!msg._thinkingCollapsed" style="white-space: pre-wrap; margin-top: 4px; color: #999;">{{ msg.thinking }}</pre>
+                    <pre v-if="!msg._thinkingCollapsed" style="white-space: pre-wrap; margin-top: 4px; color: #606266;">{{ msg.thinking }}</pre>
                   </div>
                   <div v-for="(block, bi) in msg.content" :key="bi">
                     <div v-if="block.type === 'text'" class="markdown-body chat-markdown-body" v-html="renderMarkdown(block.text)"></div>
-                    <div v-else-if="block.type === 'tool_use'" style="background: #1a3a1a; border-radius: 4px; padding: 8px; margin: 4px 0;">
-                      <span style="color: #4ec9b0;">🔧 {{ block.name }}</span>
-                      <pre style="white-space: pre-wrap; font-size: 12px; color: #ce9178; margin-top: 4px;">{{ block.input }}</pre>
+                    <div v-else-if="block.type === 'tool_use'" style="background: #f0f9eb; border-radius: 4px; padding: 8px; margin: 4px 0;">
+                      <span style="color: #67c23a; font-weight: 500;">🔧 {{ block.name }}</span>
+                      <pre style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ block.input }}</pre>
                     </div>
                   </div>
-                  <div v-if="msg.usage" style="color: #888; font-size: 11px; margin-top: 8px; border-top: 1px solid #444; padding-top: 4px;">
+                  <div v-if="msg.usage" style="color: #909399; font-size: 11px; margin-top: 8px; border-top: 1px solid #ebeef5; padding-top: 4px;">
                     input: {{ msg.usage.input_tokens }} | output: {{ msg.usage.output_tokens }}
                   </div>
                 </div>
-                <div v-else-if="msg.type === 'tool_result'" style="color: #888; font-size: 12px;">
+                <div v-else-if="msg.type === 'tool_result'" style="color: #909399; font-size: 12px;">
                   <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶' : '▼' }} 工具执行结果</span>
-                  <pre v-if="!msg.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto;">{{ msg.text }}</pre>
+                  <pre v-if="!msg.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto; font-family: Consolas, monospace;">{{ msg.text }}</pre>
                 </div>
                 <div v-else-if="msg.type === 'assistant_text'" class="markdown-body chat-markdown-body" v-html="renderMarkdown(msg.text)"></div>
-                <div v-else-if="msg.type === 'assistant_thinking'" style="color: #888; font-size: 12px;">
+                <div v-else-if="msg.type === 'assistant_thinking'" style="color: #909399; font-size: 12px;">
                   <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶ 思考' : '▼ 思考' }}</span>
                   <pre v-if="!msg.collapsed" style="white-space: pre-wrap; margin-top: 4px;">{{ msg.text }}</pre>
                 </div>
-                <div v-else-if="msg.type === 'result'" style="color: #6a9955; font-size: 12px; border-top: 1px solid #444; padding-top: 8px; margin-top: 8px;">
+                <div v-else-if="msg.type === 'result'" style="color: #67c23a; font-size: 12px; border-top: 1px solid #ebeef5; padding-top: 8px; margin-top: 8px;">
                   {{ msg.isError ? '✘ 错误' : '✔ 完成' }} | 耗时: {{ (msg.durationMs / 1000).toFixed(1) }}s | {{ msg.numTurns }} 轮
                   <span v-if="msg.usage"> | input: {{ msg.usage.input_tokens }} output: {{ msg.usage.output_tokens }}</span>
                 </div>
-                <div v-else-if="msg.type === 'chat_completed'" style="color: #6a9955; text-align: center; padding: 16px;">
+                <div v-else-if="msg.type === 'chat_completed'" style="color: #67c23a; text-align: center; padding: 16px;">
                   ✔ {{ msg.text }}
                 </div>
-                <div v-else-if="msg.type === 'raw_text'" style="white-space: pre-wrap; color: #ce9178; padding: 4px 0; word-break: break-all;">{{ msg.text }}</div>
-                <div v-else-if="msg.type === 'parse_error'" style="background: #5a1d1d; border-left: 3px solid #f44747; border-radius: 4px; padding: 8px 12px; margin: 4px 0;">
-                  <div style="color: #f44747; font-weight: bold;">解析错误</div>
-                  <div v-if="msg.error" style="color: #ce9178; font-size: 11px; margin-top: 4px;">{{ msg.error }}</div>
-                  <pre style="white-space: pre-wrap; font-size: 12px; margin-top: 4px; color: #d4d4d4;">{{ msg.text }}</pre>
+                <div v-else-if="msg.type === 'raw_text'" style="white-space: pre-wrap; color: #e6a23c; padding: 4px 0; word-break: break-all; font-family: Consolas, monospace;">{{ msg.text }}</div>
+                <div v-else-if="msg.type === 'parse_error'" style="background: #fef0f0; border-left: 3px solid #f56c6c; border-radius: 4px; padding: 8px 12px; margin: 4px 0;">
+                  <div style="color: #f56c6c; font-weight: bold;">解析错误</div>
+                  <div v-if="msg.error" style="color: #e6a23c; font-size: 11px; margin-top: 4px;">{{ msg.error }}</div>
+                  <pre style="white-space: pre-wrap; font-size: 12px; margin-top: 4px; color: #303133;">{{ msg.text }}</pre>
                 </div>
-                <div v-else-if="msg.type === 'error'" style="background: #5a1d1d; border-left: 3px solid #f44747; border-radius: 4px; padding: 8px 12px; margin: 4px 0;">
-                  <span style="color: #f44747;">错误: </span>
-                  <span style="color: #d4d4d4;">{{ msg.text }}</span>
+                <div v-else-if="msg.type === 'error'" style="background: #fef0f0; border-left: 3px solid #f56c6c; border-radius: 4px; padding: 8px 12px; margin: 4px 0;">
+                  <span style="color: #f56c6c;">错误: </span>
+                  <span style="color: #303133;">{{ msg.text }}</span>
                 </div>
               </div>
             </div>
             <div :class="['chat-detail-scroll-btn', { 'chat-detail-scroll-btn--visible': promptChatDetailShowScrollBtn }]" @click="scrollPromptChatToBottom(true)">↓</div>
-            <div v-if="chatDetailStatus !== 'running'" class="chat-detail-input-row">
-              <el-input v-model="chatContinueInput" placeholder="输入新消息继续对话..." @keyup.enter="continueChat" style="flex: 1;" />
-              <el-button type="primary" :loading="chatContinueLoading" @click="continueChat">发送</el-button>
+            <div class="chat-detail-input-row">
+              <el-input v-model="chatContinueInput" placeholder="输入新消息继续对话..." :disabled="chatDetailStatus === 'running'" @keyup.enter="chatDetailStatus !== 'error' && chatDetailStatus !== 'interrupted' && chatDetailStatus !== 'running' ? continueChat : null" style="flex: 1;" />
+              <el-button v-if="chatDetailStatus === 'running'" type="danger" @click="stopChat">停止</el-button>
+              <el-button v-else-if="chatDetailStatus !== 'error' && chatDetailStatus !== 'interrupted'" type="primary" :loading="chatContinueLoading" @click="continueChat">发送</el-button>
             </div>
           </template>
         </div>
@@ -1032,7 +1033,6 @@ import homeTaskApi from '@/utils/base/home_task'
 import baseUtils from '@/utils/base'
 import sseDistribute from '@/utils/base/sse_distribute'
 import chatParser from '@/utils/chat_parser'
-import aiSet from '@/utils/base/ai_set'
 import gitApi from '@/utils/base/git'
 import mysqlSetApi from '@/utils/base/mysql_set'
 import apiManagement from '@/utils/base/api'
@@ -1172,10 +1172,10 @@ export default {
       chatContinueInput: '',
       chatContinueLoading: false,
       chatConfigDialogVisible: false,
-      chatConfigModelId: 0,
+      chatConfigCliId: 0,
       chatConfigLocalDir: '',
       chatConfigDirs: [],
-      chatConfigModels: [],
+      chatConfigCliList: [],
       // 执行任务
       promptExecDialogVisible: false,
       promptExecCliId: 0,
@@ -1194,6 +1194,7 @@ export default {
       _pendingChatPrompt: '',
       chatDetailModelName: '',
       chatDetailLocalDir: '',
+      chatDetailThinkingCollapsed: 0,
       // zcode 配置
       zcodeConfigDialogVisible: false,
       zcodeDirInput: '',
@@ -1833,6 +1834,7 @@ export default {
           this.chatDetailStatus = data.status || ''
           this.chatDetailModelName = data.model_id ? '#' + data.model_id : ''
           this.chatDetailLocalDir = data.local_dir || ''
+          this.chatDetailThinkingCollapsed = data.thinking_collapsed || 0
           // 同步更新左侧列表中的状态
           this.updateChatListStatus(this.chatDetailId, this.chatDetailStatus)
           // 合并历史行 + SSE 加载期间收到的新行（有则去重）
@@ -1841,6 +1843,14 @@ export default {
           const newSseLines = sseLines.filter(l => !historicalLines.includes(l))
           this.chatDetailSSELines = [...historicalLines, ...newSseLines]
           this.chatDetailMessages = chatParser.parseChatLines(this.chatDetailSSELines)
+          // 联动 thinking_collapsed 开关：开启时折叠所有思考
+          if (this.chatDetailThinkingCollapsed === 1) {
+            this.chatDetailMessages.forEach(msg => {
+              if (msg.type === 'assistant' && msg.thinking) {
+                msg._thinkingCollapsed = true
+              }
+            })
+          }
           this.$nextTick(() => { this.scrollChatToBottom(true) })
         }
       })
@@ -1855,6 +1865,8 @@ export default {
       }
       this._sseChatId = chatId
       this.chatDetailSSERegistered = true
+      this._thinkingStreamStartTime = 0 // 当前对话思考计时的起始时间戳
+      this._thinkingStreamMsgIdx = -1  // 当前思考所属的消息索引（在 chatDetailMessages 中的位置）
       const sseHost = baseUtils.GetSseApiHost()
       let url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + chatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
       if (continuePrompt) {
@@ -1877,9 +1889,39 @@ export default {
             this.$nextTick(() => { this.scrollChatToBottom() })
             return
           }
+          // 追踪思考耗时：首次 thinking_delta 时记录起始时间
+          if (obj.type === 'stream_event') {
+            const evt = obj.event || {}
+            if (evt.type === 'content_block_delta') {
+              const delta = evt.delta || {}
+              if (delta.type === 'thinking_delta' && this._thinkingStreamStartTime === 0) {
+                this._thinkingStreamStartTime = Date.now()
+              }
+            } else if (evt.type === 'message_stop' && this._thinkingStreamStartTime > 0) {
+              const durationMs = Date.now() - this._thinkingStreamStartTime
+              this._thinkingStreamStartTime = 0
+              // 将耗时写入消息——会在 parseChatLines 后应用到对应消息
+              this._pendingThinkingDurationMs = durationMs
+            }
+          }
         } catch (e) { /* ignore parse errors */ }
         this.chatDetailSSELines.push(line)
         this.chatDetailMessages = chatParser.parseChatLines(this.chatDetailSSELines)
+        // 联动 thinking_collapsed 开关 + 思考耗时
+        if (this.chatDetailThinkingCollapsed === 1 || this._pendingThinkingDurationMs > 0) {
+          this.chatDetailMessages.forEach(msg => {
+            if (msg.type === 'assistant' && msg.thinking) {
+              if (this.chatDetailThinkingCollapsed === 1) {
+                msg._thinkingCollapsed = true
+              }
+              if (this._pendingThinkingDurationMs > 0) {
+                msg._thinkingTiming = msg._thinkingTiming || { startMs: 0, durationMs: 0 }
+                msg._thinkingTiming.durationMs = this._pendingThinkingDurationMs
+              }
+            }
+          })
+          this._pendingThinkingDurationMs = 0
+        }
         this.$nextTick(() => { this.scrollChatToBottom() })
       }
       es.onerror = () => {
@@ -1940,12 +1982,13 @@ export default {
         return
       }
       this._pendingChatPrompt = prompt
-      // 加载模型列表
-      aiSet.AiModelList({}, (res) => {
-        if (res.ErrCode === 0) {
-          this.chatConfigModels = (res.Data || []).filter(m =>
-            (m.request_format || m.provider_type || '') === 'anthropic' && (m.model_type || 'llm') === 'llm'
-          )
+      // 加载 Agent CLI 列表
+      agentCliApi.AgentCliList((res) => {
+        if (res.ErrCode === 0 && res.Data) {
+          this.chatConfigCliList = res.Data.list || []
+          if (this.chatConfigCliList.length === 1) {
+            this.chatConfigCliId = this.chatConfigCliList[0].id
+          }
         }
       })
       // 加载可用目录
@@ -1962,9 +2005,9 @@ export default {
     // 执行对话配置，开始对话
     startClaudeChat() {
       const prompt = this._pendingChatPrompt
-      if (!prompt || !this.chatConfigModelId || !this.chatConfigLocalDir) return
+      if (!prompt || !this.chatConfigCliId || !this.chatConfigLocalDir) return
       this.sendingToClaude = true
-      taskWorkflowApi.TaskWorkflowChatSend(this.workflowId, prompt, null, 'issue_fix', this.chatConfigLocalDir, 'claude', this.chatConfigModelId, 0, (res) => {
+      taskWorkflowApi.TaskWorkflowChatSend(this.workflowId, prompt, null, 'issue_fix', this.chatConfigLocalDir, 'claude', 0, this.chatConfigCliId, (res) => {
         this.sendingToClaude = false
         if (res.ErrCode === 0 && res.Data) {
           const chatId = res.Data.chat_id
@@ -1999,6 +2042,25 @@ export default {
           this.$helperNotify.error(res.ErrMsg || '发送失败')
         }
       })
+    },
+    // 停止对话
+    stopChat() {
+      // 关闭 SSE 连接
+      if (this._chatEventSource) {
+        this._chatEventSource.close()
+        this._chatEventSource = null
+      }
+      this._sseChatId = 0
+      this.chatDetailSSERegistered = false
+      // 通知后端停止
+      taskWorkflowApi.TaskWorkflowChatStop(this.chatDetailId, (res) => {
+        if (res.ErrCode !== 0) {
+          this.$helperNotify.error(res.ErrMsg || '停止失败')
+        }
+      })
+      // 前端立即更新状态
+      this.chatDetailStatus = 'interrupted'
+      this.updateChatListStatus(this.chatDetailId, 'interrupted')
     },
     // 打开执行任务弹窗
     openPromptExecDialog(promptType, promptValue) {
@@ -3177,12 +3239,13 @@ export default {
 .chat-detail-container {
   flex: 1;
   overflow-y: auto;
-  background: #1e1e1e;
+  background: #fafbfc;
+  border: 1px solid #ebeef5;
   border-radius: 8px;
   padding: 16px;
-  color: #d4d4d4;
-  font-family: 'Consolas', monospace;
-  font-size: 13px;
+  color: #303133;
+  font-size: 14px;
+  line-height: 1.6;
   min-height: 0;
   scroll-behavior: smooth;
 }
@@ -3192,17 +3255,17 @@ export default {
 }
 
 .chat-detail-container::-webkit-scrollbar-track {
-  background: #2d2d2d;
+  background: #f0f0f0;
   border-radius: 3px;
 }
 
 .chat-detail-container::-webkit-scrollbar-thumb {
-  background: #6a6a6a;
+  background: #c0c4cc;
   border-radius: 3px;
 }
 
 .chat-detail-container::-webkit-scrollbar-thumb:hover {
-  background: #888;
+  background: #909399;
 }
 
 /* 滚动到底部按钮 */
@@ -3213,13 +3276,15 @@ export default {
   transform: translateX(-50%);
   width: 36px;
   height: 36px;
-  background: rgba(255, 255, 255, 0.15);
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #d4d4d4;
+  color: #606266;
   font-size: 18px;
   transition: background 0.2s, opacity 0.2s;
   z-index: 10;
@@ -3233,7 +3298,7 @@ export default {
 }
 
 .chat-detail-scroll-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: #f5f7fa;
 }
 
 .chat-detail-input-row {
@@ -3245,10 +3310,10 @@ export default {
   flex-shrink: 0;
 }
 
-/* 执行历史对话框中 markdown 内容样式（暗色主题，覆盖全局 .markdown-body） */
+/* 执行历史对话框中 markdown 内容样式（浅色主题，匹配知识片段智能搜索风格） */
 .chat-markdown-body {
   word-wrap: break-word;
-  color: #d4d4d4;
+  color: #303133;
   background-color: transparent;
 }
 
@@ -3262,7 +3327,7 @@ export default {
 .chat-markdown-body ul,
 .chat-markdown-body ol,
 .chat-markdown-body li {
-  color: #d4d4d4;
+  color: #303133;
   background-color: transparent;
 }
 
@@ -3275,36 +3340,36 @@ export default {
 .chat-markdown-body th,
 .chat-markdown-body td {
   padding: 6px 12px;
-  border: 1px solid #555;
+  border: 1px solid #e4e7ed;
   text-align: left;
 }
 
 .chat-markdown-body th {
   font-weight: 600;
-  background-color: #3a3a3a;
-  color: #e0e0e0;
+  background-color: #f5f7fa;
+  color: #303133;
 }
 
 .chat-markdown-body td {
-  background-color: #2d2d2d;
+  background-color: #fff;
 }
 
 .chat-markdown-body tr:hover td {
-  background-color: #383838;
+  background-color: #f5f7fa;
 }
 
 .chat-markdown-body code {
   font-family: 'Consolas', monospace;
   font-size: 0.9em;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: #f5f7fa;
   padding: 0.2em 0.4em;
   border-radius: 3px;
-  color: #ce9178;
+  color: #e6a23c;
 }
 
 .chat-markdown-body pre {
-  background-color: #1e1e1e;
-  border-radius: 4px;
+  background-color: #f5f7fa;
+  border-radius: 6px;
   padding: 12px;
   overflow-x: auto;
   margin: 8px 0;
@@ -3313,18 +3378,18 @@ export default {
 .chat-markdown-body pre code {
   padding: 0;
   background: transparent;
-  color: #d4d4d4;
+  color: #303133;
 }
 
 .chat-markdown-body a {
-  color: #4fc3f7;
+  color: #409eff;
 }
 
 .chat-markdown-body blockquote {
-  border-left: 3px solid #555;
+  border-left: 3px solid #dcdfe6;
   margin: 8px 0;
   padding: 0 12px;
-  color: #999;
+  color: #909399;
 }
 
 /* 接口开发弹窗 */

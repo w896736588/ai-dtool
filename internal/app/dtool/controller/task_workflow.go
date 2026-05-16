@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
@@ -40,6 +41,9 @@ const (
 var taskWorkflowAPIPathReg = regexp.MustCompile(`/api/[A-Za-z0-9_./:-]+`)
 var taskWorkflowJSONFenceReg = regexp.MustCompile("(?s)```json\\s*(.*?)\\s*```")
 var taskWorkflowURLWithQueryReg = regexp.MustCompile(`(?:https?://[^\s)]+|/api/[^\s)]+)\?[^\s)]+`)
+
+// chatCancelFuncs 存储运行中对话的 cancel 函数，key 为 chatID。
+var chatCancelFuncs sync.Map
 
 // TaskWorkflowCreateOrGet 查询或创建任务工作流。
 func TaskWorkflowCreateOrGet(c *gin.Context) {
@@ -2345,6 +2349,7 @@ func TaskWorkflowChatSend(c *gin.Context) {
 	}
 
 	settingsPath := `` // Agent CLI 的 settings.json 路径
+	thinkingCollapsed := 0
 
 	// 若指定了 agent_cli_id，读取其配置
 	if req.AgentCliId > 0 {
@@ -2356,6 +2361,7 @@ func TaskWorkflowChatSend(c *gin.Context) {
 			return
 		}
 		settingsPath = cast.ToString(cliRow["settings_path"])
+		thinkingCollapsed = cast.ToInt(cliRow["thinking_collapsed"])
 		// 若未传 model_name，从 Agent CLI 的 settings.json 中读取
 		if strings.TrimSpace(req.ModelName) == `` {
 			exists, content, _ := business.ReadAgentCliSettings(settingsPath)
@@ -2382,7 +2388,7 @@ func TaskWorkflowChatSend(c *gin.Context) {
 	// prompt_type 为可选，仅在非空时追踪 chat_session_ids
 	promptType := strings.TrimSpace(req.PromptType)
 
-	chatID, err := common.DbMain.TaskWorkflowChatCreate(req.WorkflowID, req.Prompt, promptType, req.CliType, modelID, req.LocalDir, settingsPath)
+	chatID, err := common.DbMain.TaskWorkflowChatCreate(req.WorkflowID, req.Prompt, promptType, req.CliType, modelID, req.LocalDir, settingsPath, thinkingCollapsed)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -2434,6 +2440,31 @@ func TaskWorkflowChatContinue(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`chat_id`: req.ChatID,
 	})
+}
+
+// TaskWorkflowChatStop 停止运行中的对话。
+func TaskWorkflowChatStop(c *gin.Context) {
+	var req _struct.TaskWorkflowChatStopRequest
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if req.ChatID <= 0 {
+		gsgin.GinResponseError(c, `对话id不能为空`, nil)
+		return
+	}
+	chatID := int64(req.ChatID)
+	cancelVal, ok := chatCancelFuncs.LoadAndDelete(chatID)
+	if !ok {
+		// 没有找到取消函数，对话可能未在运行，直接标记为中断
+		_ = common.DbMain.TaskWorkflowChatMarkInterrupted(chatID)
+		gsgin.GinResponseSuccess(c, `对话已标记为中断`, nil)
+		return
+	}
+	if cancelFn, ok := cancelVal.(func()); ok {
+		cancelFn()
+	}
+	gsgin.GinResponseSuccess(c, `对话已停止`, nil)
 }
 
 // TaskWorkflowChatList 列出工作流的所有对话。
@@ -2506,14 +2537,15 @@ func TaskWorkflowChatDetail(c *gin.Context) {
 	}
 
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`chat_id`:    info[`id`],
-		`session_id`: info[`session_id`],
-		`prompt`:     info[`prompt`],
-		`model_id`:   info[`model_id`],
-		`local_dir`:  info[`local_dir`],
-		`status`:     info[`status`],
-		`created_at`: info[`created_at`],
-		`lines`:      lines,
+		`chat_id`:            info[`id`],
+		`session_id`:         info[`session_id`],
+		`prompt`:             info[`prompt`],
+		`model_id`:           info[`model_id`],
+		`local_dir`:          info[`local_dir`],
+		`status`:             info[`status`],
+		`created_at`:         info[`created_at`],
+		`thinking_collapsed`: info[`thinking_collapsed`],
+		`lines`:              lines,
 	})
 }
 
@@ -2858,7 +2890,17 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 	})
 	sendLine(string(cmdLineJSON))
 
-	ctx := context.Background()
+	stopped := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	chatCancelFuncs.Store(chatID, func() {
+		close(stopped)
+		cancel()
+	})
+	defer func() {
+		cancel()
+		chatCancelFuncs.Delete(chatID)
+	}()
+
 	sessionExtracted := false
 	callbackCount := 0
 
@@ -2887,7 +2929,13 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 			`text`: err.Error(),
 		})
 		sendLine(string(errJSON))
-		_ = common.DbMain.TaskWorkflowChatMarkError(chatID)
+		// 区分用户主动停止与系统异常
+		select {
+		case <-stopped:
+			_ = common.DbMain.TaskWorkflowChatMarkInterrupted(chatID)
+		default:
+			_ = common.DbMain.TaskWorkflowChatMarkError(chatID)
+		}
 	} else {
 		_ = common.DbMain.TaskWorkflowChatMarkCompleted(chatID)
 	}

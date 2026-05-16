@@ -422,21 +422,22 @@ func (h *CSqlite) TaskWorkflowBindApiDocFragment(workflowID int, fragmentID stri
 }
 
 // TaskWorkflowChatCreate 创建对话记录并追加到对应的 chat_session_ids 字段。
-func (h *CSqlite) TaskWorkflowChatCreate(workflowID int, prompt, promptType, cliType string, modelID int, localDir, settingsPath string) (int64, error) {
+func (h *CSqlite) TaskWorkflowChatCreate(workflowID int, prompt, promptType, cliType string, modelID int, localDir, settingsPath string, thinkingCollapsed int) (int64, error) {
 	if strings.TrimSpace(cliType) == `` {
 		cliType = `claude`
 	}
 	now := time.Now().Format(`2006-01-02 15:04:05`)
 	id, err := h.Client.QuickCreate(`tbl_task_workflow_chat`, map[string]any{
-		`workflow_id`:   workflowID,
-		`prompt`:        prompt,
-		`model_id`:      modelID,
-		`local_dir`:     localDir,
-		`settings_path`: settingsPath,
-		`status`:        taskWorkflowChatStatusRunning,
-		`raw_output`:    ``,
-		`created_at`:    now,
-		`updated_at`:    now,
+		`workflow_id`:        workflowID,
+		`prompt`:             prompt,
+		`model_id`:           modelID,
+		`local_dir`:          localDir,
+		`settings_path`:      settingsPath,
+		`thinking_collapsed`: thinkingCollapsed,
+		`status`:             taskWorkflowChatStatusRunning,
+		`raw_output`:         ``,
+		`created_at`:         now,
+		`updated_at`:         now,
 	}).Exec()
 	if err != nil {
 		return 0, err
@@ -555,6 +556,18 @@ func (h *CSqlite) TaskWorkflowChatMarkRunning(chatID int64) error {
 		`id`: chatID,
 	}, map[string]any{
 		`status`:     taskWorkflowChatStatusRunning,
+		`updated_at`: now,
+	}).Exec()
+	return err
+}
+
+// TaskWorkflowChatMarkInterrupted 标记对话为用户主动中断。
+func (h *CSqlite) TaskWorkflowChatMarkInterrupted(chatID int64) error {
+	now := time.Now().Format(`2006-01-02 15:04:05`)
+	_, err := h.Client.QuickUpdate(`tbl_task_workflow_chat`, map[string]any{
+		`id`: chatID,
+	}, map[string]any{
+		`status`:     taskWorkflowChatStatusInterrupted,
 		`updated_at`: now,
 	}).Exec()
 	return err
