@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cast"
@@ -119,6 +120,9 @@ func buildArgs(cfg RunConfig) []string {
 	if cfg.SettingsPath != `` {
 		args = append(args, `--settings`, cfg.SettingsPath)
 	}
+	if cfg.Effort != `` {
+		args = append(args, `--effort`, cfg.Effort)
+	}
 	return args
 }
 
@@ -130,6 +134,9 @@ func buildEnv(cfg RunConfig) []string {
 	}
 	if cfg.APIKey != `` {
 		env = append(env, `ANTHROPIC_API_KEY=`+cfg.APIKey)
+	}
+	if cfg.ThinkingBudget > 0 {
+		env = append(env, `THINKING_BUDGET=`+strconv.Itoa(cfg.ThinkingBudget))
 	}
 	return env
 }

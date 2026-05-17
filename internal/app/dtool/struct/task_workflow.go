@@ -74,14 +74,15 @@ type TaskWorkflowBatchNodeStatusRequest struct {
 
 // TaskWorkflowChatSendRequest 发送对话到 claude code 请求。
 type TaskWorkflowChatSendRequest struct {
-	WorkflowID int    `json:"workflow_id"`
-	Prompt     string `json:"prompt"`
-	ModelID    int    `json:"model_id"`
-	PromptType string `json:"prompt_type"`
-	CliType    string `json:"cli_type"`
-	ModelName  string `json:"model_name"`
-	LocalDir   string `json:"local_dir"`
-	AgentCliId int    `json:"agent_cli_id"`
+	WorkflowID        int    `json:"workflow_id"`
+	Prompt            string `json:"prompt"`
+	ModelID           int    `json:"model_id"`
+	PromptType        string `json:"prompt_type"`
+	CliType           string `json:"cli_type"`
+	ModelName         string `json:"model_name"`
+	LocalDir          string `json:"local_dir"`
+	AgentCliId        int    `json:"agent_cli_id"`
+	ThinkingIntensity string `json:"thinking_intensity"`
 }
 
 // TaskWorkflowChatDirsRequest 获取可选工作目录列表请求。

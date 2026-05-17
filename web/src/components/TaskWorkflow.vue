@@ -633,6 +633,7 @@
       width="1200px"
       top="3vh"
       destroy-on-close
+      :show-close="false"
       class="task-workflow-issue-fix-dialog"
     >
       <div class="task-workflow-issue-fix__close-bar">
@@ -640,7 +641,7 @@
       </div>
         <div style="margin-bottom: 12px; display: flex; gap: 8px;">
           <el-button type="primary" :loading="sendingToClaude" @click="sendToClaudeCode">
-            发送到 claude code 执行
+           执行
           </el-button>
         </div>
         <div v-if="issueFixZcodeMappings.length > 0" style="margin-bottom: 12px;">
@@ -705,6 +706,15 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="思考强度">
+          <el-select v-model="chatConfigThinkingIntensity" style="width: 100%;" placeholder="请选择思考强度">
+            <el-option label="低" value="低" />
+            <el-option label="中等" value="中等" />
+            <el-option label="高" value="高" />
+            <el-option label="很高" value="很高" />
+            <el-option label="最高" value="最高" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="chatConfigDialogVisible = false">取消</el-button>
@@ -722,7 +732,7 @@
       width="80vw"
       top="3vh"
       destroy-on-close
-      @closed="closeChatDetail"
+      @closed="onChatCombinedDialogClosed"
     >
       <div class="chat-combined-body" v-loading="chatHistoryLoading">
         <div class="chat-combined-list">
@@ -843,14 +853,10 @@
             <div :class="['chat-detail-scroll-btn', { 'chat-detail-scroll-btn--visible': chatDetailShowScrollBtn }]" @click="scrollChatToBottom(true)">
               ↓
             </div>
-            <div v-if="chatDetailStatus !== 'running'" class="chat-detail-input-row">
-              <el-input
-                v-model="chatContinueInput"
-                placeholder="输入新消息继续对话..."
-                @keyup.enter="chatDetailStatus !== 'error' && chatDetailStatus !== 'interrupted' ? continueChat : null"
-                style="flex: 1;"
-              />
-              <el-button v-if="chatDetailStatus !== 'error' && chatDetailStatus !== 'interrupted'" type="primary" :loading="chatContinueLoading" @click="continueChat">发送</el-button>
+            <div class="chat-detail-input-row">
+              <el-input v-model="chatContinueInput" placeholder="输入新消息继续对话..." :disabled="chatDetailStatus === 'running'" @keyup.enter="chatDetailStatus !== 'running' ? continueChat : null" style="flex: 1;" />
+              <el-button v-if="chatDetailStatus === 'running'" type="danger" @click="stopChat">停止</el-button>
+              <el-button v-else type="primary" :loading="chatContinueLoading" @click="continueChat">发送</el-button>
             </div>
           </template>
         </div>
@@ -905,6 +911,15 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="思考强度">
+          <el-select v-model="promptExecThinkingIntensity" style="width: 100%;" placeholder="请选择思考强度">
+            <el-option label="低" value="低" />
+            <el-option label="中等" value="中等" />
+            <el-option label="高" value="高" />
+            <el-option label="很高" value="很高" />
+            <el-option label="最高" value="最高" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="promptExecDialogVisible = false">取消</el-button>
@@ -921,7 +936,7 @@
       width="80vw"
       top="3vh"
       destroy-on-close
-      @closed="closePromptChatDetail"
+      @closed="onPromptChatHistoryClosed"
     >
       <div class="chat-combined-body" v-loading="promptChatHistoryLoading">
         <div class="chat-combined-list">
@@ -1023,9 +1038,9 @@
             </div>
             <div :class="['chat-detail-scroll-btn', { 'chat-detail-scroll-btn--visible': promptChatDetailShowScrollBtn }]" @click="scrollPromptChatToBottom(true)">↓</div>
             <div class="chat-detail-input-row">
-              <el-input v-model="chatContinueInput" placeholder="输入新消息继续对话..." :disabled="chatDetailStatus === 'running'" @keyup.enter="chatDetailStatus !== 'error' && chatDetailStatus !== 'interrupted' && chatDetailStatus !== 'running' ? continueChat : null" style="flex: 1;" />
+              <el-input v-model="chatContinueInput" placeholder="输入新消息继续对话..." :disabled="chatDetailStatus === 'running'" @keyup.enter="chatDetailStatus !== 'running' ? continueChat : null" style="flex: 1;" />
               <el-button v-if="chatDetailStatus === 'running'" type="danger" @click="stopChat">停止</el-button>
-              <el-button v-else-if="chatDetailStatus !== 'error' && chatDetailStatus !== 'interrupted'" type="primary" :loading="chatContinueLoading" @click="continueChat">发送</el-button>
+              <el-button v-else type="primary" :loading="chatContinueLoading" @click="continueChat">发送</el-button>
             </div>
           </template>
         </div>
@@ -1206,6 +1221,7 @@ export default {
       chatConfigLocalDir: '',
       chatConfigDirs: [],
       chatConfigCliList: [],
+      chatConfigThinkingIntensity: '高',
       // 执行任务
       promptExecDialogVisible: false,
       promptExecCliId: 0,
@@ -1213,6 +1229,7 @@ export default {
       promptExecLoading: false,
       promptExecPromptType: '',
       promptExecPromptValue: '',
+      promptExecThinkingIntensity: '高',
       // 执行历史（按 prompt_type）
       promptChatHistoryVisible: false,
       promptChatHistoryTitle: '',
@@ -1827,7 +1844,6 @@ export default {
     openChatHistoryDialog() {
       this.chatCombinedDialogVisible = true
       this.chatHistoryLoading = true
-      this.chatDetailId = 0
       taskWorkflowApi.TaskWorkflowChatList(this.workflowId, (res) => {
         this.chatHistoryLoading = false
         if (res.ErrCode === 0 && res.Data) {
@@ -1841,13 +1857,24 @@ export default {
     // 点击左侧列表行，加载右侧详情
     onChatRowClick(row) {
       if (this.chatDetailId === row.id) return
+      // 切到不同 chat 时才断开旧 SSE
+      if (this._chatEventSource && this._sseChatId !== row.id) {
+        this._chatEventSource.close()
+        this._chatEventSource = null
+        this._sseChatId = 0
+      }
       this.chatDetailId = row.id
       this.chatDetailStatus = row.status
       this.chatDetailAutoScroll = true
       this.chatDetailShowScrollBtn = false
-      this.chatDetailSSELines = []
-      this.chatDetailMessages = []
-      this.loadChatDetail()
+      // SSE 已连接此 chat 时不清理数据，复用已有输出
+      if (this._sseChatId !== row.id) {
+        this.chatDetailSSELines = []
+        this.chatDetailMessages = []
+        this.loadChatDetail()
+      } else {
+        this.$nextTick(() => { this.scrollChatToBottom() })
+      }
       if (row.status === 'running') {
         this.connectChatStream(row.id)
       }
@@ -2035,7 +2062,7 @@ export default {
         this.chatDetailShowScrollBtn = true
       }
     },
-    // 关闭对话详情
+    // 关闭对话详情（彻底断开 SSE 并清空状态）
     closeChatDetail() {
       if (this._chatEventSource) {
         this._chatEventSource.close()
@@ -2048,6 +2075,10 @@ export default {
       this.chatDetailId = 0
       this.chatContinueInput = ''
     },
+    // 历史对话合并弹窗关闭（保留 SSE 连接与聊天状态）
+    onChatCombinedDialogClosed() {
+      // 不关闭 SSE，后台继续运行
+    },
     // 打开对话配置弹窗
     sendToClaudeCode() {
       const prompt = this.issueFixCombinedText
@@ -2056,6 +2087,7 @@ export default {
         return
       }
       this._pendingChatPrompt = prompt
+      this.chatConfigThinkingIntensity = '高'
       // 加载 Agent CLI 列表
       agentCliApi.AgentCliList((res) => {
         if (res.ErrCode === 0 && res.Data) {
@@ -2081,7 +2113,7 @@ export default {
       const prompt = this._pendingChatPrompt
       if (!prompt || !this.chatConfigCliId || !this.chatConfigLocalDir) return
       this.sendingToClaude = true
-      taskWorkflowApi.TaskWorkflowChatSend(this.workflowId, prompt, null, 'issue_fix', this.chatConfigLocalDir, 'claude', 0, this.chatConfigCliId, (res) => {
+      taskWorkflowApi.TaskWorkflowChatSend(this.workflowId, prompt, null, 'issue_fix', this.chatConfigLocalDir, 'claude', 0, this.chatConfigCliId, this.chatConfigThinkingIntensity, (res) => {
         this.sendingToClaude = false
         if (res.ErrCode === 0 && res.Data) {
           const chatId = res.Data.chat_id
@@ -2145,6 +2177,7 @@ export default {
       this.promptExecPromptType = promptType
       this.promptExecPromptValue = promptValue
       this.promptExecCliId = 0
+      this.promptExecThinkingIntensity = '高'
       this.promptExecDialogVisible = true
       // 加载 Agent CLI 列表
       agentCliApi.AgentCliList((res) => {
@@ -2188,6 +2221,7 @@ export default {
           'claude',
           0,
           this.promptExecCliId,
+          this.promptExecThinkingIntensity,
           (chatRes) => {
             this.promptExecLoading = false
             if (chatRes.ErrCode === 0 && chatRes.Data) {
@@ -2219,7 +2253,6 @@ export default {
       this.promptChatHistoryPromptType = promptType
       this.promptChatHistoryVisible = true
       this.promptChatHistoryLoading = true
-      this.promptChatDetailId = 0
       taskWorkflowApi.TaskWorkflowChatListByPromptType(this.workflowId, promptType, (res) => {
         this.promptChatHistoryLoading = false
         if (res.ErrCode === 0 && res.Data) {
@@ -2240,14 +2273,24 @@ export default {
     // 点击执行历史列表项
     onPromptChatRowClick(row) {
       if (this.promptChatDetailId === row.id) return
+      // 切到不同 chat 时才断开旧 SSE
+      if (this._chatEventSource && this._sseChatId !== row.id) {
+        this._chatEventSource.close()
+        this._chatEventSource = null
+        this._sseChatId = 0
+      }
       this.promptChatDetailId = row.id
       this.chatDetailId = row.id
       this.chatDetailStatus = row.status
       this.chatDetailAutoScroll = true
       this.promptChatDetailShowScrollBtn = false
-      this.chatDetailSSELines = []
-      this.chatDetailMessages = []
-      this.loadChatDetail()
+      if (this._sseChatId !== row.id) {
+        this.chatDetailSSELines = []
+        this.chatDetailMessages = []
+        this.loadChatDetail()
+      } else {
+        this.$nextTick(() => { this.scrollChatToBottom() })
+      }
       if (row.status === 'running') {
         this.connectChatStream(row.id)
       }
@@ -2278,18 +2321,14 @@ export default {
         }
       })
     },
-    // 关闭执行历史弹窗
+    // 关闭执行历史弹窗（保留 SSE 连接和聊天状态）
+    onPromptChatHistoryClosed() {
+      // 不关闭 SSE，不清理聊天状态，后台继续运行
+    },
+    // 彻底关闭对话详情（仅在用户主动停止或切换时调用）
     closePromptChatDetail() {
-      if (this._chatEventSource) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
-      }
-      this._sseChatId = 0
-      this.chatDetailSSERegistered = false
-      this.chatDetailMessages = []
-      this.chatDetailSSELines = []
+      this.closeChatDetail()
       this.promptChatDetailId = 0
-      this.chatContinueInput = ''
     },
     updateChatListStatus(chatId, status) {
       const updateItem = (list) => {
@@ -2300,7 +2339,7 @@ export default {
       updateItem(this.promptChatHistoryList)
     },
     statusText(status) {
-      const map = { running: '执行中', completed: '已完成', error: '异常', interrupted: '中断' }
+      const map = { running: '执行中', completed: '已完成', error: '异常终止', interrupted: '中断' }
       return map[status] || status || '-'
     },
     // 将 markdown 文本渲染为 HTML，用于"执行历史"对话框中显示表格等格式

@@ -570,6 +570,19 @@ func McpChromeDevtoolsConfigToggleUsed(c *gin.Context) {
 	})
 }
 
+// ResetAllChromeDevtoolsPorts 启动时将所有调试端口标记为未使用（服务重启后内存中的会话已全部丢失）
+func ResetAllChromeDevtoolsPorts() {
+	now := time.Now().Unix()
+	_, err := common.DbMain.Client.QueryBySql(
+		`UPDATE `+chromeDevtoolsConfigTable+` SET is_used = 0, update_time = ?`, now,
+	).Exec()
+	if err != nil {
+		gstool.FmtPrintlnLogTime("[启动重置] 重置chrome devtools端口状态失败: %v", err)
+		return
+	}
+	gstool.FmtPrintlnLogTime("[启动重置] 所有chrome devtools端口已标记为未使用")
+}
+
 // ReleaseChromeDevtoolsPort 释放调试端口
 func ReleaseChromeDevtoolsPort(port int) {
 	gstool.FmtPrintlnLogTime("[MCP端口释放] 开始释放端口 %d", port)

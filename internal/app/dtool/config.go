@@ -505,6 +505,8 @@ func InitComponent() {
 	// 恢复上次进程残留的 running 状态
 	if common.DbMain != nil {
 		common.DbMain.TaskWorkflowChatRecoverInterrupted()
+		// 服务重启后内存中的浏览器会话已全部丢失，将所有chrome devtools端口标记为未使用
+		controller.ResetAllChromeDevtoolsPorts()
 	}
 	for _, tGin := range component.TGins {
 		if tGin.IsRun == true {

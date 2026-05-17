@@ -55,6 +55,33 @@ type AgentCliWriteDeepSeekRequest struct {
 	BaseUrl   string `json:"base_url"`
 }
 
+// 思考强度常量
+const (
+	ThinkingIntensityLow      = "低"
+	ThinkingIntensityMedium   = "中等"
+	ThinkingIntensityHigh     = "高"
+	ThinkingIntensityVeryHigh = "很高"
+	ThinkingIntensityHighest  = "最高"
+)
+
+// ThinkingIntensityBudgetMap 思考强度对应的 thinking budget token 数
+var ThinkingIntensityBudgetMap = map[string]int{
+	ThinkingIntensityLow:      1024,
+	ThinkingIntensityMedium:   4096,
+	ThinkingIntensityHigh:     8192,
+	ThinkingIntensityVeryHigh: 16384,
+	ThinkingIntensityHighest:  32000,
+}
+
+// ThinkingIntensityEffortMap 思考强度对应的 --effort 值
+var ThinkingIntensityEffortMap = map[string]string{
+	ThinkingIntensityLow:      "low",
+	ThinkingIntensityMedium:   "medium",
+	ThinkingIntensityHigh:     "high",
+	ThinkingIntensityVeryHigh: "max",
+	ThinkingIntensityHighest:  "max",
+}
+
 // AgentCliStatusItem 列表带状态
 type AgentCliStatusItem struct {
 	AgentCliItem

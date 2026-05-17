@@ -2310,10 +2310,13 @@ func TaskWorkflowChatStreamOpen(urlValues url.Values, stopC chan int, c *gin.Con
 	apiKey := strings.TrimSpace(cast.ToString(modelInfo[`api_key`]))
 	modelName := strings.TrimSpace(cast.ToString(modelInfo[`model`]))
 	settingsPath := cast.ToString(chatInfo[`settings_path`])
+	thinkingIntensity := cast.ToString(chatInfo[`thinking_intensity`])
+	thinkingBudget := define.ThinkingIntensityBudgetMap[thinkingIntensity]
+	thinkingEffort := define.ThinkingIntensityEffortMap[thinkingIntensity]
 
 	distributeID := define.SseTaskWorkflowChatPrefix + chatIDStr
 	sse := gsgin.SseRegister(distributeID, stopC, c)
-	go runClaudeCommand(chatID, localDir, prompt, isContinue, sessionID, modelID, baseURL, apiKey, modelName, settingsPath, sse, stopC)
+	go runClaudeCommand(chatID, localDir, prompt, isContinue, sessionID, modelID, baseURL, apiKey, modelName, settingsPath, thinkingEffort, thinkingBudget, sse, stopC)
 	return sse, nil
 }
 
@@ -2388,7 +2391,7 @@ func TaskWorkflowChatSend(c *gin.Context) {
 	// prompt_type 为可选，仅在非空时追踪 chat_session_ids
 	promptType := strings.TrimSpace(req.PromptType)
 
-	chatID, err := common.DbMain.TaskWorkflowChatCreate(req.WorkflowID, req.Prompt, promptType, req.CliType, modelID, req.LocalDir, settingsPath, thinkingCollapsed)
+	chatID, err := common.DbMain.TaskWorkflowChatCreate(req.WorkflowID, req.Prompt, promptType, req.CliType, modelID, req.LocalDir, settingsPath, thinkingCollapsed, req.ThinkingIntensity)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -2545,6 +2548,7 @@ func TaskWorkflowChatDetail(c *gin.Context) {
 		`status`:             info[`status`],
 		`created_at`:         info[`created_at`],
 		`thinking_collapsed`: info[`thinking_collapsed`],
+		`thinking_intensity`: info[`thinking_intensity`],
 		`lines`:              lines,
 	})
 }
@@ -2847,7 +2851,7 @@ func taskWorkflowBuildZcodeMarkdown() string {
 }
 
 // runClaudeCommand 后台执行 claude 命令并将输出推送到专用 SSE。
-func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sessionID string, modelID int, baseURL, apiKey, modelName, settingsPath string, sse *gsgin.Sse, stopC chan int) {
+func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sessionID string, modelID int, baseURL, apiKey, modelName, settingsPath, thinkingEffort string, thinkingBudget int, sse *gsgin.Sse, stopC chan int) {
 	defer func() {
 		if r := recover(); r != nil {
 			gstool.FmtPrintlnLogTime("[chat-run] chat_id=%d panic: %v", chatID, r)
@@ -2871,14 +2875,16 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 		}
 	}
 	cfg := p_claude.RunConfig{
-		Prompt:       prompt,
-		SessionID:    sessionID,
-		Model:        modelName,
-		BaseURL:      baseURL,
-		APIKey:       apiKey,
-		WorkingDir:   localDir,
-		UserDataDir:  p_claude.DefaultUserDataDir,
-		SettingsPath: settingsPath,
+		Prompt:         prompt,
+		SessionID:      sessionID,
+		Model:          modelName,
+		BaseURL:        baseURL,
+		APIKey:         apiKey,
+		WorkingDir:     localDir,
+		UserDataDir:    p_claude.DefaultUserDataDir,
+		SettingsPath:   settingsPath,
+		Effort:         thinkingEffort,
+		ThinkingBudget: thinkingBudget,
 	}
 
 	// 记录命令行
@@ -2966,6 +2972,9 @@ func buildClaudeCmdDisplay(cfg p_claude.RunConfig, isResume bool) string {
 	}
 	if cfg.SettingsPath != `` {
 		parts = append(parts, `--settings`, cfg.SettingsPath)
+	}
+	if cfg.Effort != `` {
+		parts = append(parts, `--effort`, cfg.Effort)
 	}
 	return strings.Join(parts, ` `)
 }
