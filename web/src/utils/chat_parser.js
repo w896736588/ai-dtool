@@ -181,7 +181,7 @@ function parseChatLines(lines) {
         } else if (part.type === 'tool_use') {
           const inputObj = part.input || {}
           const di = buildToolDisplayInput(part.name, inputObj)
-          messages.push({ type: 'tool_use', name: part.name || '', input: JSON.stringify(inputObj, null, 2), displayInput: di })
+          messages.push({ type: 'tool_use', name: part.name || '', id: part.id || '', input: JSON.stringify(inputObj, null, 2), displayInput: di })
         }
       }
     } else if (lineType === 'chat') {
@@ -204,6 +204,41 @@ function parseChatLines(lines) {
     messages.push(currentMessage)
   }
 
+  // 后处理：将 tool_result 配对到对应的 tool_use 下
+  const toolUseMap = new Map()
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]
+    if (msg.type === 'assistant') {
+      for (const block of (msg.content || [])) {
+        if (block.type === 'tool_use' && block.id) {
+          toolUseMap.set(block.id, { msg, block, index: i })
+        }
+      }
+    } else if (msg.type === 'tool_use' && msg.id) {
+      toolUseMap.set(msg.id, { msg })
+    }
+  }
+
+  const toRemove = new Set()
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]
+    if (msg.type === 'tool_result' && msg.toolUseId) {
+      const target = toolUseMap.get(msg.toolUseId)
+      if (target) {
+        const resultData = { text: msg.text, collapsed: msg.collapsed }
+        if (target.block) {
+          target.block._result = resultData
+        } else {
+          target.msg._result = resultData
+        }
+        toRemove.add(i)
+      }
+    }
+  }
+
+  if (toRemove.size > 0) {
+    return messages.filter((_, i) => !toRemove.has(i))
+  }
   return messages
 }
 

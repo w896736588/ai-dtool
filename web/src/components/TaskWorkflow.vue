@@ -795,6 +795,10 @@
                         {{ block._inputExpanded ? '▼' : '▶' }} 参数
                       </div>
                       <pre v-if="!block.displayInput && block._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ block.input }}</pre>
+                      <div v-if="block._result" style="color: #909399; font-size: 12px; margin-top: 6px; border-top: 1px dashed #dcdfe6; padding-top: 4px;">
+                        <span @click="block._result.collapsed = !block._result.collapsed" style="cursor: pointer;">{{ block._result.collapsed ? '▶' : '▼' }} 工具执行结果</span>
+                        <pre v-if="!block._result.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto; font-family: Consolas, monospace;">{{ block._result.text }}</pre>
+                      </div>
                     </div>
                   </div>
                   <!-- usage -->
@@ -802,7 +806,20 @@
                     input: {{ msg.usage.input_tokens }} | output: {{ msg.usage.output_tokens }}
                   </div>
                 </div>
-                <!-- tool_result -->
+                <!-- standalone tool_use -->
+                <div v-else-if="msg.type === 'tool_use'" style="background: #f0f9eb; border-radius: 4px; padding: 8px; margin: 4px 0;">
+                  <span style="color: #67c23a; font-weight: 500;">🔧 {{ msg.name }}</span>
+                  <span v-if="msg.displayInput" style="margin-left: 8px; font-size: 12px; color: #303133; font-family: Consolas, monospace;">{{ msg.displayInput }}</span>
+                  <div v-else style="font-size: 12px; color: #909399; margin-top: 4px; cursor: pointer;" @click="msg._inputExpanded = !msg._inputExpanded">
+                    {{ msg._inputExpanded ? '▼' : '▶' }} 参数
+                  </div>
+                  <pre v-if="!msg.displayInput && msg._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ msg.input }}</pre>
+                  <div v-if="msg._result" style="color: #909399; font-size: 12px; margin-top: 6px; border-top: 1px dashed #dcdfe6; padding-top: 4px;">
+                    <span @click="msg._result.collapsed = !msg._result.collapsed" style="cursor: pointer;">{{ msg._result.collapsed ? '▶' : '▼' }} 工具执行结果</span>
+                    <pre v-if="!msg._result.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto; font-family: Consolas, monospace;">{{ msg._result.text }}</pre>
+                  </div>
+                </div>
+                <!-- tool_result（未匹配的降级展示） -->
                 <div v-else-if="msg.type === 'tool_result'" style="color: #909399; font-size: 12px;">
                   <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶' : '▼' }} 工具执行结果</span>
                   <pre v-if="!msg.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto; font-family: Consolas, monospace;">{{ msg.text }}</pre>
@@ -1000,12 +1017,30 @@
                         {{ block._inputExpanded ? '▼' : '▶' }} 参数
                       </div>
                       <pre v-if="!block.displayInput && block._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ block.input }}</pre>
+                      <div v-if="block._result" style="color: #909399; font-size: 12px; margin-top: 6px; border-top: 1px dashed #dcdfe6; padding-top: 4px;">
+                        <span @click="block._result.collapsed = !block._result.collapsed" style="cursor: pointer;">{{ block._result.collapsed ? '▶' : '▼' }} 工具执行结果</span>
+                        <pre v-if="!block._result.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto; font-family: Consolas, monospace;">{{ block._result.text }}</pre>
+                      </div>
                     </div>
                   </div>
                   <div v-if="msg.usage" style="color: #909399; font-size: 11px; margin-top: 8px; border-top: 1px solid #ebeef5; padding-top: 4px;">
                     input: {{ msg.usage.input_tokens }} | output: {{ msg.usage.output_tokens }}
                   </div>
                 </div>
+                <!-- standalone tool_use -->
+                <div v-else-if="msg.type === 'tool_use'" style="background: #f0f9eb; border-radius: 4px; padding: 8px; margin: 4px 0;">
+                  <span style="color: #67c23a; font-weight: 500;">🔧 {{ msg.name }}</span>
+                  <span v-if="msg.displayInput" style="margin-left: 8px; font-size: 12px; color: #303133; font-family: Consolas, monospace;">{{ msg.displayInput }}</span>
+                  <div v-else style="font-size: 12px; color: #909399; margin-top: 4px; cursor: pointer;" @click="msg._inputExpanded = !msg._inputExpanded">
+                    {{ msg._inputExpanded ? '▼' : '▶' }} 参数
+                  </div>
+                  <pre v-if="!msg.displayInput && msg._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ msg.input }}</pre>
+                  <div v-if="msg._result" style="color: #909399; font-size: 12px; margin-top: 6px; border-top: 1px dashed #dcdfe6; padding-top: 4px;">
+                    <span @click="msg._result.collapsed = !msg._result.collapsed" style="cursor: pointer;">{{ msg._result.collapsed ? '▶' : '▼' }} 工具执行结果</span>
+                    <pre v-if="!msg._result.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto; font-family: Consolas, monospace;">{{ msg._result.text }}</pre>
+                  </div>
+                </div>
+                <!-- tool_result（未匹配的降级展示） -->
                 <div v-else-if="msg.type === 'tool_result'" style="color: #909399; font-size: 12px;">
                   <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶' : '▼' }} 工具执行结果</span>
                   <pre v-if="!msg.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto; font-family: Consolas, monospace;">{{ msg.text }}</pre>
@@ -2015,36 +2050,96 @@ export default {
             }
           }
         } catch (e) { /* ignore parse errors */ }
-        // 记录之前所有消息的折叠/手动切换状态（按索引），避免每次 re-parse 丢失
-        const prevCollapseByIdx = {}
-        this.chatDetailMessages.forEach((msg, i) => {
-          const state = {}
+        // 收集之前所有需要保持折叠状态的消息（按类型反向队列，避免 re-parse 后索引偏移导致状态丢失）
+        const prevThinkStates = [] // [{_thinkingCollapsed, _thinkingManuallyToggled}]，按消息顺序排列
+        const prevCollapseStates = [] // [{collapsed}]，按消息顺序排列
+        const prevResultCollapseById = {}
+        const prevInputExpandedById = {}
+        this.chatDetailMessages.forEach((msg) => {
           if (msg.type === 'assistant' && msg.thinking) {
-            state._thinkingCollapsed = msg._thinkingCollapsed
-            state._thinkingManuallyToggled = !!msg._thinkingManuallyToggled
+            prevThinkStates.push({
+              _thinkingCollapsed: msg._thinkingCollapsed,
+              _thinkingManuallyToggled: !!msg._thinkingManuallyToggled,
+            })
           }
           if (msg.collapsed !== undefined) {
-            state.collapsed = msg.collapsed
+            prevCollapseStates.push({ collapsed: msg.collapsed })
           }
-          if (Object.keys(state).length > 0) {
-            prevCollapseByIdx[i] = state
+          // 收集 tool_use 结果的折叠状态（按 id，避免索引偏移导致状态丢失）
+          if (msg.type === 'tool_use' && msg._result) {
+            prevResultCollapseById[msg.id] = msg._result.collapsed
+          }
+          if (msg.type === 'assistant') {
+            for (const block of (msg.content || [])) {
+              if (block.type === 'tool_use' && block._result && block.id) {
+                prevResultCollapseById[block.id] = block._result.collapsed
+              }
+            }
+          }
+          // 收集 tool_use 参数展开状态（按 id，避免 re-parse 后丢失用户手动展开的参数面板）
+          if (msg.type === 'tool_use' && msg.id && msg._inputExpanded !== undefined) {
+            prevInputExpandedById[msg.id] = msg._inputExpanded
+          }
+          if (msg.type === 'assistant') {
+            for (const block of (msg.content || [])) {
+              if (block.type === 'tool_use' && block.id && block._inputExpanded !== undefined) {
+                prevInputExpandedById[block.id] = block._inputExpanded
+              }
+            }
           }
         })
         this._autoScrollLocked = true
         this.chatDetailSSELines.push(line)
         this.chatDetailMessages = chatParser.parseChatLines(this.chatDetailSSELines)
-        // 恢复已存在消息的折叠状态
-        this.chatDetailMessages.forEach((msg, i) => {
-          const saved = prevCollapseByIdx[i]
-          if (!saved) return
-          if (saved._thinkingCollapsed !== undefined && msg.type === 'assistant' && msg.thinking) {
+        // 恢复折叠状态：从尾部反向匹配，避免 re-parse 中插入系统消息导致的索引偏移
+        let ti = prevThinkStates.length - 1
+        for (let i = this.chatDetailMessages.length - 1; i >= 0 && ti >= 0; i--) {
+          const msg = this.chatDetailMessages[i]
+          if (msg.type === 'assistant' && msg.thinking) {
+            const saved = prevThinkStates[ti]
             msg._thinkingCollapsed = saved._thinkingCollapsed
             msg._thinkingManuallyToggled = saved._thinkingManuallyToggled
+            ti--
           }
-          if (saved.collapsed !== undefined) {
-            msg.collapsed = saved.collapsed
+        }
+        let ci = prevCollapseStates.length - 1
+        for (let i = this.chatDetailMessages.length - 1; i >= 0 && ci >= 0; i--) {
+          const msg = this.chatDetailMessages[i]
+          if (msg.collapsed !== undefined) {
+            msg.collapsed = prevCollapseStates[ci].collapsed
+            ci--
           }
-        })
+        }
+        // 恢复 tool_use 结果的折叠状态（按 id，避免 re-parse 后索引偏移）
+        if (Object.keys(prevResultCollapseById).length > 0) {
+          this.chatDetailMessages.forEach((msg) => {
+            if (msg.type === 'tool_use' && msg._result && prevResultCollapseById[msg.id] !== undefined) {
+              msg._result.collapsed = prevResultCollapseById[msg.id]
+            }
+            if (msg.type === 'assistant') {
+              for (const block of (msg.content || [])) {
+                if (block.type === 'tool_use' && block._result && block.id && prevResultCollapseById[block.id] !== undefined) {
+                  block._result.collapsed = prevResultCollapseById[block.id]
+                }
+              }
+            }
+          })
+        }
+        // 恢复 tool_use 参数展开状态（按 id，避免 re-parse 后丢失用户手动展开的参数面板）
+        if (Object.keys(prevInputExpandedById).length > 0) {
+          this.chatDetailMessages.forEach((msg) => {
+            if (msg.type === 'tool_use' && msg.id && prevInputExpandedById[msg.id] !== undefined) {
+              msg._inputExpanded = prevInputExpandedById[msg.id]
+            }
+            if (msg.type === 'assistant') {
+              for (const block of (msg.content || [])) {
+                if (block.type === 'tool_use' && block.id && prevInputExpandedById[block.id] !== undefined) {
+                  block._inputExpanded = prevInputExpandedById[block.id]
+                }
+              }
+            }
+          })
+        }
         // 思考完成时：注入耗时并自动折叠（用户手动切换过则保留其选择）
         if (this._pendingThinkingDurationMs > 0) {
           for (let i = this.chatDetailMessages.length - 1; i >= 0; i--) {

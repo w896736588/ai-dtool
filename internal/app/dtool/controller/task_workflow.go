@@ -2460,6 +2460,8 @@ func TaskWorkflowChatContinue(c *gin.Context) {
 	}
 
 	_ = common.DbMain.TaskWorkflowChatMarkRunning(int64(req.ChatID))
+	// 通知工作流页面刷新 chat 状态计数（执行历史按钮动画和状态数量）
+	taskWorkflowBroadcastChatStatus(int64(req.ChatID))
 
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`chat_id`: req.ChatID,
