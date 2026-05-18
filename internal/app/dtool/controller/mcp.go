@@ -485,7 +485,7 @@ func McpChromeDevtoolsConfigDelete(c *gin.Context) {
 		gsgin.GinResponseError(c, "id 不能为空", nil)
 		return
 	}
-	_, err := common.DbMain.Client.QueryBySql(
+	_, err := common.DbMain.Client.ExecBySql(
 		`DELETE FROM `+chromeDevtoolsConfigTable+` WHERE id = ?`, req.Id,
 	).Exec()
 	if err != nil {
@@ -573,7 +573,7 @@ func McpChromeDevtoolsConfigToggleUsed(c *gin.Context) {
 // ResetAllChromeDevtoolsPorts 启动时将所有调试端口标记为未使用（服务重启后内存中的会话已全部丢失）
 func ResetAllChromeDevtoolsPorts() {
 	now := time.Now().Unix()
-	_, err := common.DbMain.Client.QueryBySql(
+	_, err := common.DbMain.Client.ExecBySql(
 		`UPDATE `+chromeDevtoolsConfigTable+` SET is_used = 0, update_time = ?`, now,
 	).Exec()
 	if err != nil {

@@ -163,10 +163,15 @@ func parseLine(line string) StreamMessage {
 }
 
 // sanitizePrompt 将 prompt 中的换行符替换为空格，避免多行内容作为命令行参数传递时导致 claude CLI 解析异常。
+// 如果内容以 "-" 开头，在前面加空格，防止 claude CLI 将其误解析为选项标志。
 func sanitizePrompt(prompt string) string {
 	s := strings.ReplaceAll(prompt, "\r\n", " ")
 	s = strings.ReplaceAll(s, "\n", " ")
-	return strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	if strings.HasPrefix(s, "-") {
+		s = " " + s
+	}
+	return s
 }
 
 // extractSessionIDFromLine 从 stream-json 行提取 session_id。

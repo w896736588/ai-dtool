@@ -530,10 +530,15 @@ func (h *CSqlite) TaskWorkflowChatMarkError(chatID int64) error {
 // TaskWorkflowChatRecoverInterrupted 启动时将所有 running 状态的记录标记为 interrupted（进程已随上次进程退出而终止）。
 func (h *CSqlite) TaskWorkflowChatRecoverInterrupted() {
 	now := time.Now().Format(`2006-01-02 15:04:05`)
-	_, _ = h.Client.QueryBySql(
+	upNumber, err := h.Client.ExecBySql(
 		`update tbl_task_workflow_chat set status = ?, updated_at = ? where status = ?`,
 		taskWorkflowChatStatusInterrupted, now, taskWorkflowChatStatusRunning,
 	).Exec()
+	if err != nil {
+		gstool.FmtPrintlnLogTime(`TaskWorkflowChatRecoverInterrupted 失败: %v`, err)
+	} else {
+		gstool.FmtPrintlnLogTime(`[agent cli] 更新状态进行中的为异常中断，数量%d`, upNumber)
+	}
 }
 
 // TaskWorkflowChatInfo 获取单条对话记录。

@@ -1875,9 +1875,6 @@ export default {
       } else {
         this.$nextTick(() => { this.scrollChatToBottom() })
       }
-      if (row.status === 'running') {
-        this.connectChatStream(row.id)
-      }
     },
     // 加载对话详情
     loadChatDetail() {
@@ -2290,9 +2287,6 @@ export default {
         this.loadChatDetail()
       } else {
         this.$nextTick(() => { this.scrollChatToBottom() })
-      }
-      if (row.status === 'running') {
-        this.connectChatStream(row.id)
       }
     },
     // 执行历史对话框滚动
