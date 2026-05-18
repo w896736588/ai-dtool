@@ -2438,6 +2438,23 @@ func TaskWorkflowChatContinue(c *gin.Context) {
 		gsgin.GinResponseError(c, `对话未找到模型配置`, nil)
 		return
 	}
+
+	modelInfo, err := common.DbMain.AiModelInfo(modelID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if strings.ToLower(cast.ToString(modelInfo[`provider_type`])) != `anthropic` {
+		gsgin.GinResponseError(c, `仅支持 anthropic 服务商的模型`, nil)
+		return
+	}
+
+	distributeID := define.SseTaskWorkflowChatPrefix + cast.ToString(req.ChatID)
+	if sse := gsgin.SseGetByClientId(distributeID); sse != nil {
+		gsgin.GinResponseError(c, `对话已有活跃的 SSE 连接，请刷新后重试`, nil)
+		return
+	}
+
 	_ = common.DbMain.TaskWorkflowChatMarkRunning(int64(req.ChatID))
 
 	gsgin.GinResponseSuccess(c, ``, map[string]any{

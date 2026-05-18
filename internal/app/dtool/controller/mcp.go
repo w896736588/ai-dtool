@@ -4,13 +4,11 @@ import (
 	"dev_tool/internal/app/dtool/business"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 )
@@ -408,7 +406,6 @@ func McpChromeDevtoolsConfigList(c *gin.Context) {
 			Name:       cast.ToString(row["name"]),
 			Port:       cast.ToInt(row["port"]),
 			Remark:     cast.ToString(row["remark"]),
-			IsUsed:     cast.ToInt(row["is_used"]),
 			CreateTime: cast.ToInt64(row["create_time"]),
 			UpdateTime: cast.ToInt64(row["update_time"]),
 		})
@@ -493,105 +490,4 @@ func McpChromeDevtoolsConfigDelete(c *gin.Context) {
 		return
 	}
 	gsgin.GinResponseSuccess(c, "", nil)
-}
-
-// GetUnusedChromeDevtoolsPort 获取第一个未使用的调试端口并标记为已使用，返回该配置
-func GetUnusedChromeDevtoolsPort() (*define.McpChromeDevtoolsConfigItem, error) {
-	row, err := common.DbMain.Client.QueryBySql(
-		`SELECT * FROM ` + chromeDevtoolsConfigTable + ` WHERE is_used = 0 ORDER BY id`,
-	).One()
-	if err != nil {
-		return nil, err
-	}
-	if len(row) == 0 {
-		return nil, fmt.Errorf("没有可用的调试端口配置")
-	}
-
-	now := time.Now().Unix()
-	_, err = common.DbMain.Client.QuickUpdate(chromeDevtoolsConfigTable, map[string]any{
-		`id`: cast.ToInt(row["id"]),
-	}, map[string]any{
-		`is_used`:     cast.ToInt(1),
-		`update_time`: now,
-	}).Exec()
-	if err != nil {
-		return nil, fmt.Errorf("标记端口使用状态失败: %w", err)
-	}
-
-	return &define.McpChromeDevtoolsConfigItem{
-		Id:     cast.ToInt(row["id"]),
-		Name:   cast.ToString(row["name"]),
-		Port:   cast.ToInt(row["port"]),
-		Remark: cast.ToString(row["remark"]),
-		IsUsed: cast.ToInt(1),
-	}, nil
-}
-
-// McpChromeDevtoolsConfigToggleUsed 切换端口使用状态
-func McpChromeDevtoolsConfigToggleUsed(c *gin.Context) {
-	var req define.McpChromeDevtoolsConfigRequest
-	if err := gsgin.GinPostBody(c, &req); err != nil {
-		gsgin.GinResponseError(c, "请求参数错误", nil)
-		return
-	}
-	if req.Id <= 0 {
-		gsgin.GinResponseError(c, "id 不能为空", nil)
-		return
-	}
-
-	// 查询当前状态
-	row, err := common.DbMain.Client.QueryBySql(
-		`SELECT is_used FROM `+chromeDevtoolsConfigTable+` WHERE id = ?`, req.Id,
-	).One()
-	if err != nil || len(row) == 0 {
-		gsgin.GinResponseError(c, "配置不存在", nil)
-		return
-	}
-
-	currentUsed := cast.ToInt(row["is_used"])
-	newUsed := cast.ToInt(0)
-	if currentUsed == 0 {
-		newUsed = cast.ToInt(1)
-	}
-
-	now := time.Now().Unix()
-	_, err = common.DbMain.Client.QuickUpdate(chromeDevtoolsConfigTable, map[string]any{
-		`id`: req.Id,
-	}, map[string]any{
-		`is_used`:     newUsed,
-		`update_time`: now,
-	}).Exec()
-	if err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
-	}
-	gsgin.GinResponseSuccess(c, "", map[string]int{
-		"is_used": newUsed,
-	})
-}
-
-// ResetAllChromeDevtoolsPorts 启动时将所有调试端口标记为未使用（服务重启后内存中的会话已全部丢失）
-func ResetAllChromeDevtoolsPorts() {
-	now := time.Now().Unix()
-	_, err := common.DbMain.Client.ExecBySql(
-		`UPDATE `+chromeDevtoolsConfigTable+` SET is_used = 0, update_time = ?`, now,
-	).Exec()
-	if err != nil {
-		gstool.FmtPrintlnLogTime("[启动重置] 重置chrome devtools端口状态失败: %v", err)
-		return
-	}
-	gstool.FmtPrintlnLogTime("[启动重置] 所有chrome devtools端口已标记为未使用")
-}
-
-// ReleaseChromeDevtoolsPort 释放调试端口
-func ReleaseChromeDevtoolsPort(port int) {
-	gstool.FmtPrintlnLogTime("[MCP端口释放] 开始释放端口 %d", port)
-	now := time.Now().Unix()
-	_, _ = common.DbMain.Client.QuickUpdate(chromeDevtoolsConfigTable, map[string]any{
-		`port`: port,
-	}, map[string]any{
-		`is_used`:     cast.ToInt(0),
-		`update_time`: now,
-	}).Exec()
-	gstool.FmtPrintlnLogTime("[MCP端口释放] 端口 %d 已标记为未使用", port)
 }

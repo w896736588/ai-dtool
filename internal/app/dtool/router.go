@@ -560,7 +560,6 @@ func mcp(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/McpChromeDevtoolsConfigList`, controller.McpChromeDevtoolsConfigList)
 	tGin.GinPost(`/api/McpChromeDevtoolsConfigSave`, controller.McpChromeDevtoolsConfigSave)
 	tGin.GinPost(`/api/McpChromeDevtoolsConfigDelete`, controller.McpChromeDevtoolsConfigDelete)
-	tGin.GinPost(`/api/McpChromeDevtoolsConfigToggleUsed`, controller.McpChromeDevtoolsConfigToggleUsed)
 }
 
 // agentCli 路由

@@ -78,7 +78,7 @@ func AIBrowserSessionOpen(c *gin.Context) {
 	// MCP 模式：分配一个未使用的 Chrome DevTools 调试端口
 	var debugPortConfig *define.McpChromeDevtoolsConfigItem
 	if req.EnableMCP {
-		debugPortConfig, err = GetUnusedChromeDevtoolsPort()
+		debugPortConfig, err = acquireBrowserPort()
 		if err != nil {
 			gsgin.GinResponseError(c, err.Error(), nil)
 			return
@@ -135,7 +135,7 @@ func AIBrowserSessionOpen(c *gin.Context) {
 		}
 		if debugPortConfig != nil {
 			browserSession.OnClose = func() {
-				ReleaseChromeDevtoolsPort(debugPortConfig.Port)
+				releaseBrowserPort(debugPortConfig.Port)
 			}
 		}
 		response["mcp"] = map[string]any{
