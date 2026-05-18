@@ -482,6 +482,11 @@ func (h *CSqlite) TaskWorkflowChatUpdateSessionID(chatID int64, sessionID string
 	return err
 }
 
+const (
+	// ChatOutputFlushBatchSize SSE 对话输出批量写 DB 的行数阈值
+	ChatOutputFlushBatchSize = 200
+)
+
 // TaskWorkflowChatAppendOutput 追加一行 raw_output。
 func (h *CSqlite) TaskWorkflowChatAppendOutput(chatID int64, line string) error {
 	now := time.Now().Format(`2006-01-02 15:04:05`)
@@ -495,6 +500,31 @@ func (h *CSqlite) TaskWorkflowChatAppendOutput(chatID int64, line string) error 
 		newOutput += "\n"
 	}
 	newOutput += line
+	_, err = h.Client.QuickUpdate(`tbl_task_workflow_chat`, map[string]any{
+		`id`: chatID,
+	}, map[string]any{
+		`raw_output`: newOutput,
+		`updated_at`: now,
+	}).Exec()
+	return err
+}
+
+// TaskWorkflowChatAppendOutputBatch 批量追加多行 raw_output，一次 DB 读写完成。
+func (h *CSqlite) TaskWorkflowChatAppendOutputBatch(chatID int64, lines []string) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	now := time.Now().Format(`2006-01-02 15:04:05`)
+	info, err := h.TaskWorkflowChatInfo(chatID)
+	if err != nil {
+		return err
+	}
+	current := cast.ToString(info[`raw_output`])
+	newOutput := current
+	if current != `` {
+		newOutput += "\n"
+	}
+	newOutput += strings.Join(lines, "\n")
 	_, err = h.Client.QuickUpdate(`tbl_task_workflow_chat`, map[string]any{
 		`id`: chatID,
 	}, map[string]any{

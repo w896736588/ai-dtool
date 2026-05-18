@@ -2940,9 +2940,42 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 		}()
 	}()
 
-	// sendLine 每次发送时从 SSE 注册表动态获取当前连接，避免刷新页面后数据发送到已关闭的旧连接
+	// 输出行缓冲：批量写 DB 减少频繁全量读写，SSE 仍实时推送
+	var bufMu sync.Mutex
+	lineBuf := make([]string, 0, common.ChatOutputFlushBatchSize)
+	flushLineBuf := func() {
+		bufMu.Lock()
+		if len(lineBuf) == 0 {
+			bufMu.Unlock()
+			return
+		}
+		lines := make([]string, len(lineBuf))
+		copy(lines, lineBuf)
+		lineBuf = lineBuf[:0]
+		bufMu.Unlock()
+		_ = common.DbMain.TaskWorkflowChatAppendOutputBatch(chatID, lines)
+	}
+	// 定时 flush 兜底（避免长时间无新行时缓冲数据滞留）
+	flushTicker := time.NewTicker(2 * time.Second)
+	go func() {
+		for range flushTicker.C {
+			flushLineBuf()
+		}
+	}()
+	defer func() {
+		flushTicker.Stop()
+		flushLineBuf()
+	}()
+
+	// sendLine SSE 实时推送，DB 攒批写入
 	sendLine := func(line string) {
-		_ = common.DbMain.TaskWorkflowChatAppendOutput(chatID, line)
+		bufMu.Lock()
+		lineBuf = append(lineBuf, line)
+		shouldFlush := len(lineBuf) >= common.ChatOutputFlushBatchSize
+		bufMu.Unlock()
+		if shouldFlush {
+			flushLineBuf()
+		}
 		if curSse := gsgin.SseGetByClientId(distributeID); curSse != nil {
 			_ = curSse.SendToChan(line)
 		}
