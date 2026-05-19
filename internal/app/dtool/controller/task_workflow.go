@@ -2940,41 +2940,53 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 		}()
 	}()
 
-	// 输出行缓冲：批量写 DB 减少频繁全量读写，SSE 仍实时推送
-	var bufMu sync.Mutex
-	lineBuf := make([]string, 0, common.ChatOutputFlushBatchSize)
-	flushLineBuf := func() {
-		bufMu.Lock()
-		if len(lineBuf) == 0 {
-			bufMu.Unlock()
-			return
-		}
-		lines := make([]string, len(lineBuf))
-		copy(lines, lineBuf)
-		lineBuf = lineBuf[:0]
-		bufMu.Unlock()
-		_ = common.DbMain.TaskWorkflowChatAppendOutputBatch(chatID, lines)
-	}
-	// 定时 flush 兜底（避免长时间无新行时缓冲数据滞留）
-	flushTicker := time.NewTicker(2 * time.Second)
+	// DB 写入通道：将批量写 DB 与 SSE 推送解耦，避免 DB 写入阻塞 SSE 实时推送
+	dbWriteCh := make(chan string, 4096)
+	dbWriteDone := make(chan struct{})
+
 	go func() {
-		for range flushTicker.C {
-			flushLineBuf()
+		defer close(dbWriteDone)
+		dbBuf := make([]string, 0, common.ChatOutputFlushBatchSize)
+		flushTimer := time.NewTicker(2 * time.Second)
+		defer flushTimer.Stop()
+
+		flushDB := func() {
+			if len(dbBuf) == 0 {
+				return
+			}
+			lines := make([]string, len(dbBuf))
+			copy(lines, dbBuf)
+			dbBuf = dbBuf[:0]
+			_ = common.DbMain.TaskWorkflowChatAppendOutputBatch(chatID, lines)
 		}
-	}()
-	defer func() {
-		flushTicker.Stop()
-		flushLineBuf()
+
+		for {
+			select {
+			case line, ok := <-dbWriteCh:
+				if !ok {
+					flushDB()
+					return
+				}
+				dbBuf = append(dbBuf, line)
+				if len(dbBuf) >= common.ChatOutputFlushBatchSize {
+					flushDB()
+				}
+			case <-flushTimer.C:
+				flushDB()
+			}
+		}
 	}()
 
-	// sendLine SSE 实时推送，DB 攒批写入
+	defer func() {
+		close(dbWriteCh)
+		<-dbWriteDone
+	}()
+
+	// sendLine SSE 实时推送，DB 通过独立 channel 攒批写入（不阻塞 SSE）
 	sendLine := func(line string) {
-		bufMu.Lock()
-		lineBuf = append(lineBuf, line)
-		shouldFlush := len(lineBuf) >= common.ChatOutputFlushBatchSize
-		bufMu.Unlock()
-		if shouldFlush {
-			flushLineBuf()
+		select {
+		case dbWriteCh <- line:
+		default:
 		}
 		if curSse := gsgin.SseGetByClientId(distributeID); curSse != nil {
 			_ = curSse.SendToChan(line)
@@ -2993,14 +3005,15 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 		ThinkingBudget: thinkingBudget,
 	}
 
-	// 记录命令行
-	cmdDisplay := buildClaudeCmdDisplay(cfg, isResume)
-	cmdLineJSON, _ := json.Marshal(map[string]string{
-		`type`:    `system`,
-		`subtype`: `command`,
-		`text`:    cmdDisplay,
-	})
-	sendLine(string(cmdLineJSON))
+	// 推送提示词到前端展示
+	if prompt != "" {
+		promptJSON, _ := json.Marshal(map[string]string{
+			`type`:    `system`,
+			`subtype`: `command`,
+			`text`:    prompt,
+		})
+		sendLine(string(promptJSON))
+	}
 
 	stopped := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -3054,45 +3067,6 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 	sendLine(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
 	// 通知工作流页面刷新 chat 状态计数（执行历史按钮动画和状态数量）
 	taskWorkflowBroadcastChatStatus(chatID)
-}
-
-// buildClaudeCmdDisplay 构建命令展示字符串。
-func buildClaudeCmdDisplay(cfg p_claude.RunConfig, isResume bool) string {
-	parts := []string{`claude`}
-	if isResume {
-		parts = append(parts, `--resume`, cfg.SessionID)
-	}
-	parts = append(parts,
-		`-p`, `"`+truncateForDisplay(cfg.Prompt, 80)+`"`,
-		`--add-dir`, cfg.WorkingDir,
-	)
-	if cfg.Model != `` {
-		parts = append(parts, `--model`, cfg.Model)
-	}
-	parts = append(parts,
-		`--output-format`, `stream-json`,
-		`--include-partial-messages`,
-		`--verbose`,
-		`--permission-mode`, `bypassPermissions`,
-	)
-	if cfg.UserDataDir != `` {
-		parts = append(parts, `--user-data-dir`, cfg.UserDataDir)
-	}
-	if cfg.SettingsPath != `` {
-		parts = append(parts, `--settings`, cfg.SettingsPath)
-	}
-	if cfg.Effort != `` {
-		parts = append(parts, `--effort`, cfg.Effort)
-	}
-	return strings.Join(parts, ` `)
-}
-
-// truncateForDisplay 截断超长文本用于展示。
-func truncateForDisplay(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + `...`
 }
 
 // taskWorkflowAutoCompleteNode 自动将指定节点标记为已完成。

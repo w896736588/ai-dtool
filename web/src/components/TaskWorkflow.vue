@@ -755,9 +755,15 @@
                 <div v-if="msg.type === 'system_init'" style="color: #67c23a; font-size: 12px; padding: 4px 0;">
                   ✔ {{ msg.text }} | model: {{ msg.model }}
                 </div>
-                <!-- system_command -->
-                <div v-else-if="msg.type === 'system_command'" style="background: #f0f2f5; border-radius: 4px; padding: 8px 12px; margin: 4px 0; color: #303133; font-size: 12px; word-break: break-all; font-family: Consolas, monospace;">
-                  <span style="color: #409eff;">$</span> {{ msg.text }}
+                <!-- system_command 提示词气泡（右侧，默认折叠最多10行） -->
+                <div v-else-if="msg.type === 'system_command'" style="display: flex; justify-content: flex-end; margin: 4px 0;">
+                  <div style="background: #ecf5ff; border-radius: 8px 8px 0 8px; padding: 8px 12px; max-width: 75%; width: fit-content; border: 1px solid #d9ecff;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                      <span style="font-size: 11px; color: #909399;">提示词</span>
+                      <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer; font-size: 11px; color: #409eff; user-select: none;">{{ msg.collapsed ? '展开 ▼' : '收起 ▲' }}</span>
+                    </div>
+                    <div :style="{ maxHeight: msg.collapsed ? '16em' : 'none', overflow: 'hidden', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: '#303133', lineHeight: '1.6' }">{{ msg.text }}</div>
+                  </div>
                 </div>
                 <!-- system_hook -->
                 <div v-else-if="msg.type === 'system_hook'" style="color: #909399; font-size: 12px;">
@@ -983,8 +989,14 @@
                 <div v-if="msg.type === 'system_init'" style="color: #67c23a; font-size: 12px; padding: 4px 0;">
                   ✔ {{ msg.text }} | model: {{ msg.model }}
                 </div>
-                <div v-else-if="msg.type === 'system_command'" style="background: #f0f2f5; border-radius: 4px; padding: 8px 12px; margin: 4px 0; color: #303133; font-size: 12px; word-break: break-all; font-family: Consolas, monospace;">
-                  <span style="color: #409eff;">$</span> {{ msg.text }}
+                <div v-else-if="msg.type === 'system_command'" style="display: flex; justify-content: flex-end; margin: 4px 0;">
+                  <div style="background: #ecf5ff; border-radius: 8px 8px 0 8px; padding: 8px 12px; max-width: 75%; width: fit-content; border: 1px solid #d9ecff;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                      <span style="font-size: 11px; color: #909399;">提示词</span>
+                      <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer; font-size: 11px; color: #409eff; user-select: none;">{{ msg.collapsed ? '展开 ▼' : '收起 ▲' }}</span>
+                    </div>
+                    <div :style="{ maxHeight: msg.collapsed ? '16em' : 'none', overflow: 'hidden', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: '#303133', lineHeight: '1.6' }">{{ msg.text }}</div>
+                  </div>
                 </div>
                 <div v-else-if="msg.type === 'system_hook'" style="color: #909399; font-size: 12px;">
                   <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶' : '▼' }} {{ msg.text }}</span>

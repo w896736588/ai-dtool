@@ -7,7 +7,9 @@
       @click="toggle"
     >
       <span class="task-progress-panel__summary">
-        &#x1F527; {{ store.summary.total }} 个任务
+        <span v-if="store.summary.running > 0" class="task-progress-panel__running-dot"></span>
+        <span v-else class="task-progress-panel__summary-icon">&#x1F527;</span>
+        {{ store.summary.total }} 个任务
         <template v-if="store.summary.running > 0"> &middot; {{ store.summary.running }} 运行中</template>
         <template v-if="store.summary.completed > 0"> &middot; {{ store.summary.completed }} 已完成</template>
         <template v-if="store.summary.failed > 0"> &middot; {{ store.summary.failed }} 失败</template>
@@ -18,7 +20,9 @@
     <div v-else class="task-progress-panel__expanded">
       <div class="task-progress-panel__header" @click="toggle">
         <span class="task-progress-panel__summary">
-          &#x1F527; {{ store.summary.total }} 个任务
+          <span v-if="store.summary.running > 0" class="task-progress-panel__running-dot"></span>
+          <span v-else class="task-progress-panel__summary-icon">&#x1F527;</span>
+          {{ store.summary.total }} 个任务
           <template v-if="store.summary.running > 0"> &middot; {{ store.summary.running }} 运行中</template>
           <template v-if="store.summary.completed > 0"> &middot; {{ store.summary.completed }} 已完成</template>
           <template v-if="store.summary.failed > 0"> &middot; {{ store.summary.failed }} 失败</template>
@@ -33,7 +37,10 @@
           :class="{ 'task-progress-panel__item--clickable': t._msgIndex !== undefined }"
           @click="handleItemClick(t)"
         >
-          <span class="task-progress-panel__item-status">{{ statusIcon(t.status) }}</span>
+          <span class="task-progress-panel__item-status">
+            <span v-if="t.status === 'running'" class="task-progress-panel__running-dot"></span>
+            <template v-else>{{ statusIcon(t.status) }}</template>
+          </span>
           <span class="task-progress-panel__item-desc" :title="t.description">{{ t.description || '-' }}</span>
           <span class="task-progress-panel__item-meta">
             <template v-if="t.lastToolName">{{ t.lastToolName }}</template>
@@ -63,26 +70,11 @@ export default {
     return {
       store: taskProgressStore,
       collapsed: true,
-      _userToggled: false, // 用户手动折叠后不再自动展开
     }
-  },
-  watch: {
-    'store.summary': {
-      handler(s) {
-        // 新任务启动时自动展开（前提用户未手动折叠）
-        if (s.running > 0 && !this._userToggled && this.collapsed) {
-          this.collapsed = false
-        }
-      },
-      deep: true,
-    },
   },
   methods: {
     toggle() {
       this.collapsed = !this.collapsed
-      if (this.collapsed) {
-        this._userToggled = true
-      }
     },
     statusIcon(status) {
       return STATUS_ICON_MAP[status] || '\u{1F527}'
@@ -131,6 +123,28 @@ export default {
 .task-progress-panel__summary {
   font-size: 12px;
   color: #303133;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.task-progress-panel__summary-icon {
+  flex-shrink: 0;
+}
+
+.task-progress-panel__running-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #409eff;
+  border-top-color: transparent;
+  animation: task-dot-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes task-dot-spin {
+  to { transform: rotate(360deg); }
 }
 
 .task-progress-panel__toggle {
