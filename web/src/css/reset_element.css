@@ -138,6 +138,10 @@
   transition: all 0.2s ease;
 }
 
+.el-button--danger {
+  color: #fff;
+}
+
 .el-button:hover {
   border-color: #a9c3a4;
   color: #3f5f3f;

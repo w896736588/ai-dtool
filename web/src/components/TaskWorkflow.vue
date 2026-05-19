@@ -800,8 +800,6 @@
             </div>
             <span :class="['chat-list-item__status', 'chat-list-item__status--' + (item.status || '')]">
               <span v-if="item.status === 'running'" class="chat-list-item__running-dot"></span>
-              <span v-else-if="item.status === 'completed'" class="chat-list-item__check-icon">&#x2713;</span>
-              <span v-else-if="item.status === 'interrupted'" class="chat-list-item__warn-icon">!</span>
               <span v-else-if="item.status === 'error'" class="chat-list-item__error-icon">!</span>
               {{ statusText(item.status) }} {{ formatCreatedAt(item.created_at) }}
             </span>
@@ -823,7 +821,7 @@
               </div>
               <div v-for="(msg, idx) in chatDetailMessages" :key="idx" style="margin-bottom: 8px;">
                 <div v-if="msg.type === 'system_init'" style="color: #67c23a; font-size: 12px; padding: 4px 0;">
-                  ✔ {{ msg.text }} | model: {{ msg.model }}
+                  {{ msg.text }} | model: {{ msg.model }}
                 </div>
                 <div v-else-if="msg.type === 'system_command'" style="display: flex; justify-content: flex-end; margin: 4px 0;">
                   <div style="background: #ecf5ff; border-radius: 8px 8px 0 8px; padding: 8px 12px; max-width: 75%; width: fit-content; border: 1px solid #d9ecff;">
@@ -845,17 +843,13 @@
                 <!-- system_task: 后台任务 (task_started / task_notification) -->
                 <div v-else-if="msg.type === 'system_task'" style="color: #909399; font-size: 12px; padding: 2px 0;">
                   <span v-if="(msg.status === 'started' || msg.status === 'running') && chatDetailStatus === 'running'" class="chat-detail-status-spinner"></span>
-                  <span v-else-if="msg.status === 'completed'" class="chat-detail-status-check">✓</span>
-                  <span v-else-if="msg.status === 'started' || msg.status === 'running'" class="chat-detail-status-warn">!</span>
-                  <span :style="msg.status === 'completed' ? 'color: #67c23a;' : msg.status === 'started' ? 'color: #409eff;' : ''">🔧 {{ msg.description }}</span>
+                  <span :style="msg.status === 'started' ? 'color: #409eff;' : ''">🔧 {{ msg.description }}</span>
                   <span style="margin-left: 8px; font-size: 11px;">{{ msg.status === 'started' ? '启动' : msg.status }}</span>
                 </div>
                 <div v-else-if="msg.type === 'assistant'">
                   <div v-if="msg.thinking" style="margin-bottom: 8px;">
                     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
                       <span v-if="isCurrentThinking(msg)" class="chat-detail-status-spinner"></span>
-                      <span v-else-if="chatDetailStatus !== 'completed'" class="chat-detail-status-warn">!</span>
-                      <span v-else class="chat-detail-status-check">✓</span>
                       <span v-if="isCurrentThinking(msg)" style="color: #409eff; font-size: 12px;">思考过程 持续{{ thinkingStreamElapsed }}s</span>
                       <span v-else style="color: #909399; font-size: 12px;">思考过程{{ msg._thinkingTiming && msg._thinkingTiming.durationMs ? ' (' + (msg._thinkingTiming.durationMs / 1000).toFixed(1) + 's)' : '' }}</span>
                       <span @click="toggleThinkingCollapse(msg)" style="cursor: pointer; font-weight: bold; font-size: 12px; color: #909399;">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
@@ -867,8 +861,6 @@
                     <div v-else-if="block.type === 'tool_use'" style="background: #f0f9eb; border-radius: 4px; padding: 8px; margin: 4px 0;">
                       <div style="display: flex; align-items: center; gap: 4px;">
                         <span v-if="!block._result && chatDetailStatus === 'running'" class="chat-detail-status-spinner"></span>
-                        <span v-else-if="!block._result" class="chat-detail-status-warn">!</span>
-                        <span v-else class="chat-detail-status-check">✓</span>
                         <span style="color: #67c23a; font-weight: 500;">🔧 {{ block.name }}</span>
                         <span v-if="block.displayInput" style="font-size: 12px; color: #303133; font-family: Consolas, monospace;">{{ block.displayInput }}</span>
                       </div>
@@ -890,8 +882,6 @@
                 <div v-else-if="msg.type === 'tool_use'" style="background: #f0f9eb; border-radius: 4px; padding: 8px; margin: 4px 0;">
                   <div style="display: flex; align-items: center; gap: 4px;">
                     <span v-if="!msg._result && chatDetailStatus === 'running'" class="chat-detail-status-spinner"></span>
-                    <span v-else-if="!msg._result" class="chat-detail-status-warn">!</span>
-                    <span v-else class="chat-detail-status-check">✓</span>
                     <span style="color: #67c23a; font-weight: 500;">🔧 {{ msg.name }}</span>
                     <span v-if="msg.displayInput" style="font-size: 12px; color: #303133; font-family: Consolas, monospace;">{{ msg.displayInput }}</span>
                   </div>
@@ -912,19 +902,17 @@
                 <div v-else-if="msg.type === 'assistant_text'" class="markdown-body chat-markdown-body" v-html="renderMarkdown(msg.text)"></div>
                 <div v-else-if="msg.type === 'assistant_thinking'" style="color: #909399; font-size: 12px;">
                   <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                    <span v-if="chatDetailStatus !== 'completed'" class="chat-detail-status-warn">!</span>
-                    <span v-else class="chat-detail-status-check">✓</span>
                     <span>思考过程{{ msg._thinkingTiming && msg._thinkingTiming.durationMs ? ' (' + (msg._thinkingTiming.durationMs / 1000).toFixed(1) + 's)' : '' }}</span>
                     <span @click="toggleThinkingCollapse(msg)" style="cursor: pointer; font-weight: bold;">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
                   </div>
                   <div v-if="!msg._thinkingCollapsed" class="thinking-blockquote">{{ msg.text }}</div>
                 </div>
                 <div v-else-if="msg.type === 'result'" style="color: #67c23a; font-size: 12px; border-top: 1px solid #ebeef5; padding-top: 8px; margin-top: 8px;">
-                  {{ msg.isError ? '✘ 错误' : '✔ 完成' }} | 耗时: {{ (msg.durationMs / 1000).toFixed(1) }}s | {{ msg.numTurns }} 轮
+                  {{ msg.isError ? '错误' : '完成' }} | 耗时: {{ (msg.durationMs / 1000).toFixed(1) }}s | {{ msg.numTurns }} 轮
                   <span v-if="msg.usage"> | input: {{ msg.usage.input_tokens }} output: {{ msg.usage.output_tokens }}</span>
                 </div>
                 <div v-else-if="msg.type === 'chat_completed' && chatDetailStatus === 'completed'" style="color: #67c23a; text-align: center; padding: 16px;">
-                  ✔ {{ msg.text }}
+                  {{ msg.text }}
                 </div>
                 <div v-else-if="msg.type === 'raw_text'" style="white-space: pre-wrap; color: #e6a23c; padding: 4px 0; word-break: break-all; font-family: Consolas, monospace;">{{ msg.text }}</div>
                 <div v-else-if="msg.type === 'parse_error'" style="background: #fef0f0; border-left: 3px solid #f56c6c; border-radius: 4px; padding: 8px 12px; margin: 4px 0;">
@@ -3430,35 +3418,7 @@ export default {
   to { transform: rotate(360deg); }
 }
 
-.chat-list-item__check-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #67c23a;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-  flex-shrink: 0;
-}
 
-.chat-list-item__warn-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #e6a23c;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-  flex-shrink: 0;
-}
 
 .chat-list-item__error-icon {
   display: inline-flex;
@@ -3560,24 +3520,6 @@ export default {
   border-top-color: transparent;
   border-radius: 50%;
   animation: chat-status-dot-spin 0.8s linear infinite;
-  flex-shrink: 0;
-}
-.chat-detail-status-check {
-  color: #67c23a;
-  font-weight: bold;
-  flex-shrink: 0;
-}
-.chat-detail-status-warn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #e6a23c;
-  color: #fff;
-  font-size: 10px;
-  font-weight: bold;
   flex-shrink: 0;
 }
 

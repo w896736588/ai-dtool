@@ -31,7 +31,7 @@
         </div>
         <div class="agent-cli-card__footer">
           <el-button size="small" @click="configureMcp(item)">配置DevtoolsMcp</el-button>
-          <el-button size="small" type="primary" @click="openDeepSeekDialog(item)">配置DeepSeek</el-button>
+          <el-button size="small" @click="editItem(item)">编辑</el-button>
           <el-button size="small" type="danger" @click="deleteItem(item)">删除</el-button>
         </div>
       </div>
@@ -56,6 +56,15 @@
           <el-input v-model="form.settings_path" placeholder="请输入 settings.json 的绝对路径" />
           <div class="agent-cli-form-tip">例如: C:\Users\xxx\.claude\settings.json</div>
         </el-form-item>
+        <el-form-item label="模型名">
+          <el-input v-model="form.model_name" placeholder="deepseek-v4-pro[1m]" />
+        </el-form-item>
+        <el-form-item label="API Key">
+          <el-input v-model="form.api_key" type="password" show-password placeholder="请输入 DeepSeek API Key" />
+        </el-form-item>
+        <el-form-item label="Base URL">
+          <el-input v-model="form.base_url" placeholder="https://api.deepseek.com/anthropic" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -63,24 +72,6 @@
       </template>
     </el-dialog>
 
-    <!-- 配置 DeepSeek 对话框 -->
-    <el-dialog v-model="deepSeekDialogVisible" title="配置 DeepSeek" width="460px" :close-on-click-modal="false">
-      <el-form :model="deepSeekForm" label-width="120px">
-        <el-form-item label="模型名">
-          <el-input v-model="deepSeekForm.model_name" placeholder="deepseek-v4-pro[1m]" />
-        </el-form-item>
-        <el-form-item label="API Key">
-          <el-input v-model="deepSeekForm.api_key" type="password" show-password placeholder="请输入 DeepSeek API Key" />
-        </el-form-item>
-        <el-form-item label="Base URL">
-          <el-input v-model="deepSeekForm.base_url" placeholder="https://api.deepseek.com/anthropic" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="deepSeekDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="deepSeekSaving" @click="saveDeepSeek">保存到 settings.json</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -100,15 +91,9 @@ export default {
         name: '',
         type: 'claude-code-cli',
         settings_path: '',
-      },
-      // DeepSeek
-      deepSeekDialogVisible: false,
-      deepSeekSaving: false,
-      deepSeekTargetId: 0,
-      deepSeekForm: {
-        model_name: 'deepseek-v4-pro[1m]',
+        model_name: '',
         api_key: '',
-        base_url: 'https://api.deepseek.com/anthropic',
+        base_url: '',
       },
     }
   },
@@ -127,7 +112,7 @@ export default {
     },
     openCreateDialog() {
       this.editingId = 0
-      this.form = { name: '', type: 'claude-code-cli', settings_path: '' }
+      this.form = { name: '', type: 'claude-code-cli', settings_path: '', model_name: '', api_key: '', base_url: '' }
       this.dialogVisible = true
     },
     saveItem() {
@@ -143,12 +128,33 @@ export default {
         settings_path: this.form.settings_path.trim(),
       }
       agentCliApi.AgentCliSave(data, (response) => {
-        this.saving = false
         if (response && response.ErrCode === 0) {
+          // 密钥字段非空时，一并写入 DeepSeek 配置
+          if (this.form.model_name.trim() && this.form.api_key.trim()) {
+            const dsData = {
+              id: this.editingId,
+              model_name: this.form.model_name.trim(),
+              api_key: this.form.api_key.trim(),
+              base_url: this.form.base_url.trim(),
+            }
+            agentCliApi.AgentCliWriteDeepSeek(dsData, (dsResponse) => {
+              this.saving = false
+              if (dsResponse && dsResponse.ErrCode === 0) {
+                this.dialogVisible = false
+                this.$message.success('保存成功')
+                this.loadList()
+              } else {
+                this.$message.error(dsResponse?.ErrMsg || '密钥保存失败')
+              }
+            })
+            return
+          }
+          this.saving = false
           this.dialogVisible = false
           this.$message.success('保存成功')
           this.loadList()
         } else {
+          this.saving = false
           this.$message.error(response?.ErrMsg || '保存失败')
         }
       })
@@ -181,39 +187,29 @@ export default {
         }
       })
     },
-    openDeepSeekDialog(item) {
-      this.deepSeekTargetId = item.id
-      this.deepSeekForm = {
-        model_name: 'deepseek-v4-pro[1m]',
+    // 打开编辑对话框，预填当前条目数据并读取 settings.json 中的密钥
+    editItem(item) {
+      this.editingId = item.id
+      this.form = {
+        name: item.name || '',
+        type: item.type || 'claude-code-cli',
+        settings_path: item.settings_path || '',
+        model_name: '',
         api_key: '',
-        base_url: 'https://api.deepseek.com/anthropic',
+        base_url: '',
       }
-      this.deepSeekDialogVisible = true
-    },
-    saveDeepSeek() {
-      if (!this.deepSeekForm.api_key.trim()) {
-        this.$message.warning('请输入 API Key')
-        return
-      }
-      if (!this.deepSeekForm.model_name.trim()) {
-        this.$message.warning('请输入模型名')
-        return
-      }
-      this.deepSeekSaving = true
-      const data = {
-        id: this.deepSeekTargetId,
-        model_name: this.deepSeekForm.model_name.trim(),
-        api_key: this.deepSeekForm.api_key.trim(),
-        base_url: this.deepSeekForm.base_url.trim(),
-      }
-      agentCliApi.AgentCliWriteDeepSeek(data, (response) => {
-        this.deepSeekSaving = false
-        if (response && response.ErrCode === 0) {
-          this.deepSeekDialogVisible = false
-          this.$message.success('DeepSeek 配置已写入')
-          this.loadList()
-        } else {
-          this.$message.error(response?.ErrMsg || '配置失败')
+      this.dialogVisible = true
+      // 读取 settings.json 以预填密钥字段
+      agentCliApi.AgentCliReadSettings(item.id, (response) => {
+        if (response && response.ErrCode === 0 && response.Data && response.Data.content) {
+          try {
+            const config = JSON.parse(response.Data.content)
+            this.form.model_name = config.model || ''
+            if (config.env) {
+              this.form.api_key = config.env.ANTHROPIC_AUTH_TOKEN || ''
+              this.form.base_url = config.env.ANTHROPIC_BASE_URL || ''
+            }
+          } catch(e) {}
         }
       })
     },

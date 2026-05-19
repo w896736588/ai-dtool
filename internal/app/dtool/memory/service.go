@@ -170,6 +170,9 @@ func (h *Service) MemoryFragmentSave(id any, title, content string, _ []string) 
 		IsDeleted: false,
 	}
 	if exists {
+		if strings.TrimSpace(content) == `` && strings.TrimSpace(oldFragment.Content) != `` {
+			return nil, errors.New(`不允许将已有内容的片段更新为空`)
+		}
 		fragment.CreatedAt = oldFragment.CreatedAt
 		fragment.IsDeleted = oldFragment.IsDeleted
 		fragment.FilePath = oldFragment.FilePath
