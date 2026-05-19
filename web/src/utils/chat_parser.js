@@ -36,7 +36,7 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
   if (lineType === 'system') {
     const subtype = obj.subtype || ''
     if (subtype === 'init') {
-      messages.push({ type: 'system_init', text: '会话已创建', model: obj.model || '', sessionId: obj.session_id || '' })
+      messages.push({ type: 'system_init', text: obj.is_resume ? '继续对话' : '会话已创建', model: obj.model || '', sessionId: obj.session_id || '' })
     } else if (subtype === 'command') {
       messages.push({ type: 'system_command', text: obj.text || '', collapsed: true })
     } else if (subtype === 'hook_started' || subtype === 'hook_response') {

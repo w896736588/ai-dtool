@@ -3085,7 +3085,17 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 		if callbackCount <= 3 {
 			gstool.FmtPrintlnLogTime("[chat-run] callback:%d type=%s subtype=%s len=%d", callbackCount, msg.Type, msg.Subtype, len(msg.RawJSON))
 		}
-		sendLine(msg.RawJSON)
+		rawJSON := msg.RawJSON
+		if msg.Type == `system` && msg.Subtype == `init` {
+			var initData map[string]any
+			if err := json.Unmarshal([]byte(rawJSON), &initData); err == nil {
+				initData[`is_resume`] = isResume
+				if modified, e := json.Marshal(initData); e == nil {
+					rawJSON = string(modified)
+				}
+			}
+		}
+		sendLine(rawJSON)
 
 		if !sessionExtracted && !isResume && msg.Type == `system` && msg.Subtype == `init` {
 			if sid, ok := msg.Data[`session_id`].(string); ok && sid != `` {

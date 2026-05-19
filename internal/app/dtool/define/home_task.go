@@ -12,6 +12,8 @@ const (
 	HomeTaskStatusTodo = `待开始`
 	// HomeTaskStatusDeveloping 表示任务处于开发中。
 	HomeTaskStatusDeveloping = `开发中`
+	// HomeTaskStatusDevCompleted 表示任务开发完成。
+	HomeTaskStatusDevCompleted = `开发完`
 	// HomeTaskStatusSelfTesting 表示任务处于自测中。
 	HomeTaskStatusSelfTesting = `自测中`
 	// HomeTaskStatusSelfTested 表示任务自测完成。
@@ -37,6 +39,7 @@ var (
 	HomeTaskStatusList = []string{
 		HomeTaskStatusTodo,
 		HomeTaskStatusDeveloping,
+		HomeTaskStatusDevCompleted,
 		HomeTaskStatusSelfTesting,
 		HomeTaskStatusSelfTested,
 		HomeTaskStatusPendingIntegration,

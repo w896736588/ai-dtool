@@ -96,9 +96,9 @@
             <span v-if="getNodeStatus(node.key) === 'completed'" class="status-icon status-icon--completed">&#10003;</span>
             <span v-else-if="getNodeStatus(node.key) === 'skipped'" class="status-icon status-icon--skipped">&#10003;</span>
             <span v-else-if="getNodeStatus(node.key) === 'pending'" class="status-icon status-icon--pending"></span>
-            <span v-else class="status-icon status-icon--running"></span>
+            <span v-else class="status-icon status-icon--running"><span class="spinner-ring"></span></span>
           </span>
-          <span class="task-workflow-node__label">{{ node.label }}</span>
+          <span class="task-workflow-node__label">{{ node.label }}<span v-if="getNodeStatus(node.key) === 'running' || getNodeStatus(node.key) === 'completed'" :class="getNodeStatus(node.key) === 'running' ? 'running-arrow' : 'completed-arrow'">&#9654;</span></span>
           <span class="task-workflow-node__desc">{{ node.desc }}</span>
         </button>
       </section>
@@ -923,9 +923,21 @@
             <div :class="['chat-detail-scroll-btn', { 'chat-detail-scroll-btn--visible': promptChatDetailShowScrollBtn }]" @click="scrollPromptChatToBottom(true)">↓</div>
             <TaskProgressPanel @scroll-to-msg="onPromptTaskPanelScrollToMsg" />
             <div class="chat-detail-input-row">
-              <el-input v-model="chatContinueInput" placeholder="输入新消息继续对话..." :disabled="chatDetailStatus === 'running'" @keyup.enter="chatDetailStatus !== 'running' ? continueChat : null" style="flex: 1;" />
-              <el-button v-if="chatDetailStatus === 'running'" type="danger" @click="stopChat">停止</el-button>
-              <el-button v-else type="primary" :loading="chatContinueLoading" @click="continueChat">发送</el-button>
+              <div class="chat-detail-textarea-wrapper">
+                <el-input
+                  v-model="chatContinueInput"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="输入新消息继续对话..."
+                  :disabled="chatDetailStatus === 'running'"
+                  class="chat-detail-textarea"
+                  @keyup.enter="chatDetailStatus !== 'running' ? continueChat : null"
+                />
+                <div class="chat-detail-actions">
+                  <el-button v-if="chatDetailStatus === 'running'" type="danger" size="small" @click="stopChat">停止</el-button>
+                  <el-button v-else type="primary" size="small" :loading="chatContinueLoading" @click="continueChat">发送</el-button>
+                </div>
+              </div>
             </div>
           </template>
         </div>
@@ -1002,6 +1014,7 @@ const ACTIVE_NODE_CACHE_PREFIX = 'task_workflow_active_node_'
 
 const TASK_STATUS_TODO = '待开始'
 const TASK_STATUS_DEVELOPING = '开发中'
+const TASK_STATUS_DEV_COMPLETED = '开发完'
 const TASK_STATUS_SELF_TESTING = '自测中'
 const TASK_STATUS_SELF_TESTED = '自测完'
 const TASK_STATUS_PENDING_INTEGRATION = '待对接'
@@ -1014,6 +1027,7 @@ const TASK_STATUS_ABANDONED = '已废弃'
 const TASK_STATUS_OPTIONS = [
   TASK_STATUS_TODO,
   TASK_STATUS_DEVELOPING,
+  TASK_STATUS_DEV_COMPLETED,
   TASK_STATUS_SELF_TESTING,
   TASK_STATUS_SELF_TESTED,
   TASK_STATUS_PENDING_INTEGRATION,
@@ -3050,11 +3064,41 @@ export default {
 }
 
 .status-icon--running {
-  background: #409eff;
-  width: 14px;
-  height: 14px;
-  animation: status-icon-pulse 1.2s ease-in-out infinite;
-  box-shadow: 0 0 0 0 rgba(64, 158, 255, 0.6);
+  background: transparent;
+  width: 20px;
+  height: 20px;
+}
+
+.spinner-ring {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #409eff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: status-icon-spin 0.8s linear infinite;
+}
+
+@keyframes status-icon-spin {
+  to { transform: rotate(360deg); }
+}
+
+.running-arrow {
+  color: #409eff;
+  margin-left: 4px;
+  font-size: 11px;
+  animation: arrow-blink 0.8s ease-in-out infinite;
+}
+
+.completed-arrow {
+  color: #67c23a;
+  margin-left: 4px;
+  font-size: 11px;
+}
+
+@keyframes arrow-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
 /* 节点按钮状态边框色 */
@@ -3211,10 +3255,6 @@ export default {
   to { transform: rotate(360deg); }
 }
 
-@keyframes status-icon-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(64, 158, 255, 0.6); }
-  50% { box-shadow: 0 0 0 6px rgba(64, 158, 255, 0); }
-}
 
 </style>
 
@@ -3529,11 +3569,25 @@ export default {
 
 .chat-detail-input-row {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  flex-direction: column;
   padding-top: 10px;
   border-top: 1px solid #ebeef5;
   flex-shrink: 0;
+}
+
+.chat-detail-textarea-wrapper {
+  width: 100%;
+}
+
+.chat-detail-textarea {
+  width: 100%;
+}
+
+.chat-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 6px;
 }
 
 /* 执行历史对话框中 markdown 内容样式（浅色主题，匹配知识片段智能搜索风格） */
@@ -3646,5 +3700,17 @@ export default {
   justify-content: center;
   color: #909399;
   font-size: 14px;
+}
+
+/* 对话输入框样式（非 scoped，对话框内容被 teleport 到 body） */
+.chat-detail-textarea .el-textarea__inner {
+  border-color: #dcdfe6 !important;
+  transition: border-color 0.2s;
+  resize: none;
+}
+
+.chat-detail-textarea .el-textarea__inner:focus {
+  border-color: #409eff !important;
+  box-shadow: 0 0 0 1px #409eff inset !important;
 }
 </style>

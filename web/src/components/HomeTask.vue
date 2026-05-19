@@ -644,6 +644,7 @@ const HOME_TASK_ARCHIVED_NO = 0
 const HOME_TASK_ARCHIVED_YES = 1
 const HOME_TASK_STATUS_TODO = '待开始'
 const HOME_TASK_STATUS_DEVELOPING = '开发中'
+const HOME_TASK_STATUS_DEV_COMPLETED = '开发完'
 const HOME_TASK_STATUS_SELF_TESTING = '自测中'
 const HOME_TASK_STATUS_SELF_TESTED = '自测完'
 const HOME_TASK_STATUS_PENDING_INTEGRATION = '待对接'
@@ -684,6 +685,7 @@ const HOME_TASK_WORKFLOW_NODE_KEYS = [
 const HOME_TASK_STATUS_OPTIONS = [
   HOME_TASK_STATUS_TODO,
   HOME_TASK_STATUS_DEVELOPING,
+  HOME_TASK_STATUS_DEV_COMPLETED,
   HOME_TASK_STATUS_SELF_TESTING,
   HOME_TASK_STATUS_SELF_TESTED,
   HOME_TASK_STATUS_PENDING_INTEGRATION,
@@ -1543,7 +1545,7 @@ export default {
       return Math.floor(new Date(`${normalizedDateText}T00:00:00`).getTime() / 1000)
     },
     getHomeTaskStatusTagType(taskStatus) {
-      if (taskStatus === HOME_TASK_STATUS_DEVELOPING) {
+      if (taskStatus === HOME_TASK_STATUS_DEVELOPING || taskStatus === HOME_TASK_STATUS_DEV_COMPLETED) {
         return 'success'
       }
       if (taskStatus === HOME_TASK_STATUS_SELF_TESTING || taskStatus === HOME_TASK_STATUS_TESTING) {
@@ -1570,7 +1572,7 @@ export default {
       return ''
     },
     getHomeTaskActionButtonVariant(taskStatus) {
-      return 'primary'
+      return 'warning'
     },
     loadHomeTaskUnusedLocalDirs(excludeTaskId) {
       homeTaskApi.HomeTaskUnusedLocalDirs(excludeTaskId || 0, (response) => {

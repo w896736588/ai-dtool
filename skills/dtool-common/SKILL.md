@@ -163,6 +163,7 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 ### 9. 更新知识片段（按文件路径）
 
 通过传入相对于知识片段文件夹的文件路径更新片段内容。Python 脚本会自动从路径中提取片段 ID 并调用保存接口。
+注意：禁止更新文档名称（文件内容开头的title）
 
 - **路径**: `/api/MemoryFragmentSave`
 - **Python 函数**: `memory_fragment_update_by_path(relative_path, content, title=None)`
