@@ -2320,25 +2320,32 @@ func extractSessionID(line string) string {
 func TaskWorkflowChatStreamOpen(urlValues url.Values, stopC chan int, c *gin.Context) (*gsgin.Sse, error) {
 	chatIDStr := strings.TrimSpace(urlValues.Get(`chat_id`))
 	if chatIDStr == `` {
+		gstool.FmtPrintlnLogTime("[chat-stream] chat_id 为空")
 		return nil, fmt.Errorf(`chat_id 不能为空`)
 	}
 	chatID := cast.ToInt64(chatIDStr)
 	if chatID <= 0 {
+		gstool.FmtPrintlnLogTime("[chat-stream] chat_id=%s 无效", chatIDStr)
 		return nil, fmt.Errorf(`chat_id 无效`)
 	}
+	gstool.FmtPrintlnLogTime("[chat-stream] chat_id=%d 开始建立 SSE 连接", chatID)
 	chatInfo, err := common.DbMain.TaskWorkflowChatInfo(chatID)
 	if err != nil {
+		gstool.FmtPrintlnLogTime("[chat-stream] chat_id=%d 查询对话信息失败: %v", chatID, err)
 		return nil, err
 	}
 	if len(chatInfo) == 0 {
+		gstool.FmtPrintlnLogTime("[chat-stream] chat_id=%d 对话记录不存在", chatID)
 		return nil, fmt.Errorf(`对话记录不存在`)
 	}
 	localDir := cast.ToString(chatInfo[`local_dir`])
 	if localDir == `` {
+		gstool.FmtPrintlnLogTime("[chat-stream] chat_id=%d 对话未找到工作目录", chatID)
 		return nil, fmt.Errorf(`对话未找到工作目录`)
 	}
 	modelID := cast.ToInt(chatInfo[`model_id`])
 	if modelID <= 0 {
+		gstool.FmtPrintlnLogTime("[chat-stream] chat_id=%d 对话未找到模型配置", chatID)
 		return nil, fmt.Errorf(`对话未找到模型配置`)
 	}
 
@@ -2353,14 +2360,17 @@ func TaskWorkflowChatStreamOpen(urlValues url.Values, stopC chan int, c *gin.Con
 			prompt = cast.ToString(chatInfo[`prompt`])
 		}
 		if prompt == `` {
+			gstool.FmtPrintlnLogTime("[chat-stream] chat_id=%d 提示词为空", chatID)
 			return nil, fmt.Errorf(`提示词不能为空`)
 		}
 	} else {
 		// 继续对话：prompt 由前端传入
 		if prompt == `` {
+			gstool.FmtPrintlnLogTime("[chat-stream] chat_id=%d 继续对话的提示词为空", chatID)
 			return nil, fmt.Errorf(`继续对话的提示词不能为空`)
 		}
 		if sessionID == `` {
+			gstool.FmtPrintlnLogTime("[chat-stream] chat_id=%d 继续对话未找到有效的 session_id", chatID)
 			return nil, fmt.Errorf(`对话未找到有效的 session_id`)
 		}
 	}
@@ -2369,6 +2379,7 @@ func TaskWorkflowChatStreamOpen(urlValues url.Values, stopC chan int, c *gin.Con
 	sse := gsgin.SseRegister(distributeID, stopC, c)
 	// 如果该 chatID 已有 goroutine 在运行，只注册 SSE 连接（复用已有 goroutine 的输出），不启动新命令
 	if _, running := chatCancelFuncs.Load(chatID); running {
+		gstool.FmtPrintlnLogTime("[chat-stream] chat_id=%d goroutine 已在运行，仅注册 SSE 监听", chatID)
 		return sse, nil
 	}
 	// 非启动、非继续时，仅注册 SSE 监听（如页面刷新重连）。
@@ -2376,6 +2387,7 @@ func TaskWorkflowChatStreamOpen(urlValues url.Values, stopC chan int, c *gin.Con
 	if !isStart && !isContinue {
 		chatStatus := cast.ToString(chatInfo[`status`])
 		if chatStatus == "running" {
+			gstool.FmtPrintlnLogTime("[chat-stream] chat_id=%d goroutine 不存在且状态为 running，标记为中断", chatID)
 			_ = common.DbMain.TaskWorkflowChatMarkInterrupted(chatID)
 			taskWorkflowBroadcastChatStatus(chatID)
 		}
@@ -2384,10 +2396,12 @@ func TaskWorkflowChatStreamOpen(urlValues url.Values, stopC chan int, c *gin.Con
 
 	modelInfo, err := common.DbMain.AiModelInfo(modelID)
 	if err != nil {
+		gstool.FmtPrintlnLogTime("[chat-stream] chat_id=%d 查询模型信息失败 model_id=%d: %v", chatID, modelID, err)
 		return nil, err
 	}
 	providerType := strings.ToLower(cast.ToString(modelInfo[`provider_type`]))
 	if providerType != `anthropic` {
+		gstool.FmtPrintlnLogTime("[chat-stream] chat_id=%d 不支持的服务商类型: %s", chatID, providerType)
 		return nil, fmt.Errorf(`仅支持 anthropic 服务商的模型`)
 	}
 	baseURL := strings.TrimSpace(cast.ToString(modelInfo[`base_url`]))
@@ -2518,16 +2532,6 @@ func TaskWorkflowChatContinue(c *gin.Context) {
 	modelID := cast.ToInt(chatInfo[`model_id`])
 	if modelID <= 0 {
 		gsgin.GinResponseError(c, `对话未找到模型配置`, nil)
-		return
-	}
-
-	modelInfo, err := common.DbMain.AiModelInfo(modelID)
-	if err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
-	}
-	if strings.ToLower(cast.ToString(modelInfo[`provider_type`])) != `anthropic` {
-		gsgin.GinResponseError(c, `仅支持 anthropic 服务商的模型`, nil)
 		return
 	}
 
@@ -2664,11 +2668,19 @@ func TaskWorkflowChatDetail(c *gin.Context) {
 		lines = strings.Split(rawOutput, "\n")
 	}
 
+	modelName := ``
+	if modelID := cast.ToInt(info[`model_id`]); modelID > 0 {
+		if modelInfo, err := common.DbMain.AiModelInfo(modelID); err == nil {
+			modelName = cast.ToString(modelInfo[`model`])
+		}
+	}
+
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`chat_id`:            info[`id`],
 		`session_id`:         info[`session_id`],
 		`prompt`:             info[`prompt`],
 		`model_id`:           info[`model_id`],
+		`model_name`:         modelName,
 		`local_dir`:          info[`local_dir`],
 		`status`:             info[`status`],
 		`created_at`:         info[`created_at`],

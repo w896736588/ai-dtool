@@ -961,9 +961,14 @@
                   placeholder="输入新消息继续对话..."
                   :disabled="chatDetailStatus === 'running'"
                   class="chat-detail-textarea"
-                  @keyup.enter="chatDetailStatus !== 'running' ? continueChat : null"
+                  @keydown.enter.exact.prevent="chatDetailStatus !== 'running' && continueChat()"
                 />
                 <div class="chat-detail-actions">
+                  <div v-if="chatDetailThinkingIntensity || chatDetailModelName" class="chat-detail-info-bar">
+                    <span v-if="chatDetailThinkingIntensity">思考强度: {{ chatDetailThinkingIntensity }}</span>
+                    <span v-if="chatDetailThinkingIntensity && chatDetailModelName"> | </span>
+                    <span v-if="chatDetailModelName">模型: {{ chatDetailModelName }}</span>
+                  </div>
                   <el-button v-if="chatDetailStatus === 'running'" type="danger" size="small" @click="stopChat">停止</el-button>
                   <el-button v-else type="primary" size="small" :loading="chatContinueLoading" @click="continueChat">发送</el-button>
                 </div>
@@ -1148,6 +1153,7 @@ export default {
       _sseLineBuffer: [], // SSE 行缓冲（批处理），每100ms刷新一次
       _sseBatchTimer: null, // 批处理定时器
       _sseParseState: null, // 增量解析状态 { currentMessage, toolUseMap, pendingPatches }
+      _initialSseRetryCount: 0, // 初始 start=1 SSE 失败后的重试计数
       thinkingStreamElapsed: 0, // 思考流式阶段的实时已用秒数
       chatContinueInput: '',
       chatContinueLoading: false,
@@ -1169,6 +1175,7 @@ export default {
       promptChatDetailShowScrollBtn: false,
       chatDetailModelName: '',
       chatDetailLocalDir: '',
+      chatDetailThinkingIntensity: '',
       // zcode 配置
       zcodeConfigDialogVisible: false,
       zcodeDirInput: '',
@@ -1824,8 +1831,9 @@ export default {
           this.chatDetailPrompt = data.prompt || ''
           this.chatDetailSessionId = data.session_id || ''
           this.chatDetailStatus = data.status || ''
-          this.chatDetailModelName = data.model_id ? '#' + data.model_id : ''
+          this.chatDetailModelName = data.model_name || ''
           this.chatDetailLocalDir = data.local_dir || ''
+          this.chatDetailThinkingIntensity = data.thinking_intensity || ''
           // 同步更新左侧列表中的状态
           this.updateChatListStatus(this.chatDetailId, this.chatDetailStatus)
           // 合并历史行 + SSE 加载期间收到的新行（有则去重）
@@ -1937,6 +1945,13 @@ export default {
         es.close()
         this._chatEventSource = null
         this._sseParseState = null
+        // 如果是初始 start=1 连接失败且尚无任何输出，重试一次 start=1 连接
+        // 避免 loadChatDetail 中不带 start/continue 的重连将对话错误标记为"中断"
+        if (this._initialSseRetryCount < 1 && this.chatDetailSSELines.length === 0 && this.chatDetailStatus === 'running') {
+          this._initialSseRetryCount++
+          this.connectChatStream(this.chatDetailId, null, true)
+          return
+        }
         this.loadChatDetail()
         this.loadChatCounts()
       }
@@ -2029,6 +2044,7 @@ export default {
       if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
       this.thinkingStreamElapsed = 0
       this._thinkingStreamStartTime = 0
+      this._initialSseRetryCount = 0
       if (this._chatEventSource) {
         this._chatEventSource.close()
         this._chatEventSource = null
@@ -2169,6 +2185,7 @@ export default {
               this.chatDetailSSELines = []
               this.chatDetailMessages = []
               taskProgressStore.reset()
+              this._initialSseRetryCount = 0
               this.connectChatStream(chatId, null, true)
               this.loadChatCounts()
               // 打开执行历史，定位到新对话
@@ -3638,6 +3655,16 @@ export default {
   justify-content: flex-end;
   gap: 6px;
   padding-top: 6px;
+}
+
+.chat-detail-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #909399;
+  flex-shrink: 0;
+  margin-right: auto;
 }
 
 /* 执行历史对话框中 markdown 内容样式（浅色主题，匹配知识片段智能搜索风格） */
