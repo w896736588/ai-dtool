@@ -834,6 +834,10 @@
                 </div>
                 <div v-else-if="msg.type === 'system_hook'" style="color: #909399; font-size: 12px;">
                   <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶' : '▼' }} {{ msg.text }}</span>
+                  <div v-if="!msg.collapsed && (msg.stderr || msg.output)" style="margin-top: 4px; padding: 6px 8px; background: #f5f5f5; border-radius: 4px; font-size: 11px; white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow-y: auto;">
+                    <div v-if="msg.stderr" style="color: #e6a23c;">{{ msg.stderr }}</div>
+                    <div v-if="msg.output" style="color: #606266;">{{ msg.output }}</div>
+                  </div>
                 </div>
                 <div v-else-if="msg.type === 'system'" style="color: #909399; font-size: 11px;">{{ msg.text }}</div>
                 <!-- system_status: claude code 状态 -->
@@ -864,10 +868,20 @@
                         <span style="color: #67c23a; font-weight: 500;">🔧 {{ block.name }}</span>
                         <span v-if="block.displayInput" style="font-size: 12px; color: #303133; font-family: Consolas, monospace;">{{ block.displayInput }}</span>
                       </div>
-                      <div v-if="!block.displayInput" style="font-size: 12px; color: #909399; margin-top: 4px; cursor: pointer;" @click="block._inputExpanded = !block._inputExpanded">
+                      <!-- TodoWrite / TaskCreate / TaskUpdate 任务列表可视化 -->
+                      <div v-if="block._tasks" style="margin-top: 6px;">
+                        <div v-for="(task, ti) in block._tasks" :key="ti" style="display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px;">
+                          <span :style="{ color: task.status === 'completed' ? '#67c23a' : task.status === 'in_progress' ? '#409eff' : '#909399', fontSize: '14px', lineHeight: 1 }">
+                            {{ task.status === 'completed' ? '✅' : task.status === 'in_progress' ? '🔄' : '⬜' }}
+                          </span>
+                          <span :style="task.status === 'completed' ? 'text-decoration: line-through; color: #909399;' : ''">{{ task.content }}</span>
+                          <span v-if="task.activeForm && task.status === 'in_progress'" style="color: #909399; font-size: 10px; margin-left: 4px;">{{ task.activeForm }}</span>
+                        </div>
+                      </div>
+                      <div v-if="!block.displayInput && !block._tasks" style="font-size: 12px; color: #909399; margin-top: 4px; cursor: pointer;" @click="block._inputExpanded = !block._inputExpanded">
                         {{ block._inputExpanded ? '▼' : '▶' }} 参数
                       </div>
-                      <pre v-if="!block.displayInput && block._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ block.input }}</pre>
+                      <pre v-if="!block.displayInput && !block._tasks && block._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ block.input }}</pre>
                       <div v-if="block._result" style="color: #909399; font-size: 12px; margin-top: 6px; border-top: 1px dashed #dcdfe6; padding-top: 4px;">
                         <span @click="block._result.collapsed = !block._result.collapsed" style="cursor: pointer;">{{ block._result.collapsed ? '▶' : '▼' }} 工具执行结果</span>
                         <pre v-if="!block._result.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto; font-family: Consolas, monospace;">{{ block._result.text }}</pre>
@@ -885,10 +899,20 @@
                     <span style="color: #67c23a; font-weight: 500;">🔧 {{ msg.name }}</span>
                     <span v-if="msg.displayInput" style="font-size: 12px; color: #303133; font-family: Consolas, monospace;">{{ msg.displayInput }}</span>
                   </div>
-                  <div v-if="!msg.displayInput" style="font-size: 12px; color: #909399; margin-top: 4px; cursor: pointer;" @click="msg._inputExpanded = !msg._inputExpanded">
+                  <!-- TodoWrite / TaskCreate / TaskUpdate 任务列表可视化 -->
+                  <div v-if="msg._tasks" style="margin-top: 6px;">
+                    <div v-for="(task, ti) in msg._tasks" :key="ti" style="display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px;">
+                      <span :style="{ color: task.status === 'completed' ? '#67c23a' : task.status === 'in_progress' ? '#409eff' : '#909399', fontSize: '14px', lineHeight: 1 }">
+                        {{ task.status === 'completed' ? '✅' : task.status === 'in_progress' ? '🔄' : '⬜' }}
+                      </span>
+                      <span :style="task.status === 'completed' ? 'text-decoration: line-through; color: #909399;' : ''">{{ task.content }}</span>
+                      <span v-if="task.activeForm && task.status === 'in_progress'" style="color: #909399; font-size: 10px; margin-left: 4px;">{{ task.activeForm }}</span>
+                    </div>
+                  </div>
+                  <div v-if="!msg.displayInput && !msg._tasks" style="font-size: 12px; color: #909399; margin-top: 4px; cursor: pointer;" @click="msg._inputExpanded = !msg._inputExpanded">
                     {{ msg._inputExpanded ? '▼' : '▶' }} 参数
                   </div>
-                  <pre v-if="!msg.displayInput && msg._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ msg.input }}</pre>
+                  <pre v-if="!msg.displayInput && !msg._tasks && msg._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ msg.input }}</pre>
                   <div v-if="msg._result" style="color: #909399; font-size: 12px; margin-top: 6px; border-top: 1px dashed #dcdfe6; padding-top: 4px;">
                     <span @click="msg._result.collapsed = !msg._result.collapsed" style="cursor: pointer;">{{ msg._result.collapsed ? '▶' : '▼' }} 工具执行结果</span>
                     <pre v-if="!msg._result.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto; font-family: Consolas, monospace;">{{ msg._result.text }}</pre>

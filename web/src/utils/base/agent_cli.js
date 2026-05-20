@@ -30,6 +30,11 @@ function AgentCliWriteDeepSeek(data, callBack) {
   base.BasePost('/api/AgentCliWriteDeepSeek', data, callBack)
 }
 
+// AgentCliToggleClaudeMem 切换 claude-mem 启停
+function AgentCliToggleClaudeMem(data, callBack) {
+  base.BasePost('/api/AgentCliToggleClaudeMem', data, callBack)
+}
+
 export default {
   AgentCliList,
   AgentCliSave,
@@ -37,4 +42,5 @@ export default {
   AgentCliReadSettings,
   AgentCliWriteMcpServers,
   AgentCliWriteDeepSeek,
+  AgentCliToggleClaudeMem,
 }

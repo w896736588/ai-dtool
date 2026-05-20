@@ -85,7 +85,14 @@ var ThinkingIntensityEffortMap = map[string]string{
 // AgentCliStatusItem 列表带状态
 type AgentCliStatusItem struct {
 	AgentCliItem
-	SettingsExists bool   `json:"settings_exists"`
-	CurrentModel   string `json:"current_model"`
-	McpServerCount int    `json:"mcp_server_count"`
+	SettingsExists   bool   `json:"settings_exists"`
+	CurrentModel     string `json:"current_model"`
+	McpServerCount   int    `json:"mcp_server_count"`
+	ClaudeMemEnabled bool   `json:"claude_mem_enabled"`
+}
+
+// AgentCliToggleClaudeMemRequest 切换 claude-mem 启停请求
+type AgentCliToggleClaudeMemRequest struct {
+	Id     int  `json:"id"`
+	Enable bool `json:"enable"`
 }

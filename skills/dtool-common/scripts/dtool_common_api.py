@@ -435,19 +435,19 @@ def browser_profile_capture_headers(smart_link_id, label, account="", open_type=
 # {年份}/{月份}/{uuid}.md 的目录结构组织。通过传入相对于
 # fragments/ 的路径定位片段并更新其内容。
 # ============================================================
-def memory_fragment_update_by_path(relative_path, content, title=None):
+def memory_fragment_update_by_path(relative_path, content):
     """
-    通过相对路径更新知识片段内容
+    通过相对路径更新知识片段内容（不会修改标题）
 
     知识片段以 Markdown 文件存储，此接口通过传入相对于知识片段文件夹
     （fragments/）的路径定位片段，然后更新其内容。
+    注意：不传 title 参数，禁止修改片段标题。
 
     参数:
         relative_path: 相对于知识片段文件夹（fragments/）的路径（必填）
                        如 "2026/05/a59db79a-3e4d-4f37-a02d-1bf87cc0c590.md"
         content: 新的 Markdown 正文内容（必填），支持以下占位符：
                  - {需求文档纯文本文件相对地址}: 后端自动替换为 relative_path 的值
-        title: 新标题（可选，不传则不修改）
 
     示例:
         memory_fragment_update_by_path(
@@ -463,8 +463,6 @@ def memory_fragment_update_by_path(relative_path, content, title=None):
         "id": fragment_id,
         "content": content,
     }
-    if title:
-        payload["title"] = title
 
     result = call_api("/api/MemoryFragmentSave", payload)
     if result.get("code") == 0:

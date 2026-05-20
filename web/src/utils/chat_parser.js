@@ -1,5 +1,14 @@
 import taskStore from '@/utils/task_progress_store'
 
+// tryParse 尝试将值解析为 JSON 对象/数组，若已是对象/数组则直接返回
+function tryParse(v) {
+  if (v === null || v === undefined) return v
+  if (typeof v === 'string') {
+    try { return JSON.parse(v) } catch (e) { return v }
+  }
+  return v
+}
+
 // buildToolDisplayInput 根据工具名和解析后的参数生成可读摘要。
 function buildToolDisplayInput(name, parsed) {
   if (!name || !parsed) return null
@@ -11,8 +20,47 @@ function buildToolDisplayInput(name, parsed) {
   if (parsed.description) return parsed.description
   if (parsed.command) return parsed.command
   if (parsed.file_path) return parsed.file_path
+  // TodoWrite: 支持数组、{ newTodos }、或 JSON 字符串
+  if (n === 'todowrite') {
+    const obj = tryParse(parsed)
+    const todos = Array.isArray(obj) ? obj : (obj && Array.isArray(obj.newTodos) ? obj.newTodos : null)
+    if (todos && todos.length) {
+      const total = todos.length
+      const completed = todos.filter(t => t.status === 'completed').length
+      if (completed > 0 && completed < total) return `${total} 个任务 (${completed}/${total} 完成)`
+      if (completed === total) return `${total} 个任务 (全部完成)`
+      return `${total} 个任务`
+    }
+  }
+  // TaskCreate / TaskUpdate: 数组或 JSON 字符串
+  if (n === 'taskcreate' || n === 'taskupdate') {
+    const obj = tryParse(parsed)
+    if (Array.isArray(obj) && obj.length) {
+      const total = obj.length
+      const completed = obj.filter(t => t.status === 'completed').length
+      if (completed > 0 && completed < total) return `${total} 个任务 (${completed}/${total} 完成)`
+      if (completed === total) return `${total} 个任务 (全部完成)`
+      return `${total} 个任务`
+    }
+  }
   const keys = Object.keys(parsed)
   if (keys.length === 1) return parsed[keys[0]]
+  return null
+}
+
+// extractTasks 从工具参数中提取任务列表。
+// TodoWrite 支持数组、{ newTodos }、或 JSON 字符串；TaskCreate/TaskUpdate 为数组或字符串。
+function extractTasks(name, parsed) {
+  if (!name || !parsed) return null
+  const n = name.toLowerCase()
+  const obj = tryParse(parsed)
+  if (n === 'todowrite') {
+    const todos = Array.isArray(obj) ? obj : (obj && Array.isArray(obj.newTodos) ? obj.newTodos : null)
+    if (todos && todos.length) return todos
+  }
+  if ((n === 'taskcreate' || n === 'taskupdate') && Array.isArray(obj) && obj.length) {
+    return obj
+  }
   return null
 }
 
@@ -41,6 +89,8 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
       messages.push({ type: 'system_command', text: obj.text || '', collapsed: true })
     } else if (subtype === 'hook_started' || subtype === 'hook_response') {
       messages.push({ type: 'system_hook', text: subtype === 'hook_started' ? 'Hook started: ' + (obj.hook_name || '') : 'Hook response: ' + (obj.hook_name || ''), collapsed: true })
+    } else if (subtype === 'hook_progress') {
+      messages.push({ type: 'system_hook', text: 'Hook progress: ' + (obj.hook_name || ''), collapsed: true, stderr: obj.stderr || '', output: obj.output || '' })
     } else if (subtype === 'status') {
       const statusMap = { requesting: '请求中', compressing: '压缩中' }
       messages.push({ type: 'system_status', status: obj.status || '', text: statusMap[obj.status] || obj.status })
@@ -140,6 +190,9 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
               last.input = JSON.stringify(parsed, null, 2)
               const di = buildToolDisplayInput(last.name, parsed)
               if (di) last.displayInput = di
+              // TodoWrite / TaskCreate / TaskUpdate: 挂载任务列表
+              const tasks = extractTasks(last.name, parsed)
+              if (tasks) last._tasks = tasks
             } catch (e) {
               // 解析失败，保留原始字符串
             }
@@ -201,9 +254,12 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
       } else if (part.type === 'thinking') {
         messages.push({ type: 'assistant_thinking', text: part.thinking || '', collapsed: true })
       } else if (part.type === 'tool_use') {
-        const inputObj = part.input || {}
+        const inputObj = tryParse(part.input || {})
         const di = buildToolDisplayInput(part.name, inputObj)
-        const tuMsg = { type: 'tool_use', name: part.name || '', id: part.id || '', input: JSON.stringify(inputObj, null, 2), displayInput: di }
+        const tuMsg = { type: 'tool_use', name: part.name || '', id: part.id || '', input: typeof inputObj === 'object' ? JSON.stringify(inputObj, null, 2) : (inputObj || ''), displayInput: di }
+        // TodoWrite / TaskCreate / TaskUpdate: 挂载任务列表
+        const tasks = extractTasks(part.name, inputObj)
+        if (tasks) tuMsg._tasks = tasks
         messages.push(tuMsg)
         if (part.id) {
           toolUseMap.set(part.id, { msg: tuMsg, isNew: true })

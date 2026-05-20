@@ -28,6 +28,16 @@
             <span class="agent-cli-card__body-label">McpServers:</span>
             <span>{{ item.mcp_server_count || 0 }} 个</span>
           </div>
+          <div class="agent-cli-card__body-item agent-cli-card__body-switch">
+            <span class="agent-cli-card__body-label">claude-mem:</span>
+            <el-switch
+              v-model="item.claude_mem_enabled"
+              size="small"
+              :loading="item._togglingMem"
+              @change="toggleClaudeMem(item)"
+            />
+            <span style="font-size: 12px; color: #909399; margin-left: 6px;">{{ item.claude_mem_enabled ? '已启用' : '已禁用' }}</span>
+          </div>
         </div>
         <div class="agent-cli-card__footer">
           <el-button size="small" @click="configureMcp(item)">配置DevtoolsMcp</el-button>
@@ -188,6 +198,18 @@ export default {
           this.loadList()
         } else {
           this.$message.error(response?.ErrMsg || '配置失败')
+        }
+      })
+    },
+    toggleClaudeMem(item) {
+      item._togglingMem = true
+      agentCliApi.AgentCliToggleClaudeMem({ id: item.id, enable: item.claude_mem_enabled }, (response) => {
+        item._togglingMem = false
+        if (response && response.ErrCode === 0) {
+          this.$message.success(`claude-mem 已${item.claude_mem_enabled ? '启用' : '禁用'}`)
+        } else {
+          this.$message.error(response?.ErrMsg || '操作失败')
+          item.claude_mem_enabled = !item.claude_mem_enabled
         }
       })
     },

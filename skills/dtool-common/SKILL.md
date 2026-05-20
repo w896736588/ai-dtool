@@ -166,14 +166,13 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 注意：禁止更新文档名称（文件内容开头的title）
 
 - **路径**: `/api/MemoryFragmentSave`
-- **Python 函数**: `memory_fragment_update_by_path(relative_path, content, title=None)`
+- **Python 函数**: `memory_fragment_update_by_path(relative_path, content)`（不传 title，禁止修改标题）
 - **参数**:
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `relative_path` | string | 是 | 相对于知识片段文件夹（`fragments/`）的路径，如 `"2026/05/a59db79a-3e4d-4f37-a02d-1bf87cc0c590.md"` |
 | `content` | string | 是 | 新的 Markdown 正文内容，支持占位符 `{需求文档纯文本文件相对地址}`（后端自动替换为实际路径） |
-| `title` | string | 否 | 新标题（不传则不修改） |
 
 - **返回**: 更新后的片段对象，包含 `id`、`title`、`content`、`update_time_desc` 等字段
 - **注意**: 函数内部从 `relative_path` 的文件名（去掉 `.md` 后缀）提取片段 ID，然后调用 `/api/MemoryFragmentSave`
@@ -263,8 +262,8 @@ description: Use when operating the dtool 通用工具模块 and the task involv
 
 1. 向用户确认 `base_url`、`Token`
 2. 确认要更新的知识片段相对路径（如 `2026/05/uuid.md`）
-3. 确认新的正文内容 `content` 和可选的新标题 `title`
-4. 调用 `memory_fragment_update_by_path(relative_path, content, title)`
+3. 确认新的正文内容 `content`（禁止修改标题）
+4. 调用 `memory_fragment_update_by_path(relative_path, content)`
 5. 返回更新后的片段信息
 ## Git 分支变更查看脚本
 

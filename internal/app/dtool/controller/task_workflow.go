@@ -2451,7 +2451,7 @@ func TaskWorkflowChatSend(c *gin.Context) {
 		if strings.TrimSpace(req.ModelName) == `` {
 			exists, content, _ := business.ReadAgentCliSettings(settingsPath)
 			if exists {
-				req.ModelName, _ = business.GetAgentCliSettingsSummary(content)
+				req.ModelName, _, _ = business.GetAgentCliSettingsSummary(content)
 			}
 		}
 	}

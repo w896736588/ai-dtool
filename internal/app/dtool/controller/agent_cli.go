@@ -38,7 +38,7 @@ func AgentCliList(c *gin.Context) {
 		exists, content, _ := business.ReadAgentCliSettings(item.SettingsPath)
 		item.SettingsExists = exists
 		if exists {
-			item.CurrentModel, item.McpServerCount = business.GetAgentCliSettingsSummary(content)
+			item.CurrentModel, item.McpServerCount, item.ClaudeMemEnabled = business.GetAgentCliSettingsSummary(content)
 			if item.CurrentModel == "" {
 				item.CurrentModel = "-"
 			}
@@ -221,6 +221,36 @@ func AgentCliWriteDeepSeek(c *gin.Context) {
 
 	settingsPath := cast.ToString(row["settings_path"])
 	if err := business.WriteDeepSeekToSettings(settingsPath, req.ModelName, req.ApiKey, req.BaseUrl); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	now := time.Now().Unix()
+	common.DbMain.Client.ExecBySql(
+		`UPDATE tbl_agent_cli SET updated_at = ? WHERE id = ?`, now, req.Id,
+	).Exec()
+
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// AgentCliToggleClaudeMem 切换 claude-mem 插件启停
+func AgentCliToggleClaudeMem(c *gin.Context) {
+	var req define.AgentCliToggleClaudeMemRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+
+	row, err := common.DbMain.Client.QueryBySql(
+		`SELECT * FROM tbl_agent_cli WHERE id = ?`, req.Id,
+	).One()
+	if err != nil || len(row) == 0 {
+		gsgin.GinResponseError(c, "Agent Cli 实例不存在", nil)
+		return
+	}
+
+	settingsPath := cast.ToString(row["settings_path"])
+	if err := business.ToggleClaudeMem(settingsPath, req.Enable); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}

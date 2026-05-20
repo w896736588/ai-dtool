@@ -173,6 +173,10 @@ func (h *Service) MemoryFragmentSave(id any, title, content string, _ []string) 
 		if strings.TrimSpace(content) == `` && strings.TrimSpace(oldFragment.Content) != `` {
 			return nil, errors.New(`不允许将已有内容的片段更新为空`)
 		}
+		if strings.TrimSpace(title) == `` {
+			title = oldFragment.Title
+			fragment.Title = title
+		}
 		fragment.CreatedAt = oldFragment.CreatedAt
 		fragment.IsDeleted = oldFragment.IsDeleted
 		fragment.FilePath = oldFragment.FilePath
@@ -470,6 +474,9 @@ func normalizeID(id any) string {
 	if text == `<nil>` {
 		return ``
 	}
+	// 如果传入的是文件路径（含路径分隔符或 .md），提取文件名的 UUID 部分
+	text = filepath.Base(filepath.ToSlash(text))
+	text = strings.TrimSuffix(text, `.md`)
 	return text
 }
 
