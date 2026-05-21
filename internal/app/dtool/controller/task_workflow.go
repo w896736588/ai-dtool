@@ -3024,6 +3024,9 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 	sessionExtracted := false
 	callbackCount := 0
 	var lastAssistantText string
+	// lastResultText 来自 Claude stream-json 的 result 类型消息，是本轮 turn 的最终汇总文本，
+	// 比逐条 assistant 流式累积更权威；webhook 通知优先使用该值，缺失时再回退到 lastAssistantText。
+	var lastResultText string
 
 	gstool.FmtPrintlnLogTime("[chat-run] chat_id=%d 开始RunClaudeStream dir=%s model=%s", chatID, localDir, modelName)
 
@@ -3044,10 +3047,16 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 		}
 		sendLine(rawJSON)
 
-		// 跟踪最后一条 assistant 消息的文本内容
+		// 跟踪最后一条 assistant 消息的文本内容（webhook 通知兜底用）
 		if msg.Type == `assistant` {
 			if text := extractAssistantText(msg.Data); text != "" {
 				lastAssistantText = text
+			}
+		}
+		// 跟踪 result 类型消息的 result 字段，作为 webhook 通知的首选内容
+		if msg.Type == `result` {
+			if text := strings.TrimSpace(cast.ToString(msg.Data[`result`])); text != "" {
+				lastResultText = text
 			}
 		}
 
@@ -3080,8 +3089,12 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 	sendLine(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
 	// 通知工作流页面刷新 chat 状态计数（执行历史按钮动画和状态数量）
 	taskWorkflowBroadcastChatStatus(chatID)
-	// 异步发送 webhook 通知
-	go taskWorkflowSendWebhookNotify(chatID, lastAssistantText)
+	// 异步发送 webhook 通知：优先使用 result 类型消息的最终文本，缺失时回退到 assistant 累积文本
+	notifyText := lastResultText
+	if notifyText == `` {
+		notifyText = lastAssistantText
+	}
+	go taskWorkflowSendWebhookNotify(chatID, notifyText)
 }
 
 // taskWorkflowAutoCompleteNode 自动将指定节点标记为已完成。
@@ -3134,8 +3147,14 @@ func taskWorkflowBroadcastChatStatus(chatID int64) {
 }
 
 // extractAssistantText 从 assistant 消息中提取文本内容。
+// Claude Code stream-json 的 assistant 消息结构为：{"type":"assistant","message":{"content":[{"type":"text","text":"..."}]}}
+// 所以 content 数组要从 data["message"]["content"] 取，而不是 data["content"]。
 func extractAssistantText(data map[string]any) string {
-	contentRaw, ok := data["content"]
+	msgMap, ok := data["message"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	contentRaw, ok := msgMap["content"]
 	if !ok {
 		return ""
 	}
