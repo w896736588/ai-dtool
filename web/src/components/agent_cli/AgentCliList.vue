@@ -2,7 +2,10 @@
   <div class="agent-cli-page">
     <div class="agent-cli-page__header">
       <span class="agent-cli-page__title">Agent Cli 管理</span>
-      <el-button type="primary" size="small" @click="openCreateDialog">新建</el-button>
+      <div class="agent-cli-page__actions">
+        <el-button type="primary" size="small" @click="openCreateDialog">新建</el-button>
+        <el-button type="primary" size="small" @click="chromeDevtoolsDialogVisible = true">ChromeDevTools</el-button>
+      </div>
     </div>
 
     <div v-loading="loading" class="agent-cli-card-list">
@@ -51,6 +54,20 @@
       </div>
     </div>
 
+    <!-- ChromeDevTools 弹窗 -->
+    <el-dialog
+      v-model="chromeDevtoolsDialogVisible"
+      title="Chrome DevTools 管理"
+      width="1000px"
+      top="5vh"
+      :destroy-on-close="true"
+    >
+      <iframe
+        src="/#/Mcp/chrome-devtools?hide_menu=1&embed=1"
+        style="width: 100%; height: 78vh; border: none;"
+      />
+    </el-dialog>
+
     <!-- 新建/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="editingId > 0 ? '编辑' : '新建 Agent Cli'" width="460px" :close-on-click-modal="false">
       <el-form :model="form" label-width="140px">
@@ -95,6 +112,7 @@ export default {
       list: [],
       // 新建/编辑
       dialogVisible: false,
+      chromeDevtoolsDialogVisible: false,
       editingId: 0,
       saving: false,
       form: {

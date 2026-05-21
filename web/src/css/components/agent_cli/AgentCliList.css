@@ -17,6 +17,11 @@
   color: #3a3a3a;
 }
 
+.agent-cli-page__actions {
+  display: flex;
+  gap: 8px;
+}
+
 .agent-cli-card-list {
   display: flex;
   flex-wrap: wrap;

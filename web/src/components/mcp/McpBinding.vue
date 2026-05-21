@@ -1,7 +1,7 @@
 <template>
   <div class="mcp-binding-page">
     <div class="mcp-binding-header">
-      <el-button type="info" link @click="goBack">&larr; 返回 MCP 列表</el-button>
+      <el-button v-if="!isEmbedded" type="info" link @click="goBack">&larr; 返回 MCP 列表</el-button>
       <h3>{{ pageTitle }}</h3>
     </div>
 
@@ -151,6 +151,9 @@ export default {
     }
   },
   computed: {
+    isEmbedded() {
+      return String(this.$route.query.embed || '') === '1'
+    },
     isChromeDevtools() {
       return this.mcpType === CHROME_DEVTOOLS_TYPE
     },

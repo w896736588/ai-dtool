@@ -63,10 +63,6 @@
           <el-icon><Connection /></el-icon>
           <span>Api Manage</span>
         </el-menu-item>
-        <el-menu-item index="/Mcp">
-          <el-icon><Connection /></el-icon>
-          <span>Mcp</span>
-        </el-menu-item>
         <el-menu-item index="/AgentCli">
           <el-icon><Monitor /></el-icon>
           <span>Agent Cli</span>
