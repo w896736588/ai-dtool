@@ -203,6 +203,7 @@ export default {
       status: '',
       messages: [],
       sseLines: [],
+      cliType: 'claude',
       continueInput: '',
       continueLoading: false,
       showScrollBtn: false,
@@ -240,11 +241,12 @@ export default {
           this.modelName = data.model_name || ''
           this.localDir = data.local_dir || ''
           this.thinkingIntensity = data.thinking_intensity || ''
+          this.cliType = data.cli_type || 'claude'
           this.status = data.status || ''
           const historicalLines = data.lines || []
           const newSseLines = this.sseLines.filter(l => !historicalLines.includes(l))
           this.sseLines = [...historicalLines, ...newSseLines]
-          this.messages = chatParser.parseChatLines(this.sseLines)
+          this.messages = chatParser.parseChatLines(this.sseLines, this.cliType)
           this.messages.forEach(msg => {
             if (msg.type === 'assistant' && msg.thinking) msg._thinkingCollapsed = true
             if (msg.type === 'assistant_thinking') msg._thinkingCollapsed = true
@@ -329,7 +331,7 @@ export default {
       const newLines = this._sseLineBuffer.splice(0)
       if (newLines.length === 0) return
       for (const l of newLines) { this.sseLines.push(l) }
-      const result = chatParser.parseChatLinesIncremental(newLines, this._sseParseState, this.messages.length)
+      const result = chatParser.parseChatLinesIncremental(newLines, this._sseParseState, this.messages.length, this.cliType)
       this._sseParseState = result.parseState
       if (result.newMessages.length > 0) {
         for (const msg of result.newMessages) { this.messages.push(msg) }

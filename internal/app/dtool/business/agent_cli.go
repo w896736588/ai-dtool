@@ -2,6 +2,7 @@ package business
 
 import (
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -223,6 +224,30 @@ func ToggleClaudeMem(settingsPath string, enable bool) error {
 		return fmt.Errorf("写入配置文件失败 %s: %w", settingsPath, err)
 	}
 	return nil
+}
+
+// GetCodexCliConfig 从 DB config JSON 字段解析 Codex CLI 配置
+func GetCodexCliConfig(configJson string) (*define.CodexCliConfig, error) {
+	if configJson == "" {
+		return nil, fmt.Errorf("Codex CLI 配置为空")
+	}
+	var cfg define.CodexCliConfig
+	if err := json.Unmarshal([]byte(configJson), &cfg); err != nil {
+		return nil, fmt.Errorf("解析 Codex CLI 配置失败: %w", err)
+	}
+	return &cfg, nil
+}
+
+// GetCodexCliStatusSummary 从 config JSON 中提取 Codex CLI 状态摘要
+func GetCodexCliStatusSummary(configJson string) (model string) {
+	if configJson == "" {
+		return ""
+	}
+	var cfg define.CodexCliConfig
+	if err := json.Unmarshal([]byte(configJson), &cfg); err != nil {
+		return ""
+	}
+	return cfg.Model
 }
 
 // GetAgentCliModelConfig 从 settings.json 内容中提取模型连接配置。

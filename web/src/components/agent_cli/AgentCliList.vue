@@ -16,32 +16,40 @@
           <el-tag size="small" type="info">{{ item.type }}</el-tag>
         </div>
         <div class="agent-cli-card__body">
-          <div class="agent-cli-card__body-item">
-            <span class="agent-cli-card__body-label">路径:</span>
-            <span>{{ item.settings_path }}</span>
-          </div>
-          <div class="agent-cli-card__body-item">
-            <span class="agent-cli-card__body-label">配置文件:</span>
-            <el-tag :type="item.settings_exists ? 'success' : 'danger'" size="small">{{ item.settings_exists ? '存在' : '不存在' }}</el-tag>
-          </div>
-          <div class="agent-cli-card__body-item">
-            <span class="agent-cli-card__body-label">模型:</span>
-            <span>{{ item.current_model || '-' }}</span>
-          </div>
-          <div class="agent-cli-card__body-item">
-            <span class="agent-cli-card__body-label">McpServers:</span>
-            <span>{{ item.mcp_server_count || 0 }} 个</span>
-          </div>
-          <div class="agent-cli-card__body-item agent-cli-card__body-switch">
-            <span class="agent-cli-card__body-label">claude-mem:</span>
-            <el-switch
-              v-model="item.claude_mem_enabled"
-              size="small"
-              :loading="item._togglingMem"
-              @change="toggleClaudeMem(item)"
-            />
-            <span style="font-size: 12px; color: #909399; margin-left: 6px;">{{ item.claude_mem_enabled ? '已启用' : '已禁用' }}</span>
-          </div>
+          <template v-if="item.type === 'codex-cli'">
+            <div class="agent-cli-card__body-item">
+              <span class="agent-cli-card__body-label">模型:</span>
+              <span>{{ item.current_model || '-' }}</span>
+            </div>
+          </template>
+          <template v-else>
+            <div class="agent-cli-card__body-item">
+              <span class="agent-cli-card__body-label">路径:</span>
+              <span>{{ item.settings_path }}</span>
+            </div>
+            <div class="agent-cli-card__body-item">
+              <span class="agent-cli-card__body-label">配置文件:</span>
+              <el-tag :type="item.settings_exists ? 'success' : 'danger'" size="small">{{ item.settings_exists ? '存在' : '不存在' }}</el-tag>
+            </div>
+            <div class="agent-cli-card__body-item">
+              <span class="agent-cli-card__body-label">模型:</span>
+              <span>{{ item.current_model || '-' }}</span>
+            </div>
+            <div class="agent-cli-card__body-item">
+              <span class="agent-cli-card__body-label">McpServers:</span>
+              <span>{{ item.mcp_server_count || 0 }} 个</span>
+            </div>
+            <div class="agent-cli-card__body-item agent-cli-card__body-switch">
+              <span class="agent-cli-card__body-label">claude-mem:</span>
+              <el-switch
+                v-model="item.claude_mem_enabled"
+                size="small"
+                :loading="item._togglingMem"
+                @change="toggleClaudeMem(item)"
+              />
+              <span style="font-size: 12px; color: #909399; margin-left: 6px;">{{ item.claude_mem_enabled ? '已启用' : '已禁用' }}</span>
+            </div>
+          </template>
           <div class="agent-cli-card__body-item agent-cli-card__body-webhook">
             <span class="agent-cli-card__body-label">通知:</span>
             <el-select
@@ -62,7 +70,7 @@
           </div>
         </div>
         <div class="agent-cli-card__footer">
-          <el-button size="small" @click="configureMcp(item)">配置DevtoolsMcp</el-button>
+          <el-button v-if="item.type !== 'codex-cli'" size="small" @click="configureMcp(item)">配置DevtoolsMcp</el-button>
           <el-button size="small" @click="editItem(item)">编辑</el-button>
           <el-button size="small" type="danger" @click="deleteItem(item)">删除</el-button>
         </div>
@@ -91,17 +99,46 @@
     <el-dialog v-model="dialogVisible" :title="editingId > 0 ? '编辑' : '新建 Agent Cli'" width="460px" :close-on-click-modal="false">
       <el-form :model="form" label-width="140px">
         <el-form-item label="名称">
-          <el-input v-model="form.name" placeholder="默认 Claude Code CLI" />
+          <el-input v-model="form.name" :placeholder="form.type === 'codex-cli' ? '默认 Codex CLI' : '默认 Claude Code CLI'" />
         </el-form-item>
         <el-form-item label="类型">
-          <el-select v-model="form.type" style="width: 100%">
+          <el-select v-model="form.type" style="width: 100%" @change="onTypeChange">
             <el-option label="Claude Code CLI" value="claude-code-cli" />
+            <el-option label="Codex CLI" value="codex-cli" />
           </el-select>
         </el-form-item>
-        <el-form-item label="settings.json 路径">
-          <el-input v-model="form.settings_path" placeholder="请输入 settings.json 的绝对路径" />
-          <div class="agent-cli-form-tip">例如: C:\Users\xxx\.claude\settings.json</div>
-        </el-form-item>
+        <!-- Claude Code CLI 配置 -->
+        <template v-if="form.type !== 'codex-cli'">
+          <el-form-item label="settings.json 路径">
+            <el-input v-model="form.settings_path" placeholder="请输入 settings.json 的绝对路径" />
+            <div class="agent-cli-form-tip">例如: C:\Users\xxx\.claude\settings.json</div>
+          </el-form-item>
+          <el-form-item label="模型名">
+            <el-input v-model="form.model_name" placeholder="deepseek-v4-pro[1m]" />
+          </el-form-item>
+          <el-form-item label="API Key">
+            <el-input v-model="form.api_key" type="password" show-password placeholder="请输入 DeepSeek API Key" />
+          </el-form-item>
+          <el-form-item label="Base URL">
+            <el-input v-model="form.base_url" placeholder="https://api.deepseek.com/anthropic" />
+          </el-form-item>
+        </template>
+        <!-- Codex CLI 配置 -->
+        <template v-else>
+          <el-form-item label="API Key" required>
+            <el-input v-model="form.codex_api_key" type="password" show-password placeholder="请输入 OpenAI API Key" />
+          </el-form-item>
+          <el-form-item label="模型" required>
+            <el-input v-model="form.codex_model" placeholder="o3" />
+          </el-form-item>
+          <el-form-item label="Base URL">
+            <el-input v-model="form.codex_base_url" placeholder="自定义 API 端点（可选）" />
+          </el-form-item>
+          <el-form-item label="Sandbox Mode">
+            <el-input v-model="form.codex_sandbox_mode" placeholder="danger-full-access" />
+            <div class="agent-cli-form-tip">默认: danger-full-access</div>
+          </el-form-item>
+        </template>
         <el-form-item label="Webhook 通知">
           <el-select v-model="form.webhook_config_id" placeholder="不通知" clearable style="width: 100%">
             <el-option
@@ -111,15 +148,6 @@
               :value="String(wh.id)"
             />
           </el-select>
-        </el-form-item>
-        <el-form-item label="模型名">
-          <el-input v-model="form.model_name" placeholder="deepseek-v4-pro[1m]" />
-        </el-form-item>
-        <el-form-item label="API Key">
-          <el-input v-model="form.api_key" type="password" show-password placeholder="请输入 DeepSeek API Key" />
-        </el-form-item>
-        <el-form-item label="Base URL">
-          <el-input v-model="form.base_url" placeholder="https://api.deepseek.com/anthropic" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -201,6 +229,11 @@ export default {
         model_name: '',
         api_key: '',
         base_url: '',
+        // Codex CLI 专属字段
+        codex_api_key: '',
+        codex_model: '',
+        codex_base_url: '',
+        codex_sandbox_mode: '',
       },
       // webhook 配置
       webhookDialogVisible: false,
@@ -238,21 +271,45 @@ export default {
     },
     openCreateDialog() {
       this.editingId = 0
-      this.form = { name: '', type: 'claude-code-cli', settings_path: '', webhook_config_id: '', model_name: '', api_key: '', base_url: '' }
+      this.form = { name: '', type: 'claude-code-cli', settings_path: '', webhook_config_id: '', model_name: '', api_key: '', base_url: '', codex_api_key: '', codex_model: '', codex_base_url: '', codex_sandbox_mode: '' }
       this.dialogVisible = true
     },
+    onTypeChange() {
+      // 切换类型时清空对方字段
+    },
     saveItem() {
-      if (!this.form.settings_path.trim()) {
-        this.$message.warning('请输入 settings.json 路径')
-        return
+      const isCodex = this.form.type === 'codex-cli'
+      if (isCodex) {
+        if (!this.form.codex_api_key.trim()) {
+          this.$message.warning('请输入 API Key')
+          return
+        }
+        if (!this.form.codex_model.trim()) {
+          this.$message.warning('请输入模型名')
+          return
+        }
+      } else {
+        if (!this.form.settings_path.trim()) {
+          this.$message.warning('请输入 settings.json 路径')
+          return
+        }
       }
       this.saving = true
       const data = {
         id: this.editingId,
         name: this.form.name,
         type: this.form.type,
-        settings_path: this.form.settings_path.trim(),
+        settings_path: isCodex ? '' : this.form.settings_path.trim(),
         webhook_config_id: parseInt(this.form.webhook_config_id) || 0,
+      }
+      // Codex 类型：将配置序列化为 config JSON
+      if (isCodex) {
+        data.config = JSON.stringify({
+          api_key: this.form.codex_api_key.trim(),
+          model: this.form.codex_model.trim(),
+          base_url: this.form.codex_base_url.trim() || undefined,
+          sandbox_mode: this.form.codex_sandbox_mode.trim() || undefined,
+        })
       }
       agentCliApi.AgentCliSave(data, (response) => {
         if (response && response.ErrCode === 0) {
@@ -260,8 +317,8 @@ export default {
           if (!this.editingId && response.Data && response.Data.id) {
             this.editingId = response.Data.id
           }
-          // 密钥字段非空时，一并写入 DeepSeek 配置
-          if (this.form.model_name.trim() && this.form.api_key.trim()) {
+          // Claude 类型：密钥字段非空时，一并写入 DeepSeek 配置
+          if (!isCodex && this.form.model_name.trim() && this.form.api_key.trim()) {
             const dsData = {
               id: this.editingId,
               model_name: this.form.model_name.trim(),
@@ -291,7 +348,7 @@ export default {
       })
     },
     deleteItem(item) {
-      this.$confirm(`确定要删除 "${item.name}" 吗？此操作不删除 settings.json 文件。`, '确认删除', {
+      this.$confirm(`确定要删除 "${item.name}" 吗？` + (item.type !== 'codex-cli' ? '此操作不删除 settings.json 文件。' : ''), '确认删除', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning',
@@ -330,9 +387,10 @@ export default {
         }
       })
     },
-    // 打开编辑对话框，预填当前条目数据并读取 settings.json 中的密钥
+    // 打开编辑对话框，预填当前条目数据并读取配置
     editItem(item) {
       this.editingId = item.id
+      const isCodex = item.type === 'codex-cli'
       this.form = {
         name: item.name || '',
         type: item.type || 'claude-code-cli',
@@ -341,21 +399,37 @@ export default {
         model_name: '',
         api_key: '',
         base_url: '',
+        codex_api_key: '',
+        codex_model: '',
+        codex_base_url: '',
+        codex_sandbox_mode: '',
+      }
+      // Codex: 从 config JSON 预填
+      if (isCodex && item.config) {
+        try {
+          const cfg = JSON.parse(item.config)
+          this.form.codex_api_key = cfg.api_key || ''
+          this.form.codex_model = cfg.model || ''
+          this.form.codex_base_url = cfg.base_url || ''
+          this.form.codex_sandbox_mode = cfg.sandbox_mode || ''
+        } catch (e) {}
       }
       this.dialogVisible = true
-      // 读取 settings.json 以预填密钥字段
-      agentCliApi.AgentCliReadSettings(item.id, (response) => {
-        if (response && response.ErrCode === 0 && response.Data && response.Data.content) {
-          try {
-            const config = JSON.parse(response.Data.content)
-            this.form.model_name = config.model || ''
-            if (config.env) {
-              this.form.api_key = config.env.ANTHROPIC_AUTH_TOKEN || ''
-              this.form.base_url = config.env.ANTHROPIC_BASE_URL || ''
-            }
-          } catch(e) {}
-        }
-      })
+      // Claude: 读取 settings.json 以预填密钥字段
+      if (!isCodex) {
+        agentCliApi.AgentCliReadSettings(item.id, (response) => {
+          if (response && response.ErrCode === 0 && response.Data && response.Data.content) {
+            try {
+              const config = JSON.parse(response.Data.content)
+              this.form.model_name = config.model || ''
+              if (config.env) {
+                this.form.api_key = config.env.ANTHROPIC_AUTH_TOKEN || ''
+                this.form.base_url = config.env.ANTHROPIC_BASE_URL || ''
+              }
+            } catch(e) {}
+          }
+        })
+      }
     },
     // ---- Webhook 配置相关 ----
     loadWebhookOptions() {
@@ -435,9 +509,10 @@ export default {
         id: item.id,
         name: item.name,
         type: item.type,
-        settings_path: item.settings_path,
+        settings_path: item.settings_path || '',
         webhook_config_id: parseInt(item.webhook_config_id) || 0,
       }
+      if (item.config) data.config = item.config
       agentCliApi.AgentCliSave(data, (response) => {
         if (response && response.ErrCode === 0) {
           this.$message.success('通知配置已更新')

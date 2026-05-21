@@ -751,12 +751,12 @@
             <el-option
               v-for="cli in promptExecCliList"
               :key="cli.id"
-              :label="cli.name + ' (' + cli.current_model + ')'"
+              :label="cli.name + ' (' + cli.current_model + ')' + (cli.type === 'codex-cli' ? ' [Codex]' : '')"
               :value="cli.id"
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="思考强度">
+        <el-form-item v-if="getSelectedCliType() !== 'codex'" label="思考强度">
           <el-select v-model="promptExecThinkingIntensity" style="width: 100%;" placeholder="请选择思考强度">
             <el-option label="低" value="低" />
             <el-option label="中等" value="中等" />
@@ -1275,6 +1275,7 @@ export default {
       chatDetailModelName: '',
       chatDetailLocalDir: '',
       chatDetailThinkingIntensity: '',
+      chatDetailCliType: 'claude',
       // zcode 配置
       zcodeConfigDialogVisible: false,
       zcodeDirInput: '',
@@ -1938,6 +1939,7 @@ export default {
           this.chatDetailModelName = data.model_name || ''
           this.chatDetailLocalDir = data.local_dir || ''
           this.chatDetailThinkingIntensity = data.thinking_intensity || ''
+          this.chatDetailCliType = data.cli_type || 'claude'
           // 同步更新左侧列表中的状态
           this.updateChatListStatus(this.chatDetailId, this.chatDetailStatus)
           // 合并历史行 + SSE 加载期间收到的新行（有则去重）
@@ -1945,7 +1947,7 @@ export default {
           const sseLines = this.chatDetailSSELines
           const newSseLines = sseLines.filter(l => !historicalLines.includes(l))
           this.chatDetailSSELines = [...historicalLines, ...newSseLines]
-          this.chatDetailMessages = chatParser.parseChatLines(this.chatDetailSSELines)
+          this.chatDetailMessages = chatParser.parseChatLines(this.chatDetailSSELines, this.chatDetailCliType)
           // 历史对话：自动折叠所有思考（对话已完成或已结束）
           this.chatDetailMessages.forEach(msg => {
             if (msg.type === 'assistant' && msg.thinking) {
@@ -2071,7 +2073,7 @@ export default {
       for (const l of newLines) {
         this.chatDetailSSELines.push(l)
       }
-      const result = chatParser.parseChatLinesIncremental(newLines, this._sseParseState, this.chatDetailMessages.length)
+      const result = chatParser.parseChatLinesIncremental(newLines, this._sseParseState, this.chatDetailMessages.length, this.chatDetailCliType)
       this._sseParseState = result.parseState
       if (result.newMessages.length > 0) {
         this._autoScrollLocked = true
@@ -2246,6 +2248,18 @@ export default {
     onPromptExecCliChange() {
       // 占位，后续可扩展
     },
+    // 获取当前选中的 CLI 实例对象
+    getSelectedCli() {
+      if (!this.promptExecCliId) return null
+      return this.promptExecCliList.find(c => c.id === this.promptExecCliId) || null
+    },
+    // 获取当前选中 CLI 的 cli_type（'claude' 或 'codex'）
+    getSelectedCliType() {
+      const cli = this.getSelectedCli()
+      if (!cli) return 'claude'
+      if (cli.type === 'codex-cli') return 'codex'
+      return 'claude'
+    },
     // 执行任务
     execPromptToClaude() {
       if (!this.promptExecCliId) {
@@ -2273,24 +2287,27 @@ export default {
           return
         }
         const localDir = dirs[0]
+        const cliType = this.getSelectedCliType()
         this.promptExecLoading = true
         taskWorkflowApi.TaskWorkflowChatSend(
           this.workflowId,
           this.promptExecPromptValue,
           this.promptExecPromptType,
           localDir,
-          'claude',
+          cliType,
           this.promptExecCliId,
           this.promptExecThinkingIntensity,
           (chatRes) => {
             this.promptExecLoading = false
             if (chatRes.ErrCode === 0 && chatRes.Data) {
               const chatId = chatRes.Data.chat_id
-              this.$helperNotify.success('已发送到 claude code 执行')
+              const cliLabel = cliType === 'codex' ? 'codex' : 'claude code'
+              this.$helperNotify.success('已发送到 ' + cliLabel + ' 执行')
               this.promptExecDialogVisible = false
-              // 初始化对话显示状态并连接 SSE 流以启动 claude code 执行
+              // 初始化对话显示状态并连接 SSE 流以启动执行
               this.chatDetailId = chatId
               this.chatDetailStatus = 'running'
+              this.chatDetailCliType = cliType
               this.chatDetailSSELines = []
               this.chatDetailMessages = []
               taskProgressStore.reset()

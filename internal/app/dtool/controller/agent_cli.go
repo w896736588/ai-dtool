@@ -50,12 +50,25 @@ func AgentCliList(c *gin.Context) {
 			item.WebhookConfigName = webhookNameMap[item.WebhookConfigId]
 		}
 
-		exists, content, _ := business.ReadAgentCliSettings(item.SettingsPath)
-		item.SettingsExists = exists
-		if exists {
-			item.CurrentModel, item.McpServerCount, item.ClaudeMemEnabled = business.GetAgentCliSettingsSummary(content)
-			if item.CurrentModel == "" {
+		// 根据 CLI 类型获取不同的状态摘要
+		if item.Type == define.AgentCliTypeCodexCli {
+			configJson := cast.ToString(row["config"])
+			item.Config = configJson
+			codexModel := business.GetCodexCliStatusSummary(configJson)
+			if codexModel != "" {
+				item.CurrentModel = codexModel
+			} else {
 				item.CurrentModel = "-"
+			}
+			item.SettingsExists = configJson != ""
+		} else {
+			exists, content, _ := business.ReadAgentCliSettings(item.SettingsPath)
+			item.SettingsExists = exists
+			if exists {
+				item.CurrentModel, item.McpServerCount, item.ClaudeMemEnabled = business.GetAgentCliSettingsSummary(content)
+				if item.CurrentModel == "" {
+					item.CurrentModel = "-"
+				}
 			}
 		}
 
@@ -73,17 +86,35 @@ func AgentCliSave(c *gin.Context) {
 		return
 	}
 
-	if req.SettingsPath == "" {
-		gsgin.GinResponseError(c, "settings.json 路径不能为空", nil)
-		return
+	// 根据 CLI 类型验证必填字段
+	if req.Type == define.AgentCliTypeCodexCli {
+		if req.Config == "" {
+			gsgin.GinResponseError(c, "Codex CLI 配置不能为空", nil)
+			return
+		}
+		// 验证 config JSON 中 api_key 必填
+		codexCfg, err := business.GetCodexCliConfig(req.Config)
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+		if codexCfg.ApiKey == "" {
+			gsgin.GinResponseError(c, "Codex CLI API Key 不能为空", nil)
+			return
+		}
+	} else {
+		if req.SettingsPath == "" {
+			gsgin.GinResponseError(c, "settings.json 路径不能为空", nil)
+			return
+		}
 	}
 
 	now := time.Now().Unix()
 
 	if req.Id > 0 {
 		_, err := common.DbMain.Client.ExecBySql(
-			`UPDATE tbl_agent_cli SET name = ?, type = ?, settings_path = ?, thinking_collapsed = ?, webhook_config_id = ?, updated_at = ? WHERE id = ?`,
-			req.Name, req.Type, req.SettingsPath, req.ThinkingCollapsed, req.WebhookConfigId, now, req.Id,
+			`UPDATE tbl_agent_cli SET name = ?, type = ?, settings_path = ?, config = ?, thinking_collapsed = ?, webhook_config_id = ?, updated_at = ? WHERE id = ?`,
+			req.Name, req.Type, req.SettingsPath, req.Config, req.ThinkingCollapsed, req.WebhookConfigId, now, req.Id,
 		).Exec()
 		if err != nil {
 			gsgin.GinResponseError(c, err.Error(), nil)
@@ -94,6 +125,7 @@ func AgentCliSave(c *gin.Context) {
 			Name:              req.Name,
 			Type:              req.Type,
 			SettingsPath:      req.SettingsPath,
+			Config:            req.Config,
 			ThinkingCollapsed: req.ThinkingCollapsed,
 			WebhookConfigId:   req.WebhookConfigId,
 			CreatedAt:         0,
@@ -105,14 +137,18 @@ func AgentCliSave(c *gin.Context) {
 
 	name := req.Name
 	if name == "" {
-		name = "Claude Code CLI"
+		if req.Type == define.AgentCliTypeCodexCli {
+			name = "Codex CLI"
+		} else {
+			name = "Claude Code CLI"
+		}
 	}
 	if req.Type == "" {
 		req.Type = define.AgentCliTypeClaudeCodeCli
 	}
 	lastId, err := common.DbMain.Client.InsertBySql(
-		`INSERT INTO tbl_agent_cli (name, type, settings_path, thinking_collapsed, webhook_config_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		name, req.Type, req.SettingsPath, req.ThinkingCollapsed, req.WebhookConfigId, now, now,
+		`INSERT INTO tbl_agent_cli (name, type, settings_path, config, thinking_collapsed, webhook_config_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		name, req.Type, req.SettingsPath, req.Config, req.ThinkingCollapsed, req.WebhookConfigId, now, now,
 	).Exec()
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -123,6 +159,7 @@ func AgentCliSave(c *gin.Context) {
 		Name:              name,
 		Type:              req.Type,
 		SettingsPath:      req.SettingsPath,
+		Config:            req.Config,
 		ThinkingCollapsed: req.ThinkingCollapsed,
 		WebhookConfigId:   req.WebhookConfigId,
 		CreatedAt:         now,

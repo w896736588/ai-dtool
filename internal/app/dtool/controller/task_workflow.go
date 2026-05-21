@@ -9,6 +9,7 @@ import (
 	"dev_tool/internal/app/dtool/define"
 	_struct "dev_tool/internal/app/dtool/struct"
 	"dev_tool/internal/pkg/p_claude"
+	"dev_tool/internal/pkg/p_codex"
 	"dev_tool/internal/pkg/p_define"
 	"encoding/json"
 	"fmt"
@@ -2389,19 +2390,37 @@ func TaskWorkflowChatStreamOpen(urlValues url.Values, stopC chan int, c *gin.Con
 		return sse, nil
 	}
 
-	settingsPath := cast.ToString(chatInfo[`settings_path`])
-	modelName, baseURL, apiKey := ``, ``, ``
-	if settingsPath != `` {
-		_, content, _ := business.ReadAgentCliSettings(settingsPath)
-		if content != `` {
-			modelName, baseURL, apiKey = business.GetAgentCliModelConfig(content)
+	// 根据 cli_type 分发到不同的 Agent CLI 执行器
+	cliType := cast.ToString(chatInfo[`cli_type`])
+	switch cliType {
+	case `codex`:
+		// Codex CLI：从 agent_cli.config JSON 读取配置
+		agentCliId := cast.ToInt(chatInfo[`agent_cli_id`])
+		configJson := ``
+		if agentCliId > 0 {
+			cliRow, _ := common.DbMain.Client.QueryBySql(
+				`SELECT config FROM tbl_agent_cli WHERE id = ?`, agentCliId,
+			).One()
+			if len(cliRow) > 0 {
+				configJson = cast.ToString(cliRow[`config`])
+			}
 		}
+		go runCodexCommand(chatID, localDir, prompt, isContinue, sessionID, configJson, sse, stopC)
+	default:
+		// Claude Code CLI：从 settings.json 读取配置（现有逻辑不变）
+		settingsPath := cast.ToString(chatInfo[`settings_path`])
+		modelName, baseURL, apiKey := ``, ``, ``
+		if settingsPath != `` {
+			_, content, _ := business.ReadAgentCliSettings(settingsPath)
+			if content != `` {
+				modelName, baseURL, apiKey = business.GetAgentCliModelConfig(content)
+			}
+		}
+		thinkingIntensity := cast.ToString(chatInfo[`thinking_intensity`])
+		thinkingBudget := define.ThinkingIntensityBudgetMap[thinkingIntensity]
+		thinkingEffort := define.ThinkingIntensityEffortMap[thinkingIntensity]
+		go runClaudeCommand(chatID, localDir, prompt, isContinue, sessionID, baseURL, apiKey, modelName, settingsPath, thinkingEffort, thinkingBudget, sse, stopC)
 	}
-	thinkingIntensity := cast.ToString(chatInfo[`thinking_intensity`])
-	thinkingBudget := define.ThinkingIntensityBudgetMap[thinkingIntensity]
-	thinkingEffort := define.ThinkingIntensityEffortMap[thinkingIntensity]
-
-	go runClaudeCommand(chatID, localDir, prompt, isContinue, sessionID, baseURL, apiKey, modelName, settingsPath, thinkingEffort, thinkingBudget, sse, stopC)
 	return sse, nil
 }
 
@@ -2653,6 +2672,7 @@ func TaskWorkflowChatDetail(c *gin.Context) {
 		`session_id`:         info[`session_id`],
 		`prompt`:             info[`prompt`],
 		`agent_cli_id`:       info[`agent_cli_id`],
+		`cli_type`:           info[`cli_type`],
 		`model_name`:         modelName,
 		`task_name`:          taskName,
 		`local_dir`:          info[`local_dir`],
@@ -3105,6 +3125,176 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 		notifyText = lastAssistantText
 	}
 	go taskWorkflowSendWebhookNotify(chatID, notifyText)
+}
+
+// runCodexCommand 执行 Codex CLI 命令并推送流式输出到 SSE + DB。
+// 与 runClaudeCommand 平级，通过 cli_type 分发调用。
+func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessionID string, configJson string, sse *gsgin.Sse, stopC chan int) {
+	distributeID := define.SseTaskWorkflowChatPrefix + cast.ToString(chatID)
+
+	defer func() {
+		if r := recover(); r != nil {
+			gstool.FmtPrintlnLogTime("[codex-run] chat_id=%d panic: %v", chatID, r)
+			_ = common.DbMain.TaskWorkflowChatMarkError(chatID)
+			if curSse := gsgin.SseGetByClientId(distributeID); curSse != nil {
+				_ = curSse.SendToChan(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
+			}
+			taskWorkflowBroadcastChatStatus(chatID)
+		}
+		func() {
+			defer func() { recover() }()
+			close(stopC)
+		}()
+	}()
+
+	// DB 写入通道：批量写 DB 与 SSE 推送解耦
+	dbWriteCh := make(chan string, 4096)
+	dbWriteDone := make(chan struct{})
+
+	go func() {
+		defer close(dbWriteDone)
+		dbBuf := make([]string, 0, common.ChatOutputFlushBatchSize)
+		flushTimer := time.NewTicker(2 * time.Second)
+		defer flushTimer.Stop()
+
+		flushDB := func() {
+			if len(dbBuf) == 0 {
+				return
+			}
+			lines := make([]string, len(dbBuf))
+			copy(lines, dbBuf)
+			dbBuf = dbBuf[:0]
+			_ = common.DbMain.TaskWorkflowChatAppendOutputBatch(chatID, lines)
+		}
+
+		for {
+			select {
+			case line, ok := <-dbWriteCh:
+				if !ok {
+					flushDB()
+					return
+				}
+				dbBuf = append(dbBuf, line)
+				if len(dbBuf) >= common.ChatOutputFlushBatchSize {
+					flushDB()
+				}
+			case <-flushTimer.C:
+				flushDB()
+			}
+		}
+	}()
+
+	defer func() {
+		close(dbWriteCh)
+		<-dbWriteDone
+	}()
+
+	sendLine := func(line string) {
+		select {
+		case dbWriteCh <- line:
+		default:
+		}
+		if curSse := gsgin.SseGetByClientId(distributeID); curSse != nil {
+			_ = curSse.SendToChan(line)
+		}
+	}
+
+	// 解析 Codex 配置
+	codexCfg, cfgErr := business.GetCodexCliConfig(configJson)
+	if cfgErr != nil {
+		errJSON, _ := json.Marshal(map[string]string{
+			`type`: `error`,
+			`text`: `Codex CLI 配置解析失败: ` + cfgErr.Error(),
+		})
+		sendLine(string(errJSON))
+		_ = common.DbMain.TaskWorkflowChatMarkError(chatID)
+		sendLine(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
+		taskWorkflowBroadcastChatStatus(chatID)
+		return
+	}
+
+	cfg := p_codex.RunConfig{
+		Prompt:      prompt,
+		SessionID:   sessionID,
+		Model:       codexCfg.Model,
+		APIKey:      codexCfg.ApiKey,
+		BaseURL:     codexCfg.BaseURL,
+		WorkingDir:  localDir,
+		SandboxMode: codexCfg.SandboxMode,
+	}
+
+	// 推送提示词到前端展示（复用 Claude 的 system/command 格式，前端可统一识别）
+	if prompt != "" {
+		promptJSON, _ := json.Marshal(map[string]string{
+			`type`:    `system`,
+			`subtype`: `command`,
+			`text`:    prompt,
+		})
+		sendLine(string(promptJSON))
+	}
+
+	stopped := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	chatCancelFuncs.Store(chatID, func() {
+		close(stopped)
+		cancel()
+	})
+	defer func() {
+		cancel()
+		chatCancelFuncs.Delete(chatID)
+	}()
+
+	sessionExtracted := false
+	callbackCount := 0
+	var lastAgentMessageText string
+
+	gstool.FmtPrintlnLogTime("[codex-run] chat_id=%d 开始RunCodexStream dir=%s model=%s", chatID, localDir, codexCfg.Model)
+
+	_, err := p_codex.RunCodexStream(ctx, cfg, func(msg p_codex.StreamMessage) {
+		callbackCount++
+		if callbackCount <= 3 {
+			gstool.FmtPrintlnLogTime("[codex-run] callback:%d type=%s item_type=%s len=%d", callbackCount, msg.Type, msg.ItemType, len(msg.RawJSON))
+		}
+		sendLine(msg.RawJSON)
+
+		// 跟踪最后一条 agent_message 的文本内容（webhook 通知用）
+		if msg.ItemType == `agent_message` {
+			if item, ok := msg.Data[`item`].(map[string]any); ok {
+				if text := cast.ToString(item[`text`]); text != "" {
+					lastAgentMessageText = text
+				}
+			}
+		}
+
+		// 从 thread.started 提取 thread_id 作为 session_id
+		if !sessionExtracted && !isResume && msg.Type == `thread.started` {
+			if tid := cast.ToString(msg.Data[`thread_id`]); tid != `` {
+				_ = common.DbMain.TaskWorkflowChatUpdateSessionID(chatID, tid)
+				sessionExtracted = true
+			}
+		}
+	})
+
+	gstool.FmtPrintlnLogTime("[codex-run] chat_id=%d RunCodexStream结束 callbackCount=%d err=%v", chatID, callbackCount, err)
+
+	if err != nil {
+		errJSON, _ := json.Marshal(map[string]string{
+			`type`: `error`,
+			`text`: err.Error(),
+		})
+		sendLine(string(errJSON))
+		select {
+		case <-stopped:
+			_ = common.DbMain.TaskWorkflowChatMarkInterrupted(chatID)
+		default:
+			_ = common.DbMain.TaskWorkflowChatMarkError(chatID)
+		}
+	} else {
+		_ = common.DbMain.TaskWorkflowChatMarkCompleted(chatID)
+	}
+	sendLine(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
+	taskWorkflowBroadcastChatStatus(chatID)
+	go taskWorkflowSendWebhookNotify(chatID, lastAgentMessageText)
 }
 
 // taskWorkflowAutoCompleteNode 自动将指定节点标记为已完成。

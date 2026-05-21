@@ -3,7 +3,19 @@ package define
 // 支持的 Agent CLI 类型常量
 const (
 	AgentCliTypeClaudeCodeCli = "claude-code-cli"
+	AgentCliTypeCodexCli      = "codex-cli"
 )
+
+// Codex CLI 默认 sandbox 模式
+const CodexCliDefaultSandboxMode = "danger-full-access"
+
+// CodexCliConfig Codex CLI 实例配置（存储在 tbl_agent_cli.config JSON 字段中）
+type CodexCliConfig struct {
+	ApiKey      string `json:"api_key"`
+	Model       string `json:"model"`
+	BaseURL     string `json:"base_url,omitempty"`     // 自定义 API 端点（可选）
+	SandboxMode string `json:"sandbox_mode,omitempty"` // 默认 "danger-full-access"
+}
 
 // AgentCliItem 列表项
 type AgentCliItem struct {
@@ -11,6 +23,7 @@ type AgentCliItem struct {
 	Name              string `json:"name"`
 	Type              string `json:"type"`
 	SettingsPath      string `json:"settings_path"`
+	Config            string `json:"config"` // 提供商专属配置 JSON（Codex 用）
 	ThinkingCollapsed int    `json:"thinking_collapsed"`
 	WebhookConfigId   int    `json:"webhook_config_id"`
 	CreatedAt         int64  `json:"created_at"`
@@ -23,6 +36,7 @@ type AgentCliSaveRequest struct {
 	Name              string `json:"name,omitempty"`
 	Type              string `json:"type,omitempty"`
 	SettingsPath      string `json:"settings_path,omitempty"`
+	Config            string `json:"config,omitempty"` // 提供商专属配置 JSON（Codex 用）
 	ThinkingCollapsed int    `json:"thinking_collapsed,omitempty"`
 	WebhookConfigId   int    `json:"webhook_config_id,omitempty"`
 }
