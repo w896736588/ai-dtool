@@ -1454,6 +1454,7 @@ func buildTaskWorkflowPlaceholderMap(c *gin.Context, homeTaskInfo map[string]any
 		`{dtool-common地址}`:     filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-common`),
 		`{dtool-workflow地址}`:   filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-workflow`),
 		`{dtool-playwright地址}`: filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-playwright`),
+		`{dtool-notify地址}`:     filepath.Join(component.EnvClient.RootPath, `skills`, `dtool-notify`),
 		`{自定义网页}`:              taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo, `smart_link`),
 		`{网页标签}`:               taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo, `smart_link_label`),
 		`{账号}`:                 taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo, `smart_link_account`),

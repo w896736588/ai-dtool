@@ -32,6 +32,10 @@ function buildToolDisplayInput(name, parsed) {
       return `${total} 个任务`
     }
   }
+  // AskUserQuestion: 提取第一个问题文本
+  if (n === 'askuserquestion' && parsed.questions && parsed.questions.length) {
+    return parsed.questions[0].question || ''
+  }
   // TaskCreate / TaskUpdate: 数组或 JSON 字符串
   if (n === 'taskcreate' || n === 'taskupdate') {
     const obj = tryParse(parsed)
@@ -61,6 +65,16 @@ function extractTasks(name, parsed) {
   if ((n === 'taskcreate' || n === 'taskupdate') && Array.isArray(obj) && obj.length) {
     return obj
   }
+  return null
+}
+
+// extractAskUserQuestions 从 AskUserQuestion 工具参数中提取问题列表。
+function extractAskUserQuestions(name, parsed) {
+  if (!name || !parsed) return null
+  const n = name.toLowerCase()
+  if (n !== 'askuserquestion') return null
+  const questions = parsed.questions
+  if (Array.isArray(questions) && questions.length) return questions
   return null
 }
 
@@ -208,6 +222,9 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
               // TodoWrite / TaskCreate / TaskUpdate: 挂载任务列表
               const tasks = extractTasks(last.name, parsed)
               if (tasks) last._tasks = tasks
+              // AskUserQuestion: 挂载问题列表
+              const questions = extractAskUserQuestions(last.name, parsed)
+              if (questions) last._askQuestions = questions
             } catch (e) {
               // 解析失败，保留原始字符串
             }
@@ -258,13 +275,33 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
       }
     }
   } else if (lineType === 'result') {
+    // 格式化模型用量数据，便于前端展示
+    let modelUsageList = null
+    if (obj.modelUsage) {
+      modelUsageList = Object.entries(obj.modelUsage).map(([name, info]) => ({
+        name,
+        inputTokens: info.inputTokens || 0,
+        outputTokens: info.outputTokens || 0,
+        cacheReadInputTokens: info.cacheReadInputTokens || 0,
+        cacheCreationInputTokens: info.cacheCreationInputTokens || 0,
+        costUSD: info.costUSD || 0,
+      }))
+    }
     messages.push({
       type: 'result',
       subtype: obj.subtype || '',
       durationMs: obj.duration_ms || 0,
+      durationApiMs: obj.duration_api_ms || 0,
       numTurns: obj.num_turns || 0,
       usage: obj.usage || null,
       isError: obj.is_error || false,
+      totalCostUsd: obj.total_cost_usd ?? null,
+      modelUsage: modelUsageList,
+      stopReason: obj.stop_reason || '',
+      permissionDenials: obj.permission_denials || null,
+      resultText: obj.result || '',
+      uuid: obj.uuid || '',
+      sessionId: obj.session_id || '',
     })
   } else if (lineType === 'assistant') {
     const content = obj.message?.content || []
@@ -280,6 +317,9 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
         // TodoWrite / TaskCreate / TaskUpdate: 挂载任务列表
         const tasks = extractTasks(part.name, inputObj)
         if (tasks) tuMsg._tasks = tasks
+        // AskUserQuestion: 挂载问题列表
+        const questions = extractAskUserQuestions(part.name, inputObj)
+        if (questions) tuMsg._askQuestions = questions
         messages.push(tuMsg)
         if (part.id) {
           toolUseMap.set(part.id, { msg: tuMsg, isNew: true })

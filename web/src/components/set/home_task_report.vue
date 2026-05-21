@@ -364,6 +364,7 @@ const PROMPT_PLACEHOLDERS = [
   { label: 'dtool-common地址', value: '{dtool-common地址}' },
   { label: 'dtool-workflow地址', value: '{dtool-workflow地址}' },
   { label: 'dtool-playwright地址', value: '{dtool-playwright地址}' },
+  { label: 'dtool-notify地址', value: '{dtool-notify地址}' },
   { label: '工作流程ID', value: '{工作流程ID}' },
   { label: '开发环境', value: '{开发环境}' },
 ]

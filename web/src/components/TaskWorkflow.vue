@@ -878,10 +878,24 @@
                           <span v-if="task.activeForm && task.status === 'in_progress'" style="color: #909399; font-size: 10px; margin-left: 4px;">{{ task.activeForm }}</span>
                         </div>
                       </div>
-                      <div v-if="!block.displayInput && !block._tasks" style="font-size: 12px; color: #909399; margin-top: 4px; cursor: pointer;" @click="block._inputExpanded = !block._inputExpanded">
+                      <!-- AskUserQuestion 提问展示 -->
+                      <div v-if="block._askQuestions" class="chat-ask-questions" style="margin-top: 6px;">
+                        <div v-for="(q, qi) in block._askQuestions" :key="qi" class="chat-ask-question-item" style="margin-bottom: 8px;">
+                          <div style="font-weight: 600; color: #303133; margin-bottom: 2px;">{{ q.question }}</div>
+                          <div style="font-size: 10px; color: #909399; margin-bottom: 4px;">类型: {{ q.header || '选择' }}{{ q.multiSelect ? ' (多选)' : '' }}</div>
+                          <div v-for="(opt, oi) in q.options" :key="oi" class="chat-ask-option" style="display: flex; gap: 6px; padding: 3px 8px; margin: 1px 0; font-size: 12px; border-radius: 4px; background: #fafafa;">
+                            <span style="color: #409eff; flex-shrink: 0;">{{ q.multiSelect ? '☐' : '○' }}</span>
+                            <div>
+                              <div>{{ opt.label }}</div>
+                              <div v-if="opt.description" style="font-size: 11px; color: #909399;">{{ opt.description }}</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div v-if="!block.displayInput && !block._tasks && !block._askQuestions" style="font-size: 12px; color: #909399; margin-top: 4px; cursor: pointer;" @click="block._inputExpanded = !block._inputExpanded">
                         {{ block._inputExpanded ? '▼' : '▶' }} 参数
                       </div>
-                      <pre v-if="!block.displayInput && !block._tasks && block._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ block.input }}</pre>
+                      <pre v-if="!block.displayInput && !block._tasks && !block._askQuestions && block._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ block.input }}</pre>
                       <div v-if="block._result" style="color: #909399; font-size: 12px; margin-top: 6px; border-top: 1px dashed #dcdfe6; padding-top: 4px;">
                         <span @click="block._result.collapsed = !block._result.collapsed" style="cursor: pointer;">{{ block._result.collapsed ? '▶' : '▼' }} 工具执行结果</span>
                         <!-- 工具执行结果中的任务列表 -->
@@ -919,10 +933,24 @@
                       <span v-if="task.activeForm && task.status === 'in_progress'" style="color: #909399; font-size: 10px; margin-left: 4px;">{{ task.activeForm }}</span>
                     </div>
                   </div>
-                  <div v-if="!msg.displayInput && !msg._tasks" style="font-size: 12px; color: #909399; margin-top: 4px; cursor: pointer;" @click="msg._inputExpanded = !msg._inputExpanded">
+                  <!-- AskUserQuestion 提问展示 -->
+                  <div v-if="msg._askQuestions" class="chat-ask-questions" style="margin-top: 6px;">
+                    <div v-for="(q, qi) in msg._askQuestions" :key="qi" class="chat-ask-question-item" style="margin-bottom: 8px;">
+                      <div style="font-weight: 600; color: #303133; margin-bottom: 2px;">{{ q.question }}</div>
+                      <div style="font-size: 10px; color: #909399; margin-bottom: 4px;">类型: {{ q.header || '选择' }}{{ q.multiSelect ? ' (多选)' : '' }}</div>
+                      <div v-for="(opt, oi) in q.options" :key="oi" class="chat-ask-option" style="display: flex; gap: 6px; padding: 3px 8px; margin: 1px 0; font-size: 12px; border-radius: 4px; background: #fafafa;">
+                        <span style="color: #409eff; flex-shrink: 0;">{{ q.multiSelect ? '☐' : '○' }}</span>
+                        <div>
+                          <div>{{ opt.label }}</div>
+                          <div v-if="opt.description" style="font-size: 11px; color: #909399;">{{ opt.description }}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="!msg.displayInput && !msg._tasks && !msg._askQuestions" style="font-size: 12px; color: #909399; margin-top: 4px; cursor: pointer;" @click="msg._inputExpanded = !msg._inputExpanded">
                     {{ msg._inputExpanded ? '▼' : '▶' }} 参数
                   </div>
-                  <pre v-if="!msg.displayInput && !msg._tasks && msg._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ msg.input }}</pre>
+                  <pre v-if="!msg.displayInput && !msg._tasks && !msg._askQuestions && msg._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ msg.input }}</pre>
                   <div v-if="msg._result" style="color: #909399; font-size: 12px; margin-top: 6px; border-top: 1px dashed #dcdfe6; padding-top: 4px;">
                     <span @click="msg._result.collapsed = !msg._result.collapsed" style="cursor: pointer;">{{ msg._result.collapsed ? '▶' : '▼' }} 工具执行结果</span>
                     <!-- 工具执行结果中的任务列表 -->
@@ -961,9 +989,50 @@
                   </div>
                   <div v-if="!msg._thinkingCollapsed" class="thinking-blockquote">{{ msg.text }}</div>
                 </div>
-                <div v-else-if="msg.type === 'result'" style="color: #67c23a; font-size: 12px; border-top: 1px solid #ebeef5; padding-top: 8px; margin-top: 8px;">
-                  {{ msg.isError ? '错误' : '完成' }} | 耗时: {{ (msg.durationMs / 1000).toFixed(1) }}s | {{ msg.numTurns }} 轮
-                  <span v-if="msg.usage"> | input: {{ msg.usage.input_tokens }} output: {{ msg.usage.output_tokens }}</span>
+                <div v-else-if="msg.type === 'result'" class="chat-result-card">
+                  <div class="chat-result-header">
+                    <span :style="{ color: msg.isError ? '#f56c6c' : '#67c23a', fontWeight: 'bold' }">
+                      {{ msg.isError ? '✕ 执行失败' : '✓ 执行完成' }}
+                    </span>
+                    <span class="chat-result-header-item">耗时 {{ (msg.durationMs / 1000).toFixed(1) }}s</span>
+                    <span v-if="msg.durationApiMs" class="chat-result-header-item">API {{ (msg.durationApiMs / 1000).toFixed(1) }}s</span>
+                    <span class="chat-result-header-item">{{ msg.numTurns }} 轮对话</span>
+                    <span v-if="msg.totalCostUsd != null" class="chat-result-header-item" style="color: #e6a23c;">${{ msg.totalCostUsd.toFixed(4) }}</span>
+                    <span v-if="msg.stopReason" class="chat-result-header-item" style="color: #909399;">{{ stopReasonLabel(msg.stopReason) }}</span>
+                  </div>
+                  <!-- Token 用量 -->
+                  <div v-if="msg.usage" class="chat-result-section">
+                    <div class="chat-result-section-title">Token 用量</div>
+                    <div class="chat-result-tokens">
+                      <span>输入 {{ formatNum(msg.usage.input_tokens) }}</span>
+                      <span>输出 {{ formatNum(msg.usage.output_tokens) }}</span>
+                      <span v-if="msg.usage.cache_read_input_tokens">缓存读取 {{ formatNum(msg.usage.cache_read_input_tokens) }}</span>
+                      <span v-if="msg.usage.cache_creation_input_tokens">缓存创建 {{ formatNum(msg.usage.cache_creation_input_tokens) }}</span>
+                    </div>
+                  </div>
+                  <!-- 模型用量 -->
+                  <div v-if="msg.modelUsage && msg.modelUsage.length" class="chat-result-section">
+                    <div class="chat-result-section-title">模型用量</div>
+                    <div v-for="mu in msg.modelUsage" :key="mu.name" class="chat-result-model-row">
+                      <span class="chat-result-model-name">{{ mu.name }}</span>
+                      <span>输入 {{ formatNum(mu.inputTokens) }}</span>
+                      <span>输出 {{ formatNum(mu.outputTokens) }}</span>
+                      <span v-if="mu.costUSD">${{ mu.costUSD.toFixed(4) }}</span>
+                    </div>
+                  </div>
+                  <!-- 权限拒绝 -->
+                  <div v-if="msg.permissionDenials && msg.permissionDenials.length" class="chat-result-section">
+                    <div class="chat-result-section-title" style="color: #e6a23c;">权限询问 ({{ msg.permissionDenials.length }})</div>
+                    <div v-for="(pd, pdi) in msg.permissionDenials" :key="pdi" class="chat-result-permission-item">
+                      <span style="color: #909399;">{{ pd.tool_name }}</span>
+                      <span v-if="pd.tool_use_id" style="color: #c0c4cc; font-size: 10px; margin-left: 4px;">{{ pd.tool_use_id.slice(0, 8) }}...</span>
+                    </div>
+                  </div>
+                  <!-- 结果文本 -->
+                  <div v-if="msg.resultText" class="chat-result-section">
+                    <div class="chat-result-section-title">结果</div>
+                    <pre class="chat-result-text">{{ msg.resultText }}</pre>
+                  </div>
                 </div>
                 <div v-else-if="msg.type === 'chat_completed' && chatDetailStatus === 'completed'" style="color: #67c23a; text-align: center; padding: 16px;">
                   {{ msg.text }}
@@ -2409,6 +2478,21 @@ export default {
       }
       return new Date(value * 1000).toLocaleString()
     },
+    // 格式化数字（千位分隔），用于 Token 用量展示
+    formatNum(num) {
+      if (num == null) return '0'
+      return Number(num).toLocaleString()
+    },
+    // 将 stop_reason 转为中文标签
+    stopReasonLabel(reason) {
+      const map = {
+        end_turn: '正常结束',
+        stop_sequence: '停止序列',
+        max_tokens: '达到上限',
+        tool_use: '工具调用',
+      }
+      return map[reason] || reason
+    },
     loadTaskConfigLookupData() {
       gitApi.GitConfigList({}, (response) => {
         if (response && response.ErrCode === 0) {
@@ -3787,6 +3871,80 @@ export default {
   margin: 8px 0;
   padding: 0 12px;
   color: #909399;
+}
+
+/* 执行结果卡片 */
+.chat-result-card {
+  background: #fafbfc;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.chat-result-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #ebeef5;
+}
+.chat-result-header-item {
+  color: #606266;
+  font-size: 12px;
+}
+.chat-result-header-item::before {
+  content: '·';
+  margin-right: 8px;
+  color: #c0c4cc;
+}
+.chat-result-header > span:first-child::before {
+  content: none;
+}
+.chat-result-section {
+  margin-top: 8px;
+}
+.chat-result-section-title {
+  color: #909399;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.chat-result-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #606266;
+}
+.chat-result-model-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 4px 8px;
+  background: #f2f3f5;
+  border-radius: 4px;
+  margin-bottom: 2px;
+}
+.chat-result-model-name {
+  font-weight: 600;
+  color: #303133;
+}
+.chat-result-permission-item {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.chat-result-text {
+  white-space: pre-wrap;
+  font-size: 11px;
+  max-height: 120px;
+  overflow-y: auto;
+  font-family: Consolas, monospace;
+  background: #f2f3f5;
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin: 0;
+  color: #606266;
 }
 
 /* 接口开发弹窗 */
