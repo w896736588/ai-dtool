@@ -119,7 +119,8 @@ func buildArgs(cfg RunConfig) []string {
 
 	if cfg.SessionID != `` {
 		// 续接会话：codex exec resume <session_id> [--json] [prompt]
-		args = append(args, `exec`, `resume`, cfg.SessionID, `--json`)
+		// resume 不支持 --sandbox 参数，需使用 --dangerously-bypass-approvals-and-sandbox 达到等效权限
+		args = append(args, `exec`, `resume`, cfg.SessionID, `--json`, `--dangerously-bypass-approvals-and-sandbox`)
 		if cfg.Prompt != `` {
 			args = append(args, sanitizePrompt(cfg.Prompt))
 		}
@@ -197,7 +198,7 @@ func BuildCommandLine(cfg RunConfig) string {
 	if cfg.SessionID != `` {
 		sb.WriteString(` exec resume `)
 		sb.WriteString(cfg.SessionID)
-		sb.WriteString(` --json`)
+		sb.WriteString(` --json --dangerously-bypass-approvals-and-sandbox`)
 		if cfg.Prompt != `` {
 			sb.WriteString(` "`)
 			sb.WriteString(sanitizePrompt(cfg.Prompt))

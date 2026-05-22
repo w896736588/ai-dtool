@@ -689,7 +689,15 @@
           />
         </div>
         <div class="task-workflow-issue-fix__output">
-          <div class="task-workflow-issue-fix__label">完整提示词</div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="task-workflow-issue-fix__label" style="margin-bottom: 0;">完整提示词</span>
+            <el-switch
+              v-model="issueFixUseDefaultPrompt"
+              active-text="使用默认提示词"
+              inactive-text=""
+              style="--el-switch-on-color: #5a8a5a; margin-left: 8px;"
+            />
+          </div>
           <MdEditor
             v-model="issueFixCombinedText"
             preview-theme="github"
@@ -746,8 +754,8 @@
       destroy-on-close
     >
       <el-form label-width="80px">
-        <el-form-item label="cli">
-          <el-select v-model="promptExecCliId" style="width: 100%;" placeholder="请选择 Agent CLI 实例" @change="onPromptExecCliChange">
+        <el-form-item label="Agent">
+          <el-select v-model="promptExecCliId" style="width: 100%;" placeholder="请选择 Agent 实例" @change="onPromptExecCliChange">
             <el-option
               v-for="cli in promptExecCliList"
               :key="cli.id"
@@ -1241,6 +1249,7 @@ export default {
       issueFixDialogVisible: false,
       issueFixInput: '',
       issueFixResolvedTemplate: '',
+      issueFixUseDefaultPrompt: true, // 是否使用默认问题修改提示词
       // claude code 对话
       _chatHistoryDurationTimer: null, // 历史对话列表运行中对话的实时耗时定时器
       promptChatCounts: {},
@@ -1361,7 +1370,8 @@ export default {
     },
     issueFixCombinedText() {
       const input = (this.issueFixInput || '').trim()
-      const template = (this.issueFixResolvedTemplate || '').trim()
+      // 根据开关决定是否使用默认问题修改提示词模板
+      const template = this.issueFixUseDefaultPrompt ? (this.issueFixResolvedTemplate || '').trim() : ''
       if (!input && !template) return ''
       if (!input) return template
       if (!template) return input
@@ -1838,6 +1848,7 @@ export default {
       this.issueFixDialogVisible = true
       this.issueFixInput = ''
       this.issueFixResolvedTemplate = ''
+      this.issueFixUseDefaultPrompt = true
       this.issueFixZcodeMappings = []
       // 获取当前任务所有本地目录
       const taskDirs = this.parsedTaskDevConfigs
@@ -2273,7 +2284,8 @@ export default {
       // 加载 Agent CLI 列表
       agentCliApi.AgentCliList((res) => {
         if (res.ErrCode === 0 && res.Data) {
-          this.promptExecCliList = res.Data.list || []
+          // 过滤掉配置文件不存在的 Claude Code CLI（codex 类型不受此限制）
+          this.promptExecCliList = (res.Data.list || []).filter(cli => cli.type === 'codex-cli' || cli.settings_exists)
           // 如果无缓存且仅有一个 CLI，自动选中
           if (!cached && this.promptExecCliList.length === 1) {
             this.promptExecCliId = this.promptExecCliList[0].id
@@ -2307,7 +2319,7 @@ export default {
     // 执行任务
     execPromptToClaude() {
       if (!this.promptExecCliId) {
-        this.$helperNotify.warning('请选择 CLI 实例')
+        this.$helperNotify.warning('请选择 Agent 实例')
         return
       }
       // 执行前检查分支是否匹配
@@ -3658,6 +3670,11 @@ export default {
 .task-workflow-issue-fix-dialog .el-dialog {
   max-height: 90vh;
   overflow: hidden;
+}
+
+/* 问题修改提示词弹窗：开关文字颜色跟随主题色 */
+.task-workflow-issue-fix-dialog .el-switch__label.is-active {
+  color: #5a8a5a;
 }
 
 /* 历史对话合并弹窗 */
