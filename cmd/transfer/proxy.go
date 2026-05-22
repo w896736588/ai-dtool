@@ -135,7 +135,7 @@ func (p *Proxy) handleRegular(w http.ResponseWriter, resp *http.Response, rec *R
 	rec.Completed = true
 
 	// 使用规则配置的格式解析 token 信息
-	rec.InputTokens, rec.OutputTokens = parseTokens(p.format, rec.ResponseBody)
+	rec.InputTokens, rec.OutputTokens, rec.CacheReadInputTokens = parseTokens(p.format, rec.ResponseBody)
 
 	// 保存记录
 	p.store.Add(rec)
@@ -183,8 +183,6 @@ func (p *Proxy) handleStream(w http.ResponseWriter, resp *http.Response, rec *Re
 
 		chunkCount++
 		if chunkCount%updateInterval == 0 {
-			// 增量更新 response body，让 UI 看到实时内容
-			rec.ResponseBody = chunksBuf.String()
 			p.store.UpdateRecord(rec)
 		}
 	}
@@ -193,12 +191,12 @@ func (p *Proxy) handleStream(w http.ResponseWriter, resp *http.Response, rec *Re
 		rec.ResponseBody = fmt.Sprintf("流读取错误: %s", err.Error())
 	}
 
-	rec.ResponseBody = chunksBuf.String()
+	chunksStr := chunksBuf.String()
 	rec.CompleteTime = time.Now()
 	rec.Duration = rec.CompleteTime.Sub(startTime).Milliseconds()
 
-	// 使用规则配置的格式解析 token 信息
-	rec.InputTokens, rec.OutputTokens = parseTokens(p.format, rec.ResponseBody)
+	// 从 chunksBuf 解析 token（不保留 ResponseBody，前端从 StreamChunks 拼接）
+	rec.InputTokens, rec.OutputTokens, rec.CacheReadInputTokens = parseTokens(p.format, chunksStr)
 
 	// 标记完成，最终更新
 	rec.Completed = true

@@ -15,24 +15,25 @@ type StreamChunk struct {
 
 // Record 单次请求的完整记录
 type Record struct {
-	ID           string            `json:"id"`
-	Time         time.Time         `json:"time"`
-	CompleteTime time.Time         `json:"complete_time"`
-	Method       string            `json:"method"`
-	Path         string            `json:"path"`
-	Headers      map[string]string `json:"headers"`
-	QueryParams  map[string]string `json:"query_params"`
-	Body         string            `json:"body"`
-	StatusCode   int               `json:"status_code"`
-	ResponseBody string            `json:"response_body"`
-	Duration     int64             `json:"duration_ms"`
-	InputTokens  int               `json:"input_tokens"`
-	OutputTokens int               `json:"output_tokens"`
-	Model        string            `json:"model"`
-	RuleID       string            `json:"rule_id"`
-	IsStream     bool              `json:"is_stream"`
-	Completed    bool              `json:"completed"`
-	StreamChunks []StreamChunk     `json:"stream_chunks,omitempty"`
+	ID                   string            `json:"id"`
+	Time                 time.Time         `json:"time"`
+	CompleteTime         time.Time         `json:"complete_time"`
+	Method               string            `json:"method"`
+	Path                 string            `json:"path"`
+	Headers              map[string]string `json:"headers"`
+	QueryParams          map[string]string `json:"query_params"`
+	Body                 string            `json:"body"`
+	StatusCode           int               `json:"status_code"`
+	ResponseBody         string            `json:"response_body"`
+	Duration             int64             `json:"duration_ms"`
+	InputTokens          int               `json:"input_tokens"`
+	OutputTokens         int               `json:"output_tokens"`
+	CacheReadInputTokens int               `json:"cache_read_input_tokens"`
+	Model                string            `json:"model"`
+	RuleID               string            `json:"rule_id"`
+	IsStream             bool              `json:"is_stream"`
+	Completed            bool              `json:"completed"`
+	StreamChunks         []StreamChunk     `json:"stream_chunks,omitempty"`
 }
 
 // sseEvent SSE 推送事件
@@ -63,7 +64,7 @@ func (s *Store) Subscribe() (string, <-chan *sseEvent) {
 	defer s.mu.Unlock()
 	id := uuid.New().String()
 	// 使用带缓冲的 channel，避免慢客户端阻塞写入
-	ch := make(chan *sseEvent, 64)
+	ch := make(chan *sseEvent, 1000)
 	s.subscribers[id] = ch
 
 	// 发送初始全量数据
@@ -139,13 +140,11 @@ func (s *Store) Count() int {
 
 // broadcastLocked 广播给所有订阅者，调用者需持有锁
 func (s *Store) broadcastLocked(evt *sseEvent) {
-	for id, ch := range s.subscribers {
+	for _, ch := range s.subscribers {
 		select {
 		case ch <- evt:
 		default:
-			// channel 满了，跳过慢客户端并断开
-			close(ch)
-			delete(s.subscribers, id)
+			// channel 满了，丢弃该次推送（慢客户端跳过）
 		}
 	}
 }

@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"io"
 	"net/http"
 
@@ -12,12 +11,6 @@ import (
 
 //go:embed templates/index.html
 var templateFS embed.FS
-
-var pageTemplate *template.Template
-
-func init() {
-	pageTemplate = template.Must(template.ParseFS(templateFS, "templates/index.html"))
-}
 
 // adminHandler 管理服务器的路由处理器
 type adminHandler struct {
@@ -46,12 +39,22 @@ func (h *adminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// serveUI 返回 UI 页面
+// writeJSONError 写入 JSON 格式的错误响应，自动处理特殊字符转义
+func writeJSONError(w http.ResponseWriter, msg string, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// serveUI 返回 UI 页面（直接输出嵌入的 HTML，避免 template 引擎干扰 Vue 语法）
 func (h *adminHandler) serveUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := pageTemplate.Execute(w, nil); err != nil {
-		http.Error(w, "渲染页面失败", http.StatusInternalServerError)
+	data, err := templateFS.ReadFile("templates/index.html")
+	if err != nil {
+		http.Error(w, "读取页面失败", http.StatusInternalServerError)
+		return
 	}
+	w.Write(data)
 }
 
 // handleSSE SSE 事件流端点，实时推送请求记录更新
@@ -143,15 +146,15 @@ func (h *adminHandler) handleRules(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if rule.Host == "" {
-			rule.Host = "0.0.0.0"
+			rule.Host = "localhost"
 		}
 		if err := h.config.Add(&rule); err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			writeJSONError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		// 启动代理服务
 		if err := h.manager.StartRule(&rule); err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			writeJSONError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rule": rule})
@@ -175,18 +178,18 @@ func (h *adminHandler) handleRules(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if rule.Host == "" {
-			rule.Host = "0.0.0.0"
+			rule.Host = "localhost"
 		}
 		// 先停止旧服务
 		h.manager.StopRule(ruleID)
 		// 更新配置
 		if err := h.config.Update(&rule); err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			writeJSONError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		// 启动新服务
 		if err := h.manager.StartRule(&rule); err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			writeJSONError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rule": rule})
@@ -202,7 +205,7 @@ func (h *adminHandler) handleRules(w http.ResponseWriter, r *http.Request) {
 		h.manager.StopRule(ruleID)
 		// 删除配置
 		if err := h.config.Delete(ruleID); err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			writeJSONError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})

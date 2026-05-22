@@ -175,353 +175,424 @@ tbody tr:hover { background: var(--bg-row-hover); }
 .btn-close-detail:hover { background: var(--cancel-bg-hover); }
 .btn-detail { background: var(--blue); color: #fff; padding: 5px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: all 0.2s; }
 .btn-detail:hover { background: var(--blue-hover); }
+.btn-copy { background: none; border: 1px solid var(--border-light); color: var(--text-secondary); padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; transition: all 0.2s; }
+.btn-copy:hover { border-color: var(--accent); color: var(--accent); }
+.btn-copy.copied { border-color: var(--green); color: var(--green); }
 .detail-meta { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 16px; font-size: 13px; color: var(--text-secondary); }
 .detail-meta span { white-space: nowrap; }
 .detail-meta .label { color: var(--text-muted); margin-right: 4px; }</style>
 </head>
 <body>
-<div class="header">
+
+<div id="app">
+  <!-- ===== Header ===== -->
+  <div class="header">
     <h1>Transfer Proxy</h1>
     <div class="header-right">
-        <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">浅色</button>
-        <div class="conn-status"><span class="conn-dot on" id="connDot"></span><span id="connLabel">SSE 已连接</span></div>
+      <button class="theme-btn" @click="toggleTheme">{{ theme === 'dark' ? '浅色' : '深色' }}</button>
+      <div class="conn-status">
+        <span class="conn-dot" :class="sseConnected ? 'on' : 'off'"></span>
+        {{ sseLabel }}
+      </div>
     </div>
-</div>
+  </div>
 
-<!-- Tab 导航 -->
-<div class="tab-nav">
-    <button class="tab-btn active" onclick="switchTab('records')">请求记录</button>
-    <button class="tab-btn" onclick="switchTab('rules')">代理规则</button>
-</div>
+  <!-- ===== Tab 导航 ===== -->
+  <div class="tab-nav">
+    <button class="tab-btn" :class="{ active: currentTab === 'records' }" @click="switchTab('records')">请求记录</button>
+    <button class="tab-btn" :class="{ active: currentTab === 'rules' }" @click="switchTab('rules')">代理规则</button>
+  </div>
 
-<!-- 请求记录 Tab -->
-<div class="tab-panel active" id="panel-records">
+  <!-- ===== 请求记录 Tab ===== -->
+  <div class="tab-panel" :class="{ active: currentTab === 'records' }">
     <div class="container">
-        <div class="top-actions">
-            <button class="btn btn-clear" onclick="clearRecords()">清除全部记录</button>
-            <span class="record-count" id="recordCount">0 条记录</span>
-        </div>
-        <div class="empty-state" id="emptyState">
-            <p>暂无请求记录</p>
-            <p class="sub">发送请求到代理端口后将在此实时显示</p>
-        </div>
-        <table id="recordTable" style="display:none;">
-            <thead>
-                <tr>
-                    <th style="width:160px;">完成时间</th>
-                    <th style="width:70px;">方法</th>
-                    <th style="width:180px;">路径</th>
-                    <th style="width:70px;">状态码</th>
-                    <th style="width:100px;">模型</th>
-                    <th style="width:80px;">输入Token</th>
-                    <th style="width:80px;">输出Token</th>
-                    <th style="width:80px;">耗时</th>
-                    <th style="width:60px;">操作</th>
-                </tr>
-            </thead>
-            <tbody id="tableBody"></tbody>
-        </table>
-    </div>
-</div>
+      <div class="top-actions">
+        <button class="btn btn-clear" @click="clearRecords">清除全部记录</button>
+        <span class="record-count">{{ records.length }} 条记录</span>
+      </div>
 
-<!-- 代理规则 Tab -->
-<div class="tab-panel" id="panel-rules">
+      <!-- 空状态 -->
+      <div class="empty-state" v-if="records.length === 0">
+        <p>暂无请求记录</p>
+        <p class="sub">发送请求到代理端口后将在此实时显示</p>
+      </div>
+
+      <!-- 记录表 -->
+      <table v-show="records.length > 0">
+        <thead>
+          <tr>
+            <th style="width:160px;">完成时间</th>
+            <th style="width:70px;">方法</th>
+            <th style="width:180px;">路径</th>
+            <th style="width:70px;">状态码</th>
+            <th style="width:160px;">模型</th>
+            <th style="width:80px;">输入Token</th>
+            <th style="width:80px;">缓存命中</th>
+            <th style="width:80px;">输出Token</th>
+            <th style="width:80px;">耗时</th>
+            <th style="width:60px;">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="r in records" :key="r.id" :class="{ 'recording-streaming': !isCompleted(r) }">
+            <td>{{ formatTime(r) }}</td>
+            <td>{{ r.method }}</td>
+            <td>
+              {{ truncate(r.path, 40) }}
+              <span v-if="!isCompleted(r)" class="streaming-badge">进行中</span>
+              <span v-else-if="r.is_stream" class="stream-badge">流式</span>
+            </td>
+            <td :class="statusClass(r)">{{ r.status_code }}</td>
+            <td :title="r.model">{{ r.model }}</td>
+            <td class="token-cell">{{ r.input_tokens || '-' }}</td>
+            <td class="token-cell">{{ r.cache_read_input_tokens || '-' }}</td>
+            <td class="token-cell">{{ r.output_tokens || '-' }}</td>
+            <td v-html="durationHtml(r)"></td>
+            <td><button class="btn btn-detail" @click.stop="showDetail(r.id)">详情</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== 代理规则 Tab ===== -->
+  <div class="tab-panel" :class="{ active: currentTab === 'rules' }">
     <div class="container">
-        <div class="top-actions">
-            <button class="btn btn-add" onclick="showRuleModal()">+ 新建规则</button>
-            <span class="record-count" id="ruleCount">0 条规则</span>
-        </div>
-        <div class="empty-state" id="rulesEmpty">
-            <p>暂无代理规则</p>
-            <p class="sub">点击"新建规则"创建第一条转发规则</p>
-        </div>
-        <table class="rule-table" id="ruleTable" style="display:none;">
-            <thead>
-                <tr>
-                    <th style="width:140px;">名称</th>
-                    <th style="width:100px;">端口</th>
-                    <th>目标地址</th>
-                    <th style="width:90px;">格式</th>
-                    <th style="width:140px;">操作</th>
-                </tr>
-            </thead>
-            <tbody id="ruleTableBody"></tbody>
-        </table>
-    </div>
-</div>
+      <div class="top-actions">
+        <button class="btn btn-add" @click="showNewRule">+ 新建规则</button>
+        <span class="record-count">{{ rules.length }} 条规则</span>
+      </div>
 
-<!-- 规则编辑弹窗 -->
-<div class="modal-overlay" id="ruleModal">
+      <div class="empty-state" v-if="rules.length === 0">
+        <p>暂无代理规则</p>
+        <p class="sub">点击"新建规则"创建第一条转发规则</p>
+      </div>
+
+      <table class="rule-table" v-show="rules.length > 0">
+        <thead>
+          <tr>
+            <th style="width:140px;">名称</th>
+            <th style="width:180px;">代理地址</th>
+            <th>目标地址</th>
+            <th style="width:90px;">格式</th>
+            <th style="width:140px;">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="r in rules" :key="r.id">
+            <td class="rule-name">{{ r.name || '未命名' }}</td>
+            <td><a :href="'http://localhost:' + r.port" target="_blank">http://localhost:{{ r.port }}</a></td>
+            <td>{{ truncate(r.target_url, 50) }}</td>
+            <td><span class="format-badge" :class="r.format === 'openai' ? 'format-openai' : 'format-anthropic'">{{ r.format === 'openai' ? 'OpenAI' : 'Anthropic' }}</span></td>
+            <td>
+              <button class="btn btn-edit" @click="editRule(r.id)">编辑</button>
+              <button class="btn btn-del" @click="deleteRule(r.id)">删除</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== 规则编辑弹窗 ===== -->
+  <div class="modal-overlay" :class="{ show: ruleModalVisible }" @click.self="hideRuleModal">
     <div class="modal">
-        <h3 id="modalTitle">新建代理规则</h3>
-        <input type="hidden" id="ruleId">
-        <div class="form-group"><label>规则名称</label><input type="text" id="ruleName" placeholder="例如：OpenAI代理"></div>
-        <div class="form-group"><label>监听端口</label><input type="number" id="rulePort" placeholder="例如：8080"></div>
-        <div class="form-group"><label>目标地址</label><input type="text" id="ruleTarget" placeholder="例如：https://api.openai.com"></div>
-        <div class="form-group"><label>API 格式</label><select id="ruleFormat"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option></select></div>
-        <div class="modal-actions">
-            <button class="btn btn-cancel" onclick="hideRuleModal()">取消</button>
-            <button class="btn btn-save" onclick="saveRule()">保存</button>
-        </div>
+      <h3>{{ ruleForm.id ? '编辑代理规则' : '新建代理规则' }}</h3>
+      <div class="form-group">
+        <label>规则名称</label>
+        <input type="text" v-model="ruleForm.name" placeholder="例如：OpenAI代理">
+      </div>
+      <div class="form-group">
+        <label>监听端口</label>
+        <input type="number" v-model.number="ruleForm.port" placeholder="例如：8080">
+      </div>
+      <div class="form-group">
+        <label>目标地址</label>
+        <input type="text" v-model="ruleForm.target_url" placeholder="例如：https://api.openai.com">
+      </div>
+      <div class="form-group">
+        <label>API 格式</label>
+        <select v-model="ruleForm.format">
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-cancel" @click="hideRuleModal">取消</button>
+        <button class="btn btn-save" @click="saveRule">保存</button>
+      </div>
     </div>
+  </div>
+
+  <!-- ===== 请求详情弹窗 ===== -->
+  <div class="modal-overlay" :class="{ show: detailRecord !== null }" @click.self="hideDetail">
+    <div class="detail-modal" v-if="detailRecord">
+      <h3>请求详情 <small>ID: {{ detailRecord.id }}</small></h3>
+      <div class="detail-meta">
+        <span><span class="label">方法:</span>{{ detailRecord.method }} {{ detailRecord.path }}</span>
+        <span><span class="label">状态码:</span>{{ detailRecord.status_code }}</span>
+        <span v-if="detailRecord.model"><span class="label">模型:</span>{{ detailRecord.model }}</span>
+        <span v-if="detailRecord.input_tokens || detailRecord.output_tokens">
+          <span class="label">Token:</span>
+          输入 {{ detailRecord.input_tokens || '-' }}
+          <template v-if="detailRecord.cache_read_input_tokens"> / 缓存命中 {{ detailRecord.cache_read_input_tokens }}</template>
+          / 输出 {{ detailRecord.output_tokens || '-' }}
+        </span>
+        <span v-if="detailRecord.duration_ms"><span class="label">耗时:</span>{{ detailRecord.duration_ms }}ms</span>
+        <span v-if="detailRecord.is_stream"><span class="label">流式:</span>是 ({{ detailRecord.stream_chunks ? detailRecord.stream_chunks.length : 0 }} 条)</span>
+      </div>
+      <div class="detail-section">
+        <h4 style="display:flex; align-items:center; gap:8px;">
+          请求 Headers
+          <button class="btn-copy" @click="copyText(formatJson(detailRecord.headers))">复制</button>
+        </h4>
+        <pre>{{ formatJson(detailRecord.headers) }}</pre>
+      </div>
+      <div class="detail-section">
+        <h4 style="display:flex; align-items:center; gap:8px;">
+          Query 参数
+          <button class="btn-copy" @click="copyText(formatJson(detailRecord.query_params))">复制</button>
+        </h4>
+        <pre>{{ formatJson(detailRecord.query_params) }}</pre>
+      </div>
+      <div class="detail-section">
+        <h4 style="display:flex; align-items:center; gap:8px;">
+          请求 Body
+          <button class="btn-copy" @click="copyText(formatJson(detailRecord.body))">复制</button>
+        </h4>
+        <pre>{{ formatJson(detailRecord.body) }}</pre>
+      </div>
+      <div class="detail-section">
+        <h4 style="display:flex; align-items:center; gap:8px;">
+          响应 Body
+          <button class="btn-copy" @click="copyText(responseBodyText(detailRecord))">复制</button>
+        </h4>
+        <pre>{{ responseBodyText(detailRecord) }}</pre>
+      </div>
+      <div class="detail-section" v-if="detailRecord.stream_chunks && detailRecord.stream_chunks.length > 0">
+        <h4 style="display:flex; align-items:center; gap:8px;">
+          流式 Chunks ({{ detailRecord.stream_chunks.length }} 条)
+          <button class="btn-copy" @click="copyText(streamChunksText(detailRecord))">复制</button>
+        </h4>
+        <pre>{{ streamChunksText(detailRecord) }}</pre>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-close-detail" @click="hideDetail">关闭</button>
+      </div>
+    </div>
+  </div>
 </div>
 
-<!-- 请求详情弹窗 -->
-<div class="modal-overlay" id="detailModal">
-    <div class="detail-modal">
-        <h3>请求详情 <small id="detailModalId"></small></h3>
-        <div class="detail-meta" id="detailMeta"></div>
-        <div id="detailContent"></div>
-        <div class="modal-actions">
-            <button class="btn-close-detail" onclick="hideDetailModal()">关闭</button>
-        </div>
-    </div>
-</div>
-
+<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
 <script>
-// ========== 主题切换 ==========
-function getTheme() { return localStorage.getItem('transfer-theme') || 'dark'; }
-function setTheme(t) {
-    document.documentElement.setAttribute('data-theme', t);
-    localStorage.setItem('transfer-theme', t);
-    document.getElementById('themeBtn').textContent = t === 'dark' ? '浅色' : '深色';
-}
-function toggleTheme() { setTheme(getTheme() === 'dark' ? 'light' : 'dark'); }
-setTheme(getTheme());
+const { createApp, ref, nextTick } = Vue;
 
-// ========== Tab 切换 ==========
-let currentTab = 'records';
-function switchTab(tab) {
-    currentTab = tab;
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    document.querySelector(`.tab-btn[onclick="switchTab('${tab}')"]`).classList.add('active');
-    document.getElementById('panel-' + tab).classList.add('active');
-    if (tab === 'records') renderRecords();
-    if (tab === 'rules') fetchRules();
-}
+createApp({
+  setup() {
+    // ===== 主题 =====
+    const theme = ref(localStorage.getItem('transfer-theme') || 'dark');
+    document.documentElement.setAttribute('data-theme', theme.value);
+    function toggleTheme() {
+      theme.value = theme.value === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', theme.value);
+      localStorage.setItem('transfer-theme', theme.value);
+    }
 
-// ========== SSE 实时连接 ==========
-let records = [];
-let recordMap = new Map();
-let es = null;
-let selectedRecord = null;
+    // ===== Tab =====
+    const currentTab = ref('records');
+    function switchTab(tab) {
+      currentTab.value = tab;
+      if (tab === 'rules') fetchRules();
+    }
 
-function connectSSE() {
-    es = new EventSource('/api/events');
-    es.onopen = function() {
-        document.getElementById('connDot').className = 'conn-dot on';
-        document.getElementById('connLabel').textContent = 'SSE 已连接';
-    };
-    es.onmessage = function(e) {
+    // ===== SSE =====
+    const records = ref([]);
+    const sseConnected = ref(true);
+    const sseLabel = ref('SSE 已连接');
+
+    let es = null;
+    function connectSSE() {
+      es = new EventSource('/api/events');
+      es.onopen = () => {
+        sseConnected.value = true;
+        sseLabel.value = 'SSE 已连接';
+      };
+      es.onmessage = (e) => {
         try {
-            const evt = JSON.parse(e.data);
-            if (evt.type === 'init') {
-                records = evt.all || [];
-                rebuildMap();
-            } else if (evt.type === 'update' && evt.record) {
-                const idx = records.findIndex(r => r.id === evt.record.id);
-                if (idx >= 0) {
-                    records[idx] = evt.record;
-                } else {
-                    records.unshift(evt.record);
-                }
-                recordMap.set(evt.record.id, evt.record);
+          const evt = JSON.parse(e.data);
+          if (evt.type === 'init') {
+            records.value = evt.all || [];
+          } else if (evt.type === 'update' && evt.record) {
+            const idx = records.value.findIndex(r => r.id === evt.record.id);
+            const newRec = Object.freeze(evt.record);
+            if (idx >= 0) {
+              records.value[idx] = newRec;
+              // 触发 reactivity
+              records.value = [...records.value];
+            } else {
+              records.value.unshift(newRec);
             }
-            if (currentTab === 'records') renderRecords();
+          }
         } catch (_) {}
-    };
-    es.onerror = function() {
-        document.getElementById('connDot').className = 'conn-dot off';
-        document.getElementById('connLabel').textContent = 'SSE 断开，重连中...';
+      };
+      es.onerror = () => {
+        sseConnected.value = false;
+        sseLabel.value = 'SSE 断开，重连中...';
         es.close();
         setTimeout(connectSSE, 3000);
-    };
-}
-
-function rebuildMap() {
-    recordMap.clear();
-    for (const r of records) recordMap.set(r.id, r);
-}
-
-function renderRecords() {
-    const count = records.length;
-    document.getElementById('recordCount').textContent = count + ' 条记录';
-    document.getElementById('emptyState').style.display = count === 0 ? 'block' : 'none';
-    document.getElementById('recordTable').style.display = count === 0 ? 'none' : 'table';
-
-    let html = '';
-    for (const r of records) {
-        const completed = r.completed !== false;
-        const time = completed ? new Date(r.complete_time).toLocaleString('zh-CN') : '--';
-        const sc = r.status_code >= 200 && r.status_code < 300 ? 'status-ok' : 'status-err';
-        const dur = completed ? (r.duration_ms >= 1000 ? (r.duration_ms / 1000).toFixed(1) + 's' : r.duration_ms + 'ms') : '<span class="dur-live">进行中</span>';
-        let badge = '';
-        if (!completed) {
-            badge = '<span class="streaming-badge">进行中</span>';
-        } else if (r.is_stream) {
-            badge = '<span class="stream-badge">流式</span>';
-        }
-        const rowClass = !completed ? ' recording-streaming' : '';
-        html += '<tr class="' + rowClass + '">' +
-            '<td>' + time + '</td>' +
-            '<td>' + r.method + '</td>' +
-            '<td>' + escHtml(truncate(r.path, 40)) + badge + '</td>' +
-            '<td class="' + sc + '">' + r.status_code + '</td>' +
-            '<td>' + escHtml(truncate(r.model, 15)) + '</td>' +
-            '<td class="token-cell">' + (r.input_tokens || '-') + '</td>' +
-            '<td class="token-cell">' + (r.output_tokens || '-') + '</td>' +
-            '<td>' + dur + '</td>' +
-            '<td><button class="btn btn-detail" onclick="showDetail(event, \'' + r.id + '\')">详情</button></td></tr>';
+      };
     }
-    document.getElementById('tableBody').innerHTML = html;
-}
 
-function showDetail(event, id) {
-    event.stopPropagation();
-    var r = records.find(function(r) { return r.id === id; });
-    if (!r) return;
-    selectedRecord = r;
+    // ===== Records =====
+    function isCompleted(r) { return r.completed !== false; }
 
-    document.getElementById('detailModalId').textContent = 'ID: ' + r.id;
-
-    // 元信息
-    var meta = '';
-    meta += '<span><span class="label">方法:</span>' + escHtml(r.method) + ' ' + escHtml(r.path) + '</span>';
-    meta += '<span><span class="label">状态码:</span>' + r.status_code + '</span>';
-    if (r.model) meta += '<span><span class="label">模型:</span>' + escHtml(r.model) + '</span>';
-    if (r.input_tokens || r.output_tokens) {
-        meta += '<span><span class="label">Token:</span>输入 ' + (r.input_tokens || '-') + ' / 输出 ' + (r.output_tokens || '-') + '</span>';
+    function formatTime(r) {
+      if (isCompleted(r)) {
+        return new Date(r.complete_time).toLocaleString('zh-CN');
+      }
+      return '--';
     }
-    if (r.duration_ms) meta += '<span><span class="label">耗时:</span>' + r.duration_ms + 'ms</span>';
-    if (r.is_stream) meta += '<span><span class="label">流式:</span>是 (' + (r.stream_chunks ? r.stream_chunks.length : 0) + ' 条)</span>';
-    document.getElementById('detailMeta').innerHTML = meta;
 
-    // 明细内容
-    var html = '';
-    html += '<div class="detail-section"><h4>请求 Headers</h4><pre>' + escHtml(JSON.stringify(r.headers, null, 2)) + '</pre></div>';
-    html += '<div class="detail-section"><h4>Query 参数</h4><pre>' + escHtml(JSON.stringify(r.query_params, null, 2)) + '</pre></div>';
-    html += '<div class="detail-section"><h4>请求 Body</h4><pre>' + escHtml(formatJson(r.body)) + '</pre></div>';
-    html += '<div class="detail-section"><h4>响应 Body</h4><pre>' + escHtml(formatJson(r.response_body)) + '</pre></div>';
-    if (r.stream_chunks && r.stream_chunks.length > 0) {
-        html += '<div class="detail-section"><h4>流式 Chunks (' + r.stream_chunks.length + ' 条)</h4><pre>' + escHtml(r.stream_chunks.map(function(c) { return c.data; }).join('\n')) + '</pre></div>';
+    function statusClass(r) {
+      return r.status_code >= 200 && r.status_code < 300 ? 'status-ok' : 'status-err';
     }
-    document.getElementById('detailContent').innerHTML = html;
-    document.getElementById('detailModal').classList.add('show');
-}
 
-function hideDetailModal() {
-    document.getElementById('detailModal').classList.remove('show');
-    selectedRecord = null;
-}
-
-// 格式化 JSON：尝试解析 body 为 JSON 并美化输出，失败则返回原文本
-function formatJson(str) {
-    if (!str) return '';
-    try {
-        var obj = JSON.parse(str);
-        return JSON.stringify(obj, null, 2);
-    } catch (e) {
-        return str;
+    function durationHtml(r) {
+      if (isCompleted(r)) {
+        const dur = r.duration_ms >= 1000 ? (r.duration_ms / 1000).toFixed(1) + 's' : r.duration_ms + 'ms';
+        return dur;
+      }
+      return '<span class="dur-live">进行中</span>';
     }
-}
 
-// 点击弹窗遮罩关闭
-document.addEventListener('click', function(e) {
-    if (e.target.id === 'detailModal') hideDetailModal();
-    if (e.target.id === 'ruleModal') hideRuleModal();
-});
-
-async function clearRecords() {
-    if (!confirm('确定清除所有记录？此操作不可恢复。')) return;
-    await fetch('/api/records/clear', { method: 'POST' });
-    records = [];
-    recordMap.clear();
-    renderRecords();
-}
-
-// ========== 代理规则管理 ==========
-let rules = [];
-
-async function fetchRules() {
-    try { const r = await fetch('/api/rules'); rules = await r.json(); renderRules(); }
-    catch (e) { console.error(e); }
-}
-
-function renderRules() {
-    document.getElementById('ruleCount').textContent = rules.length + ' 条规则';
-    document.getElementById('rulesEmpty').style.display = rules.length === 0 ? 'block' : 'none';
-    document.getElementById('ruleTable').style.display = rules.length === 0 ? 'none' : 'table';
-    let h = '';
-    for (const r of rules) {
-        const fc = r.format === 'openai' ? 'format-openai' : 'format-anthropic';
-        const fl = r.format === 'openai' ? 'OpenAI' : 'Anthropic';
-        h += '<tr><td class="rule-name">' + escHtml(r.name || '未命名') + '</td><td>' + r.port + '</td><td>' + escHtml(truncate(r.target_url, 50)) +
-            '</td><td><span class="format-badge ' + fc + '">' + fl + '</span></td>' +
-            '<td><button class="btn btn-edit" onclick="editRule(\'' + r.id + '\')">编辑</button>' +
-            '<button class="btn btn-del" onclick="deleteRule(\'' + r.id + '\')">删除</button></td></tr>';
+    const detailRecord = ref(null);
+    function showDetail(id) {
+      const r = records.value.find(r => r.id === id);
+      if (!r) return;
+      detailRecord.value = r;
     }
-    document.getElementById('ruleTableBody').innerHTML = h;
-}
+    function hideDetail() { detailRecord.value = null; }
 
-function showRuleModal() {
-    document.getElementById('modalTitle').textContent = '新建代理规则';
-    document.getElementById('ruleId').value = '';
-    document.getElementById('ruleName').value = '';
-    document.getElementById('rulePort').value = '';
-    document.getElementById('ruleTarget').value = '';
-    document.getElementById('ruleFormat').value = 'openai';
-    document.getElementById('ruleModal').classList.add('show');
-}
+    // 详情中的响应 body：优先用 response_body，没有则从 chunks 拼接
+    function responseBodyText(r) {
+      if (r.response_body) return formatJson(r.response_body);
+      if (r.stream_chunks && r.stream_chunks.length > 0) {
+        return r.stream_chunks.map(c => c.data).join('\n');
+      }
+      return '';
+    }
 
-function editRule(id) {
-    const r = rules.find(r => r.id === id); if (!r) return;
-    document.getElementById('modalTitle').textContent = '编辑代理规则';
-    document.getElementById('ruleId').value = r.id;
-    document.getElementById('ruleName').value = r.name || '';
-    document.getElementById('rulePort').value = r.port;
-    document.getElementById('ruleTarget').value = r.target_url;
-    document.getElementById('ruleFormat').value = r.format;
-    document.getElementById('ruleModal').classList.add('show');
-}
+    function streamChunksText(r) {
+      if (!r.stream_chunks) return '';
+      return r.stream_chunks.map(c => c.data).join('\n');
+    }
 
-function hideRuleModal() { document.getElementById('ruleModal').classList.remove('show'); }
+    async function clearRecords() {
+      if (!confirm('确定清除所有记录？此操作不可恢复。')) return;
+      await fetch('/api/records/clear', { method: 'POST' });
+      records.value = [];
+    }
 
-async function saveRule() {
-    const id = document.getElementById('ruleId').value;
-    const name = document.getElementById('ruleName').value.trim();
-    const port = parseInt(document.getElementById('rulePort').value);
-    const target = document.getElementById('ruleTarget').value.trim();
-    const fmt = document.getElementById('ruleFormat').value;
-    if (!port || !target) { alert('端口和目标地址为必填项'); return; }
-    try {
+    // ===== Rules =====
+    const rules = ref([]);
+    const ruleModalVisible = ref(false);
+    const ruleForm = ref({ id: '', name: '', port: null, target_url: '', format: 'openai' });
+
+    async function fetchRules() {
+      try { rules.value = await (await fetch('/api/rules')).json(); }
+      catch (e) { console.error(e); }
+    }
+
+    function showNewRule() {
+      ruleForm.value = { id: '', name: '', port: null, target_url: '', format: 'openai' };
+      ruleModalVisible.value = true;
+    }
+
+    function editRule(id) {
+      const r = rules.value.find(r => r.id === id);
+      if (!r) return;
+      ruleForm.value = { id: r.id, name: r.name || '', port: r.port, target_url: r.target_url, format: r.format };
+      ruleModalVisible.value = true;
+    }
+
+    function hideRuleModal() { ruleModalVisible.value = false; }
+
+    async function saveRule() {
+      const f = ruleForm.value;
+      if (!f.port || !f.target_url) { alert('端口和目标地址为必填项'); return; }
+      try {
+        const body = JSON.stringify({ name: f.name, port: f.port, target_url: f.target_url, format: f.format });
         let resp;
-        if (id) resp = await fetch('/api/rules?id=' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify({name, port, target_url: target, format: fmt}) });
-        else resp = await fetch('/api/rules', { method: 'POST', body: JSON.stringify({name, port, target_url: target, format: fmt}) });
+        if (f.id) {
+          resp = await fetch('/api/rules?id=' + encodeURIComponent(f.id), { method: 'PUT', body });
+        } else {
+          resp = await fetch('/api/rules', { method: 'POST', body });
+        }
         const d = await resp.json();
         if (d.error) { alert('操作失败: ' + d.error); return; }
-        hideRuleModal(); await fetchRules();
-    } catch (e) { alert('操作失败: ' + e.message); }
-}
+        hideRuleModal();
+        await fetchRules();
+      } catch (e) { alert('操作失败: ' + e.message); }
+    }
 
-async function deleteRule(id) {
-    const r = rules.find(r => r.id === id);
-    if (!confirm('确定删除规则 "' + (r ? r.name : id) + '"？')) return;
-    try {
+    async function deleteRule(id) {
+      const r = rules.value.find(r => r.id === id);
+      if (!confirm('确定删除规则 "' + (r ? r.name : id) + '"？')) return;
+      try {
         const resp = await fetch('/api/rules?id=' + encodeURIComponent(id), { method: 'DELETE' });
         const d = await resp.json();
         if (d.error) { alert('删除失败: ' + d.error); return; }
         await fetchRules();
-    } catch (e) { alert('删除失败: ' + e.message); }
-}
+      } catch (e) { alert('删除失败: ' + e.message); }
+    }
 
-// ========== 工具函数 ==========
-function escHtml(s) { if (!s) return ''; return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-function truncate(s, n) { if (!s) return ''; if (s.length <= n) return s; return s.substring(0, n) + '... [截断]'; }
+    // ===== 工具函数 =====
+    function truncate(s, n) {
+      if (!s) return '';
+      if (s.length <= n) return s;
+      return s.substring(0, n) + '... [截断]';
+    }
 
-// ========== 初始化 ==========
-connectSSE();
-fetchRules();
+    function formatJson(obj) {
+      if (!obj) return '';
+      try {
+        const parsed = typeof obj === 'string' ? JSON.parse(obj) : obj;
+        return JSON.stringify(parsed, null, 2);
+      } catch (e) {
+        return typeof obj === 'string' ? obj : '';
+      }
+    }
+
+    async function copyText(text) {
+      try { await navigator.clipboard.writeText(text); }
+      catch (_) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+    }
+
+    // ===== 生命周期 =====
+    connectSSE();
+    fetchRules();
+
+    return {
+      theme, currentTab, records, rules,
+      sseConnected, sseLabel,
+      toggleTheme, switchTab,
+      isCompleted, formatTime, statusClass, durationHtml,
+      detailRecord, showDetail, hideDetail,
+      responseBodyText, streamChunksText,
+      clearRecords,
+      ruleModalVisible, ruleForm,
+      fetchRules, showNewRule, editRule, hideRuleModal, saveRule, deleteRule,
+      truncate, formatJson, copyText,
+    };
+  }
+}).mount('#app');
 </script>
 </body>
 </html>

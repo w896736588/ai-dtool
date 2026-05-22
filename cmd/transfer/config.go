@@ -103,7 +103,7 @@ func (cs *ConfigStore) Add(rule *ProxyRule) error {
 
 	rule.ID = uuid.New().String()
 	if rule.Host == "" {
-		rule.Host = "0.0.0.0"
+		rule.Host = "localhost"
 	}
 	cs.rules = append(cs.rules, rule)
 	return cs.save()
@@ -113,6 +113,10 @@ func (cs *ConfigStore) Add(rule *ProxyRule) error {
 func (cs *ConfigStore) Update(rule *ProxyRule) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+
+	if rule.Host == "" {
+		rule.Host = "localhost"
+	}
 
 	for i, r := range cs.rules {
 		if r.ID == rule.ID {

@@ -6,5 +6,13 @@
     "host": "0.0.0.0",
     "target_url": "https://api.deepseek.com/anthropic",
     "format": "anthropic"
+  },
+  {
+    "id": "3442db4a-77ea-44ed-ab30-4ff6301ec1fe",
+    "name": "home ds-v4-flash",
+    "port": 9092,
+    "host": "0.0.0.0",
+    "target_url": "https://api.deepseek.com/anthropic",
+    "format": "anthropic"
   }
 ]

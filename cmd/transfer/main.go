@@ -12,7 +12,7 @@ import (
 
 func main() {
 	// 命令行参数
-	host := flag.String("host", "0.0.0.0", "管理服务监听地址")
+	host := flag.String("host", "localhost", "管理服务监听地址")
 	port := flag.Int("port", 9090, "管理服务监听端口")
 	flag.Parse()
 

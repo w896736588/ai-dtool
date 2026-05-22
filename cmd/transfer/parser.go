@@ -26,8 +26,10 @@ type chunkOpenAI struct {
 
 // usageAnthropic Anthropic 格式的 usage 结构
 type usageAnthropic struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens            int `json:"input_tokens"`
+	OutputTokens           int `json:"output_tokens"`
+	CacheCreateInputTokens int `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens   int `json:"cache_read_input_tokens"`
 }
 
 // respAnthropic Anthropic 非流式响应结构
@@ -37,10 +39,14 @@ type respAnthropic struct {
 }
 
 // sseEventAnthropic Anthropic SSE 事件中的 usage（message_start / message_delta）
+// message_start 的 usage 嵌套在 message 字段下，message_delta 则在顶层
 type sseEventAnthropic struct {
-	Type  string         `json:"type"`
-	Usage usageAnthropic `json:"usage"`
-	Model string         `json:"model"`
+	Type    string         `json:"type"`
+	Usage   usageAnthropic `json:"usage"`
+	Model   string         `json:"model"`
+	Message *struct {
+		Usage usageAnthropic `json:"usage"`
+	} `json:"message,omitempty"`
 }
 
 // API 格式常量
@@ -63,9 +69,10 @@ func extractModel(body string) string {
 // parseTokens 解析响应中的 token 信息
 // format: "openai" 或 "anthropic"
 // responseBody: 非流式完整响应 body 或流式累积的 chunks
-func parseTokens(format, responseBody string) (inputTokens, outputTokens int) {
+func parseTokens(format, responseBody string) (inputTokens, outputTokens, cacheReadTokens int) {
 	if format == formatOpenAI {
-		return parseOpenAITokens(responseBody)
+		inputTokens, outputTokens = parseOpenAITokens(responseBody)
+		return inputTokens, outputTokens, 0
 	}
 	return parseAnthropicTokens(responseBody)
 }
@@ -112,11 +119,11 @@ func parseOpenAIStreamChunks(chunksData string) (inputTokens, outputTokens int) 
 }
 
 // parseAnthropicTokens 解析 Anthropic 格式的 token 信息
-func parseAnthropicTokens(responseBody string) (inputTokens, outputTokens int) {
+func parseAnthropicTokens(responseBody string) (inputTokens, outputTokens, cacheReadTokens int) {
 	// 优先尝试解析为完整响应（非流式）
 	var fullResp respAnthropic
 	if err := json.Unmarshal([]byte(responseBody), &fullResp); err == nil {
-		return fullResp.Usage.InputTokens, fullResp.Usage.OutputTokens
+		return fullResp.Usage.InputTokens, fullResp.Usage.OutputTokens, fullResp.Usage.CacheReadInputTokens
 	}
 
 	// 流式响应：从 message_start 和 message_delta 事件提取
@@ -124,7 +131,7 @@ func parseAnthropicTokens(responseBody string) (inputTokens, outputTokens int) {
 }
 
 // parseAnthropicStreamChunks 从流式 SSE data 中提取 Anthropic token 信息
-func parseAnthropicStreamChunks(chunksData string) (inputTokens, outputTokens int) {
+func parseAnthropicStreamChunks(chunksData string) (inputTokens, outputTokens, cacheReadTokens int) {
 	lines := strings.Split(chunksData, "\n")
 
 	for _, line := range lines {
@@ -148,15 +155,24 @@ func parseAnthropicStreamChunks(chunksData string) (inputTokens, outputTokens in
 
 		switch event.Type {
 		case "message_start":
+			// message_start 的 usage 嵌套在 message 字段下
+			if event.Message != nil && event.Message.Usage.InputTokens > 0 {
+				inputTokens = event.Message.Usage.InputTokens
+				cacheReadTokens = event.Message.Usage.CacheReadInputTokens
+			}
+		case "message_delta":
+			// message_delta 的 usage 在顶层，包含 input_tokens + output_tokens + cache 信息
 			if event.Usage.InputTokens > 0 {
 				inputTokens = event.Usage.InputTokens
 			}
-		case "message_delta":
 			if event.Usage.OutputTokens > 0 {
 				outputTokens = event.Usage.OutputTokens
+			}
+			if event.Usage.CacheReadInputTokens > 0 {
+				cacheReadTokens = event.Usage.CacheReadInputTokens
 			}
 		}
 	}
 
-	return inputTokens, outputTokens
+	return inputTokens, outputTokens, cacheReadTokens
 }
