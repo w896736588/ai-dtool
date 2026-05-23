@@ -63,7 +63,7 @@ function TaskWorkflowIssueFixResolve(workflowId, callBack) {
 }
 
 // TaskWorkflowChatSend 发送对话到 claude code。
-function TaskWorkflowChatSend(workflowId, prompt, promptType, localDir, cliType, agentCliId, thinkingIntensity, callBack) {
+function TaskWorkflowChatSend(workflowId, prompt, promptType, localDir, cliType, agentCliId, modelName, thinkingIntensity, callBack) {
   base.BasePost('/api/task/workflow/chat/send', {
     workflow_id: workflowId,
     prompt: prompt,
@@ -71,6 +71,7 @@ function TaskWorkflowChatSend(workflowId, prompt, promptType, localDir, cliType,
     local_dir: localDir,
     cli_type: cliType || 'claude',
     agent_cli_id: agentCliId || 0,
+    model_name: modelName || '',
     thinking_intensity: thinkingIntensity || '高',
   }, callBack)
 }

@@ -83,6 +83,7 @@ type TaskWorkflowChatSendRequest struct {
 	CliType           string `json:"cli_type"`
 	LocalDir          string `json:"local_dir"`
 	AgentCliId        int    `json:"agent_cli_id"`
+	ModelName         string `json:"model_name"`
 	ThinkingIntensity string `json:"thinking_intensity"`
 }
 

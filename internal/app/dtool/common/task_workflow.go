@@ -409,7 +409,7 @@ func (h *CSqlite) TaskWorkflowBindApiDocFragment(workflowID int, fragmentID stri
 }
 
 // TaskWorkflowChatCreate 创建对话记录。
-func (h *CSqlite) TaskWorkflowChatCreate(workflowID int, prompt, promptType, cliType string, agentCliID int, localDir, settingsPath string, thinkingCollapsed int, thinkingIntensity string) (int64, error) {
+func (h *CSqlite) TaskWorkflowChatCreate(workflowID int, prompt, promptType, cliType string, agentCliID int, localDir, settingsPath, modelName string, thinkingCollapsed int, thinkingIntensity string) (int64, error) {
 	if strings.TrimSpace(cliType) == `` {
 		cliType = `claude`
 	}
@@ -422,6 +422,7 @@ func (h *CSqlite) TaskWorkflowChatCreate(workflowID int, prompt, promptType, cli
 		`agent_cli_id`:       agentCliID,
 		`local_dir`:          localDir,
 		`settings_path`:      settingsPath,
+		`model_name`:         modelName,
 		`thinking_collapsed`: thinkingCollapsed,
 		`thinking_intensity`: thinkingIntensity,
 		`status`:             taskWorkflowChatStatusRunning,

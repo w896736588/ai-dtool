@@ -1,0 +1,1 @@
+ALTER TABLE "tbl_agent_cli" ADD COLUMN "enabled" INTEGER NOT NULL DEFAULT 0;

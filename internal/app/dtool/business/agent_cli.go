@@ -7,10 +7,44 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cast"
 )
+
+// normalizeAgentCliModels 清洗模型列表，去重并过滤空值。
+// normalizeAgentCliModels trims model names, removes duplicates, and drops empty items.
+func normalizeAgentCliModels(models []string) []string {
+	result := make([]string, 0, len(models))
+	seen := make(map[string]struct{}, len(models))
+	for _, rawModel := range models {
+		modelName := strings.TrimSpace(rawModel)
+		if modelName == "" {
+			continue
+		}
+		if _, exists := seen[modelName]; exists {
+			continue
+		}
+		seen[modelName] = struct{}{}
+		result = append(result, modelName)
+	}
+	return result
+}
+
+// mergeAgentCliModels 合并当前模型与候选模型列表，保证当前模型优先展示。
+// mergeAgentCliModels merges the current model into candidate models and keeps it first.
+func mergeAgentCliModels(currentModel string, models []string) []string {
+	normalizedModels := normalizeAgentCliModels(models)
+	currentModel = strings.TrimSpace(currentModel)
+	if currentModel == "" {
+		return normalizedModels
+	}
+	if slices.Contains(normalizedModels, currentModel) {
+		return normalizedModels
+	}
+	return append([]string{currentModel}, normalizedModels...)
+}
 
 // claude-mem 插件在 enabledPlugins 中的 key
 const claudeMemPluginKey = "claude-mem@thedotmack"
@@ -79,8 +113,10 @@ func WriteMcpServersToSettings(settingsPath string) error {
 	return nil
 }
 
-// WriteDeepSeekToSettings 写入 DeepSeek 配置到 settings.json
-func WriteDeepSeekToSettings(settingsPath string, modelName string, apiKey string, baseUrl string) error {
+// WriteDeepSeekToSettings 写入 DeepSeek 配置到 settings.json。
+// modelList 为可选模型列表，首个模型会被写入 settings.json 顶层 model，兼容旧执行链路。
+// WriteDeepSeekToSettings writes DeepSeek settings and persists modelList while keeping the first model as legacy default.
+func WriteDeepSeekToSettings(settingsPath string, modelName string, modelList []string, apiKey string, baseUrl string) error {
 	// 读取已有配置
 	configData := make(map[string]any)
 	content, readErr := os.ReadFile(settingsPath)
@@ -92,6 +128,11 @@ func WriteDeepSeekToSettings(settingsPath string, modelName string, apiKey strin
 
 	if baseUrl == "" {
 		baseUrl = "https://api.deepseek.com/anthropic"
+	}
+
+	modelList = mergeAgentCliModels(modelName, modelList)
+	if modelName == "" && len(modelList) > 0 {
+		modelName = modelList[0]
 	}
 
 	// 设置 env
@@ -109,6 +150,11 @@ func WriteDeepSeekToSettings(settingsPath string, modelName string, apiKey strin
 
 	// 设置 model
 	configData["model"] = modelName
+	if len(modelList) > 0 {
+		configData["dtool_models"] = modelList
+	} else {
+		delete(configData, "dtool_models")
+	}
 
 	// 合并 enabledPlugins，保留已有启用的插件
 	plugins := make(map[string]bool)
@@ -236,19 +282,37 @@ func GetCodexCliConfig(configJson string) (*define.CodexCliConfig, error) {
 	if err := json.Unmarshal([]byte(configJson), &cfg); err != nil {
 		return nil, fmt.Errorf("解析 Codex CLI 配置失败: %w", err)
 	}
+	cfg.Models = mergeAgentCliModels(cfg.Model, cfg.Models)
+	if cfg.Model == "" && len(cfg.Models) > 0 {
+		cfg.Model = cfg.Models[0]
+	}
 	return &cfg, nil
 }
 
-// GetCodexCliStatusSummary 从 config JSON 中提取 Codex CLI 状态摘要
-func GetCodexCliStatusSummary(configJson string) (model string) {
+// GetCodexCliModelConfig 从 config JSON 中提取 Codex CLI 模型和请求地址。 // GetCodexCliModelConfig extracts the Codex CLI model and request URL from config JSON.
+func GetCodexCliModelConfig(configJson string) (model string, baseURL string) {
 	if configJson == "" {
-		return ""
+		return "", ""
 	}
 	var cfg define.CodexCliConfig
 	if err := json.Unmarshal([]byte(configJson), &cfg); err != nil {
-		return ""
+		return "", ""
 	}
-	return cfg.Model
+	cfg.Models = mergeAgentCliModels(cfg.Model, cfg.Models)
+	if cfg.Model == "" && len(cfg.Models) > 0 {
+		cfg.Model = cfg.Models[0]
+	}
+	return cfg.Model, cfg.BaseURL
+}
+
+// GetCodexCliModelOptions 从 config JSON 中提取 Codex CLI 可选模型列表。
+// GetCodexCliModelOptions extracts selectable model options from config JSON.
+func GetCodexCliModelOptions(configJson string) []string {
+	cfg, err := GetCodexCliConfig(configJson)
+	if err != nil || cfg == nil {
+		return nil
+	}
+	return append([]string{}, cfg.Models...)
 }
 
 // codexModelProviderKey Codex CLI config.toml 中自定义 API 提供商的 key
@@ -504,4 +568,29 @@ func GetAgentCliModelConfig(content string) (model string, baseURL string, apiKe
 		}
 	}
 	return
+}
+
+// GetAgentCliModelOptions 从 settings.json 中提取可选模型列表，并兼容旧版仅保存单模型配置。
+// GetAgentCliModelOptions extracts selectable model options from settings.json and remains compatible with legacy single-model config.
+func GetAgentCliModelOptions(content string) []string {
+	if content == "" {
+		return nil
+	}
+	var configData map[string]any
+	if err := json.Unmarshal([]byte(content), &configData); err != nil {
+		return nil
+	}
+	models := make([]string, 0)
+	if rawModels, ok := configData["dtool_models"]; ok {
+		switch value := rawModels.(type) {
+		case []any:
+			for _, item := range value {
+				models = append(models, cast.ToString(item))
+			}
+		case []string:
+			models = append(models, value...)
+		}
+	}
+	currentModel, _, _ := GetAgentCliModelConfig(content)
+	return mergeAgentCliModels(currentModel, models)
 }

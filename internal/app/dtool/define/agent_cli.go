@@ -6,15 +6,28 @@ const (
 	AgentCliTypeCodexCli      = "codex-cli"
 )
 
+// Agent CLI 启停状态常量 / Agent CLI enabled flag constants.
+const (
+	AgentCliDisabled = 0
+	AgentCliEnabled  = 1
+)
+
 // Codex CLI 默认 sandbox 模式
 const CodexCliDefaultSandboxMode = "danger-full-access"
 
 // CodexCliConfig Codex CLI 实例配置（存储在 tbl_agent_cli.config JSON 字段中）
 type CodexCliConfig struct {
-	ApiKey      string `json:"api_key"`
-	Model       string `json:"model"`
-	BaseURL     string `json:"base_url,omitempty"`     // 自定义 API 端点（可选）
-	SandboxMode string `json:"sandbox_mode,omitempty"` // 默认 "danger-full-access"
+	ApiKey      string   `json:"api_key"`
+	Model       string   `json:"model"`
+	Models      []string `json:"models,omitempty"`       // 可选模型列表，首个模型视为默认模型。 // Optional model list, the first item is treated as default.
+	BaseURL     string   `json:"base_url,omitempty"`     // 自定义 API 端点（可选）
+	SandboxMode string   `json:"sandbox_mode,omitempty"` // 默认 "danger-full-access"
+}
+
+// AgentCliConfig Agent CLI 通用配置（当前仅存储模型列表等 UI 扩展字段）。
+// AgentCliConfig stores shared Agent CLI config extensions, currently model options for UI/runtime selection.
+type AgentCliConfig struct {
+	Models []string `json:"models,omitempty"`
 }
 
 // AgentCliItem 列表项
@@ -24,6 +37,7 @@ type AgentCliItem struct {
 	Type              string `json:"type"`
 	SettingsPath      string `json:"settings_path"`
 	Config            string `json:"config"` // 提供商专属配置 JSON（Codex 用）
+	Enabled           int    `json:"enabled"`
 	ThinkingCollapsed int    `json:"thinking_collapsed"`
 	WebhookConfigId   int    `json:"webhook_config_id"`
 	CreatedAt         int64  `json:"created_at"`
@@ -37,6 +51,7 @@ type AgentCliSaveRequest struct {
 	Type              string `json:"type,omitempty"`
 	SettingsPath      string `json:"settings_path,omitempty"`
 	Config            string `json:"config,omitempty"` // 提供商专属配置 JSON（Codex 用）
+	Enabled           int    `json:"enabled,omitempty"`
 	ThinkingCollapsed int    `json:"thinking_collapsed,omitempty"`
 	WebhookConfigId   int    `json:"webhook_config_id,omitempty"`
 }
@@ -65,10 +80,11 @@ type AgentCliWriteMcpRequest struct {
 
 // AgentCliWriteDeepSeekRequest 写入 DeepSeek 配置请求
 type AgentCliWriteDeepSeekRequest struct {
-	Id        int    `json:"id"`
-	ModelName string `json:"model_name"`
-	ApiKey    string `json:"api_key"`
-	BaseUrl   string `json:"base_url"`
+	Id        int      `json:"id"`
+	ModelName string   `json:"model_name"`
+	ModelList []string `json:"model_list,omitempty"` // 模型列表，首个模型会写回 settings.json 作为默认模型。 // Model list; the first model is written back to settings.json as the default.
+	ApiKey    string   `json:"api_key"`
+	BaseUrl   string   `json:"base_url"`
 }
 
 // 思考强度常量
@@ -101,15 +117,24 @@ var ThinkingIntensityEffortMap = map[string]string{
 // AgentCliStatusItem 列表带状态
 type AgentCliStatusItem struct {
 	AgentCliItem
-	SettingsExists    bool   `json:"settings_exists"`
-	CurrentModel      string `json:"current_model"`
-	McpServerCount    int    `json:"mcp_server_count"`
-	ClaudeMemEnabled  bool   `json:"claude_mem_enabled"`
-	WebhookConfigName string `json:"webhook_config_name"`
+	SettingsExists    bool     `json:"settings_exists"`
+	DisplayedEnabled  bool     `json:"displayed_enabled"`
+	CurrentModel      string   `json:"current_model"`
+	ModelOptions      []string `json:"model_options"` // 卡片可选模型列表，用于前端执行前选择。 // Selectable models for this card, used before task execution.
+	RequestURL        string   `json:"request_url"`
+	McpServerCount    int      `json:"mcp_server_count"`
+	ClaudeMemEnabled  bool     `json:"claude_mem_enabled"`
+	WebhookConfigName string   `json:"webhook_config_name"`
 }
 
 // AgentCliToggleClaudeMemRequest 切换 claude-mem 启停请求
 type AgentCliToggleClaudeMemRequest struct {
+	Id     int  `json:"id"`
+	Enable bool `json:"enable"`
+}
+
+// AgentCliToggleEnabledRequest 切换 Agent CLI 启停请求 / Toggle Agent CLI enabled status request.
+type AgentCliToggleEnabledRequest struct {
 	Id     int  `json:"id"`
 	Enable bool `json:"enable"`
 }

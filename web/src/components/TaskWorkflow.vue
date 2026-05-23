@@ -764,6 +764,16 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="模型">
+          <el-select v-model="promptExecModelName" style="width: 100%;" placeholder="请选择模型">
+            <el-option
+              v-for="modelName in promptExecModelOptions"
+              :key="modelName"
+              :label="modelName"
+              :value="modelName"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item v-if="getSelectedCliType() !== 'codex'" label="思考强度">
           <el-select v-model="promptExecThinkingIntensity" style="width: 100%;" placeholder="请选择思考强度">
             <el-option label="低" value="低" />
@@ -1276,6 +1286,7 @@ export default {
       promptExecDialogVisible: false,
       promptExecCliId: 0,
       promptExecCliList: [],
+      promptExecModelName: '',
       promptExecLoading: false,
       promptExecPromptType: '',
       promptExecPromptValue: '',
@@ -1379,6 +1390,11 @@ export default {
       if (!input) return template
       if (!template) return input
       return input + '\n\n' + template
+    },
+    // promptExecModelOptions 返回执行弹窗当前 Agent 卡片可选的模型列表。
+    // promptExecModelOptions returns model options for the currently selected Agent card in the execution dialog.
+    promptExecModelOptions() {
+      return this.getSelectedCliModelOptions()
     },
   },
   mounted() {
@@ -2278,9 +2294,11 @@ export default {
       const cached = this.getPromptExecCache(promptType)
       if (cached) {
         this.promptExecCliId = cached.cliId || 0
+        this.promptExecModelName = cached.modelName || ''
         this.promptExecThinkingIntensity = cached.thinkingIntensity || '高'
       } else {
         this.promptExecCliId = 0
+        this.promptExecModelName = ''
         this.promptExecThinkingIntensity = '高'
       }
       this.promptExecDialogVisible = true
@@ -2298,19 +2316,36 @@ export default {
             const found = this.promptExecCliList.find(c => c.id === cached.cliId)
             if (!found) {
               this.promptExecCliId = 0
+              this.promptExecModelName = ''
             }
           }
+          this.syncPromptExecModelSelection(cached)
         }
       })
     },
     // CLI 选中变更
     onPromptExecCliChange() {
-      // 占位，后续可扩展
+      this.syncPromptExecModelSelection()
     },
     // 获取当前选中的 CLI 实例对象
     getSelectedCli() {
       if (!this.promptExecCliId) return null
       return this.promptExecCliList.find(c => c.id === this.promptExecCliId) || null
+    },
+    // promptExecModelOptions 返回当前选中 Agent 卡片可用的模型列表；无配置时回退到 current_model。
+    // promptExecModelOptions returns model options for the selected Agent card and falls back to current_model.
+    getSelectedCliModelOptions() {
+      const cli = this.getSelectedCli()
+      if (!cli) return []
+      const rawOptions = Array.isArray(cli.model_options) ? cli.model_options : []
+      const normalizedOptions = rawOptions
+        .map(item => String(item || '').trim())
+        .filter(Boolean)
+      if (normalizedOptions.length > 0) {
+        return normalizedOptions
+      }
+      const currentModel = String(cli.current_model || '').trim()
+      return currentModel && currentModel !== '-' ? [currentModel] : []
     },
     // 获取当前选中 CLI 的 cli_type（'claude' 或 'codex'）
     getSelectedCliType() {
@@ -2323,6 +2358,10 @@ export default {
     execPromptToClaude() {
       if (!this.promptExecCliId) {
         this.$helperNotify.warning('请选择 Agent 实例')
+        return
+      }
+      if (this.promptExecModelOptions.length > 0 && !this.promptExecModelName) {
+        this.$helperNotify.warning('请选择模型')
         return
       }
       // 执行前检查分支是否匹配
@@ -2348,15 +2387,16 @@ export default {
         const localDir = dirs[0]
         const cliType = this.getSelectedCliType()
         this.promptExecLoading = true
-        taskWorkflowApi.TaskWorkflowChatSend(
-          this.workflowId,
-          this.promptExecPromptValue,
-          this.promptExecPromptType,
-          localDir,
-          cliType,
-          this.promptExecCliId,
-          this.promptExecThinkingIntensity,
-          (chatRes) => {
+      taskWorkflowApi.TaskWorkflowChatSend(
+        this.workflowId,
+        this.promptExecPromptValue,
+        this.promptExecPromptType,
+        localDir,
+        cliType,
+        this.promptExecCliId,
+        this.promptExecModelName,
+        this.promptExecThinkingIntensity,
+        (chatRes) => {
             this.promptExecLoading = false
             if (chatRes.ErrCode === 0 && chatRes.Data) {
               const chatId = chatRes.Data.chat_id
@@ -2788,9 +2828,32 @@ export default {
     savePromptExecCache(promptType) {
       const data = {
         cliId: this.promptExecCliId,
+        modelName: this.promptExecModelName,
         thinkingIntensity: this.promptExecThinkingIntensity,
       }
       localStorage.setItem(this.getPromptExecCacheKey(promptType), JSON.stringify(data))
+    },
+    // syncPromptExecModelSelection 根据当前 Agent 和缓存自动恢复模型选择；仅一个模型时自动选中。
+    // syncPromptExecModelSelection restores the model choice from cache and auto-selects when only one model exists.
+    syncPromptExecModelSelection(cachedValue) {
+      const cached = cachedValue || this.getPromptExecCache(this.promptExecPromptType) || null
+      const modelOptions = this.getSelectedCliModelOptions()
+      if (modelOptions.length === 0) {
+        this.promptExecModelName = ''
+        return
+      }
+      if (cached && cached.cliId === this.promptExecCliId && cached.modelName && modelOptions.includes(cached.modelName)) {
+        this.promptExecModelName = cached.modelName
+        return
+      }
+      if (modelOptions.includes(this.promptExecModelName)) {
+        return
+      }
+      if (modelOptions.length === 1) {
+        this.promptExecModelName = modelOptions[0]
+        return
+      }
+      this.promptExecModelName = ''
     },
     // 批量检查工作流页面中本地目录是否存在
     checkWorkflowLocalDirExists() {

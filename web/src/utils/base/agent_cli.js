@@ -35,6 +35,11 @@ function AgentCliToggleClaudeMem(data, callBack) {
   base.BasePost('/api/AgentCliToggleClaudeMem', data, callBack)
 }
 
+// AgentCliToggleEnabled 切换 Agent CLI 启停
+function AgentCliToggleEnabled(data, callBack) {
+  base.BasePost('/api/AgentCliToggleEnabled', data, callBack)
+}
+
 // WebhookConfigList 获取 Webhook 配置列表
 function WebhookConfigList(callBack) {
   base.BasePost('/api/WebhookConfigList', {}, callBack)
@@ -58,6 +63,7 @@ export default {
   AgentCliWriteMcpServers,
   AgentCliWriteDeepSeek,
   AgentCliToggleClaudeMem,
+  AgentCliToggleEnabled,
   WebhookConfigList,
   WebhookConfigSave,
   WebhookConfigDelete,

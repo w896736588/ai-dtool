@@ -573,6 +573,7 @@ func agentCli(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/AgentCliWriteMcpServers`, controller.AgentCliWriteMcpServers)
 	tGin.GinPost(`/api/AgentCliWriteDeepSeek`, controller.AgentCliWriteDeepSeek)
 	tGin.GinPost(`/api/AgentCliToggleClaudeMem`, controller.AgentCliToggleClaudeMem)
+	tGin.GinPost(`/api/AgentCliToggleEnabled`, controller.AgentCliToggleEnabled)
 }
 
 // webhookConfig 路由

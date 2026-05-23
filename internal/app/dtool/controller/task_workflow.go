@@ -2405,7 +2405,8 @@ func TaskWorkflowChatStreamOpen(urlValues url.Values, stopC chan int, c *gin.Con
 				configJson = cast.ToString(cliRow[`config`])
 			}
 		}
-		go runCodexCommand(chatID, localDir, prompt, isContinue, sessionID, configJson, sse, stopC)
+		selectedModelName := strings.TrimSpace(cast.ToString(chatInfo[`model_name`]))
+		go runCodexCommand(chatID, localDir, prompt, isContinue, sessionID, configJson, selectedModelName, sse, stopC)
 	default:
 		// Claude Code CLI：从 settings.json 读取配置（现有逻辑不变）
 		settingsPath := cast.ToString(chatInfo[`settings_path`])
@@ -2415,6 +2416,10 @@ func TaskWorkflowChatStreamOpen(urlValues url.Values, stopC chan int, c *gin.Con
 			if content != `` {
 				modelName, baseURL, apiKey = business.GetAgentCliModelConfig(content)
 			}
+		}
+		selectedModelName := strings.TrimSpace(cast.ToString(chatInfo[`model_name`]))
+		if selectedModelName != `` {
+			modelName = selectedModelName
 		}
 		thinkingIntensity := cast.ToString(chatInfo[`thinking_intensity`])
 		thinkingBudget := define.ThinkingIntensityBudgetMap[thinkingIntensity]
@@ -2456,6 +2461,7 @@ func TaskWorkflowChatSend(c *gin.Context) {
 	}
 
 	settingsPath := `` // Agent CLI 的 settings.json 路径
+	modelName := strings.TrimSpace(req.ModelName)
 	thinkingCollapsed := 0
 
 	// 若指定了 agent_cli_id，读取其配置
@@ -2474,7 +2480,7 @@ func TaskWorkflowChatSend(c *gin.Context) {
 	// prompt_type 为可选，非空时用于按类型查询对话历史
 	promptType := strings.TrimSpace(req.PromptType)
 
-	chatID, err := common.DbMain.TaskWorkflowChatCreate(req.WorkflowID, req.Prompt, promptType, req.CliType, req.AgentCliId, req.LocalDir, settingsPath, thinkingCollapsed, req.ThinkingIntensity)
+	chatID, err := common.DbMain.TaskWorkflowChatCreate(req.WorkflowID, req.Prompt, promptType, req.CliType, req.AgentCliId, req.LocalDir, settingsPath, modelName, thinkingCollapsed, req.ThinkingIntensity)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -2659,11 +2665,15 @@ func TaskWorkflowChatDetail(c *gin.Context) {
 	}
 
 	modelName := ``
+	selectedModelName := strings.TrimSpace(cast.ToString(info[`model_name`]))
 	if agentCliId := cast.ToInt(info[`agent_cli_id`]); agentCliId > 0 {
 		cliRow, err := common.DbMain.Client.QueryBySql(`SELECT name FROM tbl_agent_cli WHERE id = ?`, agentCliId).One()
 		if err == nil && len(cliRow) > 0 {
 			modelName = cast.ToString(cliRow["name"])
 		}
+	}
+	if selectedModelName != `` {
+		modelName = selectedModelName
 	}
 
 	taskName := ""
@@ -3147,7 +3157,7 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 
 // runCodexCommand 执行 Codex CLI 命令并推送流式输出到 SSE + DB。
 // 与 runClaudeCommand 平级，通过 cli_type 分发调用。
-func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessionID string, configJson string, sse *gsgin.Sse, stopC chan int) {
+func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessionID string, configJson string, selectedModelName string, sse *gsgin.Sse, stopC chan int) {
 	distributeID := define.SseTaskWorkflowChatPrefix + cast.ToString(chatID)
 
 	defer func() {
@@ -3229,6 +3239,9 @@ func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessi
 		sendLine(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
 		taskWorkflowBroadcastChatStatus(chatID)
 		return
+	}
+	if strings.TrimSpace(selectedModelName) != `` {
+		codexCfg.Model = strings.TrimSpace(selectedModelName)
 	}
 
 	cfg := p_codex.RunConfig{
