@@ -599,6 +599,21 @@ func (h *CSqlite) TaskWorkflowChatListByPromptType(workflowID int, promptType st
 	return rows, nil
 }
 
+// TaskWorkflowChatListByAgentCli 按 Agent CLI 查询对话历史。
+// TaskWorkflowChatListByAgentCli loads chats bound to one Agent CLI for the AgentCli page.
+func (h *CSqlite) TaskWorkflowChatListByAgentCli(agentCliID int) ([]map[string]any, error) {
+	if agentCliID <= 0 {
+		return nil, errors.New(`agent_cli_id不能为空`)
+	}
+	rows, err := h.Client.QuickQuery(`tbl_task_workflow_chat`, `*`, map[string]any{
+		`agent_cli_id`: agentCliID,
+	}).Order(`id DESC`).All()
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // TaskWorkflowClearChatSessionIDs 删除指定 prompt_type 的所有对话记录。
 func (h *CSqlite) TaskWorkflowClearChatSessionIDs(workflowID int, promptType string) error {
 	promptType = strings.TrimSpace(promptType)

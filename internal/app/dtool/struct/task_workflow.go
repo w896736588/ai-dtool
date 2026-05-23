@@ -130,3 +130,9 @@ type TaskWorkflowChatListByPromptTypeRequest struct {
 	WorkflowID int    `json:"workflow_id"`
 	PromptType string `json:"prompt_type"`
 }
+
+// TaskWorkflowChatListByAgentCliRequest 按 Agent CLI 查询对话列表请求。
+// TaskWorkflowChatListByAgentCliRequest lists chat records bound to a specific Agent CLI.
+type TaskWorkflowChatListByAgentCliRequest struct {
+	AgentCliID int `json:"agent_cli_id"`
+}

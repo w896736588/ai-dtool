@@ -137,6 +137,13 @@ function TaskWorkflowChatListByPromptType(workflowId, promptType, callBack) {
   }, callBack)
 }
 
+// TaskWorkflowChatListByAgentCli 按 Agent CLI 查询对话列表。
+function TaskWorkflowChatListByAgentCli(agentCliId, callBack) {
+  base.BasePost('/api/task/workflow/chat/list-by-agent-cli', {
+    agent_cli_id: agentCliId,
+  }, callBack)
+}
+
 export default {
   TaskWorkflowBatchNodeStatus,
   TaskWorkflowCreateOrGet,
@@ -157,4 +164,5 @@ export default {
   TaskWorkflowZcodeGet,
   TaskWorkflowZcodeDelete,
   TaskWorkflowChatListByPromptType,
+  TaskWorkflowChatListByAgentCli,
 }

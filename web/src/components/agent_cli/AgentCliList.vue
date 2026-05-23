@@ -126,6 +126,18 @@
             </div>
 
             <div class="agent-cli-card__actions">
+              <GitActionButton compact variant="success" @click="openAgentExecDialog(row)">执行</GitActionButton>
+              <GitActionButton
+                compact
+                variant="info"
+                :class="{ 'chat-history-btn--running': getAgentChatCounts(row.id).running > 0 }"
+                @click="openAgentChatHistory(row)"
+              >
+                执行历史
+                <span v-if="getAgentChatCounts(row.id).total > 0" class="chat-history-btn__counts">
+                  {{ getAgentChatCounts(row.id).running }}/{{ getAgentChatCounts(row.id).total }}
+                </span>
+              </GitActionButton>
               <GitActionButton
                 v-if="row.type !== 'codex-cli'"
                 compact
@@ -282,17 +294,175 @@
       </div>
     </el-dialog>
 
+    <el-dialog v-model="agentExecDialogVisible" title="执行任务" width="560px" destroy-on-close>
+      <el-form label-width="92px">
+        <el-form-item label="Agent">
+          <el-input :model-value="agentExecCliName" disabled />
+        </el-form-item>
+        <el-form-item label="历史目录">
+          <div class="agent-exec-history-dir-panel">
+            <div v-if="agentExecHistoryDirLoading" class="agent-exec-history-dir-panel__state">正在加载历史工作目录...</div>
+            <div v-else-if="agentExecHistoryDirs.length === 0" class="agent-exec-history-dir-panel__state">暂无历史工作目录</div>
+            <div v-else class="agent-exec-history-dir-list">
+              <el-tag
+                v-for="historyDir in agentExecHistoryDirs"
+                :key="historyDir"
+                class="agent-exec-history-dir-tag"
+                effect="plain"
+                @click="applyAgentExecHistoryDir(historyDir)"
+              >
+                {{ historyDir }}
+              </el-tag>
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="工作目录">
+          <el-input v-model="agentExecLocalDir" placeholder="请输入本地工作目录绝对路径" />
+        </el-form-item>
+        <el-form-item label="模型">
+          <el-select v-model="agentExecModelName" style="width: 100%;" placeholder="请选择模型">
+            <el-option
+              v-for="modelName in agentExecModelOptions"
+              :key="modelName"
+              :label="modelName"
+              :value="modelName"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="getAgentExecCliType() !== 'codex'" label="思考强度">
+          <el-select v-model="agentExecThinkingIntensity" style="width: 100%;" placeholder="请选择思考强度">
+            <el-option label="低" value="低" />
+            <el-option label="中等" value="中等" />
+            <el-option label="高" value="高" />
+            <el-option label="很高" value="很高" />
+            <el-option label="最高" value="最高" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="提示词">
+          <el-input
+            v-model="agentExecPrompt"
+            type="textarea"
+            :rows="10"
+            placeholder="请输入要发送给当前 Agent CLI 的提示词"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="agentExecDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="agentExecLoading" @click="execAgentPrompt">开始执行</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="agentChatHistoryVisible"
+      :title="'执行历史 - ' + (agentChatHistoryTitle || 'Agent CLI')"
+      width="80vw"
+      top="3vh"
+      destroy-on-close
+      @closed="onAgentChatHistoryClosed"
+    >
+      <div class="chat-combined-body" v-loading="agentChatHistoryLoading">
+        <div class="chat-combined-list">
+          <div
+            v-for="item in agentChatHistoryList"
+            :key="item.id"
+            :class="['chat-list-item', { 'chat-list-item--active': agentChatDetailId === item.id }]"
+            @click="onAgentChatRowClick(item)"
+          >
+            <div class="chat-list-item__name">
+              <div class="chat-list-item__tags"><span class="chat-list-item__id">{{ item.id }}</span></div>
+              <div class="chat-list-item__prompt" :title="item.prompt || '未命名'">{{ (item.prompt || '未命名').substring(0, 30) }}{{ (item.prompt || '').length > 30 ? '...' : '' }}</div>
+            </div>
+            <div class="chat-list-item__time">
+              <span v-if="item.status === 'running' && runtimeDurationText(item)" style="color: #409eff;">{{ runtimeDurationText(item) }}</span>
+              <span v-else-if="item.duration_ms > 0">{{ formatDurationDisplay(item.duration_ms) }}</span>
+              <span v-else>{{ item.created_at || '-' }}</span>
+              <span v-if="getItemMsgCount(item) > 0" class="chat-list-item__msg-count">{{ getItemMsgCount(item) }}条</span>
+            </div>
+            <span :class="['chat-list-item__status', 'chat-list-item__status--' + (item.status || '')]">
+              <span v-if="item.status === 'running'" class="chat-list-item__running-dot"></span>
+              <span v-else-if="item.status === 'error'" class="chat-list-item__error-icon">!</span>
+              {{ statusText(item.status) }} {{ formatCreatedAt(item.created_at) }}
+            </span>
+          </div>
+          <div v-if="agentChatHistoryList.length === 0 && !agentChatHistoryLoading" class="chat-combined-list__empty">暂无执行记录</div>
+        </div>
+        <div class="chat-combined-detail">
+          <div v-if="!agentChatDetailId" class="chat-combined-detail__placeholder">请选择一条执行记录</div>
+          <template v-else>
+            <div class="chat-detail-task-name">{{ agentChatHistoryTitle || '-' }}</div>
+            <div v-if="chatDetailModelName || chatDetailLocalDir" style="margin-bottom: 12px; color: #909399; font-size: 12px;">
+              <span v-if="chatDetailModelName">模型: {{ chatDetailModelName }}</span>
+              <span v-if="chatDetailModelName && chatDetailLocalDir"> | </span>
+              <span v-if="chatDetailLocalDir">目录: {{ chatDetailLocalDir }}</span>
+            </div>
+            <div ref="agentChatDetailContainer" class="chat-detail-container" @scroll="onAgentChatDetailScroll">
+              <div v-if="chatDetailMessages.length === 0 && chatDetailStatus === 'running'" style="text-align: center; padding: 40px; color: #909399;">
+                <div>等待 Agent CLI 响应...</div>
+              </div>
+              <div v-for="(msg, idx) in chatDetailMessages" :key="idx" style="margin-bottom: 8px;">
+                <div v-if="msg.type === 'system_init'" style="color: #67c23a; font-size: 12px; padding: 4px 0;">
+                  {{ msg.text }} | model: {{ msg.model }}
+                </div>
+                <div v-else-if="msg.type === 'system_command'" style="display: flex; justify-content: flex-end; margin: 4px 0;">
+                  <div style="background: #ecf5ff; border-radius: 8px 8px 0 8px; padding: 8px 12px; max-width: 70%; width: fit-content; min-width: 280px; border: 1px solid #d9ecff;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                      <span style="font-size: 11px; color: #909399;">{{ formatCliType(msg.cliType) }}</span>
+                      <span v-if="isLongText(msg.cmdLine || msg.text, 20)" @click="msg.collapsed = !msg.collapsed" style="cursor: pointer; font-size: 11px; color: #409eff; user-select: none;">{{ msg.collapsed ? '展开 ▼' : '收起 ▲' }}</span>
+                    </div>
+                    <div v-if="msg.cmdLine" class="markdown-body chat-markdown-body" v-html="renderMarkdown('> ' + (msg.collapsed ? truncateCmdPrompt(msg.cmdLine, 15) : msg.cmdLine))"></div>
+                    <div v-else style="white-space: pre-wrap; word-break: break-word; font-size: 12px; color: #303133; line-height: 1.6;" :style="{ maxHeight: msg.collapsed ? '20em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>
+                    <div v-if="msg.cmdLine" style="white-space: pre-wrap; word-break: break-word; font-size: 12px; color: #303133; line-height: 1.6; margin-top: 8px; border-top: 1px dashed #dcdfe6; padding-top: 6px;" :style="{ maxHeight: msg.collapsed ? '15em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>
+                  </div>
+                </div>
+                <div v-else-if="msg.type === 'system_hook'" style="color: #909399; font-size: 12px;">{{ msg.text }}</div>
+                <div v-else-if="msg.type === 'user'" style="display: flex; justify-content: flex-end; margin: 4px 0;">
+                  <div style="background: #f0f9eb; border-radius: 8px 8px 0 8px; padding: 8px 12px; max-width: 70%; white-space: pre-wrap; word-break: break-word;">{{ msg.text }}</div>
+                </div>
+                <div v-else-if="msg.type === 'assistant'" style="display: flex; justify-content: flex-start; margin: 4px 0;">
+                  <div style="background: #fff; border-radius: 8px 8px 8px 0; padding: 8px 12px; max-width: 78%; border: 1px solid #ebeef5;">
+                    <template v-if="msg.thinking">
+                      <div class="thinking-blockquote" :style="{ maxHeight: msg._thinkingCollapsed ? '220px' : 'none', overflow: msg._thinkingCollapsed ? 'auto' : 'visible' }">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                          <span style="font-size:12px; color:#909399;">思考过程</span>
+                          <el-button v-if="needCollapseBtn(msg.thinking)" link type="primary" @click="toggleThinkingCollapse(msg)">
+                            {{ msg._thinkingCollapsed ? '展开' : '收起' }}
+                          </el-button>
+                        </div>
+                        <div style="white-space: pre-wrap; color: #606266;">{{ msg.thinking }}</div>
+                      </div>
+                    </template>
+                    <div class="markdown-body chat-markdown-body" v-html="renderMarkdown(msg.text || '')"></div>
+                  </div>
+                </div>
+                <div v-else style="white-space: pre-wrap; word-break: break-word;">{{ msg.text }}</div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </el-dialog>
+
   </div>
 </template>
 
 <script>
 import agentCliApi from '../../utils/base/agent_cli'
 import GitActionButton from '@/components/base/GitActionButton.vue'
+import taskWorkflowApi from '@/utils/base/task_workflow'
+import baseUtils from '@/utils/base'
+import chatParser from '@/utils/chat_parser'
+import taskProgressStore from '@/utils/task_progress_store'
+import MarkdownIt from 'markdown-it'
 
 // AGENT_CLI_ENABLED_SORT_TRUE 启用状态排序值，启用项排在前面。 // Sort weight for enabled rows so active items stay at the top.
 const AGENT_CLI_ENABLED_SORT_TRUE = 1
 // AGENT_CLI_ENABLED_SORT_FALSE 禁用状态排序值，禁用项排在后面。 // Sort weight for disabled rows so inactive items move below active ones.
 const AGENT_CLI_ENABLED_SORT_FALSE = 0
+// AGENT_EXEC_CACHE_PREFIX 按 Agent CLI 记录最近一次执行配置。 // Cache key prefix for per-Agent execution settings.
+const AGENT_EXEC_CACHE_PREFIX = 'agent_cli_exec_'
+// markdown-it 实例，用于在"执行历史"对话框中渲染 markdown（包括表格）。 // Markdown renderer for execution history detail.
+const md = new MarkdownIt({ html: true, breaks: true, linkify: true })
 
 export default {
   components: {
@@ -337,11 +507,59 @@ export default {
         webhook_url: '',
         secret: '',
       },
+      agentExecDialogVisible: false,
+      agentExecLoading: false,
+      agentExecCliId: 0,
+      agentExecCliName: '',
+      agentExecPrompt: '',
+      agentExecLocalDir: '',
+      agentExecHistoryDirLoading: false,
+      agentExecHistoryDirs: [],
+      agentExecModelName: '',
+      agentExecThinkingIntensity: '高',
+      agentChatHistoryVisible: false,
+      agentChatHistoryLoading: false,
+      agentChatHistoryTitle: '',
+      agentChatHistoryCliId: 0,
+      agentChatHistoryList: [],
+      agentChatCounts: {},
+      agentChatDetailId: 0,
+      chatDetailId: 0,
+      chatDetailStatus: '',
+      chatDetailPrompt: '',
+      chatDetailSessionId: '',
+      chatDetailModelName: '',
+      chatDetailLocalDir: '',
+      chatDetailThinkingIntensity: '',
+      chatDetailCliType: 'claude',
+      chatDetailMessages: [],
+      chatDetailSSELines: [],
+      chatDetailAutoScroll: true,
+      chatDetailSSERegistered: false,
+      thinkingStreamElapsed: 0,
     }
+  },
+  computed: {
+    // agentExecModelOptions 返回当前卡片可选模型列表；无配置时回退到 current_model。 // Returns model options for the selected Agent CLI card.
+    agentExecModelOptions() {
+      const cli = this.getAgentExecCli()
+      if (!cli) return []
+      const rawOptions = Array.isArray(cli.model_options) ? cli.model_options : []
+      const normalizedOptions = rawOptions.map(item => String(item || '').trim()).filter(Boolean)
+      if (normalizedOptions.length > 0) {
+        return normalizedOptions
+      }
+      const currentModel = String(cli.current_model || '').trim()
+      return currentModel && currentModel !== '-' ? [currentModel] : []
+    },
   },
   mounted() {
     this.loadList()
     this.loadWebhookOptions()
+  },
+  beforeUnmount() {
+    this.closeChatDetail()
+    this._stopAgentChatHistoryDurationTimer()
   },
   methods: {
     // openWebhookDialog 打开 webhook 配置弹窗并同步刷新列表。 // openWebhookDialog opens the webhook dialog and refreshes its list before display.
@@ -370,8 +588,256 @@ export default {
             item.displayed_enabled = !!item.displayed_enabled
           })
           this.list = this.sortAgentCliList(items)
+          this.loadAgentChatCounts()
         }
       })
+    },
+    // loadAgentChatCounts 刷新每个卡片的执行历史计数，用于按钮数字和执行中动画。 // Refreshes per-card execution counters and running animation state.
+    loadAgentChatCounts() {
+      const rows = Array.isArray(this.list) ? this.list.filter(item => item.id > 0) : []
+      rows.forEach((row) => {
+        taskWorkflowApi.TaskWorkflowChatListByAgentCli(row.id, (response) => {
+          if (!(response && response.ErrCode === 0 && response.Data)) return
+          const list = Array.isArray(response.Data.list) ? response.Data.list : []
+          this.agentChatCounts = {
+            ...this.agentChatCounts,
+            [row.id]: {
+              running: list.filter(item => item.status === 'running').length,
+              interrupted: list.filter(item => item.status === 'interrupted').length,
+              total: list.length,
+            },
+          }
+        })
+      })
+    },
+    getAgentChatCounts(agentCliId) {
+      return this.agentChatCounts[agentCliId] || { running: 0, interrupted: 0, total: 0 }
+    },
+    getAgentExecCli() {
+      return this.list.find(item => Number(item.id) === Number(this.agentExecCliId)) || null
+    },
+    getAgentExecCliType() {
+      const cli = this.getAgentExecCli()
+      if (!cli) return 'claude'
+      return cli.type === 'codex-cli' ? 'codex' : 'claude'
+    },
+    getAgentExecCacheKey(agentCliId) {
+      return AGENT_EXEC_CACHE_PREFIX + String(agentCliId || 0)
+    },
+    getAgentExecCache(agentCliId) {
+      try {
+        const raw = localStorage.getItem(this.getAgentExecCacheKey(agentCliId))
+        return raw ? JSON.parse(raw) : null
+      } catch {
+        return null
+      }
+    },
+    saveAgentExecCache() {
+      const data = {
+        localDir: this.agentExecLocalDir,
+        modelName: this.agentExecModelName,
+        thinkingIntensity: this.agentExecThinkingIntensity,
+        prompt: this.agentExecPrompt,
+      }
+      localStorage.setItem(this.getAgentExecCacheKey(this.agentExecCliId), JSON.stringify(data))
+    },
+    openAgentExecDialog(row) {
+      this.agentExecCliId = row.id
+      this.agentExecCliName = row.name || '-'
+      const cached = this.getAgentExecCache(row.id)
+      this.agentExecLocalDir = cached?.localDir || ''
+      this.agentExecHistoryDirs = []
+      this.agentExecModelName = cached?.modelName || ''
+      this.agentExecThinkingIntensity = cached?.thinkingIntensity || '高'
+      this.agentExecPrompt = cached?.prompt || ''
+      if (this.agentExecModelOptions.length === 1 && !this.agentExecModelName) {
+        this.agentExecModelName = this.agentExecModelOptions[0]
+      }
+      this.agentExecDialogVisible = true
+      this.loadAgentExecHistoryDirs(row.id)
+    },
+    // loadAgentExecHistoryDirs 加载当前 Agent 的历史工作目录，去重后展示在执行弹窗顶部。 // Loads and de-duplicates history working directories for the current Agent execution dialog.
+    loadAgentExecHistoryDirs(agentCliId) {
+      this.agentExecHistoryDirLoading = true
+      taskWorkflowApi.TaskWorkflowChatListByAgentCli(agentCliId, (response) => {
+        this.agentExecHistoryDirLoading = false
+        if (!(response && response.ErrCode === 0 && response.Data)) {
+          this.agentExecHistoryDirs = []
+          return
+        }
+        const list = Array.isArray(response.Data.list) ? response.Data.list : []
+        this.agentExecHistoryDirs = this.extractAgentExecHistoryDirs(list)
+      })
+    },
+    // extractAgentExecHistoryDirs 从执行历史中提取去重后的目录列表，最近使用优先。 // Extracts a unique directory list from execution history while preserving recency order.
+    extractAgentExecHistoryDirs(list) {
+      const dirSet = new Set()
+      const dirList = []
+      list.forEach((item) => {
+        const localDir = String(item?.local_dir || '').trim()
+        // 空目录不展示，避免把无效历史写回输入框。 // Skip empty directories so invalid history values are never re-applied.
+        if (!localDir || dirSet.has(localDir)) {
+          return
+        }
+        dirSet.add(localDir)
+        dirList.push(localDir)
+      })
+      return dirList
+    },
+    // applyAgentExecHistoryDir 点击历史目录后直接回填到工作目录输入框。 // Applies a clicked history directory into the working-directory input immediately.
+    applyAgentExecHistoryDir(historyDir) {
+      this.agentExecLocalDir = String(historyDir || '').trim()
+    },
+    execAgentPrompt() {
+      if (!this.agentExecCliId) {
+        this.$message.warning('Agent 实例不存在')
+        return
+      }
+      if (!String(this.agentExecLocalDir || '').trim()) {
+        this.$message.warning('请输入工作目录')
+        return
+      }
+      if (!String(this.agentExecPrompt || '').trim()) {
+        this.$message.warning('请输入提示词')
+        return
+      }
+      if (this.agentExecModelOptions.length > 0 && !this.agentExecModelName) {
+        this.$message.warning('请选择模型')
+        return
+      }
+      this.agentExecLoading = true
+      this.saveAgentExecCache()
+      taskWorkflowApi.TaskWorkflowChatSend(
+        0,
+        this.agentExecPrompt,
+        'agent_cli_manual',
+        this.agentExecLocalDir.trim(),
+        this.getAgentExecCliType(),
+        this.agentExecCliId,
+        this.agentExecModelName,
+        this.agentExecThinkingIntensity,
+        (response) => {
+          this.agentExecLoading = false
+          if (!(response && response.ErrCode === 0 && response.Data)) {
+            this.$message.error(response?.ErrMsg || '发送失败')
+            return
+          }
+          const chatId = response.Data.chat_id
+          this.$message.success('已发送到 Agent CLI 执行')
+          this.agentExecDialogVisible = false
+          this.chatDetailId = chatId
+          this.agentChatDetailId = chatId
+          this.chatDetailStatus = 'running'
+          this.chatDetailCliType = this.getAgentExecCliType()
+          this.chatDetailSSELines = []
+          this.chatDetailMessages = []
+          taskProgressStore.reset()
+          this._initialSseRetryCount = 0
+          this.connectChatStream(chatId, null, true)
+          this.loadChatDetail()
+          this.loadAgentChatCounts()
+          const currentCli = this.getAgentExecCli()
+          if (currentCli) {
+            this.openAgentChatHistory(currentCli, chatId)
+          }
+        }
+      )
+    },
+    openAgentChatHistory(row, focusChatId) {
+      this.agentChatHistoryCliId = row.id
+      this.agentChatHistoryTitle = row.name || '-'
+      this.agentChatHistoryVisible = true
+      this.agentChatHistoryLoading = true
+      this.agentChatDetailId = 0
+      taskWorkflowApi.TaskWorkflowChatListByAgentCli(row.id, (response) => {
+        this.agentChatHistoryLoading = false
+        if (!(response && response.ErrCode === 0 && response.Data)) {
+          this.$message.error(response?.ErrMsg || '加载执行历史失败')
+          return
+        }
+        this.agentChatHistoryList = Array.isArray(response.Data.list) ? response.Data.list : []
+        this._startAgentChatHistoryDurationTimer()
+        this.agentChatCounts = {
+          ...this.agentChatCounts,
+          [row.id]: {
+            running: this.agentChatHistoryList.filter(item => item.status === 'running').length,
+            interrupted: this.agentChatHistoryList.filter(item => item.status === 'interrupted').length,
+            total: this.agentChatHistoryList.length,
+          },
+        }
+        if (focusChatId) {
+          const found = this.agentChatHistoryList.find(item => item.id === focusChatId)
+          if (found) {
+            this.onAgentChatRowClick(found)
+            return
+          }
+        }
+        if (this.agentChatHistoryList.length > 0) {
+          this.onAgentChatRowClick(this.agentChatHistoryList[0])
+        }
+      })
+    },
+    onAgentChatRowClick(row) {
+      if (this.agentChatDetailId === row.id) return
+      if (this._chatEventSource && this._sseChatId !== row.id) {
+        this._chatEventSource.close()
+        this._chatEventSource = null
+        this._sseChatId = 0
+      }
+      this.agentChatDetailId = row.id
+      this.chatDetailId = row.id
+      this.chatDetailStatus = row.status
+      this.chatDetailAutoScroll = true
+      if (this._sseChatId !== row.id) {
+        this.chatDetailSSELines = []
+        this.chatDetailMessages = []
+        this._thinkingStreamStartTime = 0
+        this.thinkingStreamElapsed = 0
+        taskProgressStore.reset()
+        this.loadChatDetail()
+      } else {
+        this.$nextTick(() => { this.scrollAgentChatToBottom() })
+      }
+    },
+    onAgentChatHistoryClosed() {
+      this._stopAgentChatHistoryDurationTimer()
+    },
+    onAgentChatDetailScroll() {
+      if (this._autoScrollLocked) return
+      const el = this.$refs.agentChatDetailContainer
+      if (!el) return
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30
+      this.chatDetailAutoScroll = atBottom
+    },
+    scrollAgentChatToBottom(force) {
+      if (!force && !this.chatDetailAutoScroll) return
+      this.$nextTick(() => {
+        const el = this.$refs.agentChatDetailContainer
+        if (el) {
+          el.scrollTo({ top: el.scrollHeight, behavior: 'auto' })
+        }
+      })
+    },
+    _startAgentChatHistoryDurationTimer() {
+      this._stopAgentChatHistoryDurationTimer()
+      this._chatHistoryDurationTimer = setInterval(() => {
+        if (this.agentChatHistoryList.some(item => item.status === 'running')) {
+          this.agentChatHistoryList = this.agentChatHistoryList.slice()
+        }
+        if (this._sseChatId > 0 && this.chatDetailSSELines.length > 0) {
+          const count = this.chatDetailSSELines.length
+          const item = this.agentChatHistoryList.find(row => row.id === this._sseChatId)
+          if (item && item.line_count !== count) {
+            item.line_count = count
+          }
+        }
+      }, 1000)
+    },
+    _stopAgentChatHistoryDurationTimer() {
+      if (this._chatHistoryDurationTimer) {
+        clearInterval(this._chatHistoryDurationTimer)
+        this._chatHistoryDurationTimer = null
+      }
     },
     openCreateDialog() {
       this.editingId = 0
@@ -608,6 +1074,277 @@ export default {
       }
       return modelOptions.join(' / ')
     },
+    // loadChatDetail 加载执行详情并在运行态自动接回 SSE。 // Loads execution detail and reconnects SSE for running records.
+    loadChatDetail() {
+      if (!this.chatDetailId) return
+      taskWorkflowApi.TaskWorkflowChatDetail(this.chatDetailId, (res) => {
+        if (res.ErrCode === 0 && res.Data) {
+          const data = res.Data
+          this.chatDetailPrompt = data.prompt || ''
+          this.chatDetailSessionId = data.session_id || ''
+          this.chatDetailStatus = data.status || ''
+          this.chatDetailModelName = data.model_name || ''
+          this.chatDetailLocalDir = data.local_dir || ''
+          this.chatDetailThinkingIntensity = data.thinking_intensity || ''
+          this.chatDetailCliType = data.cli_type || 'claude'
+          this.updateChatListStatus(this.chatDetailId, this.chatDetailStatus)
+          const historicalLines = data.lines || []
+          const sseLines = this.chatDetailSSELines
+          const newSseLines = sseLines.filter(line => !historicalLines.includes(line))
+          this.chatDetailSSELines = [...historicalLines, ...newSseLines]
+          this.chatDetailMessages = chatParser.parseChatLines(this.chatDetailSSELines, this.chatDetailCliType)
+          this.chatDetailMessages.forEach(msg => {
+            if (msg.type === 'assistant' && msg.thinking) {
+              msg._thinkingCollapsed = true
+            }
+            if (msg.type === 'assistant_thinking') {
+              msg._thinkingCollapsed = true
+            }
+          })
+          this.$nextTick(() => { this.scrollAgentChatToBottom(true) })
+          if (this.chatDetailStatus === 'running' && this._sseChatId !== this.chatDetailId) {
+            this.connectChatStream(this.chatDetailId)
+          }
+        }
+      })
+    },
+    // connectChatStream 创建专用 EventSource 连接以实时接收对话输出。 // Creates a dedicated EventSource for execution output streaming.
+    connectChatStream(chatId, continuePrompt, isNewChat) {
+      if (this._sseChatId === chatId && this._chatEventSource && this._chatEventSource.readyState !== EventSource.CLOSED) return
+      if (this._chatEventSource) {
+        this._chatEventSource.close()
+        this._chatEventSource = null
+      }
+      this._sseChatId = chatId
+      this.chatDetailSSERegistered = true
+      this._thinkingStreamStartTime = 0
+      this._sseParseState = this.chatDetailCliType === 'codex'
+        ? { currentItems: new Map(), pendingPatches: [] }
+        : { currentMessage: null, toolUseMap: new Map(), pendingPatches: [] }
+      this._sseLineBuffer = []
+      if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
+      if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
+      this.thinkingStreamElapsed = 0
+      this._thinkingTimer = setInterval(() => {
+        if (this._thinkingStreamStartTime > 0) {
+          this.thinkingStreamElapsed = Math.floor((Date.now() - this._thinkingStreamStartTime) / 1000)
+        } else {
+          this.thinkingStreamElapsed = 0
+        }
+      }, 200)
+      const sseHost = baseUtils.GetSseApiHost()
+      let url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + chatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
+      if (isNewChat) {
+        url += '&start=1'
+      }
+      if (continuePrompt) {
+        url += '&continue=1&prompt=' + encodeURIComponent(continuePrompt)
+      }
+      const es = new EventSource(url)
+      this._chatEventSource = es
+      es.onmessage = (event) => {
+        const line = event.data
+        if (!line) return
+        try {
+          const obj = JSON.parse(line)
+          if (obj.type === 'chat' && obj.subtype === 'completed') {
+            this._flushSseBatch()
+            this.chatDetailSSELines.push(line)
+            this._sseChatId = 0
+            this.chatDetailSSERegistered = false
+            es.close()
+            this._chatEventSource = null
+            this._sseParseState = null
+            this.loadChatDetail()
+            this.loadAgentChatCounts()
+            this.$nextTick(() => { this.scrollAgentChatToBottom() })
+            return
+          }
+          if (obj.type === 'stream_event') {
+            const evt = obj.event || {}
+            if (evt.type === 'content_block_delta') {
+              const delta = evt.delta || {}
+              if (delta.type === 'thinking_delta' && this._thinkingStreamStartTime === 0) {
+                this._thinkingStreamStartTime = Date.now()
+              }
+            } else if (evt.type === 'message_stop' && this._thinkingStreamStartTime > 0) {
+              const durationMs = Date.now() - this._thinkingStreamStartTime
+              this._thinkingStreamStartTime = 0
+              this._pendingThinkingDurationMs = durationMs
+            }
+          }
+        } catch (e) {}
+        this._sseLineBuffer.push(line)
+        if (!this._sseBatchTimer) {
+          this._sseBatchTimer = setTimeout(() => {
+            this._flushSseBatch()
+          }, 100)
+        }
+      }
+      es.onerror = () => {
+        this._flushSseBatch()
+        if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
+        this.thinkingStreamElapsed = 0
+        this.chatDetailSSERegistered = false
+        es.close()
+        this._chatEventSource = null
+        this._sseParseState = null
+        if (this._initialSseRetryCount < 1 && this.chatDetailSSELines.length === 0 && this.chatDetailStatus === 'running') {
+          this._initialSseRetryCount++
+          this.connectChatStream(this.chatDetailId, null, true)
+          return
+        }
+        this.loadChatDetail()
+        this.loadAgentChatCounts()
+      }
+    },
+    _flushSseBatch() {
+      if (this._sseBatchTimer) {
+        clearTimeout(this._sseBatchTimer)
+        this._sseBatchTimer = null
+      }
+      const newLines = this._sseLineBuffer.splice(0)
+      if (newLines.length === 0) return
+      for (const line of newLines) {
+        this.chatDetailSSELines.push(line)
+      }
+      const result = chatParser.parseChatLinesIncremental(newLines, this._sseParseState, this.chatDetailMessages.length, this.chatDetailCliType)
+      this._sseParseState = result.parseState
+      if (result.newMessages.length > 0) {
+        this._autoScrollLocked = true
+        for (const msg of result.newMessages) {
+          this.chatDetailMessages.push(msg)
+        }
+      }
+      for (const patch of result.parseState.pendingPatches) {
+        for (let i = this.chatDetailMessages.length - 1; i >= 0; i--) {
+          const msg = this.chatDetailMessages[i]
+          if (msg.type === 'assistant') {
+            for (const block of (msg.content || [])) {
+              if (block.type === 'tool_use' && block.id === patch.blockId) {
+                block._result = patch.resultData
+              }
+            }
+          } else if (msg.type === 'tool_use' && msg.id === patch.blockId) {
+            msg._result = patch.resultData
+          }
+        }
+      }
+      result.parseState.pendingPatches.length = 0
+      if (result.newMessages.length > 0) {
+        if (this._pendingThinkingDurationMs > 0) {
+          for (let i = this.chatDetailMessages.length - 1; i >= 0; i--) {
+            const msg = this.chatDetailMessages[i]
+            if (msg.type === 'assistant' && msg.thinking) {
+              msg._thinkingTiming = msg._thinkingTiming || { startMs: 0, durationMs: 0 }
+              msg._thinkingTiming.durationMs = this._pendingThinkingDurationMs
+              if (!msg._thinkingManuallyToggled) {
+                msg._thinkingCollapsed = true
+              }
+              break
+            }
+          }
+          this._pendingThinkingDurationMs = 0
+        }
+        this.$nextTick(() => {
+          this.scrollAgentChatToBottom()
+          const boxes = document.querySelectorAll('.thinking-blockquote')
+          boxes.forEach(box => { box.scrollTop = box.scrollHeight })
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              this._autoScrollLocked = false
+            })
+          })
+        })
+      }
+    },
+    toggleThinkingCollapse(msg) {
+      msg._thinkingCollapsed = !msg._thinkingCollapsed
+      msg._thinkingManuallyToggled = true
+    },
+    needCollapseBtn(text) {
+      return (text || '').split('\n').length > 10
+    },
+    formatCliType(cliType) {
+      if (!cliType) return '提示词'
+      return cliType.charAt(0).toUpperCase() + cliType.slice(1)
+    },
+    isLongText(text, maxBytes) {
+      if (!text) return false
+      return new TextEncoder().encode(text).length > maxBytes
+    },
+    truncateCmdPrompt(cmdLine, maxLen) {
+      if (!cmdLine) return ''
+      return cmdLine.replace(/(-p |exec |--json )"([^"]+)"/, (full, prefix, prompt) => {
+        const bytes = new TextEncoder().encode(prompt)
+        if (bytes.length <= maxLen) return full
+        let end = maxLen
+        while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--
+        return prefix + '"' + new TextDecoder().decode(bytes.slice(0, end)) + '..."'
+      })
+    },
+    closeChatDetail() {
+      if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
+      this._sseLineBuffer = []
+      this._sseParseState = null
+      if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
+      this.thinkingStreamElapsed = 0
+      this._thinkingStreamStartTime = 0
+      this._initialSseRetryCount = 0
+      if (this._chatEventSource) {
+        this._chatEventSource.close()
+        this._chatEventSource = null
+      }
+      this._sseChatId = 0
+      this.chatDetailSSERegistered = false
+      this.chatDetailMessages = []
+      this.chatDetailSSELines = []
+      taskProgressStore.reset()
+      this.chatDetailId = 0
+      this.agentChatDetailId = 0
+    },
+    updateChatListStatus(chatId, status) {
+      const item = this.agentChatHistoryList.find(row => row.id === chatId)
+      if (item) item.status = status
+    },
+    statusText(status) {
+      const map = { running: '执行中', completed: '已完成', error: '异常终止', interrupted: '中断' }
+      return map[status] || status || '-'
+    },
+    formatDurationDisplay(durationMs) {
+      const ms = Number(durationMs || 0)
+      if (ms <= 0) return ''
+      const totalSeconds = Math.floor(ms / 1000)
+      const minutes = Math.floor(totalSeconds / 60)
+      const seconds = totalSeconds % 60
+      if (minutes > 0) return minutes + 'm' + seconds + 's'
+      return seconds + 's'
+    },
+    runtimeDurationText(item) {
+      if (!item || !item.created_at) return ''
+      const created = new Date(item.created_at.replace(/-/g, '/'))
+      if (isNaN(created.getTime())) return ''
+      const ms = Date.now() - created.getTime()
+      return this.formatDurationDisplay(ms)
+    },
+    getItemMsgCount(item) {
+      if (item.status === 'running' && this._sseChatId > 0 && item.id === this._sseChatId) {
+        return this.chatDetailSSELines.length
+      }
+      return item.line_count || 0
+    },
+    formatCreatedAt(createdAt) {
+      if (!createdAt) return ''
+      const d = new Date(createdAt.replace(/-/g, '/'))
+      if (isNaN(d.getTime())) return ''
+      const pad = (n) => String(n).padStart(2, '0')
+      return d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' +
+        pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds())
+    },
+    renderMarkdown(text) {
+      if (!text) return ''
+      return md.render(text)
+    },
     // ---- Webhook 配置相关 ----
     loadWebhookOptions() {
       agentCliApi.WebhookConfigList((response) => {
@@ -716,3 +1453,274 @@ export default {
 </script>
 
 <style scoped src="@/css/components/agent_cli/AgentCliList.css"></style>
+
+<style>
+.chat-history-btn--running {
+  position: relative;
+}
+
+.chat-history-btn--running::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 50%;
+  border: 2px solid #409eff;
+  border-top-color: transparent;
+  animation: chat-history-spin 0.8s linear infinite;
+}
+
+.chat-history-btn__counts {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes chat-history-spin {
+  to { transform: rotate(360deg); }
+}
+
+.chat-combined-body {
+  display: flex;
+  gap: 12px;
+  height: calc(90vh - 120px);
+  min-height: 500px;
+}
+
+.chat-combined-list {
+  width: 240px;
+  min-width: 240px;
+  border-right: 1px solid #e8e8e0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-combined-list__empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: #909399;
+  font-size: 13px;
+}
+
+.chat-list-item {
+  position: relative;
+  padding: 10px 12px 10px 16px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.chat-list-item:hover {
+  background: #f0f2f5;
+}
+
+.chat-list-item--active {
+  background: #edf3e8;
+}
+
+.chat-list-item__name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+  line-height: 1.4;
+  padding-right: 14px;
+}
+
+.chat-list-item__tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.chat-list-item__prompt {
+  font-size: 13px;
+  font-weight: 400;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-list-item__id {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 400;
+  color: #909399;
+  background: #f0f2f5;
+  padding: 0 6px;
+  border-radius: 8px;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.chat-list-item__time {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-list-item__msg-count {
+  font-size: 11px;
+  color: #606266;
+  background: #f0f2f5;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.chat-list-item__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 1px 0;
+  white-space: nowrap;
+  margin-top: 4px;
+}
+
+.chat-list-item__running-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #409eff;
+  border-top-color: transparent;
+  animation: chat-status-dot-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes chat-status-dot-spin {
+  to { transform: rotate(360deg); }
+}
+
+.chat-list-item__error-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #f56c6c;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.chat-list-item__status--running {
+  color: #409eff;
+}
+
+.chat-list-item__status--completed {
+  color: #67c23a;
+}
+
+.chat-list-item__status--error {
+  color: #f56c6c;
+}
+
+.chat-list-item__status--interrupted {
+  color: #e6a23c;
+}
+
+.chat-combined-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.chat-combined-detail__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #909399;
+  font-size: 14px;
+}
+
+.chat-detail-task-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.chat-detail-container {
+  flex: 1;
+  overflow-y: auto;
+  background: #fafbfc;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  padding: 16px;
+  color: #303133;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 0;
+  scroll-behavior: smooth;
+}
+
+.chat-markdown-body {
+  word-wrap: break-word;
+  color: #303133;
+  background-color: transparent;
+}
+
+.chat-markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+}
+
+.chat-markdown-body th,
+.chat-markdown-body td {
+  padding: 6px 12px;
+  border: 1px solid #e4e7ed;
+  text-align: left;
+}
+
+.chat-markdown-body th {
+  font-weight: 600;
+  background-color: #f5f7fa;
+  color: #303133;
+}
+
+.chat-markdown-body td {
+  background-color: #fff;
+}
+
+.chat-markdown-body code {
+  font-family: 'Consolas', monospace;
+  font-size: 0.9em;
+  background-color: #f5f7fa;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  color: #e6a23c;
+}
+
+.thinking-blockquote {
+  background: #f8f8f8;
+  border-left: 3px solid #d0d7de;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+}
+</style>

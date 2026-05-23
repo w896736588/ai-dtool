@@ -259,6 +259,40 @@
   background: #ffffff;
 }
 
+.agent-exec-history-dir-panel {
+  width: 100%;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid #e4eadc;
+  border-radius: 10px;
+  background: #fbfcf8;
+}
+
+.agent-exec-history-dir-panel__state {
+  font-size: 12px;
+  color: #8a9685;
+  line-height: 1.5;
+}
+
+.agent-exec-history-dir-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.agent-exec-history-dir-tag {
+  max-width: 100%;
+  cursor: pointer;
+}
+
+.agent-exec-history-dir-tag :deep(.el-tag__content) {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .agent-cli-config-table__value--break {
   word-break: break-all;
 }

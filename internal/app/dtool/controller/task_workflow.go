@@ -2826,6 +2826,82 @@ func TaskWorkflowChatListByPromptType(c *gin.Context) {
 	})
 }
 
+// TaskWorkflowChatListByAgentCli 按 Agent CLI 列出对话。
+// TaskWorkflowChatListByAgentCli returns standalone AgentCli execution history for one card.
+func TaskWorkflowChatListByAgentCli(c *gin.Context) {
+	var req _struct.TaskWorkflowChatListByAgentCliRequest
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if req.AgentCliID <= 0 {
+		gsgin.GinResponseError(c, `agent_cli_id不能为空`, nil)
+		return
+	}
+	rows, err := common.DbMain.TaskWorkflowChatListByAgentCli(req.AgentCliID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	type chatItem struct {
+		ID           int64  `json:"id"`
+		SessionID    string `json:"session_id"`
+		Prompt       string `json:"prompt"`
+		PromptType   string `json:"prompt_type"`
+		AgentCliId   int    `json:"agent_cli_id"`
+		AgentCliName string `json:"agent_cli_name"`
+		LocalDir     string `json:"local_dir"`
+		Status       string `json:"status"`
+		CliType      string `json:"cli_type"`
+		CreatedAt    string `json:"created_at"`
+		DurationMs   int64  `json:"duration_ms"`
+		LineCount    int    `json:"line_count"`
+	}
+	const timeLayout = `2006-01-02 15:04:05`
+	cliNameMap := make(map[int]string)
+	cliRows, _ := common.DbMain.Client.QueryBySql(`SELECT id, name FROM tbl_agent_cli`).All()
+	for _, cr := range cliRows {
+		cliNameMap[cast.ToInt(cr[`id`])] = cast.ToString(cr[`name`])
+	}
+	list := make([]chatItem, 0, len(rows))
+	for _, row := range rows {
+		status := cast.ToString(row[`status`])
+		var durationMs int64
+		if status != `running` {
+			createdAt, _ := time.Parse(timeLayout, cast.ToString(row[`created_at`]))
+			updatedAt, _ := time.Parse(timeLayout, cast.ToString(row[`updated_at`]))
+			if !createdAt.IsZero() && !updatedAt.IsZero() {
+				durationMs = updatedAt.Sub(createdAt).Milliseconds()
+				if durationMs < 0 {
+					durationMs = 0
+				}
+			}
+		}
+		rawOutput := cast.ToString(row[`raw_output`])
+		lineCount := 0
+		if rawOutput != `` {
+			lineCount = len(strings.Split(rawOutput, "\n"))
+		}
+		list = append(list, chatItem{
+			ID:           cast.ToInt64(row[`id`]),
+			SessionID:    cast.ToString(row[`session_id`]),
+			Prompt:       cast.ToString(row[`prompt`]),
+			PromptType:   cast.ToString(row[`prompt_type`]),
+			AgentCliId:   cast.ToInt(row[`agent_cli_id`]),
+			AgentCliName: cliNameMap[cast.ToInt(row[`agent_cli_id`])],
+			LocalDir:     cast.ToString(row[`local_dir`]),
+			Status:       status,
+			CliType:      cast.ToString(row[`cli_type`]),
+			CreatedAt:    cast.ToString(row[`created_at`]),
+			DurationMs:   durationMs,
+			LineCount:    lineCount,
+		})
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: list,
+	})
+}
+
 // TaskWorkflowZcodeSave 保存 zcode 工作目录配置，自动扫描子文件夹解析项目映射。
 func TaskWorkflowZcodeSave(c *gin.Context) {
 	var req _struct.TaskWorkflowZcodeSaveRequest
