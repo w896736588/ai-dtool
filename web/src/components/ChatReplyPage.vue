@@ -18,7 +18,7 @@
         </div>
         <div v-for="(msg, idx) in messages" :key="idx" style="margin-bottom: 8px;">
           <div v-if="msg.type === 'system_init'" style="color: #67c23a; font-size: 12px; padding: 4px 0;">
-            {{ msg.text }} | model: {{ msg.model }}
+            {{ msg.text }} | model: {{ msg.model || modelName || '-' }}
           </div>
           <div v-else-if="msg.type === 'system_command'" style="display: flex; justify-content: flex-end; margin: 4px 0;">
             <div style="background: #ecf5ff; border-radius: 8px 8px 0 8px; padding: 8px 12px; max-width: 70%; width: fit-content; min-width: 280px; border: 1px solid #d9ecff;">

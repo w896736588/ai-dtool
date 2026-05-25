@@ -60,7 +60,7 @@
             </div>
             <div v-for="(msg, idx) in detailMessages" :key="idx" class="chat-message-item">
               <div v-if="msg.type === 'system_init'" class="chat-message-system-init">
-                {{ msg.text }} | model: {{ msg.model }}
+                {{ msg.text }} | model: {{ msg.model || modelName || '-' }}
               </div>
               <div v-else-if="msg.type === 'system_command'" class="chat-message-system-command">
                 <div class="chat-message-command-card">
