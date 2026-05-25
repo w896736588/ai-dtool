@@ -269,9 +269,9 @@
 
 .cr-result-header {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   padding-bottom: 6px;
   border-bottom: 1px solid #ebeef5;
 }
@@ -279,16 +279,7 @@
 .cr-result-header-item {
   color: #606266;
   font-size: 12px;
-}
-
-.cr-result-header-item::before {
-  content: '\00b7';
-  margin-right: 8px;
-  color: #c0c4cc;
-}
-
-.cr-result-header > span:first-child::before {
-  content: none;
+  line-height: 1.6;
 }
 
 .cr-result-section {

@@ -22,6 +22,34 @@ function parseOneLine(line, messages, currentItems) {
       model: obj.model || '',
       sessionId: obj.thread_id || '',
     })
+  } else if (eventType === 'result') {
+    let modelUsageList = null
+    if (obj.modelUsage) {
+      modelUsageList = Object.entries(obj.modelUsage).map(([name, info]) => ({
+        name,
+        inputTokens: info.inputTokens || 0,
+        outputTokens: info.outputTokens || 0,
+        cacheReadInputTokens: info.cacheReadInputTokens || 0,
+        cacheCreationInputTokens: info.cacheCreationInputTokens || 0,
+        costUSD: info.costUSD || 0,
+      }))
+    }
+    messages.push({
+      type: 'result',
+      subtype: obj.subtype || '',
+      durationMs: obj.duration_ms || 0,
+      durationApiMs: obj.duration_api_ms || 0,
+      numTurns: obj.num_turns || 0,
+      usage: obj.usage || null,
+      isError: obj.is_error || false,
+      totalCostUsd: obj.total_cost_usd ?? null,
+      modelUsage: modelUsageList,
+      stopReason: obj.stop_reason || '',
+      permissionDenials: obj.permission_denials || null,
+      resultText: obj.result || '',
+      uuid: obj.uuid || '',
+      sessionId: obj.session_id || '',
+    })
   } else if (eventType === 'turn.started') {
     // 内部状态，不显示
   } else if (eventType === 'turn.completed') {

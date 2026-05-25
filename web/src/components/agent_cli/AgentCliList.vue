@@ -358,6 +358,7 @@
       :local-dir="chatDetailLocalDir"
       :thinking-intensity="chatDetailThinkingIntensity"
       :detail-status="chatDetailStatus"
+      :detail-cli-type="chatDetailCliType"
       :detail-messages="chatDetailMessages"
       :continue-input="chatContinueInput"
       :continue-loading="chatContinueLoading"

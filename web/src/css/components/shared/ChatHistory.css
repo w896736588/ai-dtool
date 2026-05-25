@@ -522,9 +522,9 @@
 
 .chat-result-header {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   padding-bottom: 6px;
   border-bottom: 1px solid #ebeef5;
 }
@@ -541,6 +541,7 @@
 
 .chat-result-header-item {
   color: #606266;
+  line-height: 1.6;
 }
 
 .chat-result-header-item--cost {

@@ -128,27 +128,23 @@
           </div>
           <div v-else-if="msg.type === 'result'" class="cr-result-card">
             <div class="cr-result-header">
-              <span :style="{ color: msg.isError ? '#f56c6c' : '#67c23a', fontWeight: 'bold' }">
-                {{ msg.isError ? '✕ 执行失败' : '✓ 执行完成' }}
-              </span>
-              <span class="cr-result-header-item">耗时 {{ (msg.durationMs / 1000).toFixed(1) }}s</span>
-              <span v-if="msg.durationApiMs" class="cr-result-header-item">API {{ (msg.durationApiMs / 1000).toFixed(1) }}s</span>
-              <span class="cr-result-header-item">{{ msg.numTurns }} 轮对话</span>
-              <span v-if="msg.totalCostUsd != null" class="cr-result-header-item" style="color: #e6a23c;">${{ msg.totalCostUsd.toFixed(4) }}</span>
-              <span v-if="msg.stopReason" class="cr-result-header-item" style="color: #909399;">{{ stopReasonLabel(msg.stopReason) }}</span>
-            </div>
-            <div v-if="msg.usage" class="cr-result-section">
-              <div class="cr-result-section-title">Token 用量</div>
-              <div class="cr-result-tokens">
-                <span>输入 {{ formatNum(msg.usage.input_tokens) }}</span>
-                <span>输出 {{ formatNum(msg.usage.output_tokens) }}</span>
-                <span v-if="msg.usage.cache_read_input_tokens">缓存读取 {{ formatNum(msg.usage.cache_read_input_tokens) }}</span>
-                <span v-if="msg.usage.cache_creation_input_tokens">缓存创建 {{ formatNum(msg.usage.cache_creation_input_tokens) }}</span>
+              <div
+                v-for="(line, lineIndex) in buildResultSummaryLines(msg)"
+                :key="lineIndex"
+                class="cr-result-header-item"
+                :style="lineIndex === 0 ? { color: msg.isError ? '#f56c6c' : '#67c23a', fontWeight: 'bold' } : null"
+              >
+                {{ line }}
               </div>
             </div>
-            <div v-if="msg.resultText" class="cr-result-section">
-              <div class="cr-result-section-title">结果</div>
-              <pre class="cr-result-text">{{ msg.resultText }}</pre>
+            <div v-if="getPrimaryUsageRow(msg)" class="cr-result-section">
+              <div class="cr-result-section-title">Token 用量</div>
+              <div class="cr-result-tokens">
+                <span>{{ getPrimaryUsageRow(msg).name }}</span>
+                <span>输入 {{ formatNum(getPrimaryUsageRow(msg).inputTokens) }}</span>
+                <span>输出 {{ formatNum(getPrimaryUsageRow(msg).outputTokens) }}</span>
+                <span v-if="getPrimaryUsageRow(msg).cacheReadInputTokens">缓存读取 {{ formatNum(getPrimaryUsageRow(msg).cacheReadInputTokens) }}</span>
+              </div>
             </div>
           </div>
           <div v-else-if="msg.type === 'chat_completed' && status === 'completed'" style="color: #67c23a; text-align: center; padding: 16px;">
@@ -193,6 +189,7 @@ import taskWorkflowApi from '@/utils/base/task_workflow'
 import baseUtils from '@/utils/base'
 import chatParser from '@/utils/chat_parser'
 import MarkdownIt from 'markdown-it'
+import resultSummaryUtils from '@/utils/chat_result_summary.cjs'
 
 const md = new MarkdownIt({ html: true, breaks: true, linkify: true })
 
@@ -470,6 +467,36 @@ export default {
     stopReasonLabel(reason) {
       const map = { end_turn: '正常结束', stop_sequence: '停止序列', max_tokens: '达到上限', tool_use: '工具调用' }
       return map[reason] || reason
+    },
+    buildResultSummaryLines(msg) {
+      return resultSummaryUtils.buildResultSummaryLines(msg)
+    },
+    getPrimaryUsageRow(msg) {
+      if (!msg) return null
+      if (Array.isArray(msg.modelUsage) && msg.modelUsage.length > 0) {
+        const currentModelName = String(this.modelName || '').trim()
+        const exactMatch = currentModelName
+          ? msg.modelUsage.find(item => String(item.name || '').trim() === currentModelName)
+          : null
+        const picked = exactMatch || msg.modelUsage[0]
+        if (picked) {
+          return {
+            name: picked.name || currentModelName || '模型',
+            inputTokens: picked.inputTokens || 0,
+            outputTokens: picked.outputTokens || 0,
+            cacheReadInputTokens: picked.cacheReadInputTokens || 0,
+          }
+        }
+      }
+      if (msg.usage) {
+        return {
+          name: this.modelName || '模型',
+          inputTokens: msg.usage.input_tokens || 0,
+          outputTokens: msg.usage.output_tokens || 0,
+          cacheReadInputTokens: msg.usage.cache_read_input_tokens || 0,
+        }
+      }
+      return null
     },
   },
 }

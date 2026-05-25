@@ -3217,6 +3217,7 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 // 与 runClaudeCommand 平级，通过 cli_type 分发调用。
 func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessionID string, configJson string, selectedModelName string, sse *gsgin.Sse, stopC chan int) {
 	distributeID := define.SseTaskWorkflowChatPrefix + cast.ToString(chatID)
+	startTime := time.Now()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -3338,6 +3339,8 @@ func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessi
 	sessionExtracted := false
 	callbackCount := 0
 	var lastAgentMessageText string
+	turnCount := 0
+	var lastTurnUsage map[string]any
 
 	gstool.FmtPrintlnLogTime("[codex-run] chat_id=%d 开始RunCodexStream dir=%s model=%s", chatID, localDir, codexCfg.Model)
 
@@ -3354,6 +3357,12 @@ func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessi
 				if text := cast.ToString(item[`text`]); text != "" {
 					lastAgentMessageText = text
 				}
+			}
+		}
+		if msg.Type == `turn.completed` {
+			turnCount++
+			if usage, ok := msg.Data[`usage`].(map[string]any); ok {
+				lastTurnUsage = usage
 			}
 		}
 
@@ -3383,6 +3392,33 @@ func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessi
 	} else {
 		_ = common.DbMain.TaskWorkflowChatMarkCompleted(chatID)
 	}
+
+	durationMs := time.Since(startTime).Milliseconds()
+	if durationMs < 0 {
+		durationMs = 0
+	}
+	if turnCount <= 0 {
+		turnCount = 1
+	}
+	modelUsage := map[string]any{}
+	if codexCfg.Model != `` {
+		modelUsage[codexCfg.Model] = map[string]any{
+			`inputTokens`:          cast.ToInt64(lastTurnUsage[`input_tokens`]),
+			`outputTokens`:         cast.ToInt64(lastTurnUsage[`output_tokens`]),
+			`cacheReadInputTokens`: cast.ToInt64(lastTurnUsage[`cache_read_input_tokens`]),
+		}
+	}
+	resultJSON, _ := json.Marshal(map[string]any{
+		`type`:        `result`,
+		`subtype`:     `completed`,
+		`duration_ms`: durationMs,
+		`num_turns`:   turnCount,
+		`usage`:       lastTurnUsage,
+		`modelUsage`:  modelUsage,
+		`is_error`:    err != nil,
+		`result`:      lastAgentMessageText,
+	})
+	sendLine(string(resultJSON))
 	sendLine(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
 	taskWorkflowBroadcastChatStatus(chatID)
 	go taskWorkflowSendWebhookNotify(chatID, lastAgentMessageText)

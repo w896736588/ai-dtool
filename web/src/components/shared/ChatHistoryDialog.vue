@@ -223,43 +223,25 @@
               </div>
               <div v-else-if="msg.type === 'result'" class="chat-result-card">
                 <div class="chat-result-header">
-                  <span :class="['chat-result-header__state', msg.isError ? 'chat-result-header__state--error' : 'chat-result-header__state--success']">
-                    {{ msg.isError ? '✕ 执行失败' : '✓ 执行完成' }}
-                  </span>
-                  <span class="chat-result-header-item">耗时 {{ (msg.durationMs / 1000).toFixed(1) }}s</span>
-                  <span v-if="msg.durationApiMs" class="chat-result-header-item">API {{ (msg.durationApiMs / 1000).toFixed(1) }}s</span>
-                  <span class="chat-result-header-item">{{ msg.numTurns }} 轮对话</span>
-                  <span v-if="msg.totalCostUsd != null" class="chat-result-header-item chat-result-header-item--cost">${{ msg.totalCostUsd.toFixed(4) }}</span>
-                  <span v-if="msg.stopReason" class="chat-result-header-item">{{ stopReasonLabel(msg.stopReason) }}</span>
+                  <div
+                    v-for="(line, lineIndex) in buildResultSummaryLines(msg)"
+                    :key="lineIndex"
+                    :class="[
+                      'chat-result-header-item',
+                      lineIndex === 0 ? (msg.isError ? 'chat-result-header__state chat-result-header__state--error' : 'chat-result-header__state chat-result-header__state--success') : ''
+                    ]"
+                  >
+                    {{ line }}
+                  </div>
                 </div>
-                <div v-if="msg.usage" class="chat-result-section">
+                <div v-if="getPrimaryUsageRow(msg)" class="chat-result-section">
                   <div class="chat-result-section-title">Token 用量</div>
-                  <div class="chat-result-tokens">
-                    <span>输入 {{ formatNum(msg.usage.input_tokens) }}</span>
-                    <span>输出 {{ formatNum(msg.usage.output_tokens) }}</span>
-                    <span v-if="msg.usage.cache_read_input_tokens">缓存读取 {{ formatNum(msg.usage.cache_read_input_tokens) }}</span>
-                    <span v-if="msg.usage.cache_creation_input_tokens">缓存创建 {{ formatNum(msg.usage.cache_creation_input_tokens) }}</span>
+                  <div class="chat-result-model-row">
+                    <span class="chat-result-model-name">{{ getPrimaryUsageRow(msg).name }}</span>
+                    <span>输入 {{ formatNum(getPrimaryUsageRow(msg).inputTokens) }}</span>
+                    <span>输出 {{ formatNum(getPrimaryUsageRow(msg).outputTokens) }}</span>
+                    <span v-if="getPrimaryUsageRow(msg).cacheReadInputTokens">缓存读取 {{ formatNum(getPrimaryUsageRow(msg).cacheReadInputTokens) }}</span>
                   </div>
-                </div>
-                <div v-if="msg.modelUsage && msg.modelUsage.length" class="chat-result-section">
-                  <div class="chat-result-section-title">模型用量</div>
-                  <div v-for="mu in msg.modelUsage" :key="mu.name" class="chat-result-model-row">
-                    <span class="chat-result-model-name">{{ mu.name }}</span>
-                    <span>输入 {{ formatNum(mu.inputTokens) }}</span>
-                    <span>输出 {{ formatNum(mu.outputTokens) }}</span>
-                    <span v-if="mu.costUSD">${{ mu.costUSD.toFixed(4) }}</span>
-                  </div>
-                </div>
-                <div v-if="msg.permissionDenials && msg.permissionDenials.length" class="chat-result-section">
-                  <div class="chat-result-section-title chat-result-section-title--warn">权限询问 ({{ msg.permissionDenials.length }})</div>
-                  <div v-for="(pd, pdi) in msg.permissionDenials" :key="pdi" class="chat-result-permission-item">
-                    <span>{{ pd.tool_name }}</span>
-                    <span v-if="pd.tool_use_id" class="chat-result-permission-item__id">{{ pd.tool_use_id.slice(0, 8) }}...</span>
-                  </div>
-                </div>
-                <div v-if="msg.resultText" class="chat-result-section">
-                  <div class="chat-result-section-title">结果</div>
-                  <pre class="chat-result-text">{{ msg.resultText }}</pre>
                 </div>
               </div>
               <div v-else-if="msg.type === 'chat_completed' && detailStatus === 'completed'" class="chat-message-completed">
@@ -309,6 +291,7 @@
 </template>
 
 <script>
+import resultSummaryUtils from '@/utils/chat_result_summary.cjs'
 export default {
   name: 'ChatHistoryDialog',
   props: {
@@ -359,6 +342,10 @@ export default {
     detailStatus: {
       type: String,
       default: '',
+    },
+    detailCliType: {
+      type: String,
+      default: 'claude',
     },
     detailMessages: {
       type: Array,
@@ -509,6 +496,36 @@ export default {
     },
     formatNum(num) {
       return this.formatNumFn(num)
+    },
+    buildResultSummaryLines(msg) {
+      return resultSummaryUtils.buildResultSummaryLines(msg)
+    },
+    getPrimaryUsageRow(msg) {
+      if (!msg) return null
+      if (Array.isArray(msg.modelUsage) && msg.modelUsage.length > 0) {
+        const currentModelName = String(this.modelName || '').trim()
+        const exactMatch = currentModelName
+          ? msg.modelUsage.find(item => String(item.name || '').trim() === currentModelName)
+          : null
+        const picked = exactMatch || msg.modelUsage[0]
+        if (picked) {
+          return {
+            name: picked.name || currentModelName || '模型',
+            inputTokens: picked.inputTokens || 0,
+            outputTokens: picked.outputTokens || 0,
+            cacheReadInputTokens: picked.cacheReadInputTokens || 0,
+          }
+        }
+      }
+      if (msg.usage) {
+        return {
+          name: this.modelName || '模型',
+          inputTokens: msg.usage.input_tokens || 0,
+          outputTokens: msg.usage.output_tokens || 0,
+          cacheReadInputTokens: msg.usage.cache_read_input_tokens || 0,
+        }
+      }
+      return null
     },
   },
 }
