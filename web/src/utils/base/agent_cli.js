@@ -67,6 +67,26 @@ function WebhookConfigDelete(id, callBack) {
   base.BasePost('/api/WebhookConfigDelete', { id: id }, callBack)
 }
 
+// AgentCliGroupList 获取 AgentCli 专用分组列表
+function AgentCliGroupList(callBack) {
+  base.BasePost('/api/AgentCliGroupList', {}, callBack)
+}
+
+// AgentCliGroupSave 新增/编辑 AgentCli 分组
+function AgentCliGroupSave(data, callBack) {
+  base.BasePost('/api/AgentCliGroupSave', data, callBack)
+}
+
+// AgentCliGroupDelete 删除 AgentCli 分组
+function AgentCliGroupDelete(id, callBack) {
+  base.BasePost('/api/AgentCliGroupDelete', { id: id }, callBack)
+}
+
+// AgentCliGroupRelSave 保存 AgentCli 的分组关联
+function AgentCliGroupRelSave(data, callBack) {
+  base.BasePost('/api/AgentCliGroupRelSave', data, callBack)
+}
+
 export default {
   AgentCliList,
   AgentCliSave,
@@ -81,4 +101,8 @@ export default {
   WebhookConfigList,
   WebhookConfigSave,
   WebhookConfigDelete,
+  AgentCliGroupList,
+  AgentCliGroupSave,
+  AgentCliGroupDelete,
+  AgentCliGroupRelSave,
 }

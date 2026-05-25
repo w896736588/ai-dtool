@@ -33,6 +33,17 @@ func AgentCliList(c *gin.Context) {
 		webhookNameMap[cast.ToInt(wr["id"])] = cast.ToString(wr["name"])
 	}
 
+	// 预加载分组关联映射（agent_cli_id -> []group_id）
+	groupRelMap := make(map[int][]int)
+	groupRelRows, _ := common.DbMain.Client.QueryBySql(
+		`SELECT agent_cli_id, group_id FROM tbl_agent_cli_group_rel`,
+	).All()
+	for _, gr := range groupRelRows {
+		cliId := cast.ToInt(gr["agent_cli_id"])
+		groupId := cast.ToInt(gr["group_id"])
+		groupRelMap[cliId] = append(groupRelMap[cliId], groupId)
+	}
+
 	for _, row := range rows {
 		item := define.AgentCliStatusItem{
 			AgentCliItem: define.AgentCliItem{
@@ -50,6 +61,13 @@ func AgentCliList(c *gin.Context) {
 
 		if item.WebhookConfigId > 0 {
 			item.WebhookConfigName = webhookNameMap[item.WebhookConfigId]
+		}
+
+		// 填充分组关联
+		if gids, ok := groupRelMap[item.Id]; ok {
+			item.GroupIds = gids
+		} else {
+			item.GroupIds = []int{}
 		}
 
 		// 根据 CLI 类型获取不同的状态摘要
@@ -229,6 +247,11 @@ func AgentCliDelete(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+
+	// 清理分组关联
+	common.DbMain.Client.ExecBySql(
+		`DELETE FROM tbl_agent_cli_group_rel WHERE agent_cli_id = ?`, req.Id,
+	).Exec()
 
 	gsgin.GinResponseSuccess(c, "", nil)
 }

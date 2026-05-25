@@ -14,15 +14,34 @@
         <GitActionButton compact @click="openCreateDialog">新建</GitActionButton>
         <GitActionButton compact variant="info" @click="openWebhookDialog">Webhook 配置</GitActionButton>
         <GitActionButton compact variant="warning" @click="chromeDevtoolsDialogVisible = true">ChromeDevTools</GitActionButton>
+        <GitActionButton compact variant="primary" @click="openGroupDialog">分组管理</GitActionButton>
+      </div>
+      <!-- 分组筛选栏 -->
+      <div v-if="groupList.length > 0" class="agent-cli-group-filter">
+        <span class="agent-cli-group-filter__label">分组：</span>
+        <div class="agent-cli-group-filter__tags">
+          <span
+            class="agent-cli-group-filter__tag"
+            :class="{ 'agent-cli-group-filter__tag--active': selectedGroupId === 0 }"
+            @click="selectGroup(0)"
+          >全部</span>
+          <span
+            v-for="g in groupList"
+            :key="g.id"
+            class="agent-cli-group-filter__tag"
+            :class="{ 'agent-cli-group-filter__tag--active': selectedGroupId === g.id }"
+            @click="selectGroup(g.id)"
+          >{{ g.name }}</span>
+        </div>
       </div>
     </div>
 
     <div v-loading="loading" class="agent-cli-list">
-      <div v-if="list.length === 0" class="agent-cli-empty">
-        暂无 Agent Cli 实例，点击“新建”创建
+      <div v-if="filteredList.length === 0" class="agent-cli-empty">
+        暂无 Agent Cli 实例，点击"新建"创建
       </div>
       <div
-        v-for="row in list"
+        v-for="row in filteredList"
         :key="row.id"
         class="agent-cli-card"
         :class="{ 'agent-cli-card--inactive': !row.displayed_enabled }"
@@ -34,6 +53,13 @@
               <el-tag size="small" type="info">{{ formatTypeLabel(row.type) }}</el-tag>
               <span class="agent-cli-card__status-dot" :class="row.displayed_enabled ? 'agent-cli-card__status-dot--active' : 'agent-cli-card__status-dot--inactive'"></span>
               <span class="agent-cli-card__status-text">{{ row.displayed_enabled ? '已启用' : '已停止' }}</span>
+              <el-tag
+                v-for="gid in (row.group_ids || [])"
+                :key="gid"
+                size="small"
+                effect="plain"
+                class="agent-cli-card__group-tag"
+              >{{ getGroupName(gid) }}</el-tag>
             </div>
             <div class="agent-cli-card__meta">
               <span>ID：{{ row.id }}</span>
@@ -215,6 +241,16 @@
             <div class="agent-cli-form-tip">默认: danger-full-access</div>
           </el-form-item>
         </template>
+        <el-form-item label="分组">
+          <el-select v-model="form.group_ids" multiple placeholder="选择分组（可多选）" style="width: 100%">
+            <el-option
+              v-for="g in groupList"
+              :key="g.id"
+              :label="g.name"
+              :value="g.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="Webhook 通知">
           <el-select v-model="form.webhook_config_id" placeholder="不通知" clearable style="width: 100%">
             <el-option
@@ -230,6 +266,42 @@
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="saving" @click="saveItem">保存</el-button>
       </template>
+    </el-dialog>
+
+    <!-- 分组管理弹窗 -->
+    <el-dialog v-model="groupDialogVisible" title="AgentCli 分组管理" width="560px">
+      <div style="margin-bottom: 12px; text-align: right;">
+        <el-button type="primary" size="small" @click="openGroupForm(null)">新增分组</el-button>
+      </div>
+      <el-table :data="groupDialogList" v-loading="groupDialogLoading" size="small" border>
+        <el-table-column prop="name" label="名称" min-width="120" />
+        <el-table-column prop="sort_order" label="排序" width="70" />
+        <el-table-column prop="cli_count" label="关联数" width="70" />
+        <el-table-column label="操作" width="130" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" link type="primary" @click="openGroupForm(row)">编辑</el-button>
+            <el-button size="small" link type="danger" @click="deleteGroup(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 内嵌新增/编辑分组表单 -->
+      <div v-if="groupFormVisible" class="webhook-form-section">
+        <div class="webhook-form-section__title">{{ groupForm.id > 0 ? '编辑分组' : '新增分组' }}</div>
+        <el-form :model="groupForm" label-width="80px" size="small">
+          <el-form-item label="名称">
+            <el-input v-model="groupForm.name" placeholder="分组名称" />
+          </el-form-item>
+          <el-form-item label="排序">
+            <el-input-number v-model="groupForm.sort_order" :min="0" :max="9999" />
+            <div class="agent-cli-form-tip">数值越小越靠前</div>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="groupSaving" @click="saveGroup">保存</el-button>
+            <el-button @click="groupFormVisible = false">取消</el-button>
+          </el-form-item>
+        </el-form>
+      </div>
     </el-dialog>
 
     <!-- Webhook 配置管理弹窗 -->
@@ -399,6 +471,8 @@ const AGENT_CLI_ENABLED_SORT_TRUE = 1
 const AGENT_CLI_ENABLED_SORT_FALSE = 0
 // AGENT_EXEC_CACHE_PREFIX 按 Agent CLI 记录最近一次执行配置。 // Cache key prefix for per-Agent execution settings.
 const AGENT_EXEC_CACHE_PREFIX = 'agent_cli_exec_'
+// AGENT_CLI_GROUP_CACHE_KEY 记住上次选中的分组 ID。 // LocalStorage key for remembering the last selected group filter.
+const AGENT_CLI_GROUP_CACHE_KEY = 'agent_cli_selected_group'
 // markdown-it 实例，用于在"执行历史"对话框中渲染 markdown（包括表格）。 // Markdown renderer for execution history detail.
 const md = new MarkdownIt({ html: true, breaks: true, linkify: true })
 
@@ -433,6 +507,22 @@ export default {
         codex_base_url: '',
         codex_sandbox_mode: '',
         codex_supports_websockets: true,
+        // 分组多选
+        group_ids: [],
+      },
+      // 分组筛选
+      groupList: [],
+      selectedGroupId: 0,
+      // 分组管理弹窗
+      groupDialogVisible: false,
+      groupDialogLoading: false,
+      groupDialogList: [],
+      groupFormVisible: false,
+      groupSaving: false,
+      groupForm: {
+        id: 0,
+        name: '',
+        sort_order: 0,
       },
       // webhook 配置
       webhookDialogVisible: false,
@@ -484,6 +574,14 @@ export default {
     }
   },
   computed: {
+    // filteredList 根据选中的分组筛选列表；选中"全部"(0)时不过滤。 // Returns the filtered Agent CLI list based on the selected group.
+    filteredList() {
+      if (this.selectedGroupId === 0) return this.list
+      return this.list.filter(item => {
+        const gids = Array.isArray(item.group_ids) ? item.group_ids : []
+        return gids.includes(this.selectedGroupId)
+      })
+    },
     // agentExecModelOptions 返回当前卡片可选模型列表；无配置时回退到 current_model。 // Returns model options for the selected Agent CLI card.
     agentExecModelOptions() {
       const cli = this.getAgentExecCli()
@@ -500,6 +598,12 @@ export default {
   mounted() {
     this.loadList()
     this.loadWebhookOptions()
+    this.loadGroupList()
+    // 恢复上次选中的分组
+    try {
+      const cached = parseInt(localStorage.getItem(AGENT_CLI_GROUP_CACHE_KEY))
+      if (cached > 0) this.selectedGroupId = cached
+    } catch {}
   },
   beforeUnmount() {
     this.closeChatDetail()
@@ -817,6 +921,7 @@ export default {
         codex_base_url: '',
         codex_sandbox_mode: '',
         codex_supports_websockets: true,
+        group_ids: [],
       }
       this.dialogVisible = true
     },
@@ -870,6 +975,8 @@ export default {
           if (!this.editingId && response.Data && response.Data.id) {
             this.editingId = response.Data.id
           }
+          // 保存分组关联
+          this._saveGroupRel(this.editingId)
           // Claude 类型：密钥字段非空时，一并写入 DeepSeek 配置
           if (!isCodex && this.form.model_name.trim() && this.form.api_key.trim()) {
             const dsData = {
@@ -977,6 +1084,7 @@ export default {
         codex_model_list_text: '',
         codex_base_url: '',
         codex_sandbox_mode: '',
+        group_ids: Array.isArray(item.group_ids) ? [...item.group_ids] : [],
       }
       // Codex: 从 config JSON 预填
       if (isCodex && item.config) {
@@ -1475,6 +1583,104 @@ export default {
         return (secondItem?.id || 0) - (firstItem?.id || 0)
       })
       return sortedList
+    },
+    // ==================== 分组相关方法 ====================
+    // loadGroupList 加载分组列表，用于筛选栏和编辑弹窗的多选下拉。 // Loads group list for both filter bar and edit dialog multi-select.
+    loadGroupList() {
+      agentCliApi.AgentCliGroupList((response) => {
+        if (response && response.ErrCode === 0 && response.Data) {
+          this.groupList = response.Data.list || []
+        }
+      })
+    },
+    // selectGroup 选中分组筛选，记住到 localStorage。 // Selects a group filter and persists it to localStorage.
+    selectGroup(groupId) {
+      this.selectedGroupId = groupId
+      localStorage.setItem(AGENT_CLI_GROUP_CACHE_KEY, String(groupId))
+    },
+    // getGroupName 根据分组 ID 获取名称。 // Returns group name by ID.
+    getGroupName(groupId) {
+      const g = this.groupList.find(item => item.id === groupId)
+      return g ? g.name : ''
+    },
+    // openGroupDialog 打开分组管理弹窗。 // Opens the group management dialog.
+    openGroupDialog() {
+      this.groupDialogVisible = true
+      this.groupFormVisible = false
+      this.loadGroupDialogList()
+    },
+    // loadGroupDialogList 加载分组管理弹窗中的列表。 // Loads the group list inside the management dialog.
+    loadGroupDialogList() {
+      this.groupDialogLoading = true
+      agentCliApi.AgentCliGroupList((response) => {
+        this.groupDialogLoading = false
+        if (response && response.ErrCode === 0 && response.Data) {
+          this.groupDialogList = response.Data.list || []
+        }
+      })
+    },
+    // openGroupForm 打开分组新增/编辑内嵌表单。 // Opens the inline add/edit form for a group.
+    openGroupForm(row) {
+      if (row) {
+        this.groupForm = { id: row.id, name: row.name, sort_order: row.sort_order || 0 }
+      } else {
+        this.groupForm = { id: 0, name: '', sort_order: 0 }
+      }
+      this.groupFormVisible = true
+    },
+    // saveGroup 保存分组（新增或编辑）。 // Saves a group (create or update).
+    saveGroup() {
+      if (!this.groupForm.name.trim()) {
+        this.$message.warning('分组名称不能为空')
+        return
+      }
+      this.groupSaving = true
+      agentCliApi.AgentCliGroupSave({
+        id: this.groupForm.id || undefined,
+        name: this.groupForm.name.trim(),
+        sort_order: this.groupForm.sort_order || 0,
+      }, (response) => {
+        this.groupSaving = false
+        if (response && response.ErrCode === 0) {
+          this.$message.success('保存成功')
+          this.groupFormVisible = false
+          this.loadGroupDialogList()
+          this.loadGroupList()
+        } else {
+          this.$message.error(response?.ErrMsg || '保存失败')
+        }
+      })
+    },
+    // deleteGroup 删除分组。 // Deletes a group.
+    deleteGroup(row) {
+      this.$confirm(`确定要删除分组 "${row.name}" 吗？`, '确认删除', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }).then(() => {
+        agentCliApi.AgentCliGroupDelete(row.id, (response) => {
+          if (response && response.ErrCode === 0) {
+            this.$message.success('删除成功')
+            this.loadGroupDialogList()
+            this.loadGroupList()
+            this.loadList()
+            // 如果删除的是当前选中的分组，重置为全部
+            if (this.selectedGroupId === row.id) {
+              this.selectGroup(0)
+            }
+          } else {
+            this.$message.error(response?.ErrMsg || '删除失败')
+          }
+        })
+      }).catch(() => {})
+    },
+    // _saveGroupRel 保存某个 AgentCli 的分组关联（fire-and-forget，不阻塞保存流程）。 // Saves group relations for an Agent CLI without blocking the main save flow.
+    _saveGroupRel(agentCliId) {
+      if (!agentCliId || agentCliId <= 0) return
+      agentCliApi.AgentCliGroupRelSave({
+        agent_cli_id: agentCliId,
+        group_ids: this.form.group_ids || [],
+      }, () => {})
     },
   },
 }

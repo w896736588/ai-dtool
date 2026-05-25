@@ -577,6 +577,11 @@ func agentCli(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/AgentCliWriteDeepSeek`, controller.AgentCliWriteDeepSeek)
 	tGin.GinPost(`/api/AgentCliToggleClaudeMem`, controller.AgentCliToggleClaudeMem)
 	tGin.GinPost(`/api/AgentCliToggleEnabled`, controller.AgentCliToggleEnabled)
+	// AgentCli 分组管理
+	tGin.GinPost(`/api/AgentCliGroupList`, controller.AgentCliGroupList)
+	tGin.GinPost(`/api/AgentCliGroupSave`, controller.AgentCliGroupSave)
+	tGin.GinPost(`/api/AgentCliGroupDelete`, controller.AgentCliGroupDelete)
+	tGin.GinPost(`/api/AgentCliGroupRelSave`, controller.AgentCliGroupRelSave)
 }
 
 // webhookConfig 路由

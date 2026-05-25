@@ -126,6 +126,7 @@ type AgentCliStatusItem struct {
 	McpServerCount    int      `json:"mcp_server_count"`
 	ClaudeMemEnabled  bool     `json:"claude_mem_enabled"`
 	WebhookConfigName string   `json:"webhook_config_name"`
+	GroupIds          []int    `json:"group_ids"` // 所属分组 ID 列表（多对多） // Group IDs this Agent CLI belongs to.
 }
 
 // AgentCliToggleClaudeMemRequest 切换 claude-mem 启停请求
