@@ -114,7 +114,6 @@ Compress-Archive -Path $ArchiveEntries -DestinationPath $ZipFile -Force
 
 try {
     New-Item -ItemType Directory -Force -Path $PackageDir | Out-Null
-    Remove-IfExists (Join-Path $PackageDir "web/dist")
 
     $PackageEntries = @(
         "config",
@@ -130,7 +129,13 @@ try {
     foreach ($Entry in $PackageEntries) {
         $SourcePath = Join-Path $TempPackageDir $Entry
         if (Test-Path $SourcePath) {
-            Copy-Item $SourcePath (Join-Path $PackageDir $Entry) -Recurse -Force
+            $DestPath = Join-Path $PackageDir $Entry
+            if ((Test-Path $SourcePath -PathType Container) -and (Test-Path $DestPath)) {
+                # 目录已存在：复制内容而非目录本身，避免嵌套
+                Copy-Item (Join-Path $SourcePath "*") $DestPath -Recurse -Force
+            } else {
+                Copy-Item $SourcePath $DestPath -Recurse -Force
+            }
         }
     }
 

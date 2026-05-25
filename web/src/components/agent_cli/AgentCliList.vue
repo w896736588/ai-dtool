@@ -92,14 +92,8 @@
               <table class="agent-cli-config-table">
                 <tbody>
                   <tr>
-                    <th>类型</th>
-                    <td>{{ formatTypeLabel(row.type) }}</td>
-                    <th>模型列表</th>
-                    <td colspan="3" class="agent-cli-config-table__value agent-cli-config-table__value--break">{{ formatModelOptions(row.model_options) }}</td>
-                  </tr>
-                  <tr>
                     <th>请求地址</th>
-                    <td class="agent-cli-config-table__value agent-cli-config-table__value--break">{{ row.request_url || '-' }}</td>
+                    <td style="width:350px;" class="agent-cli-config-table__value agent-cli-config-table__value--break">{{ row.request_url || '-' }}</td>
                     <th>Webhook</th>
                     <td>{{ row.webhook_config_name || '-' }}</td>
                   </tr>
