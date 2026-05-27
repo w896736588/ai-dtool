@@ -426,6 +426,7 @@
       :selected-id="agentChatDetailId"
       :detail-title="agentChatHistoryTitle || '-'"
       :model-name="chatDetailModelName"
+      :agent-name="chatDetailAgentName"
       :local-dir="chatDetailLocalDir"
       :thinking-intensity="chatDetailThinkingIntensity"
       :detail-status="chatDetailStatus"
@@ -567,6 +568,7 @@ export default {
       chatDetailPrompt: '',
       chatDetailSessionId: '',
       chatDetailModelName: '',
+      chatDetailAgentName: '',
       chatDetailLocalDir: '',
       chatDetailThinkingIntensity: '',
       chatDetailCliType: 'claude',
@@ -1190,6 +1192,7 @@ export default {
           this.chatDetailSessionId = data.session_id || ''
           this.chatDetailStatus = data.status || ''
           this.chatDetailModelName = data.model_name || ''
+          this.chatDetailAgentName = data.agent_cli_name || ''
           this.chatDetailLocalDir = data.local_dir || ''
           this.chatDetailThinkingIntensity = data.thinking_intensity || ''
           this.chatDetailCliType = data.cli_type || 'claude'

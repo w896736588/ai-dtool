@@ -2734,11 +2734,12 @@ func TaskWorkflowChatDetail(c *gin.Context) {
 	}
 
 	modelName := ``
+	agentCliName := ``
 	selectedModelName := strings.TrimSpace(cast.ToString(info[`model_name`]))
 	if agentCliId := cast.ToInt(info[`agent_cli_id`]); agentCliId > 0 {
 		cliRow, err := common.DbMain.Client.QueryBySql(`SELECT name FROM tbl_agent_cli WHERE id = ?`, agentCliId).One()
 		if err == nil && len(cliRow) > 0 {
-			modelName = cast.ToString(cliRow["name"])
+			agentCliName = cast.ToString(cliRow["name"])
 		}
 	}
 	if selectedModelName != `` {
@@ -2762,6 +2763,7 @@ func TaskWorkflowChatDetail(c *gin.Context) {
 		`session_id`:         info[`session_id`],
 		`prompt`:             info[`prompt`],
 		`agent_cli_id`:       info[`agent_cli_id`],
+		`agent_cli_name`:     agentCliName,
 		`cli_type`:           info[`cli_type`],
 		`model_name`:         modelName,
 		`task_name`:          taskName,

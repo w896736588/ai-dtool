@@ -4,7 +4,7 @@
       <span class="chat-reply-header__back" @click="$router.back()">&#8592; 返回</span>
       <span class="chat-reply-header__title">{{ taskName || '对话详情' }}</span>
       <div class="chat-reply-header__meta">
-        <span v-if="modelName">智能体: {{ modelName }}</span>
+        <span v-if="agentName">智能体: {{ agentName }}</span>
         <span v-if="localDir">目录: {{ localDir }}</span>
         <span>对话 #{{ chatId }}</span>
         <el-tag size="small" :type="statusTagType">{{ statusLabel }}</el-tag>
@@ -170,10 +170,10 @@
             @keydown.enter.exact.prevent="status !== 'running' && continueChat()"
           />
           <div class="chat-reply-actions">
-            <div v-if="thinkingIntensity || modelName" class="chat-reply-info-bar">
+            <div v-if="thinkingIntensity || agentName" class="chat-reply-info-bar">
               <span v-if="thinkingIntensity">思考强度: {{ thinkingIntensity }}</span>
-              <span v-if="thinkingIntensity && modelName"> | </span>
-              <span v-if="modelName">智能体: {{ modelName }}</span>
+              <span v-if="thinkingIntensity && agentName"> | </span>
+              <span v-if="agentName">智能体: {{ agentName }}</span>
             </div>
             <el-button v-if="status === 'running'" type="danger" size="small" @click="stopChat">停止</el-button>
             <el-button v-else type="primary" size="small" :loading="continueLoading" @click="continueChat">发送</el-button>
@@ -199,6 +199,7 @@ export default {
       chatId: 0,
       taskName: '',
       modelName: '',
+      agentName: '',
       localDir: '',
       thinkingIntensity: '',
       status: '',
@@ -240,6 +241,7 @@ export default {
           const data = res.Data
           this.taskName = data.task_name || ''
           this.modelName = data.model_name || ''
+          this.agentName = data.agent_cli_name || ''
           this.localDir = data.local_dir || ''
           this.thinkingIntensity = data.thinking_intensity || ''
           this.cliType = data.cli_type || 'claude'

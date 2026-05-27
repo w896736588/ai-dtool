@@ -274,10 +274,10 @@
                 @keydown.enter.exact.prevent="detailStatus !== 'running' && $emit('continue')"
               />
               <div class="chat-detail-actions">
-                <div v-if="thinkingIntensity || modelName" class="chat-detail-info-bar">
+                <div v-if="thinkingIntensity || agentName" class="chat-detail-info-bar">
                   <span v-if="thinkingIntensity">思考强度: {{ thinkingIntensity }}</span>
-                  <span v-if="thinkingIntensity && modelName"> | </span>
-                  <span v-if="modelName">智能体: {{ modelName }}</span>
+                  <span v-if="thinkingIntensity && agentName"> | </span>
+                  <span v-if="agentName">智能体: {{ agentName }}</span>
                 </div>
                 <el-button v-if="detailStatus === 'running'" type="danger" size="small" @click="$emit('stop')">停止</el-button>
                 <el-button v-else type="primary" size="small" :loading="continueLoading" @click="$emit('continue')">发送</el-button>
@@ -328,6 +328,10 @@ export default {
       default: '',
     },
     modelName: {
+      type: String,
+      default: '',
+    },
+    agentName: {
       type: String,
       default: '',
     },

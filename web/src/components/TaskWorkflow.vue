@@ -815,6 +815,7 @@
       :selected-id="promptChatDetailId"
       :detail-title="homeTask.name || '-'"
       :model-name="chatDetailModelName"
+      :agent-name="chatDetailAgentName"
       :local-dir="chatDetailLocalDir"
       :thinking-intensity="chatDetailThinkingIntensity"
       :detail-status="chatDetailStatus"
@@ -1050,6 +1051,7 @@ export default {
       promptChatDetailId: 0,
       promptChatDetailShowScrollBtn: false,
       chatDetailModelName: '',
+      chatDetailAgentName: '',
       chatDetailLocalDir: '',
       chatDetailThinkingIntensity: '',
       chatDetailCliType: 'claude',
@@ -1409,6 +1411,9 @@ export default {
         this.requirementFetchRunning = true
         return
       }
+      if (this.requirementFetchStatus !== 'idle') {
+        return
+      }
       this.requirementFetchAutoTriggered = true
       this.triggerRequirementFetch(true)
     },
@@ -1721,6 +1726,7 @@ export default {
           this.chatDetailSessionId = data.session_id || ''
           this.chatDetailStatus = data.status || ''
           this.chatDetailModelName = data.model_name || ''
+          this.chatDetailAgentName = data.agent_cli_name || ''
           this.chatDetailLocalDir = data.local_dir || ''
           this.chatDetailThinkingIntensity = data.thinking_intensity || ''
           this.chatDetailCliType = data.cli_type || 'claude'
