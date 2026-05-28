@@ -106,7 +106,14 @@ func (h *MemoryGit) run(dir string, args ...string) (string, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
-	output := strings.TrimSpace(stdout.String() + "\n" + stderr.String())
+	output := stdout.String()
+	if stderr.Len() > 0 {
+		if output != `` && !strings.HasSuffix(output, "\n") {
+			output += "\n"
+		}
+		output += stderr.String()
+	}
+	output = strings.TrimRight(output, " \r\n\t")
 	if err != nil {
 		return output, fmt.Errorf(`git %s 失败: %s`, strings.Join(args, ` `), output)
 	}

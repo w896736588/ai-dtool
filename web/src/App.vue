@@ -29,7 +29,7 @@
             commit+push
           </el-button>
         </div>
-        <el-table :data="repo.files.map(item => ({ path: item }))" size="small" border max-height="240">
+        <el-table :data="normalizeRepoFiles(repo).map(item => ({ path: item }))" size="small" border max-height="240">
           <el-table-column prop="path" label="文件" />
         </el-table>
       </div>
@@ -98,8 +98,19 @@ export default {
           return
         }
         this.gitPendingTotalCount = Number(data.total_count || 0)
-        this.gitRepos = Array.isArray(data.repos) ? data.repos : []
+        this.gitRepos = this.normalizeGitRepos(data.repos)
       })
+    },
+    normalizeRepoFiles(repo) {
+      if (!repo || !Array.isArray(repo.files)) return []
+      return repo.files.filter(item => typeof item === 'string' && item.trim() !== '')
+    },
+    normalizeGitRepos(repos) {
+      if (!Array.isArray(repos)) return []
+      return repos.map(repo => ({
+        ...repo,
+        files: this.normalizeRepoFiles(repo),
+      }))
     },
     async commitPushRepo(repo) {
       const dir = repo && repo.dir ? String(repo.dir).trim() : ''
@@ -140,7 +151,7 @@ export default {
           return
         }
         this.gitPendingTotalCount = Number(response.Data.total_count || 0)
-        this.gitRepos = Array.isArray(response.Data.repos) ? response.Data.repos : []
+        this.gitRepos = this.normalizeGitRepos(response.Data.repos)
       })
     },
   },

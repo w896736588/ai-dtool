@@ -225,10 +225,10 @@ func handleAgentTaskLog(msg define.AgentWsMessage) {
 		Type:            p_define.SseContentTypeMsg,
 	})
 
-	// 向所有 SSE 客户端广播
+	// 向所有 SSE 客户端广播（跳过 chat stream 连接）
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, "ClientId:"))
-		if clientID == "" || clientID == item {
+		if clientID == "" || clientID == item || isChatStreamSseClient(clientID) {
 			continue
 		}
 		sse := gsgin.SseGetByClientId(clientID)
@@ -270,7 +270,7 @@ func handleAgentTaskStatus(msg define.AgentWsMessage) {
 		})
 		for _, item := range gsgin.SseStatus() {
 			clientID := strings.TrimSpace(strings.TrimPrefix(item, "ClientId:"))
-			if clientID == "" || clientID == item {
+			if clientID == "" || clientID == item || isChatStreamSseClient(clientID) {
 				continue
 			}
 			sse := gsgin.SseGetByClientId(clientID)
@@ -311,7 +311,7 @@ func handleAgentTaskResult(msg define.AgentWsMessage) {
 		})
 		for _, item := range gsgin.SseStatus() {
 			clientID := strings.TrimSpace(strings.TrimPrefix(item, "ClientId:"))
-			if clientID == "" || clientID == item {
+			if clientID == "" || clientID == item || isChatStreamSseClient(clientID) {
 				continue
 			}
 			sse := gsgin.SseGetByClientId(clientID)

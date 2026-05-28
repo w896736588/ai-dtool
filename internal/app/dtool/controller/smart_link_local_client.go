@@ -174,7 +174,7 @@ func BroadcastSmartLinkClientStatusUpdate() {
 	})
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, "ClientId:"))
-		if clientID == "" || clientID == item {
+		if clientID == "" || clientID == item || isChatStreamSseClient(clientID) {
 			continue
 		}
 		sse := gsgin.SseGetByClientId(clientID)

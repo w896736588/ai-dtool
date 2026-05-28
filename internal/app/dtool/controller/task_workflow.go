@@ -1908,7 +1908,7 @@ func taskWorkflowBroadcastStep(workflowID int, step, status, message string) {
 	})
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, apiDataChangeSseStatusPrefix))
-		if clientID == `` || clientID == item {
+		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
 			continue
 		}
 		sse := gsgin.SseGetByClientId(clientID)
@@ -1936,7 +1936,7 @@ func taskWorkflowBroadcastNodeStatus(workflowID int, nodeStatuses string) {
 	})
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, apiDataChangeSseStatusPrefix))
-		if clientID == `` || clientID == item {
+		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
 			continue
 		}
 		sse := gsgin.SseGetByClientId(clientID)
@@ -3505,7 +3505,7 @@ func taskWorkflowBroadcastChatStatus(chatID int64) {
 	})
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, apiDataChangeSseStatusPrefix))
-		if clientID == `` || clientID == item {
+		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
 			continue
 		}
 		sse := gsgin.SseGetByClientId(clientID)

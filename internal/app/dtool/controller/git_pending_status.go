@@ -7,6 +7,7 @@ import (
 	"dev_tool/internal/pkg/p_define"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -136,12 +137,12 @@ func GitPendingCommitPush(c *gin.Context) {
 			Dir     string `json:"dir"`
 			Message string `json:"message"`
 		}
-		if len(c.Request.BodyBytes()) > 0 {
-			_ = json.Unmarshal(c.Request.BodyBytes(), &req)
-		} else if c.Request.Body != nil {
-			buf := new(bytes.Buffer)
-			_, _ = buf.ReadFrom(c.Request.Body)
-			_ = json.Unmarshal(buf.Bytes(), &req)
+		if c.Request.Body != nil {
+			bodyBytes, _ := io.ReadAll(c.Request.Body)
+			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+			if len(bodyBytes) > 0 {
+				_ = json.Unmarshal(bodyBytes, &req)
+			}
 		}
 		if dir == `` {
 			dir = strings.TrimSpace(req.Dir)

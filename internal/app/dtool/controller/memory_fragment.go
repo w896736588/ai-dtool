@@ -1,4 +1,4 @@
-﻿package controller
+package controller
 
 import (
 	"archive/zip"
@@ -319,7 +319,7 @@ func broadcastMemoryFragmentEvent(action, fragmentID string, fragment map[string
 	// English comment: Reuse the shared SSE channel so fragment sync does not require a second long-lived connection.
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, memoryFragmentSseStatusPrefix))
-		if clientID == `` || clientID == item {
+		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
 			continue
 		}
 		sse := gsgin.SseGetByClientId(clientID)
@@ -996,4 +996,3 @@ func searchFragmentRefsByRg(memoryDir, fragmentID string, memoryDB common.Memory
 	}
 	return refs
 }
-
