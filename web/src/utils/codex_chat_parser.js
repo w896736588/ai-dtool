@@ -297,13 +297,22 @@ function handleItemEvent(eventType, obj, messages, currentItems) {
       } else if (itemType === 'command_execution' && existingMsg.content && existingMsg.content.length > 0) {
         const block = existingMsg.content[0]
         block._codexStatus = 'completed'
-        // 添加执行结果
+        // 添加执行结果（优先使用 aggregated_output，兼容 stdout/stderr）
         const resultParts = []
-        if (item.stdout) resultParts.push(item.stdout)
-        if (item.stderr) resultParts.push('[stderr] ' + item.stderr)
+        if (item.aggregated_output !== undefined && item.aggregated_output !== null) {
+          // Codex CLI 的 command_execution 在 completed 时输出内容在 aggregated_output 字段
+          const output = item.aggregated_output.trim()
+          if (output) resultParts.push(output)
+        } else {
+          if (item.stdout) resultParts.push(item.stdout)
+          if (item.stderr) resultParts.push('[stderr] ' + item.stderr)
+        }
         if (item.exit_code !== undefined && item.exit_code !== 0) resultParts.push('[exit_code] ' + item.exit_code)
         if (resultParts.length > 0) {
           block._result = { text: resultParts.join('\n'), collapsed: true }
+        } else {
+          // 即使无输出内容，也设置空结果以停止 spinner
+          block._result = { text: '', collapsed: true }
         }
       } else if (itemType === 'file_change' && existingMsg.content && existingMsg.content.length > 0) {
         existingMsg.content[0]._codexStatus = 'completed'
@@ -340,9 +349,15 @@ function handleItemEvent(eventType, obj, messages, currentItems) {
         }
         messages.push(msg)
       } else if (itemType === 'command_execution') {
+        // 优先使用 aggregated_output，兼容 stdout/stderr
         const resultParts = []
-        if (item.stdout) resultParts.push(item.stdout)
-        if (item.stderr) resultParts.push('[stderr] ' + item.stderr)
+        if (item.aggregated_output !== undefined && item.aggregated_output !== null) {
+          const output = item.aggregated_output.trim()
+          if (output) resultParts.push(output)
+        } else {
+          if (item.stdout) resultParts.push(item.stdout)
+          if (item.stderr) resultParts.push('[stderr] ' + item.stderr)
+        }
         if (item.exit_code !== undefined && item.exit_code !== 0) resultParts.push('[exit_code] ' + item.exit_code)
         const block = {
           type: 'tool_use',
@@ -354,6 +369,9 @@ function handleItemEvent(eventType, obj, messages, currentItems) {
         }
         if (resultParts.length > 0) {
           block._result = { text: resultParts.join('\n'), collapsed: true }
+        } else {
+          // 即使无输出内容，也设置空结果以停止 spinner
+          block._result = { text: '', collapsed: true }
         }
         const msg = {
           type: 'assistant',

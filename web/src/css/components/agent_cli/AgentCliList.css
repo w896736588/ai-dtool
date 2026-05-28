@@ -39,6 +39,61 @@
   flex-wrap: wrap;
 }
 
+.agent-cli-top-notice {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #d7e6d2;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f8fcf4 0%, #f2f8ee 100%);
+}
+
+.agent-cli-top-notice__icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #5a8a5a;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.agent-cli-top-notice__content {
+  min-width: 0;
+}
+
+.agent-cli-top-notice__title {
+  color: #39543a;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.agent-cli-top-notice__desc {
+  margin-top: 4px;
+  color: #5f725d;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.agent-cli-top-notice__desc a {
+  color: #2f6fbe;
+  text-decoration: none;
+  margin-left: 6px;
+}
+
+.agent-cli-top-notice__desc a:hover {
+  text-decoration: underline;
+}
+
 /* 分组筛选栏 */
 .agent-cli-group-filter {
   display: flex;
@@ -427,6 +482,11 @@
 @media (max-width: 768px) {
   .agent-cli-content-card {
     padding: 14px;
+  }
+
+  .agent-cli-top-notice {
+    flex-direction: column;
+    gap: 10px;
   }
 
   .agent-cli-config-table th,

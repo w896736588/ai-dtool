@@ -15,6 +15,9 @@ const (
 // Codex CLI 默认 sandbox 模式
 const CodexCliDefaultSandboxMode = "danger-full-access"
 
+// Codex CLI 默认 wire_api，兼容现有行为。
+const CodexCliDefaultWireAPI = "responses"
+
 // CodexCliConfig Codex CLI 实例配置（存储在 tbl_agent_cli.config JSON 字段中）
 type CodexCliConfig struct {
 	ApiKey             string   `json:"api_key"`
@@ -22,6 +25,7 @@ type CodexCliConfig struct {
 	Models             []string `json:"models,omitempty"`              // 可选模型列表，首个模型视为默认模型。 // Optional model list, the first item is treated as default.
 	BaseURL            string   `json:"base_url,omitempty"`            // 自定义 API 端点（可选）
 	SandboxMode        string   `json:"sandbox_mode,omitempty"`        // 默认 "danger-full-access"
+	WireAPI            string   `json:"wire_api,omitempty"`            // 请求格式，支持 responses / chat。
 	SupportsWebsockets *bool    `json:"supports_websockets,omitempty"` // 是否允许 Responses API WebSocket 传输。 // Whether Responses API WebSocket transport is enabled.
 }
 

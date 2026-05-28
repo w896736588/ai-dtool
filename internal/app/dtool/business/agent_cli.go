@@ -296,6 +296,10 @@ func GetCodexCliConfig(configJson string) (*define.CodexCliConfig, error) {
 	if cfg.Model == "" && len(cfg.Models) > 0 {
 		cfg.Model = cfg.Models[0]
 	}
+	cfg.WireAPI = strings.TrimSpace(cfg.WireAPI)
+	if cfg.WireAPI == "" {
+		cfg.WireAPI = define.CodexCliDefaultWireAPI
+	}
 	return &cfg, nil
 }
 
@@ -355,7 +359,7 @@ func WriteCodexConfigToToml(cfg *define.CodexCliConfig) error {
 	content = removeTomlModelProviderSection(content, codexModelProviderKey)
 	if cfg.BaseURL != "" {
 		content = setTomlTopLevelField(content, "model_provider", codexModelProviderKey)
-		content = appendCodexModelProviderSection(content, codexModelProviderKey, cfg.BaseURL, cfg.ApiKey, cfg.SupportsWebsockets)
+		content = appendCodexModelProviderSection(content, codexModelProviderKey, cfg.BaseURL, cfg.ApiKey, cfg.WireAPI, cfg.SupportsWebsockets)
 	} else {
 		content = removeTomlTopLevelField(content, "model_provider")
 	}
@@ -375,8 +379,12 @@ func WriteCodexConfigToToml(cfg *define.CodexCliConfig) error {
 // appendCodexModelProviderSection 追加 Codex 自定义 provider 段。
 // appendCodexModelProviderSection appends the Codex custom provider section.
 // 使用 api_key 直接写入密钥而非 env_key，避免 Codex CLI 要求必须设置环境变量。
-func appendCodexModelProviderSection(content, providerKey, baseURL, apiKey string, supportsWebsockets *bool) string {
-	section := fmt.Sprintf("\n[model_providers.%s]\nname = \"My Local Proxy\"\nbase_url = \"%s\"\nwire_api = \"responses\"\napi_key = \"%s\"\n", providerKey, baseURL, apiKey)
+func appendCodexModelProviderSection(content, providerKey, baseURL, apiKey, wireAPI string, supportsWebsockets *bool) string {
+	wireAPI = strings.TrimSpace(wireAPI)
+	if wireAPI == "" {
+		wireAPI = define.CodexCliDefaultWireAPI
+	}
+	section := fmt.Sprintf("\n[model_providers.%s]\nname = \"My Local Proxy\"\nbase_url = \"%s\"\nwire_api = \"%s\"\napi_key = \"%s\"\n", providerKey, baseURL, wireAPI, apiKey)
 	if supportsWebsockets != nil {
 		section += fmt.Sprintf("supports_websockets = %t\n", *supportsWebsockets)
 	}

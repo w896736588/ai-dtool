@@ -10,6 +10,20 @@
         </svg>
         <span>Agent Cli 管理</span>
       </div>
+      <div class="agent-cli-top-notice">
+        <div class="agent-cli-top-notice__icon">TIP</div>
+        <div class="agent-cli-top-notice__content">
+          <div class="agent-cli-top-notice__title">如需聚合统计多个 API，可接入 ai-proxy-stats</div>
+          <div class="agent-cli-top-notice__desc">
+            该方案支持按 OpenAI 与 Anthropic 兼容格式聚合转发多个 API，并统一查看调用统计。
+            <a
+              href="https://github.com/w896736588/ai-proxy-stats/blob/main/README_CN.md"
+              target="_blank"
+              rel="noopener noreferrer"
+            >查看 README_CN</a>
+          </div>
+        </div>
+      </div>
       <div class="agent-cli-header-actions">
         <GitActionButton compact @click="openCreateDialog">新建</GitActionButton>
         <GitActionButton compact variant="info" @click="openWebhookDialog">Webhook 配置</GitActionButton>
@@ -160,6 +174,12 @@
                       </div>
                     </td>
                   </tr>
+                  <tr v-else>
+                    <th>Wire API</th>
+                    <td>{{ getCodexWireApi(row) }}</td>
+                    <th>WebSocket</th>
+                    <td>{{ getCodexSupportsWebsocketsText(row) }}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -259,6 +279,13 @@
           </el-form-item>
           <el-form-item label="Base URL">
             <el-input v-model="form.codex_base_url" placeholder="自定义 API 端点（可选）" />
+          </el-form-item>
+          <el-form-item label="Wire API">
+            <el-select v-model="form.codex_wire_api" style="width: 100%">
+              <el-option label="responses" value="responses" />
+              <el-option label="chat" value="chat" />
+            </el-select>
+            <div class="agent-cli-form-tip">对应 config.toml 中的 wire_api，请求格式可选 responses 或 chat。</div>
           </el-form-item>
           <el-form-item label="WebSocket">
             <el-switch v-model="form.codex_supports_websockets" />
@@ -537,6 +564,7 @@ export default {
         codex_api_key: '',
         codex_model_list_text: '',
         codex_base_url: '',
+        codex_wire_api: 'responses',
         codex_sandbox_mode: '',
         codex_supports_websockets: true,
         // 分组多选
@@ -600,6 +628,7 @@ export default {
       chatDetailSSELines: [],
       chatDetailAutoScroll: true,
       chatDetailSSERegistered: false,
+      _backgroundChatEventSources: {},
       agentChatDetailShowScrollBtn: false,
       chatContinueInput: '',
       chatContinueLoading: false,
@@ -640,6 +669,7 @@ export default {
   },
   beforeUnmount() {
     this.closeChatDetail()
+    this.stopAllBackgroundChatStreams()
     this._stopAgentChatHistoryDurationTimer()
   },
   methods: {
@@ -867,6 +897,7 @@ export default {
         }
         this.agentChatHistoryList = Array.isArray(response.Data.list) ? response.Data.list : []
         this._startAgentChatHistoryDurationTimer()
+        this.syncBackgroundChatStreams(this.agentChatHistoryList, focusChatId || this.agentChatDetailId || this.chatDetailId)
         this.agentChatCounts = {
           ...this.agentChatCounts,
           [row.id]: {
@@ -889,16 +920,17 @@ export default {
     },
     onAgentChatRowClick(row) {
       if (this.agentChatDetailId === row.id) return
-      if (this._chatEventSource && this._sseChatId !== row.id) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
-        this._sseChatId = 0
-      }
       this.agentChatDetailId = row.id
       this.chatDetailId = row.id
       this.chatDetailStatus = row.status
       this.chatDetailAutoScroll = true
       this.agentChatDetailShowScrollBtn = false
+      this.syncBackgroundChatStreams(this.agentChatHistoryList, row.id)
+      if (this._chatEventSource && this._sseChatId !== row.id) {
+        this._chatEventSource.close()
+        this._chatEventSource = null
+        this._sseChatId = 0
+      }
       if (this._sseChatId !== row.id) {
         this.chatDetailSSELines = []
         this.chatDetailMessages = []
@@ -912,6 +944,7 @@ export default {
     },
     onAgentChatHistoryClosed() {
       this._stopAgentChatHistoryDurationTimer()
+      this.stopAllBackgroundChatStreams()
     },
     onAgentChatDetailScroll() {
       if (this._autoScrollLocked) return
@@ -975,6 +1008,7 @@ export default {
         codex_api_key: '',
         codex_model_list_text: '',
         codex_base_url: '',
+        codex_wire_api: 'responses',
         codex_sandbox_mode: '',
         codex_supports_websockets: true,
         group_ids: [],
@@ -1021,6 +1055,7 @@ export default {
           model: codexModels[0] || '',
           models: codexModels,
           base_url: this.form.codex_base_url.trim() || undefined,
+          wire_api: this.form.codex_wire_api || 'responses',
           sandbox_mode: this.form.codex_sandbox_mode.trim() || undefined,
           supports_websockets: this.form.codex_base_url.trim() ? !!this.form.codex_supports_websockets : undefined,
         })
@@ -1142,6 +1177,7 @@ export default {
         codex_api_key: '',
         codex_model_list_text: '',
         codex_base_url: '',
+        codex_wire_api: 'responses',
         codex_sandbox_mode: '',
         codex_supports_websockets: true,
         group_ids: Array.isArray(item.group_ids) ? [...item.group_ids] : [],
@@ -1153,6 +1189,7 @@ export default {
           this.form.codex_api_key = cfg.api_key || ''
           this.form.codex_model_list_text = Array.isArray(cfg.models) ? cfg.models.join('\n') : (cfg.model || '')
           this.form.codex_base_url = cfg.base_url || ''
+          this.form.codex_wire_api = cfg.wire_api || 'responses'
           this.form.codex_sandbox_mode = cfg.sandbox_mode || ''
           this.form.codex_supports_websockets = cfg.supports_websockets !== false
         } catch (e) {
@@ -1214,6 +1251,27 @@ export default {
         return '-'
       }
       return modelOptions.join(' / ')
+    },
+    getCodexConfig(row) {
+      if (!row || row.type !== 'codex-cli' || !row.config) {
+        return {}
+      }
+      try {
+        return JSON.parse(row.config) || {}
+      } catch (e) {
+        return {}
+      }
+    },
+    getCodexWireApi(row) {
+      const cfg = this.getCodexConfig(row)
+      return cfg.wire_api || 'responses'
+    },
+    getCodexSupportsWebsocketsText(row) {
+      const cfg = this.getCodexConfig(row)
+      if (!cfg.base_url) {
+        return '-'
+      }
+      return cfg.supports_websockets === false ? '关闭' : '开启'
     },
     // loadChatDetail 加载执行详情并在运行态自动接回 SSE。 // Loads execution detail and reconnects SSE for running records.
     loadChatDetail() {
@@ -1461,6 +1519,95 @@ export default {
     updateChatListStatus(chatId, status) {
       const item = this.agentChatHistoryList.find(row => row.id === chatId)
       if (item) item.status = status
+      this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
+    },
+    syncBackgroundChatStreams(list, selectedChatId) {
+      const normalizedSelectedChatId = Number(selectedChatId || 0)
+      const runningIds = new Set(
+        (Array.isArray(list) ? list : [])
+          .filter(item => item && item.status === 'running')
+          .map(item => Number(item.id || 0))
+          .filter(id => id > 0 && id !== normalizedSelectedChatId)
+      )
+      Object.keys(this._backgroundChatEventSources || {}).forEach((key) => {
+        const chatId = Number(key)
+        if (!runningIds.has(chatId)) {
+          this.stopBackgroundChatStream(chatId)
+        }
+      })
+      runningIds.forEach((chatId) => {
+        if (chatId !== Number(this._sseChatId || 0)) {
+          this.startBackgroundChatStream(chatId)
+        }
+      })
+    },
+    startBackgroundChatStream(chatId) {
+      const normalizedChatId = Number(chatId || 0)
+      if (normalizedChatId <= 0) return
+      if (normalizedChatId === Number(this._sseChatId || 0)) return
+      if (this._backgroundChatEventSources[normalizedChatId]) return
+      const sseHost = baseUtils.GetSseApiHost()
+      const url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + normalizedChatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
+      const es = new EventSource(url)
+      this._backgroundChatEventSources = {
+        ...this._backgroundChatEventSources,
+        [normalizedChatId]: es,
+      }
+      es.onmessage = (event) => {
+        const line = event.data
+        if (!line) return
+        try {
+          const obj = JSON.parse(line)
+          if (obj.type === 'chat' && obj.subtype === 'completed') {
+            this.stopBackgroundChatStream(normalizedChatId)
+            this.loadAgentChatHistoryListSilently()
+            this.loadAgentChatCounts()
+          }
+        } catch (e) {
+          // 后台监听只关心 completed 终态事件。
+        }
+      }
+      es.onerror = () => {
+        this.stopBackgroundChatStream(normalizedChatId)
+      }
+    },
+    stopBackgroundChatStream(chatId) {
+      const normalizedChatId = Number(chatId || 0)
+      if (normalizedChatId <= 0) return
+      const es = this._backgroundChatEventSources[normalizedChatId]
+      if (es) {
+        es.close()
+      }
+      const nextMap = { ...this._backgroundChatEventSources }
+      delete nextMap[normalizedChatId]
+      this._backgroundChatEventSources = nextMap
+    },
+    stopAllBackgroundChatStreams() {
+      Object.keys(this._backgroundChatEventSources || {}).forEach((key) => {
+        this.stopBackgroundChatStream(Number(key))
+      })
+    },
+    loadAgentChatHistoryListSilently() {
+      if (!this.agentChatHistoryVisible || this.agentChatHistoryLoading || this.agentChatHistoryCliId <= 0) return
+      agentCliApi.AgentChatListByAgentCli(this.agentChatHistoryCliId, (response) => {
+        if (!(response && response.ErrCode === 0 && response.Data)) return
+        this.agentChatHistoryList = Array.isArray(response.Data.list) ? response.Data.list : []
+        this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
+        this.agentChatCounts = {
+          ...this.agentChatCounts,
+          [this.agentChatHistoryCliId]: {
+            running: this.agentChatHistoryList.filter(item => item.status === 'running').length,
+            interrupted: this.agentChatHistoryList.filter(item => item.status === 'interrupted').length,
+            total: this.agentChatHistoryList.length,
+          },
+        }
+        if (this.chatDetailId > 0) {
+          const current = this.agentChatHistoryList.find(item => item.id === this.chatDetailId)
+          if (current) {
+            this.chatDetailStatus = current.status || this.chatDetailStatus
+          }
+        }
+      })
     },
     statusText(status) {
       const map = { running: '执行中', completed: '已完成', error: '异常终止', interrupted: '中断' }
@@ -1788,7 +1935,7 @@ export default {
       const normalizedGroupIds = Array.isArray(groupIds) ? [...groupIds] : []
       const target = this.list.find(item => Number(item.id) === Number(agentCliId))
       if (target) {
-        this.$set(target, 'group_ids', normalizedGroupIds)
+        target.group_ids = normalizedGroupIds
         target._lastGroupIds = [...normalizedGroupIds]
       }
     },

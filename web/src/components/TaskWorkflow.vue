@@ -1055,6 +1055,7 @@ export default {
       chatDetailLocalDir: '',
       chatDetailThinkingIntensity: '',
       chatDetailCliType: 'claude',
+      _backgroundChatEventSources: {},
       // zcode 配置
       zcodeConfigDialogVisible: false,
       zcodeDirInput: '',
@@ -1159,6 +1160,7 @@ export default {
     this._stopChatHistoryDurationTimer()
     if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
     this.unregisterWorkflowSse()
+    this.stopAllBackgroundChatStreams()
     if (this._chatEventSource) {
       this._chatEventSource.close()
       this._chatEventSource = null
@@ -1694,7 +1696,9 @@ export default {
       if (this.workflowId <= 0) return
       taskWorkflowApi.TaskWorkflowChatList(this.workflowId, (res) => {
         if (res.ErrCode === 0 && res.Data) {
-          this.updateChatCountsFromList(res.Data.list || [])
+          const list = res.Data.list || []
+          this.updateChatCountsFromList(list)
+          this.syncBackgroundChatStreams(list, this.promptChatDetailId || this.chatDetailId)
         }
       })
     },
@@ -2218,6 +2222,7 @@ export default {
         if (res.ErrCode === 0 && res.Data) {
           this.promptChatHistoryList = res.Data.list || []
           this._startChatHistoryDurationTimer()
+          this.syncBackgroundChatStreams(this.promptChatHistoryList, focusChatId || this.promptChatDetailId || this.chatDetailId)
           if (!promptType) {
             this.updateChatCountsFromList(this.promptChatHistoryList)
           }
@@ -2243,17 +2248,18 @@ export default {
     // 点击执行历史列表项
     onPromptChatRowClick(row) {
       if (this.promptChatDetailId === row.id) return
+      this.promptChatDetailId = row.id
+      this.chatDetailId = row.id
+      this.chatDetailStatus = row.status
+      this.chatDetailAutoScroll = true
+      this.promptChatDetailShowScrollBtn = false
+      this.syncBackgroundChatStreams(this.promptChatHistoryList, row.id)
       // 切到不同 chat 时才断开旧 SSE
       if (this._chatEventSource && this._sseChatId !== row.id) {
         this._chatEventSource.close()
         this._chatEventSource = null
         this._sseChatId = 0
       }
-      this.promptChatDetailId = row.id
-      this.chatDetailId = row.id
-      this.chatDetailStatus = row.status
-      this.chatDetailAutoScroll = true
-      this.promptChatDetailShowScrollBtn = false
       if (this._sseChatId !== row.id) {
         this.chatDetailSSELines = []
         this.chatDetailMessages = []
@@ -2296,6 +2302,7 @@ export default {
     // 关闭执行历史弹窗（保留 SSE 连接和聊天状态）
     onPromptChatHistoryClosed() {
       this._stopChatHistoryDurationTimer()
+      this.stopAllBackgroundChatStreams()
     },
     // 彻底关闭对话详情（仅在用户主动停止或切换时调用）
     closePromptChatDetail() {
@@ -2308,6 +2315,94 @@ export default {
         if (item) item.status = status
       }
       updateItem(this.promptChatHistoryList)
+      this.syncBackgroundChatStreams(this.promptChatHistoryList, this.promptChatDetailId || this.chatDetailId)
+    },
+    syncBackgroundChatStreams(list, selectedChatId) {
+      const normalizedSelectedChatId = Number(selectedChatId || 0)
+      const runningIds = new Set(
+        (Array.isArray(list) ? list : [])
+          .filter(item => item && item.status === 'running')
+          .map(item => Number(item.id || 0))
+          .filter(id => id > 0 && id !== normalizedSelectedChatId)
+      )
+      Object.keys(this._backgroundChatEventSources || {}).forEach((key) => {
+        const chatId = Number(key)
+        if (!runningIds.has(chatId)) {
+          this.stopBackgroundChatStream(chatId)
+        }
+      })
+      runningIds.forEach((chatId) => {
+        if (chatId !== Number(this._sseChatId || 0)) {
+          this.startBackgroundChatStream(chatId)
+        }
+      })
+    },
+    startBackgroundChatStream(chatId) {
+      const normalizedChatId = Number(chatId || 0)
+      if (normalizedChatId <= 0) return
+      if (normalizedChatId === Number(this._sseChatId || 0)) return
+      if (this._backgroundChatEventSources[normalizedChatId]) return
+      const sseHost = baseUtils.GetSseApiHost()
+      const url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + normalizedChatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
+      const es = new EventSource(url)
+      this._backgroundChatEventSources = {
+        ...this._backgroundChatEventSources,
+        [normalizedChatId]: es,
+      }
+      es.onmessage = (event) => {
+        const line = event.data
+        if (!line) return
+        try {
+          const obj = JSON.parse(line)
+          if (obj.type === 'chat' && obj.subtype === 'completed') {
+            this.stopBackgroundChatStream(normalizedChatId)
+            this.loadPromptChatHistoryListSilently()
+            this.loadChatCounts()
+          }
+        } catch (e) {
+          // 后台监听只关心 completed 终态事件。
+        }
+      }
+      es.onerror = () => {
+        this.stopBackgroundChatStream(normalizedChatId)
+      }
+    },
+    stopBackgroundChatStream(chatId) {
+      const normalizedChatId = Number(chatId || 0)
+      if (normalizedChatId <= 0) return
+      const es = this._backgroundChatEventSources[normalizedChatId]
+      if (es) {
+        es.close()
+      }
+      const nextMap = { ...this._backgroundChatEventSources }
+      delete nextMap[normalizedChatId]
+      this._backgroundChatEventSources = nextMap
+    },
+    stopAllBackgroundChatStreams() {
+      Object.keys(this._backgroundChatEventSources || {}).forEach((key) => {
+        this.stopBackgroundChatStream(Number(key))
+      })
+    },
+    loadPromptChatHistoryListSilently() {
+      if (!this.promptChatHistoryVisible || this.promptChatHistoryLoading) return
+      const promptType = this.promptChatHistoryPromptType
+      const loadApi = promptType
+        ? (cb) => taskWorkflowApi.TaskWorkflowChatListByPromptType(this.workflowId, promptType, cb)
+        : (cb) => taskWorkflowApi.TaskWorkflowChatList(this.workflowId, cb)
+      loadApi((res) => {
+        if (!(res && res.ErrCode === 0 && res.Data)) return
+        this.promptChatHistoryList = res.Data.list || []
+        if (!promptType) {
+          this.updateChatCountsFromList(this.promptChatHistoryList)
+        }
+        this.syncBackgroundChatStreams(this.promptChatHistoryList, this.promptChatDetailId || this.chatDetailId)
+        if (this.chatDetailId > 0) {
+          const current = this.promptChatHistoryList.find(item => item.id === this.chatDetailId)
+          if (current) {
+            this.chatDetailStatus = current.status || this.chatDetailStatus
+          }
+        }
+      })
     },
     statusText(status) {
       const map = { running: '执行中', completed: '已完成', error: '异常终止', interrupted: '中断' }
