@@ -1,9 +1,8 @@
-package controller
+﻿package controller
 
 import (
 	"archive/zip"
 	"bytes"
-	"dev_tool/internal/app/dtool/business"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
@@ -27,9 +26,6 @@ import (
 // buildMemoryFragmentStatusPayload 构造记忆库状态数据。
 func buildMemoryFragmentStatusPayload() map[string]any {
 	config := component.MemoryRuntime.Config()
-	nextPushTime := component.MemoryRuntime.NextPushTime()
-	lastPushTime := component.MemoryRuntime.LastPushTime()
-	lastPushError := component.MemoryRuntime.LastPushError()
 	indexReady := false
 	fragmentCount := 0
 	trashCount := 0
@@ -42,28 +38,13 @@ func buildMemoryFragmentStatusPayload() map[string]any {
 		fragmentCount = runtimeStore.FragmentCount()
 		trashCount = runtimeStore.TrashCount()
 	}
-	nextPushTimeDesc := `-`
-	lastPushTimeDesc := `-`
-	if nextPushTime > 0 {
-		nextPushTimeDesc = gstool.TimeUnixToString(time.Unix(nextPushTime, 0), `Y-m-d H:i:s`)
-	}
-	if lastPushTime > 0 {
-		lastPushTimeDesc = gstool.TimeUnixToString(time.Unix(lastPushTime, 0), `Y-m-d H:i:s`)
-	}
 	return map[string]any{
-		`configured`:              component.MemoryRuntime.IsConfigured(),
-		`memory_dir`:              config.Dir,
-		`git_repo_enabled`:        config.GitRepoEnabled,
-		`is_git_repo`:             config.IsGitRepo,
-		`auto_push_delay_minutes`: config.AutoPushDelayMinutes,
-		`index_ready`:             indexReady,
-		`fragment_count`:          fragmentCount,
-		`trash_count`:             trashCount,
-		`next_push_time`:          nextPushTime,
-		`next_push_time_desc`:     nextPushTimeDesc,
-		`last_push_time`:          lastPushTime,
-		`last_push_time_desc`:     lastPushTimeDesc,
-		`last_push_error`:         lastPushError,
+		`configured`:     component.MemoryRuntime.IsConfigured(),
+		`memory_dir`:     config.Dir,
+		`is_git_repo`:    config.IsGitRepo,
+		`index_ready`:    indexReady,
+		`fragment_count`: fragmentCount,
+		`trash_count`:    trashCount,
 	}
 }
 
@@ -364,13 +345,12 @@ func MemoryFragmentHistoryList(c *gin.Context) {
 	}
 	config := component.MemoryRuntime.Config()
 	result := map[string]any{
-		`list`:             []map[string]any{},
-		`git_repo_enabled`: config.GitRepoEnabled,
-		`is_git_repo`:      config.IsGitRepo,
-		`history_source`:   `none`,
-		`setting_hint`:     `请到“设置” -> “记忆设置”中开启 Git 管理（memoryDbIsGitRepo）后，再查看知识片段历史记录。`,
+		`list`:           []map[string]any{},
+		`is_git_repo`:    config.IsGitRepo,
+		`history_source`: `none`,
+		`setting_hint`:   `当前记忆库目录不是 Git 仓库，暂时无法查看 Git 历史记录。`,
 	}
-	if !config.GitRepoEnabled || !config.IsGitRepo {
+	if !config.IsGitRepo {
 		gsgin.GinResponseSuccess(c, ``, result)
 		return
 	}
@@ -814,21 +794,6 @@ func MemoryFragmentDownloadZip(c *gin.Context) {
 	c.File(tmpZipPath)
 }
 
-// MemoryGitPull 手动拉取记忆库远程仓库最新内容。
-func MemoryGitPull(c *gin.Context) {
-	config := business.ReadMemoryConfigFromINI()
-	if !config.GitRepoEnabled {
-		gsgin.GinResponseError(c, `记忆库未开启 Git 同步`, nil)
-		return
-	}
-	memoryGit := business.NewMemoryGit()
-	if err := memoryGit.Pull(config.Dir); err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
-	}
-	gsgin.GinResponseSuccess(c, `拉取成功`, nil)
-}
-
 // MemoryFragmentUpdateZip 上传 ZIP 文件更新已有知识片段，解析 content.md + images/ 覆盖更新。
 func MemoryFragmentUpdateZip(c *gin.Context) {
 	memoryDB, ok := memoryDBOrResponse(c)
@@ -1031,3 +996,4 @@ func searchFragmentRefsByRg(memoryDir, fragmentID string, memoryDB common.Memory
 	}
 	return refs
 }
+

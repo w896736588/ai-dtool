@@ -15,7 +15,6 @@ import (
 	"dev_tool/internal/pkg/p_gin"
 	"dev_tool/internal/pkg/p_shell"
 	"dev_tool/internal/pkg/p_sse"
-	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -183,9 +182,6 @@ func initComponent(appName, ConfigFile string) {
 	component.EnvClient = &define.Env{}
 	component.TGins = make([]*p_gin.Gin, 0)
 	component.MemoryRuntime = common.NewMemoryStore()
-	component.MemoryRuntime.OnStatusChange = controller.BroadcastAsyncTasksUpdate
-	component.MainDBAutoSyncRuntime = common.NewMainDBAutoSync()
-	component.MainDBAutoSyncRuntime.OnStatusChange = controller.BroadcastAsyncTasksUpdate
 	component.CronSchedulers = make(map[string]*common.CronScheduler)
 	component.CronTaskFuncRegistry[define.CronTaskTypeDailyReport] = controller.CronDailyReportGenerate
 	component.RedisClient = &p_db.TRedis{RedisClientMap: make(map[string]*gsdb.GsRedis)}
@@ -254,21 +250,11 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	component.EnvClient.NodePath = `node`
 	//base配置初始化
 	component.EnvClient.ConfigBase = &define.Base{
-		DbFileName:                   viper.GetString(`base.dbFileName`),
-		DbPath:                       viper.GetString(`base.dbPath`),
-		DbIsGitRepo:                  viper.GetBool(`base.dbIsGitRepo`),
-		DbAutoPushDelayMinutes:       common.DefaultMainDBAutoPushDelayMinutes,
-		LogDbPath:                    viper.GetString(`base.logDbPath`),
-		MemoryDBPath:                 viper.GetString(`base.memoryDbPath`),
-		MemoryDBIsGitRepo:            viper.GetBool(`base.memoryDbIsGitRepo`),
-		MemoryDBAutoPushDelayMinutes: common.DefaultMemoryAutoPushDelayMinutes,
-		WebPath:                      viper.GetString(`base.webPath`),
-	}
-	if viper.IsSet(`base.dbAutoPushDelayMinutes`) {
-		component.EnvClient.ConfigBase.DbAutoPushDelayMinutes = viper.GetInt(`base.dbAutoPushDelayMinutes`)
-	}
-	if viper.IsSet(`base.memoryDbAutoPushDelayMinutes`) {
-		component.EnvClient.ConfigBase.MemoryDBAutoPushDelayMinutes = viper.GetInt(`base.memoryDbAutoPushDelayMinutes`)
+		DbFileName:   viper.GetString(`base.dbFileName`),
+		DbPath:       viper.GetString(`base.dbPath`),
+		LogDbPath:    viper.GetString(`base.logDbPath`),
+		MemoryDBPath: viper.GetString(`base.memoryDbPath`),
+		WebPath:      viper.GetString(`base.webPath`),
 	}
 	//web
 	component.EnvClient.WebConfig = &define.WebConfig{
@@ -282,9 +268,8 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 	}
 	//数据库配置
 	component.EnvClient.DbConfig = &define.DbConfig{
-		DbName:      ``,
-		DbPath:      common.ResolveDefaultDToolDir(component.EnvClient.ConfigBase.DbPath),
-		DbIsGitRepo: component.EnvClient.ConfigBase.DbIsGitRepo,
+		DbName: ``,
+		DbPath: common.ResolveDefaultDToolDir(component.EnvClient.ConfigBase.DbPath),
 	}
 	//数据库名
 	component.EnvClient.DbConfig.DbName = component.EnvClient.AppName + `.db`
@@ -358,7 +343,6 @@ func initSqlite() {
 	if err = business.LoadMemoryStore(); err != nil {
 		panic(err.Error())
 	}
-	business.StartMainDBAutoSync()
 	business.StartCronScheduler()
 	component.ShellOutClient.InitGroupConfigs()
 }
@@ -548,19 +532,7 @@ func Stop() {
 		})
 	}
 	task.RunAll()
-	if component.MemoryRuntime.HasPendingTask() {
-		component.MemoryRuntime.Stop()
-		if err := component.MemoryRuntime.SyncPendingTaskNow(); err != nil && !errors.Is(err, common.ErrMemoryNotConfigured) {
-			gstool.FmtPrintlnLogTime(`记忆库关闭前同步待处理任务失败 %s`, err.Error())
-		}
-	} else if err := component.MemoryRuntime.SyncNow(); err != nil && !errors.Is(err, common.ErrMemoryNotConfigured) {
-		gstool.FmtPrintlnLogTime(`记忆库关闭前同步失败 %s`, err.Error())
-	}
 	business.StopCronScheduler()
-	business.StopMainDBAutoSync()
-	if err := business.SyncMainDBStoreOnShutdown(); err != nil {
-		gstool.FmtPrintlnLogTime(`主库关闭前同步失败 %s`, err.Error())
-	}
 	controller.ShutdownBrowserPortPool()
 	_ = component.PlaywrightClient.Log.Close()
 	if component.VariableClient != nil && component.VariableClient.GetLog() != nil {

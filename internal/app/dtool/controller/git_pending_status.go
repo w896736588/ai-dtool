@@ -2,126 +2,194 @@ package controller
 
 import (
 	"dev_tool/internal/app/dtool/business"
-	"dev_tool/internal/app/dtool/common"
-	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/pkg/p_define"
+	"fmt"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/cast"
 )
 
-// gitPendingStatusChecker 抽象 git 状态查询能力，方便复用和单元测试。
-// gitPendingStatusChecker abstracts git status checks for reuse and unit testing.
 type gitPendingStatusChecker interface {
 	IsGitRepo(dir string) (bool, error)
-	HasFileChanges(dir, fileName string) (bool, error)
+	RootDir(dir string) (string, error)
+	ListChangedFiles(dir, fileName string) ([]string, error)
+	AddFile(dir, fileName string) error
+	Commit(dir, fileName, message string) error
+	Push(dir string) error
 }
 
-// detectGitPendingStatus 统一计算主库和记忆库红点状态，确保提示口径与实际同步行为一致。
-// detectGitPendingStatus computes badge flags and keeps them aligned with real sync behavior.
-func detectGitPendingStatus(gitSyncer gitPendingStatusChecker, mainConfig business.MainDBConfig, memoryConfig common.MemoryConfig, hasMainDBEnv bool) (bool, bool) {
-	mainDBPending := false
-	memoryPending := false
-
-	// 中文注释：主库同步实际只处理 sqlite 主文件，因此红点也只跟随主文件变更。
-	// English comment: Main-db sync only targets the primary sqlite file, so the badge follows that file only.
-	if hasMainDBEnv && mainConfig.GitRepoEnabled && mainConfig.Dir != `` && mainConfig.DBPath != `` {
-		if isGit, err := gitSyncer.IsGitRepo(mainConfig.Dir); err == nil && isGit {
-			fileName := filepath.Base(mainConfig.DBPath)
-			if hasChanges, checkErr := gitSyncer.HasFileChanges(mainConfig.Dir, fileName); checkErr == nil && hasChanges {
-				mainDBPending = true
-			}
-		}
-	}
-
-	// 中文注释：记忆库同步以整个目录为目标，所以这里继续使用目录级变更判断。
-	// English comment: Memory sync operates on the whole directory, so the badge remains directory-based.
-	if memoryConfig.GitRepoEnabled && memoryConfig.Dir != `` {
-		if isGit, err := gitSyncer.IsGitRepo(memoryConfig.Dir); err == nil && isGit {
-			if hasChanges, checkErr := gitSyncer.HasFileChanges(memoryConfig.Dir, `.`); checkErr == nil && hasChanges {
-				memoryPending = true
-			}
-		}
-	}
-
-	return mainDBPending, memoryPending
-}
-
-// GitPendingStatus 检测主库和记忆库是否存在待提交的 git 变更。
-// GitPendingStatus reports whether the main db or memory db has pending git changes.
-func GitPendingStatus(c *gin.Context) {
-	gitSyncer := business.NewMemoryGit()
-	mainConfig := business.ReadMainDBConfig()
-	memoryConfig := business.ReadMemoryConfigFromINI()
-	mainDBPending, memoryPending := detectGitPendingStatus(gitSyncer, mainConfig, memoryConfig, component.EnvClient != nil && component.EnvClient.DbConfig != nil)
-
-	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`main_db_pending`: mainDBPending,
-		`memory_pending`:  memoryPending,
-	})
-}
-
-// buildGitPendingStatusPayload 构造 Git 待提交状态及倒计时数据。
 func buildGitPendingStatusPayload() map[string]any {
 	gitSyncer := business.NewMemoryGit()
 	mainConfig := business.ReadMainDBConfig()
 	memoryConfig := business.ReadMemoryConfigFromINI()
-	mainDBPending, memoryPending := detectGitPendingStatus(gitSyncer, mainConfig, memoryConfig, component.EnvClient != nil && component.EnvClient.DbConfig != nil)
 
-	// 中文注释：从运行时组件读取排期时间，无需再次执行 git status。
-	var mainDBNextPush int64
-	var mainDBInterval int
-	if component.MainDBAutoSyncRuntime != nil {
-		mainDBNextPush = component.MainDBAutoSyncRuntime.NextSyncTime()
-		mainDBInterval = component.MainDBAutoSyncRuntime.Config().AutoSyncMinutes * 60
+	type repoAggregate struct {
+		labelSet map[string]bool
+		dirSet   map[string]bool
+		files    []string
+		fileSet  map[string]bool
+		rootDir  string
+	}
+	repoMap := make(map[string]*repoAggregate)
+
+	appendRepo := func(label string, dir string, target string) {
+		if strings.TrimSpace(dir) == `` {
+			return
+		}
+		isGitRepo, err := gitSyncer.IsGitRepo(dir)
+		if err != nil || !isGitRepo {
+			return
+		}
+		rootDir, err := gitSyncer.RootDir(dir)
+		if err != nil {
+			return
+		}
+		files, err := gitSyncer.ListChangedFiles(rootDir, `.`)
+		if err != nil {
+			return
+		}
+		rootDir = filepath.Clean(strings.TrimSpace(rootDir))
+		repo := repoMap[rootDir]
+		if repo == nil {
+			repo = &repoAggregate{
+				labelSet: make(map[string]bool),
+				dirSet:   make(map[string]bool),
+				fileSet:  make(map[string]bool),
+				rootDir:  rootDir,
+			}
+			repoMap[rootDir] = repo
+		}
+		repo.labelSet[label] = true
+		repo.dirSet[filepath.Clean(strings.TrimSpace(dir))] = true
+		for _, file := range files {
+			file = strings.TrimSpace(file)
+			if file == `` || repo.fileSet[file] {
+				continue
+			}
+			repo.fileSet[file] = true
+			repo.files = append(repo.files, file)
+		}
 	}
 
-	var memoryNextPush int64
-	var memoryInterval int
-	if component.MemoryRuntime != nil {
-		memoryNextPush = component.MemoryRuntime.NextPushTime()
-		memoryInterval = component.MemoryRuntime.Config().AutoPushDelayMinutes * 60
+	appendRepo(`main_db`, mainConfig.Dir, `.`)
+	appendRepo(`memory`, memoryConfig.Dir, `.`)
+
+	items := make([]map[string]any, 0, len(repoMap))
+	totalCount := 0
+	repoDirs := make([]string, 0, len(repoMap))
+	for dir := range repoMap {
+		repoDirs = append(repoDirs, dir)
+	}
+	sort.Strings(repoDirs)
+	for _, dir := range repoDirs {
+		repo := repoMap[dir]
+		sort.Strings(repo.files)
+		labelList := make([]string, 0, len(repo.labelSet))
+		for label := range repo.labelSet {
+			labelList = append(labelList, label)
+		}
+		sort.Strings(labelList)
+		sourceDirs := make([]string, 0, len(repo.dirSet))
+		for sourceDir := range repo.dirSet {
+			sourceDirs = append(sourceDirs, sourceDir)
+		}
+		sort.Strings(sourceDirs)
+		totalCount += len(repo.files)
+		items = append(items, map[string]any{
+			`label`:       strings.Join(labelList, ` + `),
+			`labels`:      labelList,
+			`dir`:         repo.rootDir,
+			`source_dirs`: sourceDirs,
+			`is_git_repo`: true,
+			`count`:       len(repo.files),
+			`files`:       repo.files,
+		})
 	}
 
 	return map[string]any{
-		`main_db_pending`:   mainDBPending,
-		`memory_pending`:    memoryPending,
-		`main_db_next_push`: mainDBNextPush,
-		`memory_next_push`:  memoryNextPush,
-		`main_db_interval`:  mainDBInterval,
-		`memory_interval`:   memoryInterval,
+		`total_count`: totalCount,
+		`repos`:       items,
 	}
 }
 
-// sendGitPendingStatusSnapshot 向指定 SSE 连接发送一次 Git 待提交状态快照。
+// GitPendingStatus 返回主库和知识片段目录的未提交文件状态。
+func GitPendingStatus(c *gin.Context) {
+	gsgin.GinResponseSuccess(c, ``, buildGitPendingStatusPayload())
+}
+
+// GitPendingCommitPush 对指定仓库执行 add + commit + push。
+func GitPendingCommitPush(c *gin.Context) {
+	reqMap := gsgin.GinGetParams(c)
+	dir := filepath.Clean(strings.TrimSpace(cast.ToString(reqMap[`dir`])))
+	message := strings.TrimSpace(cast.ToString(reqMap[`message`]))
+	if dir == `` {
+		gsgin.GinResponseError(c, `仓库目录不能为空`, nil)
+		return
+	}
+	if message == `` {
+		message = fmt.Sprintf(`chore: sync pending changes %s`, time.Now().Format(`2006-01-02 15:04:05`))
+	}
+	gitSyncer := business.NewMemoryGit()
+	isGitRepo, err := gitSyncer.IsGitRepo(dir)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if !isGitRepo {
+		gsgin.GinResponseError(c, `指定目录不是 git 仓库`, nil)
+		return
+	}
+	rootDir, err := gitSyncer.RootDir(dir)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if err = gitSyncer.AddFile(rootDir, `.`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if err = gitSyncer.Commit(rootDir, `.`, message); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if err = gitSyncer.Push(rootDir); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`dir`:     rootDir,
+		`message`: message,
+	})
+}
+
 func sendGitPendingStatusSnapshot(sse *gsgin.Sse) {
 	if sse == nil {
 		return
 	}
-	data := buildGitPendingStatusPayload()
 	err := sse.SendToChan(gstool.JsonEncode(p_define.SseData{
 		SseDistributeId: define.SseGitPendingStatus,
-		Data:            data,
+		Data:            buildGitPendingStatusPayload(),
 		Type:            p_define.SseContentTypeMsg,
 	}))
 	if err != nil {
-		gstool.FmtPrintlnLogTime(`GitPendingStatus广播错误 %s`, err.Error())
+		gstool.FmtPrintlnLogTime(`GitPendingStatus 广播错误 %s`, err.Error())
 	}
 }
 
-// BindGitPendingStatusSSE 为普通 SSE client 绑定 Git 待提交状态推送。
 func BindGitPendingStatusSSE(sse *gsgin.Sse, stopC chan int, interval time.Duration) {
 	if sse == nil {
 		return
 	}
 	if interval <= 0 {
-		interval = 5 * time.Second
+		interval = 10 * time.Second
 	}
-	// 建连后立即推一次，避免前端初次打开时要等下一个周期。
 	sendGitPendingStatusSnapshot(sse)
 	go func() {
 		ticker := time.NewTicker(interval)

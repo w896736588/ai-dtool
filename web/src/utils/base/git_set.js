@@ -57,10 +57,6 @@ function RuntimeConfigSave(data , callBack){
     base.BasePost('/api/Set/RuntimeConfigSave', data, callBack)
 }
 
-function RuntimeDatabaseGitSync(data , callBack){
-    base.BasePost('/api/Set/RuntimeDatabaseGitSync', data, callBack)
-}
-
 function RuntimeConfigItemSave(data , callBack){
     base.BasePost('/api/Set/RuntimeConfigItemSave', data, callBack)
 }
@@ -106,7 +102,6 @@ export default {
     MemoryConfigGet,
     MemoryConfigSave,
     RuntimeConfigSave,
-    RuntimeDatabaseGitSync,
     RuntimeConfigItemSave,
     CronConfigGet,
     CronConfigTypes,

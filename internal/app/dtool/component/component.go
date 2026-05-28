@@ -55,7 +55,6 @@ var DataBaseUp DataBaseUpRunner
 var VariableClient VariableRuntime
 var ShellOutClient *common.TShellOut
 var MemoryRuntime *common.MemoryStore
-var MainDBAutoSyncRuntime *common.MainDBAutoSync
 var CronSchedulers map[string]*common.CronScheduler
 
 // CronTaskFuncRegistry 存储定时任务类型到执行函数的映射，由 controller 在初始化时注册。

@@ -1,4 +1,4 @@
-package controller
+﻿package controller
 
 import (
 	"dev_tool/internal/app/dtool/business"
@@ -955,23 +955,19 @@ func SetMemoryConfigGet(c *gin.Context) {
 		return
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`db_dir`:                            mainDBConfig.Dir,
-		`db_name`:                           mainDBConfig.DBName,
-		`db_configured`:                     mainDBConfig.Dir != `` && mainDBConfig.DBName != ``,
-		`db_is_git_repo`:                    mainDBConfig.GitRepoEnabled,
-		`db_auto_push_delay_minutes`:        business.ReadMainDBAutoSyncConfig().AutoSyncMinutes,
-		`log_db_path`:                       component.EnvClient.LogDbConfig.DbPath,
-		`memory_dir`:                        memoryConfig.Dir,
-		`memory_db_configured`:              memoryConfig.Dir != ``,
-		`memory_db_is_git_repo`:             memoryConfig.GitRepoEnabled,
-		`memory_db_auto_push_delay_minutes`: memoryConfig.AutoPushDelayMinutes,
-		`memory_config_file`:                memoryConfigFilePath(),
-		`memory_arrange_prompt`:             arrangePrompt,
-		`memory_arrange_model_id`:           cast.ToInt(arrangeModelID),
-		`memory_ai_search_model_id`:         cast.ToInt(aiSearchModelID),
-		`safe_password`:                     component.ConfigViper.GetString(`safe.password`),
-		`run_mode`:                          component.EnvClient.SmartLinkConfig.RunMode,
-		`client_version`:                    component.EnvClient.SmartLinkConfig.ClientVersion,
+		`db_dir`:                    mainDBConfig.Dir,
+		`db_name`:                   mainDBConfig.DBName,
+		`db_configured`:             mainDBConfig.Dir != `` && mainDBConfig.DBName != ``,
+		`log_db_path`:               component.EnvClient.LogDbConfig.DbPath,
+		`memory_dir`:                memoryConfig.Dir,
+		`memory_db_configured`:      memoryConfig.Dir != ``,
+		`memory_config_file`:        memoryConfigFilePath(),
+		`memory_arrange_prompt`:     arrangePrompt,
+		`memory_arrange_model_id`:   cast.ToInt(arrangeModelID),
+		`memory_ai_search_model_id`: cast.ToInt(aiSearchModelID),
+		`safe_password`:             component.ConfigViper.GetString(`safe.password`),
+		`run_mode`:                  component.EnvClient.SmartLinkConfig.RunMode,
+		`client_version`:            component.EnvClient.SmartLinkConfig.ClientVersion,
 	})
 }
 
@@ -1050,11 +1046,8 @@ func SetRuntimeConfigSave(c *gin.Context) {
 
 	setIniKey(baseSection, `dbPath`, strings.TrimSpace(cast.ToString(dataMap[`db_path`])))
 	setIniKey(baseSection, `dbFileName`, strings.TrimSpace(cast.ToString(dataMap[`db_file_name`])))
-	setIniKey(baseSection, `dbIsGitRepo`, cast.ToString(cast.ToBool(dataMap[`db_is_git_repo`])))
 	setIniKey(baseSection, `logDbPath`, strings.TrimSpace(cast.ToString(dataMap[`log_db_path`])))
 	setIniKey(baseSection, `memoryDbPath`, strings.TrimSpace(cast.ToString(dataMap[`memory_db_path`])))
-	setIniKey(baseSection, `memoryDbIsGitRepo`, cast.ToString(cast.ToBool(dataMap[`memory_db_is_git_repo`])))
-	setIniKey(baseSection, `memoryDbAutoPushDelayMinutes`, cast.ToString(cast.ToInt(dataMap[`memory_db_auto_push_delay_minutes`])))
 
 	// 保存 safe 配置
 	newSafePassword := strings.TrimSpace(cast.ToString(dataMap[`safe_password`]))
@@ -1149,18 +1142,6 @@ func SetRuntimeConfigItemSave(c *gin.Context) {
 	case `memoryDbPath`:
 		setIniKey(section, configKey, strings.TrimSpace(cast.ToString(configValue)))
 		needRestart = false
-	case `db_is_git_repo`:
-		setIniKey(section, configKey, cast.ToString(cast.ToBool(configValue)))
-		needRestart = false
-	case `memoryDbIsGitRepo`:
-		setIniKey(section, configKey, cast.ToString(cast.ToBool(configValue)))
-		needRestart = false
-	case `dbAutoPushDelayMinutes`:
-		setIniKey(section, configKey, cast.ToString(cast.ToInt(configValue)))
-		needRestart = false
-	case `memoryDbAutoPushDelayMinutes`:
-		setIniKey(section, configKey, cast.ToString(cast.ToInt(configValue)))
-		needRestart = false
 	case `password`:
 		oldSafePassword := component.ConfigViper.GetString(`safe.password`)
 		newSafePassword := strings.TrimSpace(cast.ToString(configValue))
@@ -1206,14 +1187,8 @@ func SetRuntimeConfigItemSave(c *gin.Context) {
 		hotReloadErr = business.HotReloadMainDB(configKey)
 	case `logDbPath`:
 		hotReloadErr = business.HotReloadLogDB()
-	case `memoryDbPath`, `memoryDbIsGitRepo`:
+	case `memoryDbPath`:
 		hotReloadErr = business.HotReloadMemoryDB()
-	case `db_is_git_repo`:
-		hotReloadErr = business.HotReloadDBGitFlag()
-	case `dbAutoPushDelayMinutes`:
-		hotReloadErr = business.HotReloadAutoSyncDelay()
-	case `memoryDbAutoPushDelayMinutes`:
-		hotReloadErr = business.HotReloadMemoryAutoSyncDelay()
 	}
 
 	if hotReloadErr != nil {
@@ -1226,57 +1201,6 @@ func SetRuntimeConfigItemSave(c *gin.Context) {
 		`reloaded`:     true,
 		`need_restart`: needRestart,
 	})
-}
-
-const runtimeDatabaseSyncTargetMain = `main`
-const runtimeDatabaseSyncTargetMemory = `memory`
-
-// SetRuntimeDatabaseGitSync 手动触发主库或记忆库的 git commit push。 // Manually trigger git commit and push for the main or memory database.
-func SetRuntimeDatabaseGitSync(c *gin.Context) {
-	dataMap := make(map[string]any)
-	_ = gsgin.GinPostBody(c, &dataMap)
-
-	target := strings.TrimSpace(cast.ToString(dataMap[`target`]))
-	// target 只允许主库或记忆库两种同步入口，避免误触发其他路径。 // Only allow main or memory targets so the manual sync route stays explicit.
-	switch target {
-	case runtimeDatabaseSyncTargetMain:
-		config := business.ReadMainDBConfig()
-		if !config.GitRepoEnabled {
-			gsgin.GinResponseError(c, `主库未开启 Git 同步`, nil)
-			return
-		}
-		config.IsGitRepo = true
-		changed, err := business.SyncMainDBFile(config, business.NewMemoryGit())
-		if err != nil {
-			gsgin.GinResponseError(c, err.Error(), nil)
-			return
-		}
-		gsgin.GinResponseSuccess(c, ``, map[string]any{
-			`target`:  target,
-			`changed`: changed,
-		})
-		return
-	case runtimeDatabaseSyncTargetMemory:
-		config := business.ReadMemoryConfigFromINI()
-		if !config.GitRepoEnabled {
-			gsgin.GinResponseError(c, `记忆库未开启 Git 同步`, nil)
-			return
-		}
-		config.IsGitRepo = true
-		changed, err := business.SyncMemoryDBFile(config, business.NewMemoryGit())
-		if err != nil {
-			gsgin.GinResponseError(c, err.Error(), nil)
-			return
-		}
-		gsgin.GinResponseSuccess(c, ``, map[string]any{
-			`target`:  target,
-			`changed`: changed,
-		})
-		return
-	default:
-		gsgin.GinResponseError(c, `target 参数无效`, nil)
-		return
-	}
 }
 
 func setIniKey(section *ini.Section, key, value string) {
@@ -2015,3 +1939,4 @@ func SetLocalBranchBatchCheck(c *gin.Context) {
 	}
 	gsgin.GinResponseSuccess(c, ``, result)
 }
+

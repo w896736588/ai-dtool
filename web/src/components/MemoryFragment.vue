@@ -117,20 +117,6 @@
           </button>
         </el-tooltip>
         <span v-if="fragmentTotalCount > 0" class="sidebar-count-badge">{{ fragmentList.length }}/{{ fragmentTotalCount }}</span>
-        <template v-if="memoryGitRepoEnabled">
-          <span class="sidebar-git-actions">
-            <el-tooltip content="拉取" placement="top">
-              <button class="memory-git-action-btn" :disabled="gitActionLoading" @click="handleGitPull">
-                <el-icon :size="13"><Download /></el-icon>
-              </button>
-            </el-tooltip>
-            <el-tooltip content="推送" placement="top">
-              <button class="memory-git-action-btn" :disabled="gitActionLoading" @click="handleGitPush">
-                <el-icon :size="13"><Upload /></el-icon>
-              </button>
-            </el-tooltip>
-          </span>
-        </template>
       </div>
     </aside>
 
@@ -401,7 +387,7 @@
     <MemoryHistoryDialog
       v-model="historyDialogVisible"
       :fragment-id="historyFragmentId"
-      :git-repo-enabled="memoryGitRepoEnabled"
+      :git-repo-enabled="memoryIsGitRepo"
       :is-git-repo="memoryIsGitRepo"
       @open-settings="openSettingsDialog"
     />
@@ -540,9 +526,7 @@ export default {
       historyDialogVisible: false,
       historyFragmentId: '',
       memoryConfigured: true,
-      memoryGitRepoEnabled: false,
       memoryIsGitRepo: false,
-      gitActionLoading: false,
       nextPushTime: 0,
       lastPushTime: 0,
       lastPushTimeDesc: '-',
@@ -719,7 +703,6 @@ export default {
     handleMemoryFragmentStatusSseUpdate(data) {
       this.statusNowTick = Math.floor(Date.now() / 1000)
       this.memoryConfigured = !!(data && data.configured)
-      this.memoryGitRepoEnabled = !!(data && data.git_repo_enabled)
       this.memoryIsGitRepo = !!(data && data.is_git_repo)
       this.nextPushTime = data && data.next_push_time ? Number(data.next_push_time) : 0
       this.lastPushTime = data && data.last_push_time ? Number(data.last_push_time) : 0
@@ -732,7 +715,6 @@ export default {
         this.searchResults = []
         this.fragmentTabs = []
         this.activeTab = ''
-        this.memoryGitRepoEnabled = false
         this.memoryIsGitRepo = false
         this.nextPushTime = 0
         this.lastPushTime = 0
@@ -881,7 +863,6 @@ export default {
       MemoryFragmentApi.MemoryFragmentStatus((response) => {
         this.statusNowTick = Math.floor(Date.now() / 1000)
         this.memoryConfigured = !!(response.Data && response.Data.configured)
-        this.memoryGitRepoEnabled = !!(response.Data && response.Data.git_repo_enabled)
         this.memoryIsGitRepo = !!(response.Data && response.Data.is_git_repo)
         this.nextPushTime = response.Data && response.Data.next_push_time ? Number(response.Data.next_push_time) : 0
         this.lastPushTime = response.Data && response.Data.last_push_time ? Number(response.Data.last_push_time) : 0
@@ -894,7 +875,6 @@ export default {
           this.searchResults = []
           this.fragmentTabs = []
           this.activeTab = ''
-          this.memoryGitRepoEnabled = false
           this.memoryIsGitRepo = false
           this.nextPushTime = 0
           this.lastPushTime = 0
@@ -1801,37 +1781,6 @@ export default {
       if (ms < 1000) return ms + 'ms'
       const seconds = (ms / 1000).toFixed(1)
       return seconds + 's'
-    },
-    // handleGitPull 执行 git pull 拉取记忆库最新内容。
-    handleGitPull() {
-      this.gitActionLoading = true
-      MemoryFragmentApi.MemoryGitPull((response) => {
-        this.gitActionLoading = false
-        if (response.__loginRequired) return
-        if (response.ErrCode !== 0) {
-          this.$message.error(response.ErrMsg || '拉取失败')
-          return
-        }
-        this.$message.success('拉取成功')
-        this.loadFragmentList(true)
-      })
-    },
-    // handleGitPush 执行 git commit + push 推送记忆库变更。
-    handleGitPush() {
-      this.gitActionLoading = true
-      set.RuntimeDatabaseGitSync({ target: 'memory' }, (response) => {
-        this.gitActionLoading = false
-        if (response.__loginRequired) return
-        if (response.ErrCode !== 0) {
-          this.$message.error(response.ErrMsg || '推送失败')
-          return
-        }
-        if (!response.Data || !response.Data.changed) {
-          this.$message.info('未检测到变更，无需推送')
-          return
-        }
-        this.$message.success('推送成功')
-      })
     },
     applySidebarHiddenQuery() {
       if (this.isEmbedded || String(this.$route.query.hide_sidebar || '') === '1') {

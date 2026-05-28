@@ -22,11 +22,11 @@ type preparedMemoryBootstrap struct {
 // memoryGitSyncer 定义记忆库 git 同步所需能力。 // Defines the git sync capabilities required by the memory store.
 type memoryGitSyncer interface {
 	IsGitRepo(dir string) (bool, error)
-	Pull(dir string) error
 	HasFileChanges(dir, fileName string) (bool, error)
 	AddFile(dir, fileName string) error
 	Commit(dir, fileName, message string) error
 	Push(dir string) error
+	ListChangedFiles(dir, fileName string) ([]string, error)
 }
 
 // newMemoryGitFactory 允许测试替换记忆库 git 实现。 // Allows tests to replace the memory git implementation.
@@ -62,7 +62,7 @@ func SyncMemoryDBFile(config common.MemoryConfig, memoryGit memoryGitSyncer) (bo
 		gstool.FmtPrintlnLogTime(`记忆库手动同步 add 失败 dir=%s target=%s err=%s`, config.Dir, target, err.Error())
 		return false, err
 	}
-	if err = memoryGit.Commit(config.Dir, target, common.MemorySyncCommitMessage); err != nil {
+		if err = memoryGit.Commit(config.Dir, target, `chore: sync memory db`); err != nil {
 		gstool.FmtPrintlnLogTime(`记忆库手动同步 commit 失败 dir=%s target=%s err=%s`, config.Dir, target, err.Error())
 		return false, err
 	}
@@ -80,19 +80,13 @@ func ReadMemoryConfigFromINI() common.MemoryConfig {
 		return common.MemoryConfig{}
 	}
 	memoryDir := strings.TrimSpace(component.ConfigViper.GetString(`base.memoryDbPath`))
-	memoryDBIsGitRepo := component.ConfigViper.GetBool(`base.memoryDbIsGitRepo`)
 	config := common.MemoryConfig{
-		Dir:                  common.ResolveDefaultDToolDir(memoryDir),
-		GitRepoEnabled:       memoryDBIsGitRepo,
-		AutoPushDelayMinutes: common.DefaultMemoryAutoPushDelayMinutes,
-	}
-	if component.ConfigViper.IsSet(`base.memoryDbAutoPushDelayMinutes`) {
-		config.AutoPushDelayMinutes = component.ConfigViper.GetInt(`base.memoryDbAutoPushDelayMinutes`)
+		Dir: common.ResolveDefaultDToolDir(memoryDir),
 	}
 	return config
 }
 
-// PrepareMemoryStore 在任何数据库初始化前完成记忆库目录检查和 git pull / preflight memory store before any database initialization.
+// PrepareMemoryStore 在任何数据库初始化前完成记忆库目录检查和 git 仓库识别 / preflight memory store before any database initialization.
 func PrepareMemoryStore() error {
 	config := ReadMemoryConfigFromINI()
 	if config.Dir == `` {
@@ -104,31 +98,17 @@ func PrepareMemoryStore() error {
 		return fmt.Errorf(`创建记忆目录失败 %w`, err)
 	}
 
-	memoryGit := newMemoryGitFactory()
-	// 仅当配置显式开启 git 同步时才检测和拉取 / only detect and pull git when config explicitly enables git sync.
-	if config.GitRepoEnabled {
-		gstool.FmtPrintlnLogTime(`记忆库 git 模式已开启，准备检查仓库并执行 pull dir=%s`, config.Dir)
-		isGitRepo, err := memoryGit.IsGitRepo(config.Dir)
-		if err != nil {
-			return fmt.Errorf(`检测记忆目录 git 仓库失败 %w`, err)
-		}
-		// 配置已启用 git，但目录不是仓库时直接报错 / fail fast when git sync is enabled but the directory is not a repository.
-		if !isGitRepo {
-			return fmt.Errorf(`记忆目录未检测到 git 仓库，请检查 base.memoryDbIsGitRepo 和 memoryDbPath 配置`)
-		}
-		if err = memoryGit.Pull(config.Dir); err != nil {
-			return fmt.Errorf(`拉取记忆目录失败 %w`, err)
-		}
-		gstool.FmtPrintlnLogTime(`记忆库 git pull 完成 dir=%s`, config.Dir)
-		config.IsGitRepo = true
-	} else {
-		gstool.FmtPrintlnLogTime(`记忆库 git 模式未开启，跳过 pull dir=%s`, config.Dir)
+	isGitRepo, err := newMemoryGitFactory().IsGitRepo(config.Dir)
+	if err != nil {
+		return fmt.Errorf(`检测记忆目录 git 仓库失败 %w`, err)
 	}
+	config.IsGitRepo = isGitRepo
 	config.DBPath = config.Dir
 	preparedMemoryStore = &preparedMemoryBootstrap{
 		Config:    config,
-		MemoryGit: memoryGit,
+		MemoryGit: newMemoryGitFactory(),
 	}
+	gstool.FmtPrintlnLogTime(`记忆库 git 检测完成 dir=%s is_git_repo=%v`, config.Dir, config.IsGitRepo)
 	return nil
 }
 
@@ -146,7 +126,6 @@ func LoadMemoryStore() error {
 	}
 
 	config := preparedMemoryStore.Config
-	memoryGit := preparedMemoryStore.MemoryGit
 	// if migrationReport, err := memory.MigrateNumericFragmentIDs(config.Dir); err != nil {
 	// 	return fmt.Errorf(`迁移旧数字知识片段ID失败 %w`, err)
 	// } else if component.DbMain != nil {
@@ -158,7 +137,6 @@ func LoadMemoryStore() error {
 	// }
 
 	memoryDB := memory.NewService(config.Dir)
-	component.MemoryRuntime.SetGitSyncer(memoryGit)
 	component.MemoryRuntime.Configure(config, memoryDB)
 	memoryDB.LoadAsync()
 	if err := memoryDB.StartWatching(); err != nil {

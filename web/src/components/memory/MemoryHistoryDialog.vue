@@ -111,20 +111,20 @@ export default {
   props: {
     modelValue: {
       type: Boolean,
-      default: false
+      default: false,
     },
     fragmentId: {
       type: [Number, String],
-      default: 0
+      default: 0,
     },
     gitRepoEnabled: {
       type: Boolean,
-      default: false
+      default: false,
     },
     isGitRepo: {
       type: Boolean,
-      default: false
-    }
+      default: false,
+    },
   },
   emits: ['update:modelValue', 'open-settings'],
   data() {
@@ -133,7 +133,7 @@ export default {
       historyList: [],
       activeHistory: null,
       historySource: 'none',
-      settingHint: '请到“设置” -> “记忆设置”中开启 Git 管理（memoryDbIsGitRepo）后，再查看知识片段历史记录。',
+      settingHint: '当前知识片段目录不是 Git 仓库，无法查看历史记录。',
     }
   },
   computed: {
@@ -145,17 +145,16 @@ export default {
       return this.historySource === 'git' ? 'Git 历史记录' : '历史记录'
     },
     showGitSettingHint() {
-      return !this.gitRepoEnabled || !this.isGitRepo
+      return !this.isGitRepo
     },
     historyEmptyText() {
-      return this.showGitSettingHint ? '未开启 Git 管理' : '暂无历史记录'
+      return this.showGitSettingHint ? '当前不是 Git 仓库' : '暂无历史记录'
     },
     detailEmptyText() {
       return this.showGitSettingHint ? this.settingHint : '选择一条历史记录后查看差异'
     },
   },
   watch: {
-    // modelValue 打开时重新获取历史记录。
     modelValue: {
       immediate: true,
       handler(value) {
@@ -165,22 +164,18 @@ export default {
         if (!value) {
           this.activeHistory = null
         }
-      }
+      },
     },
-    // fragmentId 变化后在弹窗打开状态下同步刷新内容。
     fragmentId(value) {
       const text = String(value || '').trim()
       if (this.modelValue && text !== '' && text !== '0' && text !== 'null' && text !== 'undefined') {
         this.loadHistory()
       }
-    }
+    },
   },
   methods: {
-    // loadHistory 加载片段历史记录。
     loadHistory() {
-      if (!this.hasValidFragmentId) {
-        return
-      }
+      if (!this.hasValidFragmentId) return
       this.loading = true
       MemoryFragmentApi.MemoryFragmentHistoryList(this.fragmentId, (response) => {
         this.loading = false
@@ -193,18 +188,16 @@ export default {
         }
       })
     },
-    // selectHistory 选中一条历史记录。
     selectHistory(row) {
       this.activeHistory = row
     },
-    // handleClose 关闭弹窗。
     handleClose() {
       this.$emit('update:modelValue', false)
     },
     emitOpenSettings() {
       this.$emit('open-settings')
-    }
-  }
+    },
+  },
 }
 </script>
 

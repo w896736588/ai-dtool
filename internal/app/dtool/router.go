@@ -266,7 +266,6 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/MemoryConfigGet`, controller.SetMemoryConfigGet)
 	tGin.GinPost(`/api/Set/MemoryConfigSave`, controller.SetMemoryConfigSave)
 	tGin.GinPost(`/api/Set/RuntimeConfigSave`, controller.SetRuntimeConfigSave)
-	tGin.GinPost(`/api/Set/RuntimeDatabaseGitSync`, controller.SetRuntimeDatabaseGitSync)
 	tGin.GinPost(`/api/Set/RuntimeConfigItemSave`, controller.SetRuntimeConfigItemSave)
 	tGin.GinPost(`/api/Set/CronConfigTypes`, controller.SetCronConfigTypes)
 	tGin.GinPost(`/api/Set/CronConfigGet`, controller.SetCronConfigGet)
@@ -297,6 +296,7 @@ func setMarkdown(tGin *p_gin.Gin) {
 
 func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/GitPendingStatus`, controller.GitPendingStatus)
+	tGin.GinPost(`/api/GitPendingCommitPush`, controller.GitPendingCommitPush)
 	tGin.GinPost(`/api/MemoryFragmentStatus`, controller.MemoryFragmentStatus)
 	tGin.GinPost(`/api/MemoryFragmentList`, controller.MemoryFragmentList)
 	tGin.GinPost(`/api/MemoryFragmentInfo`, controller.MemoryFragmentInfo)
@@ -316,7 +316,6 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinGet(`/api/MemoryFragmentDownloadZip`, controller.MemoryFragmentDownloadZip)
 	tGin.GinPost(`/api/MemoryFragmentBatchInfoByPaths`, controller.MemoryFragmentBatchInfoByPaths)
 	tGin.GinPost(`/api/MemoryFragmentReferences`, controller.MemoryFragmentReferences)
-	tGin.GinPost(`/api/MemoryGitPull`, controller.MemoryGitPull)
 	tGin.GinPost(`/api/AsyncTaskList`, controller.AsyncTaskList)
 	tGin.GinPost(`/api/AsyncTaskInfo`, controller.AsyncTaskInfo)
 	tGin.GinPost(`/api/AsyncTaskAction`, controller.AsyncTaskAction)
