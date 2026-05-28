@@ -482,8 +482,11 @@
       :detail-status="chatDetailStatus"
       :detail-cli-type="chatDetailCliType"
       :detail-messages="chatDetailMessages"
+      :last-usage-summary-data="chatDetailLastUsageSummary"
       :continue-input="chatContinueInput"
       :continue-loading="chatContinueLoading"
+      :continue-disabled="isChatContinueDisabled()"
+      :show-new-chat-button="true"
       :scroll-button-visible="agentChatDetailShowScrollBtn"
       :running-text="'等待 Agent CLI 响应...'"
       :thinking-stream-elapsed="thinkingStreamElapsed"
@@ -501,6 +504,7 @@
       @select="onAgentChatRowClick"
       @update:continueInput="chatContinueInput = $event"
       @continue="continueChat"
+      @new-chat="startNewChatFromHistory"
       @stop="stopChat"
       @scroll="onAgentChatDetailScroll"
       @scroll-to-bottom="scrollAgentChatToBottom(true)"
@@ -624,6 +628,7 @@ export default {
       chatDetailLocalDir: '',
       chatDetailThinkingIntensity: '',
       chatDetailCliType: 'claude',
+      chatDetailLastUsageSummary: null,
       chatDetailMessages: [],
       chatDetailSSELines: [],
       chatDetailAutoScroll: true,
@@ -925,12 +930,14 @@ export default {
       this.chatDetailStatus = row.status
       this.chatDetailAutoScroll = true
       this.agentChatDetailShowScrollBtn = false
-      this.syncBackgroundChatStreams(this.agentChatHistoryList, row.id)
       if (this._chatEventSource && this._sseChatId !== row.id) {
         this._chatEventSource.close()
         this._chatEventSource = null
         this._sseChatId = 0
       }
+      // 中文注释：先关闭旧前台 SSE，再把旧选中且仍在运行的对话切到后台监听。
+      // English comment: Close the previous foreground SSE first, then reattach the previously selected running chat as a background stream if needed.
+      this.syncBackgroundChatStreams(this.agentChatHistoryList, row.id)
       if (this._sseChatId !== row.id) {
         this.chatDetailSSELines = []
         this.chatDetailMessages = []
@@ -1286,6 +1293,7 @@ export default {
           this.chatDetailAgentName = data.agent_cli_name || ''
           this.chatDetailLocalDir = data.local_dir || ''
           this.chatDetailThinkingIntensity = data.thinking_intensity || ''
+          this.chatDetailLastUsageSummary = data.last_usage_summary || null
           this.chatDetailCliType = data.cli_type || 'claude'
           this.updateChatListStatus(this.chatDetailId, this.chatDetailStatus)
           const historicalLines = data.lines || []
@@ -1546,37 +1554,68 @@ export default {
       if (normalizedChatId <= 0) return
       if (normalizedChatId === Number(this._sseChatId || 0)) return
       if (this._backgroundChatEventSources[normalizedChatId]) return
+      const currentItem = this.agentChatHistoryList.find(item => Number(item.id || 0) === normalizedChatId)
       const sseHost = baseUtils.GetSseApiHost()
       const url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + normalizedChatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
       const es = new EventSource(url)
+      const state = {
+        es,
+        // 中文注释：背景 SSE 自己维护 line_count，避免未选中执行历史只能等列表刷新。
+        // English comment: Background SSE keeps line_count locally so non-selected execution rows do not have to wait for a list refresh.
+        lineCount: Number(currentItem?.line_count || 0),
+      }
       this._backgroundChatEventSources = {
         ...this._backgroundChatEventSources,
-        [normalizedChatId]: es,
+        [normalizedChatId]: state,
       }
       es.onmessage = (event) => {
         const line = event.data
         if (!line) return
+        state.lineCount += 1
+        this.updateBackgroundChatListItem(normalizedChatId, {
+          line_count: state.lineCount,
+        })
         try {
           const obj = JSON.parse(line)
           if (obj.type === 'chat' && obj.subtype === 'completed') {
+            this.updateBackgroundChatListItem(normalizedChatId, {
+              status: String(obj.status || 'completed').trim() || 'completed',
+              line_count: state.lineCount,
+            })
             this.stopBackgroundChatStream(normalizedChatId)
             this.loadAgentChatHistoryListSilently()
             this.loadAgentChatCounts()
           }
         } catch (e) {
-          // 后台监听只关心 completed 终态事件。
+          // 中文注释：普通增量消息只更新计数；状态由 completed 终态事件或后续静默刷新修正。
+          // English comment: Non-terminal background messages only advance the counter; terminal state still comes from completed events or silent refresh fallback.
         }
       }
       es.onerror = () => {
         this.stopBackgroundChatStream(normalizedChatId)
       }
     },
+    updateBackgroundChatListItem(chatId, patch) {
+      const normalizedChatId = Number(chatId || 0)
+      if (normalizedChatId <= 0 || !patch) return
+      const item = this.agentChatHistoryList.find(row => Number(row.id || 0) === normalizedChatId)
+      if (!item) return
+      Object.keys(patch).forEach((key) => {
+        if (patch[key] !== undefined) {
+          item[key] = patch[key]
+        }
+      })
+      if (normalizedChatId === Number(this.chatDetailId || 0) && patch.status) {
+        this.chatDetailStatus = patch.status
+      }
+      this.agentChatHistoryList = this.agentChatHistoryList.slice()
+    },
     stopBackgroundChatStream(chatId) {
       const normalizedChatId = Number(chatId || 0)
       if (normalizedChatId <= 0) return
-      const es = this._backgroundChatEventSources[normalizedChatId]
-      if (es) {
-        es.close()
+      const entry = this._backgroundChatEventSources[normalizedChatId]
+      if (entry?.es) {
+        entry.es.close()
       }
       const nextMap = { ...this._backgroundChatEventSources }
       delete nextMap[normalizedChatId]
@@ -1652,6 +1691,10 @@ export default {
       if (num == null) return '0'
       return Number(num).toLocaleString()
     },
+    // isChatContinueDisabled 统一发送区按钮可用状态，确保“发送/新对话”禁用规则一致。 // Keeps send and new-chat buttons under the same disabled rule.
+    isChatContinueDisabled() {
+      return this.chatContinueLoading || !String(this.chatContinueInput || '').trim()
+    },
     // stopReasonLabel 将停止原因映射为中文文案。 // stopReasonLabel maps structured stop reasons into readable labels.
     stopReasonLabel(reason) {
       const map = {
@@ -1677,6 +1720,47 @@ export default {
         } else {
           this.$message.error(res.ErrMsg || '发送失败')
         }
+      })
+    },
+    // startNewChatFromHistory 在执行历史中直接创建一个全新独立对话，并切换左侧焦点。 // Creates a brand-new standalone AgentCli chat from the history input and focuses it.
+    startNewChatFromHistory() {
+      const prompt = this.chatContinueInput.trim()
+      if (!prompt || this.chatContinueLoading) return
+      const agentCliId = Number(this.agentChatHistoryCliId || 0)
+      if (agentCliId <= 0) {
+        this.$message.warning('Agent 实例不存在')
+        return
+      }
+      this.chatContinueLoading = true
+      agentCliApi.AgentChatSend({
+        agent_cli_id: agentCliId,
+        prompt: prompt,
+        prompt_type: 'agent_cli_manual',
+        local_dir: String(this.chatDetailLocalDir || '').trim(),
+        cli_type: this.chatDetailCliType || 'claude',
+        model_name: String(this.chatDetailModelName || '').trim(),
+        thinking_intensity: String(this.chatDetailThinkingIntensity || '高').trim() || '高',
+      }, (response) => {
+        this.chatContinueLoading = false
+        if (!(response && response.ErrCode === 0 && response.Data)) {
+          this.$message.error(response?.ErrMsg || '新建对话失败')
+          return
+        }
+        const chatId = response.Data.chat_id
+        this.chatContinueInput = ''
+        this.$message.success('已创建新对话')
+        this.chatDetailId = chatId
+        this.agentChatDetailId = chatId
+        this.chatDetailStatus = 'running'
+        this.chatDetailSSELines = []
+        this.chatDetailMessages = []
+        this.chatDetailLastUsageSummary = null
+        taskProgressStore.reset()
+        this._initialSseRetryCount = 0
+        this.connectChatStream(chatId, null, true)
+        this.loadChatDetail()
+        this.loadAgentChatCounts()
+        this.openAgentChatHistory({ id: agentCliId, name: this.agentChatHistoryTitle }, chatId)
       })
     },
     // stopChat 停止当前 Agent CLI 历史对话。 // stopChat interrupts the selected standalone AgentCli chat immediately on both UI and backend.

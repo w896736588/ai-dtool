@@ -14,6 +14,7 @@ const mainDBSyncCommitMessage = `chore: sync main db`
 // mainDBGitSyncer 定义主库 git 同步所需能力。 // Defines the git sync capabilities required by the main database.
 type mainDBGitSyncer interface {
 	IsGitRepo(dir string) (bool, error)
+	Pull(dir string) error
 	HasFileChanges(dir, fileName string) (bool, error)
 	AddFile(dir, fileName string) error
 	Commit(dir, fileName, message string) error
@@ -117,6 +118,14 @@ func PrepareMainDBStore() error {
 		return fmt.Errorf(`检测主库目录 git 仓库失败 %w`, err)
 	}
 	config.IsGitRepo = isGitRepo
+	// 启动时若主库目录就是 git 仓库，则先拉取最新内容，避免服务基于过期 sqlite 启动。
+	// Pull latest remote state before boot when the main-db directory itself is a git repository.
+	if config.IsGitRepo {
+		gstool.FmtPrintlnLogTime(`main db directory is a git repo, pulling latest state before boot dir=%s`, config.Dir)
+		if err = gitSyncer.Pull(config.Dir); err != nil {
+			return fmt.Errorf(`拉取主库目录失败 %w`, err)
+		}
+	}
 
 	preparedMainDBStore = &preparedMainDBBootstrap{
 		Config: config,

@@ -19,11 +19,19 @@
           <div class="chat-list-item__name">
             <div class="chat-list-item__tags">
               <span class="chat-list-item__id">{{ item.id }}</span>
-              <span v-if="item.agent_cli_name" class="chat-list-item__agent-name">{{ item.agent_cli_name }}</span>
+              <span v-if="getItemAgentName(item)" class="chat-list-item__agent-name">智能体: {{ getItemAgentName(item) }}</span>
               <span v-if="item._killed_pid" class="chat-list-item__killed-pid">杀进程:{{ item._killed_pid }}</span>
             </div>
             <div class="chat-list-item__prompt" :title="item.prompt || '未命名'">
               {{ (item.prompt || '未命名').substring(0, 30) }}{{ (item.prompt || '').length > 30 ? '...' : '' }}
+            </div>
+            <div v-if="getItemModelName(item)" class="chat-list-item__meta">
+              <span v-if="getItemModelName(item)" class="chat-list-item__meta-tag chat-list-item__meta-tag--model">
+                模型: {{ getItemModelName(item) }}
+              </span>
+            </div>
+            <div v-if="getItemTerminalReasonText(item)" class="chat-list-item__terminal-reason" :title="getItemTerminalReasonText(item)">
+              终止原因: {{ getItemTerminalReasonText(item) }}
             </div>
           </div>
           <div class="chat-list-item__time">
@@ -275,13 +283,38 @@
                 @keydown.enter.exact.prevent="detailStatus !== 'running' && $emit('continue')"
               />
               <div class="chat-detail-actions">
-                <div v-if="thinkingIntensity || agentName" class="chat-detail-info-bar">
-                  <span v-if="thinkingIntensity">思考强度: {{ thinkingIntensity }}</span>
-                  <span v-if="thinkingIntensity && agentName"> | </span>
-                  <span v-if="agentName">智能体: {{ agentName }}</span>
+                <div v-if="showDetailInfoBar" class="chat-detail-info-bar">
+                  <div class="chat-detail-info-bar__left">
+                    <span v-if="thinkingIntensity">思考强度: {{ thinkingIntensity }}</span>
+                    <span v-if="thinkingIntensity && agentName"> | </span>
+                    <span v-if="agentName">智能体: {{ agentName }}</span>
+                  </div>
+                  <div v-if="lastUsageSummary" class="chat-detail-info-bar__right">
+                    <span>最后一次输入: {{ formatCompactToken(lastUsageSummary.inputTokens) }}</span>
+                    <span>命中缓存: {{ formatCompactToken(lastUsageSummary.cacheReadInputTokens) }}</span>
+                  </div>
                 </div>
                 <el-button v-if="detailStatus === 'running'" type="danger" size="small" @click="$emit('stop')">停止</el-button>
-                <el-button v-else type="primary" size="small" :loading="continueLoading" @click="$emit('continue')">发送</el-button>
+                <template v-else>
+                  <el-button
+                    v-if="showNewChatButton"
+                    size="small"
+                    :disabled="continueDisabled"
+                    :loading="continueLoading"
+                    @click="$emit('new-chat')"
+                  >
+                    新对话
+                  </el-button>
+                  <el-button
+                    type="primary"
+                    size="small"
+                    :disabled="continueDisabled"
+                    :loading="continueLoading"
+                    @click="$emit('continue')"
+                  >
+                    继续对话
+                  </el-button>
+                </template>
               </div>
             </div>
           </div>
@@ -356,6 +389,10 @@ export default {
       type: Array,
       default: () => [],
     },
+    lastUsageSummaryData: {
+      type: Object,
+      default: null,
+    },
     continueInput: {
       type: String,
       default: '',
@@ -365,6 +402,14 @@ export default {
       default: '输入新消息继续对话...',
     },
     continueLoading: {
+      type: Boolean,
+      default: false,
+    },
+    continueDisabled: {
+      type: Boolean,
+      default: false,
+    },
+    showNewChatButton: {
       type: Boolean,
       default: false,
     },
@@ -449,10 +494,59 @@ export default {
       default: (num) => (num == null ? '0' : Number(num).toLocaleString()),
     },
   },
-  emits: ['update:modelValue', 'select', 'update:continueInput', 'continue', 'stop', 'scroll', 'scroll-to-bottom', 'closed'],
+  emits: ['update:modelValue', 'select', 'update:continueInput', 'continue', 'new-chat', 'stop', 'scroll', 'scroll-to-bottom', 'closed'],
+  computed: {
+    // showDetailInfoBar 控制底部信息栏展示。 // Controls rendering of the footer info bar.
+    showDetailInfoBar() {
+      return Boolean(this.thinkingIntensity || this.agentName || this.lastUsageSummary)
+    },
+    // lastUsageSummary 提取当前会话最后一次 token 统计。 // Extracts the latest token usage stats from the current chat detail.
+    lastUsageSummary() {
+      const messages = Array.isArray(this.detailMessages) ? this.detailMessages : []
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const usageRow = this.getPrimaryUsageRow(messages[index])
+        if (!usageRow) continue
+        const inputTokens = Number(usageRow.inputTokens || 0)
+        const cacheReadInputTokens = Number(usageRow.cacheReadInputTokens || 0)
+        if (inputTokens > 0 || cacheReadInputTokens > 0) {
+          return { inputTokens, cacheReadInputTokens }
+        }
+      }
+      const fallbackInputTokens = Number(this.lastUsageSummaryData?.inputTokens || 0)
+      const fallbackCacheReadInputTokens = Number(this.lastUsageSummaryData?.cacheReadInputTokens || 0)
+      if (fallbackInputTokens > 0 || fallbackCacheReadInputTokens > 0) {
+        return {
+          inputTokens: fallbackInputTokens,
+          cacheReadInputTokens: fallbackCacheReadInputTokens,
+        }
+      }
+      return null
+    },
+  },
   methods: {
     handleClose() {
       this.$emit('update:modelValue', false)
+    },
+    // getItemAgentName 统一提取左侧列表项的智能体名称，兼容不同页面返回字段。 // Extracts the agent name for list rows across different history sources.
+    getItemAgentName(item) {
+      const agentName = String(item?.agent_cli_name || item?.agent_name || item?.agentName || '').trim()
+      return agentName
+    },
+    // getItemModelName 统一提取左侧列表项的模型名称，优先使用执行时快照模型。 // Extracts the model name for list rows, preferring the execution snapshot model.
+    getItemModelName(item) {
+      const modelName = String(item?.model_name || item?.modelName || item?.current_model || '').trim()
+      return modelName
+    },
+    // getItemTerminalReasonText 统一提取左侧列表项的终止原因展示文案。 // Extracts a readable terminal reason label for history rows.
+    getItemTerminalReasonText(item) {
+      if (!item) return ''
+      const status = String(item?.status || '').trim()
+      if (!status || status === 'running' || status === 'completed') return ''
+      const rawText = String(item?.stop_reason_text || '').trim()
+      if (rawText) return rawText
+      const rawReason = String(item?.stop_reason || '').trim()
+      if (!rawReason) return ''
+      return this.stopReasonLabel(rawReason)
     },
     // 获取详情滚动容器 / Get the detail scroll container.
     getDetailContainer() {
@@ -501,6 +595,18 @@ export default {
     },
     formatNum(num) {
       return this.formatNumFn(num)
+    },
+    // formatCompactToken 将 token 数格式化为 k/m。 // Formats token counts into compact k/m labels.
+    formatCompactToken(num) {
+      const value = Number(num || 0)
+      if (!Number.isFinite(value) || value <= 0) return '0'
+      if (value >= 1000000) {
+        return (value / 1000000).toFixed(value >= 10000000 ? 0 : 1).replace(/\.0$/, '') + 'm'
+      }
+      if (value >= 1000) {
+        return (value / 1000).toFixed(value >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k'
+      }
+      return String(value)
     },
     buildResultSummaryLines(msg) {
       return resultSummaryUtils.buildResultSummaryLines(msg)

@@ -821,8 +821,11 @@
       :detail-status="chatDetailStatus"
       :detail-cli-type="chatDetailCliType"
       :detail-messages="chatDetailMessages"
+      :last-usage-summary-data="chatDetailLastUsageSummary"
       :continue-input="chatContinueInput"
       :continue-loading="chatContinueLoading"
+      :continue-disabled="isChatContinueDisabled()"
+      :show-new-chat-button="true"
       :scroll-button-visible="promptChatDetailShowScrollBtn"
       :running-text="'等待 claude code 响应...'"
       :thinking-stream-elapsed="thinkingStreamElapsed"
@@ -840,6 +843,7 @@
       @select="onPromptChatRowClick"
       @update:continueInput="chatContinueInput = $event"
       @continue="continueChat"
+      @new-chat="startNewChatFromHistory"
       @stop="stopChat"
       @scroll="onPromptChatDetailScroll"
       @scroll-to-bottom="scrollPromptChatToBottom(true)"
@@ -1022,6 +1026,7 @@ export default {
       chatDetailSessionId: '',
       chatDetailStatus: '',
       chatDetailMessages: [],
+      chatDetailLastUsageSummary: null,
       chatDetailSSERegistered: false,
       chatDetailSSELines: [], // SSE 累积的原始行
       chatDetailAutoScroll: true,
@@ -1733,6 +1738,7 @@ export default {
           this.chatDetailAgentName = data.agent_cli_name || ''
           this.chatDetailLocalDir = data.local_dir || ''
           this.chatDetailThinkingIntensity = data.thinking_intensity || ''
+          this.chatDetailLastUsageSummary = data.last_usage_summary || null
           this.chatDetailCliType = data.cli_type || 'claude'
           // 同步更新左侧列表中的状态
           this.updateChatListStatus(this.chatDetailId, this.chatDetailStatus)
@@ -2007,6 +2013,10 @@ export default {
       this.openPromptExecDialog('issue_fix', prompt)
     },
     // 继续对话
+    // isChatContinueDisabled 统一发送区按钮可用状态，确保“发送/新对话”行为一致。 // Keeps the action buttons under the same enabled-state rule.
+    isChatContinueDisabled() {
+      return this.chatContinueLoading || !String(this.chatContinueInput || '').trim()
+    },
     continueChat() {
       const input = this.chatContinueInput.trim()
       if (!input) return
@@ -2021,6 +2031,64 @@ export default {
         } else {
           this.$helperNotify.error(res.ErrMsg || '发送失败')
         }
+      })
+    },
+    // startNewChatFromHistory 在执行历史里直接基于当前输入新建对话，并切换左侧选中项。 // Creates a brand-new chat from history input and focuses the new row immediately.
+    startNewChatFromHistory() {
+      const prompt = this.chatContinueInput.trim()
+      if (!prompt || this.chatContinueLoading) return
+      const promptType = String(this.promptChatHistoryPromptType || '').trim()
+      const modelName = String(this.chatDetailModelName || this.promptExecModelName || '').trim()
+      const thinkingIntensity = String(this.chatDetailThinkingIntensity || this.promptExecThinkingIntensity || '高').trim() || '高'
+      this.chatContinueLoading = true
+      taskWorkflowApi.TaskWorkflowChatDirs(this.workflowId, (res) => {
+        if (!(res && res.ErrCode === 0 && res.Data)) {
+          this.chatContinueLoading = false
+          this.$helperNotify.error(res?.ErrMsg || '获取工作目录失败')
+          return
+        }
+        const dirs = Array.isArray(res.Data.dirs) ? res.Data.dirs : []
+        const localDir = String(this.chatDetailLocalDir || dirs[0] || '').trim()
+        if (!localDir) {
+          this.chatContinueLoading = false
+          this.$helperNotify.error('没有可用的工作目录')
+          return
+        }
+        const cliType = this.chatDetailCliType || this.getSelectedCliType()
+        const agentCliId = Number(this.promptExecCliId || 0)
+        taskWorkflowApi.TaskWorkflowChatSend(
+          this.workflowId,
+          prompt,
+          promptType,
+          localDir,
+          cliType,
+          agentCliId,
+          modelName,
+          thinkingIntensity,
+          (chatRes) => {
+            this.chatContinueLoading = false
+            if (!(chatRes && chatRes.ErrCode === 0 && chatRes.Data)) {
+              this.$helperNotify.error(chatRes?.ErrMsg || '新建对话失败')
+              return
+            }
+            const chatId = chatRes.Data.chat_id
+            const cliLabel = cliType === 'codex' ? 'codex' : 'claude code'
+            this.chatContinueInput = ''
+            this.$helperNotify.success('已新建对话并发送到 ' + cliLabel + ' 执行')
+            this.chatDetailId = chatId
+            this.chatDetailStatus = 'running'
+            this.chatDetailCliType = cliType
+            this.chatDetailSSELines = []
+            this.chatDetailMessages = []
+            this.chatDetailLastUsageSummary = null
+            taskProgressStore.reset()
+            this._initialSseRetryCount = 0
+            this.connectChatStream(chatId, null, true)
+            this.loadChatDetail()
+            this.loadChatCounts()
+            this.openPromptChatHistory(promptType, chatId)
+          }
+        )
       })
     },
     // 停止对话
@@ -2253,13 +2321,15 @@ export default {
       this.chatDetailStatus = row.status
       this.chatDetailAutoScroll = true
       this.promptChatDetailShowScrollBtn = false
-      this.syncBackgroundChatStreams(this.promptChatHistoryList, row.id)
       // 切到不同 chat 时才断开旧 SSE
       if (this._chatEventSource && this._sseChatId !== row.id) {
         this._chatEventSource.close()
         this._chatEventSource = null
         this._sseChatId = 0
       }
+      // 中文注释：先关闭旧前台 SSE，再决定哪些对话转入后台监听，避免旧选中对话漏挂后台连接。
+      // English comment: Close the previous foreground SSE before recalculating background streams so the old active chat can move into background tracking.
+      this.syncBackgroundChatStreams(this.promptChatHistoryList, row.id)
       if (this._sseChatId !== row.id) {
         this.chatDetailSSELines = []
         this.chatDetailMessages = []
@@ -2342,37 +2412,70 @@ export default {
       if (normalizedChatId <= 0) return
       if (normalizedChatId === Number(this._sseChatId || 0)) return
       if (this._backgroundChatEventSources[normalizedChatId]) return
+      const currentItem = this.promptChatHistoryList.find(item => Number(item.id || 0) === normalizedChatId)
       const sseHost = baseUtils.GetSseApiHost()
       const url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + normalizedChatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
       const es = new EventSource(url)
+      const state = {
+        es,
+        // 中文注释：背景 SSE 维护独立行数基线，确保非选中执行中的历史项也能实时更新 xx 条。
+        // English comment: Background SSE keeps its own line-count baseline so non-selected running chats can still update the visible message counter.
+        lineCount: Number(currentItem?.line_count || 0),
+      }
       this._backgroundChatEventSources = {
         ...this._backgroundChatEventSources,
-        [normalizedChatId]: es,
+        [normalizedChatId]: state,
       }
       es.onmessage = (event) => {
         const line = event.data
         if (!line) return
+        // 中文注释：先按消息级别递增行数，再解析终态事件更新状态，避免必须等 DB flush 才看到条数变化。
+        // English comment: Increment line count before terminal-event parsing so the UI reflects new lines immediately without waiting for DB flushes.
+        state.lineCount += 1
+        this.updateBackgroundChatListItem(normalizedChatId, {
+          line_count: state.lineCount,
+        })
         try {
           const obj = JSON.parse(line)
           if (obj.type === 'chat' && obj.subtype === 'completed') {
+            this.updateBackgroundChatListItem(normalizedChatId, {
+              status: String(obj.status || 'completed').trim() || 'completed',
+              line_count: state.lineCount,
+            })
             this.stopBackgroundChatStream(normalizedChatId)
             this.loadPromptChatHistoryListSilently()
             this.loadChatCounts()
           }
         } catch (e) {
-          // 后台监听只关心 completed 终态事件。
+          // 中文注释：普通流式消息解析失败时只保留计数更新；状态仍由终态事件或静默刷新兜底。
+          // English comment: Parse failures on normal stream lines only skip terminal-state parsing; the count update already happened.
         }
       }
       es.onerror = () => {
         this.stopBackgroundChatStream(normalizedChatId)
       }
     },
+    updateBackgroundChatListItem(chatId, patch) {
+      const normalizedChatId = Number(chatId || 0)
+      if (normalizedChatId <= 0 || !patch) return
+      const item = this.promptChatHistoryList.find(row => Number(row.id || 0) === normalizedChatId)
+      if (!item) return
+      Object.keys(patch).forEach((key) => {
+        if (patch[key] !== undefined) {
+          item[key] = patch[key]
+        }
+      })
+      if (normalizedChatId === Number(this.chatDetailId || 0) && patch.status) {
+        this.chatDetailStatus = patch.status
+      }
+      this.promptChatHistoryList = this.promptChatHistoryList.slice()
+    },
     stopBackgroundChatStream(chatId) {
       const normalizedChatId = Number(chatId || 0)
       if (normalizedChatId <= 0) return
-      const es = this._backgroundChatEventSources[normalizedChatId]
-      if (es) {
-        es.close()
+      const entry = this._backgroundChatEventSources[normalizedChatId]
+      if (entry?.es) {
+        entry.es.close()
       }
       const nextMap = { ...this._backgroundChatEventSources }
       delete nextMap[normalizedChatId]

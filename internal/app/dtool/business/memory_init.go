@@ -22,6 +22,7 @@ type preparedMemoryBootstrap struct {
 // memoryGitSyncer 定义记忆库 git 同步所需能力。 // Defines the git sync capabilities required by the memory store.
 type memoryGitSyncer interface {
 	IsGitRepo(dir string) (bool, error)
+	Pull(dir string) error
 	HasFileChanges(dir, fileName string) (bool, error)
 	AddFile(dir, fileName string) error
 	Commit(dir, fileName, message string) error
@@ -62,7 +63,7 @@ func SyncMemoryDBFile(config common.MemoryConfig, memoryGit memoryGitSyncer) (bo
 		gstool.FmtPrintlnLogTime(`记忆库手动同步 add 失败 dir=%s target=%s err=%s`, config.Dir, target, err.Error())
 		return false, err
 	}
-		if err = memoryGit.Commit(config.Dir, target, `chore: sync memory db`); err != nil {
+	if err = memoryGit.Commit(config.Dir, target, `chore: sync memory db`); err != nil {
 		gstool.FmtPrintlnLogTime(`记忆库手动同步 commit 失败 dir=%s target=%s err=%s`, config.Dir, target, err.Error())
 		return false, err
 	}
@@ -98,15 +99,24 @@ func PrepareMemoryStore() error {
 		return fmt.Errorf(`创建记忆目录失败 %w`, err)
 	}
 
-	isGitRepo, err := newMemoryGitFactory().IsGitRepo(config.Dir)
+	memoryGit := newMemoryGitFactory()
+	isGitRepo, err := memoryGit.IsGitRepo(config.Dir)
 	if err != nil {
 		return fmt.Errorf(`检测记忆目录 git 仓库失败 %w`, err)
 	}
 	config.IsGitRepo = isGitRepo
 	config.DBPath = config.Dir
+	// 启动时若知识片段目录本身就是 git 仓库，则先拉取最新内容，避免基于旧文件索引启动。
+	// Pull latest remote state before boot when the fragment directory itself is a git repository.
+	if config.IsGitRepo {
+		gstool.FmtPrintlnLogTime(`memory directory is a git repo, pulling latest state before boot dir=%s`, config.Dir)
+		if err = memoryGit.Pull(config.Dir); err != nil {
+			return fmt.Errorf(`拉取记忆目录失败 %w`, err)
+		}
+	}
 	preparedMemoryStore = &preparedMemoryBootstrap{
 		Config:    config,
-		MemoryGit: newMemoryGitFactory(),
+		MemoryGit: memoryGit,
 	}
 	gstool.FmtPrintlnLogTime(`记忆库 git 检测完成 dir=%s is_git_repo=%v`, config.Dir, config.IsGitRepo)
 	return nil

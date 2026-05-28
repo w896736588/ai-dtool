@@ -2627,6 +2627,10 @@ func TaskWorkflowChatStop(c *gin.Context) {
 		return
 	}
 	chatID := int64(req.ChatID)
+	// stopEvent 先落库，确保后续历史列表与通知判断都能识别“用户主动终止”。 // Persist the manual-stop marker first so history rows and notifications can distinguish user-initiated termination.
+	_ = common.DbMain.TaskWorkflowChatAppendOutputBatch(chatID, []string{
+		buildChatStopEvent(chatID, taskWorkflowChatStopReasonUserStop),
+	})
 
 	// 1. 先调 cancel 关闭 stopped 通道 + 取消 context，让 goroutine 感知用户主动停止
 	cancelVal, ok := chatCancelFuncs.LoadAndDelete(chatID)
@@ -2698,19 +2702,22 @@ func buildAgentChatListResponse(rows []map[string]any) []map[string]any {
 		if rawOutput != `` {
 			lineCount = len(strings.Split(rawOutput, "\n"))
 		}
+		stopReason, stopReasonText := taskWorkflowExtractTerminalReason(status, rawOutput)
 		list = append(list, map[string]any{
-			`id`:             cast.ToInt64(row[`id`]),
-			`session_id`:     cast.ToString(row[`session_id`]),
-			`prompt`:         cast.ToString(row[`prompt`]),
-			`prompt_type`:    cast.ToString(row[`prompt_type`]),
-			`agent_cli_id`:   cast.ToInt(row[`agent_cli_id`]),
-			`agent_cli_name`: cliNameMap[cast.ToInt(row[`agent_cli_id`])],
-			`local_dir`:      cast.ToString(row[`local_dir`]),
-			`status`:         status,
-			`cli_type`:       cast.ToString(row[`cli_type`]),
-			`created_at`:     cast.ToString(row[`created_at`]),
-			`duration_ms`:    durationMs,
-			`line_count`:     lineCount,
+			`id`:               cast.ToInt64(row[`id`]),
+			`session_id`:       cast.ToString(row[`session_id`]),
+			`prompt`:           cast.ToString(row[`prompt`]),
+			`prompt_type`:      cast.ToString(row[`prompt_type`]),
+			`agent_cli_id`:     cast.ToInt(row[`agent_cli_id`]),
+			`agent_cli_name`:   cliNameMap[cast.ToInt(row[`agent_cli_id`])],
+			`local_dir`:        cast.ToString(row[`local_dir`]),
+			`status`:           status,
+			`cli_type`:         cast.ToString(row[`cli_type`]),
+			`created_at`:       cast.ToString(row[`created_at`]),
+			`duration_ms`:      durationMs,
+			`line_count`:       lineCount,
+			`stop_reason`:      stopReason,
+			`stop_reason_text`: stopReasonText,
 		})
 	}
 	return list
@@ -2763,6 +2770,7 @@ func TaskWorkflowChatDetail(c *gin.Context) {
 	if rawOutput != `` {
 		lines = strings.Split(rawOutput, "\n")
 	}
+	lastUsageSummary := extractChatLastUsageSummary(lines)
 
 	modelName := ``
 	agentCliName := ``
@@ -2803,8 +2811,66 @@ func TaskWorkflowChatDetail(c *gin.Context) {
 		`created_at`:         info[`created_at`],
 		`thinking_collapsed`: info[`thinking_collapsed`],
 		`thinking_intensity`: info[`thinking_intensity`],
+		`last_usage_summary`: lastUsageSummary,
 		`lines`:              lines,
 	})
+}
+
+// extractChatLastUsageSummary 从原始输出行中提取最近一次 token 统计，兼容 Claude/Codex 历史与运行态回填。
+// extractChatLastUsageSummary extracts the latest token usage snapshot from raw output lines for both Claude and Codex chat details.
+func extractChatLastUsageSummary(lines []string) map[string]any {
+	for index := len(lines) - 1; index >= 0; index-- {
+		line := strings.TrimSpace(lines[index])
+		if line == `` {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(line), &payload); err != nil {
+			continue
+		}
+		summary := buildUsageSummaryFromPayload(payload)
+		if summary != nil {
+			return summary
+		}
+	}
+	return nil
+}
+
+// buildUsageSummaryFromPayload 统一从事件负载中提取输入 token 和缓存命中 token。
+// buildUsageSummaryFromPayload normalizes usage fields from different event payload shapes.
+func buildUsageSummaryFromPayload(payload map[string]any) map[string]any {
+	if len(payload) == 0 {
+		return nil
+	}
+	if usage, ok := payload[`usage`].(map[string]any); ok {
+		inputTokens := cast.ToInt64(usage[`input_tokens`])
+		cacheReadInputTokens := cast.ToInt64(usage[`cache_read_input_tokens`])
+		// 只有存在有效 token 统计时才返回，避免把空 usage 当成真实快照。
+		// Only return when token stats are actually present, so empty usage objects do not override valid history.
+		if inputTokens > 0 || cacheReadInputTokens > 0 {
+			return map[string]any{
+				`inputTokens`:          inputTokens,
+				`cacheReadInputTokens`: cacheReadInputTokens,
+			}
+		}
+	}
+	if modelUsage, ok := payload[`modelUsage`].(map[string]any); ok {
+		for _, row := range modelUsage {
+			rowMap, ok := row.(map[string]any)
+			if !ok {
+				continue
+			}
+			inputTokens := cast.ToInt64(rowMap[`inputTokens`])
+			cacheReadInputTokens := cast.ToInt64(rowMap[`cacheReadInputTokens`])
+			if inputTokens > 0 || cacheReadInputTokens > 0 {
+				return map[string]any{
+					`inputTokens`:          inputTokens,
+					`cacheReadInputTokens`: cacheReadInputTokens,
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // TaskWorkflowChatDirs 获取当前任务可选的工作目录列表。
@@ -3071,7 +3137,7 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 			_ = common.DbMain.TaskWorkflowChatMarkError(chatID)
 			// 动态获取当前注册的 SSE，而非使用创建 goroutine 时的旧引用
 			if curSse := gsgin.SseGetByClientId(distributeID); curSse != nil {
-				_ = curSse.SendToChan(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
+				_ = curSse.SendToChan(buildChatCompletedEvent(chatID, `error`))
 			}
 			taskWorkflowBroadcastChatStatus(chatID)
 		}
@@ -3238,7 +3304,16 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 	} else {
 		_ = common.DbMain.TaskWorkflowChatMarkCompleted(chatID)
 	}
-	sendLine(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
+	finalStatus := `completed`
+	if err != nil {
+		select {
+		case <-stopped:
+			finalStatus = `interrupted`
+		default:
+			finalStatus = `error`
+		}
+	}
+	sendLine(buildChatCompletedEvent(chatID, finalStatus))
 	// 通知工作流页面刷新 chat 状态计数（执行历史按钮动画和状态数量）
 	taskWorkflowBroadcastChatStatus(chatID)
 	// 异步发送 webhook 通知：优先使用 result 类型消息的最终文本，缺失时回退到 assistant 累积文本
@@ -3260,7 +3335,7 @@ func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessi
 			gstool.FmtPrintlnLogTime("[codex-run] chat_id=%d panic: %v", chatID, r)
 			_ = common.DbMain.TaskWorkflowChatMarkError(chatID)
 			if curSse := gsgin.SseGetByClientId(distributeID); curSse != nil {
-				_ = curSse.SendToChan(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
+				_ = curSse.SendToChan(buildChatCompletedEvent(chatID, `error`))
 			}
 			taskWorkflowBroadcastChatStatus(chatID)
 		}
@@ -3331,7 +3406,7 @@ func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessi
 		})
 		sendLine(string(errJSON))
 		_ = common.DbMain.TaskWorkflowChatMarkError(chatID)
-		sendLine(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
+		sendLine(buildChatCompletedEvent(chatID, `error`))
 		taskWorkflowBroadcastChatStatus(chatID)
 		return
 	}
@@ -3458,9 +3533,109 @@ func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessi
 		`result`:      lastAgentMessageText,
 	})
 	sendLine(string(resultJSON))
-	sendLine(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
+	finalStatus := `completed`
+	if err != nil {
+		select {
+		case <-stopped:
+			finalStatus = `interrupted`
+		default:
+			finalStatus = `error`
+		}
+	}
+	sendLine(buildChatCompletedEvent(chatID, finalStatus))
 	taskWorkflowBroadcastChatStatus(chatID)
 	go taskWorkflowSendWebhookNotify(chatID, lastAgentMessageText)
+}
+
+// buildChatCompletedEvent 构造对话终态 SSE 事件，携带最终状态供前端背景列表即时更新。
+// buildChatCompletedEvent builds the terminal SSE payload with final status so background history rows can update immediately.
+func buildChatCompletedEvent(chatID int64, status string) string {
+	payload, _ := json.Marshal(map[string]any{
+		`type`:    `chat`,
+		`subtype`: `completed`,
+		`chat_id`: chatID,
+		`status`:  strings.TrimSpace(status),
+	})
+	return string(payload)
+}
+
+const (
+	// taskWorkflowChatStopReasonUserStop 标识用户主动点击“停止”结束对话。 // Marks that the chat was terminated explicitly by the user.
+	taskWorkflowChatStopReasonUserStop = `user_stop`
+)
+
+// buildChatStopEvent 构造终止原因事件，写入 raw_output 供历史列表和通知逻辑复用。 // Builds a lightweight terminal-reason event persisted in raw_output for history rows and notification rules.
+func buildChatStopEvent(chatID int64, reason string) string {
+	payload, _ := json.Marshal(map[string]any{
+		`type`:        `chat`,
+		`subtype`:     `stopped`,
+		`chat_id`:     chatID,
+		`stop_reason`: strings.TrimSpace(reason),
+	})
+	return string(payload)
+}
+
+// taskWorkflowExtractTerminalReason 从原始输出中提取终止原因代码和文案。 // Extracts the terminal reason code and readable label from persisted raw output.
+func taskWorkflowExtractTerminalReason(status, rawOutput string) (string, string) {
+	status = strings.TrimSpace(status)
+	rawOutput = strings.TrimSpace(rawOutput)
+	if rawOutput != `` {
+		lines := strings.Split(rawOutput, "\n")
+		for i := len(lines) - 1; i >= 0; i-- {
+			line := strings.TrimSpace(lines[i])
+			if line == `` || !strings.HasPrefix(line, `{`) {
+				continue
+			}
+			var item map[string]any
+			if err := json.Unmarshal([]byte(line), &item); err != nil {
+				continue
+			}
+			itemType := strings.TrimSpace(cast.ToString(item[`type`]))
+			switch itemType {
+			case `result`:
+				reason := strings.TrimSpace(cast.ToString(item[`stop_reason`]))
+				if reason != `` {
+					return reason, taskWorkflowStopReasonLabel(reason)
+				}
+			case `chat`:
+				if strings.TrimSpace(cast.ToString(item[`subtype`])) == `stopped` {
+					reason := strings.TrimSpace(cast.ToString(item[`stop_reason`]))
+					if reason != `` {
+						return reason, taskWorkflowStopReasonLabel(reason)
+					}
+				}
+			case `error`:
+				errText := strings.TrimSpace(cast.ToString(item[`text`]))
+				if errText != `` {
+					return `error`, errText
+				}
+			}
+		}
+	}
+	if status == `interrupted` {
+		return taskWorkflowChatStopReasonUserStop, taskWorkflowStopReasonLabel(taskWorkflowChatStopReasonUserStop)
+	}
+	return ``, ``
+}
+
+// taskWorkflowStopReasonLabel 将终止原因代码转换为用户可读文案。 // Maps terminal reason codes into readable labels for the UI and notifications.
+func taskWorkflowStopReasonLabel(reason string) string {
+	switch strings.TrimSpace(reason) {
+	case `end_turn`:
+		return `正常结束`
+	case `stop_sequence`:
+		return `停止序列`
+	case `max_tokens`:
+		return `达到上限`
+	case `tool_use`:
+		return `工具调用`
+	case taskWorkflowChatStopReasonUserStop:
+		return `用户主动终止`
+	case `error`:
+		return `异常终止`
+	default:
+		return strings.TrimSpace(reason)
+	}
 }
 
 // taskWorkflowAutoCompleteNode 自动将指定节点标记为已完成。
@@ -3551,6 +3726,11 @@ func extractAssistantText(data map[string]any) string {
 func taskWorkflowSendWebhookNotify(chatID int64, lastText string) {
 	chatInfo, err := common.DbMain.TaskWorkflowChatInfo(chatID)
 	if err != nil || len(chatInfo) == 0 {
+		return
+	}
+	stopReason, _ := taskWorkflowExtractTerminalReason(cast.ToString(chatInfo[`status`]), cast.ToString(chatInfo[`raw_output`]))
+	if stopReason == taskWorkflowChatStopReasonUserStop {
+		gstool.FmtPrintlnLogTime("[webhook-notify] chat_id=%d 跳过发送，原因=%s", chatID, stopReason)
 		return
 	}
 	agentCliId := cast.ToInt(chatInfo["agent_cli_id"])
