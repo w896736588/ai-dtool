@@ -1,5 +1,5 @@
 ﻿<template>
-  <div style="text-align: center;">
+  <div class="model-tool">
     <div>
       <el-radio
           v-for="(tableValue, key) in tableTypeList"
@@ -12,14 +12,14 @@
       </el-radio>
       <br/>
       <br/>
-      <div style="display: inline;" v-if="
+      <div class="model-inline-field" v-if="
             chooseTableType === 5 ||
             chooseTableType === 4 ||
             chooseTableType === 6
           ">
         表数量：
         <el-input
-            style="width: 200px"
+            class="model-table-num-input"
             type="text"
             v-model="tableNum"
             placeholder="输入表数量"
@@ -28,16 +28,16 @@
     </div>
 
     <el-input
-        style="margin-top: 20px"
+        class="model-sql-input"
         id="resultTextarea"
         :placeholder="modelSqlPlaceholder"
         type="textarea"
         v-model="modelSql"
         rows="10"
     ></el-input>
-    <pl-button style="margin-top: 5px;" type="primary" @click="exec()">生成Php的Mode代码</pl-button>
+    <pl-button class="model-generate-btn" type="primary" @click="exec()">生成Php的Mode代码</pl-button>
     <el-input
-        style="margin-top: 5px"
+        class="model-result-input"
         id="modelTextarea"
         type="textarea"
         v-model="modelResult"
@@ -369,5 +369,26 @@ export default {
 }
 </script>
 
-<style scoped></style>
+<style scoped>
+.model-tool {
+  text-align: center;
+}
+
+.model-inline-field {
+  display: inline;
+}
+
+.model-table-num-input {
+  width: 200px;
+}
+
+.model-sql-input {
+  margin-top: 20px;
+}
+
+.model-generate-btn,
+.model-result-input {
+  margin-top: 5px;
+}
+</style>
 

@@ -53,13 +53,6 @@
               <el-tag size="small" type="info">{{ formatTypeLabel(row.type) }}</el-tag>
               <span class="agent-cli-card__status-dot" :class="row.displayed_enabled ? 'agent-cli-card__status-dot--active' : 'agent-cli-card__status-dot--inactive'"></span>
               <span class="agent-cli-card__status-text">{{ row.displayed_enabled ? '已启用' : '已停止' }}</span>
-              <el-tag
-                v-for="gid in (row.group_ids || [])"
-                :key="gid"
-                size="small"
-                effect="plain"
-                class="agent-cli-card__group-tag"
-              >{{ getGroupName(gid) }}</el-tag>
             </div>
             <div class="agent-cli-card__meta">
               <span>ID：{{ row.id }}</span>
@@ -67,61 +60,79 @@
               <span>可选模型：{{ formatModelOptions(row.model_options) }}</span>
               <span v-if="row.type !== 'codex-cli'">McpServers：{{ row.mcp_server_count || 0 }} 个</span>
             </div>
-            <div class="agent-cli-card__summary-grid">
-              <div class="agent-cli-info-block">
-                <div class="agent-cli-info-block__label">启停状态</div>
-                <div class="agent-cli-switch-line">
-                  <el-switch
-                    :model-value="row.displayed_enabled"
-                    size="small"
-                    :loading="row._togglingEnabled"
-                    @change="toggleEnabled(row, $event)"
-                  />
-                  <span class="agent-cli-switch-line__text">{{ row.displayed_enabled ? '运行中' : '已停止' }}</span>
-                </div>
-              </div>
-
-              <div class="agent-cli-info-block">
-                <div class="agent-cli-info-block__label">通知配置</div>
-                <el-select
-                  v-model="row.webhook_config_id"
-                  size="small"
-                  placeholder="未配置"
-                  clearable
-                  class="agent-cli-webhook-select"
-                  @change="updateWebhookConfig(row)"
-                >
-                  <el-option
-                    v-for="wh in webhookOptions"
-                    :key="wh.id"
-                    :label="wh.name"
-                    :value="String(wh.id)"
-                  />
-                </el-select>
-              </div>
-
-              <div v-if="row.type !== 'codex-cli'" class="agent-cli-info-block">
-                <div class="agent-cli-info-block__label">claude-mem</div>
-                <div class="agent-cli-switch-line">
-                  <el-switch
-                    v-model="row.claude_mem_enabled"
-                    size="small"
-                    :loading="row._togglingMem"
-                    @change="toggleClaudeMem(row)"
-                  />
-                  <span class="agent-cli-switch-line__text">{{ row.claude_mem_enabled ? '已启用' : '已禁用' }}</span>
-                </div>
-              </div>
-            </div>
 
             <div class="agent-cli-config-table-wrap">
               <table class="agent-cli-config-table">
                 <tbody>
                   <tr>
+                    <th>启停状态</th>
+                    <td>
+                      <div class="agent-cli-table-control">
+                        <el-switch
+                          :model-value="row.displayed_enabled"
+                          size="small"
+                          :loading="row._togglingEnabled"
+                          @change="toggleEnabled(row, $event)"
+                        />
+                        <span class="agent-cli-switch-line__text">{{ row.displayed_enabled ? '运行中' : '已停止' }}</span>
+                      </div>
+                    </td>
+                    <th>通知配置</th>
+                    <td>
+                      <el-select
+                        v-model="row.webhook_config_id"
+                        size="small"
+                        placeholder="未配置"
+                        clearable
+                        class="agent-cli-inline-select"
+                        :loading="row._savingWebhook"
+                        @change="updateWebhookConfig(row)"
+                      >
+                        <el-option
+                          v-for="wh in webhookOptions"
+                          :key="wh.id"
+                          :label="wh.name"
+                          :value="String(wh.id)"
+                        />
+                      </el-select>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>分组</th>
+                    <td>
+                      <el-select
+                        v-model="row.group_ids"
+                        multiple
+                        clearable
+                        size="small"
+                        placeholder="未分组"
+                        class="agent-cli-inline-select"
+                        :loading="row._savingGroups"
+                        @change="updateGroupIds(row)"
+                      >
+                        <el-option
+                          v-for="g in groupList"
+                          :key="g.id"
+                          :label="g.name"
+                          :value="g.id"
+                        />
+                      </el-select>
+                    </td>
                     <th>请求地址</th>
-                    <td style="width:350px;" class="agent-cli-config-table__value agent-cli-config-table__value--break">{{ row.request_url || '-' }}</td>
-                    <th>Webhook</th>
-                    <td>{{ row.webhook_config_name || '-' }}</td>
+                    <td class="agent-cli-config-table__value agent-cli-config-table__value--break">
+                      <div class="agent-cli-table-cell-text">
+                        <span>{{ row.request_url || '-' }}</span>
+                        <el-button
+                          v-if="row.request_url"
+                          size="small"
+                          link
+                          type="primary"
+                          @click="copyText(row.request_url)"
+                        >
+                          复制
+                        </el-button>
+                      </div>
+                    </td>
                   </tr>
                   <tr v-if="row.type !== 'codex-cli'">
                     <th>路径</th>
@@ -137,7 +148,17 @@
                     <th>McpServers</th>
                     <td>{{ row.mcp_server_count || 0 }} 个</td>
                     <th>claude-mem</th>
-                    <td>{{ row.claude_mem_enabled ? '已启用' : '已禁用' }}</td>
+                    <td>
+                      <div class="agent-cli-table-control">
+                        <el-switch
+                          v-model="row.claude_mem_enabled"
+                          size="small"
+                          :loading="row._togglingMem"
+                          @change="toggleClaudeMem(row)"
+                        />
+                        <span class="agent-cli-switch-line__text">{{ row.claude_mem_enabled ? '已启用' : '已禁用' }}</span>
+                      </div>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -164,8 +185,10 @@
             >
               配置DevtoolsMcp
             </GitActionButton>
-            <GitActionButton compact variant="info" @click="editItem(row)">编辑</GitActionButton>
-            <GitActionButton compact variant="danger" @click="deleteItem(row)">删除</GitActionButton>
+            <div class="agent-cli-card__actions-tail">
+              <GitActionButton compact variant="info" @click="editItem(row)">编辑</GitActionButton>
+              <GitActionButton compact variant="danger" @click="deleteItem(row)">删除</GitActionButton>
+            </div>
           </div>
         </div>
       </div>
@@ -200,21 +223,21 @@
         </el-form-item>
         <!-- Claude Code CLI 配置 -->
         <template v-if="form.type !== 'codex-cli'">
-          <el-form-item label="settings.json 路径">
-            <el-input v-model="form.settings_path" placeholder="请输入 settings.json 的绝对路径" />
-            <div class="agent-cli-form-tip">例如: C:\Users\xxx\.claude\settings.json</div>
+          <el-form-item label="settings.json 路径" required>
+            <el-input v-model="form.settings_path" placeholder="请输入 settings.json 目标绝对路径，文件可先不存在" />
+            <div class="agent-cli-form-tip">例如: C:\Users\xxx\.claude\settings.json。文件不存在时，后续写入模型/MCP 配置会自动创建。</div>
           </el-form-item>
           <el-form-item label="模型列表">
             <el-input
               v-model="form.model_list_text"
               type="textarea"
               :rows="4"
-              placeholder="每行一个模型；首个模型作为默认模型写入 settings.json"
+              placeholder="每行一个模型；首个模型作为默认模型；执行任务时可再选择具体模型。"
             />
             <div class="agent-cli-form-tip">执行任务时可选择不同于 settings.json 配置的模型。</div>
           </el-form-item>
           <el-form-item label="API Key">
-            <el-input v-model="form.api_key" type="password" show-password placeholder="请输入 DeepSeek API Key" />
+            <el-input v-model="form.api_key" type="password" show-password placeholder="请输入 API Key" />
           </el-form-item>
           <el-form-item label="Base URL">
             <el-input v-model="form.base_url" placeholder="https://api.deepseek.com/anthropic" />
@@ -470,6 +493,7 @@ import baseUtils from '@/utils/base'
 import chatParser from '@/utils/chat_parser'
 import taskProgressStore from '@/utils/task_progress_store'
 import MarkdownIt from 'markdown-it'
+import copy from '@/utils/base/copy'
 
 // AGENT_CLI_ENABLED_SORT_TRUE 启用状态排序值，启用项排在前面。 // Sort weight for enabled rows so active items stay at the top.
 const AGENT_CLI_ENABLED_SORT_TRUE = 1
@@ -643,6 +667,11 @@ export default {
           items.forEach(item => {
             item.webhook_config_id = item.webhook_config_id ? String(item.webhook_config_id) : ''
             item.displayed_enabled = !!item.displayed_enabled
+            item.group_ids = Array.isArray(item.group_ids) ? item.group_ids : []
+            item._lastGroupIds = [...item.group_ids]
+            item._lastWebhookConfigId = item.webhook_config_id
+            item._savingWebhook = false
+            item._savingGroups = false
           })
           this.list = this.sortAgentCliList(items)
           this.loadAgentChatCounts()
@@ -972,7 +1001,7 @@ export default {
         }
       } else {
         if (!this.form.settings_path.trim()) {
-          this.$message.warning('请输入 settings.json 路径')
+          this.$message.warning('请输入 settings.json 目标路径')
           return
         }
       }
@@ -1002,7 +1031,7 @@ export default {
           if (!this.editingId && response.Data && response.Data.id) {
             this.editingId = response.Data.id
           }
-          // 保存分组关联
+          // 保存分组关联，并同步本地列表，避免页面仍显示旧分组数据。
           this._saveGroupRel(this.editingId)
           // Claude 类型：只要配置项有输入就同步写入 settings.json，避免仅改模型时运行仍读取旧配置。
           if (!isCodex && (claudeModels.length > 0 || this.form.api_key.trim() || this.form.base_url.trim())) {
@@ -1077,8 +1106,10 @@ export default {
     },
     toggleEnabled(item, enabled) {
       const previousDisplayedEnabled = !!item.displayed_enabled
+      const previousEnabled = Number(item.enabled || 0)
       item._togglingEnabled = true
       item.displayed_enabled = !!enabled
+      item.enabled = enabled ? 1 : 0
       // 启停切换后先本地重排，保证启用实例即时显示在顶部。 // Re-sort immediately after toggling so enabled rows move to the top without waiting for reload.
       this.list = this.sortAgentCliList(this.list)
       agentCliApi.AgentCliToggleEnabled({ id: item.id, enable: !!enabled }, (response) => {
@@ -1089,6 +1120,7 @@ export default {
         } else {
           this.$message.error(response?.ErrMsg || '操作失败')
           item.displayed_enabled = previousDisplayedEnabled
+          item.enabled = previousEnabled
           this.list = this.sortAgentCliList(this.list)
         }
       })
@@ -1111,6 +1143,7 @@ export default {
         codex_model_list_text: '',
         codex_base_url: '',
         codex_sandbox_mode: '',
+        codex_supports_websockets: true,
         group_ids: Array.isArray(item.group_ids) ? [...item.group_ids] : [],
       }
       // Codex: 从 config JSON 预填
@@ -1589,21 +1622,62 @@ export default {
       }).catch(() => {})
     },
     updateWebhookConfig(item) {
+      const previousWebhookConfigId = item._lastWebhookConfigId ?? item.webhook_config_id
+      item._savingWebhook = true
       const data = {
         id: item.id,
         name: item.name,
         type: item.type,
         settings_path: item.settings_path || '',
+        enabled: item.displayed_enabled ? 1 : 0,
         webhook_config_id: parseInt(item.webhook_config_id) || 0,
       }
       if (item.config) data.config = item.config
       agentCliApi.AgentCliSave(data, (response) => {
+        item._savingWebhook = false
         if (response && response.ErrCode === 0) {
+          item._lastWebhookConfigId = item.webhook_config_id
+          item.webhook_config_name = this.getWebhookNameById(item.webhook_config_id)
           this.$message.success('通知配置已更新')
         } else {
+          item.webhook_config_id = previousWebhookConfigId || ''
           this.$message.error(response?.ErrMsg || '更新失败')
         }
       })
+    },
+    updateGroupIds(item) {
+      const previousGroupIds = Array.isArray(item._lastGroupIds) ? [...item._lastGroupIds] : []
+      item._savingGroups = true
+      agentCliApi.AgentCliGroupRelSave({
+        agent_cli_id: item.id,
+        group_ids: Array.isArray(item.group_ids) ? item.group_ids : [],
+      }, (response) => {
+        item._savingGroups = false
+        if (response && response.ErrCode === 0) {
+          item._lastGroupIds = Array.isArray(item.group_ids) ? [...item.group_ids] : []
+          this._syncLocalGroupIds(item.id, item.group_ids)
+          this.$message.success('分组已更新')
+        } else {
+          item.group_ids = previousGroupIds
+          this.$message.error(response?.ErrMsg || '分组更新失败')
+        }
+      })
+    },
+    getWebhookNameById(webhookConfigId) {
+      const targetId = parseInt(webhookConfigId) || 0
+      if (!targetId) {
+        return ''
+      }
+      const found = this.webhookOptions.find(item => Number(item.id) === targetId)
+      return found ? found.name : ''
+    },
+    copyText(text) {
+      const content = String(text || '').trim()
+      if (!content) {
+        return
+      }
+      const copyIndex = copy.SetCopyContent(content)
+      copy.handleCopy(copyIndex)
     },
     // sortAgentCliList 将启用实例排在前面，同状态下按 ID 倒序，减少列表跳动并保留最近项优先。 // sortAgentCliList keeps enabled items first and orders same-state rows by descending ID.
     sortAgentCliList(items) {
@@ -1680,6 +1754,7 @@ export default {
           this.groupFormVisible = false
           this.loadGroupDialogList()
           this.loadGroupList()
+          this.loadList()
         } else {
           this.$message.error(response?.ErrMsg || '保存失败')
         }
@@ -1708,13 +1783,28 @@ export default {
         })
       }).catch(() => {})
     },
-    // _saveGroupRel 保存某个 AgentCli 的分组关联（fire-and-forget，不阻塞保存流程）。 // Saves group relations for an Agent CLI without blocking the main save flow.
+    // _syncLocalGroupIds 将最新分组关联同步到本地列表，确保筛选和标签立即更新。 // Syncs latest group relations into local list so filters and tags update immediately.
+    _syncLocalGroupIds(agentCliId, groupIds) {
+      const normalizedGroupIds = Array.isArray(groupIds) ? [...groupIds] : []
+      const target = this.list.find(item => Number(item.id) === Number(agentCliId))
+      if (target) {
+        this.$set(target, 'group_ids', normalizedGroupIds)
+        target._lastGroupIds = [...normalizedGroupIds]
+      }
+    },
+    // _saveGroupRel 保存某个 AgentCli 的分组关联。 // Saves group relations for an Agent CLI and syncs the local row on success.
     _saveGroupRel(agentCliId) {
       if (!agentCliId || agentCliId <= 0) return
       agentCliApi.AgentCliGroupRelSave({
         agent_cli_id: agentCliId,
         group_ids: this.form.group_ids || [],
-      }, () => {})
+      }, (response) => {
+        if (response && response.ErrCode === 0) {
+          this._syncLocalGroupIds(agentCliId, this.form.group_ids)
+          return
+        }
+        this.$message.error(response?.ErrMsg || '分组保存失败')
+      })
     },
   },
 }

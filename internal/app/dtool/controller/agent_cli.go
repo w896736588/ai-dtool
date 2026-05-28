@@ -130,11 +130,6 @@ func AgentCliSave(c *gin.Context) {
 			gsgin.GinResponseError(c, "Codex CLI API Key 不能为空", nil)
 			return
 		}
-	} else {
-		if req.SettingsPath == "" {
-			gsgin.GinResponseError(c, "settings.json 路径不能为空", nil)
-			return
-		}
 	}
 
 	now := time.Now().Unix()

@@ -45,13 +45,13 @@
                     <el-icon v-else-if="data.type === 'folder'"><Folder/></el-icon>
                     <!--                    <el-icon v-else><Document /></el-icon>-->
                   </span>
-                  <span v-if="data.type === 'folder'" :title="node.label + '(' + getNodeChildCount(data) + ')'" class="node-label" style="font-weight: 500;"><el-tag size="small" type="info" class="node-id-tag">{{ data.id }}</el-tag>{{
+                  <span v-if="data.type === 'folder'" :title="node.label + '(' + getNodeChildCount(data) + ')'" class="node-label node-label--folder"><el-tag size="small" type="info" class="node-id-tag">{{ data.id }}</el-tag>{{
                       node.label + '(' + getNodeChildCount(data) + ')'
                     }}</span>
-                  <span v-if="data.type === 'collection'" :title="node.label + '(' + getNodeChildCount(data) + ')'" class="node-label" style="font-weight: 800;"><el-tag size="small" type="info" class="node-id-tag">{{ data.id }}</el-tag>{{
+                  <span v-if="data.type === 'collection'" :title="node.label + '(' + getNodeChildCount(data) + ')'" class="node-label node-label--collection"><el-tag size="small" type="info" class="node-id-tag">{{ data.id }}</el-tag>{{
                       node.label + '(' + getNodeChildCount(data) + ')'
                     }}</span>
-                  <span v-if="data.type === 'archive'" :title="node.label + '(' + getNodeChildCount(data) + ')'" class="node-label node-label--archive" style="font-weight: 800;">{{
+                  <span v-if="data.type === 'archive'" :title="node.label + '(' + getNodeChildCount(data) + ')'" class="node-label node-label--archive">{{
                       node.label + '(' + getNodeChildCount(data) + ')'
                     }}</span>
                   <span v-if="data.type === 'api'" :title="node.label" class="node-label">
@@ -362,7 +362,7 @@
           filterable
           clearable
           placeholder="请选择目标文件夹"
-          style="width: 100%;"
+          class="dialog-select-full"
           :loading="moveApiFolderOptionsLoading"
         >
           <el-option-group
@@ -392,7 +392,7 @@
   <el-dialog v-model="dialogShow.jsonImport" title="通过JSON导入" width="800" @keydown.enter.prevent="handleDialogEnter('jsonImport', $event)">
     <el-form :model="dialogData.jsonImport" label-width="120px" @submit.prevent>
       <el-form-item label="选择集合">
-        <el-select v-model="dialogData.jsonImport.collection_id" placeholder="请选择集合" style="width: 100%;">
+        <el-select v-model="dialogData.jsonImport.collection_id" placeholder="请选择集合" class="dialog-select-full">
           <el-option
             v-for="collection in treeData"
             :key="collection.id"
@@ -2108,7 +2108,7 @@ export default {
       const message = `
         <div>
           <div>此操作不可恢复，请确认是否继续删除。</div>
-          <div style="margin-top: 8px; color: #f56c6c; font-weight: 600;">
+          <div class="confirm-delete-message">
             ${safeType}：${safeName}
           </div>
         </div>
@@ -2161,7 +2161,7 @@ export default {
       const message = `
         <div>
           <div>此文件夹将移入归档，可随时恢复。</div>
-          <div style="margin-top: 8px; color: #e6a23c; font-weight: 600;">
+          <div class="confirm-archive-message">
             文件夹：${safeName}
           </div>
         </div>

@@ -11,17 +11,12 @@
             type="info"
             closable
             @close="removeCacheHistory(value)"
-            style="margin-left: 5px; margin-top: 5px"
+            class="history-tag"
             v-for="(value, key) in history"
             :key="key"
           >
             <span
-              style="
-                font-size: 13px;
-                color: blue;
-                word-wrap: break-word;
-                cursor: default;
-              "
+              class="history-tag-text"
               @click="addFromHistory(value)"
               >{{ value }}</span
             >
@@ -180,5 +175,17 @@ export default {
 }
 </script>
 
-<style scoped></style>
+<style scoped>
+.history-tag {
+  margin-left: 5px;
+  margin-top: 5px;
+}
+
+.history-tag-text {
+  font-size: 13px;
+  color: blue;
+  word-wrap: break-word;
+  cursor: default;
+}
+</style>
 

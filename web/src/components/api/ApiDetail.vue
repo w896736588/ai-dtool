@@ -11,7 +11,7 @@
       </div>
 
       <div class="api-actions">
-        <el-select v-model="envIdString" placeholder="选择环境" style="width: 160px" @change="changeEnv">
+        <el-select v-model="envIdString" placeholder="选择环境" class="api-env-select" @change="changeEnv">
           <el-option
               v-for="env in envs"
               :key="env.id"
@@ -43,7 +43,7 @@
       </el-tab-pane>
       <el-tab-pane v-if="apiForm.method !== 'GET'" :label="'请求体(' + bodyParamsCount + ')'" name="body">
         <!-- 请求体内容（同原逻辑） -->
-        <div style="width: 100%">
+        <div class="api-pane-full">
           <el-radio-group v-model="apiForm.content_type" class="detail-segmented" size="small" @change="handleSave">
             <el-radio-button value="application/json">application/json</el-radio-button>
             <el-radio-button value="application/x-www-form-urlencoded">x-www-form-urlencoded</el-radio-button>
@@ -55,7 +55,7 @@
             <json-editor-vue v-model="apiForm.body_json_data" class="json-box" @blur="handleBlurSave"/>
           </div>
           <div v-else-if="['application/x-www-form-urlencoded', 'multipart/form-data'].includes(apiForm.content_type)" class="body-editor">
-            <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
+            <div class="body-import-toolbar">
               <pl-button size="small" @click="openBodyJsonImportDialog">通过JSON导入</pl-button>
             </div>
             <key-value-editor @update="handleSaveBodyFormData" :list="apiForm.body_form_data"/>
@@ -72,7 +72,7 @@
         </div>
       </el-tab-pane>
       <el-tab-pane :label="'结果提取(' + (isArray(apiForm.response_take_data) ? apiForm.response_take_data.length : 0) + ')'" name="response_take">
-        <el-alert title="提取示例：data.0.token表示提取data数组的第一个元素中的token" type="info" :closable="false" style="margin: 5px;"/>
+        <el-alert title="提取示例：data.0.token表示提取data数组的第一个元素中的token" type="info" :closable="false" class="result-tip-alert"/>
         <response-take-editor
             v-if="configActiveTab === 'response_take'"
             v-model="apiForm.response_take_data"
@@ -80,9 +80,9 @@
             @update="updateResponseTake"
         />
       </el-tab-pane>
-      <el-tab-pane v-if="parseInt(apiForm.env_id) > 0 || folderEnvId > 0" :label="'环境变量(' + (isArray(envItems) ? envItems.length : 0) + ')'" lazy name="env_items" style="width: 96%;">
+      <el-tab-pane v-if="parseInt(apiForm.env_id) > 0 || folderEnvId > 0" :label="'环境变量(' + (isArray(envItems) ? envItems.length : 0) + ')'" lazy name="env_items" class="env-items-tab">
         <div class="config-section" v-if="parseInt(apiForm.env_id) > 0 || folderEnvId > 0">
-          <el-alert v-if="!apiForm.env_id && folderEnvId" title="当前环境变量继承自所属文件夹" type="info" :closable="false" style="margin-bottom: 10px;"/>
+          <el-alert v-if="!apiForm.env_id && folderEnvId" title="当前环境变量继承自所属文件夹" type="info" :closable="false" class="env-inherit-alert"/>
           <variable-manager
               ref="refVariableManager"
               @update="handleVariablesUpdate"
@@ -90,7 +90,7 @@
         </div>
       </el-tab-pane>
       <el-tab-pane label="代码" lazy name="code">
-        <div style="width: 100%">
+        <div class="api-pane-full">
           <el-radio-group v-model="apiForm.code_type" class="detail-segmented" size="small" @change="handleCodeTypeChange">
             <el-radio-button
                 v-for="codeType in codeTypeOptions"
@@ -101,7 +101,7 @@
             </el-radio-button>
           </el-radio-group>
 
-          <div class="response-body-container" style="margin-top:5px;">
+          <div class="response-body-container code-preview">
             <pl-button class="copy-btn" link @click="copyTextToClipboard(apiForm.code)">复制</pl-button>
             <pre class="response-body json-body">{{
                 apiForm.code
@@ -113,7 +113,6 @@
       <el-tab-pane :label="'结果字段备注(' + (isArray(apiForm.take_result_data) ? apiForm.take_result_data.length : 0) + ')'" lazy name="result_field_desc">
         <el-table
             :data="apiForm.take_result_data"
-            style="width: 100%"
             max-height="calc(100vh - 200px)"
             class="result-field-table"
         >
@@ -208,12 +207,12 @@
           </pl-button>
         </div>
         <div class="response-status">
-          <div style="color:green;font-size:14px;">状态: {{ apiForm.last_result_data.status }}</div>
-          <div v-if="apiForm.last_result_data.errmsg" style="color:red;font-size:14px;">执行错误:
+          <div class="response-status-item response-status-item--ok">状态: {{ apiForm.last_result_data.status }}</div>
+          <div v-if="apiForm.last_result_data.errmsg" class="response-status-item response-status-item--error">执行错误:
             {{ apiForm.last_result_data.errmsg }}
           </div>
-          <div style="color:green;font-size:14px;">耗时: {{ apiForm.last_result_data.millisecond }}ms</div>
-          <div style="color:green;font-size:14px;">时间: {{ apiForm.last_result_data.request_time }}</div>
+          <div class="response-status-item response-status-item--ok">耗时: {{ apiForm.last_result_data.millisecond }}ms</div>
+          <div class="response-status-item response-status-item--ok">时间: {{ apiForm.last_result_data.request_time }}</div>
         </div>
 
         <el-tabs v-model="responseActiveTab" class="detail-tabs" @tab-change="handleSave">
@@ -294,7 +293,7 @@
     </el-drawer>
 
     <el-dialog v-model="bodyJsonImportVisible" title="通过JSON导入" width="600" @keydown.enter.prevent="handleBodyJsonImport">
-      <el-alert title="请输入JSON对象，键值将自动转换为表单参数。支持嵌套对象（自动展平为 key.subkey 格式）" type="info" :closable="false" style="margin-bottom: 12px;"/>
+      <el-alert title="请输入JSON对象，键值将自动转换为表单参数。支持嵌套对象（自动展平为 key.subkey 格式）" type="info" :closable="false" class="json-import-alert"/>
       <el-input
           v-model="bodyJsonImportText"
           type="textarea"

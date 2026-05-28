@@ -1,7 +1,7 @@
 <template>
-  <div style="text-align: center;">
+  <div class="decode-tool">
     <el-input
-        style="margin-top: 10px"
+        class="decode-main-input"
         id="resultTextarea"
         placeholder="输入内容"
         type="textarea"
@@ -9,11 +9,11 @@
         rows="5"
         @input="exec"
     ></el-input>
-    <div style="text-align: center;margin-top:5px;" class="box-card">
-      <el-input style="width: 300px; margin-right: 10px;margin-left:10px;" v-model="searchKey" @input="searchList" placeholder="请输入搜索 多个搜索以空格分割"></el-input>
+    <div class="decode-toolbar box-card">
+      <el-input class="decode-search-input" v-model="searchKey" @input="searchList" placeholder="请输入搜索 多个搜索以空格分割"></el-input>
     <span>({{searchLineNum}})</span>
     </div>
-    <div style="text-align: center;margin-top:5px;" class="box-card">
+    <div class="decode-toolbar box-card">
       <el-checkbox v-model="decodeList.split" label="换行分割" @change="exec"/>
       <el-checkbox v-model="decodeList.unicode_decode" label="unicode解码" @change="exec"/>
       <el-checkbox v-model="decodeList.url_decode" label="urldecode" @change="exec"/>
@@ -31,7 +31,7 @@
 <!--    ></el-input>-->
   </div>
   <template v-for="(v,k) in searchLineList">
-    <div style="margin-top: 8px;">
+    <div class="decode-result-item">
       <pl-button class="copy-btn" link @click="copyJson(v.value)">复制</pl-button>
       <pre class="pretty-json" ref="textarea">{{ v.value }}</pre>
     </div>
@@ -236,4 +236,27 @@ export default {
 }
 </script>
 
-<style scoped></style>
+<style scoped>
+.decode-tool {
+  text-align: center;
+}
+
+.decode-main-input {
+  margin-top: 10px;
+}
+
+.decode-toolbar {
+  text-align: center;
+  margin-top: 5px;
+}
+
+.decode-search-input {
+  width: 300px;
+  margin-right: 10px;
+  margin-left: 10px;
+}
+
+.decode-result-item {
+  margin-top: 8px;
+}
+</style>

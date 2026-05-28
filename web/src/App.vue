@@ -70,19 +70,9 @@ body,
 }
 
 #app {
-  font-family: Consolas , Avenir, Helvetica, Arial, sans-serif !important;
+  font-family: Consolas, Avenir, Helvetica, Arial, sans-serif;
   -moz-osx-font-smoothing: grayscale;
   color: #2c3e50;
-}
-
-/* 隐藏所有滚动条 */
-::-webkit-scrollbar {
-  display: none; /* Chrome/Safari */
-}
-
-* {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
 }
 
 body{
