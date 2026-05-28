@@ -1,0 +1,339 @@
+.chat-reply-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f7fa;
+}
+
+.chat-reply-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: #fff;
+  border-bottom: 1px solid #ebeef5;
+  flex-shrink: 0;
+}
+
+.chat-reply-header__back {
+  color: #409eff;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.chat-reply-header__back:hover {
+  text-decoration: underline;
+}
+
+.chat-reply-header__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.chat-reply-header__meta {
+  font-size: 12px;
+  color: #909399;
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.chat-reply-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 24px;
+  min-height: 0;
+  position: relative;
+}
+
+.chat-reply-container {
+  flex: 1;
+  overflow-y: auto;
+  background: #fafbfc;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  padding: 16px;
+  color: #303133;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 0;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: #c0c4cc #f0f0f0;
+}
+
+.chat-reply-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-reply-container::-webkit-scrollbar-track {
+  background: #f0f0f0;
+  border-radius: 3px;
+}
+
+.chat-reply-container::-webkit-scrollbar-thumb {
+  background: #c0c4cc;
+  border-radius: 3px;
+}
+
+.chat-reply-container::-webkit-scrollbar-thumb:hover {
+  background: #909399;
+}
+
+.chat-reply-scroll-btn {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 36px;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #606266;
+  font-size: 18px;
+  transition: background 0.2s, opacity 0.2s;
+  z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-reply-scroll-btn--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.chat-reply-scroll-btn:hover {
+  background: #f5f7fa;
+}
+
+.chat-reply-input-row {
+  display: flex;
+  flex-direction: column;
+  padding-top: 10px;
+  flex-shrink: 0;
+}
+
+.chat-reply-textarea-wrapper {
+  width: 100%;
+}
+
+.chat-reply-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 6px;
+  align-items: center;
+}
+
+.chat-reply-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #909399;
+  flex-shrink: 0;
+  margin-right: auto;
+}
+
+/* spinner */
+.cr-status-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid #409eff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: cr-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes cr-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* thinking */
+.cr-thinking-blockquote {
+  white-space: pre-wrap;
+  font-size: 12px;
+  color: #606266;
+  border-left: 3px solid #dcdfe6;
+  background: #f5f7fa;
+  padding: 8px 12px;
+  margin: 0;
+  border-radius: 0 4px 4px 0;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+/* markdown */
+.cr-markdown-body {
+  word-wrap: break-word;
+  color: #303133;
+  background-color: transparent;
+}
+
+.cr-markdown-body p,
+.cr-markdown-body h1,
+.cr-markdown-body h2,
+.cr-markdown-body h3,
+.cr-markdown-body h4,
+.cr-markdown-body h5,
+.cr-markdown-body h6,
+.cr-markdown-body ul,
+.cr-markdown-body ol,
+.cr-markdown-body li {
+  color: #303133;
+  background-color: transparent;
+}
+
+.cr-markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+}
+
+.cr-markdown-body th,
+.cr-markdown-body td {
+  padding: 6px 12px;
+  border: 1px solid #e4e7ed;
+  text-align: left;
+}
+
+.cr-markdown-body th {
+  font-weight: 600;
+  background-color: #f5f7fa;
+  color: #303133;
+}
+
+.cr-markdown-body td {
+  background-color: #fff;
+}
+
+.cr-markdown-body tr:hover td {
+  background-color: #f5f7fa;
+}
+
+.cr-markdown-body code {
+  font-family: 'Consolas', monospace;
+  font-size: 0.9em;
+  background-color: #f5f7fa;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  color: #e6a23c;
+}
+
+.cr-markdown-body pre {
+  background-color: #f5f7fa;
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.cr-markdown-body pre code {
+  padding: 0;
+  background: transparent;
+  color: #303133;
+}
+
+.cr-markdown-body a {
+  color: #409eff;
+}
+
+.cr-markdown-body blockquote {
+  border-left: 3px solid #dcdfe6;
+  margin: 8px 0;
+  padding: 0 12px;
+  color: #909399;
+}
+
+/* result card */
+.cr-result-card {
+  background: #fafbfc;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.cr-result-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.cr-result-header-item {
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cr-result-section {
+  margin-top: 8px;
+}
+
+.cr-result-section-title {
+  color: #909399;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.cr-result-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #606266;
+}
+
+.cr-result-model-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 4px 8px;
+  background: #f2f3f5;
+  border-radius: 4px;
+  margin-bottom: 2px;
+}
+
+.cr-result-model-name {
+  font-weight: 600;
+  color: #303133;
+}
+
+.cr-result-text {
+  white-space: pre-wrap;
+  font-size: 11px;
+  max-height: 120px;
+  overflow-y: auto;
+  font-family: Consolas, monospace;
+  background: #f2f3f5;
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin: 0;
+  color: #606266;
+}
+
+.chat-reply-textarea .el-textarea__inner {
+  border-color: #dcdfe6 !important;
+  transition: border-color 0.2s;
+  resize: none;
+}
+
+.chat-reply-textarea .el-textarea__inner:focus {
+  border-color: #409eff !important;
+  box-shadow: 0 0 0 1px #409eff inset !important;
+}

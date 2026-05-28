@@ -26,6 +26,15 @@ const (
 	taskWorkflowChatStatusInterrupted = `interrupted`
 )
 
+const (
+	// agentChatTableName 通用 Agent 对话表名。 // Shared table name for all agent chat records.
+	agentChatTableName = `agent_chat`
+	// AgentChatSourceTypeWorkflow 表示记录来自工作流。 // Source type used when the chat is created from a workflow.
+	AgentChatSourceTypeWorkflow = `work_flow`
+	// AgentChatSourceTypeAgentCli 表示记录来自 AgentCli 独立执行。 // Source type used when the chat is created from standalone AgentCli execution.
+	AgentChatSourceTypeAgentCli = `agent_cli`
+)
+
 // TaskWorkflowCreateOrGetByHomeTaskID 查询或创建任务工作流主记录。
 func (h *CSqlite) TaskWorkflowCreateOrGetByHomeTaskID(homeTaskID int) (map[string]any, error) {
 	if homeTaskID <= 0 {
@@ -408,20 +417,30 @@ func (h *CSqlite) TaskWorkflowBindApiDocFragment(workflowID int, fragmentID stri
 	return err
 }
 
-// TaskWorkflowChatCreate 创建对话记录。
-func (h *CSqlite) TaskWorkflowChatCreate(workflowID int, prompt, promptType, cliType string, agentCliID int, localDir, settingsPath string, thinkingCollapsed int, thinkingIntensity string) (int64, error) {
+// AgentChatCreateBySource 创建通用对话记录。
+// AgentChatCreateBySource creates a chat row for either workflow-driven or standalone AgentCli execution.
+func (h *CSqlite) AgentChatCreateBySource(fromType string, fromID int, prompt, promptType, cliType string, agentCliID int, localDir, settingsPath, modelName string, thinkingCollapsed int, thinkingIntensity string) (int64, error) {
+	// 仅允许受控来源类型，避免把查询语义写坏。 // Restrict source types so downstream filtering stays deterministic.
+	if fromType != AgentChatSourceTypeWorkflow && fromType != AgentChatSourceTypeAgentCli {
+		return 0, errors.New(`对话来源类型无效`)
+	}
+	if fromID <= 0 {
+		return 0, errors.New(`对话来源id不能为空`)
+	}
 	if strings.TrimSpace(cliType) == `` {
 		cliType = `claude`
 	}
 	now := time.Now().Format(`2006-01-02 15:04:05`)
-	id, err := h.Client.QuickCreate(`tbl_task_workflow_chat`, map[string]any{
-		`workflow_id`:        workflowID,
+	id, err := h.Client.QuickCreate(agentChatTableName, map[string]any{
+		`from_type`:          fromType,
+		`from_id`:            fromID,
 		`prompt`:             prompt,
 		`prompt_type`:        promptType,
 		`cli_type`:           cliType,
 		`agent_cli_id`:       agentCliID,
 		`local_dir`:          localDir,
 		`settings_path`:      settingsPath,
+		`model_name`:         modelName,
 		`thinking_collapsed`: thinkingCollapsed,
 		`thinking_intensity`: thinkingIntensity,
 		`status`:             taskWorkflowChatStatusRunning,
@@ -435,13 +454,37 @@ func (h *CSqlite) TaskWorkflowChatCreate(workflowID int, prompt, promptType, cli
 	return id, nil
 }
 
+// TaskWorkflowChatCreate 创建工作流对话记录。
+// TaskWorkflowChatCreate keeps the workflow-specific call site stable while writing into the generic agent chat table.
+func (h *CSqlite) TaskWorkflowChatCreate(workflowID int, prompt, promptType, cliType string, agentCliID int, localDir, settingsPath, modelName string, thinkingCollapsed int, thinkingIntensity string) (int64, error) {
+	return h.AgentChatCreateBySource(AgentChatSourceTypeWorkflow, workflowID, prompt, promptType, cliType, agentCliID, localDir, settingsPath, modelName, thinkingCollapsed, thinkingIntensity)
+}
+
+// AgentChatCreate 创建 AgentCli 独立执行对话记录。
+// AgentChatCreate creates a standalone AgentCli chat while still using the shared chat table.
+func (h *CSqlite) AgentChatCreate(agentCliID int, prompt, promptType, cliType string, localDir, settingsPath, modelName string, thinkingCollapsed int, thinkingIntensity string) (int64, error) {
+	return h.AgentChatCreateBySource(AgentChatSourceTypeAgentCli, agentCliID, prompt, promptType, cliType, agentCliID, localDir, settingsPath, modelName, thinkingCollapsed, thinkingIntensity)
+}
+
 // TaskWorkflowChatUpdateSessionID 更新 session_id。
 func (h *CSqlite) TaskWorkflowChatUpdateSessionID(chatID int64, sessionID string) error {
 	now := time.Now().Format(`2006-01-02 15:04:05`)
-	_, err := h.Client.QuickUpdate(`tbl_task_workflow_chat`, map[string]any{
+	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
 		`id`: chatID,
 	}, map[string]any{
 		`session_id`: sessionID,
+		`updated_at`: now,
+	}).Exec()
+	return err
+}
+
+// TaskWorkflowChatUpdatePID 更新进程 PID。
+func (h *CSqlite) TaskWorkflowChatUpdatePID(chatID int64, pid int) error {
+	now := time.Now().Format(`2006-01-02 15:04:05`)
+	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
+		`id`: chatID,
+	}, map[string]any{
+		`pid`:        pid,
 		`updated_at`: now,
 	}).Exec()
 	return err
@@ -465,7 +508,7 @@ func (h *CSqlite) TaskWorkflowChatAppendOutput(chatID int64, line string) error 
 		newOutput += "\n"
 	}
 	newOutput += line
-	_, err = h.Client.QuickUpdate(`tbl_task_workflow_chat`, map[string]any{
+	_, err = h.Client.QuickUpdate(agentChatTableName, map[string]any{
 		`id`: chatID,
 	}, map[string]any{
 		`raw_output`: newOutput,
@@ -490,7 +533,7 @@ func (h *CSqlite) TaskWorkflowChatAppendOutputBatch(chatID int64, lines []string
 		newOutput += "\n"
 	}
 	newOutput += strings.Join(lines, "\n")
-	_, err = h.Client.QuickUpdate(`tbl_task_workflow_chat`, map[string]any{
+	_, err = h.Client.QuickUpdate(agentChatTableName, map[string]any{
 		`id`: chatID,
 	}, map[string]any{
 		`raw_output`: newOutput,
@@ -502,7 +545,7 @@ func (h *CSqlite) TaskWorkflowChatAppendOutputBatch(chatID int64, lines []string
 // TaskWorkflowChatMarkCompleted 标记对话完成。
 func (h *CSqlite) TaskWorkflowChatMarkCompleted(chatID int64) error {
 	now := time.Now().Format(`2006-01-02 15:04:05`)
-	_, err := h.Client.QuickUpdate(`tbl_task_workflow_chat`, map[string]any{
+	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
 		`id`: chatID,
 	}, map[string]any{
 		`status`:     taskWorkflowChatStatusCompleted,
@@ -514,7 +557,7 @@ func (h *CSqlite) TaskWorkflowChatMarkCompleted(chatID int64) error {
 // TaskWorkflowChatMarkError 标记对话异常终止。
 func (h *CSqlite) TaskWorkflowChatMarkError(chatID int64) error {
 	now := time.Now().Format(`2006-01-02 15:04:05`)
-	_, err := h.Client.QuickUpdate(`tbl_task_workflow_chat`, map[string]any{
+	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
 		`id`: chatID,
 	}, map[string]any{
 		`status`:     taskWorkflowChatStatusError,
@@ -527,7 +570,7 @@ func (h *CSqlite) TaskWorkflowChatMarkError(chatID int64) error {
 func (h *CSqlite) TaskWorkflowChatRecoverInterrupted() {
 	now := time.Now().Format(`2006-01-02 15:04:05`)
 	upNumber, err := h.Client.ExecBySql(
-		`update tbl_task_workflow_chat set status = ?, updated_at = ? where status = ?`,
+		`update agent_chat set status = ?, updated_at = ? where status = ?`,
 		taskWorkflowChatStatusInterrupted, now, taskWorkflowChatStatusRunning,
 	).Exec()
 	if err != nil {
@@ -539,15 +582,16 @@ func (h *CSqlite) TaskWorkflowChatRecoverInterrupted() {
 
 // TaskWorkflowChatInfo 获取单条对话记录。
 func (h *CSqlite) TaskWorkflowChatInfo(chatID int64) (map[string]any, error) {
-	return h.Client.QuickQuery(`tbl_task_workflow_chat`, `*`, map[string]any{
+	return h.Client.QuickQuery(agentChatTableName, `*`, map[string]any{
 		`id`: chatID,
 	}).One()
 }
 
 // TaskWorkflowChatList 获取 workflow 下所有对话记录。
 func (h *CSqlite) TaskWorkflowChatList(workflowID int) ([]map[string]any, error) {
-	rows, err := h.Client.QuickQuery(`tbl_task_workflow_chat`, `*`, map[string]any{
-		`workflow_id`: workflowID,
+	rows, err := h.Client.QuickQuery(agentChatTableName, `*`, map[string]any{
+		`from_type`: AgentChatSourceTypeWorkflow,
+		`from_id`:   workflowID,
 	}).Order(`id DESC`).All()
 	if err != nil {
 		return nil, err
@@ -558,7 +602,7 @@ func (h *CSqlite) TaskWorkflowChatList(workflowID int) ([]map[string]any, error)
 // TaskWorkflowChatMarkRunning 标记对话为运行中（用于继续对话）。
 func (h *CSqlite) TaskWorkflowChatMarkRunning(chatID int64) error {
 	now := time.Now().Format(`2006-01-02 15:04:05`)
-	_, err := h.Client.QuickUpdate(`tbl_task_workflow_chat`, map[string]any{
+	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
 		`id`: chatID,
 	}, map[string]any{
 		`status`:     taskWorkflowChatStatusRunning,
@@ -570,7 +614,7 @@ func (h *CSqlite) TaskWorkflowChatMarkRunning(chatID int64) error {
 // TaskWorkflowChatMarkInterrupted 标记对话为用户主动中断。
 func (h *CSqlite) TaskWorkflowChatMarkInterrupted(chatID int64) error {
 	now := time.Now().Format(`2006-01-02 15:04:05`)
-	_, err := h.Client.QuickUpdate(`tbl_task_workflow_chat`, map[string]any{
+	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
 		`id`: chatID,
 	}, map[string]any{
 		`status`:     taskWorkflowChatStatusInterrupted,
@@ -588,9 +632,26 @@ func (h *CSqlite) TaskWorkflowChatListByPromptType(workflowID int, promptType st
 	if promptType == `` {
 		return nil, errors.New(`提示词类型不能为空`)
 	}
-	rows, err := h.Client.QuickQuery(`tbl_task_workflow_chat`, `*`, map[string]any{
-		`workflow_id`: workflowID,
+	rows, err := h.Client.QuickQuery(agentChatTableName, `*`, map[string]any{
+		`from_type`:   AgentChatSourceTypeWorkflow,
+		`from_id`:     workflowID,
 		`prompt_type`: promptType,
+	}).Order(`id DESC`).All()
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// AgentChatListByAgentCli 按 Agent CLI 查询独立执行对话历史。
+// AgentChatListByAgentCli only returns standalone AgentCli runs so workflow chats do not pollute the history card.
+func (h *CSqlite) AgentChatListByAgentCli(agentCliID int) ([]map[string]any, error) {
+	if agentCliID <= 0 {
+		return nil, errors.New(`agent_cli_id不能为空`)
+	}
+	rows, err := h.Client.QuickQuery(agentChatTableName, `*`, map[string]any{
+		`from_type`:    AgentChatSourceTypeAgentCli,
+		`agent_cli_id`: agentCliID,
 	}).Order(`id DESC`).All()
 	if err != nil {
 		return nil, err
@@ -604,8 +665,9 @@ func (h *CSqlite) TaskWorkflowClearChatSessionIDs(workflowID int, promptType str
 	if promptType == `` {
 		return nil
 	}
-	_, err := h.Client.QuickDelete(`tbl_task_workflow_chat`, map[string]any{
-		`workflow_id`: workflowID,
+	_, err := h.Client.QuickDelete(agentChatTableName, map[string]any{
+		`from_type`:   AgentChatSourceTypeWorkflow,
+		`from_id`:     workflowID,
 		`prompt_type`: promptType,
 	}).Exec()
 	return err

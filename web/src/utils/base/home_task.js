@@ -65,6 +65,11 @@ function HomeTaskUnusedLocalDirs(excludeTaskId, callBack) {
   base.BasePost('/api/HomeTaskUnusedLocalDirs', { exclude_task_id: excludeTaskId }, callBack)
 }
 
+// LocalBranchBatchCheck 批量检查本地目录当前 Git 分支是否与期望分支匹配。
+function LocalBranchBatchCheck(items, callBack) {
+  base.BasePost('/api/Set/LocalBranchBatchCheck', { items: items }, callBack)
+}
+
 export default {
   HomeTaskList,
   HomeTaskSave,
@@ -79,4 +84,5 @@ export default {
   HomeTaskLastDevConfigByGitId,
   HomeTaskBranchNameGenerate,
   HomeTaskUnusedLocalDirs,
+  LocalBranchBatchCheck,
 }

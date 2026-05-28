@@ -1,4 +1,4 @@
-package business
+﻿package business
 
 import (
 	"dev_tool/internal/app/dtool/common"
@@ -122,8 +122,7 @@ func HotReloadMainDB(changedKey string) error {
 		}
 	}
 
-	// 5. 切换窗口：停止自动同步，替换全局引用
-	StopMainDBAutoSync()
+	// 5. 切换窗口：替换全局引用
 	component.SqliteClient = newSqliteClient
 	component.DbMain = newDbMain
 	common.DbMain = newDbMain
@@ -134,10 +133,7 @@ func HotReloadMainDB(changedKey string) error {
 		common.DbLog = newDbLog
 	}
 
-	// 6. 重新启动主库自动同步
-	StartMainDBAutoSync()
-
-	// 7. 刷新 shell 规则
+	// 6. 刷新 shell 规则
 	if component.ShellOutClient != nil {
 		component.ShellOutClient.InitGroupConfigs()
 	}
@@ -148,7 +144,7 @@ func HotReloadMainDB(changedKey string) error {
 	return nil
 }
 
-// HotReloadMemoryDB 热重载记忆库（memoryDbPath 或 memoryDbIsGitRepo 变更时使用）。
+// HotReloadMemoryDB 热重载记忆库（memoryDbPath 变更时使用）。
 func HotReloadMemoryDB() error {
 	hotReloadMu.Lock()
 	defer hotReloadMu.Unlock()
@@ -158,11 +154,6 @@ func HotReloadMemoryDB() error {
 	var oldService *memory.Service
 	if svc, ok := oldDB.(*memory.Service); ok {
 		oldService = svc
-	}
-
-	// 尝试把旧目录待同步内容刷出
-	if component.MemoryRuntime.IsConfigured() {
-		_ = component.MemoryRuntime.SyncNow()
 	}
 
 	// 停止旧 watcher
@@ -190,57 +181,6 @@ func HotReloadMemoryDB() error {
 	}
 
 	gstool.FmtPrintlnLogTime(`记忆库热重载成功`)
-	return nil
-}
-
-// HotReloadDBGitFlag 热重载主库 git 开关（db_is_git_repo 变更时使用）。
-func HotReloadDBGitFlag() error {
-	hotReloadMu.Lock()
-	defer hotReloadMu.Unlock()
-
-	// 保存旧 prepared 状态用于回滚
-	oldPrepared := preparedMainDBStore
-
-	ReloadEditableRuntimeConfig()
-	StopMainDBAutoSync()
-
-	if err := PrepareMainDBStore(); err != nil {
-		// 恢复旧 prepared 状态
-		preparedMainDBStore = oldPrepared
-		return fmt.Errorf(`主库 git 预处理失败 %w`, err)
-	}
-
-	StartMainDBAutoSync()
-
-	gstool.FmtPrintlnLogTime(`主库 git 开关热重载成功`)
-	return nil
-}
-
-// HotReloadAutoSyncDelay 热重载主库自动同步间隔（dbAutoPushDelayMinutes 变更时使用）。
-func HotReloadAutoSyncDelay() error {
-	hotReloadMu.Lock()
-	defer hotReloadMu.Unlock()
-
-	ReloadEditableRuntimeConfig()
-	newConfig := ReadMainDBAutoSyncConfig()
-	if preparedMainDBStore != nil {
-		component.MainDBAutoSyncRuntime.Configure(newConfig, preparedMainDBStore.Git)
-	}
-
-	gstool.FmtPrintlnLogTime(`主库自动同步间隔热重载成功 minutes=%d`, newConfig.AutoSyncMinutes)
-	return nil
-}
-
-// HotReloadMemoryAutoSyncDelay 热重载记忆库自动同步间隔（memoryDbAutoPushDelayMinutes 变更时使用）。
-func HotReloadMemoryAutoSyncDelay() error {
-	hotReloadMu.Lock()
-	defer hotReloadMu.Unlock()
-
-	ReloadEditableRuntimeConfig()
-	memoryConfig := ReadMemoryConfigFromINI()
-	component.MemoryRuntime.UpdateConfigPreserveState(memoryConfig)
-
-	gstool.FmtPrintlnLogTime(`记忆库自动同步间隔热重载成功 minutes=%d`, memoryConfig.AutoPushDelayMinutes)
 	return nil
 }
 
@@ -277,10 +217,6 @@ func NeedsLogDBReload(changedKey string) bool {
 func restorePreparedMainDBStore(old *preparedMainDBBootstrap) {
 	if old != nil {
 		preparedMainDBStore = old
-		// 同步回写到 EnvClient
-		if component.EnvClient != nil && component.EnvClient.DbConfig != nil {
-			component.EnvClient.DbConfig.DbIsGitRepo = old.Config.GitRepoEnabled
-		}
 	}
 }
 
@@ -291,7 +227,7 @@ func needsMainDBHotReload(key string) bool {
 
 // needsMemoryDBHotReload 判断 key 是否需要记忆库热重载。
 func needsMemoryDBHotReload(key string) bool {
-	return key == `memoryDbPath` || key == `memoryDbIsGitRepo`
+	return key == `memoryDbPath`
 }
 
 // buildCurrentLogDBPath 获取当前生效的 log 库完整路径。
@@ -301,3 +237,4 @@ func buildCurrentLogDBPath() string {
 	}
 	return filepath.Join(component.EnvClient.LogDbConfig.DbPath, component.EnvClient.LogDbConfig.DbName)
 }
+

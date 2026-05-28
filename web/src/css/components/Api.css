@@ -187,6 +187,15 @@
   margin-right: 10px;
 }
 
+.node-label--folder {
+  font-weight: 500;
+}
+
+.node-label--collection,
+.node-label--archive {
+  font-weight: 800;
+}
+
 .node-id-tag {
   margin-right: 4px;
   font-size: 11px;
@@ -477,6 +486,22 @@
   --el-tag-bg-color: #eef4ea;
   --el-tag-border-color: #cfe0c8;
   --el-tag-text-color: #4f804f;
+}
+
+.dialog-select-full {
+  width: 100%;
+}
+
+:deep(.confirm-delete-message) {
+  margin-top: 8px;
+  color: #f56c6c;
+  font-weight: 600;
+}
+
+:deep(.confirm-archive-message) {
+  margin-top: 8px;
+  color: #e6a23c;
+  font-weight: 600;
 }
 
 @media (max-width: 1200px) {

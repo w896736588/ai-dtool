@@ -49,9 +49,17 @@
   flex: 0 0 92px;
 }
 
+.api-env-select {
+  width: 160px;
+}
+
 .api-url-input {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.api-pane-full {
+  width: 100%;
 }
 
 .api-config-tabs {
@@ -161,6 +169,12 @@
   overflow: hidden;
 }
 
+.body-import-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
 .body-editor-json {
   padding: 10px;
   border: 1px solid #e6ece0;
@@ -196,6 +210,18 @@
   background: #f7f9f5;
   border-radius: 10px;
   padding: 10px 12px;
+}
+
+.response-status-item {
+  font-size: 14px;
+}
+
+.response-status-item--ok {
+  color: green;
+}
+
+.response-status-item--error {
+  color: red;
 }
 
 .request-url-bar {
@@ -340,6 +366,26 @@
   border: 1px solid #d8e4d5;
   border-radius: 10px;
   background: #fff;
+}
+
+.code-preview {
+  margin-top: 5px;
+}
+
+.result-tip-alert {
+  margin: 5px;
+}
+
+.env-items-tab {
+  width: 96%;
+}
+
+.env-inherit-alert {
+  margin-bottom: 10px;
+}
+
+.json-import-alert {
+  margin-bottom: 12px;
 }
 
 .response-body-container :deep(pre.response-body) {

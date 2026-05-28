@@ -71,6 +71,12 @@
                                 <svg v-if="homeTaskLocalDirStatusMap[tag.label]" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
                                 <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                               </span>
+                              <el-tooltip v-if="tag.type === 'branch_name' && tag.localDir && homeTaskBranchStatusMap[tag.localDir + '|' + tag.label] !== undefined" :content="homeTaskBranchStatusMap[tag.localDir + '|' + tag.label].matched ? '分支匹配' : '当前分支: ' + (homeTaskBranchStatusMap[tag.localDir + '|' + tag.label].current_branch || '未知')" placement="top">
+                                <span class="home-task-dir-status" :class="homeTaskBranchStatusMap[tag.localDir + '|' + tag.label].matched ? 'home-task-dir-status--ok' : 'home-task-dir-status--err'">
+                                  <svg v-if="homeTaskBranchStatusMap[tag.localDir + '|' + tag.label].matched" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                                  <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                </span>
+                              </el-tooltip>
                             </span>
                           </el-tooltip>
                         </template>
@@ -204,6 +210,12 @@
                                 <svg v-if="homeTaskLocalDirStatusMap[tag.label]" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
                                 <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                               </span>
+                              <el-tooltip v-if="tag.type === 'branch_name' && tag.localDir && homeTaskBranchStatusMap[tag.localDir + '|' + tag.label] !== undefined" :content="homeTaskBranchStatusMap[tag.localDir + '|' + tag.label].matched ? '分支匹配' : '当前分支: ' + (homeTaskBranchStatusMap[tag.localDir + '|' + tag.label].current_branch || '未知')" placement="top">
+                                <span class="home-task-dir-status" :class="homeTaskBranchStatusMap[tag.localDir + '|' + tag.label].matched ? 'home-task-dir-status--ok' : 'home-task-dir-status--err'">
+                                  <svg v-if="homeTaskBranchStatusMap[tag.localDir + '|' + tag.label].matched" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                                  <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                </span>
+                              </el-tooltip>
                             </span>
                           </el-tooltip>
                         </template>
@@ -762,6 +774,7 @@ export default {
       homeTaskEditFeedbackDurationMs: 1000,
       homeTaskWorkflowCountMap: {},
       homeTaskLocalDirStatusMap: {},
+      homeTaskBranchStatusMap: {},
       homeTaskUnusedLocalDirs: [],
       homeTaskGitRepoList: [],
       homeTaskGitRepoLoading: false,
@@ -871,6 +884,8 @@ export default {
         }
         // 批量检查本地目录是否存在
         this.checkLocalDirExists(taskList)
+        // 批量检查本地目录的 Git 分支是否匹配
+        this.checkBranchStatus(taskList)
       })
     },
     refreshAllHomeTaskList() {
@@ -1291,7 +1306,7 @@ export default {
           group.push({ type: 'parent_branch', label: '分支: ' + String(cfg.parent_branch).trim(), tagType: '' })
         }
         if (String(cfg.branch_name || '').trim() !== '') {
-          group.push({ type: 'branch_name', label: String(cfg.branch_name).trim(), tagType: 'success' })
+          group.push({ type: 'branch_name', label: String(cfg.branch_name).trim(), tagType: 'success', localDir: String(cfg.local_dir || '').trim() })
         }
         if (Number(cfg.smart_link_id || 0) > 0) {
           const sl = this.homeTaskSmartLinkList.find(s => Number(s.id) === Number(cfg.smart_link_id))
@@ -1600,6 +1615,29 @@ export default {
       homeTaskApi.LocalDirBatchCheck(paths, (response) => {
         if (response && response.ErrCode === 0 && response.Data) {
           this.homeTaskLocalDirStatusMap = { ...this.homeTaskLocalDirStatusMap, ...response.Data }
+        }
+      })
+    },
+    // 批量检查任务列表中本地目录的当前 Git 分支是否与配置的分支名匹配
+    checkBranchStatus(taskList) {
+      const items = []
+      const seen = new Set()
+      for (const t of taskList) {
+        if (!Array.isArray(t.dev_configs)) continue
+        for (const cfg of t.dev_configs) {
+          const dir = String(cfg.local_dir || '').trim()
+          const branch = String(cfg.branch_name || '').trim()
+          if (!dir || !branch) continue
+          const key = dir + '|' + branch
+          if (seen.has(key)) continue
+          seen.add(key)
+          items.push({ local_dir: dir, branch_name: branch })
+        }
+      }
+      if (items.length === 0) return
+      homeTaskApi.LocalBranchBatchCheck(items, (response) => {
+        if (response && response.ErrCode === 0 && response.Data) {
+          this.homeTaskBranchStatusMap = { ...this.homeTaskBranchStatusMap, ...response.Data }
         }
       })
     },

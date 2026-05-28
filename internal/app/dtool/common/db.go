@@ -20,10 +20,6 @@ type CSqlite struct {
 	Env    *define.Env
 }
 
-func (h *CSqlite) InitTable() {
-	//TODO 初始化表机构和变更
-}
-
 func (h *CSqlite) Login(username, password string) (int, error) {
 	one, err := h.Client.QuickQuery(`tbl_user`, `*`, map[string]interface{}{
 		`username`: username,

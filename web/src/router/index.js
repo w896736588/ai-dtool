@@ -183,6 +183,12 @@ const router = createRouter({
       meta: { keepAlive: false, title: '知识片段分享' },
     },
     {
+      path: '/ChatReply/:chatId',
+      name: 'chat-reply',
+      component: () => import('../components/ChatReplyPage.vue'),
+      meta: { keepAlive: false, title: '对话回复' },
+    },
+    {
       path: '/fullpage',
       name: 'fullpage',
       mode: 'hash', // 使用 hash 模式 / Use hash mode for local routes.

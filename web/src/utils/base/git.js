@@ -39,6 +39,10 @@ function GitQueryStatus(gitConfig, callBack) {
     base.BasePost('/api/GitQueryStatus',gitConfig, callBack)
 }
 
+function GitPendingCommitPush(data, callBack) {
+    base.BasePost('/api/GitPendingCommitPush', data, callBack)
+}
+
 function GitLocalSetLastGroupId(groupId){
     store.setStore('last_group_id' , groupId)
 }
@@ -86,6 +90,7 @@ export default {
     GitPullBranchOrigin,
     GitChangeBranch,
     GitQueryStatus,
+    GitPendingCommitPush,
     GitCommitLog,
     GitConfigList,
     GitLocalSetLastGroupId,

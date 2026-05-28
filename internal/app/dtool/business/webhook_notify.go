@@ -48,22 +48,32 @@ func GetWebhookConfigByAgentCliId(agentCliId int) *define.WebhookConfigItem {
 	}
 }
 
+// 钉钉消息类型与按钮文案常量。
+const (
+	dingtalkMsgTypeText        = "text"
+	dingtalkMsgTypeActionCard  = "actionCard"
+	dingtalkActionCardBtnTitle = "查看详情"
+)
+
 // SendWebhookNotify 根据 webhook 配置发送通知，目前支持钉钉。
-func SendWebhookNotify(config *define.WebhookConfigItem, content string) error {
+// title 为消息标题；text 为消息正文（支持 Markdown）；singleURL 为查看详情按钮跳转地址，
+// 不为空时使用 actionCard 类型，为空时回退为普通 text 消息。
+func SendWebhookNotify(config *define.WebhookConfigItem, title, text, singleURL string) error {
 	if config == nil || config.WebhookUrl == "" {
 		return nil
 	}
 	switch config.Type {
 	case define.WebhookTypeDingtalk:
-		return sendDingtalkNotify(config.WebhookUrl, config.Secret, content)
+		return sendDingtalkNotify(config.WebhookUrl, config.Secret, title, text, singleURL)
 	default:
 		log.Printf("[webhook-notify] 暂不支持的类型: %s", config.Type)
 		return nil
 	}
 }
 
-// sendDingtalkNotify 发送钉钉文本消息，支持 HMAC-SHA256 加签。
-func sendDingtalkNotify(webhookUrl, secret, content string) error {
+// sendDingtalkNotify 发送钉钉消息，支持 HMAC-SHA256 加签。
+// 当 singleURL 不为空时使用 actionCard（带"查看详情"按钮），否则回退到 text 类型。
+func sendDingtalkNotify(webhookUrl, secret, title, text, singleURL string) error {
 	url := strings.TrimSpace(webhookUrl)
 
 	if secret != "" {
@@ -75,11 +85,32 @@ func sendDingtalkNotify(webhookUrl, secret, content string) error {
 		url = fmt.Sprintf("%s&timestamp=%s&sign=%s", url, timestamp, sign)
 	}
 
-	body := map[string]any{
-		"msgtype": "text",
-		"text": map[string]string{
-			"content": content,
-		},
+	var body map[string]any
+	if strings.TrimSpace(singleURL) != "" {
+		// 有跳转链接：使用 actionCard，钉钉官方字段名为驼峰（singleTitle/singleURL），不能用 snake_case。
+		body = map[string]any{
+			"msgtype": dingtalkMsgTypeActionCard,
+			"actionCard": map[string]any{
+				"title":       title,
+				"text":        text,
+				"singleTitle": dingtalkActionCardBtnTitle,
+				"singleURL":   singleURL,
+			},
+		}
+		log.Printf("[webhook-notify][dingtalk] 使用 actionCard, title_len=%d text_len=%d single_url=%s", len(title), len(text), singleURL)
+	} else {
+		// 无跳转链接：回退到普通文本，避免 actionCard 缺少必填 single_url 导致发送失败。
+		fallbackContent := text
+		if strings.TrimSpace(title) != "" {
+			fallbackContent = title + "\n" + text
+		}
+		body = map[string]any{
+			"msgtype": dingtalkMsgTypeText,
+			"text": map[string]string{
+				"content": fallbackContent,
+			},
+		}
+		log.Printf("[webhook-notify][dingtalk] singleURL 为空,回退到 text 类型 content_len=%d", len(fallbackContent))
 	}
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {

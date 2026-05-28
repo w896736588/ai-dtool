@@ -1,4 +1,5 @@
 import taskStore from '@/utils/task_progress_store'
+import codexParser from '@/utils/codex_chat_parser'
 
 // tryParse 尝试将值解析为 JSON 对象/数组，若已是对象/数组则直接返回
 function tryParse(v) {
@@ -115,7 +116,7 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
     if (subtype === 'init') {
       messages.push({ type: 'system_init', text: obj.is_resume ? '继续对话' : '会话已创建', model: obj.model || '', sessionId: obj.session_id || '' })
     } else if (subtype === 'command') {
-      messages.push({ type: 'system_command', text: obj.text || '', collapsed: true })
+      messages.push({ type: 'system_command', text: obj.text || '', cliType: obj.cli_type || '', cmdLine: obj.cmd_line || '', collapsed: true })
     } else if (subtype === 'hook_started' || subtype === 'hook_response') {
       messages.push({ type: 'system_hook', text: subtype === 'hook_started' ? 'Hook started: ' + (obj.hook_name || '') : 'Hook response: ' + (obj.hook_name || ''), collapsed: true })
     } else if (subtype === 'hook_progress') {
@@ -500,8 +501,28 @@ function flushParseState(parseState) {
   return msgs
 }
 
+// 带 cliType 分发的包装函数（cliType 默认 'claude'，不影响已有调用）
+function parseChatLinesDispatch(lines, cliType) {
+  if (cliType === 'codex') return codexParser.parseChatLines(lines)
+  return parseChatLines(lines)
+}
+
+function parseChatLinesIncrementalDispatch(newLines, parseState, msgIndexOffset, cliType) {
+  if (cliType === 'codex') return codexParser.parseChatLinesIncremental(newLines, parseState, msgIndexOffset)
+  return parseChatLinesIncremental(newLines, parseState, msgIndexOffset)
+}
+
+function flushParseStateDispatch(parseState, cliType) {
+  if (cliType === 'codex') return codexParser.flushParseState(parseState)
+  return flushParseState(parseState)
+}
+
 export default {
-  parseChatLines,
-  parseChatLinesIncremental,
-  flushParseState,
+  parseChatLines: parseChatLinesDispatch,
+  parseChatLinesIncremental: parseChatLinesIncrementalDispatch,
+  flushParseState: flushParseStateDispatch,
+  // 保留直接访问原始 Claude 解析器的途径（向后兼容）
+  _claudeParseChatLines: parseChatLines,
+  _claudeParseChatLinesIncremental: parseChatLinesIncremental,
+  _claudeFlushParseState: flushParseState,
 }

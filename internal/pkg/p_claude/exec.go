@@ -48,6 +48,11 @@ func RunClaudeStream(ctx context.Context, cfg RunConfig, callback func(msg Strea
 	defer result.closeFn()
 	log.Printf("[claude-exec] 进程已启动, pid=%d", result.pid)
 
+	// 进程启动回调，通知上层记录 PID
+	if cfg.ProcessStartCallback != nil {
+		cfg.ProcessStartCallback(result.pid)
+	}
+
 	// 后台收集 stderr
 	var stderrLines []string
 	stderrDone := make(chan struct{})
@@ -188,6 +193,39 @@ func sanitizePrompt(prompt string) string {
 		s = " " + s
 	}
 	return s
+}
+
+// BuildCommandLine 根据配置构建完整的 claude CLI 命令字符串（用于前端展示）。
+func BuildCommandLine(cfg RunConfig) string {
+	var sb strings.Builder
+	sb.WriteString(`claude`)
+	if cfg.SessionID != `` {
+		sb.WriteString(` --resume `)
+		sb.WriteString(cfg.SessionID)
+	}
+	sb.WriteString(` -p "`)
+	sb.WriteString(sanitizePrompt(cfg.Prompt))
+	sb.WriteString(`"`)
+	sb.WriteString(` --add-dir `)
+	sb.WriteString(cfg.WorkingDir)
+	sb.WriteString(` --output-format stream-json --include-partial-messages --verbose --permission-mode bypassPermissions`)
+	if cfg.Model != `` {
+		sb.WriteString(` --model `)
+		sb.WriteString(cfg.Model)
+	}
+	if cfg.UserDataDir != `` {
+		sb.WriteString(` --user-data-dir `)
+		sb.WriteString(cfg.UserDataDir)
+	}
+	if cfg.SettingsPath != `` {
+		sb.WriteString(` --settings `)
+		sb.WriteString(cfg.SettingsPath)
+	}
+	if cfg.Effort != `` {
+		sb.WriteString(` --effort `)
+		sb.WriteString(cfg.Effort)
+	}
+	return sb.String()
 }
 
 // extractSessionIDFromLine 从 stream-json 行提取 session_id。

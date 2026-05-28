@@ -51,9 +51,6 @@
         <el-menu-item v-if="checkModuleOpen('memory_fragment')" index="/MemoryFragment">
           <el-icon><Memo /></el-icon>
           <span>Knowledge</span>
-          <div v-if="gitPendingStatus.memoryPending" class="menu-countdown-bar">
-            <div class="menu-countdown-bar__fill" :style="{ width: memoryCountdownPercent + '%' }"></div>
-          </div>
         </el-menu-item>
         <el-menu-item v-if="checkModuleOpen('docker')" index="/Docker">
           <el-icon><Box /></el-icon>
@@ -74,9 +71,6 @@
         <el-menu-item index="/Set" class="menu-item-settings">
           <el-icon><Setting /></el-icon>
           <span>Setting</span>
-          <div v-if="gitPendingStatus.mainDBPending" class="menu-countdown-bar">
-            <div class="menu-countdown-bar__fill" :style="{ width: mainDBCountdownPercent + '%' }"></div>
-          </div>
         </el-menu-item>
       </el-menu>
 
@@ -518,40 +512,12 @@ export default {
         failed_count: 0,
         total: 0,
       },
-      gitPendingStatus: {
-        mainDBPending: false,
-        memoryPending: false,
-        mainDBNextPush: 0,
-        memoryNextPush: 0,
-        mainDBInterval: 600,
-        memoryInterval: 60,
-      },
-      countdownNow: Math.floor(Date.now() / 1000),
-      countdownTimer: null,
     }
   },
   computed: {
     // hideAppSidebar 控制某些独立页卡场景下隐藏应用左侧主菜单。
     hideAppSidebar() {
       return String(this.$route.query.hide_menu || '') === '1'
-    },
-    // memoryCountdownPercent 计算记忆库倒计时进度百分比（0~100）。
-    memoryCountdownPercent() {
-      if (!this.gitPendingStatus.memoryPending || !this.gitPendingStatus.memoryNextPush || !this.gitPendingStatus.memoryInterval) return 0
-      const remain = this.gitPendingStatus.memoryNextPush - this.countdownNow
-      const total = this.gitPendingStatus.memoryInterval
-      if (remain <= 0) return 100
-      const pct = Math.round((1 - remain / total) * 100)
-      return Math.max(0, Math.min(100, pct))
-    },
-    // mainDBCountdownPercent 计算主库倒计时进度百分比（0~100）。
-    mainDBCountdownPercent() {
-      if (!this.gitPendingStatus.mainDBPending || !this.gitPendingStatus.mainDBNextPush || !this.gitPendingStatus.mainDBInterval) return 0
-      const remain = this.gitPendingStatus.mainDBNextPush - this.countdownNow
-      const total = this.gitPendingStatus.mainDBInterval
-      if (remain <= 0) return 100
-      const pct = Math.round((1 - remain / total) * 100)
-      return Math.max(0, Math.min(100, pct))
     },
   },
   watch: {
@@ -580,10 +546,6 @@ export default {
     sseDistribute.RegisterReceive('safe_auth_required', function(data) {
       _that.handleSafeAuthRequired(data)
     })
-    // 注册 Git 待提交状态 SSE 监听（替代轮询）
-    sseDistribute.RegisterReceive('git_pending_status', function(data) {
-      _that.handleGitPendingStatusUpdate(data)
-    })
     this.ensureAsyncTaskNotificationPermission()
     this.menuName = this.$route.path || '/Dashboard'
     window.addEventListener('resize', function () {});
@@ -591,10 +553,6 @@ export default {
     if (this.$eventBus) {
       this.$eventBus.on('safe_auth_required', this.showSafeLogin)
     }
-    // 启动倒计时每秒更新
-    this.countdownTimer = setInterval(function() {
-      _that.countdownNow = Math.floor(Date.now() / 1000)
-    }, 1000)
   },
   provide() {
     return {
@@ -603,16 +561,6 @@ export default {
     };
   },
   methods: {
-    // 处理 SSE 推送的 Git 待提交状态数据
-    handleGitPendingStatusUpdate: function (data) {
-      if (!data) return
-      this.gitPendingStatus.mainDBPending = !!data.main_db_pending
-      this.gitPendingStatus.memoryPending = !!data.memory_pending
-      this.gitPendingStatus.mainDBNextPush = data.main_db_next_push || 0
-      this.gitPendingStatus.memoryNextPush = data.memory_next_push || 0
-      this.gitPendingStatus.mainDBInterval = data.main_db_interval || 600
-      this.gitPendingStatus.memoryInterval = data.memory_interval || 60
-    },
     OpenNewBlank: function () {
       window.open(window.location.href, '_blank');
     },
@@ -1188,10 +1136,6 @@ export default {
     if (this.sshConnectionTimer) {
       clearInterval(this.sshConnectionTimer)
       this.sshConnectionTimer = null
-    }
-    if (this.countdownTimer) {
-      clearInterval(this.countdownTimer)
-      this.countdownTimer = null
     }
   },
   components: {

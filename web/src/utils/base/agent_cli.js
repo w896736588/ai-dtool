@@ -35,6 +35,23 @@ function AgentCliToggleClaudeMem(data, callBack) {
   base.BasePost('/api/AgentCliToggleClaudeMem', data, callBack)
 }
 
+// AgentCliToggleEnabled 切换 Agent CLI 启停
+function AgentCliToggleEnabled(data, callBack) {
+  base.BasePost('/api/AgentCliToggleEnabled', data, callBack)
+}
+
+// AgentChatSend 发送独立 Agent CLI 对话
+function AgentChatSend(data, callBack) {
+  base.BasePost('/api/agent/chat/send', data, callBack)
+}
+
+// AgentChatListByAgentCli 按 Agent CLI 查询独立执行历史
+function AgentChatListByAgentCli(agentCliId, callBack) {
+  base.BasePost('/api/agent/chat/list-by-agent-cli', {
+    agent_cli_id: agentCliId,
+  }, callBack)
+}
+
 // WebhookConfigList 获取 Webhook 配置列表
 function WebhookConfigList(callBack) {
   base.BasePost('/api/WebhookConfigList', {}, callBack)
@@ -50,6 +67,26 @@ function WebhookConfigDelete(id, callBack) {
   base.BasePost('/api/WebhookConfigDelete', { id: id }, callBack)
 }
 
+// AgentCliGroupList 获取 AgentCli 专用分组列表
+function AgentCliGroupList(callBack) {
+  base.BasePost('/api/AgentCliGroupList', {}, callBack)
+}
+
+// AgentCliGroupSave 新增/编辑 AgentCli 分组
+function AgentCliGroupSave(data, callBack) {
+  base.BasePost('/api/AgentCliGroupSave', data, callBack)
+}
+
+// AgentCliGroupDelete 删除 AgentCli 分组
+function AgentCliGroupDelete(id, callBack) {
+  base.BasePost('/api/AgentCliGroupDelete', { id: id }, callBack)
+}
+
+// AgentCliGroupRelSave 保存 AgentCli 的分组关联
+function AgentCliGroupRelSave(data, callBack) {
+  base.BasePost('/api/AgentCliGroupRelSave', data, callBack)
+}
+
 export default {
   AgentCliList,
   AgentCliSave,
@@ -58,7 +95,14 @@ export default {
   AgentCliWriteMcpServers,
   AgentCliWriteDeepSeek,
   AgentCliToggleClaudeMem,
+  AgentCliToggleEnabled,
+  AgentChatSend,
+  AgentChatListByAgentCli,
   WebhookConfigList,
   WebhookConfigSave,
   WebhookConfigDelete,
+  AgentCliGroupList,
+  AgentCliGroupSave,
+  AgentCliGroupDelete,
+  AgentCliGroupRelSave,
 }

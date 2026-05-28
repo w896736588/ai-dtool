@@ -266,7 +266,6 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/MemoryConfigGet`, controller.SetMemoryConfigGet)
 	tGin.GinPost(`/api/Set/MemoryConfigSave`, controller.SetMemoryConfigSave)
 	tGin.GinPost(`/api/Set/RuntimeConfigSave`, controller.SetRuntimeConfigSave)
-	tGin.GinPost(`/api/Set/RuntimeDatabaseGitSync`, controller.SetRuntimeDatabaseGitSync)
 	tGin.GinPost(`/api/Set/RuntimeConfigItemSave`, controller.SetRuntimeConfigItemSave)
 	tGin.GinPost(`/api/Set/CronConfigTypes`, controller.SetCronConfigTypes)
 	tGin.GinPost(`/api/Set/CronConfigGet`, controller.SetCronConfigGet)
@@ -276,6 +275,7 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/PromptChangeLogList`, controller.SetPromptChangeLogList)
 	tGin.GinPost(`/api/Set/LocalDirList`, controller.SetLocalDirList)
 	tGin.GinPost(`/api/Set/LocalDirBatchCheck`, controller.SetLocalDirBatchCheck)
+	tGin.GinPost(`/api/Set/LocalBranchBatchCheck`, controller.SetLocalBranchBatchCheck)
 	tGin.GinPost(`/api/Set/OpenLocalDir`, controller.SetOpenLocalDir)
 }
 
@@ -296,6 +296,7 @@ func setMarkdown(tGin *p_gin.Gin) {
 
 func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/GitPendingStatus`, controller.GitPendingStatus)
+	tGin.GinPost(`/api/GitPendingCommitPush`, controller.GitPendingCommitPush)
 	tGin.GinPost(`/api/MemoryFragmentStatus`, controller.MemoryFragmentStatus)
 	tGin.GinPost(`/api/MemoryFragmentList`, controller.MemoryFragmentList)
 	tGin.GinPost(`/api/MemoryFragmentInfo`, controller.MemoryFragmentInfo)
@@ -315,7 +316,6 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinGet(`/api/MemoryFragmentDownloadZip`, controller.MemoryFragmentDownloadZip)
 	tGin.GinPost(`/api/MemoryFragmentBatchInfoByPaths`, controller.MemoryFragmentBatchInfoByPaths)
 	tGin.GinPost(`/api/MemoryFragmentReferences`, controller.MemoryFragmentReferences)
-	tGin.GinPost(`/api/MemoryGitPull`, controller.MemoryGitPull)
 	tGin.GinPost(`/api/AsyncTaskList`, controller.AsyncTaskList)
 	tGin.GinPost(`/api/AsyncTaskInfo`, controller.AsyncTaskInfo)
 	tGin.GinPost(`/api/AsyncTaskAction`, controller.AsyncTaskAction)
@@ -365,6 +365,9 @@ func taskWorkflow(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/task/workflow/chat/detail`, controller.TaskWorkflowChatDetail)
 	tGin.GinPost(`/api/task/workflow/chat/dirs`, controller.TaskWorkflowChatDirs)
 	tGin.GinPost(`/api/task/workflow/chat/list-by-prompt-type`, controller.TaskWorkflowChatListByPromptType)
+	tGin.GinPost(`/api/task/workflow/chat/list-by-agent-cli`, controller.TaskWorkflowChatListByAgentCli)
+	tGin.GinPost(`/api/agent/chat/send`, controller.AgentChatSend)
+	tGin.GinPost(`/api/agent/chat/list-by-agent-cli`, controller.AgentChatListByAgentCli)
 	tGin.GinPost(`/api/task/workflow/zcode/save`, controller.TaskWorkflowZcodeSave)
 	tGin.GinPost(`/api/task/workflow/zcode/get`, controller.TaskWorkflowZcodeGet)
 	tGin.GinPost(`/api/task/workflow/zcode/delete`, controller.TaskWorkflowZcodeDelete)
@@ -572,6 +575,12 @@ func agentCli(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/AgentCliWriteMcpServers`, controller.AgentCliWriteMcpServers)
 	tGin.GinPost(`/api/AgentCliWriteDeepSeek`, controller.AgentCliWriteDeepSeek)
 	tGin.GinPost(`/api/AgentCliToggleClaudeMem`, controller.AgentCliToggleClaudeMem)
+	tGin.GinPost(`/api/AgentCliToggleEnabled`, controller.AgentCliToggleEnabled)
+	// AgentCli 分组管理
+	tGin.GinPost(`/api/AgentCliGroupList`, controller.AgentCliGroupList)
+	tGin.GinPost(`/api/AgentCliGroupSave`, controller.AgentCliGroupSave)
+	tGin.GinPost(`/api/AgentCliGroupDelete`, controller.AgentCliGroupDelete)
+	tGin.GinPost(`/api/AgentCliGroupRelSave`, controller.AgentCliGroupRelSave)
 }
 
 // webhookConfig 路由

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -25,6 +26,14 @@ func (h *MemoryGit) IsGitRepo(dir string) (bool, error) {
 	return strings.TrimSpace(output) == `true`, nil
 }
 
+func (h *MemoryGit) RootDir(dir string) (string, error) {
+	output, err := h.run(dir, `rev-parse`, `--show-toplevel`)
+	if err != nil {
+		return ``, err
+	}
+	return strings.TrimSpace(output), nil
+}
+
 func (h *MemoryGit) Pull(dir string) error {
 	_, err := h.run(dir, `pull`)
 	return err
@@ -36,6 +45,39 @@ func (h *MemoryGit) HasFileChanges(dir, fileName string) (bool, error) {
 		return false, err
 	}
 	return strings.TrimSpace(output) != ``, nil
+}
+
+func (h *MemoryGit) ListChangedFiles(dir, fileName string) ([]string, error) {
+	output, err := h.run(dir, `status`, `--porcelain`, `--`, fileName)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(strings.ReplaceAll(output, "\r", ""), "\n")
+	result := make([]string, 0, len(lines))
+	seen := make(map[string]bool)
+	for _, line := range lines {
+		rawLine := strings.TrimRight(line, " \t")
+		if strings.TrimSpace(rawLine) == `` {
+			continue
+		}
+		if len(rawLine) < 4 {
+			continue
+		}
+		pathText := strings.TrimSpace(rawLine[3:])
+		if pathText == `` {
+			continue
+		}
+		if strings.Contains(pathText, ` -> `) {
+			parts := strings.Split(pathText, ` -> `)
+			pathText = strings.TrimSpace(parts[len(parts)-1])
+		}
+		pathText = filepath.ToSlash(pathText)
+		if !seen[pathText] {
+			seen[pathText] = true
+			result = append(result, pathText)
+		}
+	}
+	return result, nil
 }
 
 func (h *MemoryGit) AddFile(dir, fileName string) error {
@@ -64,7 +106,14 @@ func (h *MemoryGit) run(dir string, args ...string) (string, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
-	output := strings.TrimSpace(stdout.String() + "\n" + stderr.String())
+	output := stdout.String()
+	if stderr.Len() > 0 {
+		if output != `` && !strings.HasSuffix(output, "\n") {
+			output += "\n"
+		}
+		output += stderr.String()
+	}
+	output = strings.TrimRight(output, " \r\n\t")
 	if err != nil {
 		return output, fmt.Errorf(`git %s 失败: %s`, strings.Join(args, ` `), output)
 	}

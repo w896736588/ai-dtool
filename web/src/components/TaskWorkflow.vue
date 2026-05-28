@@ -37,12 +37,17 @@
           <GitActionButton compact variant="warning" @click="openIssueFixDialog">
             问题修改提示词
           </GitActionButton>
-          <GitActionButton compact :class="{ 'chat-history-btn--running': getPromptChatCounts('issue_fix').running > 0 }" @click="openChatHistoryDialog">
+          <ChatHistoryButton
+            compact
+            variant="info"
+            :running="getPromptChatCounts('issue_fix').running > 0"
+            :running-count="getPromptChatCounts('issue_fix').running"
+            :interrupted-count="getPromptChatCounts('issue_fix').interrupted"
+            :total-count="getPromptChatCounts('issue_fix').total"
+            @click="openChatHistoryDialog"
+          >
             历史对话
-            <span v-if="getPromptChatCounts('issue_fix').total > 0" class="chat-history-btn__counts">
-              {{ getPromptChatCounts('issue_fix').running }}/{{ getPromptChatCounts('issue_fix').interrupted }}/{{ getPromptChatCounts('issue_fix').total }}
-            </span>
-          </GitActionButton>
+          </ChatHistoryButton>
           <!--
           <GitActionButton compact variant="success" @click="openZcodeConfigDialog">
             zcode配置
@@ -58,9 +63,9 @@
               <span class="task-workflow-header__dev-sep">|</span>
               <span class="task-workflow-header__dev-item">父分支: {{ cfg.parent_branch || '-' }}</span>
               <span class="task-workflow-header__dev-sep">|</span>
-              <span class="task-workflow-header__dev-item">分支名: <span class="task-workflow-header__branch" @click="copyText(cfg.branch_name, '分支名已复制')" :title="cfg.branch_name">{{ truncateWorkflowLabel(cfg.branch_name || '-') }}</span></span>
+              <span class="task-workflow-header__dev-item">分支名: <span class="task-workflow-header__branch" @click="copyText(cfg.branch_name, '分支名已复制')" :title="cfg.branch_name">{{ truncateWorkflowLabel(cfg.branch_name || '-') }}</span><el-tooltip v-if="cfg.local_dir && cfg.branch_name && branchStatusMap[cfg.local_dir + '|' + cfg.branch_name]" :content="branchStatusMap[cfg.local_dir + '|' + cfg.branch_name].matched ? '分支匹配' : '当前分支: ' + (branchStatusMap[cfg.local_dir + '|' + cfg.branch_name].current_branch || '未知')" placement="top"><span style="display: inline-flex; align-items: center; vertical-align: middle; margin-left: 4px;" :style="{ color: branchStatusMap[cfg.local_dir + '|' + cfg.branch_name].matched ? '#4caf50' : '#e53935' }"><svg v-if="branchStatusMap[cfg.local_dir + '|' + cfg.branch_name].matched" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span></el-tooltip></span>
               <span class="task-workflow-header__dev-sep">|</span>
-              <span class="task-workflow-header__dev-item">本地目录: {{ cfg.local_dir || '-' }}</span>
+              <span class="task-workflow-header__dev-item">本地目录: {{ cfg.local_dir || '-' }}<el-tooltip v-if="cfg.local_dir && localDirStatusMap[cfg.local_dir] !== undefined" :content="localDirStatusMap[cfg.local_dir] ? '目录存在' : '目录不存在'" placement="top"><span style="display: inline-flex; align-items: center; vertical-align: middle; margin-left: 4px;" :style="{ color: localDirStatusMap[cfg.local_dir] ? '#4caf50' : '#e53935' }"><svg v-if="localDirStatusMap[cfg.local_dir]" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span></el-tooltip></span>
             </div>
           </div>
         </div>
@@ -246,12 +251,17 @@
                   <template #icon><el-icon><VideoPlay /></el-icon></template>
                   执行
                 </GitActionButton>
-                <GitActionButton compact variant="info" :class="{ 'chat-history-btn--running': getPromptChatCounts('plain_text_requirement').running > 0 }" @click="openPromptChatHistory('plain_text_requirement')">
+                <ChatHistoryButton
+                  compact
+                  variant="info"
+                  :running="getPromptChatCounts('plain_text_requirement').running > 0"
+                  :running-count="getPromptChatCounts('plain_text_requirement').running"
+                  :interrupted-count="getPromptChatCounts('plain_text_requirement').interrupted"
+                  :total-count="getPromptChatCounts('plain_text_requirement').total"
+                  @click="openPromptChatHistory('plain_text_requirement')"
+                >
                   执行历史
-                  <span v-if="getPromptChatCounts('plain_text_requirement').total > 0" class="chat-history-btn__counts">
-                    {{ getPromptChatCounts('plain_text_requirement').running }}/{{ getPromptChatCounts('plain_text_requirement').interrupted }}/{{ getPromptChatCounts('plain_text_requirement').total }}
-                  </span>
-                </GitActionButton>
+                </ChatHistoryButton>
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'plain_text_requirement'" @click="restorePrompts('plain_text_requirement')">
                   还原为默认提示词
                 </GitActionButton>
@@ -310,12 +320,17 @@
                   <template #icon><el-icon><VideoPlay /></el-icon></template>
                   执行
                 </GitActionButton>
-                <GitActionButton compact variant="info" :class="{ 'chat-history-btn--running': getPromptChatCounts('requirement').running > 0 }" @click="openPromptChatHistory('requirement')">
+                <ChatHistoryButton
+                  compact
+                  variant="info"
+                  :running="getPromptChatCounts('requirement').running > 0"
+                  :running-count="getPromptChatCounts('requirement').running"
+                  :interrupted-count="getPromptChatCounts('requirement').interrupted"
+                  :total-count="getPromptChatCounts('requirement').total"
+                  @click="openPromptChatHistory('requirement')"
+                >
                   执行历史
-                  <span v-if="getPromptChatCounts('requirement').total > 0" class="chat-history-btn__counts">
-                    {{ getPromptChatCounts('requirement').running }}/{{ getPromptChatCounts('requirement').interrupted }}/{{ getPromptChatCounts('requirement').total }}
-                  </span>
-                </GitActionButton>
+                </ChatHistoryButton>
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'requirement'" @click="restorePrompts('requirement')">
                   还原为默认提示词
                 </GitActionButton>
@@ -355,12 +370,17 @@
                   <template #icon><el-icon><VideoPlay /></el-icon></template>
                   执行
                 </GitActionButton>
-                <GitActionButton compact variant="info" :class="{ 'chat-history-btn--running': getPromptChatCounts('design_plan_requirement').running > 0 }" @click="openPromptChatHistory('design_plan_requirement')">
+                <ChatHistoryButton
+                  compact
+                  variant="info"
+                  :running="getPromptChatCounts('design_plan_requirement').running > 0"
+                  :running-count="getPromptChatCounts('design_plan_requirement').running"
+                  :interrupted-count="getPromptChatCounts('design_plan_requirement').interrupted"
+                  :total-count="getPromptChatCounts('design_plan_requirement').total"
+                  @click="openPromptChatHistory('design_plan_requirement')"
+                >
                   执行历史
-                  <span v-if="getPromptChatCounts('design_plan_requirement').total > 0" class="chat-history-btn__counts">
-                    {{ getPromptChatCounts('design_plan_requirement').running }}/{{ getPromptChatCounts('design_plan_requirement').interrupted }}/{{ getPromptChatCounts('design_plan_requirement').total }}
-                  </span>
-                </GitActionButton>
+                </ChatHistoryButton>
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'design_plan_requirement'" @click="restorePrompts('design_plan_requirement')">
                   还原为默认提示词
                 </GitActionButton>
@@ -406,12 +426,17 @@
                   <template #icon><el-icon><VideoPlay /></el-icon></template>
                   执行
                 </GitActionButton>
-                <GitActionButton compact variant="info" :class="{ 'chat-history-btn--running': getPromptChatCounts('design').running > 0 }" @click="openPromptChatHistory('design')">
+                <ChatHistoryButton
+                  compact
+                  variant="info"
+                  :running="getPromptChatCounts('design').running > 0"
+                  :running-count="getPromptChatCounts('design').running"
+                  :interrupted-count="getPromptChatCounts('design').interrupted"
+                  :total-count="getPromptChatCounts('design').total"
+                  @click="openPromptChatHistory('design')"
+                >
                   执行历史
-                  <span v-if="getPromptChatCounts('design').total > 0" class="chat-history-btn__counts">
-                    {{ getPromptChatCounts('design').running }}/{{ getPromptChatCounts('design').interrupted }}/{{ getPromptChatCounts('design').total }}
-                  </span>
-                </GitActionButton>
+                </ChatHistoryButton>
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'design'" @click="restorePrompts('design')">
                   还原为默认提示词
                 </GitActionButton>
@@ -460,12 +485,9 @@
                   <template #icon><el-icon><VideoPlay /></el-icon></template>
                   执行
                 </GitActionButton>
-                <GitActionButton compact variant="info" :class="{ 'chat-history-btn--running': getPromptChatCounts('api_dev').running > 0 }" @click="openPromptChatHistory('api_dev')">
+                <ChatHistoryButton compact variant="info" :running="getPromptChatCounts('api_dev').running > 0" :running-count="getPromptChatCounts('api_dev').running" :interrupted-count="getPromptChatCounts('api_dev').interrupted" :total-count="getPromptChatCounts('api_dev').total" @click="openPromptChatHistory('api_dev')">
                   执行历史
-                  <span v-if="getPromptChatCounts('api_dev').total > 0" class="chat-history-btn__counts">
-                    {{ getPromptChatCounts('api_dev').running }}/{{ getPromptChatCounts('api_dev').interrupted }}/{{ getPromptChatCounts('api_dev').total }}
-                  </span>
-                </GitActionButton>
+                </ChatHistoryButton>
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'api_dev'" @click="restorePrompts('api_dev')">
                   还原为默认提示词
                 </GitActionButton>
@@ -507,12 +529,9 @@
                   <template #icon><el-icon><VideoPlay /></el-icon></template>
                   执行
                 </GitActionButton>
-                <GitActionButton compact variant="info" :class="{ 'chat-history-btn--running': getPromptChatCounts('code_review').running > 0 }" @click="openPromptChatHistory('code_review')">
+                <ChatHistoryButton compact variant="info" :running="getPromptChatCounts('code_review').running > 0" :running-count="getPromptChatCounts('code_review').running" :interrupted-count="getPromptChatCounts('code_review').interrupted" :total-count="getPromptChatCounts('code_review').total" @click="openPromptChatHistory('code_review')">
                   执行历史
-                  <span v-if="getPromptChatCounts('code_review').total > 0" class="chat-history-btn__counts">
-                    {{ getPromptChatCounts('code_review').running }}/{{ getPromptChatCounts('code_review').interrupted }}/{{ getPromptChatCounts('code_review').total }}
-                  </span>
-                </GitActionButton>
+                </ChatHistoryButton>
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'code_review'" @click="restorePrompts('code_review')">
                   还原为默认提示词
                 </GitActionButton>
@@ -554,12 +573,9 @@
                   <template #icon><el-icon><VideoPlay /></el-icon></template>
                   执行
                 </GitActionButton>
-                <GitActionButton compact variant="info" :class="{ 'chat-history-btn--running': getPromptChatCounts('browser_test').running > 0 }" @click="openPromptChatHistory('browser_test')">
+                <ChatHistoryButton compact variant="info" :running="getPromptChatCounts('browser_test').running > 0" :running-count="getPromptChatCounts('browser_test').running" :interrupted-count="getPromptChatCounts('browser_test').interrupted" :total-count="getPromptChatCounts('browser_test').total" @click="openPromptChatHistory('browser_test')">
                   执行历史
-                  <span v-if="getPromptChatCounts('browser_test').total > 0" class="chat-history-btn__counts">
-                    {{ getPromptChatCounts('browser_test').running }}/{{ getPromptChatCounts('browser_test').interrupted }}/{{ getPromptChatCounts('browser_test').total }}
-                  </span>
-                </GitActionButton>
+                </ChatHistoryButton>
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'browser_test'" @click="restorePrompts('browser_test')">
                   还原为默认提示词
                 </GitActionButton>
@@ -601,12 +617,9 @@
                   <template #icon><el-icon><VideoPlay /></el-icon></template>
                   执行
                 </GitActionButton>
-                <GitActionButton compact variant="info" :class="{ 'chat-history-btn--running': getPromptChatCounts('api_test').running > 0 }" @click="openPromptChatHistory('api_test')">
+                <ChatHistoryButton compact variant="info" :running="getPromptChatCounts('api_test').running > 0" :running-count="getPromptChatCounts('api_test').running" :interrupted-count="getPromptChatCounts('api_test').interrupted" :total-count="getPromptChatCounts('api_test').total" @click="openPromptChatHistory('api_test')">
                   执行历史
-                  <span v-if="getPromptChatCounts('api_test').total > 0" class="chat-history-btn__counts">
-                    {{ getPromptChatCounts('api_test').running }}/{{ getPromptChatCounts('api_test').interrupted }}/{{ getPromptChatCounts('api_test').total }}
-                  </span>
-                </GitActionButton>
+                </ChatHistoryButton>
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'api_test'" @click="restorePrompts('api_test')">
                   还原为默认提示词
                 </GitActionButton>
@@ -689,7 +702,15 @@
           />
         </div>
         <div class="task-workflow-issue-fix__output">
-          <div class="task-workflow-issue-fix__label">完整提示词</div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="task-workflow-issue-fix__label" style="margin-bottom: 0;">完整提示词</span>
+            <el-switch
+              v-model="issueFixUseDefaultPrompt"
+              active-text="使用默认提示词"
+              inactive-text=""
+              style="--el-switch-on-color: #5a8a5a; margin-left: 8px;"
+            />
+          </div>
           <MdEditor
             v-model="issueFixCombinedText"
             preview-theme="github"
@@ -746,17 +767,27 @@
       destroy-on-close
     >
       <el-form label-width="80px">
-        <el-form-item label="cli">
-          <el-select v-model="promptExecCliId" style="width: 100%;" placeholder="请选择 Agent CLI 实例" @change="onPromptExecCliChange">
+        <el-form-item label="Agent">
+          <el-select v-model="promptExecCliId" style="width: 100%;" placeholder="请选择 Agent 实例" @change="onPromptExecCliChange">
             <el-option
               v-for="cli in promptExecCliList"
               :key="cli.id"
-              :label="cli.name + ' (' + cli.current_model + ')'"
+              :label="cli.name + ' (' + cli.current_model + ')' + (cli.type === 'codex-cli' ? ' [Codex]' : '')"
               :value="cli.id"
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="思考强度">
+        <el-form-item label="模型">
+          <el-select v-model="promptExecModelName" style="width: 100%;" placeholder="请选择模型">
+            <el-option
+              v-for="modelName in promptExecModelOptions"
+              :key="modelName"
+              :label="modelName"
+              :value="modelName"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="getSelectedCliType() !== 'codex'" label="思考强度">
           <el-select v-model="promptExecThinkingIntensity" style="width: 100%;" placeholder="请选择思考强度">
             <el-option label="低" value="低" />
             <el-option label="中等" value="中等" />
@@ -775,308 +806,49 @@
     </el-dialog>
 
     <!-- 执行历史弹窗（按 prompt_type） -->
-    <el-dialog
+    <ChatHistoryDialog
+      ref="promptChatHistoryDialog"
       v-model="promptChatHistoryVisible"
       :title="promptChatHistoryPromptType ? '执行历史 - ' + promptChatHistoryTitle : '历史对话'"
-      width="80vw"
-      top="3vh"
-      destroy-on-close
+      :loading="promptChatHistoryLoading"
+      :items="promptChatHistoryList"
+      :selected-id="promptChatDetailId"
+      :detail-title="homeTask.name || '-'"
+      :model-name="chatDetailModelName"
+      :agent-name="chatDetailAgentName"
+      :local-dir="chatDetailLocalDir"
+      :thinking-intensity="chatDetailThinkingIntensity"
+      :detail-status="chatDetailStatus"
+      :detail-cli-type="chatDetailCliType"
+      :detail-messages="chatDetailMessages"
+      :continue-input="chatContinueInput"
+      :continue-loading="chatContinueLoading"
+      :scroll-button-visible="promptChatDetailShowScrollBtn"
+      :running-text="'等待 claude code 响应...'"
+      :thinking-stream-elapsed="thinkingStreamElapsed"
+      :item-msg-count-fn="getItemMsgCount"
+      :runtime-duration-text-fn="runtimeDurationText"
+      :format-duration-display-fn="formatDurationDisplay"
+      :format-created-at-fn="formatCreatedAt"
+      :render-markdown-fn="renderMarkdown"
+      :is-current-thinking-fn="isCurrentThinking"
+      :format-cli-type-fn="formatCliType"
+      :is-long-text-fn="isLongText"
+      :truncate-cmd-prompt-fn="truncateCmdPrompt"
+      :stop-reason-label-fn="stopReasonLabel"
+      :format-num-fn="formatNum"
+      @select="onPromptChatRowClick"
+      @update:continueInput="chatContinueInput = $event"
+      @continue="continueChat"
+      @stop="stopChat"
+      @scroll="onPromptChatDetailScroll"
+      @scroll-to-bottom="scrollPromptChatToBottom(true)"
       @closed="onPromptChatHistoryClosed"
     >
-      <div class="chat-combined-body" v-loading="promptChatHistoryLoading">
-        <div class="chat-combined-list">
-          <div
-            v-for="item in promptChatHistoryList"
-            :key="item.id"
-            :class="['chat-list-item', { 'chat-list-item--active': promptChatDetailId === item.id }]"
-            @click="onPromptChatRowClick(item)"
-          >
-            <div class="chat-list-item__name" :title="item.prompt || '未命名'"><span class="chat-list-item__id">{{ item.id }}</span>{{ (item.prompt || '未命名').substring(0, 30) }}{{ (item.prompt || '').length > 30 ? '...' : '' }}</div>
-            <div class="chat-list-item__time">
-              <span v-if="item.status === 'running' && runtimeDurationText(item)" style="color: #409eff;">{{ runtimeDurationText(item) }}</span>
-              <span v-else-if="item.duration_ms > 0">{{ formatDurationDisplay(item.duration_ms) }}</span>
-              <span v-else>{{ item.created_at || '-' }}</span>
-              <span v-if="getItemMsgCount(item) > 0" class="chat-list-item__msg-count">{{ getItemMsgCount(item) }}条</span>
-            </div>
-            <span :class="['chat-list-item__status', 'chat-list-item__status--' + (item.status || '')]">
-              <span v-if="item.status === 'running'" class="chat-list-item__running-dot"></span>
-              <span v-else-if="item.status === 'error'" class="chat-list-item__error-icon">!</span>
-              {{ statusText(item.status) }} {{ formatCreatedAt(item.created_at) }}
-            </span>
-          </div>
-          <div v-if="promptChatHistoryList.length === 0 &amp;&amp; !promptChatHistoryLoading" class="chat-combined-list__empty">暂无执行记录</div>
-        </div>
-        <div class="chat-combined-detail">
-          <div v-if="!promptChatDetailId" class="chat-combined-detail__placeholder">请选择一条执行记录</div>
-          <template v-else>
-            <div class="chat-detail-task-name">{{ homeTask.name || '-' }}</div>
-            <div v-if="chatDetailModelName || chatDetailLocalDir" style="margin-bottom: 12px; color: #909399; font-size: 12px;">
-              <span v-if="chatDetailModelName">模型: {{ chatDetailModelName }}</span>
-              <span v-if="chatDetailModelName &amp;&amp; chatDetailLocalDir"> | </span>
-              <span v-if="chatDetailLocalDir">目录: {{ chatDetailLocalDir }}</span>
-            </div>
-            <div ref="promptChatDetailContainer" class="chat-detail-container" @scroll="onPromptChatDetailScroll">
-              <div v-if="chatDetailMessages.length === 0 &amp;&amp; chatDetailStatus === 'running'" style="text-align: center; padding: 40px; color: #909399;">
-                <div>等待 claude code 响应...</div>
-              </div>
-              <div v-for="(msg, idx) in chatDetailMessages" :key="idx" style="margin-bottom: 8px;">
-                <div v-if="msg.type === 'system_init'" style="color: #67c23a; font-size: 12px; padding: 4px 0;">
-                  {{ msg.text }} | model: {{ msg.model }}
-                </div>
-                <div v-else-if="msg.type === 'system_command'" style="display: flex; justify-content: flex-end; margin: 4px 0;">
-                  <div style="background: #ecf5ff; border-radius: 8px 8px 0 8px; padding: 8px 12px; max-width: 75%; width: fit-content; border: 1px solid #d9ecff;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-                      <span style="font-size: 11px; color: #909399;">提示词</span>
-                      <span v-if="needCollapseBtn(msg.text)" @click="msg.collapsed = !msg.collapsed" style="cursor: pointer; font-size: 11px; color: #409eff; user-select: none;">{{ msg.collapsed ? '展开 ▼' : '收起 ▲' }}</span>
-                    </div>
-                    <div :style="{ maxHeight: needCollapseBtn(msg.text) && msg.collapsed ? '16em' : 'none', overflow: 'hidden', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px', color: '#303133', lineHeight: '1.6' }">{{ msg.text }}</div>
-                  </div>
-                </div>
-                <div v-else-if="msg.type === 'system_hook'" style="color: #909399; font-size: 12px;">
-                  <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶' : '▼' }} {{ msg.text }}</span>
-                  <div v-if="!msg.collapsed && (msg.stderr || msg.output)" style="margin-top: 4px; padding: 6px 8px; background: #f5f5f5; border-radius: 4px; font-size: 11px; white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow-y: auto;">
-                    <div v-if="msg.stderr" style="color: #e6a23c;">{{ msg.stderr }}</div>
-                    <div v-if="msg.output" style="color: #606266;">{{ msg.output }}</div>
-                  </div>
-                </div>
-                <div v-else-if="msg.type === 'system'" style="color: #909399; font-size: 11px;">{{ msg.text }}</div>
-                <!-- system_status: claude code 状态 -->
-                <div v-else-if="msg.type === 'system_status'" style="color: #909399; font-size: 12px; padding: 2px 0;">
-                  <span :style="msg.status === 'requesting' ? 'color: #409eff;' : ''">{{ msg.text }}</span>
-                </div>
-                <!-- system_task: 后台任务 (task_started / task_notification) -->
-                <div v-else-if="msg.type === 'system_task'" style="color: #909399; font-size: 12px; padding: 2px 0;">
-                  <span v-if="(msg.status === 'started' || msg.status === 'running') && chatDetailStatus === 'running'" class="chat-detail-status-spinner"></span>
-                  <span :style="msg.status === 'started' ? 'color: #409eff;' : ''">🔧 {{ msg.description }}</span>
-                  <span style="margin-left: 8px; font-size: 11px;">{{ msg.status === 'started' ? '启动' : msg.status }}</span>
-                </div>
-                <div v-else-if="msg.type === 'assistant'">
-                  <div v-if="msg.thinking" style="margin-bottom: 8px;">
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                      <span v-if="isCurrentThinking(msg)" class="chat-detail-status-spinner"></span>
-                      <span v-if="isCurrentThinking(msg)" style="color: #409eff; font-size: 12px;">思考过程 持续{{ thinkingStreamElapsed }}s</span>
-                      <span v-else style="color: #909399; font-size: 12px;">思考过程{{ msg._thinkingTiming && msg._thinkingTiming.durationMs ? ' (' + (msg._thinkingTiming.durationMs / 1000).toFixed(1) + 's)' : '' }}</span>
-                      <span @click="toggleThinkingCollapse(msg)" style="cursor: pointer; font-weight: bold; font-size: 12px; color: #909399;">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
-                    </div>
-                    <div v-if="!msg._thinkingCollapsed" class="thinking-blockquote">{{ msg.thinking }}</div>
-                  </div>
-                  <div v-for="(block, bi) in msg.content" :key="bi">
-                    <div v-if="block.type === 'text'" class="markdown-body chat-markdown-body" v-html="renderMarkdown(block.text)"></div>
-                    <div v-else-if="block.type === 'tool_use'" style="background: #f0f9eb; border-radius: 4px; padding: 8px; margin: 4px 0;">
-                      <div style="display: flex; align-items: center; gap: 4px;">
-                        <span v-if="!block._result && chatDetailStatus === 'running'" class="chat-detail-status-spinner"></span>
-                        <span style="color: #67c23a; font-weight: 500;">🔧 {{ block.name }}</span>
-                        <span v-if="block.displayInput" style="font-size: 12px; color: #303133; font-family: Consolas, monospace;">{{ block.displayInput }}</span>
-                      </div>
-                      <!-- TodoWrite / TaskCreate / TaskUpdate 任务列表可视化 -->
-                      <div v-if="block._tasks" style="margin-top: 6px;">
-                        <div v-for="(task, ti) in block._tasks" :key="ti" style="display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px;">
-                          <span :style="{ color: task.status === 'completed' ? '#67c23a' : task.status === 'in_progress' ? '#409eff' : '#909399', fontSize: '14px', lineHeight: 1 }">
-                            {{ task.status === 'completed' ? '✅' : task.status === 'in_progress' ? '🔄' : '⬜' }}
-                          </span>
-                          <span :style="task.status === 'completed' ? 'text-decoration: line-through; color: #909399;' : ''">{{ task.content }}</span>
-                          <span v-if="task.activeForm && task.status === 'in_progress'" style="color: #909399; font-size: 10px; margin-left: 4px;">{{ task.activeForm }}</span>
-                        </div>
-                      </div>
-                      <!-- AskUserQuestion 提问展示 -->
-                      <div v-if="block._askQuestions" class="chat-ask-questions" style="margin-top: 6px;">
-                        <div v-for="(q, qi) in block._askQuestions" :key="qi" class="chat-ask-question-item" style="margin-bottom: 8px;">
-                          <div style="font-weight: 600; color: #303133; margin-bottom: 2px;">{{ q.question }}</div>
-                          <div style="font-size: 10px; color: #909399; margin-bottom: 4px;">类型: {{ q.header || '选择' }}{{ q.multiSelect ? ' (多选)' : '' }}</div>
-                          <div v-for="(opt, oi) in q.options" :key="oi" class="chat-ask-option" style="display: flex; gap: 6px; padding: 3px 8px; margin: 1px 0; font-size: 12px; border-radius: 4px; background: #fafafa;">
-                            <span style="color: #409eff; flex-shrink: 0;">{{ q.multiSelect ? '☐' : '○' }}</span>
-                            <div>
-                              <div>{{ opt.label }}</div>
-                              <div v-if="opt.description" style="font-size: 11px; color: #909399;">{{ opt.description }}</div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div v-if="!block.displayInput && !block._tasks && !block._askQuestions" style="font-size: 12px; color: #909399; margin-top: 4px; cursor: pointer;" @click="block._inputExpanded = !block._inputExpanded">
-                        {{ block._inputExpanded ? '▼' : '▶' }} 参数
-                      </div>
-                      <pre v-if="!block.displayInput && !block._tasks && !block._askQuestions && block._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ block.input }}</pre>
-                      <div v-if="block._result" style="color: #909399; font-size: 12px; margin-top: 6px; border-top: 1px dashed #dcdfe6; padding-top: 4px;">
-                        <span @click="block._result.collapsed = !block._result.collapsed" style="cursor: pointer;">{{ block._result.collapsed ? '▶' : '▼' }} 工具执行结果</span>
-                        <!-- 工具执行结果中的任务列表 -->
-                        <div v-if="!block._result.collapsed && block._result._tasks" style="margin-top: 6px; padding: 6px 8px; background: #fafafa; border-radius: 4px;">
-                          <div v-for="(task, ti) in block._result._tasks" :key="ti" style="display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px;">
-                            <span :style="{ color: task.status === 'completed' ? '#67c23a' : task.status === 'in_progress' ? '#409eff' : '#909399', fontSize: '14px', lineHeight: 1 }">
-                              {{ task.status === 'completed' ? '✅' : task.status === 'in_progress' ? '🔄' : '⬜' }}
-                            </span>
-                            <span :style="task.status === 'completed' ? 'text-decoration: line-through; color: #909399;' : ''">{{ task.content }}</span>
-                            <span v-if="task.activeForm && task.status === 'in_progress'" style="color: #909399; font-size: 10px; margin-left: 4px;">{{ task.activeForm }}</span>
-                          </div>
-                        </div>
-                        <pre v-if="!block._result.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto; font-family: Consolas, monospace;">{{ block._result.text }}</pre>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-if="msg.usage" style="color: #909399; font-size: 11px; margin-top: 8px; border-top: 1px solid #ebeef5; padding-top: 4px;">
-                    input: {{ msg.usage.input_tokens }} | output: {{ msg.usage.output_tokens }}
-                  </div>
-                </div>
-                <!-- standalone tool_use -->
-                <div v-else-if="msg.type === 'tool_use'" style="background: #f0f9eb; border-radius: 4px; padding: 8px; margin: 4px 0;">
-                  <div style="display: flex; align-items: center; gap: 4px;">
-                    <span v-if="!msg._result && chatDetailStatus === 'running'" class="chat-detail-status-spinner"></span>
-                    <span style="color: #67c23a; font-weight: 500;">🔧 {{ msg.name }}</span>
-                    <span v-if="msg.displayInput" style="font-size: 12px; color: #303133; font-family: Consolas, monospace;">{{ msg.displayInput }}</span>
-                  </div>
-                  <!-- TodoWrite / TaskCreate / TaskUpdate 任务列表可视化 -->
-                  <div v-if="msg._tasks" style="margin-top: 6px;">
-                    <div v-for="(task, ti) in msg._tasks" :key="ti" style="display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px;">
-                      <span :style="{ color: task.status === 'completed' ? '#67c23a' : task.status === 'in_progress' ? '#409eff' : '#909399', fontSize: '14px', lineHeight: 1 }">
-                        {{ task.status === 'completed' ? '✅' : task.status === 'in_progress' ? '🔄' : '⬜' }}
-                      </span>
-                      <span :style="task.status === 'completed' ? 'text-decoration: line-through; color: #909399;' : ''">{{ task.content }}</span>
-                      <span v-if="task.activeForm && task.status === 'in_progress'" style="color: #909399; font-size: 10px; margin-left: 4px;">{{ task.activeForm }}</span>
-                    </div>
-                  </div>
-                  <!-- AskUserQuestion 提问展示 -->
-                  <div v-if="msg._askQuestions" class="chat-ask-questions" style="margin-top: 6px;">
-                    <div v-for="(q, qi) in msg._askQuestions" :key="qi" class="chat-ask-question-item" style="margin-bottom: 8px;">
-                      <div style="font-weight: 600; color: #303133; margin-bottom: 2px;">{{ q.question }}</div>
-                      <div style="font-size: 10px; color: #909399; margin-bottom: 4px;">类型: {{ q.header || '选择' }}{{ q.multiSelect ? ' (多选)' : '' }}</div>
-                      <div v-for="(opt, oi) in q.options" :key="oi" class="chat-ask-option" style="display: flex; gap: 6px; padding: 3px 8px; margin: 1px 0; font-size: 12px; border-radius: 4px; background: #fafafa;">
-                        <span style="color: #409eff; flex-shrink: 0;">{{ q.multiSelect ? '☐' : '○' }}</span>
-                        <div>
-                          <div>{{ opt.label }}</div>
-                          <div v-if="opt.description" style="font-size: 11px; color: #909399;">{{ opt.description }}</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-if="!msg.displayInput && !msg._tasks && !msg._askQuestions" style="font-size: 12px; color: #909399; margin-top: 4px; cursor: pointer;" @click="msg._inputExpanded = !msg._inputExpanded">
-                    {{ msg._inputExpanded ? '▼' : '▶' }} 参数
-                  </div>
-                  <pre v-if="!msg.displayInput && !msg._tasks && !msg._askQuestions && msg._inputExpanded" style="white-space: pre-wrap; font-size: 12px; color: #606266; margin-top: 4px; font-family: Consolas, monospace;">{{ msg.input }}</pre>
-                  <div v-if="msg._result" style="color: #909399; font-size: 12px; margin-top: 6px; border-top: 1px dashed #dcdfe6; padding-top: 4px;">
-                    <span @click="msg._result.collapsed = !msg._result.collapsed" style="cursor: pointer;">{{ msg._result.collapsed ? '▶' : '▼' }} 工具执行结果</span>
-                    <!-- 工具执行结果中的任务列表 -->
-                    <div v-if="!msg._result.collapsed && msg._result._tasks" style="margin-top: 6px; padding: 6px 8px; background: #fafafa; border-radius: 4px;">
-                      <div v-for="(task, ti) in msg._result._tasks" :key="ti" style="display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px;">
-                        <span :style="{ color: task.status === 'completed' ? '#67c23a' : task.status === 'in_progress' ? '#409eff' : '#909399', fontSize: '14px', lineHeight: 1 }">
-                          {{ task.status === 'completed' ? '✅' : task.status === 'in_progress' ? '🔄' : '⬜' }}
-                        </span>
-                        <span :style="task.status === 'completed' ? 'text-decoration: line-through; color: #909399;' : ''">{{ task.content }}</span>
-                        <span v-if="task.activeForm && task.status === 'in_progress'" style="color: #909399; font-size: 10px; margin-left: 4px;">{{ task.activeForm }}</span>
-                      </div>
-                    </div>
-                    <pre v-if="!msg._result.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto; font-family: Consolas, monospace;">{{ msg._result.text }}</pre>
-                  </div>
-                </div>
-                <!-- tool_result（未匹配的降级展示） -->
-                <div v-else-if="msg.type === 'tool_result'" style="color: #909399; font-size: 12px;">
-                  <span @click="msg.collapsed = !msg.collapsed" style="cursor: pointer;">{{ msg.collapsed ? '▶' : '▼' }} 工具执行结果</span>
-                  <!-- 工具执行结果中的任务列表 -->
-                  <div v-if="!msg.collapsed && msg._tasks" style="margin-top: 6px; padding: 6px 8px; background: #fafafa; border-radius: 4px;">
-                    <div v-for="(task, ti) in msg._tasks" :key="ti" style="display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px;">
-                      <span :style="{ color: task.status === 'completed' ? '#67c23a' : task.status === 'in_progress' ? '#409eff' : '#909399', fontSize: '14px', lineHeight: 1 }">
-                        {{ task.status === 'completed' ? '✅' : task.status === 'in_progress' ? '🔄' : '⬜' }}
-                      </span>
-                      <span :style="task.status === 'completed' ? 'text-decoration: line-through; color: #909399;' : ''">{{ task.content }}</span>
-                      <span v-if="task.activeForm && task.status === 'in_progress'" style="color: #909399; font-size: 10px; margin-left: 4px;">{{ task.activeForm }}</span>
-                    </div>
-                  </div>
-                  <pre v-if="!msg.collapsed" style="white-space: pre-wrap; font-size: 11px; margin-top: 4px; max-height: 200px; overflow-y: auto; font-family: Consolas, monospace;">{{ msg.text }}</pre>
-                </div>
-                <div v-else-if="msg.type === 'assistant_text'" class="markdown-body chat-markdown-body" v-html="renderMarkdown(msg.text)"></div>
-                <div v-else-if="msg.type === 'assistant_thinking'" style="color: #909399; font-size: 12px;">
-                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                    <span>思考过程{{ msg._thinkingTiming && msg._thinkingTiming.durationMs ? ' (' + (msg._thinkingTiming.durationMs / 1000).toFixed(1) + 's)' : '' }}</span>
-                    <span @click="toggleThinkingCollapse(msg)" style="cursor: pointer; font-weight: bold;">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
-                  </div>
-                  <div v-if="!msg._thinkingCollapsed" class="thinking-blockquote">{{ msg.text }}</div>
-                </div>
-                <div v-else-if="msg.type === 'result'" class="chat-result-card">
-                  <div class="chat-result-header">
-                    <span :style="{ color: msg.isError ? '#f56c6c' : '#67c23a', fontWeight: 'bold' }">
-                      {{ msg.isError ? '✕ 执行失败' : '✓ 执行完成' }}
-                    </span>
-                    <span class="chat-result-header-item">耗时 {{ (msg.durationMs / 1000).toFixed(1) }}s</span>
-                    <span v-if="msg.durationApiMs" class="chat-result-header-item">API {{ (msg.durationApiMs / 1000).toFixed(1) }}s</span>
-                    <span class="chat-result-header-item">{{ msg.numTurns }} 轮对话</span>
-                    <span v-if="msg.totalCostUsd != null" class="chat-result-header-item" style="color: #e6a23c;">${{ msg.totalCostUsd.toFixed(4) }}</span>
-                    <span v-if="msg.stopReason" class="chat-result-header-item" style="color: #909399;">{{ stopReasonLabel(msg.stopReason) }}</span>
-                  </div>
-                  <!-- Token 用量 -->
-                  <div v-if="msg.usage" class="chat-result-section">
-                    <div class="chat-result-section-title">Token 用量</div>
-                    <div class="chat-result-tokens">
-                      <span>输入 {{ formatNum(msg.usage.input_tokens) }}</span>
-                      <span>输出 {{ formatNum(msg.usage.output_tokens) }}</span>
-                      <span v-if="msg.usage.cache_read_input_tokens">缓存读取 {{ formatNum(msg.usage.cache_read_input_tokens) }}</span>
-                      <span v-if="msg.usage.cache_creation_input_tokens">缓存创建 {{ formatNum(msg.usage.cache_creation_input_tokens) }}</span>
-                    </div>
-                  </div>
-                  <!-- 模型用量 -->
-                  <div v-if="msg.modelUsage && msg.modelUsage.length" class="chat-result-section">
-                    <div class="chat-result-section-title">模型用量</div>
-                    <div v-for="mu in msg.modelUsage" :key="mu.name" class="chat-result-model-row">
-                      <span class="chat-result-model-name">{{ mu.name }}</span>
-                      <span>输入 {{ formatNum(mu.inputTokens) }}</span>
-                      <span>输出 {{ formatNum(mu.outputTokens) }}</span>
-                      <span v-if="mu.costUSD">${{ mu.costUSD.toFixed(4) }}</span>
-                    </div>
-                  </div>
-                  <!-- 权限拒绝 -->
-                  <div v-if="msg.permissionDenials && msg.permissionDenials.length" class="chat-result-section">
-                    <div class="chat-result-section-title" style="color: #e6a23c;">权限询问 ({{ msg.permissionDenials.length }})</div>
-                    <div v-for="(pd, pdi) in msg.permissionDenials" :key="pdi" class="chat-result-permission-item">
-                      <span style="color: #909399;">{{ pd.tool_name }}</span>
-                      <span v-if="pd.tool_use_id" style="color: #c0c4cc; font-size: 10px; margin-left: 4px;">{{ pd.tool_use_id.slice(0, 8) }}...</span>
-                    </div>
-                  </div>
-                  <!-- 结果文本 -->
-                  <div v-if="msg.resultText" class="chat-result-section">
-                    <div class="chat-result-section-title">结果</div>
-                    <pre class="chat-result-text">{{ msg.resultText }}</pre>
-                  </div>
-                </div>
-                <div v-else-if="msg.type === 'chat_completed' && chatDetailStatus === 'completed'" style="color: #67c23a; text-align: center; padding: 16px;">
-                  {{ msg.text }}
-                </div>
-                <div v-else-if="msg.type === 'raw_text'" style="white-space: pre-wrap; color: #e6a23c; padding: 4px 0; word-break: break-all; font-family: Consolas, monospace;">{{ msg.text }}</div>
-                <div v-else-if="msg.type === 'parse_error'" style="background: #fef0f0; border-left: 3px solid #f56c6c; border-radius: 4px; padding: 8px 12px; margin: 4px 0;">
-                  <div style="color: #f56c6c; font-weight: bold;">解析错误</div>
-                  <div v-if="msg.error" style="color: #e6a23c; font-size: 11px; margin-top: 4px;">{{ msg.error }}</div>
-                  <pre style="white-space: pre-wrap; font-size: 12px; margin-top: 4px; color: #303133;">{{ msg.text }}</pre>
-                </div>
-                <div v-else-if="msg.type === 'error'" style="background: #fef0f0; border-left: 3px solid #f56c6c; border-radius: 4px; padding: 8px 12px; margin: 4px 0;">
-                  <span style="color: #f56c6c;">错误: </span>
-                  <span style="color: #303133;">{{ msg.text }}</span>
-                </div>
-              </div>
-            </div>
-            <div :class="['chat-detail-scroll-btn', { 'chat-detail-scroll-btn--visible': promptChatDetailShowScrollBtn }]" @click="scrollPromptChatToBottom(true)">↓</div>
-            <TaskProgressPanel @scroll-to-msg="onPromptTaskPanelScrollToMsg" />
-            <div class="chat-detail-input-row">
-              <div class="chat-detail-textarea-wrapper">
-                <el-input
-                  v-model="chatContinueInput"
-                  type="textarea"
-                  :rows="3"
-                  placeholder="输入新消息继续对话..."
-                  :disabled="chatDetailStatus === 'running'"
-                  class="chat-detail-textarea"
-                  @keydown.enter.exact.prevent="chatDetailStatus !== 'running' && continueChat()"
-                />
-                <div class="chat-detail-actions">
-                  <div v-if="chatDetailThinkingIntensity || chatDetailModelName" class="chat-detail-info-bar">
-                    <span v-if="chatDetailThinkingIntensity">思考强度: {{ chatDetailThinkingIntensity }}</span>
-                    <span v-if="chatDetailThinkingIntensity && chatDetailModelName"> | </span>
-                    <span v-if="chatDetailModelName">智能体: {{ chatDetailModelName }}</span>
-                  </div>
-                  <el-button v-if="chatDetailStatus === 'running'" type="danger" size="small" @click="stopChat">停止</el-button>
-                  <el-button v-else type="primary" size="small" :loading="chatContinueLoading" @click="continueChat">发送</el-button>
-                </div>
-              </div>
-            </div>
-          </template>
-        </div>
-      </div>
-    </el-dialog>
+      <template #before-input>
+        <TaskProgressPanel @scroll-to-msg="onPromptTaskPanelScrollToMsg" />
+      </template>
+    </ChatHistoryDialog>
 
     <!-- 接口开发弹窗 -->
     <el-dialog
@@ -1103,6 +875,8 @@
 <script>
 import { HomeFilled } from '@element-plus/icons-vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
+import ChatHistoryButton from '@/components/shared/ChatHistoryButton.vue'
+import ChatHistoryDialog from '@/components/shared/ChatHistoryDialog.vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
 import taskWorkflowApi from '@/utils/base/task_workflow'
 import homeTaskApi from '@/utils/base/home_task'
@@ -1195,6 +969,8 @@ export default {
   components: {
     HomeFilled,
     GitActionButton,
+    ChatHistoryButton,
+    ChatHistoryDialog,
     MdEditor,
     TaskProgressPanel,
   },
@@ -1237,6 +1013,7 @@ export default {
       issueFixDialogVisible: false,
       issueFixInput: '',
       issueFixResolvedTemplate: '',
+      issueFixUseDefaultPrompt: true, // 是否使用默认问题修改提示词
       // claude code 对话
       _chatHistoryDurationTimer: null, // 历史对话列表运行中对话的实时耗时定时器
       promptChatCounts: {},
@@ -1260,6 +1037,7 @@ export default {
       promptExecDialogVisible: false,
       promptExecCliId: 0,
       promptExecCliList: [],
+      promptExecModelName: '',
       promptExecLoading: false,
       promptExecPromptType: '',
       promptExecPromptValue: '',
@@ -1273,8 +1051,11 @@ export default {
       promptChatDetailId: 0,
       promptChatDetailShowScrollBtn: false,
       chatDetailModelName: '',
+      chatDetailAgentName: '',
       chatDetailLocalDir: '',
       chatDetailThinkingIntensity: '',
+      chatDetailCliType: 'claude',
+      _backgroundChatEventSources: {},
       // zcode 配置
       zcodeConfigDialogVisible: false,
       zcodeDirInput: '',
@@ -1285,6 +1066,9 @@ export default {
       apiDevDialogVisible: false,
       apiDevDialogUrl: '',
       apiDevDialogTitle: '',
+      // 本地目录与分支状态检测
+      localDirStatusMap: {},
+      branchStatusMap: {},
     }
   },
   computed: {
@@ -1353,11 +1137,17 @@ export default {
     },
     issueFixCombinedText() {
       const input = (this.issueFixInput || '').trim()
-      const template = (this.issueFixResolvedTemplate || '').trim()
+      // 根据开关决定是否使用默认问题修改提示词模板
+      const template = this.issueFixUseDefaultPrompt ? (this.issueFixResolvedTemplate || '').trim() : ''
       if (!input && !template) return ''
       if (!input) return template
       if (!template) return input
       return input + '\n\n' + template
+    },
+    // promptExecModelOptions 返回执行弹窗当前 Agent 卡片可选的模型列表。
+    // promptExecModelOptions returns model options for the currently selected Agent card in the execution dialog.
+    promptExecModelOptions() {
+      return this.getSelectedCliModelOptions()
     },
   },
   mounted() {
@@ -1370,6 +1160,7 @@ export default {
     this._stopChatHistoryDurationTimer()
     if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
     this.unregisterWorkflowSse()
+    this.stopAllBackgroundChatStreams()
     if (this._chatEventSource) {
       this._chatEventSource.close()
       this._chatEventSource = null
@@ -1443,6 +1234,8 @@ export default {
           return
         }
         this.applyWorkflowPayload(response.Data)
+        this.checkWorkflowLocalDirExists()
+        this.checkWorkflowBranchStatus()
         this.activeNode = this.restoreActiveNodeCache() || this.firstRunningNodeKey
         this.loadRequirementFragment(() => {
           this.loading = false
@@ -1618,6 +1411,9 @@ export default {
       }
       if (this.requirementFetchStatus === 'running') {
         this.requirementFetchRunning = true
+        return
+      }
+      if (this.requirementFetchStatus !== 'idle') {
         return
       }
       this.requirementFetchAutoTriggered = true
@@ -1828,6 +1624,7 @@ export default {
       this.issueFixDialogVisible = true
       this.issueFixInput = ''
       this.issueFixResolvedTemplate = ''
+      this.issueFixUseDefaultPrompt = true
       this.issueFixZcodeMappings = []
       // 获取当前任务所有本地目录
       const taskDirs = this.parsedTaskDevConfigs
@@ -1899,7 +1696,9 @@ export default {
       if (this.workflowId <= 0) return
       taskWorkflowApi.TaskWorkflowChatList(this.workflowId, (res) => {
         if (res.ErrCode === 0 && res.Data) {
-          this.updateChatCountsFromList(res.Data.list || [])
+          const list = res.Data.list || []
+          this.updateChatCountsFromList(list)
+          this.syncBackgroundChatStreams(list, this.promptChatDetailId || this.chatDetailId)
         }
       })
     },
@@ -1931,8 +1730,10 @@ export default {
           this.chatDetailSessionId = data.session_id || ''
           this.chatDetailStatus = data.status || ''
           this.chatDetailModelName = data.model_name || ''
+          this.chatDetailAgentName = data.agent_cli_name || ''
           this.chatDetailLocalDir = data.local_dir || ''
           this.chatDetailThinkingIntensity = data.thinking_intensity || ''
+          this.chatDetailCliType = data.cli_type || 'claude'
           // 同步更新左侧列表中的状态
           this.updateChatListStatus(this.chatDetailId, this.chatDetailStatus)
           // 合并历史行 + SSE 加载期间收到的新行（有则去重）
@@ -1940,7 +1741,7 @@ export default {
           const sseLines = this.chatDetailSSELines
           const newSseLines = sseLines.filter(l => !historicalLines.includes(l))
           this.chatDetailSSELines = [...historicalLines, ...newSseLines]
-          this.chatDetailMessages = chatParser.parseChatLines(this.chatDetailSSELines)
+          this.chatDetailMessages = chatParser.parseChatLines(this.chatDetailSSELines, this.chatDetailCliType)
           // 历史对话：自动折叠所有思考（对话已完成或已结束）
           this.chatDetailMessages.forEach(msg => {
             if (msg.type === 'assistant' && msg.thinking) {
@@ -1971,7 +1772,9 @@ export default {
       this.chatDetailSSERegistered = true
       this._thinkingStreamStartTime = 0 // 当前对话思考计时的起始时间戳
       // 初始化增量解析状态
-      this._sseParseState = { currentMessage: null, toolUseMap: new Map(), pendingPatches: [] }
+      this._sseParseState = this.chatDetailCliType === 'codex'
+        ? { currentItems: new Map(), pendingPatches: [] }
+        : { currentMessage: null, toolUseMap: new Map(), pendingPatches: [] }
       this._sseLineBuffer = []
       if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
       // 启动思考耗时动态更新定时器
@@ -2066,7 +1869,7 @@ export default {
       for (const l of newLines) {
         this.chatDetailSSELines.push(l)
       }
-      const result = chatParser.parseChatLinesIncremental(newLines, this._sseParseState, this.chatDetailMessages.length)
+      const result = chatParser.parseChatLinesIncremental(newLines, this._sseParseState, this.chatDetailMessages.length, this.chatDetailCliType)
       this._sseParseState = result.parseState
       if (result.newMessages.length > 0) {
         this._autoScrollLocked = true
@@ -2123,6 +1926,44 @@ export default {
     },
     needCollapseBtn(text) {
       return (text || '').split('\n').length > 10
+    },
+    // system_command 气泡预览：优先展示 cmdLine（> 格式），否则展示 text
+    
+    formatCliType(cliType) {
+      if (!cliType) return '提示词'
+      return cliType.charAt(0).toUpperCase() + cliType.slice(1)
+    },
+    displayCmdPreview(msg) {
+      const source = msg.cmdLine || msg.text || ''
+      const preview = this.truncateUtf8(source, 20)
+      return msg.cmdLine ? '> ' + preview : preview
+    },
+    // 判断文本 UTF-8 字节长度是否超过指定值
+    isLongText(text, maxBytes) {
+      if (!text) return false
+      return new TextEncoder().encode(text).length > maxBytes
+    },
+    // UTF-8 安全截取：截取前 maxBytes 字节并追加 "..."
+    truncateUtf8(text, maxBytes) {
+      if (!text) return ''
+      const bytes = new TextEncoder().encode(text)
+      if (bytes.length <= maxBytes) return text
+      let end = maxBytes
+      while (end > 0 && (bytes[end] & 0xc0) === 0x80) {
+        end--
+      }
+      return new TextDecoder().decode(bytes.slice(0, end)) + '...'
+    },
+    // 截取命令行中 -p / exec / --json 后的提示词内容
+    truncateCmdPrompt(cmdLine, maxLen) {
+      if (!cmdLine) return ''
+      return cmdLine.replace(/(-p |exec |--json )"([^"]+)"/, (full, prefix, prompt) => {
+        const bytes = new TextEncoder().encode(prompt)
+        if (bytes.length <= maxLen) return full
+        let end = maxLen
+        while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--
+        return prefix + '"' + new TextDecoder().decode(bytes.slice(0, end)) + '..."'
+      })
     },
     // 判断当前消息是否正在思考中（实时流式阶段）
     isCurrentThinking(msg) {
@@ -2195,6 +2036,15 @@ export default {
       taskWorkflowApi.TaskWorkflowChatStop(this.chatDetailId, (res) => {
         if (res.ErrCode !== 0) {
           this.$helperNotify.error(res.ErrMsg || '停止失败')
+          return
+        }
+        // 从响应中获取 killed_pid 并更新到对话列表项（刷新页面后即消失）
+        const killedPid = res.Data && res.Data.killed_pid
+        if (killedPid > 0) {
+          const item = this.promptChatHistoryList.find(i => i.id === this.chatDetailId)
+          if (item) {
+            item._killed_pid = killedPid
+          }
         }
       })
       // 前端立即更新状态
@@ -2213,16 +2063,19 @@ export default {
       const cached = this.getPromptExecCache(promptType)
       if (cached) {
         this.promptExecCliId = cached.cliId || 0
+        this.promptExecModelName = cached.modelName || ''
         this.promptExecThinkingIntensity = cached.thinkingIntensity || '高'
       } else {
         this.promptExecCliId = 0
+        this.promptExecModelName = ''
         this.promptExecThinkingIntensity = '高'
       }
       this.promptExecDialogVisible = true
       // 加载 Agent CLI 列表
       agentCliApi.AgentCliList((res) => {
         if (res.ErrCode === 0 && res.Data) {
-          this.promptExecCliList = res.Data.list || []
+          // 仅展示“已启用且配置可用”的 Agent，避免把停用实例带入执行弹窗。
+          this.promptExecCliList = (res.Data.list || []).filter(cli => cli.displayed_enabled)
           // 如果无缓存且仅有一个 CLI，自动选中
           if (!cached && this.promptExecCliList.length === 1) {
             this.promptExecCliId = this.promptExecCliList[0].id
@@ -2232,21 +2085,61 @@ export default {
             const found = this.promptExecCliList.find(c => c.id === cached.cliId)
             if (!found) {
               this.promptExecCliId = 0
+              this.promptExecModelName = ''
             }
           }
+          this.syncPromptExecModelSelection(cached)
         }
       })
     },
     // CLI 选中变更
     onPromptExecCliChange() {
-      // 占位，后续可扩展
+      this.syncPromptExecModelSelection()
+    },
+    // 获取当前选中的 CLI 实例对象
+    getSelectedCli() {
+      if (!this.promptExecCliId) return null
+      return this.promptExecCliList.find(c => c.id === this.promptExecCliId) || null
+    },
+    // promptExecModelOptions 返回当前选中 Agent 卡片可用的模型列表；无配置时回退到 current_model。
+    // promptExecModelOptions returns model options for the selected Agent card and falls back to current_model.
+    getSelectedCliModelOptions() {
+      const cli = this.getSelectedCli()
+      if (!cli) return []
+      const rawOptions = Array.isArray(cli.model_options) ? cli.model_options : []
+      const normalizedOptions = rawOptions
+        .map(item => String(item || '').trim())
+        .filter(Boolean)
+      if (normalizedOptions.length > 0) {
+        return normalizedOptions
+      }
+      const currentModel = String(cli.current_model || '').trim()
+      return currentModel && currentModel !== '-' ? [currentModel] : []
+    },
+    // 获取当前选中 CLI 的 cli_type（'claude' 或 'codex'）
+    getSelectedCliType() {
+      const cli = this.getSelectedCli()
+      if (!cli) return 'claude'
+      if (cli.type === 'codex-cli') return 'codex'
+      return 'claude'
     },
     // 执行任务
     execPromptToClaude() {
       if (!this.promptExecCliId) {
-        this.$helperNotify.warning('请选择 CLI 实例')
+        this.$helperNotify.warning('请选择 Agent 实例')
         return
       }
+      if (this.promptExecModelOptions.length > 0 && !this.promptExecModelName) {
+        this.$helperNotify.warning('请选择模型')
+        return
+      }
+      // 执行前检查分支是否匹配
+      this.confirmBranchBeforeExec().then((confirmed) => {
+        if (!confirmed) return
+        this._doExecPromptToClaude()
+      })
+    },
+    _doExecPromptToClaude() {
       // 记录本次选择到缓存
       this.savePromptExecCache(this.promptExecPromptType)
       // 获取第一个可用目录
@@ -2261,29 +2154,34 @@ export default {
           return
         }
         const localDir = dirs[0]
+        const cliType = this.getSelectedCliType()
         this.promptExecLoading = true
-        taskWorkflowApi.TaskWorkflowChatSend(
-          this.workflowId,
-          this.promptExecPromptValue,
-          this.promptExecPromptType,
-          localDir,
-          'claude',
-          this.promptExecCliId,
-          this.promptExecThinkingIntensity,
-          (chatRes) => {
+      taskWorkflowApi.TaskWorkflowChatSend(
+        this.workflowId,
+        this.promptExecPromptValue,
+        this.promptExecPromptType,
+        localDir,
+        cliType,
+        this.promptExecCliId,
+        this.promptExecModelName,
+        this.promptExecThinkingIntensity,
+        (chatRes) => {
             this.promptExecLoading = false
             if (chatRes.ErrCode === 0 && chatRes.Data) {
               const chatId = chatRes.Data.chat_id
-              this.$helperNotify.success('已发送到 claude code 执行')
+              const cliLabel = cliType === 'codex' ? 'codex' : 'claude code'
+              this.$helperNotify.success('已发送到 ' + cliLabel + ' 执行')
               this.promptExecDialogVisible = false
-              // 初始化对话显示状态并连接 SSE 流以启动 claude code 执行
+              // 初始化对话显示状态并连接 SSE 流以启动执行
               this.chatDetailId = chatId
               this.chatDetailStatus = 'running'
+              this.chatDetailCliType = cliType
               this.chatDetailSSELines = []
               this.chatDetailMessages = []
               taskProgressStore.reset()
               this._initialSseRetryCount = 0
               this.connectChatStream(chatId, null, true)
+              this.loadChatDetail()
               this.loadChatCounts()
               // 打开执行历史，定位到新对话
               this.openPromptChatHistory(this.promptExecPromptType, chatId)
@@ -2324,6 +2222,7 @@ export default {
         if (res.ErrCode === 0 && res.Data) {
           this.promptChatHistoryList = res.Data.list || []
           this._startChatHistoryDurationTimer()
+          this.syncBackgroundChatStreams(this.promptChatHistoryList, focusChatId || this.promptChatDetailId || this.chatDetailId)
           if (!promptType) {
             this.updateChatCountsFromList(this.promptChatHistoryList)
           }
@@ -2349,17 +2248,18 @@ export default {
     // 点击执行历史列表项
     onPromptChatRowClick(row) {
       if (this.promptChatDetailId === row.id) return
+      this.promptChatDetailId = row.id
+      this.chatDetailId = row.id
+      this.chatDetailStatus = row.status
+      this.chatDetailAutoScroll = true
+      this.promptChatDetailShowScrollBtn = false
+      this.syncBackgroundChatStreams(this.promptChatHistoryList, row.id)
       // 切到不同 chat 时才断开旧 SSE
       if (this._chatEventSource && this._sseChatId !== row.id) {
         this._chatEventSource.close()
         this._chatEventSource = null
         this._sseChatId = 0
       }
-      this.promptChatDetailId = row.id
-      this.chatDetailId = row.id
-      this.chatDetailStatus = row.status
-      this.chatDetailAutoScroll = true
-      this.promptChatDetailShowScrollBtn = false
       if (this._sseChatId !== row.id) {
         this.chatDetailSSELines = []
         this.chatDetailMessages = []
@@ -2374,9 +2274,9 @@ export default {
     // 执行历史对话框滚动
     onPromptChatDetailScroll() {
       if (this._autoScrollLocked) return
-      const el = this.$refs.promptChatDetailContainer
-      if (!el) return
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30
+      const dialog = this.$refs.promptChatHistoryDialog
+      if (!dialog || !dialog.isDetailNearBottom) return
+      const atBottom = dialog.isDetailNearBottom(30)
       if (atBottom) {
         this.chatDetailAutoScroll = true
         this.promptChatDetailShowScrollBtn = false
@@ -2393,15 +2293,16 @@ export default {
         this.promptChatDetailShowScrollBtn = false
       }
       this.$nextTick(() => {
-        const el = this.$refs.promptChatDetailContainer
-        if (el) {
-          el.scrollTo({ top: el.scrollHeight, behavior: 'auto' })
+        const dialog = this.$refs.promptChatHistoryDialog
+        if (dialog && dialog.scrollDetailToBottom) {
+          dialog.scrollDetailToBottom('auto')
         }
       })
     },
     // 关闭执行历史弹窗（保留 SSE 连接和聊天状态）
     onPromptChatHistoryClosed() {
       this._stopChatHistoryDurationTimer()
+      this.stopAllBackgroundChatStreams()
     },
     // 彻底关闭对话详情（仅在用户主动停止或切换时调用）
     closePromptChatDetail() {
@@ -2414,6 +2315,94 @@ export default {
         if (item) item.status = status
       }
       updateItem(this.promptChatHistoryList)
+      this.syncBackgroundChatStreams(this.promptChatHistoryList, this.promptChatDetailId || this.chatDetailId)
+    },
+    syncBackgroundChatStreams(list, selectedChatId) {
+      const normalizedSelectedChatId = Number(selectedChatId || 0)
+      const runningIds = new Set(
+        (Array.isArray(list) ? list : [])
+          .filter(item => item && item.status === 'running')
+          .map(item => Number(item.id || 0))
+          .filter(id => id > 0 && id !== normalizedSelectedChatId)
+      )
+      Object.keys(this._backgroundChatEventSources || {}).forEach((key) => {
+        const chatId = Number(key)
+        if (!runningIds.has(chatId)) {
+          this.stopBackgroundChatStream(chatId)
+        }
+      })
+      runningIds.forEach((chatId) => {
+        if (chatId !== Number(this._sseChatId || 0)) {
+          this.startBackgroundChatStream(chatId)
+        }
+      })
+    },
+    startBackgroundChatStream(chatId) {
+      const normalizedChatId = Number(chatId || 0)
+      if (normalizedChatId <= 0) return
+      if (normalizedChatId === Number(this._sseChatId || 0)) return
+      if (this._backgroundChatEventSources[normalizedChatId]) return
+      const sseHost = baseUtils.GetSseApiHost()
+      const url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + normalizedChatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
+      const es = new EventSource(url)
+      this._backgroundChatEventSources = {
+        ...this._backgroundChatEventSources,
+        [normalizedChatId]: es,
+      }
+      es.onmessage = (event) => {
+        const line = event.data
+        if (!line) return
+        try {
+          const obj = JSON.parse(line)
+          if (obj.type === 'chat' && obj.subtype === 'completed') {
+            this.stopBackgroundChatStream(normalizedChatId)
+            this.loadPromptChatHistoryListSilently()
+            this.loadChatCounts()
+          }
+        } catch (e) {
+          // 后台监听只关心 completed 终态事件。
+        }
+      }
+      es.onerror = () => {
+        this.stopBackgroundChatStream(normalizedChatId)
+      }
+    },
+    stopBackgroundChatStream(chatId) {
+      const normalizedChatId = Number(chatId || 0)
+      if (normalizedChatId <= 0) return
+      const es = this._backgroundChatEventSources[normalizedChatId]
+      if (es) {
+        es.close()
+      }
+      const nextMap = { ...this._backgroundChatEventSources }
+      delete nextMap[normalizedChatId]
+      this._backgroundChatEventSources = nextMap
+    },
+    stopAllBackgroundChatStreams() {
+      Object.keys(this._backgroundChatEventSources || {}).forEach((key) => {
+        this.stopBackgroundChatStream(Number(key))
+      })
+    },
+    loadPromptChatHistoryListSilently() {
+      if (!this.promptChatHistoryVisible || this.promptChatHistoryLoading) return
+      const promptType = this.promptChatHistoryPromptType
+      const loadApi = promptType
+        ? (cb) => taskWorkflowApi.TaskWorkflowChatListByPromptType(this.workflowId, promptType, cb)
+        : (cb) => taskWorkflowApi.TaskWorkflowChatList(this.workflowId, cb)
+      loadApi((res) => {
+        if (!(res && res.ErrCode === 0 && res.Data)) return
+        this.promptChatHistoryList = res.Data.list || []
+        if (!promptType) {
+          this.updateChatCountsFromList(this.promptChatHistoryList)
+        }
+        this.syncBackgroundChatStreams(this.promptChatHistoryList, this.promptChatDetailId || this.chatDetailId)
+        if (this.chatDetailId > 0) {
+          const current = this.promptChatHistoryList.find(item => item.id === this.chatDetailId)
+          if (current) {
+            this.chatDetailStatus = current.status || this.chatDetailStatus
+          }
+        }
+      })
     },
     statusText(status) {
       const map = { running: '执行中', completed: '已完成', error: '异常终止', interrupted: '中断' }
@@ -2660,7 +2649,8 @@ export default {
     },
     // 执行历史弹窗：点击任务项滚动到对应消息
     onPromptTaskPanelScrollToMsg(msgIndex) {
-      const container = this.$refs.promptChatDetailContainer
+      const dialog = this.$refs.promptChatHistoryDialog
+      const container = dialog && dialog.getDetailContainer ? dialog.getDetailContainer() : null
       if (!container) return
       const children = container.children
       if (msgIndex >= 0 && msgIndex < children.length) {
@@ -2699,9 +2689,103 @@ export default {
     savePromptExecCache(promptType) {
       const data = {
         cliId: this.promptExecCliId,
+        modelName: this.promptExecModelName,
         thinkingIntensity: this.promptExecThinkingIntensity,
       }
       localStorage.setItem(this.getPromptExecCacheKey(promptType), JSON.stringify(data))
+    },
+    // syncPromptExecModelSelection 根据当前 Agent 和缓存自动恢复模型选择；仅一个模型时自动选中。
+    // syncPromptExecModelSelection restores the model choice from cache and auto-selects when only one model exists.
+    syncPromptExecModelSelection(cachedValue) {
+      const cached = cachedValue || this.getPromptExecCache(this.promptExecPromptType) || null
+      const modelOptions = this.getSelectedCliModelOptions()
+      if (modelOptions.length === 0) {
+        this.promptExecModelName = ''
+        return
+      }
+      if (cached && cached.cliId === this.promptExecCliId && cached.modelName && modelOptions.includes(cached.modelName)) {
+        this.promptExecModelName = cached.modelName
+        return
+      }
+      if (modelOptions.includes(this.promptExecModelName)) {
+        return
+      }
+      if (modelOptions.length === 1) {
+        this.promptExecModelName = modelOptions[0]
+        return
+      }
+      this.promptExecModelName = ''
+    },
+    // 批量检查工作流页面中本地目录是否存在
+    checkWorkflowLocalDirExists() {
+      const configs = this.parsedTaskDevConfigs
+      const paths = []
+      for (const cfg of configs) {
+        const dir = String(cfg.local_dir || '').trim()
+        if (dir && !paths.includes(dir)) {
+          paths.push(dir)
+        }
+      }
+      if (paths.length === 0) return
+      homeTaskApi.LocalDirBatchCheck(paths, (response) => {
+        if (response && response.ErrCode === 0 && response.Data) {
+          this.localDirStatusMap = { ...this.localDirStatusMap, ...response.Data }
+        }
+      })
+    },
+    // 批量检查工作流页面中本地目录的当前 Git 分支是否与配置的分支名匹配
+    checkWorkflowBranchStatus() {
+      const configs = this.parsedTaskDevConfigs
+      const items = []
+      const seen = new Set()
+      for (const cfg of configs) {
+        const dir = String(cfg.local_dir || '').trim()
+        const branch = String(cfg.branch_name || '').trim()
+        if (!dir || !branch) continue
+        const key = dir + '|' + branch
+        if (seen.has(key)) continue
+        seen.add(key)
+        items.push({ local_dir: dir, branch_name: branch })
+      }
+      if (items.length === 0) return
+      homeTaskApi.LocalBranchBatchCheck(items, (response) => {
+        if (response && response.ErrCode === 0 && response.Data) {
+          this.branchStatusMap = { ...this.branchStatusMap, ...response.Data }
+        }
+      })
+    },
+    // 检查所有 dev_config 的分支是否匹配，返回不匹配的列表
+    getMismatchedBranches() {
+      const mismatched = []
+      for (const cfg of this.parsedTaskDevConfigs) {
+        const dir = String(cfg.local_dir || '').trim()
+        const branch = String(cfg.branch_name || '').trim()
+        if (!dir || !branch) continue
+        const key = dir + '|' + branch
+        const status = this.branchStatusMap[key]
+        if (status && !status.matched) {
+          mismatched.push({
+            local_dir: dir,
+            expected_branch: branch,
+            current_branch: status.current_branch || '未知',
+          })
+        }
+      }
+      return mismatched
+    },
+    // 执行前检查分支是否匹配，不匹配时弹出确认框，返回 Promise<boolean>
+    confirmBranchBeforeExec() {
+      const mismatched = this.getMismatchedBranches()
+      if (mismatched.length === 0) {
+        return Promise.resolve(true)
+      }
+      const lines = mismatched.map(m => `${m.local_dir}\n  期望分支: ${m.expected_branch}\n  当前分支: ${m.current_branch}`)
+      const msg = '以下目录的分支与配置不一致：\n\n' + lines.join('\n\n') + '\n\n是否继续执行？'
+      return this.$confirm(msg, '分支不匹配警告', {
+        confirmButtonText: '继续执行',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }).then(() => true).catch(() => false)
     },
   },
 }
@@ -3417,40 +3501,6 @@ export default {
   background: #909399;
 }
 
-/* 历史对话按钮 — 执行中动画：左侧圆圈转圈 */
-.chat-history-btn--running {
-  position: relative;
-  padding-left: 22px;
-}
-.chat-history-btn--running::before {
-  content: '';
-  position: absolute;
-  left: 6px;
-  top: 50%;
-  width: 12px;
-  height: 12px;
-  margin-top: -8px;
-  border: 2px solid #dcdfe6;
-  border-top-color: #409eff;
-  border-radius: 50%;
-  animation: chat-history-spin 0.8s linear infinite;
-}
-
-.chat-history-btn__counts {
-  display: inline-block;
-  margin-left: 6px;
-  font-size: 11px;
-  opacity: 0.85;
-  font-variant-numeric: tabular-nums;
-  position: relative;
-  z-index: 1;
-}
-
-@keyframes chat-history-spin {
-  to { transform: rotate(360deg); }
-}
-
-
 </style>
 
 <style>
@@ -3515,394 +3565,11 @@ export default {
   overflow: hidden;
 }
 
-/* 历史对话合并弹窗 */
-.chat-combined-body {
-  display: flex;
-  gap: 12px;
-  height: calc(90vh - 120px);
-  min-height: 500px;
+/* 问题修改提示词弹窗：开关文字颜色跟随主题色 */
+.task-workflow-issue-fix-dialog .el-switch__label.is-active {
+  color: #5a8a5a;
 }
 
-.chat-combined-list {
-  width: 240px;
-  min-width: 240px;
-  border-right: 1px solid #e8e8e0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.chat-combined-list__empty {
-  padding: 24px 12px;
-  text-align: center;
-  color: #909399;
-  font-size: 13px;
-}
-
-.chat-list-item {
-  position: relative;
-  padding: 10px 12px 10px 16px;
-  cursor: pointer;
-  border-radius: 6px;
-  transition: background 0.15s;
-}
-
-.chat-list-item:hover {
-  background: #f0f2f5;
-}
-
-.chat-list-item--active {
-  background: #edf3e8;
-}
-
-.chat-list-item__name {
-  font-size: 14px;
-  font-weight: 500;
-  color: #303133;
-  line-height: 1.4;
-  padding-right: 14px;
-}
-
-.chat-list-item__id {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 400;
-  color: #909399;
-  background: #f0f2f5;
-  padding: 0 6px;
-  border-radius: 8px;
-  margin-right: 6px;
-  flex-shrink: 0;
-}
-
-.chat-list-item__time {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 2px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.chat-list-item__msg-count {
-  font-size: 11px;
-  color: #606266;
-  background: #f0f2f5;
-  padding: 0 6px;
-  border-radius: 10px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.chat-list-item__status {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  padding: 1px 0;
-  white-space: nowrap;
-  margin-top: 4px;
-}
-
-.chat-list-item__running-dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid #409eff;
-  border-top-color: transparent;
-  animation: chat-status-dot-spin 0.8s linear infinite;
-  flex-shrink: 0;
-}
-
-@keyframes chat-status-dot-spin {
-  to { transform: rotate(360deg); }
-}
-
-
-
-.chat-list-item__error-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #f56c6c;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.chat-list-item__status--running {
-  color: #409eff;
-}
-
-.chat-list-item__status--completed {
-  color: #67c23a;
-}
-
-.chat-list-item__status--error {
-  color: #f56c6c;
-}
-
-.chat-list-item__status--interrupted {
-  color: #e6a23c;
-}
-
-.chat-combined-detail {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  overflow: hidden;
-  position: relative;
-}
-
-.chat-combined-detail__placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #909399;
-  font-size: 14px;
-}
-
-.chat-detail-task-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 12px;
-  line-height: 1.5;
-}
-
-.chat-detail-container {
-  flex: 1;
-  overflow-y: auto;
-  background: #fafbfc;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  padding: 16px;
-  color: #303133;
-  font-size: 14px;
-  line-height: 1.6;
-  min-height: 0;
-  scroll-behavior: smooth;
-  scrollbar-width: thin;
-  scrollbar-color: #c0c4cc #f0f0f0;
-}
-
-.chat-detail-container::-webkit-scrollbar {
-  width: 6px;
-}
-
-.chat-detail-container::-webkit-scrollbar-track {
-  background: #f0f0f0;
-  border-radius: 3px;
-}
-
-.chat-detail-container::-webkit-scrollbar-thumb {
-  background: #c0c4cc;
-  border-radius: 3px;
-}
-
-.chat-detail-container::-webkit-scrollbar-thumb:hover {
-  background: #909399;
-}
-
-/* 对话详情执行状态指示器 */
-.chat-detail-status-spinner {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border: 1.5px solid #409eff;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: chat-status-dot-spin 0.8s linear infinite;
-  flex-shrink: 0;
-}
-
-/* 滚动到底部按钮 */
-.chat-detail-scroll-btn {
-  position: absolute;
-  bottom: 60px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 36px;
-  height: 36px;
-  background: #fff;
-  border: 1px solid #dcdfe6;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #606266;
-  font-size: 18px;
-  transition: background 0.2s, opacity 0.2s;
-  z-index: 10;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.chat-detail-scroll-btn--visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.chat-detail-scroll-btn:hover {
-  background: #f5f7fa;
-}
-
-.chat-detail-input-row {
-  display: flex;
-  flex-direction: column;
-  padding-top: 10px;
-  border-top: 1px solid #ebeef5;
-  flex-shrink: 0;
-}
-
-.chat-detail-textarea-wrapper {
-  width: 100%;
-}
-
-.chat-detail-textarea {
-  width: 100%;
-}
-
-.chat-detail-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-  padding-top: 6px;
-}
-
-.chat-detail-info-bar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #909399;
-  flex-shrink: 0;
-  margin-right: auto;
-}
-
-/* 执行历史对话框中 markdown 内容样式（浅色主题，匹配知识片段智能搜索风格） */
-.chat-markdown-body {
-  word-wrap: break-word;
-  color: #303133;
-  background-color: transparent;
-}
-
-.chat-markdown-body p,
-.chat-markdown-body h1,
-.chat-markdown-body h2,
-.chat-markdown-body h3,
-.chat-markdown-body h4,
-.chat-markdown-body h5,
-.chat-markdown-body h6,
-.chat-markdown-body ul,
-.chat-markdown-body ol,
-.chat-markdown-body li {
-  color: #303133;
-  background-color: transparent;
-}
-
-.chat-markdown-body table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 8px 0;
-}
-
-.chat-markdown-body th,
-.chat-markdown-body td {
-  padding: 6px 12px;
-  border: 1px solid #e4e7ed;
-  text-align: left;
-}
-
-.chat-markdown-body th {
-  font-weight: 600;
-  background-color: #f5f7fa;
-  color: #303133;
-}
-
-.chat-markdown-body td {
-  background-color: #fff;
-}
-
-.chat-markdown-body tr:hover td {
-  background-color: #f5f7fa;
-}
-
-.chat-markdown-body code {
-  font-family: 'Consolas', monospace;
-  font-size: 0.9em;
-  background-color: #f5f7fa;
-  padding: 0.2em 0.4em;
-  border-radius: 3px;
-  color: #e6a23c;
-}
-
-.chat-markdown-body pre {
-  background-color: #f5f7fa;
-  border-radius: 6px;
-  padding: 12px;
-  overflow-x: auto;
-  margin: 8px 0;
-}
-
-.chat-markdown-body pre code {
-  padding: 0;
-  background: transparent;
-  color: #303133;
-}
-
-.chat-markdown-body a {
-  color: #409eff;
-}
-
-.chat-markdown-body blockquote {
-  border-left: 3px solid #dcdfe6;
-  margin: 8px 0;
-  padding: 0 12px;
-  color: #909399;
-}
-
-/* 执行结果卡片 */
-.chat-result-card {
-  background: #fafbfc;
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin-top: 12px;
-  font-size: 12px;
-  line-height: 1.8;
-}
-.chat-result-header {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid #ebeef5;
-}
-.chat-result-header-item {
-  color: #606266;
-  font-size: 12px;
-}
-.chat-result-header-item::before {
-  content: '·';
-  margin-right: 8px;
-  color: #c0c4cc;
-}
-.chat-result-header > span:first-child::before {
-  content: none;
-}
 .chat-result-section {
   margin-top: 8px;
 }

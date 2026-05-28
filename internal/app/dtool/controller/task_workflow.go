@@ -9,6 +9,7 @@ import (
 	"dev_tool/internal/app/dtool/define"
 	_struct "dev_tool/internal/app/dtool/struct"
 	"dev_tool/internal/pkg/p_claude"
+	"dev_tool/internal/pkg/p_codex"
 	"dev_tool/internal/pkg/p_define"
 	"encoding/json"
 	"fmt"
@@ -1907,7 +1908,7 @@ func taskWorkflowBroadcastStep(workflowID int, step, status, message string) {
 	})
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, apiDataChangeSseStatusPrefix))
-		if clientID == `` || clientID == item {
+		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
 			continue
 		}
 		sse := gsgin.SseGetByClientId(clientID)
@@ -1935,7 +1936,7 @@ func taskWorkflowBroadcastNodeStatus(workflowID int, nodeStatuses string) {
 	})
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, apiDataChangeSseStatusPrefix))
-		if clientID == `` || clientID == item {
+		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
 			continue
 		}
 		sse := gsgin.SseGetByClientId(clientID)
@@ -2389,19 +2390,42 @@ func TaskWorkflowChatStreamOpen(urlValues url.Values, stopC chan int, c *gin.Con
 		return sse, nil
 	}
 
-	settingsPath := cast.ToString(chatInfo[`settings_path`])
-	modelName, baseURL, apiKey := ``, ``, ``
-	if settingsPath != `` {
-		_, content, _ := business.ReadAgentCliSettings(settingsPath)
-		if content != `` {
-			modelName, baseURL, apiKey = business.GetAgentCliModelConfig(content)
+	// 根据 cli_type 分发到不同的 Agent CLI 执行器
+	cliType := cast.ToString(chatInfo[`cli_type`])
+	switch cliType {
+	case `codex`:
+		// Codex CLI：从 agent_cli.config JSON 读取配置
+		agentCliId := cast.ToInt(chatInfo[`agent_cli_id`])
+		configJson := ``
+		if agentCliId > 0 {
+			cliRow, _ := common.DbMain.Client.QueryBySql(
+				`SELECT config FROM tbl_agent_cli WHERE id = ?`, agentCliId,
+			).One()
+			if len(cliRow) > 0 {
+				configJson = cast.ToString(cliRow[`config`])
+			}
 		}
+		selectedModelName := strings.TrimSpace(cast.ToString(chatInfo[`model_name`]))
+		go runCodexCommand(chatID, localDir, prompt, isContinue, sessionID, configJson, selectedModelName, sse, stopC)
+	default:
+		// Claude Code CLI：从 settings.json 读取配置（现有逻辑不变）
+		settingsPath := cast.ToString(chatInfo[`settings_path`])
+		modelName, baseURL, apiKey := ``, ``, ``
+		if settingsPath != `` {
+			_, content, _ := business.ReadAgentCliSettings(settingsPath)
+			if content != `` {
+				modelName, baseURL, apiKey = business.GetAgentCliModelConfig(content)
+			}
+		}
+		selectedModelName := strings.TrimSpace(cast.ToString(chatInfo[`model_name`]))
+		if selectedModelName != `` {
+			modelName = selectedModelName
+		}
+		thinkingIntensity := cast.ToString(chatInfo[`thinking_intensity`])
+		thinkingBudget := define.ThinkingIntensityBudgetMap[thinkingIntensity]
+		thinkingEffort := define.ThinkingIntensityEffortMap[thinkingIntensity]
+		go runClaudeCommand(chatID, localDir, prompt, isContinue, sessionID, baseURL, apiKey, modelName, settingsPath, thinkingEffort, thinkingBudget, sse, stopC)
 	}
-	thinkingIntensity := cast.ToString(chatInfo[`thinking_intensity`])
-	thinkingBudget := define.ThinkingIntensityBudgetMap[thinkingIntensity]
-	thinkingEffort := define.ThinkingIntensityEffortMap[thinkingIntensity]
-
-	go runClaudeCommand(chatID, localDir, prompt, isContinue, sessionID, baseURL, apiKey, modelName, settingsPath, thinkingEffort, thinkingBudget, sse, stopC)
 	return sse, nil
 }
 
@@ -2411,6 +2435,34 @@ func TaskWorkflowChatStreamClose(sse *gsgin.Sse) {
 		return
 	}
 	sse.UnRegister()
+}
+
+// loadAgentCliChatRuntimeConfig 加载 Agent CLI 运行配置。
+// loadAgentCliChatRuntimeConfig resolves settings/model metadata shared by workflow chats and standalone AgentCli chats.
+func loadAgentCliChatRuntimeConfig(agentCliID int, requestedModelName string, c *gin.Context) (settingsPath string, modelName string, thinkingCollapsed int, ok bool) {
+	settingsPath = ``
+	modelName = strings.TrimSpace(requestedModelName)
+	thinkingCollapsed = 0
+	ok = true
+	if agentCliID <= 0 {
+		return
+	}
+	cliRow, err := common.DbMain.Client.QueryBySql(
+		`SELECT * FROM tbl_agent_cli WHERE id = ?`, agentCliID,
+	).One()
+	if err != nil || len(cliRow) == 0 {
+		gsgin.GinResponseError(c, `Agent Cli 实例不存在`, nil)
+		ok = false
+		return
+	}
+	if cast.ToInt(cliRow["enabled"]) != define.AgentCliEnabled {
+		gsgin.GinResponseError(c, `Agent Cli 实例未启用`, nil)
+		ok = false
+		return
+	}
+	settingsPath = cast.ToString(cliRow["settings_path"])
+	thinkingCollapsed = cast.ToInt(cliRow["thinking_collapsed"])
+	return
 }
 
 // TaskWorkflowChatSend 启动新的 claude code 对话。
@@ -2436,26 +2488,15 @@ func TaskWorkflowChatSend(c *gin.Context) {
 		req.CliType = `claude`
 	}
 
-	settingsPath := `` // Agent CLI 的 settings.json 路径
-	thinkingCollapsed := 0
-
-	// 若指定了 agent_cli_id，读取其配置
-	if req.AgentCliId > 0 {
-		cliRow, err := common.DbMain.Client.QueryBySql(
-			`SELECT * FROM tbl_agent_cli WHERE id = ?`, req.AgentCliId,
-		).One()
-		if err != nil || len(cliRow) == 0 {
-			gsgin.GinResponseError(c, `Agent Cli 实例不存在`, nil)
-			return
-		}
-		settingsPath = cast.ToString(cliRow["settings_path"])
-		thinkingCollapsed = cast.ToInt(cliRow["thinking_collapsed"])
+	settingsPath, modelName, thinkingCollapsed, ok := loadAgentCliChatRuntimeConfig(req.AgentCliId, req.ModelName, c)
+	if !ok {
+		return
 	}
 
 	// prompt_type 为可选，非空时用于按类型查询对话历史
 	promptType := strings.TrimSpace(req.PromptType)
 
-	chatID, err := common.DbMain.TaskWorkflowChatCreate(req.WorkflowID, req.Prompt, promptType, req.CliType, req.AgentCliId, req.LocalDir, settingsPath, thinkingCollapsed, req.ThinkingIntensity)
+	chatID, err := common.DbMain.TaskWorkflowChatCreate(req.WorkflowID, req.Prompt, promptType, req.CliType, req.AgentCliId, req.LocalDir, settingsPath, modelName, thinkingCollapsed, req.ThinkingIntensity)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -2464,6 +2505,66 @@ func TaskWorkflowChatSend(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`chat_id`: chatID,
 	})
+}
+
+// AgentChatSend 启动新的 AgentCli 独立对话。
+// AgentChatSend starts a standalone AgentCli execution without requiring any workflow id.
+func AgentChatSend(c *gin.Context) {
+	var req _struct.AgentChatSendRequest
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if req.AgentCliId <= 0 {
+		gsgin.GinResponseError(c, `agent_cli_id不能为空`, nil)
+		return
+	}
+	if strings.TrimSpace(req.Prompt) == `` {
+		gsgin.GinResponseError(c, `提示词不能为空`, nil)
+		return
+	}
+	if strings.TrimSpace(req.LocalDir) == `` {
+		gsgin.GinResponseError(c, `请选择工作目录`, nil)
+		return
+	}
+	if strings.TrimSpace(req.CliType) == `` {
+		req.CliType = `claude`
+	}
+	localDir := strings.TrimSpace(req.LocalDir)
+	if err := validateAgentCliLocalDir(localDir); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	settingsPath, modelName, thinkingCollapsed, ok := loadAgentCliChatRuntimeConfig(req.AgentCliId, req.ModelName, c)
+	if !ok {
+		return
+	}
+	if err := validateAgentCliRuntimeConfig(req.AgentCliId, req.CliType); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	chatID, err := common.DbMain.AgentChatCreate(req.AgentCliId, req.Prompt, strings.TrimSpace(req.PromptType), req.CliType, localDir, settingsPath, modelName, thinkingCollapsed, req.ThinkingIntensity)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`chat_id`: chatID,
+	})
+}
+
+// validateAgentCliLocalDir 校验独立 Agent CLI 执行使用的工作目录。
+// 独立执行允许手工输入目录，需在入库前做存在性校验，避免把无效路径带入后续 CLI 启动层。
+func validateAgentCliLocalDir(localDir string) error {
+	localDir = strings.TrimSpace(localDir)
+	if localDir == `` {
+		return fmt.Errorf(`请选择工作目录`)
+	}
+	info, err := os.Stat(localDir)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf(`工作目录不存在或不是目录: %s`, localDir)
+	}
+	return nil
 }
 
 // TaskWorkflowChatContinue 继续已有对话。
@@ -2514,6 +2615,7 @@ func TaskWorkflowChatContinue(c *gin.Context) {
 }
 
 // TaskWorkflowChatStop 停止运行中的对话。
+// 先 context cancel 让 goroutine 正常退出，再通过 DB PID 强制杀进程兜底。
 func TaskWorkflowChatStop(c *gin.Context) {
 	var req _struct.TaskWorkflowChatStopRequest
 	if err := gsgin.GinPostBody(c, &req); err != nil {
@@ -2525,49 +2627,59 @@ func TaskWorkflowChatStop(c *gin.Context) {
 		return
 	}
 	chatID := int64(req.ChatID)
+
+	// 1. 先调 cancel 关闭 stopped 通道 + 取消 context，让 goroutine 感知用户主动停止
 	cancelVal, ok := chatCancelFuncs.LoadAndDelete(chatID)
-	if !ok {
-		// 没有找到取消函数，对话可能未在运行，直接标记为中断
-		_ = common.DbMain.TaskWorkflowChatMarkInterrupted(chatID)
-		gsgin.GinResponseSuccess(c, `对话已标记为中断`, nil)
-		return
+	if ok {
+		if cancelFn, ok := cancelVal.(func()); ok {
+			cancelFn()
+		}
 	}
-	if cancelFn, ok := cancelVal.(func()); ok {
-		cancelFn()
-	}
-	gsgin.GinResponseSuccess(c, `对话已停止`, nil)
+
+	// 2. 兜底：通过 DB PID 强制杀进程（避免 cancel 未生效导致进程残留）
+	killedPID := killProcessByChatID(chatID)
+
+	_ = common.DbMain.TaskWorkflowChatMarkInterrupted(chatID)
+	gsgin.GinResponseSuccess(c, `对话已停止`, map[string]any{
+		`killed_pid`: killedPID,
+	})
 }
 
-// TaskWorkflowChatList 列出工作流的所有对话。
-func TaskWorkflowChatList(c *gin.Context) {
-	var req _struct.TaskWorkflowChatListRequest
-	if err := gsgin.GinPostBody(c, &req); err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
+// killProcessByChatID 从 agent_chat 表读取 pid 并强制杀进程兜底。
+// 无论 Kill 是否成功（可能已被 cancel 正常退出），都返回 DB 中的 pid 供前端展示。
+func killProcessByChatID(chatID int64) int {
+	info, err := common.DbMain.TaskWorkflowChatInfo(chatID)
+	if err != nil || len(info) == 0 {
+		return 0
 	}
-	if req.WorkflowID <= 0 {
-		gsgin.GinResponseError(c, `工作流id不能为空`, nil)
-		return
+	pid := cast.ToInt(info[`pid`])
+	if pid <= 0 {
+		return 0
 	}
-	rows, err := common.DbMain.TaskWorkflowChatList(req.WorkflowID)
+	// 兜底 Kill：cancel 可能已让进程退出，此处不判断返回值
+	proc, err := os.FindProcess(pid)
 	if err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
+		gstool.FmtPrintlnLogTime("[chat-stop] chat_id=%d FindProcess(pid=%d) 进程已不存在: %v", chatID, pid, err)
+		return pid
 	}
-	type chatItem struct {
-		ID         int64  `json:"id"`
-		SessionID  string `json:"session_id"`
-		Prompt     string `json:"prompt"`
-		PromptType string `json:"prompt_type"`
-		AgentCliId int    `json:"agent_cli_id"`
-		LocalDir   string `json:"local_dir"`
-		Status     string `json:"status"`
-		CreatedAt  string `json:"created_at"`
-		DurationMs int64  `json:"duration_ms"`
-		LineCount  int    `json:"line_count"`
+	if err := proc.Kill(); err != nil {
+		gstool.FmtPrintlnLogTime("[chat-stop] chat_id=%d Kill(pid=%d) 失败（可能已被 cancel 终止）: %v", chatID, pid, err)
+		return pid
 	}
+	gstool.FmtPrintlnLogTime("[chat-stop] chat_id=%d 已强制终止进程 pid=%d", chatID, pid)
+	return pid
+}
+
+// buildAgentChatListResponse 构造统一的对话列表响应。
+// buildAgentChatListResponse keeps workflow and standalone AgentCli history cards on the same response schema.
+func buildAgentChatListResponse(rows []map[string]any) []map[string]any {
 	const timeLayout = `2006-01-02 15:04:05`
-	list := make([]chatItem, 0, len(rows))
+	cliNameMap := make(map[int]string)
+	cliRows, _ := common.DbMain.Client.QueryBySql(`SELECT id, name FROM tbl_agent_cli`).All()
+	for _, cr := range cliRows {
+		cliNameMap[cast.ToInt(cr[`id`])] = cast.ToString(cr[`name`])
+	}
+	list := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		status := cast.ToString(row[`status`])
 		var durationMs int64
@@ -2586,21 +2698,42 @@ func TaskWorkflowChatList(c *gin.Context) {
 		if rawOutput != `` {
 			lineCount = len(strings.Split(rawOutput, "\n"))
 		}
-		list = append(list, chatItem{
-			ID:         cast.ToInt64(row[`id`]),
-			SessionID:  cast.ToString(row[`session_id`]),
-			Prompt:     cast.ToString(row[`prompt`]),
-			PromptType: cast.ToString(row[`prompt_type`]),
-			AgentCliId: cast.ToInt(row[`agent_cli_id`]),
-			LocalDir:   cast.ToString(row[`local_dir`]),
-			Status:     status,
-			CreatedAt:  cast.ToString(row[`created_at`]),
-			DurationMs: durationMs,
-			LineCount:  lineCount,
+		list = append(list, map[string]any{
+			`id`:             cast.ToInt64(row[`id`]),
+			`session_id`:     cast.ToString(row[`session_id`]),
+			`prompt`:         cast.ToString(row[`prompt`]),
+			`prompt_type`:    cast.ToString(row[`prompt_type`]),
+			`agent_cli_id`:   cast.ToInt(row[`agent_cli_id`]),
+			`agent_cli_name`: cliNameMap[cast.ToInt(row[`agent_cli_id`])],
+			`local_dir`:      cast.ToString(row[`local_dir`]),
+			`status`:         status,
+			`cli_type`:       cast.ToString(row[`cli_type`]),
+			`created_at`:     cast.ToString(row[`created_at`]),
+			`duration_ms`:    durationMs,
+			`line_count`:     lineCount,
 		})
 	}
+	return list
+}
+
+// TaskWorkflowChatList 列出工作流的所有对话。
+func TaskWorkflowChatList(c *gin.Context) {
+	var req _struct.TaskWorkflowChatListRequest
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if req.WorkflowID <= 0 {
+		gsgin.GinResponseError(c, `工作流id不能为空`, nil)
+		return
+	}
+	rows, err := common.DbMain.TaskWorkflowChatList(req.WorkflowID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`list`: list,
+		`list`: buildAgentChatListResponse(rows),
 	})
 }
 
@@ -2632,10 +2765,27 @@ func TaskWorkflowChatDetail(c *gin.Context) {
 	}
 
 	modelName := ``
+	agentCliName := ``
+	selectedModelName := strings.TrimSpace(cast.ToString(info[`model_name`]))
 	if agentCliId := cast.ToInt(info[`agent_cli_id`]); agentCliId > 0 {
 		cliRow, err := common.DbMain.Client.QueryBySql(`SELECT name FROM tbl_agent_cli WHERE id = ?`, agentCliId).One()
 		if err == nil && len(cliRow) > 0 {
-			modelName = cast.ToString(cliRow["name"])
+			agentCliName = cast.ToString(cliRow["name"])
+		}
+	}
+	if selectedModelName != `` {
+		modelName = selectedModelName
+	}
+
+	taskName := ""
+	// 只有工作流来源才反查任务名，避免 AgentCli 独立执行误关联任务。 // Only workflow-origin chats should resolve workflow task names.
+	if cast.ToString(info["from_type"]) == common.AgentChatSourceTypeWorkflow {
+		if workflowID := cast.ToInt(info["from_id"]); workflowID > 0 {
+			wfRow, _ := common.DbMain.Client.QueryBySql(`SELECT home_task_id FROM tbl_task_workflow WHERE id = ?`, workflowID).One()
+			if homeTaskId := cast.ToInt(wfRow["home_task_id"]); homeTaskId > 0 {
+				htRow, _ := common.DbMain.Client.QueryBySql(`SELECT name FROM tbl_home_task WHERE id = ?`, homeTaskId).One()
+				taskName = cast.ToString(htRow["name"])
+			}
 		}
 	}
 
@@ -2644,7 +2794,10 @@ func TaskWorkflowChatDetail(c *gin.Context) {
 		`session_id`:         info[`session_id`],
 		`prompt`:             info[`prompt`],
 		`agent_cli_id`:       info[`agent_cli_id`],
+		`agent_cli_name`:     agentCliName,
+		`cli_type`:           info[`cli_type`],
 		`model_name`:         modelName,
+		`task_name`:          taskName,
 		`local_dir`:          info[`local_dir`],
 		`status`:             info[`status`],
 		`created_at`:         info[`created_at`],
@@ -2720,53 +2873,47 @@ func TaskWorkflowChatListByPromptType(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	type chatItem struct {
-		ID         int64  `json:"id"`
-		SessionID  string `json:"session_id"`
-		Prompt     string `json:"prompt"`
-		AgentCliId int    `json:"agent_cli_id"`
-		LocalDir   string `json:"local_dir"`
-		Status     string `json:"status"`
-		CliType    string `json:"cli_type"`
-		CreatedAt  string `json:"created_at"`
-		DurationMs int64  `json:"duration_ms"`
-		LineCount  int    `json:"line_count"`
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: buildAgentChatListResponse(rows),
+	})
+}
+
+// TaskWorkflowChatListByAgentCli 按 Agent CLI 列出对话。
+// TaskWorkflowChatListByAgentCli returns standalone AgentCli execution history for one card.
+func TaskWorkflowChatListByAgentCli(c *gin.Context) {
+	var req _struct.TaskWorkflowChatListByAgentCliRequest
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
 	}
-	const timeLayout2 = `2006-01-02 15:04:05`
-	list := make([]chatItem, 0, len(rows))
-	for _, row := range rows {
-		status := cast.ToString(row[`status`])
-		var durationMs int64
-		if status != `running` {
-			createdAt, _ := time.Parse(timeLayout2, cast.ToString(row[`created_at`]))
-			updatedAt, _ := time.Parse(timeLayout2, cast.ToString(row[`updated_at`]))
-			if !createdAt.IsZero() && !updatedAt.IsZero() {
-				durationMs = updatedAt.Sub(createdAt).Milliseconds()
-				if durationMs < 0 {
-					durationMs = 0
-				}
-			}
-		}
-		rawOutput := cast.ToString(row[`raw_output`])
-		lineCount := 0
-		if rawOutput != `` {
-			lineCount = len(strings.Split(rawOutput, "\n"))
-		}
-		list = append(list, chatItem{
-			ID:         cast.ToInt64(row[`id`]),
-			SessionID:  cast.ToString(row[`session_id`]),
-			Prompt:     cast.ToString(row[`prompt`]),
-			AgentCliId: cast.ToInt(row[`agent_cli_id`]),
-			LocalDir:   cast.ToString(row[`local_dir`]),
-			Status:     status,
-			CliType:    cast.ToString(row[`cli_type`]),
-			CreatedAt:  cast.ToString(row[`created_at`]),
-			DurationMs: durationMs,
-			LineCount:  lineCount,
-		})
+	agentChatListByAgentCli(c, req.AgentCliID)
+}
+
+// AgentChatListByAgentCli 按 Agent CLI 列出独立执行对话。
+// AgentChatListByAgentCli exposes the dedicated AgentCli history endpoint while reusing the same query logic.
+func AgentChatListByAgentCli(c *gin.Context) {
+	var req _struct.AgentChatListByAgentCliRequest
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	agentChatListByAgentCli(c, req.AgentCliID)
+}
+
+// agentChatListByAgentCli 返回一个 Agent CLI 的独立执行历史。
+// agentChatListByAgentCli is shared by the new Agent endpoint and the temporary workflow-compatible endpoint.
+func agentChatListByAgentCli(c *gin.Context, agentCliID int) {
+	if agentCliID <= 0 {
+		gsgin.GinResponseError(c, `agent_cli_id不能为空`, nil)
+		return
+	}
+	rows, err := common.DbMain.AgentChatListByAgentCli(agentCliID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`list`: list,
+		`list`: buildAgentChatListResponse(rows),
 	})
 }
 
@@ -2998,14 +3145,19 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 		SettingsPath:   settingsPath,
 		Effort:         thinkingEffort,
 		ThinkingBudget: thinkingBudget,
+		ProcessStartCallback: func(pid int) {
+			_ = common.DbMain.TaskWorkflowChatUpdatePID(chatID, pid)
+		},
 	}
 
 	// 推送提示词到前端展示
 	if prompt != "" {
 		promptJSON, _ := json.Marshal(map[string]string{
-			`type`:    `system`,
-			`subtype`: `command`,
-			`text`:    prompt,
+			`type`:     `system`,
+			`subtype`:  `command`,
+			`cli_type`: `claude`,
+			`cmd_line`: p_claude.BuildCommandLine(cfg),
+			`text`:     prompt,
 		})
 		sendLine(string(promptJSON))
 	}
@@ -3024,6 +3176,9 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 	sessionExtracted := false
 	callbackCount := 0
 	var lastAssistantText string
+	// lastResultText 来自 Claude stream-json 的 result 类型消息，是本轮 turn 的最终汇总文本，
+	// 比逐条 assistant 流式累积更权威；webhook 通知优先使用该值，缺失时再回退到 lastAssistantText。
+	var lastResultText string
 
 	gstool.FmtPrintlnLogTime("[chat-run] chat_id=%d 开始RunClaudeStream dir=%s model=%s", chatID, localDir, modelName)
 
@@ -3044,10 +3199,16 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 		}
 		sendLine(rawJSON)
 
-		// 跟踪最后一条 assistant 消息的文本内容
+		// 跟踪最后一条 assistant 消息的文本内容（webhook 通知兜底用）
 		if msg.Type == `assistant` {
 			if text := extractAssistantText(msg.Data); text != "" {
 				lastAssistantText = text
+			}
+		}
+		// 跟踪 result 类型消息的 result 字段，作为 webhook 通知的首选内容
+		if msg.Type == `result` {
+			if text := strings.TrimSpace(cast.ToString(msg.Data[`result`])); text != "" {
+				lastResultText = text
 			}
 		}
 
@@ -3080,8 +3241,226 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 	sendLine(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
 	// 通知工作流页面刷新 chat 状态计数（执行历史按钮动画和状态数量）
 	taskWorkflowBroadcastChatStatus(chatID)
-	// 异步发送 webhook 通知
-	go taskWorkflowSendWebhookNotify(chatID, lastAssistantText)
+	// 异步发送 webhook 通知：优先使用 result 类型消息的最终文本，缺失时回退到 assistant 累积文本
+	notifyText := lastResultText
+	if notifyText == `` {
+		notifyText = lastAssistantText
+	}
+	go taskWorkflowSendWebhookNotify(chatID, notifyText)
+}
+
+// runCodexCommand 执行 Codex CLI 命令并推送流式输出到 SSE + DB。
+// 与 runClaudeCommand 平级，通过 cli_type 分发调用。
+func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessionID string, configJson string, selectedModelName string, sse *gsgin.Sse, stopC chan int) {
+	distributeID := define.SseTaskWorkflowChatPrefix + cast.ToString(chatID)
+	startTime := time.Now()
+
+	defer func() {
+		if r := recover(); r != nil {
+			gstool.FmtPrintlnLogTime("[codex-run] chat_id=%d panic: %v", chatID, r)
+			_ = common.DbMain.TaskWorkflowChatMarkError(chatID)
+			if curSse := gsgin.SseGetByClientId(distributeID); curSse != nil {
+				_ = curSse.SendToChan(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
+			}
+			taskWorkflowBroadcastChatStatus(chatID)
+		}
+		func() {
+			defer func() { recover() }()
+			close(stopC)
+		}()
+	}()
+
+	// DB 写入通道：批量写 DB 与 SSE 推送解耦
+	dbWriteCh := make(chan string, 4096)
+	dbWriteDone := make(chan struct{})
+
+	go func() {
+		defer close(dbWriteDone)
+		dbBuf := make([]string, 0, common.ChatOutputFlushBatchSize)
+		flushTimer := time.NewTicker(2 * time.Second)
+		defer flushTimer.Stop()
+
+		flushDB := func() {
+			if len(dbBuf) == 0 {
+				return
+			}
+			lines := make([]string, len(dbBuf))
+			copy(lines, dbBuf)
+			dbBuf = dbBuf[:0]
+			_ = common.DbMain.TaskWorkflowChatAppendOutputBatch(chatID, lines)
+		}
+
+		for {
+			select {
+			case line, ok := <-dbWriteCh:
+				if !ok {
+					flushDB()
+					return
+				}
+				dbBuf = append(dbBuf, line)
+				if len(dbBuf) >= common.ChatOutputFlushBatchSize {
+					flushDB()
+				}
+			case <-flushTimer.C:
+				flushDB()
+			}
+		}
+	}()
+
+	defer func() {
+		close(dbWriteCh)
+		<-dbWriteDone
+	}()
+
+	sendLine := func(line string) {
+		select {
+		case dbWriteCh <- line:
+		default:
+		}
+		if curSse := gsgin.SseGetByClientId(distributeID); curSse != nil {
+			_ = curSse.SendToChan(line)
+		}
+	}
+
+	// 解析 Codex 配置
+	codexCfg, cfgErr := business.GetCodexCliConfig(configJson)
+	if cfgErr != nil {
+		errJSON, _ := json.Marshal(map[string]string{
+			`type`: `error`,
+			`text`: `Codex CLI 配置解析失败: ` + cfgErr.Error(),
+		})
+		sendLine(string(errJSON))
+		_ = common.DbMain.TaskWorkflowChatMarkError(chatID)
+		sendLine(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
+		taskWorkflowBroadcastChatStatus(chatID)
+		return
+	}
+	if strings.TrimSpace(selectedModelName) != `` {
+		codexCfg.Model = strings.TrimSpace(selectedModelName)
+	}
+
+	cfg := p_codex.RunConfig{
+		Prompt:      prompt,
+		SessionID:   sessionID,
+		Model:       codexCfg.Model,
+		APIKey:      codexCfg.ApiKey,
+		BaseURL:     codexCfg.BaseURL,
+		WorkingDir:  localDir,
+		SandboxMode: codexCfg.SandboxMode,
+		ProcessStartCallback: func(pid int) {
+			_ = common.DbMain.TaskWorkflowChatUpdatePID(chatID, pid)
+		},
+	}
+
+	// 推送提示词到前端展示（复用 Claude 的 system/command 格式，前端可统一识别）
+	if prompt != "" {
+		promptJSON, _ := json.Marshal(map[string]string{
+			`type`:     `system`,
+			`subtype`:  `command`,
+			`cli_type`: `codex`,
+			`cmd_line`: p_codex.BuildCommandLine(cfg),
+			`text`:     prompt,
+		})
+		sendLine(string(promptJSON))
+	}
+
+	stopped := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	chatCancelFuncs.Store(chatID, func() {
+		close(stopped)
+		cancel()
+	})
+	defer func() {
+		cancel()
+		chatCancelFuncs.Delete(chatID)
+	}()
+
+	sessionExtracted := false
+	callbackCount := 0
+	var lastAgentMessageText string
+	turnCount := 0
+	var lastTurnUsage map[string]any
+
+	gstool.FmtPrintlnLogTime("[codex-run] chat_id=%d 开始RunCodexStream dir=%s model=%s", chatID, localDir, codexCfg.Model)
+
+	_, err := p_codex.RunCodexStream(ctx, cfg, func(msg p_codex.StreamMessage) {
+		callbackCount++
+		if callbackCount <= 3 {
+			gstool.FmtPrintlnLogTime("[codex-run] callback:%d type=%s item_type=%s len=%d", callbackCount, msg.Type, msg.ItemType, len(msg.RawJSON))
+		}
+		sendLine(msg.RawJSON)
+
+		// 跟踪最后一条 agent_message 的文本内容（webhook 通知用）
+		if msg.ItemType == `agent_message` {
+			if item, ok := msg.Data[`item`].(map[string]any); ok {
+				if text := cast.ToString(item[`text`]); text != "" {
+					lastAgentMessageText = text
+				}
+			}
+		}
+		if msg.Type == `turn.completed` {
+			turnCount++
+			if usage, ok := msg.Data[`usage`].(map[string]any); ok {
+				lastTurnUsage = usage
+			}
+		}
+
+		// 从 thread.started 提取 thread_id 作为 session_id
+		if !sessionExtracted && !isResume && msg.Type == `thread.started` {
+			if tid := cast.ToString(msg.Data[`thread_id`]); tid != `` {
+				_ = common.DbMain.TaskWorkflowChatUpdateSessionID(chatID, tid)
+				sessionExtracted = true
+			}
+		}
+	})
+
+	gstool.FmtPrintlnLogTime("[codex-run] chat_id=%d RunCodexStream结束 callbackCount=%d err=%v", chatID, callbackCount, err)
+
+	if err != nil {
+		errJSON, _ := json.Marshal(map[string]string{
+			`type`: `error`,
+			`text`: err.Error(),
+		})
+		sendLine(string(errJSON))
+		select {
+		case <-stopped:
+			_ = common.DbMain.TaskWorkflowChatMarkInterrupted(chatID)
+		default:
+			_ = common.DbMain.TaskWorkflowChatMarkError(chatID)
+		}
+	} else {
+		_ = common.DbMain.TaskWorkflowChatMarkCompleted(chatID)
+	}
+
+	durationMs := time.Since(startTime).Milliseconds()
+	if durationMs < 0 {
+		durationMs = 0
+	}
+	if turnCount <= 0 {
+		turnCount = 1
+	}
+	modelUsage := map[string]any{}
+	if codexCfg.Model != `` {
+		modelUsage[codexCfg.Model] = map[string]any{
+			`inputTokens`:          cast.ToInt64(lastTurnUsage[`input_tokens`]),
+			`outputTokens`:         cast.ToInt64(lastTurnUsage[`output_tokens`]),
+			`cacheReadInputTokens`: cast.ToInt64(lastTurnUsage[`cache_read_input_tokens`]),
+		}
+	}
+	resultJSON, _ := json.Marshal(map[string]any{
+		`type`:        `result`,
+		`subtype`:     `completed`,
+		`duration_ms`: durationMs,
+		`num_turns`:   turnCount,
+		`usage`:       lastTurnUsage,
+		`modelUsage`:  modelUsage,
+		`is_error`:    err != nil,
+		`result`:      lastAgentMessageText,
+	})
+	sendLine(string(resultJSON))
+	sendLine(fmt.Sprintf(`{"type":"chat","subtype":"completed","chat_id":%d}`, chatID))
+	taskWorkflowBroadcastChatStatus(chatID)
+	go taskWorkflowSendWebhookNotify(chatID, lastAgentMessageText)
 }
 
 // taskWorkflowAutoCompleteNode 自动将指定节点标记为已完成。
@@ -3106,7 +3485,11 @@ func taskWorkflowBroadcastChatStatus(chatID int64) {
 	if err != nil || len(chatInfo) == 0 {
 		return
 	}
-	workflowID := cast.ToInt(chatInfo[`workflow_id`])
+	// 仅工作流来源的 chat 需要广播到工作流页面。 // Only workflow-origin chats should refresh workflow-side counters.
+	if cast.ToString(chatInfo[`from_type`]) != common.AgentChatSourceTypeWorkflow {
+		return
+	}
+	workflowID := cast.ToInt(chatInfo[`from_id`])
 	if workflowID <= 0 {
 		return
 	}
@@ -3122,7 +3505,7 @@ func taskWorkflowBroadcastChatStatus(chatID int64) {
 	})
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, apiDataChangeSseStatusPrefix))
-		if clientID == `` || clientID == item {
+		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
 			continue
 		}
 		sse := gsgin.SseGetByClientId(clientID)
@@ -3134,8 +3517,14 @@ func taskWorkflowBroadcastChatStatus(chatID int64) {
 }
 
 // extractAssistantText 从 assistant 消息中提取文本内容。
+// Claude Code stream-json 的 assistant 消息结构为：{"type":"assistant","message":{"content":[{"type":"text","text":"..."}]}}
+// 所以 content 数组要从 data["message"]["content"] 取，而不是 data["content"]。
 func extractAssistantText(data map[string]any) string {
-	contentRaw, ok := data["content"]
+	msgMap, ok := data["message"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	contentRaw, ok := msgMap["content"]
 	if !ok {
 		return ""
 	}
@@ -3191,12 +3580,14 @@ func taskWorkflowSendWebhookNotify(chatID int64, lastText string) {
 
 	// 获取关联的工作流任务名称
 	taskName := ""
-	workflowID := cast.ToInt(chatInfo["workflow_id"])
-	if workflowID > 0 {
-		wfRow, _ := common.DbMain.Client.QueryBySql(`SELECT home_task_id FROM tbl_task_workflow WHERE id = ?`, workflowID).One()
-		if homeTaskId := cast.ToInt(wfRow["home_task_id"]); homeTaskId > 0 {
-			htRow, _ := common.DbMain.Client.QueryBySql(`SELECT name FROM tbl_home_task WHERE id = ?`, homeTaskId).One()
-			taskName = cast.ToString(htRow["name"])
+	if cast.ToString(chatInfo["from_type"]) == common.AgentChatSourceTypeWorkflow {
+		workflowID := cast.ToInt(chatInfo["from_id"])
+		if workflowID > 0 {
+			wfRow, _ := common.DbMain.Client.QueryBySql(`SELECT home_task_id FROM tbl_task_workflow WHERE id = ?`, workflowID).One()
+			if homeTaskId := cast.ToInt(wfRow["home_task_id"]); homeTaskId > 0 {
+				htRow, _ := common.DbMain.Client.QueryBySql(`SELECT name FROM tbl_home_task WHERE id = ?`, homeTaskId).One()
+				taskName = cast.ToString(htRow["name"])
+			}
 		}
 	}
 
@@ -3204,9 +3595,14 @@ func taskWorkflowSendWebhookNotify(chatID int64, lastText string) {
 	if taskName != "" {
 		header = fmt.Sprintf("[%s] %s - 对话 #%d 已结束", agentName, taskName, chatID)
 	}
-	content := fmt.Sprintf("%s\n%s", header, msg)
+	replyLink := ""
+	if len(component.EnvClient.Ports) > 0 {
+		replyLink = fmt.Sprintf("http://localhost:%s/#/ChatReply/%d", component.EnvClient.Ports[0], chatID)
+	}
 
-	if err := business.SendWebhookNotify(config, content); err != nil {
+	// 钉钉 actionCard 的 title 仅用于消息列表预览,不会出现在消息正文,因此 text 里需要再带一次 header 才能看到。
+	displayText := fmt.Sprintf("## %s\n\n%s", header, msg)
+	if err := business.SendWebhookNotify(config, header, displayText, replyLink); err != nil {
 		gstool.FmtPrintlnLogTime("[webhook-notify] chat_id=%d 发送失败: %v", chatID, err)
 	} else {
 		gstool.FmtPrintlnLogTime("[webhook-notify] chat_id=%d 发送成功", chatID)
