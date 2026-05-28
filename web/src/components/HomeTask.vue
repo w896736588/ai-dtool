@@ -732,6 +732,7 @@ function createHomeTaskDefaultForm() {
     name: '',
     task_status: HOME_TASK_STATUS_TODO,
     start_date: getTodayDateText(),
+    created_date: getTodayDateText(),
     tapd_url: '',
     use_workflow: HOME_TASK_USE_WORKFLOW_YES,
     dev_configs: [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', mysql_id: '', local_dir: '', parent_branch: '', branch_name: '', rule_entry_file: '', _branchGenerating: false, smart_link_id: '', smart_link_label: '', smart_link_account: '' }],
@@ -1062,8 +1063,9 @@ export default {
     _doGenerateBranchName(cfgIdx) {
       const cfg = this.homeTaskForm.dev_configs[cfgIdx]
       const taskName = String(this.homeTaskForm.name || '').trim()
+      const createdDate = String(this.homeTaskForm.created_date || '').trim()
       cfg._branchGenerating = true
-      homeTaskApi.HomeTaskBranchNameGenerate(taskName, String(cfg.parent_branch || '').trim(), (response) => {
+      homeTaskApi.HomeTaskBranchNameGenerate(taskName, String(cfg.parent_branch || '').trim(), createdDate, (response) => {
         cfg._branchGenerating = false
         if (response && response.ErrCode === 0 && response.Data) {
           cfg.branch_name = response.Data.branch_name || ''
@@ -1180,6 +1182,7 @@ export default {
         name: task.name || '',
         task_status: task.task_status || HOME_TASK_STATUS_TODO,
         start_date: task.start_time_desc || getTodayDateText(),
+        created_date: (task.create_time_desc || '').split(' ')[0] || '',
         tapd_url: task.tapd_url || '',
         use_workflow: Number(task.use_workflow ?? HOME_TASK_USE_WORKFLOW_YES) === HOME_TASK_USE_WORKFLOW_YES ? HOME_TASK_USE_WORKFLOW_YES : HOME_TASK_USE_WORKFLOW_NO,
         dev_configs: devConfigs,

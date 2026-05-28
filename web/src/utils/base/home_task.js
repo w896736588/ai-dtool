@@ -56,8 +56,8 @@ function HomeTaskLastDevConfigByGitId(gitId, callBack) {
 }
 
 // HomeTaskBranchNameGenerate 使用 AI 生成分支名。
-function HomeTaskBranchNameGenerate(taskName, parentBranch, callBack) {
-  base.BasePost('/api/HomeTaskBranchNameGenerate', { task_name: taskName, parent_branch: parentBranch }, callBack)
+function HomeTaskBranchNameGenerate(taskName, parentBranch, createdDate, callBack) {
+  base.BasePost('/api/HomeTaskBranchNameGenerate', { task_name: taskName, parent_branch: parentBranch, created_date: createdDate }, callBack)
 }
 
 // HomeTaskUnusedLocalDirs 查询历史任务中未被活跃任务占用的本地目录。

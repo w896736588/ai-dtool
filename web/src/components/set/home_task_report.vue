@@ -425,6 +425,7 @@ export default {
       return [
         { label: '需求名', value: '{需求名}' },
         { label: '父分支', value: '{父分支}' },
+        { label: '任务创建日期', value: '{任务创建日期}' },
       ]
     },
     devEnvironmentPlaceholders() {

@@ -74,6 +74,7 @@ type HomeTaskLastDevConfigByGitIdRequest struct {
 type HomeTaskBranchNameGenerateRequest struct {
 	TaskName     string `json:"task_name"`
 	ParentBranch string `json:"parent_branch"`
+	CreatedDate  string `json:"created_date"`
 }
 
 // HomeTaskZcodeSessionIdAppendRequest 追加 zcode sessionId 请求。
