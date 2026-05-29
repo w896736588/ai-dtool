@@ -35,6 +35,13 @@ type ScrapeMarkdownResult struct {
 	FileName string
 }
 
+type scrapeLocatorMatch struct {
+	Locator     playwright.Locator
+	Count       int
+	Scope       string
+	ScopeDetail string
+}
+
 func logScrapeMarkdownStep(log *gstool.GsSlog, runParams *PlaywrightRunParams, step, format string, args ...any) {
 	message := fmt.Sprintf(format, args...)
 	if log != nil {
@@ -400,6 +407,48 @@ func ioReadAll(reader io.Reader) ([]byte, error) {
 	return io.ReadAll(reader)
 }
 
+func findScrapeLocator(page *playwright.Page, selector string) (*scrapeLocatorMatch, error) {
+	locator := (*page).Locator(selector)
+	count, err := locator.Count()
+	if err != nil {
+		return nil, err
+	}
+	if count > 0 {
+		return &scrapeLocatorMatch{
+			Locator:     locator,
+			Count:       count,
+			Scope:       "page",
+			ScopeDetail: (*page).URL(),
+		}, nil
+	}
+
+	for index, frame := range (*page).Frames() {
+		if frame == nil {
+			continue
+		}
+		frameLocator := frame.Locator(selector)
+		frameCount, frameErr := frameLocator.Count()
+		if frameErr != nil {
+			continue
+		}
+		if frameCount > 0 {
+			return &scrapeLocatorMatch{
+				Locator:     frameLocator,
+				Count:       frameCount,
+				Scope:       "frame",
+				ScopeDetail: fmt.Sprintf("index=%d url=%s", index, frame.URL()),
+			}, nil
+		}
+	}
+
+	return &scrapeLocatorMatch{
+		Locator:     locator,
+		Count:       0,
+		Scope:       "page",
+		ScopeDetail: (*page).URL(),
+	}, nil
+}
+
 // RunScrapeToMarkdown 在 Agent 本地浏览器上下文中执行抓取、转 Markdown 和 ZIP 打包。
 func RunScrapeToMarkdown(runParams *PlaywrightRunParams, scrapeConfig define.AgentTaskScrapeConfig, log *gstool.GsSlog) (*ScrapeMarkdownResult, error) {
 	if runParams == nil {
@@ -443,17 +492,16 @@ func RunScrapeToMarkdown(runParams *PlaywrightRunParams, scrapeConfig define.Age
 		time.Sleep(time.Duration(scrapeConfig.WaitSeconds) * time.Second)
 	}
 
-	locator := (*page).Locator(scrapeConfig.CssSelector)
-	count, err := locator.Count()
+	match, err := findScrapeLocator(page, scrapeConfig.CssSelector)
 	if err != nil {
 		logScrapeMarkdownStep(log, runParams, "定位抓取节点", "统计节点失败 err=%s", err.Error())
 		return nil, err
 	}
-	logScrapeMarkdownStep(log, runParams, "定位抓取节点", "节点数量=%d selector=%s", count, scrapeConfig.CssSelector)
-	if count <= 0 {
+	logScrapeMarkdownStep(log, runParams, "定位抓取节点", "节点数量=%d selector=%s scope=%s detail=%s", match.Count, scrapeConfig.CssSelector, match.Scope, match.ScopeDetail)
+	if match.Count <= 0 {
 		return nil, fmt.Errorf("未找到抓取节点: %s", scrapeConfig.CssSelector)
 	}
-	htmlText, err := locator.First().InnerHTML()
+	htmlText, err := match.Locator.First().InnerHTML()
 	if err != nil {
 		logScrapeMarkdownStep(log, runParams, "抓取HTML", "读取HTML失败 err=%s", err.Error())
 		return nil, err

@@ -23,7 +23,7 @@ import (
 const (
 	// defaultSmartLinkScrapeWaitSeconds 抓取任务默认等待秒数。
 	// 注意：TAPD 等 SPA 页面需求详情走 AJAX 异步加载，等待时间过短会在节点未渲染前就调 locator.Count() 导致"未找到抓取节点"。
-	defaultSmartLinkScrapeWaitSeconds = 20
+	defaultSmartLinkScrapeWaitSeconds = 5
 	// maxSmartLinkScrapeWaitSeconds 抓取任务允许的最大等待秒数。
 	maxSmartLinkScrapeWaitSeconds = 60
 	// smartLinkScrapeTaskTimeout 抓取任务接口同步等待 Agent 完成的超时时间。

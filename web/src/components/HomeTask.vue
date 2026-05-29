@@ -1395,6 +1395,10 @@ export default {
         return
       }
       const taskName = String(this.homeTaskForm.name || '').trim()
+      const fetchType = String(this.homeTaskForm.fetch_type || HOME_TASK_FETCH_TYPE_TAPD).trim()
+      const tapdUrl = String(this.homeTaskForm.tapd_url || '').trim()
+      const zentaoUrl = String(this.homeTaskForm.zentao_url || '').trim()
+      const requirementUrl = fetchType === HOME_TASK_FETCH_TYPE_ZENTAO ? zentaoUrl : tapdUrl
       if (!taskName) {
         this.$helperNotify.error('任务名称不能为空')
         return
@@ -1424,9 +1428,9 @@ export default {
         name: taskName,
         task_status: this.homeTaskForm.task_status,
         start_time: this.convertHomeTaskDateToUnix(this.homeTaskForm.start_date),
-        fetch_type: String(this.homeTaskForm.fetch_type || HOME_TASK_FETCH_TYPE_TAPD).trim(),
-        tapd_url: String(this.homeTaskForm.tapd_url || '').trim(),
-        zentao_url: String(this.homeTaskForm.zentao_url || '').trim(),
+        fetch_type: fetchType,
+        tapd_url: tapdUrl,
+        zentao_url: zentaoUrl,
         dev_configs: JSON.stringify(validConfigs),
         use_workflow: useWorkflow,
         api_host: base.GetApiHost() || window.location.origin,
@@ -1446,7 +1450,7 @@ export default {
           this.triggerHomeTaskEditFeedback(taskId)
         }
         this.refreshAllHomeTaskList()
-        if (!isEdit && createdTaskId > 0 && useWorkflow === HOME_TASK_USE_WORKFLOW_YES) {
+        if (!isEdit && createdTaskId > 0 && useWorkflow === HOME_TASK_USE_WORKFLOW_YES && requirementUrl) {
           this.openTaskWorkflow({ id: createdTaskId })
         }
       })
