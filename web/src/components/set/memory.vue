@@ -29,7 +29,6 @@
                 <div class="config-edit-row">
                   <el-select v-model="editingItem.value" style="width: 200px">
                     <el-option label="server" value="server" />
-                    <el-option label="local_client" value="local_client" />
                   </el-select>
                   <div class="config-edit-actions">
                     <GitActionButton compact size="small" @click="saveItem('smart_link', 'run_mode', editingItem.value)">保存</GitActionButton>

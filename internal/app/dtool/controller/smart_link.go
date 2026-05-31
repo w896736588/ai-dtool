@@ -262,13 +262,6 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 		SseDistributeId: cast.ToString(dataMap[`sse_distribute_id`]),
 	}
 
-	// 客户端模式下，走任务下发流程
-	cfg := getSmartLinkConfig()
-	if cfg.RunMode == define.SmartLinkRunModeLocalClient {
-		smartLinkRunPlaywrightViaClient(c, dataMap, id, label, sse)
-		return
-	}
-
 	if !ensureSmartLinkNodeInstalled(c, sse) {
 		return
 	}
@@ -307,111 +300,6 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 		time.Sleep(time.Second * 2)
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
-}
-
-// smartLinkRunPlaywrightViaClient 客户端模式下通过 WebSocket 下发任务给 Agent
-func smartLinkRunPlaywrightViaClient(c *gin.Context, dataMap map[string]any, id int, label string, sse *p_sse.SseShell) {
-	// 从内存检查客户端状态
-	info := GlobalClientRegistry.GetLatest()
-	if info == nil {
-		sse.Send(`客户端未连接，无法执行任务` + "\n")
-		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_OFFLINE", nil)
-		return
-	}
-
-	isConnected := GlobalAgentWsManager.GetConnection(info.ClientID) != nil
-	if !isConnected {
-		sse.Send(`客户端未连接，无法执行任务` + "\n")
-		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_OFFLINE", nil)
-		return
-	}
-
-	cfg := getSmartLinkConfig()
-	if info.ClientVersion != cfg.ClientVersion {
-		sse.Send(`客户端版本不匹配，请更新客户端` + "\n")
-		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_VERSION_MISMATCH", nil)
-		return
-	}
-
-	if info.Status == define.SmartLinkClientStatusPreparingRuntime {
-		sse.Send(`客户端正在准备运行环境，请稍后重试` + "\n")
-		gsgin.GinResponseError(c, "SMART_LINK_CLIENT_PREPARING_RUNTIME", nil)
-		return
-	}
-
-	clientID := info.ClientID
-	userName := cast.ToString(dataMap[`user_name`])
-	password := cast.ToString(dataMap[`password`])
-	openType := cast.ToInt(dataMap[`open_type`])
-	openNum := cast.ToInt(dataMap[`open_num`])
-	replaceList := make(map[string]string)
-
-	// 构建运行参数
-	sse.Send(p_common.TMarkDownClient.BlockQuote(`运行,开始----------------我是分隔君`) + "\n")
-	sse.Send(p_common.TMarkDownClient.Bold(label) + ` 构建run_params 开始` + "\n")
-
-	runParams, runParamsErr := plw.GetRunParams(id, label, userName, password, openType, openNum, replaceList)
-	if runParamsErr != nil {
-		sse.Send(p_common.TMarkDownClient.Bold(label) + ` 构建run_params 失败:` + runParamsErr.Error() + "\n")
-		gsgin.GinResponseError(c, `构建运行参数失败: `+runParamsErr.Error(), nil)
-		return
-	}
-
-	sse.Send(p_common.TMarkDownClient.Bold(label) + ` 构建run_params 成功，准备下发给客户端执行` + "\n")
-
-	// 生成任务 ID 和 SSE 分发 ID
-	now := time.Now().Unix()
-	taskID := "task_" + cast.ToString(now) + "_" + cast.ToString(id)
-	sseDistributeId := cast.ToString(dataMap[`sse_distribute_id`])
-	if sseDistributeId == `` {
-		sseDistributeId = "smart_link_run_" + cast.ToString(now)
-	}
-
-	// 创建任务记录到数据库（用于状态追踪）
-	_, createErr := common.DbMain.Client.QuickCreate("tbl_smart_link_task", map[string]any{
-		"task_id":       taskID,
-		"client_id":     clientID,
-		"smart_link_id": id,
-		"label":         label,
-		"status":        define.SmartLinkTaskStatusPending,
-		"run_mode":      define.SmartLinkRunModeLocalClient,
-		"create_time":   now,
-		"update_time":   now,
-	}).Exec()
-	if createErr != nil {
-		sse.Send(`创建任务记录失败: ` + createErr.Error() + "\n")
-		gsgin.GinResponseError(c, `创建任务失败: `+createErr.Error(), nil)
-		return
-	}
-
-	// 通过 WebSocket 下发任务给 Agent
-	agentRunParams := BuildAgentRunParams(runParams)
-	wsMsg := define.AgentWsMessage{
-		Type:            define.AgentWsMsgTaskExecute,
-		ClientID:        clientID,
-		TaskID:          taskID,
-		SseDistributeId: sseDistributeId,
-		Data: define.AgentTaskExecuteData{
-			TaskID:          taskID,
-			SseDistributeId: sseDistributeId,
-			ClientID:        clientID,
-			RunParams:       agentRunParams,
-		},
-	}
-
-	if sendErr := GlobalAgentWsManager.Send(clientID, wsMsg); sendErr != nil {
-		sse.Send(`下发任务到客户端失败: ` + sendErr.Error() + "\n")
-		gsgin.GinResponseError(c, `下发任务到Agent失败: `+sendErr.Error(), nil)
-		return
-	}
-
-	sse.Send(p_common.TMarkDownClient.Bold(label) + ` 任务已下发给客户端，等待执行` + "\n")
-	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		"task_id":           taskID,
-		"client_id":         clientID,
-		"status":            define.SmartLinkTaskStatusPending,
-		"sse_distribute_id": sseDistributeId,
-	})
 }
 
 // SmartLinkRunPlaywrightList 获取运行的列表

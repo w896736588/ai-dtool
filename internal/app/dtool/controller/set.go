@@ -1117,8 +1117,8 @@ func SetRuntimeConfigItemSave(c *gin.Context) {
 	switch configKey {
 	case `run_mode`:
 		value := strings.TrimSpace(cast.ToString(configValue))
-		if value != string(define.SmartLinkRunModeServer) && value != string(define.SmartLinkRunModeLocalClient) {
-			gsgin.GinResponseError(c, `run_mode 必须是 server 或 local_client`, nil)
+		if value != string(define.SmartLinkRunModeServer) {
+			gsgin.GinResponseError(c, `run_mode 仅支持 server`, nil)
 			return
 		}
 		setIniKey(section, configKey, value)

@@ -7,12 +7,10 @@ import (
 	"dev_tool/internal/app/dtool/plw"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
@@ -26,8 +24,6 @@ const (
 	defaultSmartLinkScrapeWaitSeconds = 5
 	// maxSmartLinkScrapeWaitSeconds 抓取任务允许的最大等待秒数。
 	maxSmartLinkScrapeWaitSeconds = 60
-	// smartLinkScrapeTaskTimeout 抓取任务接口同步等待 Agent 完成的超时时间。
-	smartLinkScrapeTaskTimeout = 5 * time.Minute
 )
 
 type SmartLinkScrapeRequest struct {
@@ -117,15 +113,11 @@ func parseSmartLinkScrapeRequest(req map[string]any) (SmartLinkScrapeRequest, er
 	return result, nil
 }
 
-// buildScrapeTaskRequestPayload 统一保存抓取任务下发快照，便于排查服务端与 Agent 的协商参数。
-func buildScrapeTaskRequestPayload(taskData define.AgentTaskExecuteData) string {
-	return gstool.JsonEncode(taskData)
-}
-
-// saveSmartLinkScrapeResultFile 将 Agent 回传的 ZIP 保存到 web/download 并返回下载地址。
-func saveSmartLinkScrapeResultFile(taskID, originalName string, content []byte) (define.AgentTaskResultFileUploadResponse, error) {
+// saveSmartLinkScrapeResultFile 将抓取 ZIP 保存到 web/download 并返回最终文件名。
+// 服务端落盘可以复用现有下载接口，避免浏览器直接承接大体积 ZIP 响应。
+func saveSmartLinkScrapeResultFile(taskID, originalName string, content []byte) (string, error) {
 	if taskID == "" {
-		return define.AgentTaskResultFileUploadResponse{}, errors.New("task_id不能为空")
+		return "", errors.New("task_id不能为空")
 	}
 	fileName := strings.TrimSpace(originalName)
 	if fileName == "" {
@@ -135,18 +127,15 @@ func saveSmartLinkScrapeResultFile(taskID, originalName string, content []byte) 
 	if !strings.HasSuffix(strings.ToLower(fileName), ".zip") {
 		fileName = fileName + ".zip"
 	}
-	finalName := fmt.Sprintf("%s_%d_%s", taskID, time.Now().Unix(), fileName)
+	finalName := fmt.Sprintf("%s_%s", taskID, fileName)
 	targetPath := buildWebDownloadFilePath(finalName)
 	if err := gstool.DirCreatePath(filepath.Dir(targetPath)); err != nil {
-		return define.AgentTaskResultFileUploadResponse{}, err
+		return "", err
 	}
 	if err := os.WriteFile(targetPath, content, 0o644); err != nil {
-		return define.AgentTaskResultFileUploadResponse{}, err
+		return "", err
 	}
-	return define.AgentTaskResultFileUploadResponse{
-		DownloadURL: "/api/download/" + finalName,
-		FileName:    finalName,
-	}, nil
+	return finalName, nil
 }
 
 // buildAbsoluteDownloadURL 将下载相对路径补全为当前请求可直接访问的绝对地址，并在可用时附带 token。
@@ -216,90 +205,30 @@ func getFirstAccountFromSmartLink(smartLinkID int, label string) (string, string
 }
 
 // dispatchScrapeTaskAndAwait 派发抓取任务并同步等待结果，不依赖 gin.Context。
-// server 模式下直接在本机执行抓取；local_client 模式下通过 WebSocket 下发 Agent。
-func dispatchScrapeTaskAndAwait(smartLinkID int, label, jumpURL, cssSelector string, waitSeconds int) (define.AgentTaskResultFileUploadResponse, error) {
-	// 从 smart_link 的 links 中找到对应 label，再通过 account_list 关联的账号组取第一个账号。
+// 当前仅支持 server 模式，直接在本机执行抓取。
+// 返回的结果中包含相对下载路径 DownloadURL（如 /api/download/xxx.zip）。
+func dispatchScrapeTaskAndAwait(smartLinkID int, label, jumpURL, cssSelector string, waitSeconds int) (*plw.ScrapeMarkdownResult, error) {
 	accountUserName, accountPassword := getFirstAccountFromSmartLink(smartLinkID, label)
-
 	runParams, runParamsErr := plw.GetRunParams(smartLinkID, label, accountUserName, accountPassword, 0, 1, make(map[string]string))
 	if runParamsErr != nil {
-		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("构建运行参数失败: %w", runParamsErr)
+		return nil, fmt.Errorf("构建运行参数失败: %w", runParamsErr)
+	}
+	result, err := dispatchScrapeTaskLocal(runParams, jumpURL, cssSelector, waitSeconds)
+	if err != nil {
+		return nil, err
 	}
 
-	cfg := getSmartLinkConfig()
-	if cfg.RunMode != define.SmartLinkRunModeLocalClient {
-		return dispatchScrapeTaskLocal(runParams, jumpURL, cssSelector, waitSeconds)
+	// 保存文件并生成下载路径
+	taskID := "scrape_task_" + gstool.RandStringAll(8)
+	fileName, saveErr := saveSmartLinkScrapeResultFile(taskID, result.FileName, result.ZipBytes)
+	if saveErr != nil {
+		return nil, fmt.Errorf("保存抓取结果失败: %w", saveErr)
 	}
-
-	info := GlobalClientRegistry.GetLatest()
-	if info == nil || GlobalAgentWsManager.GetConnection(info.ClientID) == nil {
-		return define.AgentTaskResultFileUploadResponse{}, errors.New("SMART_LINK_CLIENT_OFFLINE")
-	}
-	if info.ClientVersion != cfg.ClientVersion {
-		return define.AgentTaskResultFileUploadResponse{}, errors.New("SMART_LINK_CLIENT_VERSION_MISMATCH")
-	}
-	if info.Status == define.SmartLinkClientStatusPreparingRuntime {
-		return define.AgentTaskResultFileUploadResponse{}, errors.New("SMART_LINK_CLIENT_PREPARING_RUNTIME")
-	}
-
-	now := time.Now().Unix()
-	taskID := "scrape_task_" + cast.ToString(now) + "_" + cast.ToString(smartLinkID)
-	sseDistributeID := "smart_link_scrape_" + cast.ToString(now)
-
-	tokenManager := getSafeTokenManager()
-	safeToken, _, tokenErr := tokenManager.GenerateToken()
-	if tokenErr != nil {
-		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("生成token失败: %w", tokenErr)
-	}
-
-	taskData := define.AgentTaskExecuteData{
-		TaskID:          taskID,
-		SseDistributeId: sseDistributeID,
-		ClientID:        info.ClientID,
-		TaskType:        define.AgentTaskTypeScrapeToMarkdown,
-		SafeToken:       safeToken,
-		RunParams:       BuildAgentRunParams(runParams),
-		ScrapeConfig: define.AgentTaskScrapeConfig{
-			JumpURL:     jumpURL,
-			CssSelector: cssSelector,
-			WaitSeconds: waitSeconds,
-		},
-	}
-
-	_, createErr := common.DbMain.Client.QuickCreate("tbl_smart_link_task", map[string]any{
-		"task_id":         taskID,
-		"client_id":       info.ClientID,
-		"smart_link_id":   smartLinkID,
-		"label":           label,
-		"status":          define.SmartLinkTaskStatusPending,
-		"run_mode":        define.SmartLinkRunModeLocalClient,
-		"request_payload": buildScrapeTaskRequestPayload(taskData),
-		"create_time":     now,
-		"update_time":     now,
-	}).Exec()
-	if createErr != nil {
-		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("创建任务失败: %w", createErr)
-	}
-
-	wsMsg := define.AgentWsMessage{
-		Type:            define.AgentWsMsgTaskExecute,
-		ClientID:        info.ClientID,
-		TaskID:          taskID,
-		SseDistributeId: sseDistributeID,
-		Data:            taskData,
-	}
-	if sendErr := GlobalAgentWsManager.Send(info.ClientID, wsMsg); sendErr != nil {
-		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("下发任务到Agent失败: %w", sendErr)
-	}
-
-	resultFile, waitErr := waitForSmartLinkTaskResult(taskID, smartLinkScrapeTaskTimeout, querySmartLinkTaskByID)
-	if waitErr != nil {
-		return define.AgentTaskResultFileUploadResponse{}, waitErr
-	}
-	return resultFile, nil
+	result.DownloadURL = "/api/download/" + fileName
+	return result, nil
 }
 
-// SmartLinkScrapeToMarkdown 创建抓取 Markdown 任务并下发给本地 Agent。
+// SmartLinkScrapeToMarkdown 创建抓取 Markdown 任务并在服务端直接执行。
 func SmartLinkScrapeToMarkdown(c *gin.Context) {
 	reqMap := make(map[string]any)
 	if err := gsgin.GinPostBody(c, &reqMap); err != nil {
@@ -315,78 +244,34 @@ func SmartLinkScrapeToMarkdown(c *gin.Context) {
 	}
 	gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][03] 收到抓取请求 %s`, summarizeSmartLinkScrapeRequest(req))
 
-	resultFile, dispatchErr := dispatchScrapeTaskAndAwait(req.SmartLinkID, req.Label, req.JumpURL, req.CssSelector, req.WaitSeconds)
+	result, dispatchErr := dispatchScrapeTaskAndAwait(req.SmartLinkID, req.Label, req.JumpURL, req.CssSelector, req.WaitSeconds)
 	if dispatchErr != nil {
 		errMsg := dispatchErr.Error()
 		gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][04] 派发抓取任务失败 err=%s`, errMsg)
 		gsgin.GinResponseError(c, errMsg, nil)
 		return
 	}
-	resultFile.DownloadURL = buildAbsoluteDownloadURL(c, resultFile.DownloadURL)
-	gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][15] 等待任务完成成功 download_url=%s file_name=%s`, resultFile.DownloadURL, resultFile.FileName)
+
+	// dispatchScrapeTaskAndAwait 已经保存了文件并设置了相对下载路径，这里转换为绝对URL
+	downloadURL := buildAbsoluteDownloadURL(c, result.DownloadURL)
+	gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][15] 抓取任务完成 download_url=%s file_name=%s`, downloadURL, result.FileName)
 
 	gsgin.GinResponseSuccess(c, "", map[string]any{
-		"download_url": resultFile.DownloadURL,
-		"file_name":    resultFile.FileName,
+		"download_url": downloadURL,
+		"file_name":    result.FileName,
 	})
 }
 
-// SmartLinkTaskResultFileUpload 接收 Agent 上传的抓取 ZIP 结果文件。
-func SmartLinkTaskResultFileUpload(c *gin.Context) {
-	taskID := strings.TrimSpace(c.PostForm("task_id"))
-	if taskID == "" {
-		gstool.FmtPrintlnLogTime(`[SmartLinkTaskResultFileUpload][01] 缺少task_id`)
-		gsgin.GinResponseError(c, "task_id不能为空", nil)
-		return
-	}
-	fileHeader, err := c.FormFile("file")
-	if err != nil {
-		gstool.FmtPrintlnLogTime(`[SmartLinkTaskResultFileUpload][02] 缺少上传文件 task_id=%s err=%s`, taskID, err.Error())
-		gsgin.GinResponseError(c, "file不能为空", nil)
-		return
-	}
-	gstool.FmtPrintlnLogTime(`[SmartLinkTaskResultFileUpload][03] 收到结果文件 task_id=%s file_name=%s file_size=%d`, taskID, fileHeader.Filename, fileHeader.Size)
-	file, openErr := fileHeader.Open()
-	if openErr != nil {
-		gstool.FmtPrintlnLogTime(`[SmartLinkTaskResultFileUpload][04] 打开上传文件失败 task_id=%s err=%s`, taskID, openErr.Error())
-		gsgin.GinResponseError(c, "打开上传文件失败: "+openErr.Error(), nil)
-		return
-	}
-	defer file.Close()
-
-	content, readErr := io.ReadAll(file)
-	if readErr != nil {
-		gstool.FmtPrintlnLogTime(`[SmartLinkTaskResultFileUpload][05] 读取上传文件失败 task_id=%s err=%s`, taskID, readErr.Error())
-		gsgin.GinResponseError(c, "读取上传文件失败: "+readErr.Error(), nil)
-		return
-	}
-	resp, saveErr := saveSmartLinkScrapeResultFile(taskID, fileHeader.Filename, content)
-	if saveErr != nil {
-		gstool.FmtPrintlnLogTime(`[SmartLinkTaskResultFileUpload][06] 保存上传文件失败 task_id=%s err=%s`, taskID, saveErr.Error())
-		gsgin.GinResponseError(c, "保存上传文件失败: "+saveErr.Error(), nil)
-		return
-	}
-	gstool.FmtPrintlnLogTime(`[SmartLinkTaskResultFileUpload][07] 保存上传文件成功 task_id=%s saved_file_name=%s download_url=%s size=%d`, taskID, resp.FileName, resp.DownloadURL, len(content))
-
-	gsgin.GinResponseSuccess(c, "", resp)
-}
-
-// dispatchScrapeTaskLocal 在 server 模式下直接在本机通过 Playwright 执行抓取，无需 Agent。
-func dispatchScrapeTaskLocal(runParams *plw.PlaywrightRunParams, jumpURL, cssSelector string, waitSeconds int) (define.AgentTaskResultFileUploadResponse, error) {
-	scrapeConfig := define.AgentTaskScrapeConfig{
+// dispatchScrapeTaskLocal 在 server 模式下直接在本机通过 Playwright 执行抓取。
+func dispatchScrapeTaskLocal(runParams *plw.PlaywrightRunParams, jumpURL, cssSelector string, waitSeconds int) (*plw.ScrapeMarkdownResult, error) {
+	scrapeConfig := define.SmartLinkScrapeConfig{
 		JumpURL:     jumpURL,
 		CssSelector: cssSelector,
 		WaitSeconds: waitSeconds,
 	}
 	result, err := plw.RunScrapeToMarkdown(runParams, scrapeConfig, component.PlaywrightClient.Log)
 	if err != nil {
-		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("本地抓取执行失败: %w", err)
+		return nil, fmt.Errorf("本地抓取执行失败: %w", err)
 	}
-	now := time.Now().Unix()
-	taskID := "scrape_task_" + cast.ToString(now)
-	resp, saveErr := saveSmartLinkScrapeResultFile(taskID, result.FileName, result.ZipBytes)
-	if saveErr != nil {
-		return define.AgentTaskResultFileUploadResponse{}, fmt.Errorf("保存抓取结果失败: %w", saveErr)
-	}
-	return resp, nil
+	return result, nil
 }

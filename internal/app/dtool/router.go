@@ -420,18 +420,7 @@ func smartLink(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/SmartLinkDownloadPath`, controller.SmartLinkDownloadPath)
 	tGin.GinPost(`/api/SmartLinkOpenDataDir`, controller.SmartLinkOpenDataDir)
 	tGin.GinPost(`/api/SmartLinkLocatorAutoExtract`, controller.SmartLinkLocatorAutoExtract)
-	// 本地客户端相关接口
-	tGin.GinGet(`/api/smart-link/runtime-config`, controller.SmartLinkRuntimeConfig)
-	tGin.GinGet(`/api/smart-link/client-status`, controller.SmartLinkClientStatus)
-	tGin.GinPost(`/api/smart-link/client-build/start`, controller.SmartLinkClientBuildStart)
-	tGin.GinGet(`/api/smart-link/client-build/status`, controller.SmartLinkClientBuildStatus)
-	tGin.GinGet(`/api/smart-link/client-build/download/:job_id`, controller.SmartLinkClientBuildDownload)
-	tGin.GinPost(`/api/smart-link/task/create`, controller.SmartLinkTaskCreate)
 	tGin.GinPost(`/api/smart-link/scrape-to-markdown`, controller.SmartLinkScrapeToMarkdown)
-	tGin.GinPost(`/api/smart-link/task/result-file`, controller.SmartLinkTaskResultFileUpload)
-	tGin.GinPost(`/api/smart-link/agent/last-user-data`, controller.SmartLinkLastForAgent)
-	tGin.GinPost(`/api/smart-link/agent/directory-mapping`, controller.SmartLinkDirectoryForAgent)
-	tGin.GinGet(`/api/agent/ws`, controller.AgentWs)
 	//执行逻辑
 	tGin.GinPost(`/api/SmartProcessList`, controller.SmartProcessList)
 	tGin.GinPost(`/api/SmartProcessAdd`, controller.SmartProcessAdd)

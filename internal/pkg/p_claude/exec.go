@@ -39,6 +39,13 @@ func RunClaudeStream(ctx context.Context, cfg RunConfig, callback func(msg Strea
 	env := buildEnv(cfg)
 
 	log.Printf("[claude-exec] 启动进程, dir=%s model=%s", cfg.WorkingDir, cfg.Model)
+	log.Printf("[claude-exec] 完整参数: %v", args)
+	if cfg.SessionID != "" {
+		log.Printf("[claude-exec] 尝试恢复 session_id=%s", cfg.SessionID)
+	}
+	if cfg.SettingsPath != "" {
+		log.Printf("[claude-exec] settings 路径=%s", cfg.SettingsPath)
+	}
 
 	result, err := startClaude(ctx, args, cfg.WorkingDir, env)
 	if err != nil {
@@ -102,7 +109,10 @@ doneReading:
 
 	exitCode, waitErr := result.waitFn()
 	stderrSummary := strings.Join(stderrLines, "\n")
-	log.Printf("[claude-exec] 进程结束, exitCode=%d waitErr=%v stderr=%s", exitCode, waitErr, stderrSummary)
+	log.Printf("[claude-exec] 进程结束, exitCode=%d waitErr=%v lineCount=%d stderrLineCount=%d", exitCode, waitErr, lineCount, len(stderrLines))
+	if stderrSummary != "" {
+		log.Printf("[claude-exec] stderr内容: %s", stderrSummary)
+	}
 	if waitErr != nil {
 		if stderrSummary != `` {
 			return sessionID, fmt.Errorf("claude 退出异常: %s (stderr: %s)", waitErr.Error(), stderrSummary)
@@ -110,10 +120,24 @@ doneReading:
 		return sessionID, fmt.Errorf("claude 退出异常: %w", waitErr)
 	}
 	if exitCode != 0 {
+		// 增强错误信息：当 stderr 为空时，提供更多上下文帮助排查
 		if stderrSummary != `` {
 			return sessionID, fmt.Errorf("claude 返回失败 (exit code %d): %s", exitCode, stderrSummary)
 		}
-		return sessionID, fmt.Errorf("claude 返回失败 (exit code %d)，无更多错误详情", exitCode)
+		// stderr 为空时，输出更多诊断信息
+		errMsg := fmt.Sprintf("claude 返回失败 (exit code %d)，无 stderr 输出。", exitCode)
+		if cfg.SessionID != "" {
+			errMsg += fmt.Sprintf(" session_id=%s", cfg.SessionID)
+		}
+		if lineCount == 0 {
+			errMsg += " 未收到任何 stdout 输出，可能是 Claude CLI 启动失败或配置错误。"
+		} else {
+			errMsg += fmt.Sprintf(" 已收到 %d 行输出。", lineCount)
+		}
+		if cfg.SettingsPath != "" {
+			errMsg += fmt.Sprintf(" settings=%s", cfg.SettingsPath)
+		}
+		return sessionID, fmt.Errorf(errMsg)
 	}
 	return sessionID, nil
 }
@@ -206,20 +230,23 @@ func BuildCommandLine(cfg RunConfig) string {
 	sb.WriteString(` -p "`)
 	sb.WriteString(sanitizePrompt(cfg.Prompt))
 	sb.WriteString(`"`)
-	sb.WriteString(` --add-dir `)
+	sb.WriteString(` --add-dir "`)
 	sb.WriteString(cfg.WorkingDir)
+	sb.WriteString(`"`)
 	sb.WriteString(` --output-format stream-json --include-partial-messages --verbose --permission-mode bypassPermissions`)
 	if cfg.Model != `` {
 		sb.WriteString(` --model `)
 		sb.WriteString(cfg.Model)
 	}
 	if cfg.UserDataDir != `` {
-		sb.WriteString(` --user-data-dir `)
+		sb.WriteString(` --user-data-dir "`)
 		sb.WriteString(cfg.UserDataDir)
+		sb.WriteString(`"`)
 	}
 	if cfg.SettingsPath != `` {
-		sb.WriteString(` --settings `)
+		sb.WriteString(` --settings "`)
 		sb.WriteString(cfg.SettingsPath)
+		sb.WriteString(`"`)
 	}
 	if cfg.Effort != `` {
 		sb.WriteString(` --effort `)

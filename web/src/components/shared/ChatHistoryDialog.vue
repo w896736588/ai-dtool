@@ -79,7 +79,7 @@
                       {{ msg.collapsed ? '展开 ▼' : '收起 ▲' }}
                     </span>
                   </div>
-                  <div v-if="msg.cmdLine" class="markdown-body chat-markdown-body" v-html="renderMarkdown('> ' + (msg.collapsed ? truncateCmdPrompt(msg.cmdLine, 15) : msg.cmdLine))"></div>
+                  <div v-if="msg.cmdLine" class="markdown-body chat-markdown-body" v-html="renderMarkdown('```\n' + (msg.collapsed ? truncateCmdPrompt(msg.cmdLine, 15) : msg.cmdLine) + '\n```')"></div>
                   <div v-else class="chat-message-plain" :style="{ maxHeight: msg.collapsed ? '20em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>
                   <div v-if="msg.cmdLine" class="chat-message-command-text" :style="{ maxHeight: msg.collapsed ? '15em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>
                 </div>

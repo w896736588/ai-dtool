@@ -54,20 +54,7 @@ const CombineTypeFix = 4 //固定目录映射
 type SmartLinkRunMode string
 
 const (
-	SmartLinkRunModeServer      SmartLinkRunMode = "server"       // 服务端执行
-	SmartLinkRunModeLocalClient SmartLinkRunMode = "local_client" // 本地客户端执行
-)
-
-// SmartLinkClientStatus 本地客户端状态
-type SmartLinkClientStatus string
-
-const (
-	SmartLinkClientStatusOffline          SmartLinkClientStatus = "offline"           // 未连接
-	SmartLinkClientStatusOnline           SmartLinkClientStatus = "online"            // 在线
-	SmartLinkClientStatusPreparingRuntime SmartLinkClientStatus = "preparing_runtime" // 运行环境准备中
-	SmartLinkClientStatusVersionMismatch  SmartLinkClientStatus = "version_mismatch"  // 版本不匹配
-	SmartLinkClientStatusRunning          SmartLinkClientStatus = "running"           // 运行中
-	SmartLinkClientStatusError            SmartLinkClientStatus = "error"             // 错误
+	SmartLinkRunModeServer SmartLinkRunMode = "server" // 服务端执行
 )
 
 // SmartLinkTaskStatus 任务状态
