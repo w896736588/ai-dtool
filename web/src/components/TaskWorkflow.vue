@@ -4,7 +4,7 @@
       <header class="task-workflow-header">
         <div class="task-workflow-header__main">
           <div class="task-workflow-header__title-row">
-            <h1 class="task-workflow-header__title">{{ homeTask.name || `任务 #${taskId}` }}</h1>
+            <h1 class="task-workflow-header__title" :title="homeTask.name || `任务 #${taskId}`">{{ homeTask.name || `任务 #${taskId}` }}</h1>
             <div class="task-workflow-header__actions">
           <el-tooltip content="返回首页" placement="bottom">
             <el-button class="task-workflow-home-btn" @click="goHome">
@@ -2956,6 +2956,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+  min-width: 0;
 }
 
 .task-workflow-header__title {
@@ -2963,7 +2964,11 @@ export default {
   font-size: 22px;
   line-height: 1.3;
   color: #303133;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-workflow-header__meta {
@@ -3028,6 +3033,8 @@ export default {
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
+  flex-shrink: 0;
+  justify-content: flex-end;
 }
 
 .task-workflow-home-btn {
@@ -3428,6 +3435,11 @@ export default {
   .task-workflow-header__title-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .task-workflow-header__title {
+    width: 100%;
+    white-space: normal;
   }
 
   .task-workflow-card__header {

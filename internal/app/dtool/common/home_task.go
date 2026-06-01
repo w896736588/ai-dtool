@@ -4,12 +4,21 @@ import (
 	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
 )
+
+const homeTaskNameMaxLength = 200
+
+// HomeTaskNameMaxLength 返回任务名称最大长度。
+func HomeTaskNameMaxLength() int {
+	return homeTaskNameMaxLength
+}
 
 const (
 	// homeTaskListQuerySQL 用于查询首页任务列表。
@@ -92,6 +101,9 @@ func (h *CSqlite) HomeTaskSave(id int, name, taskStatus string, startTime int64,
 	// 任务名称为空时直接返回错误，避免写入无意义记录。
 	if name == `` {
 		return nil, errors.New(`任务名称不能为空`)
+	}
+	if utf8.RuneCountInString(name) > homeTaskNameMaxLength {
+		return nil, errors.New(fmt.Sprintf(`任务名称不能超过%d字`, homeTaskNameMaxLength))
 	}
 	// 任务状态必须是预定义常量，避免前端误传污染数据。
 	if !isValidHomeTaskStatus(taskStatus) {

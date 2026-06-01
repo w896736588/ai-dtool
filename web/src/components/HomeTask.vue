@@ -308,7 +308,7 @@
             <el-form-item label="任务名称">
               <el-input
                 v-model="homeTaskForm.name"
-                maxlength="80"
+                maxlength="200"
                 show-word-limit
                 placeholder="例如：整理缓存淘汰策略"
                 @keyup.enter="saveHomeTask"
@@ -1401,6 +1401,10 @@ export default {
       const requirementUrl = fetchType === HOME_TASK_FETCH_TYPE_ZENTAO ? zentaoUrl : tapdUrl
       if (!taskName) {
         this.$helperNotify.error('任务名称不能为空')
+        return
+      }
+      if (taskName.length > 200) {
+        this.$helperNotify.error('任务名称不能超过200字')
         return
       }
       const validConfigs = this.homeTaskForm.dev_configs
