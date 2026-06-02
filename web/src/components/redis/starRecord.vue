@@ -39,7 +39,7 @@
               </pl-button>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="180" fixed="right">
+          <el-table-column label="操作" width="220" fixed="right">
             <template #default="scope">
               <div class="action-cell">
                 <pl-button link type="primary" size="small" @click="copyKey(scope.row.key)">

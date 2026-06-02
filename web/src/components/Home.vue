@@ -3,8 +3,10 @@
     <!-- 左侧菜单 -->
     <aside v-if="!hideAppSidebar" class="sidebar">
       <div class="sidebar-header">
-        <span class="logo">🛠️</span>
-        <span class="title">DTools</span>
+        <span class="logo">
+          <img src="../../assets/dtool-logo-32.png" alt="DTool logo" class="logo-image">
+        </span>
+        <span class="title">DTool</span>
       </div>
       
       <el-menu
@@ -60,15 +62,18 @@
           <el-icon><Connection /></el-icon>
           <span>Api Manage</span>
         </el-menu-item>
-        <el-menu-item index="/AgentCli">
+        <el-menu-item index="/AgentCli" class="menu-item-agent-cli" :class="{ 'menu-item-agent-cli--alert': agentCliUnreadVisible }">
           <el-icon><Monitor /></el-icon>
-          <span>Agent Cli</span>
+          <span class="menu-item-label-with-dot">
+            <span>Agent Cli</span>
+            <span v-if="agentCliUnreadVisible" class="menu-item-alert-dot"></span>
+          </span>
         </el-menu-item>
         <el-menu-item v-if="checkModuleOpen('shellout')" index="/shellout">
           <el-icon><Monitor /></el-icon>
           <span>Log Witch</span>
         </el-menu-item>
-        <el-menu-item index="/Set" class="menu-item-settings">
+        <el-menu-item index="/Set" class="menu-item-settings" :class="{ 'menu-item-settings--alert': mainDbStorageAlertVisible }">
           <el-icon><Setting /></el-icon>
           <span>Setting</span>
         </el-menu-item>
@@ -404,6 +409,7 @@ import module from "@/utils/module"
 import baseApi from '@/utils/base/base_api'
 import sshSet from '@/utils/base/ssh_set'
 import asyncTaskApi from '@/utils/base/async_task'
+import agentCliApi from '@/utils/base/agent_cli'
 import sseDistribute from '@/utils/base/sse_distribute'
 import Tools from "@/components/Tools.vue";
 import Markdown from '@/components/Markdown.vue'
@@ -477,6 +483,9 @@ export default {
       },
       ip: '',
       sshConnectionCount: 0,
+      mainDbStorageAlertVisible: false,
+      agentCliUnreadVisible: false,
+      agentCliUnreadTotal: 0,
       sshConnections: [],
       sshConnectionsDialogVisible: false,
       sshConnectionsLoading: false,
@@ -546,12 +555,20 @@ export default {
     sseDistribute.RegisterReceive('safe_auth_required', function(data) {
       _that.handleSafeAuthRequired(data)
     })
+    sseDistribute.RegisterReceive('git_pending_status', function(data) {
+      _that.handleGitPendingStatusUpdate(data)
+    })
+    sseDistribute.RegisterReceive('agent_cli_unread_home', function(data) {
+      _that.handleAgentCliUnreadUpdate(data)
+    })
     this.ensureAsyncTaskNotificationPermission()
     this.menuName = this.$route.path || '/Dashboard'
     window.addEventListener('resize', function () {});
+    this.loadAgentCliUnreadSummary()
     // 监听全局登录失效事件
     if (this.$eventBus) {
       this.$eventBus.on('safe_auth_required', this.showSafeLogin)
+      this.$eventBus.on('main_db_storage_alert_changed', this.handleMainDbStorageAlertEvent)
     }
   },
   provide() {
@@ -1111,6 +1128,50 @@ export default {
         }, 500)
       }
     },
+    handleGitPendingStatusUpdate(data) {
+      const exceedsLimit = !!data?.main_db_storage_alert?.exceeds_limit
+      this.mainDbStorageAlertVisible = exceedsLimit
+      if (this.$eventBus) {
+        this.$eventBus.emit('main_db_storage_alert_changed', data?.main_db_storage_alert || { exceeds_limit: exceedsLimit })
+      }
+    },
+    handleMainDbStorageAlertEvent(payload) {
+      this.mainDbStorageAlertVisible = !!payload?.exceeds_limit
+    },
+    handleAgentCliUnreadUpdate(data) {
+      if (!data || data.type !== 'agent_chat_unread_change') return
+      this.setAgentCliUnreadTotal(data.agent_cli_unread)
+    },
+    setAgentCliUnreadTotal(total) {
+      const nextTotal = Math.max(0, Number(total || 0))
+      this.agentCliUnreadTotal = nextTotal
+      this.agentCliUnreadVisible = nextTotal > 0
+    },
+    loadAgentCliUnreadSummary() {
+      agentCliApi.AgentCliList((response) => {
+        if (!(response && response.ErrCode === 0 && response.Data)) return
+        const items = Array.isArray(response.Data.list) ? response.Data.list : []
+        const rows = items.filter(item => Number(item?.id || 0) > 0)
+        if (rows.length === 0) {
+          this.setAgentCliUnreadTotal(0)
+          return
+        }
+        let pending = rows.length
+        let unreadTotal = 0
+        rows.forEach((row) => {
+          agentCliApi.AgentChatListByAgentCli(row.id, (chatResponse) => {
+            if (chatResponse && chatResponse.ErrCode === 0 && chatResponse.Data) {
+              const list = Array.isArray(chatResponse.Data.list) ? chatResponse.Data.list : []
+              unreadTotal += list.filter(item => item.is_read === false && item.status !== 'running').length
+            }
+            pending -= 1
+            if (pending === 0) {
+              this.setAgentCliUnreadTotal(unreadTotal)
+            }
+          })
+        })
+      })
+    },
     onMenuNativeClick(event) {
       this.menuCtrlKey = event.ctrlKey || event.metaKey
     },
@@ -1137,6 +1198,7 @@ export default {
       clearInterval(this.sshConnectionTimer)
       this.sshConnectionTimer = null
     }
+    sseDistribute.UnRegisterReceive('agent_cli_unread_home')
   },
   components: {
     HomeFilled,
@@ -1162,4 +1224,20 @@ export default {
 </script>
 
 <style scoped src="@/css/components/Home.css"></style>
+<style scoped>
+.menu-item-label-with-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.menu-item-alert-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #f04438;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+</style>
 

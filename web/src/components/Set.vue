@@ -13,7 +13,13 @@
       <el-tab-pane label="AI" name="AI" class="set-tab-pane">
         <ai_provider ref="ai_provider"></ai_provider>
       </el-tab-pane>
-      <el-tab-pane label="Config" name="Config" class="set-tab-pane">
+      <el-tab-pane name="Config" class="set-tab-pane">
+        <template #label>
+          <span class="set-tab-label-with-dot">
+            <span>Config</span>
+            <span v-if="mainDbStorageAlertVisible" class="set-tab-alert-dot"></span>
+          </span>
+        </template>
         <memory ref="memory" :show-runtime-config="true"></memory>
       </el-tab-pane>
       <el-tab-pane label="Schedule" name="Schedule" class="set-tab-pane">
@@ -56,6 +62,7 @@ export default {
       name: 'Ssh',
       activeLabel: 'Ssh',
       sshList: [],
+      mainDbStorageAlertVisible: false,
     }
   },
   mounted() {
@@ -64,11 +71,22 @@ export default {
     }
     this.syncActiveLabel()
     this.SshList()
+    if (this.$eventBus) {
+      this.$eventBus.on('main_db_storage_alert_changed', this.handleMainDbStorageAlertChanged)
+    }
   },
   activated() {
     this.syncActiveLabel()
   },
+  beforeUnmount() {
+    if (this.$eventBus) {
+      this.$eventBus.off('main_db_storage_alert_changed', this.handleMainDbStorageAlertChanged)
+    }
+  },
   methods: {
+    handleMainDbStorageAlertChanged(payload) {
+      this.mainDbStorageAlertVisible = !!payload?.exceeds_limit
+    },
     syncActiveLabel() {
       this.activeLabel = String(store.getStore('set_active_label'))
       if (this.activeLabel === '' || !SET_ACTIVE_TABS.includes(this.activeLabel)) {
@@ -119,3 +137,18 @@ export default {
 </script>
 
 <style scoped src="@/css/components/Set.css"></style>
+<style scoped>
+.set-tab-label-with-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.set-tab-alert-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #f04438;
+  display: inline-block;
+}
+</style>

@@ -84,6 +84,7 @@ func AgentCliList(c *gin.Context) {
 			item.RequestURL = codexBaseURL
 			item.SettingsExists = configJson != ""
 			item.DisplayedEnabled = item.Enabled == define.AgentCliEnabled && item.SettingsExists
+			item.McpServerCount = business.GetCodexMcpServerCount()
 		} else {
 			exists, content, _ := business.ReadAgentCliSettings(item.SettingsPath)
 			item.SettingsExists = exists
@@ -281,7 +282,7 @@ func AgentCliReadSettings(c *gin.Context) {
 	})
 }
 
-// AgentCliWriteMcpServers 将全部 ChromeDevtools 端口写入 settings.json
+// AgentCliWriteMcpServers 将全部 ChromeDevtools 端口写入对应配置文件（Claude Code 写 settings.json，Codex 写 config.toml）
 func AgentCliWriteMcpServers(c *gin.Context) {
 	var req define.AgentCliWriteMcpRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -297,10 +298,20 @@ func AgentCliWriteMcpServers(c *gin.Context) {
 		return
 	}
 
-	settingsPath := cast.ToString(row["settings_path"])
-	if err := business.WriteMcpServersToSettings(settingsPath); err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
-		return
+	cliType := cast.ToString(row["type"])
+	if cliType == define.AgentCliTypeCodexCli {
+		// Codex CLI：写入 ~/.codex/config.toml 的 [mcp_servers.*] 段
+		if err := business.WriteMcpServersToCodexConfig(); err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+	} else {
+		// Claude Code CLI：写入 settings.json 的 mcpServers 字段
+		settingsPath := cast.ToString(row["settings_path"])
+		if err := business.WriteMcpServersToSettings(settingsPath); err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
 	}
 
 	now := time.Now().Unix()

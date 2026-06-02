@@ -26,8 +26,8 @@
                 <span style="font-size: 11px; color: #909399;">{{ formatCliType(msg.cliType) }}</span>
                 <span v-if="isLongText(msg.cmdLine || msg.text, 20)" @click="msg.collapsed = !msg.collapsed" style="cursor: pointer; font-size: 11px; color: #409eff; user-select: none;">{{ msg.collapsed ? '展开 ▼' : '收起 ▲' }}</span>
               </div>
-              <!-- 命令行: markdown 块引用格式（完整展示，不折叠高度） -->
-              <div v-if="msg.cmdLine" class="markdown-body cr-markdown-body" v-html="renderMarkdown('> ' + (msg.collapsed ? truncateCmdPrompt(msg.cmdLine, 15) : msg.cmdLine))"></div>
+              <!-- 命令行: markdown 代码块格式（避免反斜杠等字符被转义） -->
+              <div v-if="msg.cmdLine" class="markdown-body cr-markdown-body" v-html="renderMarkdown('```\n' + (msg.collapsed ? truncateCmdPrompt(msg.cmdLine, 15) : msg.cmdLine) + '\n```')"></div>
               <div v-else style="white-space: pre-wrap; word-break: break-word; font-size: 12px; color: #303133; line-height: 1.6;" :style="{ maxHeight: msg.collapsed ? '20em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>
               <!-- 完整提示词（显示在命令下方，收起时最多 15 行） -->
               <div v-if="msg.cmdLine" style="white-space: pre-wrap; word-break: break-word; font-size: 12px; color: #303133; line-height: 1.6; margin-top: 8px; border-top: 1px dashed #dcdfe6; padding-top: 6px;" :style="{ maxHeight: msg.collapsed ? '15em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>

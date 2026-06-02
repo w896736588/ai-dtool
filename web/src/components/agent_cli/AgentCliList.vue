@@ -72,7 +72,7 @@
               <span>ID：{{ row.id }}</span>
               <span v-if="row.type !== 'codex-cli'">配置文件：{{ row.settings_exists ? '存在' : '不存在' }}</span>
               <span>可选模型：{{ formatModelOptions(row.model_options) }}</span>
-              <span v-if="row.type !== 'codex-cli'">McpServers：{{ row.mcp_server_count || 0 }} 个</span>
+              <span>McpServers：{{ row.mcp_server_count || 0 }} 个</span>
             </div>
 
             <div class="agent-cli-config-table-wrap">
@@ -175,10 +175,15 @@
                     </td>
                   </tr>
                   <tr v-else>
+                    <th>McpServers</th>
+                    <td>{{ row.mcp_server_count || 0 }} 个</td>
                     <th>Wire API</th>
                     <td>{{ getCodexWireApi(row) }}</td>
+                  </tr>
+                  <tr v-if="row.type === 'codex-cli'">
                     <th>WebSocket</th>
                     <td>{{ getCodexSupportsWebsocketsText(row) }}</td>
+                    <td colspan="2"></td>
                   </tr>
                 </tbody>
               </table>
@@ -193,12 +198,12 @@
               :running-count="getAgentChatCounts(row.id).running"
               :interrupted-count="0"
               :total-count="getAgentChatCounts(row.id).total"
+              :unread="getAgentChatCounts(row.id).unread > 0"
               @click="openAgentChatHistory(row)"
             >
               执行历史
             </ChatHistoryButton>
             <GitActionButton
-              v-if="row.type !== 'codex-cli'"
               compact
               variant="primary"
               @click="configureMcp(row)"
@@ -372,9 +377,10 @@
           </template>
         </el-table-column>
         <el-table-column prop="webhook_url" label="Webhook 地址" min-width="180" show-overflow-tooltip />
-        <el-table-column label="操作" width="130" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button size="small" link type="primary" @click="openWebhookForm(row)">编辑</el-button>
+            <el-button size="small" link type="success" :loading="row._testingWebhook === true" @click="testWebhook(row)">测试</el-button>
             <el-button size="small" link type="danger" @click="deleteWebhook(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -395,13 +401,18 @@
             </el-select>
           </el-form-item>
           <el-form-item label="Webhook 地址">
-            <el-input v-model="webhookForm.webhook_url" placeholder="https://oapi.dingtalk.com/robot/send?access_token=xxx" />
+            <el-input v-model="webhookForm.webhook_url" :placeholder="webhookUrlPlaceholder" />
           </el-form-item>
           <el-form-item label="签名密钥">
-            <el-input v-model="webhookForm.secret" placeholder="SEC... (可选)" />
+            <el-input v-model="webhookForm.secret" :placeholder="webhookSecretPlaceholder" />
+          </el-form-item>
+          <el-form-item label="测试链接">
+            <el-input v-model="webhookForm.test_single_url" placeholder="https://example.com/detail (可选，用于测试卡片按钮)" />
           </el-form-item>
           <el-form-item>
             <el-button type="primary" :loading="webhookSaving" @click="saveWebhook">保存</el-button>
+            <el-button type="success" plain :loading="webhookTesting" @click="testWebhook(webhookForm)">测试发送</el-button>
+            <el-button type="warning" plain :loading="webhookLinkTesting" @click="testWebhookWithLink(webhookForm)">测试卡片按钮</el-button>
             <el-button @click="webhookFormVisible = false">取消</el-button>
           </el-form-item>
         </el-form>
@@ -521,6 +532,7 @@ import ChatHistoryButton from '@/components/shared/ChatHistoryButton.vue'
 import ChatHistoryDialog from '@/components/shared/ChatHistoryDialog.vue'
 import taskWorkflowApi from '@/utils/base/task_workflow'
 import baseUtils from '@/utils/base'
+import sseDistribute from '@/utils/base/sse_distribute'
 import chatParser from '@/utils/chat_parser'
 import taskProgressStore from '@/utils/task_progress_store'
 import MarkdownIt from 'markdown-it'
@@ -536,6 +548,8 @@ const AGENT_EXEC_CACHE_PREFIX = 'agent_cli_exec_'
 const AGENT_CLI_GROUP_CACHE_KEY = 'agent_cli_selected_group'
 // AGENT_EXEC_SHARED_HISTORY_LIMIT 控制执行弹窗共享历史目录展示数量。 // Max shared working directories shown in the execution dialog.
 const AGENT_EXEC_SHARED_HISTORY_LIMIT = 20
+// AGENT_EXEC_SHARED_PROMPT_KEY 所有 Agent CLI 共用最近一次执行提示词。 // Shared prompt cache key for all Agent CLI cards.
+const AGENT_EXEC_SHARED_PROMPT_KEY = 'agent_cli_exec_shared_prompt'
 // markdown-it 实例，用于在"执行历史"对话框中渲染 markdown（包括表格）。 // Markdown renderer for execution history detail.
 const md = new MarkdownIt({ html: true, breaks: true, linkify: true })
 
@@ -595,12 +609,15 @@ export default {
       webhookOptions: [],
       webhookFormVisible: false,
       webhookSaving: false,
+      webhookTesting: false,
+      webhookLinkTesting: false,
       webhookForm: {
         id: 0,
         name: '',
         type: 'dingtalk',
         webhook_url: '',
         secret: '',
+        test_single_url: '',
       },
       agentExecDialogVisible: false,
       agentExecLoading: false,
@@ -618,6 +635,8 @@ export default {
       agentChatHistoryCliId: 0,
       agentChatHistoryList: [],
       agentChatCounts: {},
+      agentUnreadTotal: 0,
+      _agentUnreadSseId: '',
       agentChatDetailId: 0,
       chatDetailId: 0,
       chatDetailStatus: '',
@@ -661,11 +680,18 @@ export default {
       const currentModel = String(cli.current_model || '').trim()
       return currentModel && currentModel !== '-' ? [currentModel] : []
     },
+    webhookUrlPlaceholder() {
+      return this.webhookUrlPlaceholderByType(this.webhookForm.type)
+    },
+    webhookSecretPlaceholder() {
+      return this.webhookSecretPlaceholderByType(this.webhookForm.type)
+    },
   },
   mounted() {
     this.loadList()
     this.loadWebhookOptions()
     this.loadGroupList()
+    this.ensureAgentUnreadSse()
     // 恢复上次选中的分组
     try {
       const cached = parseInt(localStorage.getItem(AGENT_CLI_GROUP_CACHE_KEY))
@@ -676,6 +702,16 @@ export default {
     this.closeChatDetail()
     this.stopAllBackgroundChatStreams()
     this._stopAgentChatHistoryDurationTimer()
+    this.unregisterAgentUnreadSse()
+  },
+  watch: {
+    agentExecPrompt(value) {
+      try {
+        localStorage.setItem(AGENT_EXEC_SHARED_PROMPT_KEY, String(value || ''))
+      } catch {
+        return
+      }
+    },
   },
   methods: {
     // openWebhookDialog 打开 webhook 配置弹窗并同步刷新列表。 // openWebhookDialog opens the webhook dialog and refreshes its list before display.
@@ -713,6 +749,25 @@ export default {
         }
       })
     },
+    ensureAgentUnreadSse() {
+      if (this._agentUnreadSseId) return
+      const nextId = 'agent_cli_unread_global'
+      this._agentUnreadSseId = nextId
+      sseDistribute.InitFromLoginStatus().then((created) => {
+        if (!created && !sseDistribute.GetSseClientId()) return
+        sseDistribute.RegisterReceive(nextId, this.handleAgentUnreadSseMessage)
+      })
+    },
+    unregisterAgentUnreadSse() {
+      if (!this._agentUnreadSseId) return
+      sseDistribute.UnRegisterReceive(this._agentUnreadSseId)
+      this._agentUnreadSseId = ''
+    },
+    handleAgentUnreadSseMessage(data) {
+      if (!data || data.type !== 'agent_chat_unread_change') return
+      this.agentUnreadTotal = Number(data.agent_cli_unread || 0)
+      this.loadAgentChatCounts()
+    },
     // loadAgentChatCounts 刷新每个卡片的执行历史计数，用于按钮数字和执行中动画。 // Refreshes per-card execution counters and running animation state.
     loadAgentChatCounts() {
       const rows = Array.isArray(this.list) ? this.list.filter(item => item.id > 0) : []
@@ -726,13 +781,53 @@ export default {
               running: list.filter(item => item.status === 'running').length,
               interrupted: list.filter(item => item.status === 'interrupted').length,
               total: list.length,
+              unread: list.filter(item => item.is_read === false && item.status !== 'running').length,
             },
           }
         })
       })
     },
+    markAgentChatRunningLocally(agentCliId, chatId, extra = {}) {
+      const normalizedAgentCliId = Number(agentCliId || 0)
+      const normalizedChatId = Number(chatId || 0)
+      if (normalizedAgentCliId <= 0 || normalizedChatId <= 0) return
+      const currentCounts = this.getAgentChatCounts(normalizedAgentCliId)
+      this.agentChatCounts = {
+        ...this.agentChatCounts,
+        [normalizedAgentCliId]: {
+          running: currentCounts.running + 1,
+          interrupted: currentCounts.interrupted,
+          total: Math.max(currentCounts.total + 1, currentCounts.running + currentCounts.interrupted + 1),
+          unread: currentCounts.unread,
+        },
+      }
+      if (!this.agentChatHistoryVisible || Number(this.agentChatHistoryCliId || 0) !== normalizedAgentCliId) return
+      const existing = this.agentChatHistoryList.find(item => Number(item.id || 0) === normalizedChatId)
+      if (existing) {
+        existing.status = 'running'
+        existing.is_read = true
+        this.agentChatHistoryList = this.agentChatHistoryList.slice()
+        this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
+        return
+      }
+      this.agentChatHistoryList = [{
+        id: normalizedChatId,
+        agent_cli_id: normalizedAgentCliId,
+        prompt_type: 'agent_cli_manual',
+        status: 'running',
+        is_read: true,
+        line_count: 0,
+        created_at: new Date().toISOString(),
+        prompt: extra.prompt || '',
+        local_dir: extra.localDir || '',
+        model_name: extra.modelName || '',
+        thinking_intensity: extra.thinkingIntensity || '',
+        cli_type: extra.cliType || 'claude',
+      }, ...this.agentChatHistoryList]
+      this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
+    },
     getAgentChatCounts(agentCliId) {
-      return this.agentChatCounts[agentCliId] || { running: 0, interrupted: 0, total: 0 }
+      return this.agentChatCounts[agentCliId] || { running: 0, interrupted: 0, total: 0, unread: 0 }
     },
     getAgentExecCli() {
       return this.list.find(item => Number(item.id) === Number(this.agentExecCliId)) || null
@@ -770,11 +865,17 @@ export default {
       this.agentExecCliId = row.id
       this.agentExecCliName = row.name || '-'
       const cached = this.getAgentExecCache(row.id)
+      let sharedPrompt = ''
+      try {
+        sharedPrompt = localStorage.getItem(AGENT_EXEC_SHARED_PROMPT_KEY) || ''
+      } catch {
+        sharedPrompt = ''
+      }
       this.agentExecLocalDir = cached?.localDir || ''
       this.agentExecHistoryDirs = []
       this.agentExecModelName = cached?.modelName || ''
       this.agentExecThinkingIntensity = cached?.thinkingIntensity || '高'
-      this.agentExecPrompt = cached?.prompt || ''
+      this.agentExecPrompt = sharedPrompt || cached?.prompt || ''
       if (this.agentExecModelOptions.length === 1 && !this.agentExecModelName) {
         this.agentExecModelName = this.agentExecModelOptions[0]
       }
@@ -880,6 +981,13 @@ export default {
           this.chatDetailMessages = []
           taskProgressStore.reset()
           this._initialSseRetryCount = 0
+          this.markAgentChatRunningLocally(this.agentExecCliId, chatId, {
+            prompt: this.agentExecPrompt,
+            localDir: this.agentExecLocalDir.trim(),
+            modelName: this.agentExecModelName,
+            thinkingIntensity: this.agentExecThinkingIntensity,
+            cliType: this.getAgentExecCliType(),
+          })
           this.connectChatStream(chatId, null, true)
           this.loadChatDetail()
           this.loadAgentChatCounts()
@@ -909,6 +1017,7 @@ export default {
             running: this.agentChatHistoryList.filter(item => item.status === 'running').length,
             interrupted: this.agentChatHistoryList.filter(item => item.status === 'interrupted').length,
             total: this.agentChatHistoryList.length,
+            unread: this.agentChatHistoryList.filter(item => item.is_read === false && item.status !== 'running').length,
           },
         }
         if (focusChatId) {
@@ -938,6 +1047,23 @@ export default {
       // 中文注释：先关闭旧前台 SSE，再把旧选中且仍在运行的对话切到后台监听。
       // English comment: Close the previous foreground SSE first, then reattach the previously selected running chat as a background stream if needed.
       this.syncBackgroundChatStreams(this.agentChatHistoryList, row.id)
+      if (row.is_read === false && row.status !== 'running') {
+        agentCliApi.AgentChatMarkRead(row.id, (res) => {
+          if (res && res.ErrCode === 0) {
+            const item = this.agentChatHistoryList.find(i => i.id === row.id)
+            if (item) item.is_read = true
+            this.agentChatCounts = {
+              ...this.agentChatCounts,
+              [this.agentChatHistoryCliId]: {
+                running: this.agentChatHistoryList.filter(item => item.status === 'running').length,
+                interrupted: this.agentChatHistoryList.filter(item => item.status === 'interrupted').length,
+                total: this.agentChatHistoryList.length,
+                unread: this.agentChatHistoryList.filter(item => item.is_read === false && item.status !== 'running').length,
+              },
+            }
+          }
+        })
+      }
       if (this._sseChatId !== row.id) {
         this.chatDetailSSELines = []
         this.chatDetailMessages = []
@@ -1638,6 +1764,7 @@ export default {
             running: this.agentChatHistoryList.filter(item => item.status === 'running').length,
             interrupted: this.agentChatHistoryList.filter(item => item.status === 'interrupted').length,
             total: this.agentChatHistoryList.length,
+            unread: this.agentChatHistoryList.filter(item => item.is_read === false && item.status !== 'running').length,
           },
         }
         if (this.chatDetailId > 0) {
@@ -1757,6 +1884,13 @@ export default {
         this.chatDetailLastUsageSummary = null
         taskProgressStore.reset()
         this._initialSseRetryCount = 0
+        this.markAgentChatRunningLocally(agentCliId, chatId, {
+          prompt,
+          localDir: String(this.chatDetailLocalDir || '').trim(),
+          modelName: String(this.chatDetailModelName || '').trim(),
+          thinkingIntensity: String(this.chatDetailThinkingIntensity || '高').trim() || '高',
+          cliType: this.chatDetailCliType || 'claude',
+        })
         this.connectChatStream(chatId, null, true)
         this.loadChatDetail()
         this.loadAgentChatCounts()
@@ -1801,6 +1935,22 @@ export default {
       const map = { dingtalk: '钉钉', feishu: '飞书', wecom: '企微' }
       return map[type] || type
     },
+    webhookUrlPlaceholderByType(type) {
+      const map = {
+        dingtalk: 'https://oapi.dingtalk.com/robot/send?access_token=xxx',
+        feishu: 'https://open.feishu.cn/open-apis/bot/v2/hook/xxx',
+        wecom: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx',
+      }
+      return map[type] || '请输入 Webhook 地址'
+    },
+    webhookSecretPlaceholderByType(type) {
+      const map = {
+        dingtalk: 'SEC... (可选)',
+        feishu: '签名校验密钥 (可选)',
+        wecom: '暂无扩展字段',
+      }
+      return map[type] || '请输入签名密钥'
+    },
     openWebhookForm(row) {
       if (row) {
         this.webhookForm = {
@@ -1809,9 +1959,10 @@ export default {
           type: row.type,
           webhook_url: row.webhook_url,
           secret: row.secret,
+          test_single_url: row.test_single_url || '',
         }
       } else {
-        this.webhookForm = { id: 0, name: '', type: 'dingtalk', webhook_url: '', secret: '' }
+        this.webhookForm = { id: 0, name: '', type: 'dingtalk', webhook_url: '', secret: '', test_single_url: '' }
       }
       this.webhookFormVisible = true
     },
@@ -1833,6 +1984,61 @@ export default {
           this.loadWebhookList()
         } else {
           this.$message.error(response?.ErrMsg || '保存失败')
+        }
+      })
+    },
+    testWebhook(row) {
+      this.sendWebhookTest(row, '')
+    },
+    testWebhookWithLink(row) {
+      const singleURL = String(row?.test_single_url || '').trim()
+      if (!singleURL) {
+        this.$message.warning('请输入测试链接')
+        return
+      }
+      this.sendWebhookTest(row, singleURL)
+    },
+    sendWebhookTest(row, singleURL = '') {
+      const payload = {
+        name: String(row?.name || '').trim(),
+        type: String(row?.type || 'dingtalk').trim(),
+        webhook_url: String(row?.webhook_url || '').trim(),
+        secret: String(row?.secret || '').trim(),
+        single_url: String(singleURL || '').trim(),
+      }
+      if (!payload.name) {
+        this.$message.warning('请输入配置名称')
+        return
+      }
+      if (!payload.webhook_url) {
+        this.$message.warning('请输入 Webhook 地址')
+        return
+      }
+      const isFormTarget = row === this.webhookForm
+      const isLinkTest = !!payload.single_url
+      if (isFormTarget) {
+        if (isLinkTest) {
+          this.webhookLinkTesting = true
+        } else {
+          this.webhookTesting = true
+        }
+        } else {
+          this.$set(row, '_testingWebhook', true)
+        }
+      agentCliApi.WebhookConfigTest(payload, (response) => {
+        if (isFormTarget) {
+          if (isLinkTest) {
+            this.webhookLinkTesting = false
+          } else {
+            this.webhookTesting = false
+          }
+          } else {
+            this.$set(row, '_testingWebhook', false)
+          }
+        if (response && response.ErrCode === 0) {
+          this.$message.success(response?.ErrMsg || '测试发送成功')
+        } else {
+          this.$message.error(response?.ErrMsg || '测试发送失败')
         }
       })
     },

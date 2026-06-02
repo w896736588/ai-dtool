@@ -109,7 +109,6 @@ func BuildSseOpenFunc(ssePort string) func(url.Values, chan int, *gin.Context) (
 		BindShellConnectionsSSE(sse, stopC, 5*time.Second)
 		BindAsyncTasksSSE(sse, stopC, 5*time.Second)
 		BindMemoryFragmentStatusSSE(sse, stopC, 10*time.Second)
-		BindSmartLinkClientStatusSSE(sse, stopC, 5*time.Second)
 		BindGitPendingStatusSSE(sse, stopC, 5*time.Second)
 		BindConnectionCountSSE(sse, stopC, 5*time.Second)
 		return sse, nil

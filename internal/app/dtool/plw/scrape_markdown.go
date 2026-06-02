@@ -30,9 +30,10 @@ type ScrapeImageResource struct {
 }
 
 type ScrapeMarkdownResult struct {
-	Markdown []byte
-	ZipBytes []byte
-	FileName string
+	Markdown    []byte
+	ZipBytes    []byte
+	FileName    string
+	DownloadURL string // 相对下载路径，如 /api/download/xxx.zip
 }
 
 type scrapeLocatorMatch struct {
@@ -449,8 +450,8 @@ func findScrapeLocator(page *playwright.Page, selector string) (*scrapeLocatorMa
 	}, nil
 }
 
-// RunScrapeToMarkdown 在 Agent 本地浏览器上下文中执行抓取、转 Markdown 和 ZIP 打包。
-func RunScrapeToMarkdown(runParams *PlaywrightRunParams, scrapeConfig define.AgentTaskScrapeConfig, log *gstool.GsSlog) (*ScrapeMarkdownResult, error) {
+// RunScrapeToMarkdown 在服务端浏览器上下文中执行抓取、转 Markdown 和 ZIP 打包。
+func RunScrapeToMarkdown(runParams *PlaywrightRunParams, scrapeConfig define.SmartLinkScrapeConfig, log *gstool.GsSlog) (*ScrapeMarkdownResult, error) {
 	if runParams == nil {
 		return nil, fmt.Errorf("runParams不能为空")
 	}

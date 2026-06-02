@@ -15,14 +15,12 @@ import (
 
 // SafeAuthWhiteList 不需要鉴权的接口白名单
 var SafeAuthWhiteList = map[string]bool{
-	"/api/BaseLogin":                   true,
-	"/api/BaseLoginStatus":             true,
-	"/api/Ip":                          true,
-	"/api/BaseRegisterService":         true,
-	"/api/BaseCheckUnikeyExist":        true,
-	"/api/Upload":                      true, // 上传接口暂时放行，避免阻塞
-	"/api/agent/ws":                    true, // WebSocket 连接 / agent ws
-	"/api/smart-link/task/result-file": true, // Agent 抓取结果回传
+	"/api/BaseLogin":            true,
+	"/api/BaseLoginStatus":      true,
+	"/api/Ip":                   true,
+	"/api/BaseRegisterService":  true,
+	"/api/BaseCheckUnikeyExist": true,
+	"/api/Upload":               true, // 上传接口暂时放行，避免阻塞
 }
 
 // getSafeTokenManager 创建 Safe Token 管理器（从配置读取）

@@ -27,6 +27,18 @@ const (
 )
 
 const (
+	agentChatReadYes = 1
+	agentChatReadNo  = 0
+)
+
+const (
+	TaskWorkflowChatStatusRunning     = taskWorkflowChatStatusRunning
+	TaskWorkflowChatStatusCompleted   = taskWorkflowChatStatusCompleted
+	TaskWorkflowChatStatusError       = taskWorkflowChatStatusError
+	TaskWorkflowChatStatusInterrupted = taskWorkflowChatStatusInterrupted
+)
+
+const (
 	// agentChatTableName 通用 Agent 对话表名。 // Shared table name for all agent chat records.
 	agentChatTableName = `agent_chat`
 	// AgentChatSourceTypeWorkflow 表示记录来自工作流。 // Source type used when the chat is created from a workflow.
@@ -451,6 +463,7 @@ func (h *CSqlite) AgentChatCreateBySource(fromType string, fromID int, prompt, p
 		`model_name`:         modelName,
 		`thinking_collapsed`: thinkingCollapsed,
 		`thinking_intensity`: thinkingIntensity,
+		`is_read`:            agentChatReadYes,
 		`status`:             taskWorkflowChatStatusRunning,
 		`raw_output`:         ``,
 		`created_at`:         now,
@@ -556,6 +569,7 @@ func (h *CSqlite) TaskWorkflowChatMarkCompleted(chatID int64) error {
 	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
 		`id`: chatID,
 	}, map[string]any{
+		`is_read`:    agentChatReadNo,
 		`status`:     taskWorkflowChatStatusCompleted,
 		`updated_at`: now,
 	}).Exec()
@@ -568,6 +582,7 @@ func (h *CSqlite) TaskWorkflowChatMarkError(chatID int64) error {
 	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
 		`id`: chatID,
 	}, map[string]any{
+		`is_read`:    agentChatReadNo,
 		`status`:     taskWorkflowChatStatusError,
 		`updated_at`: now,
 	}).Exec()
@@ -613,6 +628,7 @@ func (h *CSqlite) TaskWorkflowChatMarkRunning(chatID int64) error {
 	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
 		`id`: chatID,
 	}, map[string]any{
+		`is_read`:    agentChatReadYes,
 		`status`:     taskWorkflowChatStatusRunning,
 		`updated_at`: now,
 	}).Exec()
@@ -625,6 +641,7 @@ func (h *CSqlite) TaskWorkflowChatMarkInterrupted(chatID int64) error {
 	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
 		`id`: chatID,
 	}, map[string]any{
+		`is_read`:    agentChatReadNo,
 		`status`:     taskWorkflowChatStatusInterrupted,
 		`updated_at`: now,
 	}).Exec()
@@ -665,6 +682,51 @@ func (h *CSqlite) AgentChatListByAgentCli(agentCliID int) ([]map[string]any, err
 		return nil, err
 	}
 	return rows, nil
+}
+
+// AgentChatMarkRead 将一个已结束对话标记为已读。
+func (h *CSqlite) AgentChatMarkRead(chatID int64) error {
+	if chatID <= 0 {
+		return errors.New(`chat_id不能为空`)
+	}
+	now := time.Now().Format(`2006-01-02 15:04:05`)
+	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
+		`id`: chatID,
+	}, map[string]any{
+		`is_read`:    agentChatReadYes,
+		`updated_at`: now,
+	}).Exec()
+	return err
+}
+
+// AgentChatUnreadCountByWorkflow 汇总一个工作流下所有未读历史对话数。
+func (h *CSqlite) AgentChatUnreadCountByWorkflow(workflowID int) (int, error) {
+	if workflowID <= 0 {
+		return 0, errors.New(`工作流id不能为空`)
+	}
+	row, err := h.Client.QueryBySql(
+		`SELECT COUNT(1) AS total FROM agent_chat WHERE from_type = ? AND from_id = ? AND is_read = ? AND status <> ?`,
+		AgentChatSourceTypeWorkflow, workflowID, agentChatReadNo, taskWorkflowChatStatusRunning,
+	).One()
+	if err != nil {
+		return 0, err
+	}
+	return cast.ToInt(row[`total`]), nil
+}
+
+// AgentChatUnreadCountByAgentCli 汇总一个 Agent CLI 下所有未读历史对话数。
+func (h *CSqlite) AgentChatUnreadCountByAgentCli(agentCliID int) (int, error) {
+	if agentCliID <= 0 {
+		return 0, errors.New(`agent_cli_id不能为空`)
+	}
+	row, err := h.Client.QueryBySql(
+		`SELECT COUNT(1) AS total FROM agent_chat WHERE from_type = ? AND agent_cli_id = ? AND is_read = ? AND status <> ?`,
+		AgentChatSourceTypeAgentCli, agentCliID, agentChatReadNo, taskWorkflowChatStatusRunning,
+	).One()
+	if err != nil {
+		return 0, err
+	}
+	return cast.ToInt(row[`total`]), nil
 }
 
 // TaskWorkflowClearChatSessionIDs 删除指定 prompt_type 的所有对话记录。

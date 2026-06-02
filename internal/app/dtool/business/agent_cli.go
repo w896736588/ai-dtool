@@ -574,6 +574,107 @@ func removeTomlModelProviderSection(content, providerKey string) string {
 	return strings.Join(newLines, "\n")
 }
 
+// WriteMcpServersToCodexConfig 从 DB 读取全部 ChromeDevtools 端口写入 ~/.codex/config.toml 的 [mcp_servers.*] 段
+func WriteMcpServersToCodexConfig() error {
+	rows, err := common.DbMain.Client.QueryBySql(
+		`SELECT * FROM tbl_chrome_devtools_config ORDER BY id`,
+	).All()
+	if err != nil {
+		return fmt.Errorf("查询端口配置失败: %w", err)
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("获取用户目录失败: %w", err)
+	}
+	configPath := filepath.Join(homeDir, ".codex", "config.toml")
+
+	// 读取已有配置
+	content := ""
+	data, readErr := os.ReadFile(configPath)
+	if readErr == nil {
+		content = string(data)
+	}
+
+	// 移除所有已有的 devtool_ 开头的 mcp_servers 段
+	content = removeAllTomlMcpDevtoolSections(content)
+
+	// 追加新的 mcp_servers 段
+	for i, row := range rows {
+		port := cast.ToInt(row["port"])
+		serverKey := fmt.Sprintf("devtool_%d", i)
+		content = appendCodexMcpServerSection(content, serverKey, port)
+	}
+
+	// 确保目录存在
+	dir := filepath.Dir(configPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("创建配置目录失败 %s: %w", dir, err)
+	}
+
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("写入 config.toml 失败 %s: %w", configPath, err)
+	}
+	return nil
+}
+
+// appendCodexMcpServerSection 追加一个 Codex MCP server 段到 config.toml
+func appendCodexMcpServerSection(content, serverKey string, port int) string {
+	section := fmt.Sprintf("\n[mcp_servers.%s]\ncommand = \"npx\"\nargs = [\"chrome-devtools-mcp@latest\", \"--browser-url=http://127.0.0.1:%d\"]\n", serverKey, port)
+	return content + section
+}
+
+// removeAllTomlMcpDevtoolSections 移除 config.toml 中所有 [mcp_servers.devtool_*] 段
+func removeAllTomlMcpDevtoolSections(content string) string {
+	lines := strings.Split(content, "\n")
+	result := make([]string, 0, len(lines))
+	inDevtoolSection := false
+
+	for i := 0; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		// 检测是否进入 devtool_ 的 mcp_servers 段
+		if strings.HasPrefix(trimmed, "[mcp_servers.devtool_") && strings.HasSuffix(trimmed, "]") {
+			inDevtoolSection = true
+			// 移除段前空行
+			if len(result) > 0 && strings.TrimSpace(result[len(result)-1]) == "" {
+				result = result[:len(result)-1]
+			}
+			continue
+		}
+		// 遇到新的 section 头则退出 devtool 段
+		if inDevtoolSection && strings.HasPrefix(trimmed, "[") {
+			inDevtoolSection = false
+		}
+		if !inDevtoolSection {
+			result = append(result, lines[i])
+		}
+	}
+
+	return strings.Join(result, "\n")
+}
+
+// GetCodexMcpServerCount 读取 ~/.codex/config.toml 中 [mcp_servers.*] 段的数量
+func GetCodexMcpServerCount() int {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return 0
+	}
+	configPath := filepath.Join(homeDir, ".codex", "config.toml")
+	data, readErr := os.ReadFile(configPath)
+	if readErr != nil {
+		return 0
+	}
+	content := string(data)
+	count := 0
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[mcp_servers.") && strings.HasSuffix(trimmed, "]") {
+			count++
+		}
+	}
+	return count
+}
+
 // GetAgentCliModelConfig 从 settings.json 内容中提取模型连接配置。
 func GetAgentCliModelConfig(content string) (model string, baseURL string, apiKey string) {
 	if content == "" {

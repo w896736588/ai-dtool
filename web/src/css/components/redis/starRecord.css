@@ -75,6 +75,8 @@
 .action-cell {
   display: flex;
   gap: 4px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 /* 抽屉底部 */

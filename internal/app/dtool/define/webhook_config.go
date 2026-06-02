@@ -31,3 +31,12 @@ type WebhookConfigSaveRequest struct {
 type WebhookConfigDeleteRequest struct {
 	Id int `json:"id"`
 }
+
+// WebhookConfigTestRequest 测试发送请求
+type WebhookConfigTestRequest struct {
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	WebhookUrl string `json:"webhook_url"`
+	Secret     string `json:"secret,omitempty"`
+	SingleURL  string `json:"single_url,omitempty"`
+}

@@ -3,7 +3,6 @@ package controller
 import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
-	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/mcp"
 	"dev_tool/internal/app/dtool/plw"
 	"fmt"
@@ -75,25 +74,25 @@ func AIBrowserSessionOpen(c *gin.Context) {
 	}
 	runParams.StreamFunc = func(string, string) {}
 
-	// MCP 模式：分配一个未使用的 Chrome DevTools 调试端口
-	var debugPortConfig *define.McpChromeDevtoolsConfigItem
+	// MCP 模式：分配一个双层端口租约，固定入口端口对外稳定，内部调试端口动态分配。
+	var debugPortLease *BrowserPortLeaseInfo
 	var mcpSessionCreated bool
 	if req.EnableMCP {
-		debugPortConfig, err = acquireBrowserPort()
+		debugPortLease, err = acquireBrowserPort()
 		if err != nil {
 			gsgin.GinResponseError(c, err.Error(), nil)
 			return
 		}
-		// MCP模式下如果发生错误且会话未成功创建，必须释放端口，
-		// 否则端口会一直处于"使用中"状态，造成端口泄漏
+		// 中文：MCP 会话未创建完成前，任意失败都必须回收 lease，避免固定入口端口卡在 binding。
+		// English: Roll back the lease on any failure before MCP session creation succeeds.
 		defer func() {
-			if !mcpSessionCreated && debugPortConfig != nil {
-				component.PlaywrightClient.Log.Infof("MCP会话未创建成功，释放端口: %d", debugPortConfig.Port)
-				releaseBrowserPort(debugPortConfig.Port)
+			if !mcpSessionCreated && debugPortLease != nil {
+				component.PlaywrightClient.Log.Infof("MCP会话未创建成功，释放端口租约: public=%d lease=%s", debugPortLease.PublicPort, debugPortLease.LeaseID)
+				releaseBrowserLease(debugPortLease.LeaseID)
 			}
 		}()
 		runParams.ExtraBrowserArgs = append(runParams.ExtraBrowserArgs,
-			fmt.Sprintf("--remote-debugging-port=%d", debugPortConfig.Port))
+			fmt.Sprintf("--remote-debugging-port=%d", debugPortLease.InternalDebugPort))
 	}
 
 	contextList := plw.NewContextList(component.PlaywrightClient.Log)
@@ -132,6 +131,20 @@ func AIBrowserSessionOpen(c *gin.Context) {
 	// 等待登录后的页面跳转完成（如点击登录按钮后的重定向）
 	component.PlaywrightClient.WaitForLoadState(page, runParams.LocatorTimeout)
 
+	if req.EnableMCP && debugPortLease != nil {
+		readyErr := waitForBrowserDebugPortReady(debugPortLease.InternalDebugPort)
+		if readyErr != nil {
+			markBrowserLeaseError(debugPortLease.LeaseID, readyErr)
+			gsgin.GinResponseError(c, readyErr.Error(), nil)
+			return
+		}
+		if err = bindBrowserPortLease(debugPortLease.LeaseID); err != nil {
+			markBrowserLeaseError(debugPortLease.LeaseID, err)
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+	}
+
 	response := buildAIBrowserProfileResponse(req, runParams, contextPage, page, accountInfo, reused)
 
 	// MCP 模式：创建 MCP SSE 会话，保持浏览器存活
@@ -145,9 +158,10 @@ func AIBrowserSessionOpen(c *gin.Context) {
 		// MCP会话创建成功，标记端口由会话管理生命周期，defer不再释放
 		mcpSessionCreated = true
 
-		if debugPortConfig != nil {
+		if debugPortLease != nil {
+			setBrowserLeaseSession(debugPortLease.LeaseID, browserSession.ID)
 			browserSession.OnClose = func() {
-				releaseBrowserPort(debugPortConfig.Port)
+				releaseBrowserLease(debugPortLease.LeaseID)
 			}
 		}
 		response["mcp"] = map[string]any{
@@ -157,12 +171,13 @@ func AIBrowserSessionOpen(c *gin.Context) {
 			"msg_endpoint": fmt.Sprintf("%s/mcp/ai-browser/%s/message", baseURL, browserSession.ID),
 		}
 		response["source_browser_closed"] = false
-		if debugPortConfig != nil {
-			response["debug_port"] = debugPortConfig.Port
+		if debugPortLease != nil {
+			response["debug_port"] = debugPortLease.PublicPort
+			response["internal_debug_port"] = debugPortLease.InternalDebugPort
 			response["debug_port_config"] = map[string]string{
-				"name":        debugPortConfig.Name,
-				"port":        fmt.Sprintf("%d", debugPortConfig.Port),
-				"browser_url": fmt.Sprintf("http://127.0.0.1:%d", debugPortConfig.Port),
+				"name":        debugPortLease.Config.Name,
+				"port":        fmt.Sprintf("%d", debugPortLease.PublicPort),
+				"browser_url": fmt.Sprintf("http://127.0.0.1:%d", debugPortLease.PublicPort),
 			}
 		}
 		response["usage_hint"] = "MCP模式：浏览器保持存活，已开启Chrome DevTools调试端口，可通过chrome-devtools-mcp连接浏览器，也可通过MCP SSE端点操作浏览器"

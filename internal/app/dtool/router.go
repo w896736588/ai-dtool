@@ -181,6 +181,7 @@ func gitRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/GitCurrentBranch`, controller.GitCurrentBranchById)       //通过git_id查询当前分支
 	tGin.GinPost(`/api/GitPull`, controller.GitPull)                             //通过git_id拉取当前分支最新代码
 	tGin.GinPost(`/api/GitChangeBranchById`, controller.GitChangeBranchById)     //通过git_id切换分支
+	tGin.SseRoute(`/api/GitCleanupAndSwitchBranchById`, controller.GitCleanupAndSwitchBranchByIdStream, controller.GitCleanupAndSwitchBranchByIdStreamClose)
 }
 
 // MySQL查询相关
@@ -265,6 +266,8 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/AiRequestLogList`, controller.SetAiRequestLogList)
 	tGin.GinPost(`/api/Set/MemoryConfigGet`, controller.SetMemoryConfigGet)
 	tGin.GinPost(`/api/Set/MemoryConfigSave`, controller.SetMemoryConfigSave)
+	tGin.GinPost(`/api/Set/MainDBStorageAnalysis`, controller.SetMainDBStorageAnalysis)
+	tGin.GinPost(`/api/Set/MainDBStorageVacuum`, controller.SetMainDBStorageVacuum)
 	tGin.GinPost(`/api/Set/RuntimeConfigSave`, controller.SetRuntimeConfigSave)
 	tGin.GinPost(`/api/Set/RuntimeConfigItemSave`, controller.SetRuntimeConfigItemSave)
 	tGin.GinPost(`/api/Set/CronConfigTypes`, controller.SetCronConfigTypes)
@@ -276,6 +279,7 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/LocalDirList`, controller.SetLocalDirList)
 	tGin.GinPost(`/api/Set/LocalDirBatchCheck`, controller.SetLocalDirBatchCheck)
 	tGin.GinPost(`/api/Set/LocalBranchBatchCheck`, controller.SetLocalBranchBatchCheck)
+	tGin.GinPost(`/api/Set/LocalBranchMismatchDetail`, controller.SetLocalBranchMismatchDetail)
 	tGin.GinPost(`/api/Set/OpenLocalDir`, controller.SetOpenLocalDir)
 }
 
@@ -368,6 +372,7 @@ func taskWorkflow(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/task/workflow/chat/list-by-agent-cli`, controller.TaskWorkflowChatListByAgentCli)
 	tGin.GinPost(`/api/agent/chat/send`, controller.AgentChatSend)
 	tGin.GinPost(`/api/agent/chat/list-by-agent-cli`, controller.AgentChatListByAgentCli)
+	tGin.GinPost(`/api/agent/chat/mark-read`, controller.AgentChatMarkRead)
 	tGin.GinPost(`/api/task/workflow/zcode/save`, controller.TaskWorkflowZcodeSave)
 	tGin.GinPost(`/api/task/workflow/zcode/get`, controller.TaskWorkflowZcodeGet)
 	tGin.GinPost(`/api/task/workflow/zcode/delete`, controller.TaskWorkflowZcodeDelete)
@@ -420,18 +425,7 @@ func smartLink(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/SmartLinkDownloadPath`, controller.SmartLinkDownloadPath)
 	tGin.GinPost(`/api/SmartLinkOpenDataDir`, controller.SmartLinkOpenDataDir)
 	tGin.GinPost(`/api/SmartLinkLocatorAutoExtract`, controller.SmartLinkLocatorAutoExtract)
-	// 本地客户端相关接口
-	tGin.GinGet(`/api/smart-link/runtime-config`, controller.SmartLinkRuntimeConfig)
-	tGin.GinGet(`/api/smart-link/client-status`, controller.SmartLinkClientStatus)
-	tGin.GinPost(`/api/smart-link/client-build/start`, controller.SmartLinkClientBuildStart)
-	tGin.GinGet(`/api/smart-link/client-build/status`, controller.SmartLinkClientBuildStatus)
-	tGin.GinGet(`/api/smart-link/client-build/download/:job_id`, controller.SmartLinkClientBuildDownload)
-	tGin.GinPost(`/api/smart-link/task/create`, controller.SmartLinkTaskCreate)
 	tGin.GinPost(`/api/smart-link/scrape-to-markdown`, controller.SmartLinkScrapeToMarkdown)
-	tGin.GinPost(`/api/smart-link/task/result-file`, controller.SmartLinkTaskResultFileUpload)
-	tGin.GinPost(`/api/smart-link/agent/last-user-data`, controller.SmartLinkLastForAgent)
-	tGin.GinPost(`/api/smart-link/agent/directory-mapping`, controller.SmartLinkDirectoryForAgent)
-	tGin.GinGet(`/api/agent/ws`, controller.AgentWs)
 	//执行逻辑
 	tGin.GinPost(`/api/SmartProcessList`, controller.SmartProcessList)
 	tGin.GinPost(`/api/SmartProcessAdd`, controller.SmartProcessAdd)
@@ -588,4 +582,5 @@ func webhookConfig(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/WebhookConfigList`, controller.WebhookConfigList)
 	tGin.GinPost(`/api/WebhookConfigSave`, controller.WebhookConfigSave)
 	tGin.GinPost(`/api/WebhookConfigDelete`, controller.WebhookConfigDelete)
+	tGin.GinPost(`/api/WebhookConfigTest`, controller.WebhookConfigTest)
 }

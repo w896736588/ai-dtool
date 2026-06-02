@@ -291,13 +291,9 @@ func InitEnv(appName, ConfigFile string, viper *viper.Viper) {
 		component.EnvClient.WebkitDownloadPath = common.ResolvePlaywrightPaths(`server`)
 	// 自定义网页配置
 	component.EnvClient.SmartLinkConfig = &define.SmartLinkConfig{
-		RunMode:       define.SmartLinkRunMode(viper.GetString(`smart_link.run_mode`)),
+		RunMode:       define.SmartLinkRunModeServer, // 固定为 server 模式
 		ClientVersion: viper.GetString(`smart_link.client_version`),
 		SourcePath:    strings.TrimSpace(viper.GetString(`smart_link.source_path`)),
-	}
-	// 默认值为 server
-	if component.EnvClient.SmartLinkConfig.RunMode == `` {
-		component.EnvClient.SmartLinkConfig.RunMode = define.SmartLinkRunModeServer
 	}
 	// 默认客户端版本
 	if component.EnvClient.SmartLinkConfig.ClientVersion == `` {

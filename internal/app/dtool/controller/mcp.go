@@ -400,27 +400,29 @@ func McpChromeDevtoolsConfigList(c *gin.Context) {
 		return
 	}
 	items := make([]define.McpChromeDevtoolsConfigItem, 0, len(rows))
+	runtimeStateMap := map[int]browserPortRuntimeState{}
+	if globalBrowserPortPool != nil {
+		runtimeStateMap = globalBrowserPortPool.RuntimeStateMap()
+	}
 	for _, row := range rows {
 		port := cast.ToInt(row["port"])
-		isUsed := 0
-		if globalBrowserPortPool != nil {
-			globalBrowserPortPool.mu.Lock()
-			for _, item := range globalBrowserPortPool.items {
-				if item.Config.Port == port && item.InUse {
-					isUsed = 1
-					break
-				}
-			}
-			globalBrowserPortPool.mu.Unlock()
+		runtimeState := browserPortRuntimeState{}
+		if state, ok := runtimeStateMap[port]; ok {
+			runtimeState = state
 		}
 		items = append(items, define.McpChromeDevtoolsConfigItem{
-			Id:         cast.ToInt(row["id"]),
-			Name:       cast.ToString(row["name"]),
-			Port:       port,
-			Remark:     cast.ToString(row["remark"]),
-			IsUsed:     isUsed,
-			CreateTime: cast.ToInt64(row["create_time"]),
-			UpdateTime: cast.ToInt64(row["update_time"]),
+			Id:             cast.ToInt(row["id"]),
+			Name:           cast.ToString(row["name"]),
+			Port:           port,
+			Remark:         cast.ToString(row["remark"]),
+			IsUsed:         runtimeState.IsUsed,
+			Status:         runtimeState.Status,
+			LeaseID:        runtimeState.LeaseID,
+			SessionID:      runtimeState.SessionID,
+			BoundDebugPort: runtimeState.BoundDebugPort,
+			LastError:      runtimeState.LastError,
+			CreateTime:     cast.ToInt64(row["create_time"]),
+			UpdateTime:     cast.ToInt64(row["update_time"]),
 		})
 	}
 	gsgin.GinResponseSuccess(c, "", items)

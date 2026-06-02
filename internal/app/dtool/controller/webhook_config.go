@@ -1,8 +1,11 @@
 package controller
 
 import (
+	"dev_tool/internal/app/dtool/business"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
+	"fmt"
+	"strings"
 	"time"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
@@ -54,6 +57,14 @@ func WebhookConfigSave(c *gin.Context) {
 	}
 	if req.Type == "" {
 		req.Type = define.WebhookTypeDingtalk
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	req.Type = strings.TrimSpace(req.Type)
+	req.WebhookUrl = strings.TrimSpace(req.WebhookUrl)
+	req.Secret = strings.TrimSpace(req.Secret)
+	if !isSupportedWebhookType(req.Type) {
+		gsgin.GinResponseError(c, "不支持的 Webhook 类型", nil)
+		return
 	}
 
 	now := time.Now().Unix()
@@ -133,4 +144,60 @@ func WebhookConfigDelete(c *gin.Context) {
 	}
 
 	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// WebhookConfigTest 测试发送 Webhook 通知
+func WebhookConfigTest(c *gin.Context) {
+	var req define.WebhookConfigTestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	req.Type = strings.TrimSpace(req.Type)
+	req.WebhookUrl = strings.TrimSpace(req.WebhookUrl)
+	req.Secret = strings.TrimSpace(req.Secret)
+
+	if req.Type == "" {
+		req.Type = define.WebhookTypeDingtalk
+	}
+	if req.Name == "" {
+		req.Name = "Webhook 测试"
+	}
+	if req.WebhookUrl == "" {
+		gsgin.GinResponseError(c, "Webhook 地址不能为空", nil)
+		return
+	}
+	if !isSupportedWebhookType(req.Type) {
+		gsgin.GinResponseError(c, "不支持的 Webhook 类型", nil)
+		return
+	}
+
+	config := &define.WebhookConfigItem{
+		Name:       req.Name,
+		Type:       req.Type,
+		WebhookUrl: req.WebhookUrl,
+		Secret:     req.Secret,
+	}
+	title := fmt.Sprintf("Webhook 测试通知 - %s", req.Name)
+	text := "这是一条测试消息，用于验证当前 Webhook 配置是否可用。"
+	if req.SingleURL != "" {
+		text = text + "\n\n已附带详情链接按钮，请点击验证卡片跳转。"
+	}
+	if err := business.SendWebhookNotify(config, title, text, req.SingleURL); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	gsgin.GinResponseSuccess(c, "测试发送成功", nil)
+}
+
+func isSupportedWebhookType(webhookType string) bool {
+	switch webhookType {
+	case define.WebhookTypeDingtalk, define.WebhookTypeFeishu, define.WebhookTypeWecom:
+		return true
+	default:
+		return false
+	}
 }

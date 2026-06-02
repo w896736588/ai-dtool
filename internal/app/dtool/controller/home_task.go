@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"gitee.com/Sxiaobai/gs/v2/gstool"
@@ -260,6 +261,9 @@ func ensureHomeTaskMemoryFragment(taskID int, taskName string, memoryFragmentID 
 	if taskName == `` {
 		return ``, gstool.Error(`任务名称不能为空`)
 	}
+	if utf8.RuneCountInString(taskName) > common.HomeTaskNameMaxLength() {
+		return ``, gstool.Error(fmt.Sprintf(`任务名称不能超过%d字`, common.HomeTaskNameMaxLength()))
+	}
 	if component.MemoryRuntime == nil {
 		return ``, common.ErrMemoryNotConfigured
 	}
@@ -476,6 +480,10 @@ func HomeTaskBranchNameGenerate(c *gin.Context) {
 	createdDate := strings.TrimSpace(request.CreatedDate)
 	if taskName == "" {
 		gsgin.GinResponseError(c, "任务名称不能为空", nil)
+		return
+	}
+	if utf8.RuneCountInString(taskName) > common.HomeTaskNameMaxLength() {
+		gsgin.GinResponseError(c, fmt.Sprintf("任务名称不能超过%d字", common.HomeTaskNameMaxLength()), nil)
 		return
 	}
 

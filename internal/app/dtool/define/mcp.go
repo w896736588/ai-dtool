@@ -73,13 +73,18 @@ type McpAgentTargetRequest struct {
 
 // McpChromeDevtoolsConfigItem Chrome DevTools 调试端口配置列表项
 type McpChromeDevtoolsConfigItem struct {
-	Id         int    `json:"id"`
-	Name       string `json:"name"`
-	Port       int    `json:"port"`
-	Remark     string `json:"remark"`
-	IsUsed     int    `json:"is_used"`
-	CreateTime int64  `json:"create_time"`
-	UpdateTime int64  `json:"update_time"`
+	Id             int    `json:"id"`
+	Name           string `json:"name"`
+	Port           int    `json:"port"`
+	Remark         string `json:"remark"`
+	IsUsed         int    `json:"is_used"`
+	Status         string `json:"status,omitempty"`           // 中文：端口槽位状态。 English: current slot status.
+	LeaseID        string `json:"lease_id,omitempty"`         // 中文：当前租约 ID。 English: current browser lease id.
+	SessionID      string `json:"session_id,omitempty"`       // 中文：绑定中的 MCP session。 English: attached MCP session id.
+	BoundDebugPort int    `json:"bound_debug_port,omitempty"` // 中文：当前内部调试端口。 English: current internal debug port.
+	LastError      string `json:"last_error,omitempty"`       // 中文：最近一次错误。 English: latest runtime error.
+	CreateTime     int64  `json:"create_time"`
+	UpdateTime     int64  `json:"update_time"`
 }
 
 // McpChromeDevtoolsConfigRequest Chrome DevTools 配置 CRUD 请求体

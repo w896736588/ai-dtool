@@ -21,32 +21,6 @@
           </el-descriptions-item>
         </el-descriptions>
 
-        <el-divider content-position="left">[smart_link]</el-divider>
-        <el-descriptions class="memory-config-display" :column="1" border>
-          <el-descriptions-item label="run_mode">
-            <div class="config-item-wrapper">
-              <template v-if="editingItem.key === 'run_mode'">
-                <div class="config-edit-row">
-                  <el-select v-model="editingItem.value" style="width: 200px">
-                    <el-option label="server" value="server" />
-                    <el-option label="local_client" value="local_client" />
-                  </el-select>
-                  <div class="config-edit-actions">
-                    <GitActionButton compact size="small" @click="saveItem('smart_link', 'run_mode', editingItem.value)">保存</GitActionButton>
-                    <GitActionButton compact size="small" @click="cancelEdit">取消</GitActionButton>
-                  </div>
-                </div>
-              </template>
-              <template v-else>
-                <div class="config-display-row">
-                  <div class="config-value">{{ form.run_mode || 'server' }}</div>
-                  <GitActionButton compact size="small" @click="startEdit('run_mode', form.run_mode || 'server')">编辑</GitActionButton>
-                </div>
-              </template>
-            </div>
-          </el-descriptions-item>
-        </el-descriptions>
-
         <el-divider content-position="left">[base] 主库</el-divider>
         <el-descriptions class="memory-config-display" :column="1" border>
           <el-descriptions-item label="dbPath">
@@ -85,6 +59,17 @@
                   <GitActionButton compact size="small" @click="startEdit('db_file_name', form.db_name)">编辑</GitActionButton>
                 </div>
               </template>
+            </div>
+          </el-descriptions-item>
+          <el-descriptions-item label="空间分析">
+            <div class="config-item-wrapper">
+              <div class="config-display-row">
+                <div class="config-value">{{ mainDbStorageSummaryText }}</div>
+                <GitActionButton compact size="small" :class="{ 'config-alert-button': mainDbStorageAlertVisible }" @click="openMainDBStorageDialog">
+                  空间分析
+                  <span v-if="mainDbStorageAlertVisible" class="config-inline-alert-dot"></span>
+                </GitActionButton>
+              </div>
             </div>
           </el-descriptions-item>
         </el-descriptions>
@@ -190,6 +175,40 @@
         </el-form-item>
       </el-form>
     </div>
+
+    <el-dialog v-model="mainDbStorageDialogVisible" title="主库空间分析" width="760px">
+      <div v-loading="mainDbStorageLoading">
+        <el-alert
+          v-if="mainDbStorageError"
+          :closable="false"
+          type="error"
+          :title="mainDbStorageError"
+        />
+        <template v-else-if="mainDbStorage">
+          <el-descriptions :column="1" border class="memory-config-display">
+            <el-descriptions-item label="主库文件">{{ mainDbStorage.db_path || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="文件大小">
+              {{ mainDbStorage.file_size_text || '-' }}
+              <span v-if="mainDbStorage.exceeds_limit" class="config-danger-text">，已超过 100 MB</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="清理空闲空间">
+              <GitActionButton
+                type="warning"
+                :loading="mainDbStorageVacuuming"
+                @click="runMainDBVacuum"
+              >
+                清理空闲空间
+              </GitActionButton>
+            </el-descriptions-item>
+          </el-descriptions>
+          <el-table :data="mainDbStorage.tables || []" stripe style="width: 100%; margin-top: 12px;">
+            <el-table-column prop="name" label="表名" min-width="260" />
+            <el-table-column prop="total_size_text" label="空间占用" width="160" />
+            <el-table-column prop="page_count" label="页数" width="120" />
+          </el-table>
+        </template>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -223,6 +242,11 @@ export default {
     return {
       aiModelList: [],
       saving: false,
+      mainDbStorageDialogVisible: false,
+      mainDbStorageLoading: false,
+      mainDbStorageVacuuming: false,
+      mainDbStorageError: '',
+      mainDbStorage: null,
       editingItem: createEditingItem(),
       form: {
         db_dir: '',
@@ -236,7 +260,6 @@ export default {
         memory_arrange_prompt: DEFAULT_MEMORY_ARRANGE_PROMPT,
         memory_ai_search_model_id: null,
         safe_password: '',
-        run_mode: 'server',
       },
     }
   },
@@ -258,6 +281,13 @@ export default {
     },
     safePasswordDisplay() {
       return this.form.safe_password ? '已设置' : '未设置'
+    },
+    mainDbStorageAlertVisible() {
+      return !!this.mainDbStorage?.exceeds_limit
+    },
+    mainDbStorageSummaryText() {
+      if (!this.mainDbStorage) return '点击查看主库与各表空间占用'
+      return `${this.mainDbStorage.file_size_text || '-'} / 阈值 100.00 MB`
     },
   },
   mounted() {
@@ -291,8 +321,56 @@ export default {
         this.form.memory_arrange_prompt = response.Data.memory_arrange_prompt || DEFAULT_MEMORY_ARRANGE_PROMPT
         this.form.memory_ai_search_model_id = response.Data.memory_ai_search_model_id || null
         this.form.safe_password = response.Data.safe_password || ''
-        this.form.run_mode = response.Data.run_mode || 'server'
+        this.mainDbStorage = response.Data.main_db_storage || null
+        this.broadcastMainDbStorageAlert()
       })
+    },
+    broadcastMainDbStorageAlert() {
+      if (!this.$eventBus) return
+      this.$eventBus.emit('main_db_storage_alert_changed', {
+        exceeds_limit: !!this.mainDbStorage?.exceeds_limit,
+        data: this.mainDbStorage,
+      })
+    },
+    openMainDBStorageDialog() {
+      this.mainDbStorageDialogVisible = true
+      this.loadMainDBStorageAnalysis()
+    },
+    loadMainDBStorageAnalysis() {
+      this.mainDbStorageLoading = true
+      this.mainDbStorageError = ''
+      set.MainDBStorageAnalysis((response) => {
+        this.mainDbStorageLoading = false
+        if (response.__loginRequired) return
+        if (!(response && response.ErrCode === 0 && response.Data)) {
+          this.mainDbStorageError = response?.ErrMsg || '空间分析加载失败'
+          return
+        }
+        this.mainDbStorage = response.Data
+        this.broadcastMainDbStorageAlert()
+      })
+    },
+    runMainDBVacuum() {
+      if (this.mainDbStorageVacuuming) return
+      this.$confirm('将执行 VACUUM; 回收主库空闲页。执行期间可能持续一段时间，是否继续？', '清理空闲空间', {
+        confirmButtonText: '执行',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }).then(() => {
+        this.mainDbStorageVacuuming = true
+        set.MainDBStorageVacuum((response) => {
+          this.mainDbStorageVacuuming = false
+          if (response.__loginRequired) return
+          if (!(response && response.ErrCode === 0 && response.Data)) {
+            this.$message.error(response?.ErrMsg || '清理失败')
+            return
+          }
+          this.mainDbStorage = response.Data
+          this.mainDbStorageError = ''
+          this.broadcastMainDbStorageAlert()
+          this.$message.success(response?.ErrMsg || '清理完成')
+        })
+      }).catch(() => {})
     },
     startEdit(key, value) {
       this.editingItem = { key, value: value === null || value === undefined ? '' : value }
@@ -343,3 +421,22 @@ export default {
 </script>
 
 <style scoped src="@/css/components/set/memory.css"></style>
+<style scoped>
+.config-inline-alert-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #f04438;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.config-alert-button {
+  position: relative;
+}
+
+.config-danger-text {
+  color: #f04438;
+}
+</style>

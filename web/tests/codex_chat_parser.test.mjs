@@ -14,6 +14,23 @@ function testParsesErrorTextField() {
   assert.equal(messages[0].text, 'Codex CLI 配置解析失败: missing api key')
 }
 
+function testParsesCompletedErrorItemAsErrorMessage() {
+  const messages = codexParser.parseChatLines([
+    JSON.stringify({
+      type: 'item.completed',
+      item: {
+        id: 'item_6',
+        type: 'error',
+        message: 'in-process app-server event stream lagged; dropped 7 events',
+      },
+    }),
+  ])
+
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0].type, 'error')
+  assert.equal(messages[0].text, 'in-process app-server event stream lagged; dropped 7 events')
+}
+
 function testParsesThreadStartedWithoutModelAsEmptyString() {
   const messages = codexParser.parseChatLines([
     JSON.stringify({
@@ -90,6 +107,7 @@ function testParsesUnifiedResultEventInjectedByBackend() {
 
 function main() {
   testParsesErrorTextField()
+  testParsesCompletedErrorItemAsErrorMessage()
   testParsesThreadStartedWithoutModelAsEmptyString()
   testTurnCompletedDoesNotDuplicateCommandResultText()
   testParsesUnifiedResultEventInjectedByBackend()

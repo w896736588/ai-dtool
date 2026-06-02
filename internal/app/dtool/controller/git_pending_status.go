@@ -32,6 +32,26 @@ func buildGitPendingStatusPayload() map[string]any {
 	gitSyncer := business.NewMemoryGit()
 	mainConfig := business.ReadMainDBConfig()
 	memoryConfig := business.ReadMemoryConfigFromINI()
+	mainDBStorageAlert := map[string]any{
+		`enabled`:             false,
+		`exceeds_limit`:       false,
+		`threshold_bytes`:     mainDBStorageAlertThresholdBytes,
+		`threshold_size_text`: formatStorageBytes(mainDBStorageAlertThresholdBytes),
+		`file_size_bytes`:     int64(0),
+		`file_size_text`:      formatStorageBytes(0),
+		`db_path`:             strings.TrimSpace(mainConfig.DBPath),
+	}
+	if storageSummary, err := readMainDBStorageSummary(); err == nil {
+		mainDBStorageAlert = map[string]any{
+			`enabled`:             true,
+			`exceeds_limit`:       storageSummary.ExceedsLimit,
+			`threshold_bytes`:     storageSummary.AlertThreshold,
+			`threshold_size_text`: formatStorageBytes(storageSummary.AlertThreshold),
+			`file_size_bytes`:     storageSummary.FileSizeBytes,
+			`file_size_text`:      storageSummary.FileSizeText,
+			`db_path`:             storageSummary.DBPath,
+		}
+	}
 
 	type repoAggregate struct {
 		labelSet map[string]bool
@@ -117,8 +137,9 @@ func buildGitPendingStatusPayload() map[string]any {
 	}
 
 	return map[string]any{
-		`total_count`: totalCount,
-		`repos`:       items,
+		`total_count`:           totalCount,
+		`repos`:                 items,
+		`main_db_storage_alert`: mainDBStorageAlert,
 	}
 }
 

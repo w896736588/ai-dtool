@@ -16,7 +16,7 @@
       <el-table-column prop="description" label="说明" min-width="200" />
       <el-table-column label="操作" width="120" fixed="right">
         <template #default="scope">
-          <el-button type="primary" link size="small" @click="goToBinding(scope.row)">查看详情</el-button>
+          <el-button type="primary" link size="small" @click="goToBinding(scope.row)">{{ getActionButtonText(scope.row) }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -62,11 +62,20 @@
 
 <script>
 import mcpApi from '@/utils/base/mcp'
+import sseDistribute from '@/utils/base/sse_distribute'
+
+const CHROME_DEVTOOLS_TYPE = 'chrome-devtools'
+const CHROME_DEVTOOLS_PORT_STATUS_DISTRIBUTE_ID = 'chrome_devtools_port_status'
 
 export default {
   data() {
     return {
       typeList: [],
+      chromeDevtoolsPortStats: {
+        total: 0,
+        used: 0,
+        idle: 0,
+      },
       agentTargetList: [],
       agentTargetDialogVisible: false,
       agentTargetFormVisible: false,
@@ -81,6 +90,14 @@ export default {
   },
   mounted() {
     this.loadTypeList()
+    this.initChromeDevtoolsPortStatusSse()
+    this.loadChromeDevtoolsPortStats()
+  },
+  beforeDestroy() {
+    if (this._chromeDevtoolsPortStatusDistributeId) {
+      sseDistribute.UnRegisterReceive(this._chromeDevtoolsPortStatusDistributeId)
+      this._chromeDevtoolsPortStatusDistributeId = ''
+    }
   },
   methods: {
     loadTypeList() {
@@ -97,6 +114,41 @@ export default {
         total += map[key]
       }
       return total
+    },
+    // getActionButtonText 为 Chrome DevTools 按钮追加“使用中/空闲”实时计数。 // Show live used/idle counts on the ChromeDevTools action button.
+    getActionButtonText(row) {
+      if (!row || row.mcp_type !== CHROME_DEVTOOLS_TYPE) {
+        return '查看详情'
+      }
+      const used = Number(this.chromeDevtoolsPortStats.used || 0)
+      const idle = Number(this.chromeDevtoolsPortStats.idle || 0)
+      return `ChromeDevTools（使用中 ${used} / 空闲 ${idle}）`
+    },
+    initChromeDevtoolsPortStatusSse() {
+      this._chromeDevtoolsPortStatusDistributeId = CHROME_DEVTOOLS_PORT_STATUS_DISTRIBUTE_ID
+      sseDistribute.InitFromLoginStatus()
+      sseDistribute.RegisterReceive(this._chromeDevtoolsPortStatusDistributeId, () => {
+        this.loadChromeDevtoolsPortStats()
+      })
+    },
+    loadChromeDevtoolsPortStats() {
+      mcpApi.McpChromeDevtoolsConfigList((response) => {
+        if (!(response && response.ErrCode === 0 && response.Data)) {
+          return
+        }
+        const configList = response.Data || []
+        let used = 0
+        for (let i = 0; i < configList.length; i++) {
+          if (Number(configList[i].is_used) === 1) {
+            used++
+          }
+        }
+        this.chromeDevtoolsPortStats = {
+          total: configList.length,
+          used: used,
+          idle: Math.max(configList.length - used, 0),
+        }
+      })
     },
     goToBinding(row) {
       this.$router.push('/Mcp/' + row.mcp_type)

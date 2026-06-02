@@ -10,44 +10,61 @@
   >
     <div class="chat-combined-body" v-loading="loading">
       <div class="chat-combined-list">
-        <div
-          v-for="item in items"
-          :key="item.id"
-          :class="['chat-list-item', { 'chat-list-item--active': selectedId === item.id }]"
-          @click="$emit('select', item)"
-        >
-          <div class="chat-list-item__name">
-            <div class="chat-list-item__tags">
-              <span class="chat-list-item__id">{{ item.id }}</span>
-              <span v-if="getItemAgentName(item)" class="chat-list-item__agent-name">智能体: {{ getItemAgentName(item) }}</span>
-              <span v-if="item._killed_pid" class="chat-list-item__killed-pid">杀进程:{{ item._killed_pid }}</span>
-            </div>
-            <div class="chat-list-item__prompt" :title="item.prompt || '未命名'">
-              {{ (item.prompt || '未命名').substring(0, 30) }}{{ (item.prompt || '').length > 30 ? '...' : '' }}
-            </div>
-            <div v-if="getItemModelName(item)" class="chat-list-item__meta">
-              <span v-if="getItemModelName(item)" class="chat-list-item__meta-tag chat-list-item__meta-tag--model">
-                模型: {{ getItemModelName(item) }}
+        <template v-for="group in groupedItems" :key="group.dir">
+          <div class="chat-list-group-header" @click="toggleGroup(group.dir)">
+            <span class="chat-list-group-header__arrow">{{ isGroupCollapsed(group.dir) ? '▶' : '▼' }}</span>
+            <span class="chat-list-group-header__dir" :title="group.dir">{{ group.dirLabel }}</span>
+            <span v-if="group.unreadCount > 0" class="chat-list-group-header__unread">{{ group.unreadCount }}</span>
+            <span class="chat-list-group-header__count">{{ group.items.length }}</span>
+          </div>
+          <template v-if="!isGroupCollapsed(group.dir)">
+            <div
+              v-for="item in group.items"
+              :key="item.id"
+              :class="[
+                'chat-list-item',
+                {
+                  'chat-list-item--active': selectedId === item.id,
+                  'chat-list-item--stale': isItemStale(item),
+                },
+              ]"
+              @click="$emit('select', item)"
+            >
+              <div class="chat-list-item__name">
+                <div class="chat-list-item__tags">
+                  <span v-if="item.is_read === false" class="chat-list-item__unread-dot"></span>
+                  <span class="chat-list-item__id">{{ item.id }}</span>
+                  <span v-if="getItemAgentName(item)" class="chat-list-item__agent-name">智能体: {{ getItemAgentName(item) }}</span>
+                  <span v-if="item._killed_pid" class="chat-list-item__killed-pid">杀进程:{{ item._killed_pid }}</span>
+                </div>
+                <div class="chat-list-item__prompt" :title="item.prompt || '未命名'">
+                  {{ (item.prompt || '未命名').substring(0, 30) }}{{ (item.prompt || '').length > 30 ? '...' : '' }}
+                </div>
+                <div v-if="getItemModelName(item)" class="chat-list-item__meta">
+                  <span v-if="getItemModelName(item)" class="chat-list-item__meta-tag chat-list-item__meta-tag--model">
+                    模型: {{ getItemModelName(item) }}
+                  </span>
+                </div>
+                <div v-if="getItemTerminalReasonText(item)" class="chat-list-item__terminal-reason" :title="getItemTerminalReasonText(item)">
+                  终止原因: {{ getItemTerminalReasonText(item) }}
+                </div>
+              </div>
+              <div class="chat-list-item__time">
+                <span v-if="item.status === 'running' && runtimeDurationTextFn(item)" class="chat-list-item__time-running">
+                  {{ runtimeDurationTextFn(item) }}
+                </span>
+                <span v-else-if="item.duration_ms > 0">{{ formatDurationDisplay(item.duration_ms) }}</span>
+                <span v-else>{{ formatCreatedAt(item.created_at) }}</span>
+                <span v-if="itemMsgCountFn(item) > 0" class="chat-list-item__msg-count">{{ itemMsgCountFn(item) }}条</span>
+              </div>
+              <span :class="['chat-list-item__status', 'chat-list-item__status--' + (item.status || '')]">
+                <span v-if="item.status === 'running'" class="chat-list-item__running-dot"></span>
+                <span v-else-if="item.status === 'error'" class="chat-list-item__error-icon">!</span>
+                {{ statusTextFn(item.status) }} {{ formatCreatedAtFn(item.created_at) }}
               </span>
             </div>
-            <div v-if="getItemTerminalReasonText(item)" class="chat-list-item__terminal-reason" :title="getItemTerminalReasonText(item)">
-              终止原因: {{ getItemTerminalReasonText(item) }}
-            </div>
-          </div>
-          <div class="chat-list-item__time">
-            <span v-if="item.status === 'running' && runtimeDurationTextFn(item)" class="chat-list-item__time-running">
-              {{ runtimeDurationTextFn(item) }}
-            </span>
-            <span v-else-if="item.duration_ms > 0">{{ formatDurationDisplay(item.duration_ms) }}</span>
-            <span v-else>{{ formatCreatedAt(item.created_at) }}</span>
-            <span v-if="itemMsgCountFn(item) > 0" class="chat-list-item__msg-count">{{ itemMsgCountFn(item) }}条</span>
-          </div>
-          <span :class="['chat-list-item__status', 'chat-list-item__status--' + (item.status || '')]">
-            <span v-if="item.status === 'running'" class="chat-list-item__running-dot"></span>
-            <span v-else-if="item.status === 'error'" class="chat-list-item__error-icon">!</span>
-            {{ statusTextFn(item.status) }} {{ formatCreatedAtFn(item.created_at) }}
-          </span>
-        </div>
+          </template>
+        </template>
         <div v-if="items.length === 0 && !loading" class="chat-combined-list__empty">{{ listEmptyText }}</div>
       </div>
 
@@ -79,7 +96,7 @@
                       {{ msg.collapsed ? '展开 ▼' : '收起 ▲' }}
                     </span>
                   </div>
-                  <div v-if="msg.cmdLine" class="markdown-body chat-markdown-body" v-html="renderMarkdown('> ' + (msg.collapsed ? truncateCmdPrompt(msg.cmdLine, 15) : msg.cmdLine))"></div>
+                  <div v-if="msg.cmdLine" class="markdown-body chat-markdown-body" v-html="renderMarkdown('```\n' + (msg.collapsed ? truncateCmdPrompt(msg.cmdLine, 15) : msg.cmdLine) + '\n```')"></div>
                   <div v-else class="chat-message-plain" :style="{ maxHeight: msg.collapsed ? '20em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>
                   <div v-if="msg.cmdLine" class="chat-message-command-text" :style="{ maxHeight: msg.collapsed ? '15em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>
                 </div>
@@ -326,6 +343,12 @@
 
 <script>
 import resultSummaryUtils from '@/utils/chat_result_summary.cjs'
+
+// STORAGE_KEY_GROUP_COLLAPSED localStorage 键名，用于持久化分组展开/关闭状态。
+const STORAGE_KEY_GROUP_COLLAPSED = 'chat_history_group_collapsed'
+// DEFAULT_GROUP_LABEL 当 item 没有 local_dir 时使用的默认分组标签。
+const DEFAULT_GROUP_LABEL = '未指定目录'
+
 export default {
   name: 'ChatHistoryDialog',
   props: {
@@ -495,7 +518,62 @@ export default {
     },
   },
   emits: ['update:modelValue', 'select', 'update:continueInput', 'continue', 'new-chat', 'stop', 'scroll', 'scroll-to-bottom', 'closed'],
+  data() {
+    return {
+      // collapsedGroups 记录当前各分组的展开/关闭状态，key 为 local_dir 值。
+      collapsedGroups: {},
+      // hasAppliedInitialSelectedGroupExpand 确保仅在弹窗打开后的初始化阶段自动展开一次所属工作空间。
+      hasAppliedInitialSelectedGroupExpand: false,
+    }
+  },
+  created() {
+    this.loadGroupCollapsedState()
+  },
+  watch: {
+    modelValue(visible) {
+      if (visible) {
+        this.hasAppliedInitialSelectedGroupExpand = false
+        this.$nextTick(() => {
+          this.ensureInitialSelectedGroupExpanded()
+        })
+      }
+    },
+    selectedId() {
+      this.$nextTick(() => {
+        this.ensureInitialSelectedGroupExpanded()
+      })
+    },
+    items: {
+      handler() {
+        this.$nextTick(() => {
+          this.ensureInitialSelectedGroupExpanded()
+        })
+      },
+      deep: true,
+    },
+  },
   computed: {
+    // groupedItems 将 items 按 local_dir 分组，保持每组内原始顺序。 // Groups items by local_dir while preserving original order within each group.
+    groupedItems() {
+      const groups = []
+      const dirMap = new Map()
+      const itemList = Array.isArray(this.items) ? this.items : []
+      itemList.forEach((item) => {
+        const dir = this.getItemWorkspacePath(item)
+        const dirKey = dir || ''
+        if (!dirMap.has(dirKey)) {
+          const group = { dir: dirKey, dirLabel: this.getCompactDirLabel(dir), items: [], unreadCount: 0 }
+          dirMap.set(dirKey, group)
+          groups.push(group)
+        }
+        const group = dirMap.get(dirKey)
+        group.items.push(item)
+        if (this.isItemUnread(item)) {
+          group.unreadCount += 1
+        }
+      })
+      return groups
+    },
     // showDetailInfoBar 控制底部信息栏展示。 // Controls rendering of the footer info bar.
     showDetailInfoBar() {
       return Boolean(this.thinkingIntensity || this.agentName || this.lastUsageSummary)
@@ -527,6 +605,60 @@ export default {
     handleClose() {
       this.$emit('update:modelValue', false)
     },
+    // loadGroupCollapsedState 从 localStorage 加载分组展开/关闭状态。 // Loads group collapsed state from localStorage on mount.
+    loadGroupCollapsedState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_GROUP_COLLAPSED)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed && typeof parsed === 'object') {
+            this.collapsedGroups = parsed
+          }
+        }
+      } catch (_e) {
+        // localStorage 不可用或数据损坏时忽略
+      }
+    },
+    // saveGroupCollapsedState 将分组展开/关闭状态持久化到 localStorage。 // Persists group collapsed state to localStorage.
+    saveGroupCollapsedState() {
+      try {
+        localStorage.setItem(STORAGE_KEY_GROUP_COLLAPSED, JSON.stringify(this.collapsedGroups))
+      } catch (_e) {
+        // localStorage 不可用时忽略
+      }
+    },
+    // isGroupCollapsed 判断指定分组是否处于折叠状态。 // Returns whether the given group directory is collapsed.
+    isGroupCollapsed(dir) {
+      return Boolean(this.collapsedGroups[dir])
+    },
+    // toggleGroup 切换指定分组的展开/关闭状态并持久化。 // Toggles collapsed state for a group directory and persists it.
+    toggleGroup(dir) {
+      if (this.collapsedGroups[dir]) {
+        delete this.collapsedGroups[dir]
+      } else {
+        this.collapsedGroups[dir] = true
+      }
+      // 触发响应式更新
+      this.collapsedGroups = { ...this.collapsedGroups }
+      this.saveGroupCollapsedState()
+    },
+    // ensureInitialSelectedGroupExpanded 仅在弹窗打开后的初始化阶段自动展开当前选中记录所属工作空间。 // Expands the selected chat's workspace group only during dialog-open initialization.
+    ensureInitialSelectedGroupExpanded() {
+      if (!this.modelValue) return
+      if (this.hasAppliedInitialSelectedGroupExpand) return
+      const itemList = Array.isArray(this.items) ? this.items : []
+      const activeId = Number(this.selectedId || 0)
+      if (activeId <= 0 || itemList.length === 0) return
+      const selectedItem = itemList.find(item => Number(item?.id || 0) === activeId)
+      if (!selectedItem) return
+      this.hasAppliedInitialSelectedGroupExpand = true
+      const dir = this.getItemWorkspacePath(selectedItem)
+      const dirKey = dir || ''
+      if (!this.collapsedGroups[dirKey]) return
+      delete this.collapsedGroups[dirKey]
+      this.collapsedGroups = { ...this.collapsedGroups }
+      this.saveGroupCollapsedState()
+    },
     // getItemAgentName 统一提取左侧列表项的智能体名称，兼容不同页面返回字段。 // Extracts the agent name for list rows across different history sources.
     getItemAgentName(item) {
       const agentName = String(item?.agent_cli_name || item?.agent_name || item?.agentName || '').trim()
@@ -536,6 +668,27 @@ export default {
     getItemModelName(item) {
       const modelName = String(item?.model_name || item?.modelName || item?.current_model || '').trim()
       return modelName
+    },
+    // getItemWorkspacePath 统一提取工作空间路径，兼容不同历史来源字段。 // Extracts the workspace path for a history row across sources.
+    getItemWorkspacePath(item) {
+      return String(item?.workspace_path || item?.local_dir || item?.workspacePath || '').trim()
+    },
+    isItemUnread(item) {
+      return item?.is_read === false && item?.status !== 'running'
+    },
+    // getItemWorkspaceLabel 将工作空间路径压缩为最后一级目录名。 // Reduces a workspace path to its last segment for compact display.
+    getItemWorkspaceLabel(item) {
+      const workspacePath = this.getItemWorkspacePath(item)
+      return this.getCompactDirLabel(workspacePath, '')
+    },
+    // getCompactDirLabel 将目录路径压缩为最后一级目录名，空值时回退到指定文案。 // Reduces a directory path to its last segment with an optional fallback label.
+    getCompactDirLabel(dirPath, fallback = DEFAULT_GROUP_LABEL) {
+      const workspacePath = String(dirPath || '').trim()
+      if (!workspacePath) return fallback
+      const normalized = workspacePath.replace(/[\\/]+$/, '')
+      if (!normalized) return workspacePath
+      const segments = normalized.split(/[\\/]/).filter(Boolean)
+      return segments.length > 0 ? segments[segments.length - 1] : normalized
     },
     // getItemTerminalReasonText 统一提取左侧列表项的终止原因展示文案。 // Extracts a readable terminal reason label for history rows.
     getItemTerminalReasonText(item) {
@@ -547,6 +700,25 @@ export default {
       const rawReason = String(item?.stop_reason || '').trim()
       if (!rawReason) return ''
       return this.stopReasonLabel(rawReason)
+    },
+    // parseHistoryTime 统一解析历史列表中的时间字符串，兼容 YYYY-MM-DD HH:mm:ss 与 ISO 格式。
+    parseHistoryTime(value) {
+      const text = String(value || '').trim()
+      if (!text) return 0
+      const parsed = new Date(text.replace(/-/g, '/')).getTime()
+      return Number.isNaN(parsed) ? 0 : parsed
+    },
+    // getItemLastUpdateTime 返回历史项最后更新时间，优先使用 updated_at。
+    getItemLastUpdateTime(item) {
+      if (!item) return 0
+      return this.parseHistoryTime(item.updated_at || item.end_time || item.finished_at || item.created_at)
+    },
+    // isItemStale 标记 1 小时内没有更新过的任务，便于识别刚完成的记录。
+    isItemStale(item) {
+      if (!item || item.status === 'running') return false
+      const lastUpdateTime = this.getItemLastUpdateTime(item)
+      if (lastUpdateTime <= 0) return false
+      return (Date.now() - lastUpdateTime) >= 60 * 60 * 1000
     },
     // 获取详情滚动容器 / Get the detail scroll container.
     getDetailContainer() {

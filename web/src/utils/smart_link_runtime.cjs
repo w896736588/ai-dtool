@@ -2,8 +2,6 @@
 // DEFAULT_RUNTIME_CONFIG defines the default smart-link runtime config shape.
 const DEFAULT_RUNTIME_CONFIG = {
   run_mode: 'server',
-  required_client_version: '1.0.0',
-  build_platforms: ['windows', 'macos'],
 }
 
 // normalizeRuntimeConfig 统一接口返回，避免缺字段时前端状态判断失真。
@@ -12,24 +10,16 @@ function normalizeRuntimeConfig(nextRuntimeConfig) {
   return {
     ...DEFAULT_RUNTIME_CONFIG,
     ...(nextRuntimeConfig || {}),
-    build_platforms: Array.isArray(nextRuntimeConfig && nextRuntimeConfig.build_platforms)
-      ? nextRuntimeConfig.build_platforms
-      : DEFAULT_RUNTIME_CONFIG.build_platforms,
   }
 }
 
-// resolveRuntimeRefreshActions 根据最新运行模式决定是否立刻刷新客户端状态。
-// resolveRuntimeRefreshActions decides whether the UI should immediately refresh local client status.
+// resolveRuntimeRefreshActions 统一返回标准化后的运行模式配置。
+// resolveRuntimeRefreshActions returns the normalized runtime config payload.
 function resolveRuntimeRefreshActions(currentRuntimeConfig, nextRuntimeConfig) {
   const runtimeConfig = normalizeRuntimeConfig(nextRuntimeConfig)
 
-  // 本地客户端模式必须马上补拉一次状态，否则从设置页切回时会继续显示旧模式。
-  // Local-client mode must trigger an immediate status refresh, otherwise the page can stay on stale server-mode UI.
-  const shouldLoadClientStatus = runtimeConfig.run_mode === 'local_client'
-
   return {
     runtimeConfig,
-    shouldLoadClientStatus,
   }
 }
 

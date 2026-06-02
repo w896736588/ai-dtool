@@ -4,7 +4,7 @@
       <header class="task-workflow-header">
         <div class="task-workflow-header__main">
           <div class="task-workflow-header__title-row">
-            <h1 class="task-workflow-header__title">{{ homeTask.name || `任务 #${taskId}` }}</h1>
+            <h1 class="task-workflow-header__title" :title="homeTask.name || `任务 #${taskId}`">{{ homeTask.name || `任务 #${taskId}` }}</h1>
             <div class="task-workflow-header__actions">
           <el-tooltip content="返回首页" placement="bottom">
             <el-button class="task-workflow-home-btn" @click="goHome">
@@ -44,6 +44,7 @@
             :running-count="getPromptChatCounts('issue_fix').running"
             :interrupted-count="getPromptChatCounts('issue_fix').interrupted"
             :total-count="getPromptChatCounts('issue_fix').total"
+            :unread="workflowUnreadCount > 0"
             @click="openChatHistoryDialog"
           >
             历史对话
@@ -78,6 +79,97 @@
         :title="errorMessage"
         class="task-workflow-alert"
       />
+
+      <el-dialog
+        v-model="branchMismatchDialogVisible"
+        title="工作区分支检查"
+        width="820px"
+        :close-on-click-modal="true"
+        @close="handleBranchMismatchDialogClose"
+      >
+        <div v-loading="branchMismatchLoading" class="branch-mismatch-dialog">
+          <div class="branch-mismatch-dialog__summary">
+            <span>一致 {{ branchMismatchMatchedCount }}</span>
+            <span>不一致 {{ branchMismatchMismatchedCount }}</span>
+          </div>
+          <div v-if="branchMismatchDetailList.length === 0" class="branch-mismatch-dialog__empty">暂无分支检查结果</div>
+          <div v-for="item in branchMismatchDetailList" :key="getBranchMismatchItemKey(item)" class="branch-mismatch-card">
+            <div class="branch-mismatch-card__header">
+              <div class="branch-mismatch-card__title">{{ item.local_dir || '-' }}</div>
+              <el-tag :type="item.matched ? 'success' : 'danger'" size="small">{{ item.matched ? '一致' : '不一致' }}</el-tag>
+            </div>
+            <div class="branch-mismatch-card__meta">
+              <div>父分支：{{ item.parent_branch || '-' }}</div>
+              <div>期望分支：{{ item.expected_branch || '-' }}</div>
+              <div>当前分支：{{ item.current_branch || '-' }}</div>
+            </div>
+            <div v-if="item.error" class="branch-mismatch-card__error">检查失败：{{ item.error }}</div>
+            <div v-if="!item.matched" class="branch-mismatch-card__changes">
+              <div class="branch-mismatch-card__changes-title">未提交或已变更文件</div>
+              <div v-if="item.changed_files_error" class="branch-mismatch-card__error">{{ item.changed_files_error }}</div>
+              <div v-else-if="Array.isArray(item.changed_files) && item.changed_files.length > 0" class="branch-mismatch-card__file-list">
+                <div v-for="(file, fileIdx) in item.changed_files" :key="fileIdx" class="branch-mismatch-card__file-item">{{ file }}</div>
+              </div>
+              <div v-else class="branch-mismatch-card__empty-tip">当前没有未提交文件，但仍会清理工作区后重建目标分支。</div>
+            </div>
+            <div v-if="!item.matched" class="branch-mismatch-card__actions">
+              <GitActionButton
+                compact
+                variant="danger"
+                :loading="branchSwitchingKey === getBranchMismatchItemKey(item)"
+                @click="handleCleanupAndSwitchBranch(item)"
+              >
+                清理并切换指定分支
+              </GitActionButton>
+            </div>
+          </div>
+        </div>
+        <template #footer>
+          <div class="branch-mismatch-dialog__footer">
+            <GitActionButton compact variant="info" @click="closeBranchMismatchDialog(false)">关闭</GitActionButton>
+            <GitActionButton
+              v-if="branchMismatchDialogMode === 'exec_confirm'"
+              compact
+              :disabled="branchMismatchLoading"
+              @click="closeBranchMismatchDialog(true)"
+            >
+              继续执行
+            </GitActionButton>
+          </div>
+        </template>
+      </el-dialog>
+
+      <el-dialog
+        v-model="branchSwitchStreamDialogVisible"
+        title="分支切换日志"
+        width="860px"
+        :close-on-click-modal="true"
+        @close="closeBranchSwitchStreamDialog"
+      >
+        <div class="branch-switch-stream">
+          <div class="branch-switch-stream__meta">
+            <div>执行位置：本地工作目录</div>
+            <div>目录：{{ branchSwitchStreamMeta.local_dir || '-' }}</div>
+            <div>基线分支：{{ branchSwitchStreamMeta.base_branch || '-' }}</div>
+            <div>目标分支：{{ branchSwitchStreamMeta.branch_name || '-' }}</div>
+          </div>
+          <div ref="branchSwitchStreamLog" class="branch-switch-stream__log">
+            <div
+              v-for="(line, idx) in branchSwitchStreamLines"
+              :key="idx"
+              class="branch-switch-stream__line"
+              :class="'branch-switch-stream__line--' + (line.level || 'info')"
+            >
+              {{ line.text }}
+            </div>
+          </div>
+        </div>
+        <template #footer>
+          <div class="branch-switch-stream__footer">
+            <GitActionButton compact variant="info" @click="closeBranchSwitchStreamDialog">关闭</GitActionButton>
+          </div>
+        </template>
+      </el-dialog>
 
       <section class="task-workflow-nodes">
         <button
@@ -259,6 +351,7 @@
                   :running-count="getPromptChatCounts('plain_text_requirement').running"
                   :interrupted-count="getPromptChatCounts('plain_text_requirement').interrupted"
                   :total-count="getPromptChatCounts('plain_text_requirement').total"
+                  :unread="hasUnreadInPromptType('plain_text_requirement')"
                   @click="openPromptChatHistory('plain_text_requirement')"
                 >
                   执行历史
@@ -328,6 +421,7 @@
                   :running-count="getPromptChatCounts('requirement').running"
                   :interrupted-count="getPromptChatCounts('requirement').interrupted"
                   :total-count="getPromptChatCounts('requirement').total"
+                  :unread="hasUnreadInPromptType('requirement')"
                   @click="openPromptChatHistory('requirement')"
                 >
                   执行历史
@@ -378,6 +472,7 @@
                   :running-count="getPromptChatCounts('design_plan_requirement').running"
                   :interrupted-count="getPromptChatCounts('design_plan_requirement').interrupted"
                   :total-count="getPromptChatCounts('design_plan_requirement').total"
+                  :unread="hasUnreadInPromptType('design_plan_requirement')"
                   @click="openPromptChatHistory('design_plan_requirement')"
                 >
                   执行历史
@@ -434,6 +529,7 @@
                   :running-count="getPromptChatCounts('design').running"
                   :interrupted-count="getPromptChatCounts('design').interrupted"
                   :total-count="getPromptChatCounts('design').total"
+                  :unread="hasUnreadInPromptType('design')"
                   @click="openPromptChatHistory('design')"
                 >
                   执行历史
@@ -486,7 +582,16 @@
                   <template #icon><el-icon><VideoPlay /></el-icon></template>
                   执行
                 </GitActionButton>
-                <ChatHistoryButton compact variant="info" :running="getPromptChatCounts('api_dev').running > 0" :running-count="getPromptChatCounts('api_dev').running" :interrupted-count="getPromptChatCounts('api_dev').interrupted" :total-count="getPromptChatCounts('api_dev').total" @click="openPromptChatHistory('api_dev')">
+                <ChatHistoryButton
+                  compact
+                  variant="info"
+                  :running="getPromptChatCounts('api_dev').running > 0"
+                  :running-count="getPromptChatCounts('api_dev').running"
+                  :interrupted-count="getPromptChatCounts('api_dev').interrupted"
+                  :total-count="getPromptChatCounts('api_dev').total"
+                  :unread="hasUnreadInPromptType('api_dev')"
+                  @click="openPromptChatHistory('api_dev')"
+                >
                   执行历史
                 </ChatHistoryButton>
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'api_dev'" @click="restorePrompts('api_dev')">
@@ -530,7 +635,16 @@
                   <template #icon><el-icon><VideoPlay /></el-icon></template>
                   执行
                 </GitActionButton>
-                <ChatHistoryButton compact variant="info" :running="getPromptChatCounts('code_review').running > 0" :running-count="getPromptChatCounts('code_review').running" :interrupted-count="getPromptChatCounts('code_review').interrupted" :total-count="getPromptChatCounts('code_review').total" @click="openPromptChatHistory('code_review')">
+                <ChatHistoryButton
+                  compact
+                  variant="info"
+                  :running="getPromptChatCounts('code_review').running > 0"
+                  :running-count="getPromptChatCounts('code_review').running"
+                  :interrupted-count="getPromptChatCounts('code_review').interrupted"
+                  :total-count="getPromptChatCounts('code_review').total"
+                  :unread="hasUnreadInPromptType('code_review')"
+                  @click="openPromptChatHistory('code_review')"
+                >
                   执行历史
                 </ChatHistoryButton>
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'code_review'" @click="restorePrompts('code_review')">
@@ -574,7 +688,16 @@
                   <template #icon><el-icon><VideoPlay /></el-icon></template>
                   执行
                 </GitActionButton>
-                <ChatHistoryButton compact variant="info" :running="getPromptChatCounts('browser_test').running > 0" :running-count="getPromptChatCounts('browser_test').running" :interrupted-count="getPromptChatCounts('browser_test').interrupted" :total-count="getPromptChatCounts('browser_test').total" @click="openPromptChatHistory('browser_test')">
+                <ChatHistoryButton
+                  compact
+                  variant="info"
+                  :running="getPromptChatCounts('browser_test').running > 0"
+                  :running-count="getPromptChatCounts('browser_test').running"
+                  :interrupted-count="getPromptChatCounts('browser_test').interrupted"
+                  :total-count="getPromptChatCounts('browser_test').total"
+                  :unread="hasUnreadInPromptType('browser_test')"
+                  @click="openPromptChatHistory('browser_test')"
+                >
                   执行历史
                 </ChatHistoryButton>
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'browser_test'" @click="restorePrompts('browser_test')">
@@ -618,7 +741,16 @@
                   <template #icon><el-icon><VideoPlay /></el-icon></template>
                   执行
                 </GitActionButton>
-                <ChatHistoryButton compact variant="info" :running="getPromptChatCounts('api_test').running > 0" :running-count="getPromptChatCounts('api_test').running" :interrupted-count="getPromptChatCounts('api_test').interrupted" :total-count="getPromptChatCounts('api_test').total" @click="openPromptChatHistory('api_test')">
+                <ChatHistoryButton
+                  compact
+                  variant="info"
+                  :running="getPromptChatCounts('api_test').running > 0"
+                  :running-count="getPromptChatCounts('api_test').running"
+                  :interrupted-count="getPromptChatCounts('api_test').interrupted"
+                  :total-count="getPromptChatCounts('api_test').total"
+                  :unread="hasUnreadInPromptType('api_test')"
+                  @click="openPromptChatHistory('api_test')"
+                >
                   执行历史
                 </ChatHistoryButton>
                 <GitActionButton compact variant="warning" :loading="promptRestoring === 'api_test'" @click="restorePrompts('api_test')">
@@ -882,6 +1014,7 @@ import { HomeFilled } from '@element-plus/icons-vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 import ChatHistoryButton from '@/components/shared/ChatHistoryButton.vue'
 import ChatHistoryDialog from '@/components/shared/ChatHistoryDialog.vue'
+import agentCliApi from '@/utils/base/agent_cli'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
 import taskWorkflowApi from '@/utils/base/task_workflow'
 import homeTaskApi from '@/utils/base/home_task'
@@ -895,7 +1028,6 @@ import mysqlSetApi from '@/utils/base/mysql_set'
 import apiManagement from '@/utils/base/api'
 import dockerApi from '@/utils/base/compose'
 import smartLinkSetApi from '@/utils/base/smart_link_set'
-import agentCliApi from '@/utils/base/agent_cli'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import MarkdownIt from 'markdown-it'
@@ -1056,6 +1188,9 @@ export default {
       promptChatHistoryPromptType: '',
       promptChatDetailId: 0,
       promptChatDetailShowScrollBtn: false,
+      promptChatUnreadCounts: {},
+      workflowUnreadCount: 0,
+      _workflowUnreadSseId: '',
       chatDetailModelName: '',
       chatDetailAgentName: '',
       chatDetailLocalDir: '',
@@ -1075,6 +1210,21 @@ export default {
       // 本地目录与分支状态检测
       localDirStatusMap: {},
       branchStatusMap: {},
+      branchMismatchDialogVisible: false,
+      branchMismatchDialogMode: 'notice',
+      branchMismatchDialogResolver: null,
+      branchMismatchLoading: false,
+      branchMismatchDetailList: [],
+      branchMismatchPromptedTaskId: 0,
+      branchSwitchingKey: '',
+      branchSwitchStreamDialogVisible: false,
+      branchSwitchStreamLines: [],
+      branchSwitchStreamMeta: {
+        local_dir: '',
+        base_branch: '',
+        branch_name: '',
+      },
+      _branchSwitchEventSource: null,
     }
   },
   computed: {
@@ -1167,10 +1317,17 @@ export default {
     promptExecModelOptions() {
       return this.getSelectedCliModelOptions()
     },
+    branchMismatchMatchedCount() {
+      return this.branchMismatchDetailList.filter(item => item && item.matched).length
+    },
+    branchMismatchMismatchedCount() {
+      return this.branchMismatchDetailList.filter(item => item && !item.matched).length
+    },
   },
   mounted() {
     this.loadWorkflowPage()
     this.loadTaskConfigLookupData()
+    this.ensureWorkflowUnreadSse()
     window.addEventListener('keydown', this.handleCtrlS)
   },
   beforeUnmount() {
@@ -1183,6 +1340,7 @@ export default {
       this._chatEventSource.close()
       this._chatEventSource = null
     }
+    this.unregisterWorkflowUnreadSse()
   },
   watch: {
     parsedTaskDevConfigs: {
@@ -1205,6 +1363,10 @@ export default {
       this.activeNode = 'requirement-fetch'
       this.requirementFetchActiveTab = 'tapd-fetch'
       this.requirementActiveTab = 'requirement-prompt'
+      this.branchMismatchDialogVisible = false
+      this.branchMismatchDialogResolver = null
+      this.branchMismatchDetailList = []
+      this.branchMismatchPromptedTaskId = 0
       this.unregisterWorkflowSse()
       this.loadWorkflowPage()
     },
@@ -1726,17 +1888,103 @@ export default {
     },
     updateChatCountsFromList(list) {
       const byType = {}
+      const unreadByType = {}
+      let workflowUnreadCount = 0
       for (const item of list) {
         const pt = item.prompt_type || ''
         if (pt) {
-          const c = byType[pt] || { running: 0, interrupted: 0, total: 0 }
+          const c = byType[pt] || { running: 0, interrupted: 0, total: 0, unread: 0 }
           c.total++
           if (item.status === 'running') c.running++
           else if (item.status === 'interrupted') c.interrupted++
+          if (item.is_read === false && item.status !== 'running') {
+            c.unread++
+            unreadByType[pt] = (unreadByType[pt] || 0) + 1
+            workflowUnreadCount++
+          }
           byType[pt] = c
         }
       }
       this.promptChatCounts = byType
+      this.promptChatUnreadCounts = unreadByType
+      this.workflowUnreadCount = workflowUnreadCount
+    },
+    adjustPromptUnreadCount(promptType, delta) {
+      const normalizedPromptType = String(promptType || '').trim()
+      if (!normalizedPromptType || !delta) return
+      const currentCounts = this.getPromptChatCounts(normalizedPromptType)
+      const nextUnread = Math.max(0, Number(currentCounts.unread || 0) + delta)
+      this.promptChatCounts = {
+        ...this.promptChatCounts,
+        [normalizedPromptType]: {
+          ...currentCounts,
+          unread: nextUnread,
+        },
+      }
+      const nextUnreadMap = { ...this.promptChatUnreadCounts }
+      if (nextUnread > 0) {
+        nextUnreadMap[normalizedPromptType] = nextUnread
+      } else {
+        delete nextUnreadMap[normalizedPromptType]
+      }
+      this.promptChatUnreadCounts = nextUnreadMap
+      this.workflowUnreadCount = Math.max(0, Number(this.workflowUnreadCount || 0) + delta)
+    },
+    markPromptChatReadLocally(chatId) {
+      const item = this.promptChatHistoryList.find(row => Number(row.id || 0) === Number(chatId || 0))
+      if (!item || item.is_read !== false || item.status === 'running') return
+      item.is_read = true
+      this.promptChatHistoryList = this.promptChatHistoryList.slice()
+      this.adjustPromptUnreadCount(item.prompt_type, -1)
+    },
+    markPromptChatUnreadLocally(chatId) {
+      const item = this.promptChatHistoryList.find(row => Number(row.id || 0) === Number(chatId || 0))
+      if (!item || item.is_read === false || item.status === 'running') return
+      item.is_read = false
+      this.promptChatHistoryList = this.promptChatHistoryList.slice()
+      this.adjustPromptUnreadCount(item.prompt_type, 1)
+    },
+    markPromptChatRunningLocally(promptType, chatId, extra = {}) {
+      const normalizedPromptType = String(promptType || '').trim()
+      const normalizedChatId = Number(chatId || 0)
+      if (!normalizedPromptType || normalizedChatId <= 0) return
+      const currentCounts = this.getPromptChatCounts(normalizedPromptType)
+      this.promptChatCounts = {
+        ...this.promptChatCounts,
+        [normalizedPromptType]: {
+          running: currentCounts.running + 1,
+          interrupted: currentCounts.interrupted,
+          total: Math.max(currentCounts.total + 1, currentCounts.running + currentCounts.interrupted + 1),
+          unread: currentCounts.unread,
+        },
+      }
+      if (!this.promptChatHistoryVisible || this.promptChatHistoryPromptType !== normalizedPromptType) return
+      const existing = this.promptChatHistoryList.find(item => Number(item.id || 0) === normalizedChatId)
+      if (existing) {
+        existing.status = 'running'
+        if (existing.is_read === false) {
+          existing.is_read = true
+          this.adjustPromptUnreadCount(normalizedPromptType, -1)
+        }
+        this.promptChatHistoryList = this.promptChatHistoryList.slice()
+        this.syncBackgroundChatStreams(this.promptChatHistoryList, this.promptChatDetailId || this.chatDetailId)
+        return
+      }
+      this.promptChatHistoryList = [{
+        id: normalizedChatId,
+        prompt_type: normalizedPromptType,
+        status: 'running',
+        is_read: true,
+        line_count: 0,
+        created_at: new Date().toISOString(),
+        prompt: extra.prompt || '',
+        model_name: extra.modelName || '',
+        agent_cli_name: extra.agentName || '',
+        local_dir: extra.localDir || '',
+        thinking_intensity: extra.thinkingIntensity || '',
+        cli_type: extra.cliType || 'claude',
+      }, ...this.promptChatHistoryList]
+      this.syncBackgroundChatStreams(this.promptChatHistoryList, this.promptChatDetailId || this.chatDetailId)
     },
     // 加载对话详情
     loadChatDetail() {
@@ -2096,6 +2344,14 @@ export default {
             this.chatDetailLastUsageSummary = null
             taskProgressStore.reset()
             this._initialSseRetryCount = 0
+            this.markPromptChatRunningLocally(promptType, chatId, {
+              prompt,
+              modelName,
+              thinkingIntensity,
+              localDir,
+              cliType,
+              agentName: this.chatDetailAgentName || '',
+            })
             this.connectChatStream(chatId, null, true)
             this.loadChatDetail()
             this.loadChatCounts()
@@ -2236,6 +2492,7 @@ export default {
         }
         const localDir = dirs[0]
         const cliType = this.getSelectedCliType()
+        const selectedCli = this.getSelectedCli()
         this.promptExecLoading = true
       taskWorkflowApi.TaskWorkflowChatSend(
         this.workflowId,
@@ -2261,6 +2518,14 @@ export default {
               this.chatDetailMessages = []
               taskProgressStore.reset()
               this._initialSseRetryCount = 0
+              this.markPromptChatRunningLocally(this.promptExecPromptType, chatId, {
+                prompt: this.promptExecPromptValue,
+                modelName: this.promptExecModelName,
+                thinkingIntensity: this.promptExecThinkingIntensity,
+                localDir,
+                cliType,
+                agentName: selectedCli?.name || '',
+              })
               this.connectChatStream(chatId, null, true)
               this.loadChatDetail()
               this.loadChatCounts()
@@ -2274,7 +2539,36 @@ export default {
       })
     },
     getPromptChatCounts(promptType) {
-      return this.promptChatCounts[promptType] || { running: 0, interrupted: 0, total: 0 }
+      return this.promptChatCounts[promptType] || { running: 0, interrupted: 0, total: 0, unread: 0 }
+    },
+    hasUnreadInPromptType(promptType) {
+      return Number(this.promptChatUnreadCounts[promptType] || 0) > 0
+    },
+    ensureWorkflowUnreadSse() {
+      if (this._workflowUnreadSseId) return
+      const nextId = `workflow_unread_${this.workflowId || 'global'}`
+      this._workflowUnreadSseId = nextId
+      sseDistribute.InitFromLoginStatus().then((created) => {
+        if (!created && !sseDistribute.GetSseClientId()) return
+        sseDistribute.RegisterReceive(nextId, this.handleWorkflowUnreadSseMessage)
+      })
+    },
+    unregisterWorkflowUnreadSse() {
+      if (!this._workflowUnreadSseId) return
+      sseDistribute.UnRegisterReceive(this._workflowUnreadSseId)
+      this._workflowUnreadSseId = ''
+    },
+    handleWorkflowUnreadSseMessage(data) {
+      if (!data) return
+      if (Number(data.workflow_id || 0) !== this.workflowId && Number(data.from_id || 0) !== this.workflowId) {
+        return
+      }
+      if (data.type !== 'agent_chat_unread_change') return
+      this.workflowUnreadCount = Number(data.workflow_unread || 0)
+      this.loadChatCounts()
+      if (this.promptChatHistoryVisible) {
+        this.loadPromptChatHistoryListSilently()
+      }
     },
     // 打开按类型的执行历史弹窗
     openPromptChatHistory(promptType, focusChatId) {
@@ -2304,9 +2598,6 @@ export default {
           this.promptChatHistoryList = res.Data.list || []
           this._startChatHistoryDurationTimer()
           this.syncBackgroundChatStreams(this.promptChatHistoryList, focusChatId || this.promptChatDetailId || this.chatDetailId)
-          if (!promptType) {
-            this.updateChatCountsFromList(this.promptChatHistoryList)
-          }
           if (focusChatId) {
             const found = this.promptChatHistoryList.find(item => item.id === focusChatId)
             if (found) {
@@ -2343,6 +2634,13 @@ export default {
       // 中文注释：先关闭旧前台 SSE，再决定哪些对话转入后台监听，避免旧选中对话漏挂后台连接。
       // English comment: Close the previous foreground SSE before recalculating background streams so the old active chat can move into background tracking.
       this.syncBackgroundChatStreams(this.promptChatHistoryList, row.id)
+      if (row.is_read === false && row.status !== 'running') {
+        agentCliApi.AgentChatMarkRead(row.id, (res) => {
+          if (res && res.ErrCode === 0) {
+            this.markPromptChatReadLocally(row.id)
+          }
+        })
+      }
       if (this._sseChatId !== row.id) {
         this.chatDetailSSELines = []
         this.chatDetailMessages = []
@@ -2395,7 +2693,12 @@ export default {
     updateChatListStatus(chatId, status) {
       const updateItem = (list) => {
         const item = list.find(i => i.id === chatId)
-        if (item) item.status = status
+        if (item) {
+          item.status = status
+          if (status !== 'running') {
+            this.markPromptChatUnreadLocally(chatId)
+          }
+        }
       }
       updateItem(this.promptChatHistoryList)
       this.syncBackgroundChatStreams(this.promptChatHistoryList, this.promptChatDetailId || this.chatDetailId)
@@ -2455,6 +2758,7 @@ export default {
               status: String(obj.status || 'completed').trim() || 'completed',
               line_count: state.lineCount,
             })
+            this.markPromptChatUnreadLocally(normalizedChatId)
             this.stopBackgroundChatStream(normalizedChatId)
             this.loadPromptChatHistoryListSilently()
             this.loadChatCounts()
@@ -2480,6 +2784,9 @@ export default {
       })
       if (normalizedChatId === Number(this.chatDetailId || 0) && patch.status) {
         this.chatDetailStatus = patch.status
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'is_read')) {
+        item.is_read = patch.is_read
       }
       this.promptChatHistoryList = this.promptChatHistoryList.slice()
     },
@@ -2508,9 +2815,6 @@ export default {
       loadApi((res) => {
         if (!(res && res.ErrCode === 0 && res.Data)) return
         this.promptChatHistoryList = res.Data.list || []
-        if (!promptType) {
-          this.updateChatCountsFromList(this.promptChatHistoryList)
-        }
         this.syncBackgroundChatStreams(this.promptChatHistoryList, this.promptChatDetailId || this.chatDetailId)
         if (this.chatDetailId > 0) {
           const current = this.promptChatHistoryList.find(item => item.id === this.chatDetailId)
@@ -2851,29 +3155,44 @@ export default {
     },
     // 批量检查工作流页面中本地目录的当前 Git 分支是否与配置的分支名匹配
     checkWorkflowBranchStatus() {
-      const configs = this.parsedTaskDevConfigs
+      const items = this.getWorkflowBranchCheckItems()
+      if (items.length === 0) return
+      homeTaskApi.LocalBranchBatchCheck(items, (response) => {
+        if (response && response.ErrCode === 0 && response.Data) {
+          this.branchStatusMap = { ...this.branchStatusMap, ...response.Data }
+          this.maybeAutoOpenBranchMismatchDialog()
+          if (this.branchMismatchDialogVisible) {
+            this.loadBranchMismatchDetail({ showDialog: false, mode: this.branchMismatchDialogMode })
+          }
+        }
+      })
+    },
+    getWorkflowBranchCheckItems() {
       const items = []
       const seen = new Set()
-      for (const cfg of configs) {
+      for (const cfg of this.parsedTaskDevConfigs) {
         const dir = String(cfg.local_dir || '').trim()
         const branch = String(cfg.branch_name || '').trim()
         if (!dir || !branch) continue
         const key = dir + '|' + branch
         if (seen.has(key)) continue
         seen.add(key)
-        items.push({ local_dir: dir, branch_name: branch })
+        items.push({
+          git_id: Number(cfg.git_id || 0),
+          parent_branch: String(cfg.parent_branch || '').trim(),
+          local_dir: dir,
+          branch_name: branch,
+        })
       }
-      if (items.length === 0) return
-      homeTaskApi.LocalBranchBatchCheck(items, (response) => {
-        if (response && response.ErrCode === 0 && response.Data) {
-          this.branchStatusMap = { ...this.branchStatusMap, ...response.Data }
-        }
-      })
+      return items
+    },
+    getBranchMismatchItemKey(item) {
+      return String(item.local_dir || '') + '|' + String(item.expected_branch || item.branch_name || '')
     },
     // 检查所有 dev_config 的分支是否匹配，返回不匹配的列表
     getMismatchedBranches() {
       const mismatched = []
-      for (const cfg of this.parsedTaskDevConfigs) {
+      for (const cfg of this.getWorkflowBranchCheckItems()) {
         const dir = String(cfg.local_dir || '').trim()
         const branch = String(cfg.branch_name || '').trim()
         if (!dir || !branch) continue
@@ -2881,6 +3200,8 @@ export default {
         const status = this.branchStatusMap[key]
         if (status && !status.matched) {
           mismatched.push({
+            git_id: Number(cfg.git_id || 0),
+            parent_branch: String(cfg.parent_branch || '').trim(),
             local_dir: dir,
             expected_branch: branch,
             current_branch: status.current_branch || '未知',
@@ -2889,19 +3210,186 @@ export default {
       }
       return mismatched
     },
-    // 执行前检查分支是否匹配，不匹配时弹出确认框，返回 Promise<boolean>
-    confirmBranchBeforeExec() {
-      const mismatched = this.getMismatchedBranches()
-      if (mismatched.length === 0) {
+    maybeAutoOpenBranchMismatchDialog() {
+      if (this.branchMismatchPromptedTaskId === this.taskId) return
+      if (this.getMismatchedBranches().length === 0) return
+      this.branchMismatchPromptedTaskId = this.taskId
+      this.loadBranchMismatchDetail({ showDialog: true, mode: 'notice' })
+    },
+    loadBranchMismatchDetail({ showDialog = true, mode = 'notice' } = {}) {
+      const items = this.getWorkflowBranchCheckItems()
+      if (items.length === 0) {
+        this.branchMismatchDetailList = []
+        return Promise.resolve([])
+      }
+      this.branchMismatchLoading = true
+      this.branchMismatchDialogMode = mode
+      if (showDialog) {
+        this.branchMismatchDialogVisible = true
+      }
+      return new Promise((resolve) => {
+        homeTaskApi.LocalBranchMismatchDetail(items, (response) => {
+          this.branchMismatchLoading = false
+          if (response && response.ErrCode === 0 && Array.isArray(response.Data)) {
+            this.branchMismatchDetailList = response.Data
+            resolve(response.Data)
+            return
+          }
+          this.branchMismatchDetailList = []
+          this.$helperNotify.error(response?.ErrMsg || '加载分支检查详情失败')
+          resolve([])
+        })
+      })
+    },
+    openBranchMismatchDialog(mode = 'notice') {
+      if (this.getMismatchedBranches().length === 0) {
         return Promise.resolve(true)
       }
-      const lines = mismatched.map(m => `${m.local_dir}\n  期望分支: ${m.expected_branch}\n  当前分支: ${m.current_branch}`)
-      const msg = '以下目录的分支与配置不一致：\n\n' + lines.join('\n\n') + '\n\n是否继续执行？'
-      return this.$confirm(msg, '分支不匹配警告', {
-        confirmButtonText: '继续执行',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }).then(() => true).catch(() => false)
+      return new Promise((resolve) => {
+        this.branchMismatchDialogResolver = resolve
+        this.loadBranchMismatchDetail({ showDialog: true, mode }).then(() => {})
+      })
+    },
+    closeBranchMismatchDialog(confirmed) {
+      this.branchMismatchDialogVisible = false
+      const resolver = this.branchMismatchDialogResolver
+      this.branchMismatchDialogResolver = null
+      if (resolver) {
+        resolver(!!confirmed)
+      }
+    },
+    handleBranchMismatchDialogClose() {
+      if (this.branchMismatchDialogVisible) return
+      const resolver = this.branchMismatchDialogResolver
+      this.branchMismatchDialogResolver = null
+      if (resolver) {
+        resolver(false)
+      }
+    },
+    handleCleanupAndSwitchBranch(item) {
+      const expectedBranch = String(item.expected_branch || '').trim()
+      const baseBranch = String(item.parent_branch || '').trim()
+      const localDir = String(item.local_dir || '').trim()
+      const gitId = Number(item.git_id || 0)
+      if (!localDir || !expectedBranch || !baseBranch) {
+        this.$helperNotify.warning('缺少本地目录、父分支或目标分支，无法自动切换')
+        return
+      }
+      this.$confirm(
+        `将清理本地目录 ${item.local_dir || ''} 下所有未提交或已变更文件，并先切换到 ${baseBranch} 拉取最新代码，再基于此分支创建 ${expectedBranch}。\n\n确定继续吗？`,
+        '确认清理并切换分支',
+        {
+          confirmButtonText: '确认清理并切换',
+          cancelButtonText: '取消',
+          type: 'warning',
+        }
+      ).then(() => {
+        const switchKey = this.getBranchMismatchItemKey(item)
+        this.branchSwitchingKey = switchKey
+        this.startBranchSwitchStream({
+          git_id: gitId,
+          local_dir: localDir,
+          base_branch: baseBranch,
+          branch_name: expectedBranch,
+          switchKey,
+        })
+      }).catch(() => {})
+    },
+    closeBranchSwitchStreamDialog() {
+      this.branchSwitchStreamDialogVisible = false
+      if (this._branchSwitchEventSource) {
+        this._branchSwitchEventSource.close()
+        this._branchSwitchEventSource = null
+      }
+    },
+    appendBranchSwitchLog(text, level = 'info') {
+      this.branchSwitchStreamLines.push({ text, level })
+      this.$nextTick(() => {
+        this.scrollBranchSwitchLogToBottom()
+      })
+    },
+    scrollBranchSwitchLogToBottom() {
+      const logEl = this.$refs.branchSwitchStreamLog
+      if (!logEl) {
+        return
+      }
+      logEl.scrollTop = logEl.scrollHeight
+    },
+    startBranchSwitchStream(payload) {
+      if (this._branchSwitchEventSource) {
+        this._branchSwitchEventSource.close()
+        this._branchSwitchEventSource = null
+      }
+      this.branchSwitchStreamMeta = {
+        local_dir: payload.local_dir || '',
+        base_branch: payload.base_branch || '',
+        branch_name: payload.branch_name || '',
+      }
+      this.branchSwitchStreamLines = []
+      this.branchSwitchStreamDialogVisible = true
+      this.$nextTick(() => {
+        this.scrollBranchSwitchLogToBottom()
+      })
+      const url = gitApi.GitCleanupAndSwitchBranchByIdStreamUrl(payload)
+      if (!url) {
+        this.branchSwitchingKey = ''
+        this.appendBranchSwitchLog('SSE 连接不可用，无法实时展示切换步骤', 'error')
+        this.$helperNotify.error('SSE 连接不可用')
+        return
+      }
+      this.appendBranchSwitchLog(`开始在本地目录执行：${payload.local_dir}`)
+      const es = new EventSource(url)
+      this._branchSwitchEventSource = es
+      es.onmessage = (event) => {
+        const raw = event.data
+        if (!raw || raw === '[DONE]' || raw === '[CONNECT]') return
+        let parsed = null
+        try {
+          parsed = JSON.parse(raw)
+        } catch (e) {
+          this.appendBranchSwitchLog(raw)
+          return
+        }
+        if (parsed.type === 'line') {
+          this.appendBranchSwitchLog(parsed.message || '')
+          return
+        }
+        if (parsed.type === 'step') {
+          const level = parsed.status === 'error' ? 'error' : (parsed.status === 'done' ? 'success' : 'info')
+          this.appendBranchSwitchLog(parsed.message || '', level)
+          return
+        }
+        if (parsed.type === 'meta') {
+          this.appendBranchSwitchLog(parsed.message || '', 'info')
+          return
+        }
+        if (parsed.type === 'done') {
+          if (parsed.status === 'success') {
+            this.appendBranchSwitchLog(parsed.message || '分支切换完成', 'success')
+            this.$helperNotify.success(`已切换到 ${payload.branch_name}`)
+            this.checkWorkflowBranchStatus()
+            this.loadBranchMismatchDetail({ showDialog: true, mode: this.branchMismatchDialogMode })
+          } else {
+            this.appendBranchSwitchLog(parsed.message || '清理并切换分支失败', 'error')
+            this.$helperNotify.error(parsed.message || '清理并切换分支失败')
+          }
+          this.branchSwitchingKey = ''
+          es.close()
+          this._branchSwitchEventSource = null
+        }
+      }
+      es.onerror = () => {
+        if (this._branchSwitchEventSource === es) {
+          this.appendBranchSwitchLog('连接已断开', 'error')
+          this.branchSwitchingKey = ''
+          es.close()
+          this._branchSwitchEventSource = null
+        }
+      }
+    },
+    // 执行前检查分支是否匹配，不匹配时弹出确认框，返回 Promise<boolean>
+    confirmBranchBeforeExec() {
+      return this.openBranchMismatchDialog('exec_confirm')
     },
   },
 }
@@ -2916,6 +3404,46 @@ export default {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.branch-switch-stream__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
+}
+
+.branch-switch-stream__log {
+  max-height: 420px;
+  overflow: auto;
+  background: linear-gradient(180deg, #fcfdf8 0%, #f6f8f2 100%);
+  color: #4a5560;
+  border: 1px solid #dfe7d6;
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.branch-switch-stream__line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.branch-switch-stream__line + .branch-switch-stream__line {
+  margin-top: 4px;
+}
+
+.branch-switch-stream__line--error {
+  color: #c25555;
+}
+
+.branch-switch-stream__line--success {
+  color: #4d8b57;
 }
 
 .task-workflow-shell {
@@ -2956,6 +3484,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+  min-width: 0;
 }
 
 .task-workflow-header__title {
@@ -2963,7 +3492,11 @@ export default {
   font-size: 22px;
   line-height: 1.3;
   color: #303133;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-workflow-header__meta {
@@ -2974,6 +3507,12 @@ export default {
   margin-top: 6px;
   color: #909399;
   font-size: 13px;
+}
+
+.task-workflow-header__unread {
+  color: #e53935;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .task-workflow-header__dev-row {
@@ -3028,6 +3567,8 @@ export default {
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
+  flex-shrink: 0;
+  justify-content: flex-end;
 }
 
 .task-workflow-home-btn {
@@ -3430,6 +3971,11 @@ export default {
     align-items: flex-start;
   }
 
+  .task-workflow-header__title {
+    width: 100%;
+    white-space: normal;
+  }
+
   .task-workflow-card__header {
     flex-direction: column;
     align-items: flex-start;
@@ -3770,5 +4316,94 @@ export default {
 .chat-detail-textarea .el-textarea__inner:focus {
   border-color: #409eff !important;
   box-shadow: 0 0 0 1px #409eff inset !important;
+}
+
+.branch-mismatch-dialog__summary {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+  color: #4b5a54;
+  font-size: 13px;
+}
+
+.branch-mismatch-dialog__empty {
+  padding: 20px 0;
+  color: #909399;
+  text-align: center;
+}
+
+.branch-mismatch-card {
+  border: 1px solid #dbe7df;
+  border-radius: 12px;
+  padding: 14px;
+  background: #fbfcfa;
+}
+
+.branch-mismatch-card + .branch-mismatch-card {
+  margin-top: 12px;
+}
+
+.branch-mismatch-card__header,
+.branch-mismatch-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.branch-mismatch-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #20312b;
+  word-break: break-all;
+}
+
+.branch-mismatch-card__meta {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  color: #4b5a54;
+  font-size: 13px;
+}
+
+.branch-mismatch-card__changes {
+  margin-top: 12px;
+}
+
+.branch-mismatch-card__changes-title {
+  margin-bottom: 8px;
+  color: #20312b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.branch-mismatch-card__file-list {
+  max-height: 180px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f3f7f4;
+  border: 1px solid #e0e8e2;
+}
+
+.branch-mismatch-card__file-item {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #2a3933;
+  word-break: break-all;
+}
+
+.branch-mismatch-card__empty-tip,
+.branch-mismatch-card__error {
+  margin-top: 6px;
+  color: #8a4d24;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.branch-mismatch-card__actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

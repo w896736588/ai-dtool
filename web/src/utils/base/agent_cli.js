@@ -52,6 +52,13 @@ function AgentChatListByAgentCli(agentCliId, callBack) {
   }, callBack)
 }
 
+// AgentChatMarkRead 将执行历史对话标记为已读
+function AgentChatMarkRead(chatId, callBack) {
+  base.BasePost('/api/agent/chat/mark-read', {
+    chat_id: chatId,
+  }, callBack)
+}
+
 // WebhookConfigList 获取 Webhook 配置列表
 function WebhookConfigList(callBack) {
   base.BasePost('/api/WebhookConfigList', {}, callBack)
@@ -65,6 +72,11 @@ function WebhookConfigSave(data, callBack) {
 // WebhookConfigDelete 删除 Webhook 配置
 function WebhookConfigDelete(id, callBack) {
   base.BasePost('/api/WebhookConfigDelete', { id: id }, callBack)
+}
+
+// WebhookConfigTest 测试发送 Webhook 配置
+function WebhookConfigTest(data, callBack) {
+  base.BasePost('/api/WebhookConfigTest', data, callBack)
 }
 
 // AgentCliGroupList 获取 AgentCli 专用分组列表
@@ -98,9 +110,11 @@ export default {
   AgentCliToggleEnabled,
   AgentChatSend,
   AgentChatListByAgentCli,
+  AgentChatMarkRead,
   WebhookConfigList,
   WebhookConfigSave,
   WebhookConfigDelete,
+  WebhookConfigTest,
   AgentCliGroupList,
   AgentCliGroupSave,
   AgentCliGroupDelete,

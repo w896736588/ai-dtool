@@ -211,6 +211,14 @@ function handleItemEvent(eventType, obj, messages, currentItems) {
       }
       tracked.msgIndex = messages.length
       messages.push(msg)
+    } else if (itemType === 'error') {
+      const msg = {
+        type: 'error',
+        text: item.message || item.text || item.error || '未知错误',
+        _codexItemId: itemId,
+      }
+      tracked.msgIndex = messages.length
+      messages.push(msg)
     } else {
       // 未知 item 类型
       messages.push({ type: 'raw_text', text: JSON.stringify(obj) })
@@ -228,6 +236,8 @@ function handleItemEvent(eventType, obj, messages, currentItems) {
         existingMsg.content[0].text = item.text || ''
       } else if (itemType === 'reasoning') {
         existingMsg.thinking = item.text || item.summary || ''
+      } else if (itemType === 'error') {
+        existingMsg.text = item.message || item.text || item.error || existingMsg.text
       } else if (itemType === 'todo_list') {
         existingMsg._todoItems = item.items || item.todos || []
       } else if (existingMsg.content && existingMsg.content.length > 0) {
@@ -294,6 +304,8 @@ function handleItemEvent(eventType, obj, messages, currentItems) {
         if (existingMsg._thinkingTiming) {
           existingMsg._thinkingTiming.durationMs = Date.now() - existingMsg._thinkingTiming.startMs
         }
+      } else if (itemType === 'error') {
+        existingMsg.text = item.message || item.text || item.error || existingMsg.text
       } else if (itemType === 'command_execution' && existingMsg.content && existingMsg.content.length > 0) {
         const block = existingMsg.content[0]
         block._codexStatus = 'completed'
@@ -444,6 +456,12 @@ function handleItemEvent(eventType, obj, messages, currentItems) {
           _todoItems: item.items || item.todos || [],
         }
         messages.push(msg)
+      } else if (itemType === 'error') {
+        messages.push({
+          type: 'error',
+          text: item.message || item.text || item.error || '未知错误',
+          _codexItemId: itemId,
+        })
       } else {
         // 未知 item 类型
         messages.push({ type: 'raw_text', text: JSON.stringify(obj) })

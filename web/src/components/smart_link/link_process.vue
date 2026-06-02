@@ -60,6 +60,7 @@
             <h2>{{ state.activeProcess.name }}</h2>
           </div>
           <div class="process-header-actions">
+            <GitActionButton compact sizeMode="compact-small" variant="info" @click="copyProcessSql(state.activeProcess)">复制SQL</GitActionButton>
             <GitActionButton compact sizeMode="compact-small" variant="info" @click="editProcessName">编辑</GitActionButton>
             <GitActionButton compact sizeMode="compact-small" @click="addNewItem">新增执行逻辑子项</GitActionButton>
           </div>
@@ -348,6 +349,126 @@ export default {
           resolve(response && response.Data ? response.Data : {})
         })
       })
+    }
+
+    const writeClipboard = async function (text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text)
+        return
+      }
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.setAttribute('readonly', 'readonly')
+      textarea.style.position = 'fixed'
+      textarea.style.top = '-9999px'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+
+    const sqlEscape = function (value) {
+      return String(value ?? '').replace(/'/g, "''")
+    }
+
+    const sqlString = function (value) {
+      return `'${sqlEscape(value)}'`
+    }
+
+    const sqlInt = function (value, defaultValue = 0) {
+      const numberValue = Number(value)
+      return Number.isFinite(numberValue) ? String(Math.trunc(numberValue)) : String(defaultValue)
+    }
+
+    const buildProcessExportSql = function (process, itemList) {
+      const normalizedProcess = {
+        name: process?.name ?? '',
+        status: process?.status ?? 1,
+        create_time: process?.create_time ?? 0,
+        update_time: process?.update_time ?? 0,
+      }
+      const processColumns = ['name', 'status', 'create_time', 'update_time']
+      const processValues = [
+        sqlString(normalizedProcess.name),
+        sqlInt(normalizedProcess.status, 1),
+        sqlInt(normalizedProcess.create_time),
+        sqlInt(normalizedProcess.update_time),
+      ]
+      const lines = [
+        '-- 开启事务',
+        'BEGIN TRANSACTION;',
+        '',
+        '-- 1. 插入主表',
+        `INSERT INTO "tbl_smart_link_process" (${processColumns.map((column) => `"${column}"`).join(', ')})`,
+        `VALUES (${processValues.join(', ')});`,
+        '',
+        '-- 2. 创建临时表保存刚插入的ID',
+        'CREATE TEMP TABLE temp_last_id AS SELECT last_insert_rowid() as saved_id;',
+      ]
+
+      const itemColumns = [
+        'name',
+        'smart_link_process_id',
+        'type',
+        'locator',
+        'tip',
+        'value',
+        'out_key',
+        'check_key',
+        'weight',
+        'domain_limit',
+        'status',
+        'create_time',
+        'update_time',
+        'wait_mills',
+        'append_to_replace',
+        'is_async',
+        'is_error_continue',
+        'next_ids',
+        'x',
+        'y',
+      ]
+      lines.push('', '-- 3. 插入所有子表记录，使用临时表中保存的ID')
+      itemList.forEach((item) => {
+        const itemValues = [
+          sqlString(item?.name),
+          '(SELECT saved_id FROM temp_last_id)',
+          sqlString(item?.type),
+          sqlString(item?.locator),
+          sqlString(item?.tip),
+          sqlString(item?.value),
+          sqlString(item?.out_key),
+          sqlString(item?.check_key),
+          sqlInt(item?.weight),
+          sqlString(item?.domain_limit),
+          sqlInt(item?.status, 1),
+          sqlInt(item?.create_time),
+          sqlInt(item?.update_time),
+          sqlInt(item?.wait_mills, 3000),
+          sqlString(item?.append_to_replace ?? '0'),
+          sqlString(item?.is_async ?? '0'),
+          sqlString(item?.is_error_continue ?? '0'),
+          sqlString(item?.next_ids),
+          sqlInt(item?.x),
+          sqlInt(item?.y),
+        ]
+        lines.push(`INSERT INTO "main"."tbl_smart_link_process_item" (${itemColumns.map((column) => `"${column}"`).join(', ')})`)
+        lines.push(`VALUES (${itemValues.join(', ')});`)
+      })
+
+      lines.push('', '-- 4. 删除临时表', 'DROP TABLE temp_last_id;', '', '-- 5. 提交事务', 'COMMIT;')
+      return lines.join('\n')
+    }
+
+    const copyProcessSql = async function (process) {
+      try {
+        const itemList = await smartProcessItemListAsync(process.id)
+        const sql = buildProcessExportSql(process, itemList)
+        await writeClipboard(sql)
+        ElMessage.success('SQL 已复制到剪贴板。')
+      } catch (error) {
+        ElMessage.error(`复制 SQL 失败：${error && error.message ? error.message : '未知错误'}`)
+      }
     }
 
     //关联节点
@@ -650,6 +771,7 @@ export default {
       createNewProcess,
       selectProcess,
       deleteProcess,
+      copyProcessSql,
       openCopyProcessDialog,
       editProcessName,
       saveProcessName,
