@@ -154,3 +154,8 @@ type TaskWorkflowChatListByAgentCliRequest struct {
 type AgentChatListByAgentCliRequest struct {
 	AgentCliID int `json:"agent_cli_id"`
 }
+
+// AgentChatMarkReadRequest 将指定对话标记为已读。
+type AgentChatMarkReadRequest struct {
+	ChatID int `json:"chat_id"`
+}

@@ -14,6 +14,7 @@
           <div class="chat-list-group-header" @click="toggleGroup(group.dir)">
             <span class="chat-list-group-header__arrow">{{ isGroupCollapsed(group.dir) ? '▶' : '▼' }}</span>
             <span class="chat-list-group-header__dir" :title="group.dir">{{ group.dirLabel }}</span>
+            <span v-if="group.unreadCount > 0" class="chat-list-group-header__unread">{{ group.unreadCount }}</span>
             <span class="chat-list-group-header__count">{{ group.items.length }}</span>
           </div>
           <template v-if="!isGroupCollapsed(group.dir)">
@@ -31,6 +32,7 @@
             >
               <div class="chat-list-item__name">
                 <div class="chat-list-item__tags">
+                  <span v-if="item.is_read === false" class="chat-list-item__unread-dot"></span>
                   <span class="chat-list-item__id">{{ item.id }}</span>
                   <span v-if="getItemAgentName(item)" class="chat-list-item__agent-name">智能体: {{ getItemAgentName(item) }}</span>
                   <span v-if="item._killed_pid" class="chat-list-item__killed-pid">杀进程:{{ item._killed_pid }}</span>
@@ -525,6 +527,28 @@ export default {
   created() {
     this.loadGroupCollapsedState()
   },
+  watch: {
+    modelValue(visible) {
+      if (visible) {
+        this.$nextTick(() => {
+          this.ensureSelectedGroupExpanded()
+        })
+      }
+    },
+    selectedId() {
+      this.$nextTick(() => {
+        this.ensureSelectedGroupExpanded()
+      })
+    },
+    items: {
+      handler() {
+        this.$nextTick(() => {
+          this.ensureSelectedGroupExpanded()
+        })
+      },
+      deep: true,
+    },
+  },
   computed: {
     // groupedItems 将 items 按 local_dir 分组，保持每组内原始顺序。 // Groups items by local_dir while preserving original order within each group.
     groupedItems() {
@@ -532,14 +556,18 @@ export default {
       const dirMap = new Map()
       const itemList = Array.isArray(this.items) ? this.items : []
       itemList.forEach((item) => {
-        const dir = String(item?.local_dir || '').trim()
+        const dir = this.getItemWorkspacePath(item)
         const dirKey = dir || ''
         if (!dirMap.has(dirKey)) {
-          const group = { dir: dirKey, dirLabel: this.getCompactDirLabel(dir), items: [] }
+          const group = { dir: dirKey, dirLabel: this.getCompactDirLabel(dir), items: [], unreadCount: 0 }
           dirMap.set(dirKey, group)
           groups.push(group)
         }
-        dirMap.get(dirKey).items.push(item)
+        const group = dirMap.get(dirKey)
+        group.items.push(item)
+        if (this.isItemUnread(item)) {
+          group.unreadCount += 1
+        }
       })
       return groups
     },
@@ -611,6 +639,21 @@ export default {
       this.collapsedGroups = { ...this.collapsedGroups }
       this.saveGroupCollapsedState()
     },
+    // ensureSelectedGroupExpanded 确保当前选中记录所属工作空间分组始终展开。 // Ensures the selected chat's workspace group is expanded even if older cache collapsed it.
+    ensureSelectedGroupExpanded() {
+      if (!this.modelValue) return
+      const itemList = Array.isArray(this.items) ? this.items : []
+      const activeId = Number(this.selectedId || 0)
+      if (activeId <= 0 || itemList.length === 0) return
+      const selectedItem = itemList.find(item => Number(item?.id || 0) === activeId)
+      if (!selectedItem) return
+      const dir = this.getItemWorkspacePath(selectedItem)
+      const dirKey = dir || ''
+      if (!this.collapsedGroups[dirKey]) return
+      delete this.collapsedGroups[dirKey]
+      this.collapsedGroups = { ...this.collapsedGroups }
+      this.saveGroupCollapsedState()
+    },
     // getItemAgentName 统一提取左侧列表项的智能体名称，兼容不同页面返回字段。 // Extracts the agent name for list rows across different history sources.
     getItemAgentName(item) {
       const agentName = String(item?.agent_cli_name || item?.agent_name || item?.agentName || '').trim()
@@ -624,6 +667,9 @@ export default {
     // getItemWorkspacePath 统一提取工作空间路径，兼容不同历史来源字段。 // Extracts the workspace path for a history row across sources.
     getItemWorkspacePath(item) {
       return String(item?.workspace_path || item?.local_dir || item?.workspacePath || '').trim()
+    },
+    isItemUnread(item) {
+      return item?.is_read === false && item?.status !== 'running'
     },
     // getItemWorkspaceLabel 将工作空间路径压缩为最后一级目录名。 // Reduces a workspace path to its last segment for compact display.
     getItemWorkspaceLabel(item) {

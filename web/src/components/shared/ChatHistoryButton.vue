@@ -2,7 +2,10 @@
   <GitActionButton
     compact
     :variant="variant"
-    :class="{ 'chat-history-btn--running': running }"
+    :class="{
+      'chat-history-btn--running': running,
+      'chat-history-btn--unread': unread,
+    }"
     @click="$emit('click')"
   >
     <slot />
@@ -38,6 +41,10 @@ export default {
     totalCount: {
       type: Number,
       default: 0,
+    },
+    unread: {
+      type: Boolean,
+      default: false,
     },
   },
   emits: ['click'],

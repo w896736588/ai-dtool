@@ -1918,6 +1918,59 @@ func SetPromptChangeLogList(c *gin.Context) {
 // localBranchBatchCheckKeySep 是 SetLocalBranchBatchCheck 返回结果中 key 的分隔符（local_dir|branch_name）。
 const localBranchBatchCheckKeySep = `|`
 
+func buildLocalBranchCheckResult(localDir string, branchName string) map[string]any {
+	result := map[string]any{
+		`current_branch`:  ``,
+		`expected_branch`: branchName,
+		`matched`:         false,
+	}
+	info, statErr := os.Stat(localDir)
+	if statErr != nil || !info.IsDir() {
+		result[`error`] = `目录不存在`
+		return result
+	}
+	cmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, `--abbrev-ref`, `HEAD`)
+	output, runErr := cmd.CombinedOutput()
+	if runErr != nil {
+		errText := strings.TrimSpace(string(output))
+		if errText == `` {
+			errText = `获取分支失败`
+		}
+		result[`error`] = errText
+		return result
+	}
+	currentBranch := strings.TrimSpace(string(output))
+	result[`current_branch`] = currentBranch
+	result[`matched`] = currentBranch == branchName
+	return result
+}
+
+func collectLocalGitChangedFiles(localDir string) ([]string, error) {
+	cmd := exec.Command(`git`, `-C`, localDir, `status`, `--short`)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		if msg == `` {
+			msg = err.Error()
+		}
+		return nil, fmt.Errorf(msg)
+	}
+	trimmed := strings.TrimSpace(string(output))
+	if trimmed == `` {
+		return []string{}, nil
+	}
+	lines := strings.Split(trimmed, "\n")
+	result := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) == `` {
+			continue
+		}
+		result = append(result, line)
+	}
+	return result, nil
+}
+
 // SetLocalBranchBatchCheck 批量检查本地目录当前 Git 分支是否与期望分支匹配。
 // 入参: { items: [{ local_dir: "C:\\...", branch_name: "feature_xxx" }] }
 // 出参: map[string]object，key 为 "local_dir|branch_name"，value 含 current_branch / expected_branch / matched。
@@ -1940,35 +1993,49 @@ func SetLocalBranchBatchCheck(c *gin.Context) {
 		if _, exists := result[key]; exists {
 			continue
 		}
-		// 检查目录是否存在
-		info, statErr := os.Stat(localDir)
-		if statErr != nil || !info.IsDir() {
-			result[key] = map[string]any{
-				`current_branch`:  ``,
-				`expected_branch`: branchName,
-				`matched`:         false,
-				`error`:           `目录不存在`,
-			}
+		result[key] = buildLocalBranchCheckResult(localDir, branchName)
+	}
+	gsgin.GinResponseSuccess(c, ``, result)
+}
+
+// SetLocalBranchMismatchDetail 返回分支匹配详情，并附带未提交/已变更文件。
+func SetLocalBranchMismatchDetail(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	itemsRaw, _ := dataMap[`items`].([]any)
+	result := make([]map[string]any, 0, len(itemsRaw))
+	seen := map[string]struct{}{}
+	for _, raw := range itemsRaw {
+		item, ok := raw.(map[string]any)
+		if !ok {
 			continue
 		}
-		// 执行 git rev-parse --abbrev-ref HEAD 获取当前分支
-		cmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, `--abbrev-ref`, `HEAD`)
-		output, runErr := cmd.Output()
-		if runErr != nil {
-			result[key] = map[string]any{
-				`current_branch`:  ``,
-				`expected_branch`: branchName,
-				`matched`:         false,
-				`error`:           `获取分支失败`,
-			}
+		localDir := strings.TrimSpace(cast.ToString(item[`local_dir`]))
+		branchName := strings.TrimSpace(cast.ToString(item[`branch_name`]))
+		if localDir == `` || branchName == `` {
 			continue
 		}
-		currentBranch := strings.TrimSpace(string(output))
-		result[key] = map[string]any{
-			`current_branch`:  currentBranch,
+		key := localDir + localBranchBatchCheckKeySep + branchName
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		row := map[string]any{
+			`git_id`:          cast.ToInt(item[`git_id`]),
+			`parent_branch`:   strings.TrimSpace(cast.ToString(item[`parent_branch`])),
+			`local_dir`:       localDir,
 			`expected_branch`: branchName,
-			`matched`:         currentBranch == branchName,
 		}
+		for k, v := range buildLocalBranchCheckResult(localDir, branchName) {
+			row[k] = v
+		}
+		if changedFiles, err := collectLocalGitChangedFiles(localDir); err != nil {
+			row[`changed_files_error`] = err.Error()
+		} else {
+			row[`changed_files`] = changedFiles
+			row[`changed_file_count`] = len(changedFiles)
+		}
+		result = append(result, row)
 	}
 	gsgin.GinResponseSuccess(c, ``, result)
 }

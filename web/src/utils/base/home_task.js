@@ -70,6 +70,11 @@ function LocalBranchBatchCheck(items, callBack) {
   base.BasePost('/api/Set/LocalBranchBatchCheck', { items: items }, callBack)
 }
 
+// LocalBranchMismatchDetail 查询分支匹配详情，并返回未提交/已变更文件。
+function LocalBranchMismatchDetail(items, callBack) {
+  base.BasePost('/api/Set/LocalBranchMismatchDetail', { items: items }, callBack)
+}
+
 export default {
   HomeTaskList,
   HomeTaskSave,
@@ -85,4 +90,5 @@ export default {
   HomeTaskBranchNameGenerate,
   HomeTaskUnusedLocalDirs,
   LocalBranchBatchCheck,
+  LocalBranchMismatchDetail,
 }

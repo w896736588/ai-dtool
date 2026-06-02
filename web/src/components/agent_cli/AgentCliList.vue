@@ -198,6 +198,7 @@
               :running-count="getAgentChatCounts(row.id).running"
               :interrupted-count="0"
               :total-count="getAgentChatCounts(row.id).total"
+              :unread="getAgentChatCounts(row.id).unread > 0"
               @click="openAgentChatHistory(row)"
             >
               执行历史
@@ -531,6 +532,7 @@ import ChatHistoryButton from '@/components/shared/ChatHistoryButton.vue'
 import ChatHistoryDialog from '@/components/shared/ChatHistoryDialog.vue'
 import taskWorkflowApi from '@/utils/base/task_workflow'
 import baseUtils from '@/utils/base'
+import sseDistribute from '@/utils/base/sse_distribute'
 import chatParser from '@/utils/chat_parser'
 import taskProgressStore from '@/utils/task_progress_store'
 import MarkdownIt from 'markdown-it'
@@ -631,6 +633,8 @@ export default {
       agentChatHistoryCliId: 0,
       agentChatHistoryList: [],
       agentChatCounts: {},
+      agentUnreadTotal: 0,
+      _agentUnreadSseId: '',
       agentChatDetailId: 0,
       chatDetailId: 0,
       chatDetailStatus: '',
@@ -685,6 +689,7 @@ export default {
     this.loadList()
     this.loadWebhookOptions()
     this.loadGroupList()
+    this.ensureAgentUnreadSse()
     // 恢复上次选中的分组
     try {
       const cached = parseInt(localStorage.getItem(AGENT_CLI_GROUP_CACHE_KEY))
@@ -695,6 +700,7 @@ export default {
     this.closeChatDetail()
     this.stopAllBackgroundChatStreams()
     this._stopAgentChatHistoryDurationTimer()
+    this.unregisterAgentUnreadSse()
   },
   methods: {
     // openWebhookDialog 打开 webhook 配置弹窗并同步刷新列表。 // openWebhookDialog opens the webhook dialog and refreshes its list before display.
@@ -732,6 +738,25 @@ export default {
         }
       })
     },
+    ensureAgentUnreadSse() {
+      if (this._agentUnreadSseId) return
+      const nextId = 'agent_cli_unread_global'
+      this._agentUnreadSseId = nextId
+      sseDistribute.InitFromLoginStatus().then((created) => {
+        if (!created && !sseDistribute.GetSseClientId()) return
+        sseDistribute.RegisterReceive(nextId, this.handleAgentUnreadSseMessage)
+      })
+    },
+    unregisterAgentUnreadSse() {
+      if (!this._agentUnreadSseId) return
+      sseDistribute.UnRegisterReceive(this._agentUnreadSseId)
+      this._agentUnreadSseId = ''
+    },
+    handleAgentUnreadSseMessage(data) {
+      if (!data || data.type !== 'agent_chat_unread_change') return
+      this.agentUnreadTotal = Number(data.agent_cli_unread || 0)
+      this.loadAgentChatCounts()
+    },
     // loadAgentChatCounts 刷新每个卡片的执行历史计数，用于按钮数字和执行中动画。 // Refreshes per-card execution counters and running animation state.
     loadAgentChatCounts() {
       const rows = Array.isArray(this.list) ? this.list.filter(item => item.id > 0) : []
@@ -745,13 +770,53 @@ export default {
               running: list.filter(item => item.status === 'running').length,
               interrupted: list.filter(item => item.status === 'interrupted').length,
               total: list.length,
+              unread: list.filter(item => item.is_read === false && item.status !== 'running').length,
             },
           }
         })
       })
     },
+    markAgentChatRunningLocally(agentCliId, chatId, extra = {}) {
+      const normalizedAgentCliId = Number(agentCliId || 0)
+      const normalizedChatId = Number(chatId || 0)
+      if (normalizedAgentCliId <= 0 || normalizedChatId <= 0) return
+      const currentCounts = this.getAgentChatCounts(normalizedAgentCliId)
+      this.agentChatCounts = {
+        ...this.agentChatCounts,
+        [normalizedAgentCliId]: {
+          running: currentCounts.running + 1,
+          interrupted: currentCounts.interrupted,
+          total: Math.max(currentCounts.total + 1, currentCounts.running + currentCounts.interrupted + 1),
+          unread: currentCounts.unread,
+        },
+      }
+      if (!this.agentChatHistoryVisible || Number(this.agentChatHistoryCliId || 0) !== normalizedAgentCliId) return
+      const existing = this.agentChatHistoryList.find(item => Number(item.id || 0) === normalizedChatId)
+      if (existing) {
+        existing.status = 'running'
+        existing.is_read = true
+        this.agentChatHistoryList = this.agentChatHistoryList.slice()
+        this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
+        return
+      }
+      this.agentChatHistoryList = [{
+        id: normalizedChatId,
+        agent_cli_id: normalizedAgentCliId,
+        prompt_type: 'agent_cli_manual',
+        status: 'running',
+        is_read: true,
+        line_count: 0,
+        created_at: new Date().toISOString(),
+        prompt: extra.prompt || '',
+        local_dir: extra.localDir || '',
+        model_name: extra.modelName || '',
+        thinking_intensity: extra.thinkingIntensity || '',
+        cli_type: extra.cliType || 'claude',
+      }, ...this.agentChatHistoryList]
+      this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
+    },
     getAgentChatCounts(agentCliId) {
-      return this.agentChatCounts[agentCliId] || { running: 0, interrupted: 0, total: 0 }
+      return this.agentChatCounts[agentCliId] || { running: 0, interrupted: 0, total: 0, unread: 0 }
     },
     getAgentExecCli() {
       return this.list.find(item => Number(item.id) === Number(this.agentExecCliId)) || null
@@ -899,6 +964,13 @@ export default {
           this.chatDetailMessages = []
           taskProgressStore.reset()
           this._initialSseRetryCount = 0
+          this.markAgentChatRunningLocally(this.agentExecCliId, chatId, {
+            prompt: this.agentExecPrompt,
+            localDir: this.agentExecLocalDir.trim(),
+            modelName: this.agentExecModelName,
+            thinkingIntensity: this.agentExecThinkingIntensity,
+            cliType: this.getAgentExecCliType(),
+          })
           this.connectChatStream(chatId, null, true)
           this.loadChatDetail()
           this.loadAgentChatCounts()
@@ -928,6 +1000,7 @@ export default {
             running: this.agentChatHistoryList.filter(item => item.status === 'running').length,
             interrupted: this.agentChatHistoryList.filter(item => item.status === 'interrupted').length,
             total: this.agentChatHistoryList.length,
+            unread: this.agentChatHistoryList.filter(item => item.is_read === false && item.status !== 'running').length,
           },
         }
         if (focusChatId) {
@@ -957,6 +1030,23 @@ export default {
       // 中文注释：先关闭旧前台 SSE，再把旧选中且仍在运行的对话切到后台监听。
       // English comment: Close the previous foreground SSE first, then reattach the previously selected running chat as a background stream if needed.
       this.syncBackgroundChatStreams(this.agentChatHistoryList, row.id)
+      if (row.is_read === false && row.status !== 'running') {
+        agentCliApi.AgentChatMarkRead(row.id, (res) => {
+          if (res && res.ErrCode === 0) {
+            const item = this.agentChatHistoryList.find(i => i.id === row.id)
+            if (item) item.is_read = true
+            this.agentChatCounts = {
+              ...this.agentChatCounts,
+              [this.agentChatHistoryCliId]: {
+                running: this.agentChatHistoryList.filter(item => item.status === 'running').length,
+                interrupted: this.agentChatHistoryList.filter(item => item.status === 'interrupted').length,
+                total: this.agentChatHistoryList.length,
+                unread: this.agentChatHistoryList.filter(item => item.is_read === false && item.status !== 'running').length,
+              },
+            }
+          }
+        })
+      }
       if (this._sseChatId !== row.id) {
         this.chatDetailSSELines = []
         this.chatDetailMessages = []
@@ -1657,6 +1747,7 @@ export default {
             running: this.agentChatHistoryList.filter(item => item.status === 'running').length,
             interrupted: this.agentChatHistoryList.filter(item => item.status === 'interrupted').length,
             total: this.agentChatHistoryList.length,
+            unread: this.agentChatHistoryList.filter(item => item.is_read === false && item.status !== 'running').length,
           },
         }
         if (this.chatDetailId > 0) {
@@ -1776,6 +1867,13 @@ export default {
         this.chatDetailLastUsageSummary = null
         taskProgressStore.reset()
         this._initialSseRetryCount = 0
+        this.markAgentChatRunningLocally(agentCliId, chatId, {
+          prompt,
+          localDir: String(this.chatDetailLocalDir || '').trim(),
+          modelName: String(this.chatDetailModelName || '').trim(),
+          thinkingIntensity: String(this.chatDetailThinkingIntensity || '高').trim() || '高',
+          cliType: this.chatDetailCliType || 'claude',
+        })
         this.connectChatStream(chatId, null, true)
         this.loadChatDetail()
         this.loadAgentChatCounts()

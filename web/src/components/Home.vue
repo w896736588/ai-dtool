@@ -3,8 +3,10 @@
     <!-- 左侧菜单 -->
     <aside v-if="!hideAppSidebar" class="sidebar">
       <div class="sidebar-header">
-        <span class="logo">🛠️</span>
-        <span class="title">DTools</span>
+        <span class="logo">
+          <img src="../../assets/dtool-logo-32.png" alt="DTool logo" class="logo-image">
+        </span>
+        <span class="title">DTool</span>
       </div>
       
       <el-menu

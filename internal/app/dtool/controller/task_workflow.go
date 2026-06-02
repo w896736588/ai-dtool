@@ -2726,12 +2726,14 @@ func buildAgentChatListResponse(rows []map[string]any) []map[string]any {
 			`agent_cli_id`:     cast.ToInt(row[`agent_cli_id`]),
 			`agent_cli_name`:   cliNameMap[cast.ToInt(row[`agent_cli_id`])],
 			`local_dir`:        cast.ToString(row[`local_dir`]),
+			`workspace_path`:   cast.ToString(row[`local_dir`]),
 			`status`:           status,
 			`cli_type`:         cast.ToString(row[`cli_type`]),
 			`created_at`:       cast.ToString(row[`created_at`]),
 			`updated_at`:       cast.ToString(row[`updated_at`]),
 			`duration_ms`:      durationMs,
 			`line_count`:       lineCount,
+			`is_read`:          cast.ToInt(row[`is_read`]) == 1,
 			`stop_reason`:      stopReason,
 			`stop_reason_text`: stopReasonText,
 		})
@@ -2980,6 +2982,39 @@ func AgentChatListByAgentCli(c *gin.Context) {
 		return
 	}
 	agentChatListByAgentCli(c, req.AgentCliID)
+}
+
+// AgentChatMarkRead 将历史对话标记为已读。
+func AgentChatMarkRead(c *gin.Context) {
+	var req _struct.AgentChatMarkReadRequest
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if req.ChatID <= 0 {
+		gsgin.GinResponseError(c, `chat_id不能为空`, nil)
+		return
+	}
+	info, err := common.DbMain.TaskWorkflowChatInfo(int64(req.ChatID))
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if len(info) == 0 {
+		gsgin.GinResponseError(c, `对话不存在`, nil)
+		return
+	}
+	if err := common.DbMain.AgentChatMarkRead(int64(req.ChatID)); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	taskWorkflowBroadcastUnreadChanged(int64(req.ChatID))
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`chat_id`:   req.ChatID,
+		`is_read`:   true,
+		`from_id`:   cast.ToInt(info[`from_id`]),
+		`from_type`: cast.ToString(info[`from_type`]),
+	})
 }
 
 // agentChatListByAgentCli 返回一个 Agent CLI 的独立执行历史。
@@ -3566,11 +3601,13 @@ func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessi
 // buildChatCompletedEvent 构造对话终态 SSE 事件，携带最终状态供前端背景列表即时更新。
 // buildChatCompletedEvent builds the terminal SSE payload with final status so background history rows can update immediately.
 func buildChatCompletedEvent(chatID int64, status string) string {
+	chatInfo, _ := common.DbMain.TaskWorkflowChatInfo(chatID)
 	payload, _ := json.Marshal(map[string]any{
 		`type`:    `chat`,
 		`subtype`: `completed`,
 		`chat_id`: chatID,
 		`status`:  strings.TrimSpace(status),
+		`is_read`: cast.ToInt(chatInfo[`is_read`]) == 1,
 	})
 	return string(payload)
 }
@@ -3676,6 +3713,7 @@ func taskWorkflowBroadcastChatStatus(chatID int64) {
 	if err != nil || len(chatInfo) == 0 {
 		return
 	}
+	taskWorkflowBroadcastUnreadChanged(chatID)
 	// 仅工作流来源的 chat 需要广播到工作流页面。 // Only workflow-origin chats should refresh workflow-side counters.
 	if cast.ToString(chatInfo[`from_type`]) != common.AgentChatSourceTypeWorkflow {
 		return
@@ -3691,6 +3729,49 @@ func taskWorkflowBroadcastChatStatus(chatID int64) {
 			`type`:        `chat_status_change`,
 			`chat_id`:     chatID,
 			`workflow_id`: workflowID,
+		},
+		Type: p_define.SseContentTypeMsg,
+	})
+	for _, item := range gsgin.SseStatus() {
+		clientID := strings.TrimSpace(strings.TrimPrefix(item, apiDataChangeSseStatusPrefix))
+		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
+			continue
+		}
+		sse := gsgin.SseGetByClientId(clientID)
+		if sse == nil {
+			continue
+		}
+		_ = sse.SendToChan(msg)
+	}
+}
+
+// taskWorkflowBroadcastUnreadChanged 在普通 SSE 通道广播未读数量变化，供工作流页与 Agent CLI 页实时更新红点。
+func taskWorkflowBroadcastUnreadChanged(chatID int64) {
+	chatInfo, err := common.DbMain.TaskWorkflowChatInfo(chatID)
+	if err != nil || len(chatInfo) == 0 {
+		return
+	}
+	fromType := cast.ToString(chatInfo[`from_type`])
+	fromID := cast.ToInt(chatInfo[`from_id`])
+	agentCliID := cast.ToInt(chatInfo[`agent_cli_id`])
+	workflowUnread := 0
+	agentCliUnread := 0
+	if fromType == common.AgentChatSourceTypeWorkflow && fromID > 0 {
+		workflowUnread, _ = common.DbMain.AgentChatUnreadCountByWorkflow(fromID)
+	}
+	if fromType == common.AgentChatSourceTypeAgentCli && agentCliID > 0 {
+		agentCliUnread, _ = common.DbMain.AgentChatUnreadCountByAgentCli(agentCliID)
+	}
+	msg := gstool.JsonEncode(p_define.SseData{
+		SseDistributeId: `agent_chat_unread_change`,
+		Data: map[string]any{
+			`type`:             `agent_chat_unread_change`,
+			`chat_id`:          chatID,
+			`from_type`:        fromType,
+			`from_id`:          fromID,
+			`agent_cli_id`:     agentCliID,
+			`workflow_unread`:  workflowUnread,
+			`agent_cli_unread`: agentCliUnread,
 		},
 		Type: p_define.SseContentTypeMsg,
 	})

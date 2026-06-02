@@ -52,6 +52,13 @@ function AgentChatListByAgentCli(agentCliId, callBack) {
   }, callBack)
 }
 
+// AgentChatMarkRead 将执行历史对话标记为已读
+function AgentChatMarkRead(chatId, callBack) {
+  base.BasePost('/api/agent/chat/mark-read', {
+    chat_id: chatId,
+  }, callBack)
+}
+
 // WebhookConfigList 获取 Webhook 配置列表
 function WebhookConfigList(callBack) {
   base.BasePost('/api/WebhookConfigList', {}, callBack)
@@ -103,6 +110,7 @@ export default {
   AgentCliToggleEnabled,
   AgentChatSend,
   AgentChatListByAgentCli,
+  AgentChatMarkRead,
   WebhookConfigList,
   WebhookConfigSave,
   WebhookConfigDelete,

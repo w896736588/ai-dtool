@@ -181,6 +181,7 @@ func gitRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/GitCurrentBranch`, controller.GitCurrentBranchById)       //通过git_id查询当前分支
 	tGin.GinPost(`/api/GitPull`, controller.GitPull)                             //通过git_id拉取当前分支最新代码
 	tGin.GinPost(`/api/GitChangeBranchById`, controller.GitChangeBranchById)     //通过git_id切换分支
+	tGin.SseRoute(`/api/GitCleanupAndSwitchBranchById`, controller.GitCleanupAndSwitchBranchByIdStream, controller.GitCleanupAndSwitchBranchByIdStreamClose)
 }
 
 // MySQL查询相关
@@ -276,6 +277,7 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/LocalDirList`, controller.SetLocalDirList)
 	tGin.GinPost(`/api/Set/LocalDirBatchCheck`, controller.SetLocalDirBatchCheck)
 	tGin.GinPost(`/api/Set/LocalBranchBatchCheck`, controller.SetLocalBranchBatchCheck)
+	tGin.GinPost(`/api/Set/LocalBranchMismatchDetail`, controller.SetLocalBranchMismatchDetail)
 	tGin.GinPost(`/api/Set/OpenLocalDir`, controller.SetOpenLocalDir)
 }
 
@@ -368,6 +370,7 @@ func taskWorkflow(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/task/workflow/chat/list-by-agent-cli`, controller.TaskWorkflowChatListByAgentCli)
 	tGin.GinPost(`/api/agent/chat/send`, controller.AgentChatSend)
 	tGin.GinPost(`/api/agent/chat/list-by-agent-cli`, controller.AgentChatListByAgentCli)
+	tGin.GinPost(`/api/agent/chat/mark-read`, controller.AgentChatMarkRead)
 	tGin.GinPost(`/api/task/workflow/zcode/save`, controller.TaskWorkflowZcodeSave)
 	tGin.GinPost(`/api/task/workflow/zcode/get`, controller.TaskWorkflowZcodeGet)
 	tGin.GinPost(`/api/task/workflow/zcode/delete`, controller.TaskWorkflowZcodeDelete)

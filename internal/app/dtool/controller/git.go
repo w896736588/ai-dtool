@@ -10,7 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -36,6 +38,188 @@ func sendGitSse(sse *p_sse.SseShell, msg string) {
 	if sse != nil && sse.Sse != nil {
 		sse.Send(msg + "\n")
 	}
+}
+
+type gitSwitchStreamEvent struct {
+	Type    string         `json:"type"`
+	Status  string         `json:"status,omitempty"`
+	Message string         `json:"message,omitempty"`
+	Data    map[string]any `json:"data,omitempty"`
+}
+
+func sendGitSwitchStreamEvent(sse *gsgin.Sse, event gitSwitchStreamEvent) {
+	if sse == nil {
+		return
+	}
+	_ = sse.SendToChan(gstool.JsonEncode(event))
+}
+
+func sendGitSwitchStreamLine(sse *gsgin.Sse, line string) {
+	line = strings.TrimRight(line, "\r\n")
+	if sse == nil || line == `` {
+		return
+	}
+	sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+		Type:    `line`,
+		Message: line,
+	})
+}
+
+func gitCleanupAndSwitchRunLocalStep(sse *gsgin.Sse, localDir string, stepName string, args ...string) error {
+	sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+		Type:    `step`,
+		Status:  `running`,
+		Message: stepName,
+		Data: map[string]any{
+			`local_dir`: localDir,
+			`command`:   `git ` + strings.Join(args, ` `),
+		},
+	})
+	cmd := exec.Command(`git`, append([]string{`-C`, localDir}, args...)...)
+	output, err := cmd.CombinedOutput()
+	trimmed := strings.TrimSpace(string(output))
+	if trimmed != `` {
+		for _, line := range strings.Split(trimmed, "\n") {
+			sendGitSwitchStreamLine(sse, strings.TrimRight(line, "\r"))
+		}
+	}
+	if err != nil {
+		msg := trimmed
+		if msg == `` {
+			msg = err.Error()
+		}
+		sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+			Type:    `step`,
+			Status:  `error`,
+			Message: stepName + `失败`,
+			Data: map[string]any{
+				`local_dir`: localDir,
+				`command`:   `git ` + strings.Join(args, ` `),
+				`error`:     msg,
+			},
+		})
+		return fmt.Errorf(msg)
+	}
+	sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+		Type:    `step`,
+		Status:  `done`,
+		Message: stepName + `完成`,
+		Data: map[string]any{
+			`local_dir`: localDir,
+			`command`:   `git ` + strings.Join(args, ` `),
+		},
+	})
+	return nil
+}
+
+func GitCleanupAndSwitchBranchByIdStream(urlValues url.Values, stopC chan int, c *gin.Context) (*gsgin.Sse, error) {
+	localDir := strings.TrimSpace(urlValues.Get(`local_dir`))
+	baseBranch := strings.TrimSpace(urlValues.Get(`base_branch`))
+	branchName := strings.TrimSpace(urlValues.Get(`branch_name`))
+	if localDir == `` {
+		return nil, fmt.Errorf(`local_dir不能为空`)
+	}
+	if baseBranch == `` {
+		return nil, fmt.Errorf(`base_branch不能为空`)
+	}
+	if branchName == `` {
+		return nil, fmt.Errorf(`branch_name不能为空`)
+	}
+	if !isSafeGitBranchInput(baseBranch) || !isSafeGitBranchInput(branchName) {
+		return nil, fmt.Errorf(`分支名格式不合法`)
+	}
+	info, err := os.Stat(localDir)
+	if err != nil || !info.IsDir() {
+		return nil, fmt.Errorf(`本地目录不存在: %s`, localDir)
+	}
+	clientID := `git_cleanup_switch_` + cast.ToString(time.Now().UnixNano())
+	sse := gsgin.SseRegister(clientID, stopC, c)
+	go func() {
+		defer close(stopC)
+		sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+			Type:    `meta`,
+			Status:  `running`,
+			Message: `开始本地清理并切换分支`,
+			Data: map[string]any{
+				`mode`:        `local`,
+				`local_dir`:   localDir,
+				`base_branch`: baseBranch,
+				`branch_name`: branchName,
+			},
+		})
+		steps := []struct {
+			name string
+			args []string
+		}{
+			{name: `检查当前仓库`, args: []string{`rev-parse`, `--show-toplevel`}},
+			{name: `清理索引区和工作区`, args: []string{`reset`, `--hard`, `HEAD`}},
+			{name: `删除未跟踪文件`, args: []string{`clean`, `-fd`}},
+			{name: `拉取远端引用`, args: []string{`fetch`, `--all`, `--prune`}},
+			{name: `切换到基线分支`, args: []string{`checkout`, baseBranch}},
+			{name: `同步基线分支`, args: []string{`pull`, `origin`, baseBranch}},
+		}
+		for _, step := range steps {
+			if runErr := gitCleanupAndSwitchRunLocalStep(sse, localDir, step.name, step.args...); runErr != nil {
+				sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+					Type:    `done`,
+					Status:  `error`,
+					Message: runErr.Error(),
+				})
+				return
+			}
+		}
+		if branchName != baseBranch {
+			checkCmd := exec.Command(`git`, `-C`, localDir, `show-ref`, `--verify`, `--quiet`, `refs/heads/`+branchName)
+			if err := checkCmd.Run(); err == nil {
+				if runErr := gitCleanupAndSwitchRunLocalStep(sse, localDir, `删除本地旧分支`, `branch`, `-D`, branchName); runErr != nil {
+					sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+						Type:    `done`,
+						Status:  `error`,
+						Message: runErr.Error(),
+					})
+					return
+				}
+			}
+			if runErr := gitCleanupAndSwitchRunLocalStep(sse, localDir, `创建并切换目标分支`, `checkout`, `-b`, branchName); runErr != nil {
+				sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+					Type:    `done`,
+					Status:  `error`,
+					Message: runErr.Error(),
+				})
+				return
+			}
+		}
+		currentCmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, `--abbrev-ref`, `HEAD`)
+		currentOutput, currentErr := currentCmd.CombinedOutput()
+		currentBranch := strings.TrimSpace(string(currentOutput))
+		if currentErr != nil {
+			sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+				Type:    `done`,
+				Status:  `error`,
+				Message: strings.TrimSpace(string(currentOutput)),
+			})
+			return
+		}
+		sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+			Type:    `done`,
+			Status:  `success`,
+			Message: `分支切换完成`,
+			Data: map[string]any{
+				`local_dir`:      localDir,
+				`base_branch`:    baseBranch,
+				`branch_name`:    branchName,
+				`current_branch`: currentBranch,
+			},
+		})
+	}()
+	return sse, nil
+}
+
+func GitCleanupAndSwitchBranchByIdStreamClose(sse *gsgin.Sse) {
+	if sse == nil {
+		return
+	}
+	sse.UnRegister()
 }
 
 // GitCurrentBranch 查询目录的git分支

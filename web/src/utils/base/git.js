@@ -85,6 +85,22 @@ function GitQuickCreateBranch(data, callBack) {
     base.BasePost('/api/GitQuickCreateBranch', data, callBack)
 }
 
+function GitCleanupAndSwitchBranchByIdStreamUrl(data) {
+    const params = new URLSearchParams()
+    params.set('local_dir', String(data.local_dir || '').trim())
+    params.set('base_branch', String(data.base_branch || '').trim())
+    params.set('branch_name', String(data.branch_name || '').trim())
+    params.set('token', base.GetSafeToken())
+    params.set('t', String(Date.now()))
+    // This stream endpoint is a dedicated API route, not the shared /sse channel.
+    // Build it from the current API origin so TaskWorkflow does not depend on runtime SSE port initialization.
+    const apiHost = base.GetAbsoluteApiHost()
+    if (!apiHost) {
+        return ''
+    }
+    return apiHost + '/api/GitCleanupAndSwitchBranchById?' + params.toString()
+}
+
 export default {
     GitCurrentBranch,
     GitPullBranchOrigin,
@@ -103,4 +119,5 @@ export default {
     GitGroupBranchList,
     GitRemoteBranchList,
     GitQuickCreateBranch,
+    GitCleanupAndSwitchBranchByIdStreamUrl,
 }
