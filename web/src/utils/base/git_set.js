@@ -53,6 +53,14 @@ function MemoryConfigSave(data , callBack){
     base.BasePost('/api/Set/MemoryConfigSave', data, callBack)
 }
 
+function MainDBStorageAnalysis(callBack){
+    base.BasePost('/api/Set/MainDBStorageAnalysis', {}, callBack)
+}
+
+function MainDBStorageVacuum(callBack){
+    base.BasePost('/api/Set/MainDBStorageVacuum', {}, callBack)
+}
+
 function RuntimeConfigSave(data , callBack){
     base.BasePost('/api/Set/RuntimeConfigSave', data, callBack)
 }
@@ -101,6 +109,8 @@ export default {
     GlobalDelete,
     MemoryConfigGet,
     MemoryConfigSave,
+    MainDBStorageAnalysis,
+    MainDBStorageVacuum,
     RuntimeConfigSave,
     RuntimeConfigItemSave,
     CronConfigGet,

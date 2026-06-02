@@ -266,6 +266,8 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/AiRequestLogList`, controller.SetAiRequestLogList)
 	tGin.GinPost(`/api/Set/MemoryConfigGet`, controller.SetMemoryConfigGet)
 	tGin.GinPost(`/api/Set/MemoryConfigSave`, controller.SetMemoryConfigSave)
+	tGin.GinPost(`/api/Set/MainDBStorageAnalysis`, controller.SetMainDBStorageAnalysis)
+	tGin.GinPost(`/api/Set/MainDBStorageVacuum`, controller.SetMainDBStorageVacuum)
 	tGin.GinPost(`/api/Set/RuntimeConfigSave`, controller.SetRuntimeConfigSave)
 	tGin.GinPost(`/api/Set/RuntimeConfigItemSave`, controller.SetRuntimeConfigItemSave)
 	tGin.GinPost(`/api/Set/CronConfigTypes`, controller.SetCronConfigTypes)

@@ -939,6 +939,7 @@ func SetGlobalDelete(c *gin.Context) {
 func SetMemoryConfigGet(c *gin.Context) {
 	mainDBConfig := business.ReadMainDBConfig()
 	memoryConfig := business.ReadMemoryConfigFromINI()
+	mainDBStorage, _ := readMainDBStorageSummary()
 	arrangePrompt, err := memoryConfigValue(define.MemoryConfigArrangePrompt)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -966,6 +967,7 @@ func SetMemoryConfigGet(c *gin.Context) {
 		`memory_arrange_model_id`:   cast.ToInt(arrangeModelID),
 		`memory_ai_search_model_id`: cast.ToInt(aiSearchModelID),
 		`safe_password`:             component.ConfigViper.GetString(`safe.password`),
+		`main_db_storage`:           mainDBStorage,
 		`client_version`:            component.EnvClient.SmartLinkConfig.ClientVersion,
 	})
 }

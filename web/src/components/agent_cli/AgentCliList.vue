@@ -548,6 +548,8 @@ const AGENT_EXEC_CACHE_PREFIX = 'agent_cli_exec_'
 const AGENT_CLI_GROUP_CACHE_KEY = 'agent_cli_selected_group'
 // AGENT_EXEC_SHARED_HISTORY_LIMIT 控制执行弹窗共享历史目录展示数量。 // Max shared working directories shown in the execution dialog.
 const AGENT_EXEC_SHARED_HISTORY_LIMIT = 20
+// AGENT_EXEC_SHARED_PROMPT_KEY 所有 Agent CLI 共用最近一次执行提示词。 // Shared prompt cache key for all Agent CLI cards.
+const AGENT_EXEC_SHARED_PROMPT_KEY = 'agent_cli_exec_shared_prompt'
 // markdown-it 实例，用于在"执行历史"对话框中渲染 markdown（包括表格）。 // Markdown renderer for execution history detail.
 const md = new MarkdownIt({ html: true, breaks: true, linkify: true })
 
@@ -702,6 +704,15 @@ export default {
     this._stopAgentChatHistoryDurationTimer()
     this.unregisterAgentUnreadSse()
   },
+  watch: {
+    agentExecPrompt(value) {
+      try {
+        localStorage.setItem(AGENT_EXEC_SHARED_PROMPT_KEY, String(value || ''))
+      } catch {
+        return
+      }
+    },
+  },
   methods: {
     // openWebhookDialog 打开 webhook 配置弹窗并同步刷新列表。 // openWebhookDialog opens the webhook dialog and refreshes its list before display.
     openWebhookDialog() {
@@ -854,11 +865,17 @@ export default {
       this.agentExecCliId = row.id
       this.agentExecCliName = row.name || '-'
       const cached = this.getAgentExecCache(row.id)
+      let sharedPrompt = ''
+      try {
+        sharedPrompt = localStorage.getItem(AGENT_EXEC_SHARED_PROMPT_KEY) || ''
+      } catch {
+        sharedPrompt = ''
+      }
       this.agentExecLocalDir = cached?.localDir || ''
       this.agentExecHistoryDirs = []
       this.agentExecModelName = cached?.modelName || ''
       this.agentExecThinkingIntensity = cached?.thinkingIntensity || '高'
-      this.agentExecPrompt = cached?.prompt || ''
+      this.agentExecPrompt = sharedPrompt || cached?.prompt || ''
       if (this.agentExecModelOptions.length === 1 && !this.agentExecModelName) {
         this.agentExecModelName = this.agentExecModelOptions[0]
       }

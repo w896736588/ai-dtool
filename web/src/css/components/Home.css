@@ -249,16 +249,16 @@
   transform: rotate(24deg) scale(1.08);
 }
 
-.sidebar-menu .el-menu-item.menu-item-settings.is-active::after {
+.sidebar-menu .el-menu-item.menu-item-settings.menu-item-settings--alert::before {
   content: '';
   position: absolute;
-  top: 7px;
-  right: 10px;
-  width: 7px;
-  height: 7px;
+  top: 9px;
+  right: 12px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
-  background: radial-gradient(circle, #ffd66b 0%, #f29f38 70%, rgba(242, 159, 56, 0) 100%);
-  box-shadow: 0 0 10px rgba(255, 214, 107, 0.7);
+  background: #f04438;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92);
 }
 
 /* Git 待提交变更倒计时进度条 */

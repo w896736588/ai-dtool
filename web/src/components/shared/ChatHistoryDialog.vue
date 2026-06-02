@@ -522,6 +522,8 @@ export default {
     return {
       // collapsedGroups 记录当前各分组的展开/关闭状态，key 为 local_dir 值。
       collapsedGroups: {},
+      // hasAppliedInitialSelectedGroupExpand 确保仅在弹窗打开后的初始化阶段自动展开一次所属工作空间。
+      hasAppliedInitialSelectedGroupExpand: false,
     }
   },
   created() {
@@ -530,20 +532,21 @@ export default {
   watch: {
     modelValue(visible) {
       if (visible) {
+        this.hasAppliedInitialSelectedGroupExpand = false
         this.$nextTick(() => {
-          this.ensureSelectedGroupExpanded()
+          this.ensureInitialSelectedGroupExpanded()
         })
       }
     },
     selectedId() {
       this.$nextTick(() => {
-        this.ensureSelectedGroupExpanded()
+        this.ensureInitialSelectedGroupExpanded()
       })
     },
     items: {
       handler() {
         this.$nextTick(() => {
-          this.ensureSelectedGroupExpanded()
+          this.ensureInitialSelectedGroupExpanded()
         })
       },
       deep: true,
@@ -639,14 +642,16 @@ export default {
       this.collapsedGroups = { ...this.collapsedGroups }
       this.saveGroupCollapsedState()
     },
-    // ensureSelectedGroupExpanded 确保当前选中记录所属工作空间分组始终展开。 // Ensures the selected chat's workspace group is expanded even if older cache collapsed it.
-    ensureSelectedGroupExpanded() {
+    // ensureInitialSelectedGroupExpanded 仅在弹窗打开后的初始化阶段自动展开当前选中记录所属工作空间。 // Expands the selected chat's workspace group only during dialog-open initialization.
+    ensureInitialSelectedGroupExpanded() {
       if (!this.modelValue) return
+      if (this.hasAppliedInitialSelectedGroupExpand) return
       const itemList = Array.isArray(this.items) ? this.items : []
       const activeId = Number(this.selectedId || 0)
       if (activeId <= 0 || itemList.length === 0) return
       const selectedItem = itemList.find(item => Number(item?.id || 0) === activeId)
       if (!selectedItem) return
+      this.hasAppliedInitialSelectedGroupExpand = true
       const dir = this.getItemWorkspacePath(selectedItem)
       const dirKey = dir || ''
       if (!this.collapsedGroups[dirKey]) return
