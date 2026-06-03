@@ -105,12 +105,36 @@ function testParsesUnifiedResultEventInjectedByBackend() {
   assert.equal(messages[0].modelUsage[0].name, 'deepseek-v4-pro[1m]')
 }
 
+function testParsesSystemTaskUpdatedEvent() {
+  const messages = codexParser.parseChatLines([
+    JSON.stringify({
+      type: 'system',
+      subtype: 'task_updated',
+      task_id: 'b1kekq04w',
+      patch: {
+        status: 'completed',
+        end_time: 1780474188733,
+      },
+      uuid: 'f5d3683c-ccf5-4f6b-afbc-250fc7e2330d',
+      session_id: '88b38486-b8ed-4aa5-b065-4c5b44c72bf6',
+    }),
+  ])
+
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0].type, 'system_task')
+  assert.equal(messages[0].taskId, 'b1kekq04w')
+  assert.equal(messages[0].status, 'completed')
+  assert.equal(messages[0].description, '任务 b1kekq04w')
+  assert.equal(messages[0].sessionId, '88b38486-b8ed-4aa5-b065-4c5b44c72bf6')
+}
+
 function main() {
   testParsesErrorTextField()
   testParsesCompletedErrorItemAsErrorMessage()
   testParsesThreadStartedWithoutModelAsEmptyString()
   testTurnCompletedDoesNotDuplicateCommandResultText()
   testParsesUnifiedResultEventInjectedByBackend()
+  testParsesSystemTaskUpdatedEvent()
   console.log('codex_chat_parser tests passed')
 }
 

@@ -26,8 +26,7 @@
                 <span style="font-size: 11px; color: #909399;">{{ formatCliType(msg.cliType) }}</span>
                 <span v-if="isLongText(msg.cmdLine || msg.text, 20)" @click="msg.collapsed = !msg.collapsed" style="cursor: pointer; font-size: 11px; color: #409eff; user-select: none;">{{ msg.collapsed ? '展开 ▼' : '收起 ▲' }}</span>
               </div>
-              <!-- 命令行: markdown 代码块格式（避免反斜杠等字符被转义） -->
-              <div v-if="msg.cmdLine" class="markdown-body cr-markdown-body" v-html="renderMarkdown('```\n' + (msg.collapsed ? truncateCmdPrompt(msg.cmdLine, 15) : msg.cmdLine) + '\n```')"></div>
+              <pre v-if="msg.cmdLine" class="cr-command-block"><code>{{ msg.collapsed ? truncateCmdPrompt(msg.cmdLine, 15) : msg.cmdLine }}</code></pre>
               <div v-else style="white-space: pre-wrap; word-break: break-word; font-size: 12px; color: #303133; line-height: 1.6;" :style="{ maxHeight: msg.collapsed ? '20em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>
               <!-- 完整提示词（显示在命令下方，收起时最多 15 行） -->
               <div v-if="msg.cmdLine" style="white-space: pre-wrap; word-break: break-word; font-size: 12px; color: #303133; line-height: 1.6; margin-top: 8px; border-top: 1px dashed #dcdfe6; padding-top: 6px;" :style="{ maxHeight: msg.collapsed ? '15em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>
@@ -65,8 +64,8 @@
                 <div style="display: flex; align-items: center; gap: 4px;">
                   <span v-if="!block._result && status === 'running'" class="cr-status-spinner"></span>
                   <span style="color: #67c23a; font-weight: 500;">🔧 {{ block.name }}</span>
-                  <span v-if="block.displayInput" style="font-size: 12px; color: #303133; font-family: Consolas, monospace;">{{ block.displayInput }}</span>
                 </div>
+                <pre v-if="block.displayInput" class="cr-tool-command-block"><code>{{ block.displayInput }}</code></pre>
                 <div v-if="block._tasks" style="margin-top: 6px;">
                   <div v-for="(task, ti) in block._tasks" :key="ti" style="display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px;">
                     <span :style="{ color: task.status === 'completed' ? '#67c23a' : task.status === 'in_progress' ? '#409eff' : '#909399', fontSize: '14px', lineHeight: 1 }">
@@ -94,8 +93,8 @@
             <div style="display: flex; align-items: center; gap: 4px;">
               <span v-if="!msg._result && status === 'running'" class="cr-status-spinner"></span>
               <span style="color: #67c23a; font-weight: 500;">🔧 {{ msg.name }}</span>
-              <span v-if="msg.displayInput" style="font-size: 12px; color: #303133; font-family: Consolas, monospace;">{{ msg.displayInput }}</span>
             </div>
+            <pre v-if="msg.displayInput" class="cr-tool-command-block"><code>{{ msg.displayInput }}</code></pre>
             <div v-if="msg._tasks" style="margin-top: 6px;">
               <div v-for="(task, ti) in msg._tasks" :key="ti" style="display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px;">
                 <span :style="{ color: task.status === 'completed' ? '#67c23a' : task.status === 'in_progress' ? '#409eff' : '#909399', fontSize: '14px', lineHeight: 1 }">

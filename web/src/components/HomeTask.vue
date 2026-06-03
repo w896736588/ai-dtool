@@ -846,9 +846,6 @@ export default {
   },
   mounted() {
     this.ensureWorkflowUnreadSse()
-    if (this.$eventBus) {
-      this.$eventBus.on('workflow_unread_changed', this.handleWorkflowUnreadSseMessage)
-    }
     this.loadHomeTaskGitRepoList()
     this.loadHomeTaskApiCollections()
     this.loadHomeTaskDockerList()
@@ -868,15 +865,12 @@ export default {
     this.loadHomeTaskSmartLinkList()
   },
   beforeUnmount() {
-    if (this.$eventBus) {
-      this.$eventBus.off('workflow_unread_changed', this.handleWorkflowUnreadSseMessage)
-    }
     this.unregisterWorkflowUnreadSse()
   },
   methods: {
     ensureWorkflowUnreadSse() {
       if (this._workflowUnreadSseId) return
-      const nextId = 'home_task_workflow_unread'
+      const nextId = 'workflow_unread_home_task'
       this._workflowUnreadSseId = nextId
       sseDistribute.InitFromLoginStatus().then((created) => {
         if (!created && !sseDistribute.GetSseClientId()) return
@@ -889,21 +883,10 @@ export default {
       this._workflowUnreadSseId = ''
     },
     handleWorkflowUnreadSseMessage(data) {
-      if (!data || data.type !== 'agent_chat_unread_change' || data.from_type !== 'work_flow') {
+      if (!data || data.type !== 'workflow_unread_snapshot') {
         return
       }
-      const homeTaskId = Number(data.home_task_id || 0)
-      if (homeTaskId <= 0) {
-        return
-      }
-      const nextMap = { ...this.homeTaskWorkflowUnreadMap }
-      const nextUnread = Math.max(0, Number(data.workflow_unread || 0))
-      if (nextUnread > 0) {
-        nextMap[homeTaskId] = nextUnread
-      } else {
-        delete nextMap[homeTaskId]
-      }
-      this.homeTaskWorkflowUnreadMap = nextMap
+      this.homeTaskWorkflowUnreadMap = { ...(data.workflow_task_badges || {}) }
     },
     handleHomeTaskTabChange(tabName) {
       if (tabName === HOME_TASK_TAB_ACTIVE) {

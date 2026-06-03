@@ -2,6 +2,26 @@
 // 将 codex exec --json 的 JSONL 事件流解析为与 chat_parser.js 兼容的可渲染消息格式。
 // 独立于 Claude 的 stream-json 解析逻辑，通过 chat_parser.js 顶层分发调用。
 
+// buildSystemTaskMessage 将 system.task_updated 等任务事件归一化为可渲染任务消息。
+function buildSystemTaskMessage(obj) {
+  if (!obj || obj.type !== 'system') return null
+  const subtype = obj.subtype || ''
+  if (subtype !== 'task_updated') return null
+
+  const patch = obj.patch && typeof obj.patch === 'object' ? obj.patch : {}
+  const status = String(patch.status || obj.status || 'running').trim() || 'running'
+  const description = String(obj.description || patch.description || '').trim() || `任务 ${obj.task_id || ''}`.trim() || '任务更新'
+
+  return {
+    type: 'system_task',
+    description,
+    taskId: obj.task_id || '',
+    status,
+    uuid: obj.uuid || '',
+    sessionId: obj.session_id || '',
+  }
+}
+
 // parseOneLine 解析单行 JSONL 事件，更新 messages 和 currentItems。
 function parseOneLine(line, messages, currentItems) {
   if (!line || !line.trim()) return
@@ -77,6 +97,8 @@ function parseOneLine(line, messages, currentItems) {
     // 后端注入的 system/command 提示词展示（runCodexCommand 推送）
     if (obj.subtype === 'command') {
       messages.push({ type: 'system_command', text: obj.text || '', cliType: obj.cli_type || '', cmdLine: obj.cmd_line || '', collapsed: true })
+    } else if (obj.subtype === 'task_updated') {
+      messages.push(buildSystemTaskMessage(obj))
     } else {
       messages.push({ type: 'system', text: JSON.stringify(obj) })
     }

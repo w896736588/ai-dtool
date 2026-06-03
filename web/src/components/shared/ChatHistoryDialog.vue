@@ -96,7 +96,7 @@
                       {{ msg.collapsed ? '展开 ▼' : '收起 ▲' }}
                     </span>
                   </div>
-                  <div v-if="msg.cmdLine" class="markdown-body chat-markdown-body" v-html="renderMarkdown('```\n' + (msg.collapsed ? truncateCmdPrompt(msg.cmdLine, 15) : msg.cmdLine) + '\n```')"></div>
+                  <pre v-if="msg.cmdLine" class="chat-message-command-block"><code>{{ msg.collapsed ? truncateCmdPrompt(msg.cmdLine, 15) : msg.cmdLine }}</code></pre>
                   <div v-else class="chat-message-plain" :style="{ maxHeight: msg.collapsed ? '20em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>
                   <div v-if="msg.cmdLine" class="chat-message-command-text" :style="{ maxHeight: msg.collapsed ? '15em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>
                 </div>
@@ -133,8 +133,8 @@
                     <div class="chat-tool-card__head">
                       <span v-if="!block._result && detailStatus === 'running'" class="chat-detail-status-spinner"></span>
                       <span class="chat-tool-card__name">🔧 {{ block.name }}</span>
-                      <span v-if="block.displayInput" class="chat-tool-card__input">{{ block.displayInput }}</span>
                     </div>
+                    <pre v-if="block.displayInput" class="chat-tool-card__command"><code>{{ block.displayInput }}</code></pre>
                     <div v-if="block._tasks" class="chat-task-list">
                       <div v-for="(task, ti) in block._tasks" :key="ti" class="chat-task-list__item">
                         <span :class="['chat-task-list__icon', task.status]">
@@ -184,8 +184,8 @@
                 <div class="chat-tool-card__head">
                   <span v-if="!msg._result && detailStatus === 'running'" class="chat-detail-status-spinner"></span>
                   <span class="chat-tool-card__name">🔧 {{ msg.name }}</span>
-                  <span v-if="msg.displayInput" class="chat-tool-card__input">{{ msg.displayInput }}</span>
                 </div>
+                <pre v-if="msg.displayInput" class="chat-tool-card__command"><code>{{ msg.displayInput }}</code></pre>
                 <div v-if="msg._tasks" class="chat-task-list">
                   <div v-for="(task, ti) in msg._tasks" :key="ti" class="chat-task-list__item">
                     <span :class="['chat-task-list__icon', task.status]">

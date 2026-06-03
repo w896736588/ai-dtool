@@ -774,7 +774,7 @@ export default {
       this._agentUnreadSseId = ''
     },
     handleAgentUnreadSseMessage(data) {
-      if (!data || data.type !== 'agent_chat_unread_change') return
+      if (!data || data.type !== 'agent_cli_unread_global') return
       this.agentUnreadTotal = Number(data.agent_cli_unread || 0)
       this.loadAgentChatCounts()
     },

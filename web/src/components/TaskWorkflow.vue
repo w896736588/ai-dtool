@@ -1902,8 +1902,6 @@ export default {
     },
     updateChatCountsFromList(list) {
       const byType = {}
-      const unreadByType = {}
-      let workflowUnreadCount = 0
       for (const item of list) {
         const pt = item.prompt_type || ''
         if (pt) {
@@ -1913,15 +1911,11 @@ export default {
           else if (item.status === 'interrupted') c.interrupted++
           if (item.is_read === false && item.status !== 'running') {
             c.unread++
-            unreadByType[pt] = (unreadByType[pt] || 0) + 1
-            workflowUnreadCount++
           }
           byType[pt] = c
         }
       }
       this.promptChatCounts = byType
-      this.promptChatUnreadCounts = unreadByType
-      this.workflowUnreadCount = workflowUnreadCount
     },
     adjustPromptUnreadCount(promptType, delta) {
       const normalizedPromptType = String(promptType || '').trim()
@@ -2560,7 +2554,7 @@ export default {
     },
     ensureWorkflowUnreadSse() {
       if (this._workflowUnreadSseId) return
-      const nextId = `workflow_unread_${this.workflowId || 'global'}`
+      const nextId = 'workflow_unread_detail'
       this._workflowUnreadSseId = nextId
       sseDistribute.InitFromLoginStatus().then((created) => {
         if (!created && !sseDistribute.GetSseClientId()) return
@@ -2573,12 +2567,20 @@ export default {
       this._workflowUnreadSseId = ''
     },
     handleWorkflowUnreadSseMessage(data) {
-      if (!data) return
-      if (Number(data.workflow_id || 0) !== this.workflowId && Number(data.from_id || 0) !== this.workflowId) {
+      if (!data || data.type !== 'workflow_unread_snapshot') return
+      const list = Array.isArray(data.workflow_detail_badges) ? data.workflow_detail_badges : []
+      const detail = list.find(item => Number(item?.workflow_id || 0) === Number(this.workflowId || 0))
+      if (!detail) {
+        this.workflowUnreadCount = 0
+        this.promptChatUnreadCounts = {}
+        this.loadChatCounts()
+        if (this.promptChatHistoryVisible) {
+          this.loadPromptChatHistoryListSilently()
+        }
         return
       }
-      if (data.type !== 'agent_chat_unread_change') return
-      this.workflowUnreadCount = Number(data.workflow_unread || 0)
+      this.workflowUnreadCount = Number(detail.workflow_unread || 0)
+      this.promptChatUnreadCounts = { ...(detail.prompt_type_unread || {}) }
       this.loadChatCounts()
       if (this.promptChatHistoryVisible) {
         this.loadPromptChatHistoryListSilently()
@@ -2652,16 +2654,6 @@ export default {
         agentCliApi.AgentChatMarkRead(row.id, (res) => {
           if (res && res.ErrCode === 0) {
             this.markPromptChatReadLocally(row.id)
-            if (this.$eventBus) {
-              this.$eventBus.emit('workflow_unread_changed', {
-                type: 'agent_chat_unread_change',
-                from_type: 'work_flow',
-                from_id: this.workflowId,
-                home_task_id: Number(this.homeTask?.id || 0),
-                workflow_unread: Math.max(0, Number(this.workflowUnreadCount || 0)),
-                chat_id: Number(row.id || 0),
-              })
-            }
           }
         })
       }

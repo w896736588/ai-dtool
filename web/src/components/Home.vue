@@ -569,7 +569,7 @@ export default {
     sseDistribute.RegisterReceive('agent_cli_unread_home', function(data) {
       _that.handleAgentCliUnreadUpdate(data)
     })
-    sseDistribute.RegisterReceive('workflow_unread_home', function(data) {
+    sseDistribute.RegisterReceive('workflow_unread_home_menu', function(data) {
       _that.handleWorkflowUnreadUpdate(data)
     })
     this.ensureAsyncTaskNotificationPermission()
@@ -581,7 +581,6 @@ export default {
     if (this.$eventBus) {
       this.$eventBus.on('safe_auth_required', this.showSafeLogin)
       this.$eventBus.on('main_db_storage_alert_changed', this.handleMainDbStorageAlertEvent)
-      this.$eventBus.on('workflow_unread_changed', this.handleWorkflowUnreadUpdate)
     }
   },
   provide() {
@@ -1152,24 +1151,19 @@ export default {
       this.mainDbStorageAlertVisible = !!payload?.exceeds_limit
     },
     handleAgentCliUnreadUpdate(data) {
-      if (!data || data.type !== 'agent_chat_unread_change') return
+      if (!data || data.type !== 'agent_cli_unread_home') return
       this.setAgentCliUnreadTotal(data.agent_cli_unread)
     },
     handleWorkflowUnreadUpdate(data) {
-      if (!data || data.type !== 'agent_chat_unread_change' || data.from_type !== 'work_flow') return
-      const homeTaskId = Number(data.home_task_id || 0)
-      if (homeTaskId <= 0) {
-        this.loadWorkflowUnreadSummary()
-        return
-      }
-      this.setWorkflowUnreadByTask(homeTaskId, data.workflow_unread)
+      if (!data || data.type !== 'workflow_unread_snapshot') return
+      this.setWorkflowUnreadSummary(data.workflow_task_badges || {}, data.workflow_menu_badge || {})
     },
     setAgentCliUnreadTotal(total) {
       const nextTotal = Math.max(0, Number(total || 0))
       this.agentCliUnreadTotal = nextTotal
       this.agentCliUnreadVisible = nextTotal > 0
     },
-    setWorkflowUnreadSummary(unreadMap) {
+    setWorkflowUnreadSummary(unreadMap, menuBadge = {}) {
       const nextMap = {}
       let total = 0
       Object.keys(unreadMap || {}).forEach((key) => {
@@ -1179,9 +1173,13 @@ export default {
         nextMap[taskId] = unread
         total += unread
       })
+      const hasMenuUnread = Object.prototype.hasOwnProperty.call(menuBadge || {}, 'has_unread')
+      const hasMenuTotal = Object.prototype.hasOwnProperty.call(menuBadge || {}, 'unread_total')
+      const nextTotal = hasMenuTotal ? Math.max(0, Number(menuBadge.unread_total || 0)) : total
+      const nextVisible = hasMenuUnread ? !!menuBadge.has_unread : nextTotal > 0
       this.workflowUnreadMap = nextMap
-      this.workflowUnreadTotal = total
-      this.workflowUnreadVisible = total > 0
+      this.workflowUnreadTotal = nextTotal
+      this.workflowUnreadVisible = nextVisible
     },
     setWorkflowUnreadByTask(taskId, total) {
       const normalizedTaskId = Number(taskId || 0)
@@ -1286,10 +1284,9 @@ export default {
     if (this.$eventBus) {
       this.$eventBus.off('safe_auth_required', this.showSafeLogin)
       this.$eventBus.off('main_db_storage_alert_changed', this.handleMainDbStorageAlertEvent)
-      this.$eventBus.off('workflow_unread_changed', this.handleWorkflowUnreadUpdate)
     }
     sseDistribute.UnRegisterReceive('agent_cli_unread_home')
-    sseDistribute.UnRegisterReceive('workflow_unread_home')
+    sseDistribute.UnRegisterReceive('workflow_unread_home_menu')
   },
   components: {
     HomeFilled,

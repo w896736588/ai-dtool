@@ -3368,12 +3368,8 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 	sendLine(buildChatCompletedEvent(chatID, finalStatus))
 	// 通知工作流页面刷新 chat 状态计数（执行历史按钮动画和状态数量）
 	taskWorkflowBroadcastChatStatus(chatID)
-	// 异步发送 webhook 通知：优先使用 result 类型消息的最终文本，缺失时回退到 assistant 累积文本
-	notifyText := lastResultText
-	if notifyText == `` {
-		notifyText = lastAssistantText
-	}
-	go taskWorkflowSendWebhookNotify(chatID, notifyText, finalStatus)
+	_ = lastAssistantText
+	_ = lastResultText
 }
 
 // runCodexCommand 执行 Codex CLI 命令并推送流式输出到 SSE + DB。
@@ -3596,7 +3592,7 @@ func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessi
 	}
 	sendLine(buildChatCompletedEvent(chatID, finalStatus))
 	taskWorkflowBroadcastChatStatus(chatID)
-	go taskWorkflowSendWebhookNotify(chatID, lastAgentMessageText, finalStatus)
+	_ = lastAgentMessageText
 }
 
 // buildChatCompletedEvent 构造对话终态 SSE 事件，携带最终状态供前端背景列表即时更新。
@@ -3755,33 +3751,35 @@ func taskWorkflowBroadcastUnreadChanged(chatID int64) {
 	fromType := cast.ToString(chatInfo[`from_type`])
 	fromID := cast.ToInt(chatInfo[`from_id`])
 	agentCliID := cast.ToInt(chatInfo[`agent_cli_id`])
-	homeTaskID := 0
-	workflowUnread := 0
 	agentCliUnread := 0
-	if fromType == common.AgentChatSourceTypeWorkflow && fromID > 0 {
-		workflowInfo, workflowErr := common.DbMain.TaskWorkflowInfo(fromID)
-		if workflowErr == nil {
-			homeTaskID = cast.ToInt(workflowInfo[`home_task_id`])
-		}
-		workflowUnread, _ = common.DbMain.AgentChatUnreadCountByWorkflow(fromID)
-	}
 	if fromType == common.AgentChatSourceTypeAgentCli && agentCliID > 0 {
 		agentCliUnread, _ = common.DbMain.AgentChatUnreadCountByAgentCli(agentCliID)
 	}
-	msg := gstool.JsonEncode(p_define.SseData{
-		SseDistributeId: `agent_chat_unread_change`,
+	agentCliHomeMsg := gstool.JsonEncode(p_define.SseData{
+		SseDistributeId: define.SseAgentCliUnreadHome,
 		Data: map[string]any{
-			`type`:             `agent_chat_unread_change`,
+			`type`:             `agent_cli_unread_home`,
 			`chat_id`:          chatID,
 			`from_type`:        fromType,
 			`from_id`:          fromID,
-			`home_task_id`:     homeTaskID,
 			`agent_cli_id`:     agentCliID,
-			`workflow_unread`:  workflowUnread,
 			`agent_cli_unread`: agentCliUnread,
 		},
 		Type: p_define.SseContentTypeMsg,
 	})
+	agentCliGlobalMsg := gstool.JsonEncode(p_define.SseData{
+		SseDistributeId: define.SseAgentCliUnreadGlobal,
+		Data: map[string]any{
+			`type`:             `agent_cli_unread_global`,
+			`chat_id`:          chatID,
+			`from_type`:        fromType,
+			`from_id`:          fromID,
+			`agent_cli_id`:     agentCliID,
+			`agent_cli_unread`: agentCliUnread,
+		},
+		Type: p_define.SseContentTypeMsg,
+	})
+	workflowUnreadData, workflowUnreadErr := buildWorkflowUnreadSnapshotData()
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, apiDataChangeSseStatusPrefix))
 		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
@@ -3791,7 +3789,22 @@ func taskWorkflowBroadcastUnreadChanged(chatID int64) {
 		if sse == nil {
 			continue
 		}
-		_ = sse.SendToChan(msg)
+		_ = sse.SendToChan(agentCliHomeMsg)
+		_ = sse.SendToChan(agentCliGlobalMsg)
+		if workflowUnreadErr != nil {
+			continue
+		}
+		for _, distributeID := range []string{
+			define.SseWorkflowUnreadHomeMenu,
+			define.SseWorkflowUnreadHomeTask,
+			define.SseWorkflowUnreadDetail,
+		} {
+			_ = sse.SendToChan(gstool.JsonEncode(p_define.SseData{
+				SseDistributeId: distributeID,
+				Data:            workflowUnreadData,
+				Type:            p_define.SseContentTypeMsg,
+			}))
+		}
 	}
 }
 
@@ -3824,71 +3837,4 @@ func extractAssistantText(data map[string]any) string {
 		}
 	}
 	return strings.Join(texts, "\n")
-}
-
-// taskWorkflowSendWebhookNotify 根据 chat 关联的 agent_cli webhook 配置发送通知。
-// finalStatus 由调用方直接传入（completed/interrupted/error），避免从 DB 重读 raw_output 时因并发写入导致 user_stop 标记丢失。
-func taskWorkflowSendWebhookNotify(chatID int64, lastText string, finalStatus string) {
-	if finalStatus == common.TaskWorkflowChatStatusInterrupted {
-		gstool.FmtPrintlnLogTime("[webhook-notify] chat_id=%d 跳过发送，用户主动终止 (finalStatus=%s)", chatID, finalStatus)
-		return
-	}
-	chatInfo, err := common.DbMain.TaskWorkflowChatInfo(chatID)
-	if err != nil || len(chatInfo) == 0 {
-		return
-	}
-	agentCliId := cast.ToInt(chatInfo["agent_cli_id"])
-	if agentCliId <= 0 {
-		return
-	}
-	config := business.GetWebhookConfigByAgentCliId(agentCliId)
-	if config == nil {
-		return
-	}
-
-	// 截取最后消息的前 500 字符
-	const maxLen = 500
-	msg := lastText
-	if len([]rune(msg)) > maxLen {
-		msg = string([]rune(msg)[:maxLen]) + "..."
-	}
-	if msg == "" {
-		msg = "(无文本内容)"
-	}
-
-	agentName := "Agent CLI"
-	cliRow, _ := common.DbMain.Client.QueryBySql(`SELECT name FROM tbl_agent_cli WHERE id = ?`, agentCliId).One()
-	if len(cliRow) > 0 && cast.ToString(cliRow["name"]) != "" {
-		agentName = cast.ToString(cliRow["name"])
-	}
-
-	// 获取关联的工作流任务名称
-	taskName := ""
-	if cast.ToString(chatInfo["from_type"]) == common.AgentChatSourceTypeWorkflow {
-		workflowID := cast.ToInt(chatInfo["from_id"])
-		if workflowID > 0 {
-			wfRow, _ := common.DbMain.Client.QueryBySql(`SELECT home_task_id FROM tbl_task_workflow WHERE id = ?`, workflowID).One()
-			if homeTaskId := cast.ToInt(wfRow["home_task_id"]); homeTaskId > 0 {
-				htRow, _ := common.DbMain.Client.QueryBySql(`SELECT name FROM tbl_home_task WHERE id = ?`, homeTaskId).One()
-				taskName = cast.ToString(htRow["name"])
-			}
-		}
-	}
-
-	header := fmt.Sprintf("[%s] 对话 #%d 已结束", agentName, chatID)
-	if taskName != "" {
-		header = fmt.Sprintf("[%s] %s - 对话 #%d 已结束", agentName, taskName, chatID)
-	}
-	replyLink := ""
-	if len(component.EnvClient.Ports) > 0 {
-		replyLink = fmt.Sprintf("http://localhost:%s/#/ChatReply/%d", component.EnvClient.Ports[0], chatID)
-	}
-
-	// 钉钉 actionCard 的 title 仅用于消息列表预览,不会出现在消息正文,因此 text 里需要再带一次 header 才能看到。
-	displayText := fmt.Sprintf("## %s\n\n%s", header, msg)
-	if err := business.SendWebhookNotify(config, header, displayText, replyLink); err != nil {
-		gstool.FmtPrintlnLogTime("[webhook-notify] chat_id=%d 发送失败: %v", chatID, err)
-	} else {
-		gstool.FmtPrintlnLogTime("[webhook-notify] chat_id=%d 发送成功", chatID)
-	}
 }

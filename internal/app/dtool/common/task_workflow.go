@@ -2,6 +2,7 @@ package common
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -443,6 +444,86 @@ func (h *CSqlite) TaskWorkflowBatchNodeStatusesByHomeTaskIDs(homeTaskIDs []int) 
 	return nodeStatusesMap, nil
 }
 
+// WorkflowUnreadSnapshotItem describes one active workflow unread snapshot used by SSE badge updates.
+type WorkflowUnreadSnapshotItem struct {
+	HomeTaskID       int
+	WorkflowID       int
+	WorkflowUnread   int
+	PromptTypeUnread map[string]int
+}
+
+// TaskWorkflowActiveUnreadSnapshots queries unread badge snapshot for every non-archived workflow task.
+func (h *CSqlite) TaskWorkflowActiveUnreadSnapshots() ([]WorkflowUnreadSnapshotItem, error) {
+	rows, err := h.Client.QueryBySql(`SELECT tw.id AS workflow_id, tw.home_task_id
+FROM tbl_task_workflow tw
+INNER JOIN tbl_home_task ht ON ht.id = tw.home_task_id
+WHERE IFNULL(ht.is_archived, 0) = 0 AND IFNULL(ht.use_workflow, 0) <> 0
+ORDER BY tw.id ASC`).All()
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return []WorkflowUnreadSnapshotItem{}, nil
+	}
+
+	workflowIDList := make([]int, 0, len(rows))
+	workflowMap := make(map[int]*WorkflowUnreadSnapshotItem, len(rows))
+	for _, row := range rows {
+		workflowID := cast.ToInt(row[`workflow_id`])
+		homeTaskID := cast.ToInt(row[`home_task_id`])
+		if workflowID <= 0 || homeTaskID <= 0 {
+			continue
+		}
+		workflowIDList = append(workflowIDList, workflowID)
+		workflowMap[workflowID] = &WorkflowUnreadSnapshotItem{
+			HomeTaskID:       homeTaskID,
+			WorkflowID:       workflowID,
+			WorkflowUnread:   0,
+			PromptTypeUnread: map[string]int{},
+		}
+	}
+	if len(workflowIDList) == 0 {
+		return []WorkflowUnreadSnapshotItem{}, nil
+	}
+
+	placeholders := make([]string, 0, len(workflowIDList))
+	args := make([]any, 0, len(workflowIDList)+3)
+	args = append(args, AgentChatSourceTypeWorkflow, agentChatReadNo, taskWorkflowChatStatusRunning)
+	for _, workflowID := range workflowIDList {
+		placeholders = append(placeholders, `?`)
+		args = append(args, workflowID)
+	}
+	query := fmt.Sprintf(`SELECT from_id AS workflow_id, prompt_type, COUNT(1) AS unread_total
+FROM agent_chat
+WHERE from_type = ? AND is_read = ? AND status <> ? AND from_id IN (%s)
+GROUP BY from_id, prompt_type`, strings.Join(placeholders, `,`))
+	unreadRows, err := h.Client.QueryBySql(query, args...).All()
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range unreadRows {
+		workflowID := cast.ToInt(row[`workflow_id`])
+		item := workflowMap[workflowID]
+		if item == nil {
+			continue
+		}
+		unreadTotal := cast.ToInt(row[`unread_total`])
+		promptType := strings.TrimSpace(cast.ToString(row[`prompt_type`]))
+		item.WorkflowUnread += unreadTotal
+		if promptType != `` {
+			item.PromptTypeUnread[promptType] = unreadTotal
+		}
+	}
+
+	list := make([]WorkflowUnreadSnapshotItem, 0, len(workflowIDList))
+	for _, workflowID := range workflowIDList {
+		if item := workflowMap[workflowID]; item != nil {
+			list = append(list, *item)
+		}
+	}
+	return list, nil
+}
+
 // TaskWorkflowBindApiDocFragment 绑定接口文档片段 id。
 func (h *CSqlite) TaskWorkflowBindApiDocFragment(workflowID int, fragmentID string) error {
 	if workflowID <= 0 {
@@ -727,19 +808,6 @@ func (h *CSqlite) AgentChatMarkRead(chatID int64) error {
 }
 
 // AgentChatUnreadCountByWorkflow 汇总一个工作流下所有未读历史对话数。
-func (h *CSqlite) AgentChatUnreadCountByWorkflow(workflowID int) (int, error) {
-	if workflowID <= 0 {
-		return 0, errors.New(`工作流id不能为空`)
-	}
-	row, err := h.Client.QueryBySql(
-		`SELECT COUNT(1) AS total FROM agent_chat WHERE from_type = ? AND from_id = ? AND is_read = ? AND status <> ?`,
-		AgentChatSourceTypeWorkflow, workflowID, agentChatReadNo, taskWorkflowChatStatusRunning,
-	).One()
-	if err != nil {
-		return 0, err
-	}
-	return cast.ToInt(row[`total`]), nil
-}
 
 // AgentChatUnreadCountByAgentCli 汇总一个 Agent CLI 下所有未读历史对话数。
 func (h *CSqlite) AgentChatUnreadCountByAgentCli(agentCliID int) (int, error) {
