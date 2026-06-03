@@ -22,6 +22,7 @@
             <MdPreview
               :model-value="fragment.content || ''"
               preview-theme="github"
+              :auto-fold-threshold="999999"
               :onGetCatalog="onGetCatalog"
             />
           </section>

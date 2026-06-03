@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // CronScheduler 管理每天固定时间触发的定时任务。

@@ -6,11 +6,11 @@ import (
 	"dev_tool/internal/app/dtool/define"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gstool"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsgin"
 )
 
 func GroupList(c *gin.Context) {

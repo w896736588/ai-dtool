@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsssh"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsssh"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 const MaxSourceLength = 100000 //原始内容最多保留多少行 用于搜索

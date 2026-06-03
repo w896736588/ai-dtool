@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"strings"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
+	"github.com/w896736588/go-tool/gsgin"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // SafeAuthWhiteList 不需要鉴权的接口白名单

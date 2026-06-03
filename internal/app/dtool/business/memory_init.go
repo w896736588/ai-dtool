@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // preparedMemoryStore 保存启动阶段已完成的记忆库预处理结果 / stores memory preflight result completed during boot.

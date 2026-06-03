@@ -44,7 +44,7 @@
             :running-count="getPromptChatCounts('issue_fix').running"
             :interrupted-count="getPromptChatCounts('issue_fix').interrupted"
             :total-count="getPromptChatCounts('issue_fix').total"
-            :unread="workflowUnreadCount > 0"
+            :unread="hasUnreadInPromptType('issue_fix')"
             @click="openChatHistoryDialog"
           >
             历史对话
@@ -153,7 +153,14 @@
             <div>基线分支：{{ branchSwitchStreamMeta.base_branch || '-' }}</div>
             <div>目标分支：{{ branchSwitchStreamMeta.branch_name || '-' }}</div>
           </div>
+          <div v-if="branchSwitchStreamRunning" class="branch-switch-stream__status">
+            <span class="branch-switch-stream__spinner" />
+            <span>命令执行中，请稍候...</span>
+          </div>
           <div ref="branchSwitchStreamLog" class="branch-switch-stream__log">
+            <div v-if="branchSwitchStreamLines.length === 0" class="branch-switch-stream__placeholder">
+              正在建立执行连接，日志会在这里实时输出...
+            </div>
             <div
               v-for="(line, idx) in branchSwitchStreamLines"
               :key="idx"
@@ -1218,6 +1225,7 @@ export default {
       branchMismatchPromptedTaskId: 0,
       branchSwitchingKey: '',
       branchSwitchStreamDialogVisible: false,
+      branchSwitchStreamRunning: false,
       branchSwitchStreamLines: [],
       branchSwitchStreamMeta: {
         local_dir: '',
@@ -1330,6 +1338,15 @@ export default {
     this.ensureWorkflowUnreadSse()
     window.addEventListener('keydown', this.handleCtrlS)
   },
+  activated() {
+    this.ensureWorkflowUnreadSse()
+    this.loadWorkflowPage()
+    if (this.promptChatHistoryVisible) {
+      this.loadPromptChatHistoryListSilently()
+    } else {
+      this.loadChatCounts()
+    }
+  },
   beforeUnmount() {
     window.removeEventListener('keydown', this.handleCtrlS)
     this._stopChatHistoryDurationTimer()
@@ -1428,9 +1445,14 @@ export default {
     applyWorkflowPayload(data) {
       this.workflow = data.workflow || {}
       this.homeTask = data.home_task || this.homeTask || {}
+      const previousWorkflowId = Number(this.workflowId || 0)
       this.workflowId = Number(this.workflow.id || 0)
       this.requirementFetchConfig = data.requirement_fetch_config || this.requirementFetchConfig || {}
       this.parseNodeStatuses()
+      if (this.workflowId !== previousWorkflowId) {
+        this.unregisterWorkflowUnreadSse()
+        this.ensureWorkflowUnreadSse()
+      }
       document.title = this.homeTask.name || '任务工作流程'
     },
     // 解析后端返回的 node_statuses JSON 字符串
@@ -1888,8 +1910,6 @@ export default {
     },
     updateChatCountsFromList(list) {
       const byType = {}
-      const unreadByType = {}
-      let workflowUnreadCount = 0
       for (const item of list) {
         const pt = item.prompt_type || ''
         if (pt) {
@@ -1899,15 +1919,11 @@ export default {
           else if (item.status === 'interrupted') c.interrupted++
           if (item.is_read === false && item.status !== 'running') {
             c.unread++
-            unreadByType[pt] = (unreadByType[pt] || 0) + 1
-            workflowUnreadCount++
           }
           byType[pt] = c
         }
       }
       this.promptChatCounts = byType
-      this.promptChatUnreadCounts = unreadByType
-      this.workflowUnreadCount = workflowUnreadCount
     },
     adjustPromptUnreadCount(promptType, delta) {
       const normalizedPromptType = String(promptType || '').trim()
@@ -2546,7 +2562,7 @@ export default {
     },
     ensureWorkflowUnreadSse() {
       if (this._workflowUnreadSseId) return
-      const nextId = `workflow_unread_${this.workflowId || 'global'}`
+      const nextId = 'workflow_unread_detail'
       this._workflowUnreadSseId = nextId
       sseDistribute.InitFromLoginStatus().then((created) => {
         if (!created && !sseDistribute.GetSseClientId()) return
@@ -2559,12 +2575,20 @@ export default {
       this._workflowUnreadSseId = ''
     },
     handleWorkflowUnreadSseMessage(data) {
-      if (!data) return
-      if (Number(data.workflow_id || 0) !== this.workflowId && Number(data.from_id || 0) !== this.workflowId) {
+      if (!data || data.type !== 'workflow_unread_snapshot') return
+      const list = Array.isArray(data.workflow_detail_badges) ? data.workflow_detail_badges : []
+      const detail = list.find(item => Number(item?.workflow_id || 0) === Number(this.workflowId || 0))
+      if (!detail) {
+        this.workflowUnreadCount = 0
+        this.promptChatUnreadCounts = {}
+        this.loadChatCounts()
+        if (this.promptChatHistoryVisible) {
+          this.loadPromptChatHistoryListSilently()
+        }
         return
       }
-      if (data.type !== 'agent_chat_unread_change') return
-      this.workflowUnreadCount = Number(data.workflow_unread || 0)
+      this.workflowUnreadCount = Number(detail.workflow_unread || 0)
+      this.promptChatUnreadCounts = { ...(detail.prompt_type_unread || {}) }
       this.loadChatCounts()
       if (this.promptChatHistoryVisible) {
         this.loadPromptChatHistoryListSilently()
@@ -2691,12 +2715,20 @@ export default {
       this.promptChatDetailId = 0
     },
     updateChatListStatus(chatId, status) {
+      const normalizedChatId = Number(chatId || 0)
+      const selectedPromptHistoryChatId = this.promptChatHistoryVisible
+        ? Number(this.promptChatDetailId || 0)
+        : 0
       const updateItem = (list) => {
-        const item = list.find(i => i.id === chatId)
+        const item = list.find(i => Number(i.id || 0) === normalizedChatId)
         if (item) {
           item.status = status
           if (status !== 'running') {
-            this.markPromptChatUnreadLocally(chatId)
+            if (selectedPromptHistoryChatId > 0 && selectedPromptHistoryChatId === normalizedChatId) {
+              this.markPromptChatReadLocally(normalizedChatId)
+            } else {
+              this.markPromptChatUnreadLocally(normalizedChatId)
+            }
           }
         }
       }
@@ -2754,11 +2786,18 @@ export default {
         try {
           const obj = JSON.parse(line)
           if (obj.type === 'chat' && obj.subtype === 'completed') {
+            const selectedPromptHistoryChatId = this.promptChatHistoryVisible
+              ? Number(this.promptChatDetailId || 0)
+              : 0
             this.updateBackgroundChatListItem(normalizedChatId, {
               status: String(obj.status || 'completed').trim() || 'completed',
               line_count: state.lineCount,
             })
-            this.markPromptChatUnreadLocally(normalizedChatId)
+            if (selectedPromptHistoryChatId > 0 && selectedPromptHistoryChatId === normalizedChatId) {
+              this.markPromptChatReadLocally(normalizedChatId)
+            } else {
+              this.markPromptChatUnreadLocally(normalizedChatId)
+            }
             this.stopBackgroundChatStream(normalizedChatId)
             this.loadPromptChatHistoryListSilently()
             this.loadChatCounts()
@@ -3297,6 +3336,8 @@ export default {
     },
     closeBranchSwitchStreamDialog() {
       this.branchSwitchStreamDialogVisible = false
+      this.branchSwitchStreamRunning = false
+      this.branchSwitchingKey = ''
       if (this._branchSwitchEventSource) {
         this._branchSwitchEventSource.close()
         this._branchSwitchEventSource = null
@@ -3325,6 +3366,7 @@ export default {
         base_branch: payload.base_branch || '',
         branch_name: payload.branch_name || '',
       }
+      this.branchSwitchStreamRunning = true
       this.branchSwitchStreamLines = []
       this.branchSwitchStreamDialogVisible = true
       this.$nextTick(() => {
@@ -3333,6 +3375,7 @@ export default {
       const url = gitApi.GitCleanupAndSwitchBranchByIdStreamUrl(payload)
       if (!url) {
         this.branchSwitchingKey = ''
+        this.branchSwitchStreamRunning = false
         this.appendBranchSwitchLog('SSE 连接不可用，无法实时展示切换步骤', 'error')
         this.$helperNotify.error('SSE 连接不可用')
         return
@@ -3364,6 +3407,7 @@ export default {
           return
         }
         if (parsed.type === 'done') {
+          this.branchSwitchStreamRunning = false
           if (parsed.status === 'success') {
             this.appendBranchSwitchLog(parsed.message || '分支切换完成', 'success')
             this.$helperNotify.success(`已切换到 ${payload.branch_name}`)
@@ -3380,6 +3424,7 @@ export default {
       }
       es.onerror = () => {
         if (this._branchSwitchEventSource === es) {
+          this.branchSwitchStreamRunning = false
           this.appendBranchSwitchLog('连接已断开', 'error')
           this.branchSwitchingKey = ''
           es.close()
@@ -3415,6 +3460,29 @@ export default {
   font-size: 13px;
 }
 
+.branch-switch-stream__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #eef6ea;
+  border: 1px solid #d7e7cf;
+  color: #49624a;
+  font-size: 13px;
+}
+
+.branch-switch-stream__spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(73, 98, 74, 0.2);
+  border-top-color: #49624a;
+  animation: branch-switch-stream-spin 0.8s linear infinite;
+  flex: 0 0 auto;
+}
+
 .branch-switch-stream__log {
   max-height: 420px;
   overflow: auto;
@@ -3427,6 +3495,10 @@ export default {
   font-family: Consolas, "Courier New", monospace;
   font-size: 12px;
   line-height: 1.6;
+}
+
+.branch-switch-stream__placeholder {
+  color: #8b958c;
 }
 
 .branch-switch-stream__line {
@@ -3444,6 +3516,15 @@ export default {
 
 .branch-switch-stream__line--success {
   color: #4d8b57;
+}
+
+@keyframes branch-switch-stream-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .task-workflow-shell {

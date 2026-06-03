@@ -7,9 +7,9 @@ import (
 	"log"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsgin"
 )
 
 // AgentCliList 返回所有 Agent Cli 实例列表（含状态摘要）

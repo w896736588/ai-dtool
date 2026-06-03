@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
-	"gitee.com/Sxiaobai/gs/v2/gsssh"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsgin"
+	"github.com/w896736588/go-tool/gsssh"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 var (
@@ -170,15 +170,15 @@ func ShellOut(c *gin.Context) {
 	command := cast.ToString(reqMap[`command`])
 	_ = shellOutRunCommandFunc(client, command)
 	id, err := common.DbMain.Client.QuickCreate(`tbl_shell_out`, map[string]any{
-		`command`:        command,
+		`command`:         command,
 		`shell_client_id`: shellClientId,
-		`name`:           cast.ToString(reqMap[`name`]),
-		`group_id`:       reqMap[`group_id`],
-		`rule_set_id`:    cast.ToInt(reqMap[`rule_set_id`]),
-		`is_run`:         1,
-		`ssh_id`:         cast.ToString(reqMap[`ssh_id`]),
-		`create_time`:    time.Now().Unix(),
-		`update_time`:    time.Now().Unix(),
+		`name`:            cast.ToString(reqMap[`name`]),
+		`group_id`:        reqMap[`group_id`],
+		`rule_set_id`:     cast.ToInt(reqMap[`rule_set_id`]),
+		`is_run`:          1,
+		`ssh_id`:          cast.ToString(reqMap[`ssh_id`]),
+		`create_time`:     time.Now().Unix(),
+		`update_time`:     time.Now().Unix(),
 	}).Exec()
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)

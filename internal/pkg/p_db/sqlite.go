@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"gitee.com/Sxiaobai/gs/v2/gsdb"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gsdb"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 func InitSqlite(dbPath, dbName string) (*gsdb.GsSqlite, error) {

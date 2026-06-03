@@ -10,8 +10,8 @@ import (
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
+	"github.com/w896736588/go-tool/gsgin"
 )
 
 // 每个 SSE 端口允许的最大连接数
@@ -110,6 +110,7 @@ func BuildSseOpenFunc(ssePort string) func(url.Values, chan int, *gin.Context) (
 		BindAsyncTasksSSE(sse, stopC, 5*time.Second)
 		BindMemoryFragmentStatusSSE(sse, stopC, 10*time.Second)
 		BindGitPendingStatusSSE(sse, stopC, 5*time.Second)
+		BindWorkflowUnreadSnapshotSSE(sse, stopC, 3*time.Second)
 		BindConnectionCountSSE(sse, stopC, 5*time.Second)
 		return sse, nil
 	}

@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 type KeyValue struct {

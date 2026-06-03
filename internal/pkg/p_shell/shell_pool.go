@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsssh"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsssh"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // ClientFactory 连接工厂函数类型，用于解耦连接池与具体的 Shell 管理器实现。

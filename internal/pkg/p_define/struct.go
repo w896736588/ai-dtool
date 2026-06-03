@@ -1,6 +1,6 @@
 package p_define
 
-import "gitee.com/Sxiaobai/gs/v2/gsdb"
+import "github.com/w896736588/go-tool/gsdb"
 
 type RequestBody struct {
 	UniKey         string `json:"UniKey"`

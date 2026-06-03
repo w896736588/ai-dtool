@@ -1,13 +1,24 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    :title="title"
     width="80vw"
     top="3vh"
     destroy-on-close
     @close="handleClose"
     @closed="$emit('closed')"
   >
+    <template #header>
+      <div class="chat-history-dialog__header">
+        <span class="chat-history-dialog__title">{{ title }}</span>
+        <span
+          v-if="workspaceSummaryText"
+          class="chat-history-dialog__workspace-summary"
+          :title="workspaceSummaryText"
+        >
+          {{ workspaceSummaryText }}
+        </span>
+      </div>
+    </template>
     <div class="chat-combined-body" v-loading="loading">
       <div class="chat-combined-list">
         <template v-for="group in groupedItems" :key="group.dir">
@@ -96,7 +107,7 @@
                       {{ msg.collapsed ? '展开 ▼' : '收起 ▲' }}
                     </span>
                   </div>
-                  <div v-if="msg.cmdLine" class="markdown-body chat-markdown-body" v-html="renderMarkdown('```\n' + (msg.collapsed ? truncateCmdPrompt(msg.cmdLine, 15) : msg.cmdLine) + '\n```')"></div>
+                  <pre v-if="msg.cmdLine" class="chat-message-command-block"><code>{{ msg.collapsed ? truncateCmdPrompt(msg.cmdLine, 15) : msg.cmdLine }}</code></pre>
                   <div v-else class="chat-message-plain" :style="{ maxHeight: msg.collapsed ? '20em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>
                   <div v-if="msg.cmdLine" class="chat-message-command-text" :style="{ maxHeight: msg.collapsed ? '15em' : 'none', overflow: msg.collapsed ? 'hidden' : 'visible' }">{{ msg.text }}</div>
                 </div>
@@ -133,8 +144,8 @@
                     <div class="chat-tool-card__head">
                       <span v-if="!block._result && detailStatus === 'running'" class="chat-detail-status-spinner"></span>
                       <span class="chat-tool-card__name">🔧 {{ block.name }}</span>
-                      <span v-if="block.displayInput" class="chat-tool-card__input">{{ block.displayInput }}</span>
                     </div>
+                    <pre v-if="block.displayInput" class="chat-tool-card__command"><code>{{ block.displayInput }}</code></pre>
                     <div v-if="block._tasks" class="chat-task-list">
                       <div v-for="(task, ti) in block._tasks" :key="ti" class="chat-task-list__item">
                         <span :class="['chat-task-list__icon', task.status]">
@@ -184,8 +195,8 @@
                 <div class="chat-tool-card__head">
                   <span v-if="!msg._result && detailStatus === 'running'" class="chat-detail-status-spinner"></span>
                   <span class="chat-tool-card__name">🔧 {{ msg.name }}</span>
-                  <span v-if="msg.displayInput" class="chat-tool-card__input">{{ msg.displayInput }}</span>
                 </div>
+                <pre v-if="msg.displayInput" class="chat-tool-card__command"><code>{{ msg.displayInput }}</code></pre>
                 <div v-if="msg._tasks" class="chat-task-list">
                   <div v-for="(task, ti) in msg._tasks" :key="ti" class="chat-task-list__item">
                     <span :class="['chat-task-list__icon', task.status]">
@@ -573,6 +584,19 @@ export default {
         }
       })
       return groups
+    },
+    // workspaceSummaryText 聚合顶部展示的工作空间简称列表，按首次出现顺序去重。
+    workspaceSummaryText() {
+      const labelSet = new Set()
+      const labels = []
+      const itemList = Array.isArray(this.items) ? this.items : []
+      itemList.forEach((item) => {
+        const label = this.getItemWorkspaceLabel(item)
+        if (!label || labelSet.has(label)) return
+        labelSet.add(label)
+        labels.push(label)
+      })
+      return labels.join(', ')
     },
     // showDetailInfoBar 控制底部信息栏展示。 // Controls rendering of the footer info bar.
     showDetailInfoBar() {

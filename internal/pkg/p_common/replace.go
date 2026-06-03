@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"regexp"
 
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // Replace 替换变量
@@ -73,7 +73,7 @@ type OpenAiResult struct {
 	} `json:"choices"`
 }
 
-//提取openapi结果中的消息
+// 提取openapi结果中的消息
 func ExtractOpenAiMessage(result string) string {
 	openAiResult := OpenAiResult{}
 	err := gstool.JsonDecode(result, &openAiResult)

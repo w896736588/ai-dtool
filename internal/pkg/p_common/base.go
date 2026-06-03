@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsencrypt"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/pion/stun"
+	"github.com/w896736588/go-tool/gsencrypt"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 var TBaseClient *TBase

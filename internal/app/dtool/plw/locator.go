@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gstask"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/playwright-community/playwright-go"
+	"github.com/w896736588/go-tool/gstask"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 const (

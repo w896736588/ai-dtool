@@ -22,9 +22,12 @@
           <el-icon><HomeFilled /></el-icon>
           <span>Command</span>
         </el-menu-item>
-        <el-menu-item index="/HomeTask">
+        <el-menu-item index="/HomeTask" class="menu-item-workflow" :class="{ 'menu-item-workflow--alert': workflowUnreadVisible }">
           <el-icon><List /></el-icon>
-          <span>Workflow</span>
+          <span class="menu-item-label-with-dot">
+            <span>Workflow</span>
+            <span v-if="workflowUnreadVisible" class="menu-item-alert-dot"></span>
+          </span>
         </el-menu-item>
         <el-menu-item v-if="checkModuleOpen('redis')" index="/Redis">
           <el-icon><Coin /></el-icon>
@@ -46,10 +49,10 @@
           <el-icon><Link /></el-icon>
           <span>Playwright</span>
         </el-menu-item>
-        <el-menu-item v-if="checkModuleOpen('variable')" index="/Variable">
-          <el-icon><Document /></el-icon>
-          <span>Script</span>
-        </el-menu-item>
+<!--        <el-menu-item v-if="checkModuleOpen('variable')" index="/Variable">-->
+<!--          <el-icon><Document /></el-icon>-->
+<!--          <span>Script</span>-->
+<!--        </el-menu-item>-->
         <el-menu-item v-if="checkModuleOpen('memory_fragment')" index="/MemoryFragment">
           <el-icon><Memo /></el-icon>
           <span>Knowledge</span>
@@ -410,6 +413,8 @@ import baseApi from '@/utils/base/base_api'
 import sshSet from '@/utils/base/ssh_set'
 import asyncTaskApi from '@/utils/base/async_task'
 import agentCliApi from '@/utils/base/agent_cli'
+import homeTaskApi from '@/utils/base/home_task'
+import taskWorkflowApi from '@/utils/base/task_workflow'
 import sseDistribute from '@/utils/base/sse_distribute'
 import Tools from "@/components/Tools.vue";
 import Markdown from '@/components/Markdown.vue'
@@ -483,6 +488,9 @@ export default {
       },
       ip: '',
       sshConnectionCount: 0,
+      workflowUnreadVisible: false,
+      workflowUnreadTotal: 0,
+      workflowUnreadMap: {},
       mainDbStorageAlertVisible: false,
       agentCliUnreadVisible: false,
       agentCliUnreadTotal: 0,
@@ -561,9 +569,13 @@ export default {
     sseDistribute.RegisterReceive('agent_cli_unread_home', function(data) {
       _that.handleAgentCliUnreadUpdate(data)
     })
+    sseDistribute.RegisterReceive('workflow_unread_home_menu', function(data) {
+      _that.handleWorkflowUnreadUpdate(data)
+    })
     this.ensureAsyncTaskNotificationPermission()
     this.menuName = this.$route.path || '/Dashboard'
     window.addEventListener('resize', function () {});
+    this.loadWorkflowUnreadSummary()
     this.loadAgentCliUnreadSummary()
     // 监听全局登录失效事件
     if (this.$eventBus) {
@@ -1139,13 +1151,84 @@ export default {
       this.mainDbStorageAlertVisible = !!payload?.exceeds_limit
     },
     handleAgentCliUnreadUpdate(data) {
-      if (!data || data.type !== 'agent_chat_unread_change') return
+      if (!data || data.type !== 'agent_cli_unread_home') return
       this.setAgentCliUnreadTotal(data.agent_cli_unread)
+    },
+    handleWorkflowUnreadUpdate(data) {
+      if (!data || data.type !== 'workflow_unread_snapshot') return
+      this.setWorkflowUnreadSummary(data.workflow_task_badges || {}, data.workflow_menu_badge || {})
     },
     setAgentCliUnreadTotal(total) {
       const nextTotal = Math.max(0, Number(total || 0))
       this.agentCliUnreadTotal = nextTotal
       this.agentCliUnreadVisible = nextTotal > 0
+    },
+    setWorkflowUnreadSummary(unreadMap, menuBadge = {}) {
+      const nextMap = {}
+      let total = 0
+      Object.keys(unreadMap || {}).forEach((key) => {
+        const taskId = Number(key || 0)
+        const unread = Math.max(0, Number(unreadMap[key] || 0))
+        if (taskId <= 0 || unread <= 0) return
+        nextMap[taskId] = unread
+        total += unread
+      })
+      const hasMenuUnread = Object.prototype.hasOwnProperty.call(menuBadge || {}, 'has_unread')
+      const hasMenuTotal = Object.prototype.hasOwnProperty.call(menuBadge || {}, 'unread_total')
+      const nextTotal = hasMenuTotal ? Math.max(0, Number(menuBadge.unread_total || 0)) : total
+      const nextVisible = hasMenuUnread ? !!menuBadge.has_unread : nextTotal > 0
+      this.workflowUnreadMap = nextMap
+      this.workflowUnreadTotal = nextTotal
+      this.workflowUnreadVisible = nextVisible
+    },
+    setWorkflowUnreadByTask(taskId, total) {
+      const normalizedTaskId = Number(taskId || 0)
+      if (normalizedTaskId <= 0) return
+      const nextMap = { ...this.workflowUnreadMap }
+      const nextTotal = Math.max(0, Number(total || 0))
+      if (nextTotal > 0) {
+        nextMap[normalizedTaskId] = nextTotal
+      } else {
+        delete nextMap[normalizedTaskId]
+      }
+      this.setWorkflowUnreadSummary(nextMap)
+    },
+    loadWorkflowUnreadSummary() {
+      const workflowTaskIdSet = new Set()
+      let pending = 2
+      const finalize = () => {
+        pending -= 1
+        if (pending > 0) return
+        const workflowTaskIds = Array.from(workflowTaskIdSet)
+        if (workflowTaskIds.length === 0) {
+          this.setWorkflowUnreadSummary({})
+          return
+        }
+        taskWorkflowApi.TaskWorkflowBatchNodeStatus(workflowTaskIds, (response) => {
+          if (!(response && response.ErrCode === 0 && response.Data)) return
+          this.setWorkflowUnreadSummary(response.Data.unread_count_map || {})
+        })
+      }
+      const collectWorkflowTasks = (response) => {
+        if (!(response && response.ErrCode === 0 && response.Data)) return
+        const taskList = Array.isArray(response.Data.task_list) ? response.Data.task_list : []
+        taskList.forEach((task) => {
+          if (Number(task?.use_workflow) !== 0) {
+            const taskId = Number(task?.id || 0)
+            if (taskId > 0) {
+              workflowTaskIdSet.add(taskId)
+            }
+          }
+        })
+      }
+      homeTaskApi.HomeTaskList(0, (response) => {
+        collectWorkflowTasks(response)
+        finalize()
+      })
+      homeTaskApi.HomeTaskList(1, (response) => {
+        collectWorkflowTasks(response)
+        finalize()
+      })
     },
     loadAgentCliUnreadSummary() {
       agentCliApi.AgentCliList((response) => {
@@ -1198,7 +1281,12 @@ export default {
       clearInterval(this.sshConnectionTimer)
       this.sshConnectionTimer = null
     }
+    if (this.$eventBus) {
+      this.$eventBus.off('safe_auth_required', this.showSafeLogin)
+      this.$eventBus.off('main_db_storage_alert_changed', this.handleMainDbStorageAlertEvent)
+    }
     sseDistribute.UnRegisterReceive('agent_cli_unread_home')
+    sseDistribute.UnRegisterReceive('workflow_unread_home_menu')
   },
   components: {
     HomeFilled,

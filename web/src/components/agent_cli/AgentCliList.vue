@@ -698,6 +698,16 @@ export default {
       if (cached > 0) this.selectedGroupId = cached
     } catch {}
   },
+  activated() {
+    this.ensureAgentUnreadSse()
+    this.loadList()
+    if (this.agentChatHistoryVisible && Number(this.agentChatHistoryCliId || 0) > 0) {
+      this.openAgentChatHistory({
+        id: this.agentChatHistoryCliId,
+        name: this.agentChatHistoryTitle,
+      }, this.agentChatDetailId || this.chatDetailId)
+    }
+  },
   beforeUnmount() {
     this.closeChatDetail()
     this.stopAllBackgroundChatStreams()
@@ -764,7 +774,7 @@ export default {
       this._agentUnreadSseId = ''
     },
     handleAgentUnreadSseMessage(data) {
-      if (!data || data.type !== 'agent_chat_unread_change') return
+      if (!data || data.type !== 'agent_cli_unread_global') return
       this.agentUnreadTotal = Number(data.agent_cli_unread || 0)
       this.loadAgentChatCounts()
     },

@@ -6,7 +6,7 @@ import (
 	"dev_tool/internal/app/dtool/define"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // CronDailyReportGenerate 是定时任务触发的日报生成入口，不依赖 gin.Context。

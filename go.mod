@@ -3,7 +3,6 @@ module dev_tool
 go 1.26.1
 
 require (
-	gitee.com/Sxiaobai/gs/v2 v2.0.60
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-gonic/gin v1.9.1
@@ -92,6 +91,7 @@ require (
 	github.com/tklauser/numcpus v0.10.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
+	github.com/w896736588/go-tool v0.0.0-20260603012132-e079d038584b // indirect
 	github.com/xuri/efp v0.0.0-20241211021726-c4e992084aa6 // indirect
 	github.com/xuri/excelize/v2 v2.9.0 // indirect
 	github.com/xuri/nfp v0.0.0-20240318013403-ab9948c2c4a7 // indirect

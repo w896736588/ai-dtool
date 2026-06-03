@@ -3,8 +3,8 @@ package p_sse
 import (
 	"dev_tool/internal/pkg/p_define"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gsgin"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // SseShell 通过ssh转发的消息

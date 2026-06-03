@@ -2,9 +2,9 @@ package controller
 
 import (
 	"dev_tool/internal/pkg/p_gitlab"
-	"gitee.com/Sxiaobai/gs/v2/gsapi"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsapi"
+	"github.com/w896736588/go-tool/gstool"
 	"net/url"
 )
 
