@@ -2,7 +2,7 @@ package plw
 
 import (
 	"fmt"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gstool"
 	"strings"
 )
 

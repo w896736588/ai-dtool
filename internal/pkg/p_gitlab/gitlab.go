@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsapi"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsapi"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // MergeMainBranchs 已上线的记录，只要目标分支包含以下关键字即可判定。

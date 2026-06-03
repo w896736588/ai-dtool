@@ -11,10 +11,10 @@ import (
 
 	"dev_tool/internal/app/dtool/component"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsgin"
+	"github.com/w896736588/go-tool/gstool"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsgin"
 )
 
 // McpTypeList 返回所有 MCP 类型定义及各目标智能体的绑定数统计

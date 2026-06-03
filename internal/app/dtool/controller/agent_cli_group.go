@@ -5,9 +5,9 @@ import (
 	"dev_tool/internal/app/dtool/define"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsgin"
 )
 
 // AgentCliGroupList 返回 AgentCli 专用分组列表（含每个分组关联的 AgentCli 数量）

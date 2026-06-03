@@ -2,7 +2,7 @@ package p_common
 
 import (
 	"fmt"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 var TMarkDownClient *TMarkDown

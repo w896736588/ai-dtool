@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gshttp"
-	"gitee.com/Sxiaobai/gs/v2/gshttp/stream"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gshttp"
+	"github.com/w896736588/go-tool/gshttp/stream"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 type CurlRun struct {

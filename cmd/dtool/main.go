@@ -4,7 +4,7 @@ import (
 	"dev_tool/internal/app/dtool"
 	"flag"
 
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 var ConfigFile string

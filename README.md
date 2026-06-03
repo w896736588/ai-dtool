@@ -25,10 +25,6 @@
 go env -w GOPROXY=https://goproxy.cn,direct
 go env -w GOPRIVATE=gitee.com
 
-# gs扩展安装
-go env -w GOPRIVATE=gitee.com
-# 更新到最新tag
-go get -u gitee.com/Sxiaobai/gs/v2@latest
 # task安装
 go install github.com/go-task/task/v3/cmd/task@latest
 # air监听启动
@@ -73,6 +69,6 @@ task package-linux -- 20260101
 task package-macos -- 20260101
 
 # 后台执行
-nohup ./dtool --ConfigFile=space >> /var/log/space.$(date +%Y%m%d).log 2>&1 &
+nohup ./dtool --ConfigFile=xxxx >> /var/log/xxxx.$(date +%Y%m%d).log 2>&1 &
 ```
 

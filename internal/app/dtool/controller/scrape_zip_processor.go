@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // resolveDownloadFilePath 将 /api/download/xxx.zip 转为磁盘上的物理路径。

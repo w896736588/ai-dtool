@@ -44,7 +44,7 @@
             :running-count="getPromptChatCounts('issue_fix').running"
             :interrupted-count="getPromptChatCounts('issue_fix').interrupted"
             :total-count="getPromptChatCounts('issue_fix').total"
-            :unread="workflowUnreadCount > 0"
+            :unread="hasUnreadInPromptType('issue_fix')"
             @click="openChatHistoryDialog"
           >
             历史对话
@@ -1330,6 +1330,15 @@ export default {
     this.ensureWorkflowUnreadSse()
     window.addEventListener('keydown', this.handleCtrlS)
   },
+  activated() {
+    this.ensureWorkflowUnreadSse()
+    this.loadWorkflowPage()
+    if (this.promptChatHistoryVisible) {
+      this.loadPromptChatHistoryListSilently()
+    } else {
+      this.loadChatCounts()
+    }
+  },
   beforeUnmount() {
     window.removeEventListener('keydown', this.handleCtrlS)
     this._stopChatHistoryDurationTimer()
@@ -1428,9 +1437,14 @@ export default {
     applyWorkflowPayload(data) {
       this.workflow = data.workflow || {}
       this.homeTask = data.home_task || this.homeTask || {}
+      const previousWorkflowId = Number(this.workflowId || 0)
       this.workflowId = Number(this.workflow.id || 0)
       this.requirementFetchConfig = data.requirement_fetch_config || this.requirementFetchConfig || {}
       this.parseNodeStatuses()
+      if (this.workflowId !== previousWorkflowId) {
+        this.unregisterWorkflowUnreadSse()
+        this.ensureWorkflowUnreadSse()
+      }
       document.title = this.homeTask.name || '任务工作流程'
     },
     // 解析后端返回的 node_statuses JSON 字符串
@@ -2638,6 +2652,16 @@ export default {
         agentCliApi.AgentChatMarkRead(row.id, (res) => {
           if (res && res.ErrCode === 0) {
             this.markPromptChatReadLocally(row.id)
+            if (this.$eventBus) {
+              this.$eventBus.emit('workflow_unread_changed', {
+                type: 'agent_chat_unread_change',
+                from_type: 'work_flow',
+                from_id: this.workflowId,
+                home_task_id: Number(this.homeTask?.id || 0),
+                workflow_unread: Math.max(0, Number(this.workflowUnreadCount || 0)),
+                chat_id: Number(row.id || 0),
+              })
+            }
           }
         })
       }
@@ -2691,12 +2715,20 @@ export default {
       this.promptChatDetailId = 0
     },
     updateChatListStatus(chatId, status) {
+      const normalizedChatId = Number(chatId || 0)
+      const selectedPromptHistoryChatId = this.promptChatHistoryVisible
+        ? Number(this.promptChatDetailId || 0)
+        : 0
       const updateItem = (list) => {
-        const item = list.find(i => i.id === chatId)
+        const item = list.find(i => Number(i.id || 0) === normalizedChatId)
         if (item) {
           item.status = status
           if (status !== 'running') {
-            this.markPromptChatUnreadLocally(chatId)
+            if (selectedPromptHistoryChatId > 0 && selectedPromptHistoryChatId === normalizedChatId) {
+              this.markPromptChatReadLocally(normalizedChatId)
+            } else {
+              this.markPromptChatUnreadLocally(normalizedChatId)
+            }
           }
         }
       }
@@ -2754,11 +2786,18 @@ export default {
         try {
           const obj = JSON.parse(line)
           if (obj.type === 'chat' && obj.subtype === 'completed') {
+            const selectedPromptHistoryChatId = this.promptChatHistoryVisible
+              ? Number(this.promptChatDetailId || 0)
+              : 0
             this.updateBackgroundChatListItem(normalizedChatId, {
               status: String(obj.status || 'completed').trim() || 'completed',
               line_count: state.lineCount,
             })
-            this.markPromptChatUnreadLocally(normalizedChatId)
+            if (selectedPromptHistoryChatId > 0 && selectedPromptHistoryChatId === normalizedChatId) {
+              this.markPromptChatReadLocally(normalizedChatId)
+            } else {
+              this.markPromptChatUnreadLocally(normalizedChatId)
+            }
             this.stopBackgroundChatStream(normalizedChatId)
             this.loadPromptChatHistoryListSilently()
             this.loadChatCounts()

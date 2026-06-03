@@ -215,6 +215,7 @@
               <MdPreview
                 :model-value="draftFragment.content"
                 preview-theme="github"
+                :auto-fold-threshold="999999"
               />
             </div>
           </div>
@@ -230,6 +231,7 @@
           <MdPreview
             :model-value="draftFragment.content"
             preview-theme="github"
+            :auto-fold-threshold="999999"
           />
         </div>
         <aside v-if="hasOutline" class="preview-outline">

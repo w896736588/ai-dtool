@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"gitee.com/Sxiaobai/gs/v2/gsdefine"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsdefine"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 type TDataBaseUp struct {

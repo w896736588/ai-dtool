@@ -22,10 +22,10 @@ import (
 	"sync"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsgin"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 const (
@@ -2279,13 +2279,14 @@ func TaskWorkflowBatchNodeStatus(c *gin.Context) {
 		gsgin.GinResponseSuccess(c, ``, map[string]any{})
 		return
 	}
-	nodeStatusesMap, err := common.DbMain.TaskWorkflowBatchNodeStatusesByHomeTaskIDs(request.HomeTaskIDs)
+	nodeStatusesMap, unreadCountMap, err := common.DbMain.TaskWorkflowBatchWorkflowSummaryByHomeTaskIDs(request.HomeTaskIDs)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`node_statuses_map`: nodeStatusesMap,
+		`unread_count_map`:  unreadCountMap,
 	})
 }
 
@@ -3754,9 +3755,14 @@ func taskWorkflowBroadcastUnreadChanged(chatID int64) {
 	fromType := cast.ToString(chatInfo[`from_type`])
 	fromID := cast.ToInt(chatInfo[`from_id`])
 	agentCliID := cast.ToInt(chatInfo[`agent_cli_id`])
+	homeTaskID := 0
 	workflowUnread := 0
 	agentCliUnread := 0
 	if fromType == common.AgentChatSourceTypeWorkflow && fromID > 0 {
+		workflowInfo, workflowErr := common.DbMain.TaskWorkflowInfo(fromID)
+		if workflowErr == nil {
+			homeTaskID = cast.ToInt(workflowInfo[`home_task_id`])
+		}
 		workflowUnread, _ = common.DbMain.AgentChatUnreadCountByWorkflow(fromID)
 	}
 	if fromType == common.AgentChatSourceTypeAgentCli && agentCliID > 0 {
@@ -3769,6 +3775,7 @@ func taskWorkflowBroadcastUnreadChanged(chatID int64) {
 			`chat_id`:          chatID,
 			`from_type`:        fromType,
 			`from_id`:          fromID,
+			`home_task_id`:     homeTaskID,
 			`agent_cli_id`:     agentCliID,
 			`workflow_unread`:  workflowUnread,
 			`agent_cli_unread`: agentCliUnread,

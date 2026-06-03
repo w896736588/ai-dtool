@@ -23,15 +23,15 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gstask"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gstask"
 
-	"gitee.com/Sxiaobai/gs/v2/gsdb"
-	"gitee.com/Sxiaobai/gs/v2/gsencrypt"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	inicodec "github.com/go-viper/encoding/ini"
 	"github.com/spf13/viper"
+	"github.com/w896736588/go-tool/gsdb"
+	"github.com/w896736588/go-tool/gsencrypt"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 const AppName = `dtool`

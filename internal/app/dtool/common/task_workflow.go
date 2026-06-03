@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 const (
@@ -394,26 +394,53 @@ func (h *CSqlite) TaskWorkflowUpdateNodeStatuses(workflowID int, nodeStatuses st
 	return err
 }
 
-// TaskWorkflowBatchNodeStatusesByHomeTaskIDs 根据 home_task_id 列表批量查询工作流 node_statuses。
-func (h *CSqlite) TaskWorkflowBatchNodeStatusesByHomeTaskIDs(homeTaskIDs []int) (map[int]string, error) {
-	result := map[int]string{}
+// TaskWorkflowBatchWorkflowSummaryByHomeTaskIDs 根据 home_task_id 列表批量查询工作流节点状态和未读数。
+func (h *CSqlite) TaskWorkflowBatchWorkflowSummaryByHomeTaskIDs(homeTaskIDs []int) (map[int]string, map[int]int, error) {
+	nodeStatusesMap := map[int]string{}
+	unreadCountMap := map[int]int{}
 	if len(homeTaskIDs) == 0 {
-		return result, nil
+		return nodeStatusesMap, unreadCountMap, nil
 	}
 	placeholders := make([]string, 0, len(homeTaskIDs))
-	args := make([]any, 0, len(homeTaskIDs))
+	args := make([]any, 0, len(homeTaskIDs)+3)
+	args = append(args, AgentChatSourceTypeWorkflow, agentChatReadNo, taskWorkflowChatStatusRunning)
 	for _, id := range homeTaskIDs {
+		if id <= 0 {
+			continue
+		}
 		placeholders = append(placeholders, `?`)
 		args = append(args, id)
 	}
-	list, err := h.Client.QueryBySql(`select home_task_id, node_statuses from tbl_task_workflow where home_task_id in (`+strings.Join(placeholders, `,`)+`)`, args...).All()
+	if len(placeholders) == 0 {
+		return nodeStatusesMap, unreadCountMap, nil
+	}
+	list, err := h.Client.QueryBySql(`SELECT tw.home_task_id, tw.node_statuses, COALESCE(ac.unread_total, 0) AS unread_total
+FROM tbl_task_workflow tw
+LEFT JOIN (
+	SELECT from_id AS workflow_id, COUNT(1) AS unread_total
+	FROM agent_chat
+	WHERE from_type = ? AND is_read = ? AND status <> ?
+	GROUP BY from_id
+) ac ON ac.workflow_id = tw.id
+WHERE tw.home_task_id IN (`+strings.Join(placeholders, `,`)+`)`, args...).All()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, row := range list {
+		homeTaskID := cast.ToInt(row[`home_task_id`])
+		nodeStatusesMap[homeTaskID] = strings.TrimSpace(cast.ToString(row[`node_statuses`]))
+		unreadCountMap[homeTaskID] = cast.ToInt(row[`unread_total`])
+	}
+	return nodeStatusesMap, unreadCountMap, nil
+}
+
+// TaskWorkflowBatchNodeStatusesByHomeTaskIDs 根据 home_task_id 列表批量查询工作流 node_statuses。
+func (h *CSqlite) TaskWorkflowBatchNodeStatusesByHomeTaskIDs(homeTaskIDs []int) (map[int]string, error) {
+	nodeStatusesMap, _, err := h.TaskWorkflowBatchWorkflowSummaryByHomeTaskIDs(homeTaskIDs)
 	if err != nil {
 		return nil, err
 	}
-	for _, row := range list {
-		result[cast.ToInt(row[`home_task_id`])] = strings.TrimSpace(cast.ToString(row[`node_statuses`]))
-	}
-	return result, nil
+	return nodeStatusesMap, nil
 }
 
 // TaskWorkflowBindApiDocFragment 绑定接口文档片段 id。

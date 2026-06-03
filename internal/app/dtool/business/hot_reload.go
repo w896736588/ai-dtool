@@ -1,4 +1,4 @@
-﻿package business
+package business
 
 import (
 	"dev_tool/internal/app/dtool/common"
@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	"gitee.com/Sxiaobai/gs/v2/gsdb"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsdb"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // hotReloadMu 保护所有热重载入口，同一时刻只允许一个配置项执行热重载。
@@ -237,4 +237,3 @@ func buildCurrentLogDBPath() string {
 	}
 	return filepath.Join(component.EnvClient.LogDbConfig.DbPath, component.EnvClient.LogDbConfig.DbName)
 }
-

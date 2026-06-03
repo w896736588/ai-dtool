@@ -698,6 +698,16 @@ export default {
       if (cached > 0) this.selectedGroupId = cached
     } catch {}
   },
+  activated() {
+    this.ensureAgentUnreadSse()
+    this.loadList()
+    if (this.agentChatHistoryVisible && Number(this.agentChatHistoryCliId || 0) > 0) {
+      this.openAgentChatHistory({
+        id: this.agentChatHistoryCliId,
+        name: this.agentChatHistoryTitle,
+      }, this.agentChatDetailId || this.chatDetailId)
+    }
+  },
   beforeUnmount() {
     this.closeChatDetail()
     this.stopAllBackgroundChatStreams()

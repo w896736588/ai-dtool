@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsgin"
 )
 
 const mainDBStorageAlertThresholdBytes int64 = 100 * 1024 * 1024

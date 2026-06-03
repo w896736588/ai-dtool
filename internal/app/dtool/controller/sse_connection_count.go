@@ -6,8 +6,8 @@ import (
 	"dev_tool/internal/pkg/p_define"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gsgin"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // sendConnectionCountSnapshot 向指定 SSE 连接发送一次连接数快照（包含已用数和总数）

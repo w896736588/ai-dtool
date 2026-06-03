@@ -2,8 +2,8 @@ package controller
 
 import (
 	"dev_tool/internal/app/dtool/common"
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
+	"github.com/w896736588/go-tool/gsgin"
 )
 
 func StarAdd(c *gin.Context) {

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"strings"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsgin"
 )
 
 // smartLinkLocatorAutoExtractResult 描述 AI 自动提取后的 locator 字符串。

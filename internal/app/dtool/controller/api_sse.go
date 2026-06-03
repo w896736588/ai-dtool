@@ -5,8 +5,8 @@ import (
 	"dev_tool/internal/pkg/p_define"
 	"strings"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gsgin"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 const apiDataChangeSseStatusPrefix = `ClientId:`

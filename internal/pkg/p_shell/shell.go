@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsssh"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsssh"
+	"github.com/w896736588/go-tool/gstool"
 	"golang.org/x/crypto/ssh"
 )
 

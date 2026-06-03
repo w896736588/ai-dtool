@@ -10,9 +10,9 @@ import (
 	"dev_tool/internal/pkg/p_shell"
 	"dev_tool/internal/pkg/p_sse"
 
-	"gitee.com/Sxiaobai/gs/v2/gsdb"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/viper"
+	"github.com/w896736588/go-tool/gsdb"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // DataBaseUpRunner 抽象数据库迁移执行器，避免 component 直接依赖 business 产生包循环。

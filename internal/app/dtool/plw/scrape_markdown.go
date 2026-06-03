@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/playwright-community/playwright-go"
+	"github.com/w896736588/go-tool/gstool"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )

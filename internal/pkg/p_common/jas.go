@@ -1,7 +1,7 @@
 package p_common
 
 import (
-	"gitee.com/Sxiaobai/gs/v2/gstool"
+	"github.com/w896736588/go-tool/gstool"
 	"os"
 )
 

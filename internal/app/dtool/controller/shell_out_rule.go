@@ -5,9 +5,9 @@ import (
 	"dev_tool/internal/app/dtool/component"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsgin"
 )
 
 // ShellOutRuleSetList 返回全部规则集。 // ShellOutRuleSetList returns all shell-out rule sets.

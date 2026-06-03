@@ -14,13 +14,13 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsdb"
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
-	"gitee.com/Sxiaobai/gs/v2/gsssh"
-	"gitee.com/Sxiaobai/gs/v2/gstask"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsdb"
+	"github.com/w896736588/go-tool/gsgin"
+	"github.com/w896736588/go-tool/gsssh"
+	"github.com/w896736588/go-tool/gstask"
+	"github.com/w896736588/go-tool/gstool"
 	ini "gopkg.in/ini.v1"
 )
 

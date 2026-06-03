@@ -11,10 +11,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsgin"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 const (

@@ -36,7 +36,10 @@
             >
               <div class="home-task-card__header">
                 <div>
-                  <div class="home-task-card__title">{{ task.name }}</div>
+                  <div class="home-task-card__title">
+                    <span>{{ task.name }}</span>
+                    <span v-if="hasHomeTaskWorkflowUnread(task)" class="home-task-card__unread-dot"></span>
+                  </div>
                   <div class="home-task-card__meta">
                     <span>开始时间：{{ task.start_time_desc || '-' }}</span>
                     <span>最后操作：{{ task.last_operated_at_desc || '-' }}</span>
@@ -165,7 +168,10 @@
             >
               <div class="home-task-card__header">
                 <div>
-                  <div class="home-task-card__title">{{ task.name }}</div>
+                  <div class="home-task-card__title">
+                    <span>{{ task.name }}</span>
+                    <span v-if="hasHomeTaskWorkflowUnread(task)" class="home-task-card__unread-dot"></span>
+                  </div>
                   <div class="home-task-card__meta">
                     <span>开始时间：{{ task.start_time_desc || '-' }}</span>
                     <span>最后操作：{{ task.last_operated_at_desc || '-' }}</span>
@@ -662,6 +668,7 @@ import apiManagement from '@/utils/base/api'
 import dockerApi from '@/utils/base/compose'
 import smartLinkSetApi from '@/utils/base/smart_link_set'
 import taskWorkflowApi from '@/utils/base/task_workflow'
+import sseDistribute from '@/utils/base/sse_distribute'
 import GitActionButton from "@/components/base/GitActionButton.vue"
 
 const HOME_TASK_TAB_ACTIVE = 'active'
@@ -794,6 +801,7 @@ export default {
       homeTaskEditFeedbackTimers: {},
       homeTaskEditFeedbackDurationMs: 1000,
       homeTaskWorkflowCountMap: {},
+      homeTaskWorkflowUnreadMap: {},
       homeTaskLocalDirStatusMap: {},
       homeTaskBranchStatusMap: {},
       homeTaskUnusedLocalDirs: [],
@@ -837,6 +845,10 @@ export default {
     },
   },
   mounted() {
+    this.ensureWorkflowUnreadSse()
+    if (this.$eventBus) {
+      this.$eventBus.on('workflow_unread_changed', this.handleWorkflowUnreadSseMessage)
+    }
     this.loadHomeTaskGitRepoList()
     this.loadHomeTaskApiCollections()
     this.loadHomeTaskDockerList()
@@ -846,6 +858,7 @@ export default {
     this.loadHomeTaskSmartLinkList()
   },
   activated() {
+    this.ensureWorkflowUnreadSse()
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
     this.loadHomeTaskGitRepoList()
@@ -854,7 +867,44 @@ export default {
     this.loadHomeTaskMysqlList()
     this.loadHomeTaskSmartLinkList()
   },
+  beforeUnmount() {
+    if (this.$eventBus) {
+      this.$eventBus.off('workflow_unread_changed', this.handleWorkflowUnreadSseMessage)
+    }
+    this.unregisterWorkflowUnreadSse()
+  },
   methods: {
+    ensureWorkflowUnreadSse() {
+      if (this._workflowUnreadSseId) return
+      const nextId = 'home_task_workflow_unread'
+      this._workflowUnreadSseId = nextId
+      sseDistribute.InitFromLoginStatus().then((created) => {
+        if (!created && !sseDistribute.GetSseClientId()) return
+        sseDistribute.RegisterReceive(nextId, this.handleWorkflowUnreadSseMessage)
+      })
+    },
+    unregisterWorkflowUnreadSse() {
+      if (!this._workflowUnreadSseId) return
+      sseDistribute.UnRegisterReceive(this._workflowUnreadSseId)
+      this._workflowUnreadSseId = ''
+    },
+    handleWorkflowUnreadSseMessage(data) {
+      if (!data || data.type !== 'agent_chat_unread_change' || data.from_type !== 'work_flow') {
+        return
+      }
+      const homeTaskId = Number(data.home_task_id || 0)
+      if (homeTaskId <= 0) {
+        return
+      }
+      const nextMap = { ...this.homeTaskWorkflowUnreadMap }
+      const nextUnread = Math.max(0, Number(data.workflow_unread || 0))
+      if (nextUnread > 0) {
+        nextMap[homeTaskId] = nextUnread
+      } else {
+        delete nextMap[homeTaskId]
+      }
+      this.homeTaskWorkflowUnreadMap = nextMap
+    },
     handleHomeTaskTabChange(tabName) {
       if (tabName === HOME_TASK_TAB_ACTIVE) {
         this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
@@ -886,6 +936,7 @@ export default {
         }))
         if (isArchived === HOME_TASK_ARCHIVED_YES) {
           this.homeTaskArchivedList = taskList
+          this.loadHomeTaskWorkflowCounts(taskList)
         } else {
           this.homeTaskActiveList = taskList
           this.loadHomeTaskWorkflowCounts(taskList)
@@ -1705,16 +1756,25 @@ export default {
     },
     loadHomeTaskWorkflowCounts(taskList) {
       const workflowTaskIds = []
+      const nextCountMap = { ...this.homeTaskWorkflowCountMap }
+      const nextUnreadMap = { ...this.homeTaskWorkflowUnreadMap }
       for (const task of taskList) {
+        const taskId = Number(task.id || 0)
+        delete nextCountMap[taskId]
+        delete nextUnreadMap[taskId]
         if (Number(task.use_workflow) !== HOME_TASK_USE_WORKFLOW_NO) {
-          workflowTaskIds.push(Number(task.id))
+          workflowTaskIds.push(taskId)
         }
       }
+      this.homeTaskWorkflowCountMap = nextCountMap
+      this.homeTaskWorkflowUnreadMap = nextUnreadMap
       if (workflowTaskIds.length === 0) return
       taskWorkflowApi.TaskWorkflowBatchNodeStatus(workflowTaskIds, (response) => {
         if (!(response && response.ErrCode === 0 && response.Data)) return
         const nodeStatusesMap = response.Data.node_statuses_map || {}
+        const unreadCountMap = response.Data.unread_count_map || {}
         const newMap = { ...this.homeTaskWorkflowCountMap }
+        const newUnreadMap = { ...this.homeTaskWorkflowUnreadMap }
         for (const task of taskList) {
           const taskId = Number(task.id)
           if (Number(task.use_workflow) === HOME_TASK_USE_WORKFLOW_NO) continue
@@ -1738,9 +1798,15 @@ export default {
           const total = HOME_TASK_WORKFLOW_NODE_KEYS.length
           const nonSkipped = total - skipped
           newMap[taskId] = completed + '/' + nonSkipped
+          newUnreadMap[taskId] = Math.max(0, Number(unreadCountMap[String(taskId)] || unreadCountMap[taskId] || 0))
         }
         this.homeTaskWorkflowCountMap = newMap
+        this.homeTaskWorkflowUnreadMap = newUnreadMap
       })
+    },
+    hasHomeTaskWorkflowUnread(task) {
+      const taskId = Number(task?.id || 0)
+      return Number(this.homeTaskWorkflowUnreadMap[taskId] || 0) > 0
     },
     shouldTruncateTagLabel(tag) {
       // 接口集合(api)和分支名(branch_name)需要截断显示

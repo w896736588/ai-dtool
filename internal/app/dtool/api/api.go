@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gshttp"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
 	"github.com/tidwall/gjson"
+	"github.com/w896736588/go-tool/gshttp"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 type BaseInfo struct {

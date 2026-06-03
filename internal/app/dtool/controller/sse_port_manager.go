@@ -10,8 +10,8 @@ import (
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
+	"github.com/w896736588/go-tool/gsgin"
 )
 
 // 每个 SSE 端口允许的最大连接数

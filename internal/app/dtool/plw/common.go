@@ -11,9 +11,9 @@ import (
 	"net/url"
 	"strings"
 
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 func buildAccountKey(userName string) string {

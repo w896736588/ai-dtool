@@ -4,8 +4,8 @@ import (
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/pkg/p_sse"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
 	"github.com/gin-gonic/gin"
+	"github.com/w896736588/go-tool/gsgin"
 )
 
 const nodeInstallURL = "https://nodejs.org/zh-cn/download"

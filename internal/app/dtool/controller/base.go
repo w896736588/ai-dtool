@@ -13,12 +13,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitee.com/Sxiaobai/gs/v2/gsgin"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
+	"github.com/w896736588/go-tool/gsgin"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // getSafeTokenManager 创建 Safe Token 管理器（从配置读取）

@@ -12,8 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/playwright-community/playwright-go"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 type TPlaywright struct {

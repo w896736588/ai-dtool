@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"gitee.com/Sxiaobai/gs/v2/gsdb"
-	"gitee.com/Sxiaobai/gs/v2/gstool"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsdb"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 var DbMain = &CSqlite{}
