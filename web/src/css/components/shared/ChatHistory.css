@@ -1,3 +1,31 @@
+.chat-history-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+}
+
+.chat-history-dialog__title {
+  min-width: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.chat-history-dialog__workspace-summary {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #909399;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .chat-history-btn--running {
   position: relative;
   padding-left: 22px;

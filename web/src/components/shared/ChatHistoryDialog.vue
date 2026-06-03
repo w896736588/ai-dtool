@@ -1,13 +1,24 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    :title="title"
     width="80vw"
     top="3vh"
     destroy-on-close
     @close="handleClose"
     @closed="$emit('closed')"
   >
+    <template #header>
+      <div class="chat-history-dialog__header">
+        <span class="chat-history-dialog__title">{{ title }}</span>
+        <span
+          v-if="workspaceSummaryText"
+          class="chat-history-dialog__workspace-summary"
+          :title="workspaceSummaryText"
+        >
+          {{ workspaceSummaryText }}
+        </span>
+      </div>
+    </template>
     <div class="chat-combined-body" v-loading="loading">
       <div class="chat-combined-list">
         <template v-for="group in groupedItems" :key="group.dir">
@@ -573,6 +584,19 @@ export default {
         }
       })
       return groups
+    },
+    // workspaceSummaryText 聚合顶部展示的工作空间简称列表，按首次出现顺序去重。
+    workspaceSummaryText() {
+      const labelSet = new Set()
+      const labels = []
+      const itemList = Array.isArray(this.items) ? this.items : []
+      itemList.forEach((item) => {
+        const label = this.getItemWorkspaceLabel(item)
+        if (!label || labelSet.has(label)) return
+        labelSet.add(label)
+        labels.push(label)
+      })
+      return labels.join(', ')
     },
     // showDetailInfoBar 控制底部信息栏展示。 // Controls rendering of the footer info bar.
     showDetailInfoBar() {

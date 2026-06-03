@@ -153,7 +153,14 @@
             <div>基线分支：{{ branchSwitchStreamMeta.base_branch || '-' }}</div>
             <div>目标分支：{{ branchSwitchStreamMeta.branch_name || '-' }}</div>
           </div>
+          <div v-if="branchSwitchStreamRunning" class="branch-switch-stream__status">
+            <span class="branch-switch-stream__spinner" />
+            <span>命令执行中，请稍候...</span>
+          </div>
           <div ref="branchSwitchStreamLog" class="branch-switch-stream__log">
+            <div v-if="branchSwitchStreamLines.length === 0" class="branch-switch-stream__placeholder">
+              正在建立执行连接，日志会在这里实时输出...
+            </div>
             <div
               v-for="(line, idx) in branchSwitchStreamLines"
               :key="idx"
@@ -1218,6 +1225,7 @@ export default {
       branchMismatchPromptedTaskId: 0,
       branchSwitchingKey: '',
       branchSwitchStreamDialogVisible: false,
+      branchSwitchStreamRunning: false,
       branchSwitchStreamLines: [],
       branchSwitchStreamMeta: {
         local_dir: '',
@@ -3328,6 +3336,8 @@ export default {
     },
     closeBranchSwitchStreamDialog() {
       this.branchSwitchStreamDialogVisible = false
+      this.branchSwitchStreamRunning = false
+      this.branchSwitchingKey = ''
       if (this._branchSwitchEventSource) {
         this._branchSwitchEventSource.close()
         this._branchSwitchEventSource = null
@@ -3356,6 +3366,7 @@ export default {
         base_branch: payload.base_branch || '',
         branch_name: payload.branch_name || '',
       }
+      this.branchSwitchStreamRunning = true
       this.branchSwitchStreamLines = []
       this.branchSwitchStreamDialogVisible = true
       this.$nextTick(() => {
@@ -3364,6 +3375,7 @@ export default {
       const url = gitApi.GitCleanupAndSwitchBranchByIdStreamUrl(payload)
       if (!url) {
         this.branchSwitchingKey = ''
+        this.branchSwitchStreamRunning = false
         this.appendBranchSwitchLog('SSE 连接不可用，无法实时展示切换步骤', 'error')
         this.$helperNotify.error('SSE 连接不可用')
         return
@@ -3395,6 +3407,7 @@ export default {
           return
         }
         if (parsed.type === 'done') {
+          this.branchSwitchStreamRunning = false
           if (parsed.status === 'success') {
             this.appendBranchSwitchLog(parsed.message || '分支切换完成', 'success')
             this.$helperNotify.success(`已切换到 ${payload.branch_name}`)
@@ -3411,6 +3424,7 @@ export default {
       }
       es.onerror = () => {
         if (this._branchSwitchEventSource === es) {
+          this.branchSwitchStreamRunning = false
           this.appendBranchSwitchLog('连接已断开', 'error')
           this.branchSwitchingKey = ''
           es.close()
@@ -3446,6 +3460,29 @@ export default {
   font-size: 13px;
 }
 
+.branch-switch-stream__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #eef6ea;
+  border: 1px solid #d7e7cf;
+  color: #49624a;
+  font-size: 13px;
+}
+
+.branch-switch-stream__spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(73, 98, 74, 0.2);
+  border-top-color: #49624a;
+  animation: branch-switch-stream-spin 0.8s linear infinite;
+  flex: 0 0 auto;
+}
+
 .branch-switch-stream__log {
   max-height: 420px;
   overflow: auto;
@@ -3458,6 +3495,10 @@ export default {
   font-family: Consolas, "Courier New", monospace;
   font-size: 12px;
   line-height: 1.6;
+}
+
+.branch-switch-stream__placeholder {
+  color: #8b958c;
 }
 
 .branch-switch-stream__line {
@@ -3475,6 +3516,15 @@ export default {
 
 .branch-switch-stream__line--success {
   color: #4d8b57;
+}
+
+@keyframes branch-switch-stream-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .task-workflow-shell {
