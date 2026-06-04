@@ -38,7 +38,6 @@
                 <div>
                   <div class="home-task-card__title">
                     <span>{{ task.name }}</span>
-                    <span v-if="hasHomeTaskWorkflowUnread(task)" class="home-task-card__unread-dot"></span>
                   </div>
                   <div class="home-task-card__meta">
                     <span>开始时间：{{ task.start_time_desc || '-' }}</span>
@@ -91,6 +90,7 @@
                   <GitActionButton
                     compact
                     variant="primary"
+                    :class="{ 'home-task-workflow-btn--unread': hasHomeTaskWorkflowUnread(task) }"
                     :disabled="isHomeTaskBusy(task.id)"
                     v-if="Number(task.use_workflow) !== HOME_TASK_USE_WORKFLOW_NO"
                     @click="openTaskWorkflow(task)"
@@ -170,7 +170,6 @@
                 <div>
                   <div class="home-task-card__title">
                     <span>{{ task.name }}</span>
-                    <span v-if="hasHomeTaskWorkflowUnread(task)" class="home-task-card__unread-dot"></span>
                   </div>
                   <div class="home-task-card__meta">
                     <span>开始时间：{{ task.start_time_desc || '-' }}</span>
@@ -233,6 +232,7 @@
                   <GitActionButton
                     compact
                     variant="primary"
+                    :class="{ 'home-task-workflow-btn--unread': hasHomeTaskWorkflowUnread(task) }"
                     :disabled="isHomeTaskBusy(task.id)"
                     v-if="Number(task.use_workflow) !== HOME_TASK_USE_WORKFLOW_NO"
                     @click="openTaskWorkflow(task)"
