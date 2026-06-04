@@ -779,7 +779,8 @@ export default {
     },
     isToolBlockRunning(block) {
       if (!block) return false
-      return block._status === 'running' || block._status === 'waiting_result'
+      const status = block._status || block._codexStatus || ''
+      return status === 'running' || status === 'in_progress' || status === 'waiting_result'
     },
     formatCliType(cliType) {
       return this.formatCliTypeFn(cliType)
