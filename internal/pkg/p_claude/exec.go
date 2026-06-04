@@ -3,7 +3,9 @@ package p_claude
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strconv"
@@ -37,6 +39,11 @@ type ptyResult struct {
 func RunClaudeStream(ctx context.Context, cfg RunConfig, callback func(msg StreamMessage)) (string, error) {
 	args := buildArgs(cfg)
 	env := buildEnv(cfg)
+	stdinFile, cleanupPromptFile, err := preparePromptStdinFile(cfg.Prompt)
+	if err != nil {
+		return ``, fmt.Errorf("prepare claude prompt file failed: %w", err)
+	}
+	defer cleanupPromptFile()
 
 	log.Printf("[claude-exec] 启动进程, dir=%s model=%s", cfg.WorkingDir, cfg.Model)
 	log.Printf("[claude-exec] 完整参数: %v", args)
@@ -47,7 +54,7 @@ func RunClaudeStream(ctx context.Context, cfg RunConfig, callback func(msg Strea
 		log.Printf("[claude-exec] settings 路径=%s", cfg.SettingsPath)
 	}
 
-	result, err := startClaude(ctx, args, cfg.WorkingDir, env)
+	result, err := startClaude(ctx, args, cfg.WorkingDir, env, stdinFile)
 	if err != nil {
 		log.Printf("[claude-exec] 启动失败: %v", err)
 		return ``, fmt.Errorf("claude start failed: %w", err)
@@ -137,7 +144,7 @@ doneReading:
 		if cfg.SettingsPath != "" {
 			errMsg += fmt.Sprintf(" settings=%s", cfg.SettingsPath)
 		}
-		return sessionID, fmt.Errorf(errMsg)
+		return sessionID, errors.New(errMsg)
 	}
 	return sessionID, nil
 }
@@ -149,7 +156,7 @@ func buildArgs(cfg RunConfig) []string {
 		args = append(args, `--resume`, cfg.SessionID)
 	}
 	args = append(args,
-		`-p`, sanitizePrompt(cfg.Prompt),
+		`-p`,
 		`--add-dir`, cfg.WorkingDir,
 		`--output-format`, `stream-json`,
 		`--include-partial-messages`,
@@ -207,16 +214,26 @@ func parseLine(line string) StreamMessage {
 	return msg
 }
 
-// sanitizePrompt 将 prompt 中的换行符替换为空格，避免多行内容作为命令行参数传递时导致 claude CLI 解析异常。
-// 如果内容以 "-" 开头，在前面加空格，防止 claude CLI 将其误解析为选项标志。
-func sanitizePrompt(prompt string) string {
-	s := strings.ReplaceAll(prompt, "\r\n", " ")
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\r", " ")
-	if strings.HasPrefix(s, "-") {
-		s = " " + s
+func preparePromptStdinFile(prompt string) (*os.File, func(), error) {
+	file, err := os.CreateTemp("", "dtool-claude-prompt-*.txt")
+	if err != nil {
+		return nil, func() {}, err
 	}
-	return s
+
+	cleanup := func() {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+	}
+
+	if _, err := io.WriteString(file, prompt); err != nil {
+		cleanup()
+		return nil, func() {}, err
+	}
+	if _, err := file.Seek(0, 0); err != nil {
+		cleanup()
+		return nil, func() {}, err
+	}
+	return file, cleanup, nil
 }
 
 // BuildCommandLine 根据配置构建完整的 claude CLI 命令字符串（用于前端展示）。
@@ -227,9 +244,7 @@ func BuildCommandLine(cfg RunConfig) string {
 		sb.WriteString(` --resume `)
 		sb.WriteString(cfg.SessionID)
 	}
-	sb.WriteString(` -p "`)
-	sb.WriteString(sanitizePrompt(cfg.Prompt))
-	sb.WriteString(`"`)
+	sb.WriteString(` -p < prompt-file`)
 	sb.WriteString(` --add-dir "`)
 	sb.WriteString(cfg.WorkingDir)
 	sb.WriteString(`"`)

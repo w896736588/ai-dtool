@@ -5,6 +5,7 @@ package p_codex
 import (
 	"bufio"
 	"context"
+	"io"
 	"log"
 	"os/exec"
 	"syscall"
@@ -13,10 +14,11 @@ import (
 // startCodex Unix 实现。
 // 使用 Setsid + Setpgid 创建独立进程组，关闭时通过信号杀死整个进程组，
 // 确保子进程一并终止。
-func startCodex(ctx context.Context, args []string, workDir string, env []string) (ptyResult, error) {
+func startCodex(ctx context.Context, args []string, workDir string, env []string, stdin io.Reader) (ptyResult, error) {
 	cmd := exec.Command(`codex`, args...)
 	cmd.Dir = workDir
 	cmd.Env = env
+	cmd.Stdin = stdin
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setsid:  true,
 		Setpgid: true,

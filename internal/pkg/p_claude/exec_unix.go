@@ -5,6 +5,7 @@ package p_claude
 import (
 	"bufio"
 	"context"
+	"io"
 	"log"
 	"os/exec"
 	"syscall"
@@ -13,10 +14,11 @@ import (
 // startClaude Unix 实现。
 // 使用 Setsid + Setpgid 创建独立进程组，关闭时通过信号杀死整个进程组，
 // 确保 npx chrome-devtools-mcp 等子进程一并终止。
-func startClaude(ctx context.Context, args []string, workDir string, env []string) (ptyResult, error) {
+func startClaude(ctx context.Context, args []string, workDir string, env []string, stdin io.Reader) (ptyResult, error) {
 	cmd := exec.Command(`claude`, args...)
 	cmd.Dir = workDir
 	cmd.Env = env
+	cmd.Stdin = stdin
 	// Setsid：脱离父进程的会话，防止 Ctrl+C 等信号传播到子进程
 	// Setpgid：以子进程 PID 创建新进程组，后续可通过 -pgid 杀死整组进程
 	cmd.SysProcAttr = &syscall.SysProcAttr{

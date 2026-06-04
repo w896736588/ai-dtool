@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -92,7 +93,7 @@ func assignProcessToJob(job syscall.Handle, pid int) error {
 // startCodex Windows 实现。
 // 启动时将 Codex CLI 进程加入 kill-on-close Job Object，
 // 确保 Go 进程崩溃或退出时子进程不会残留为孤儿。
-func startCodex(ctx context.Context, args []string, workDir string, env []string) (ptyResult, error) {
+func startCodex(ctx context.Context, args []string, workDir string, env []string, stdin io.Reader) (ptyResult, error) {
 	job, jobErr := createKillOnCloseJob()
 	if jobErr != nil {
 		log.Printf("[codex-exec] 创建 Job Object 失败（降级运行，无孤儿进程保护）: %v", jobErr)
@@ -101,6 +102,7 @@ func startCodex(ctx context.Context, args []string, workDir string, env []string
 	cmd := exec.Command(`codex`, args...)
 	cmd.Dir = workDir
 	cmd.Env = env
+	cmd.Stdin = stdin
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | createBreakawayFromJob,
 	}
