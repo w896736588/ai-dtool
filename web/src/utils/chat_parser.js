@@ -88,6 +88,40 @@ function extractTasksFromToolUseResult(toolUseResult) {
   return null
 }
 
+function ensureThinkingTiming(cm) {
+  if (!cm._thinkingTiming) {
+    cm._thinkingTiming = { startMs: 0, durationMs: 0 }
+  }
+  return cm._thinkingTiming
+}
+
+function ensureBlockMaps(cm) {
+  if (!cm._blockIndexMap) cm._blockIndexMap = new Map()
+  return cm._blockIndexMap
+}
+
+function getOrCreateTextBlock(cm, blockIndex) {
+  const blockMap = ensureBlockMaps(cm)
+  const existing = blockMap.get(blockIndex)
+  if (existing && existing.type === 'text') return existing
+  const block = { type: 'text', text: '' }
+  cm.content.push(block)
+  blockMap.set(blockIndex, block)
+  return block
+}
+
+function getToolUseTarget(target) {
+  if (!target) return null
+  return target.block || target.msg || null
+}
+
+function applyToolResultToTarget(target, resultData) {
+  const toolTarget = getToolUseTarget(target)
+  if (!toolTarget) return
+  toolTarget._result = resultData
+  toolTarget._status = 'completed'
+}
+
 // parseChatLines 将 claude stream-json 输出解析为可渲染的消息数组。
 // parseOneLine 解析单行 SSE 数据，更新 messages、currentMessage 和 toolUseMap。
 // 提取为独立函数以便全量解析和增量解析共用。
@@ -166,109 +200,140 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
         usage: null,
         _thinkingTiming: { startMs: 0, durationMs: 0 },
         _thinkingCollapsed: false,
+        _emitted: false,
+        _messageId: event.message?.id || '',
+        _messageStopped: false,
+        _activeBlockIndex: -1,
+        _activeThinkingIndex: -1,
+        _blockIndexMap: new Map(),
       }
     } else if (eventType === 'content_block_start') {
       if (!cm) return cm
-      cm._blockType = event.content_block?.type || ''
-      if (cm._blockType === 'tool_use') {
+      const blockIndex = Number.isInteger(event.index) ? event.index : cm._activeBlockIndex
+      const blockType = event.content_block?.type || ''
+      cm._activeBlockIndex = blockIndex
+      if (blockType === 'thinking') {
+        cm._activeThinkingIndex = blockIndex
+        const timing = ensureThinkingTiming(cm)
+        if (!timing.startMs) {
+          timing.startMs = Date.now()
+          timing.durationMs = 0
+        }
+      } else if (blockType === 'tool_use') {
         const block = {
           type: 'tool_use',
           name: event.content_block?.name || '',
           id: event.content_block?.id || '',
           input: '',
+          _status: 'running',
         }
         cm.content.push(block)
+        ensureBlockMaps(cm).set(blockIndex, block)
         if (block.id) {
           toolUseMap.set(block.id, { msg: null, block, isNew: true })
         }
+      } else if (blockType === 'text') {
+        getOrCreateTextBlock(cm, blockIndex)
+      }
+      if (!cm._emitted && (cm.content.length > 0 || cm.thinking || blockType === 'thinking')) {
+        messages.push(cm)
+        cm._emitted = true
       }
     } else if (eventType === 'content_block_delta') {
       if (!cm) return cm
+      const blockIndex = Number.isInteger(event.index) ? event.index : cm._activeBlockIndex
       const delta = event.delta || {}
       if (delta.type === 'text_delta') {
-        if (cm._blockType === 'tool_use' && cm.content.length > 0) {
-          const last = cm.content[cm.content.length - 1]
-          if (last.type === 'tool_use') {
-            last.input += (delta.text || '')
-          }
+        const targetBlock = ensureBlockMaps(cm).get(blockIndex)
+        if (targetBlock && targetBlock.type === 'tool_use') {
+          targetBlock.input += (delta.text || '')
         } else {
-          const lastContent = cm.content[cm.content.length - 1]
-          if (lastContent && lastContent.type === 'text') {
-            lastContent.text += (delta.text || '')
-          } else {
-            cm.content.push({ type: 'text', text: delta.text || '' })
-          }
+          getOrCreateTextBlock(cm, blockIndex).text += (delta.text || '')
         }
       } else if (delta.type === 'thinking_delta') {
+        const timing = ensureThinkingTiming(cm)
+        if (!timing.startMs) timing.startMs = Date.now()
+        cm._activeThinkingIndex = blockIndex
         cm.thinking += (delta.thinking || '')
       } else if (delta.type === 'input_json_delta') {
-        if (cm.content.length > 0) {
-          const last = cm.content[cm.content.length - 1]
-          if (last.type === 'tool_use') {
-            last.input += (delta.partial_json || '')
-          }
+        const targetBlock = ensureBlockMaps(cm).get(blockIndex)
+        if (targetBlock && targetBlock.type === 'tool_use') {
+          targetBlock.input += (delta.partial_json || '')
         }
+      }
+      if (!cm._emitted && (cm.content.length > 0 || cm.thinking)) {
+        messages.push(cm)
+        cm._emitted = true
       }
     } else if (eventType === 'content_block_stop') {
       if (cm) {
-        if (cm._blockType === 'tool_use' && cm.content.length > 0) {
-          const last = cm.content[cm.content.length - 1]
-          if (last.type === 'tool_use' && last.input) {
-            try {
-              const parsed = JSON.parse(last.input)
-              last.inputObj = parsed
-              last.input = JSON.stringify(parsed, null, 2)
-              const di = buildToolDisplayInput(last.name, parsed)
-              if (di) last.displayInput = di
-              // TodoWrite / TaskCreate / TaskUpdate: 挂载任务列表
-              const tasks = extractTasks(last.name, parsed)
-              if (tasks) last._tasks = tasks
-              // AskUserQuestion: 挂载问题列表
-              const questions = extractAskUserQuestions(last.name, parsed)
-              if (questions) last._askQuestions = questions
-            } catch (e) {
-              // 解析失败，保留原始字符串
-            }
+        const blockIndex = Number.isInteger(event.index) ? event.index : cm._activeBlockIndex
+        const stoppedBlock = ensureBlockMaps(cm).get(blockIndex)
+        if (stoppedBlock && stoppedBlock.type === 'tool_use' && stoppedBlock.input) {
+          try {
+            const parsed = JSON.parse(stoppedBlock.input)
+            stoppedBlock.inputObj = parsed
+            stoppedBlock.input = JSON.stringify(parsed, null, 2)
+            const di = buildToolDisplayInput(stoppedBlock.name, parsed)
+            if (di) stoppedBlock.displayInput = di
+            const tasks = extractTasks(stoppedBlock.name, parsed)
+            if (tasks) stoppedBlock._tasks = tasks
+            const questions = extractAskUserQuestions(stoppedBlock.name, parsed)
+            if (questions) stoppedBlock._askQuestions = questions
+          } catch (e) {
+            // 解析失败，保留原始字符串
           }
         }
-        cm._blockType = ''
+        if (stoppedBlock && stoppedBlock.type === 'tool_use' && !stoppedBlock._result) {
+          stoppedBlock._status = 'waiting_result'
+        }
+        if (cm._activeThinkingIndex === blockIndex) {
+          const timing = ensureThinkingTiming(cm)
+          if (timing.startMs && !timing.durationMs) {
+            timing.durationMs = Date.now() - timing.startMs
+          }
+          cm._activeThinkingIndex = -1
+        }
+        if (cm._activeBlockIndex === blockIndex) {
+          cm._activeBlockIndex = -1
+        }
       }
     } else if (eventType === 'message_delta') {
       if (cm) {
         cm.usage = event.delta?.usage || event.usage || null
+        cm.stopReason = event.delta?.stop_reason || event.stop_reason || cm.stopReason || ''
       }
     } else if (eventType === 'message_stop') {
-      if (cm && (cm.content.length > 0 || cm.thinking)) {
+      if (cm) {
+        cm._messageStopped = true
+        const timing = ensureThinkingTiming(cm)
+        if (timing.startMs && !timing.durationMs) {
+          timing.durationMs = Date.now() - timing.startMs
+        }
+      }
+      if (cm && !cm._emitted && (cm.content.length > 0 || cm.thinking)) {
         messages.push(cm)
+        cm._emitted = true
       }
       cm = null
     }
   } else if (lineType === 'user') {
     const content = obj.message?.content || []
-    // 提取顶层 tool_use_result 中的任务数据（如有）
     const toolUseResultTasks = extractTasksFromToolUseResult(obj.tool_use_result)
     for (const part of content) {
       if (part.type === 'tool_result') {
         const text = typeof part.content === 'string' ? part.content : JSON.stringify(part.content || '')
         const toolUseId = part.tool_use_id || ''
-        // 尝试即时配对
         const target = toolUseMap.get(toolUseId)
         if (target) {
           const resultData = { text, collapsed: true }
           if (toolUseResultTasks) resultData._tasks = toolUseResultTasks
-          if (target.isNew) {
-            // 当前 batch 内新创建的对象，直接赋值即可（尚未变为响应式）
-            if (target.block) {
-              target.block._result = resultData
-            } else if (target.msg) {
-              target.msg._result = resultData
-            }
+          if (target.isNew || getToolUseTarget(target)) {
+            applyToolResultToTarget(target, resultData)
           } else {
-            // 来自前序 batch（已推入响应式数组），标记为待补丁
             target._pendingResult = resultData
           }
         } else {
-          // 未找到 tool_use，保留为独立消息
           const standalone = { type: 'tool_result', text, collapsed: true, toolUseId }
           if (toolUseResultTasks) standalone._tasks = toolUseResultTasks
           messages.push(standalone)
@@ -276,7 +341,6 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
       }
     }
   } else if (lineType === 'result') {
-    // 格式化模型用量数据，便于前端展示
     let modelUsageList = null
     if (obj.modelUsage) {
       modelUsageList = Object.entries(obj.modelUsage).map(([name, info]) => ({
@@ -314,11 +378,16 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
       } else if (part.type === 'tool_use') {
         const inputObj = tryParse(part.input || {})
         const di = buildToolDisplayInput(part.name, inputObj)
-        const tuMsg = { type: 'tool_use', name: part.name || '', id: part.id || '', input: typeof inputObj === 'object' ? JSON.stringify(inputObj, null, 2) : (inputObj || ''), displayInput: di }
-        // TodoWrite / TaskCreate / TaskUpdate: 挂载任务列表
+        const tuMsg = {
+          type: 'tool_use',
+          name: part.name || '',
+          id: part.id || '',
+          input: typeof inputObj === 'object' ? JSON.stringify(inputObj, null, 2) : (inputObj || ''),
+          displayInput: di,
+          _status: 'waiting_result',
+        }
         const tasks = extractTasks(part.name, inputObj)
         if (tasks) tuMsg._tasks = tasks
-        // AskUserQuestion: 挂载问题列表
         const questions = extractAskUserQuestions(part.name, inputObj)
         if (questions) tuMsg._askQuestions = questions
         messages.push(tuMsg)
@@ -329,9 +398,10 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
     }
   } else if (lineType === 'chat') {
     if (obj.subtype === 'completed') {
-      // 先将待完成的 assistant 消息推入，确保 chat_completed 在内容之后
       if (currentMessageRef.value && (currentMessageRef.value.content.length > 0 || currentMessageRef.value.thinking)) {
-        messages.push(currentMessageRef.value)
+        if (!currentMessageRef.value._emitted) {
+          messages.push(currentMessageRef.value)
+        }
         currentMessageRef.value = null
       }
       messages.push({ type: 'chat_completed', text: '对话已完成' })
@@ -343,15 +413,59 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
     const data = obj.data || {}
     messages.push({ type: 'raw_text', text: data.text || obj.text || '' })
   } else if (lineType === 'error') {
-    // 先将待完成的 assistant 消息推入，确保错误信息在内容之后
     if (currentMessageRef.value && (currentMessageRef.value.content.length > 0 || currentMessageRef.value.thinking)) {
-      messages.push(currentMessageRef.value)
+      if (!currentMessageRef.value._emitted) {
+        messages.push(currentMessageRef.value)
+      }
       currentMessageRef.value = null
     }
     messages.push({ type: 'error', text: obj.text || '' })
   }
 
   return cm
+}
+
+function normalizeAssistantMessage(msg) {
+  if (!msg || msg.type !== 'assistant') return msg
+  delete msg._emitted
+  delete msg._messageId
+  delete msg._messageStopped
+  delete msg._activeBlockIndex
+  delete msg._activeThinkingIndex
+  delete msg._blockIndexMap
+  return msg
+}
+
+function finalizeToolResultPair(messages) {
+  const toolUseMapFull = new Map()
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]
+    if (msg.type === 'assistant') {
+      normalizeAssistantMessage(msg)
+      for (const block of (msg.content || [])) {
+        if (block.type === 'tool_use' && block.id) {
+          toolUseMapFull.set(block.id, { msg, block, index: i })
+        }
+      }
+    } else if (msg.type === 'tool_use' && msg.id) {
+      toolUseMapFull.set(msg.id, { msg })
+    }
+  }
+
+  const toRemove = new Set()
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]
+    if (msg.type === 'tool_result' && msg.toolUseId) {
+      const target = toolUseMapFull.get(msg.toolUseId)
+      if (target) {
+        const resultData = { text: msg.text, collapsed: msg.collapsed }
+        applyToolResultToTarget(target, resultData)
+        toRemove.add(i)
+      }
+    }
+  }
+
+  return toRemove
 }
 
 function parseChatLines(lines) {
@@ -383,37 +497,7 @@ function parseChatLines(lines) {
     messages.push(currentMessage)
   }
 
-  // 后处理：将 tool_result 配对到对应的 tool_use 下
-  const toolUseMapFull = new Map()
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i]
-    if (msg.type === 'assistant') {
-      for (const block of (msg.content || [])) {
-        if (block.type === 'tool_use' && block.id) {
-          toolUseMapFull.set(block.id, { msg, block, index: i })
-        }
-      }
-    } else if (msg.type === 'tool_use' && msg.id) {
-      toolUseMapFull.set(msg.id, { msg })
-    }
-  }
-
-  const toRemove = new Set()
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i]
-    if (msg.type === 'tool_result' && msg.toolUseId) {
-      const target = toolUseMapFull.get(msg.toolUseId)
-      if (target) {
-        const resultData = { text: msg.text, collapsed: msg.collapsed }
-        if (target.block) {
-          target.block._result = resultData
-        } else {
-          target.msg._result = resultData
-        }
-        toRemove.add(i)
-      }
-    }
-  }
+  const toRemove = finalizeToolResultPair(messages)
 
   if (toRemove.size > 0) {
     return messages.filter((_, i) => !toRemove.has(i))
@@ -483,6 +567,12 @@ function parseChatLinesIncremental(newLines, parseState, msgIndexOffset) {
   // 本批处理完毕，后续批次中的 tool_result 需通过 pendingPatches (Vue $set) 补丁到已渲染消息
   for (const [, entry] of toolUseMap) {
     entry.isNew = false
+  }
+
+  for (const msg of messages) {
+    if (msg !== currentMessage) {
+      normalizeAssistantMessage(msg)
+    }
   }
 
   return {

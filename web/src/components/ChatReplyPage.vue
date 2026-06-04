@@ -62,7 +62,7 @@
               <div v-if="block.type === 'text'" class="markdown-body cr-markdown-body" v-html="renderMarkdown(block.text)"></div>
               <div v-else-if="block.type === 'tool_use'" style="background: #f0f9eb; border-radius: 4px; padding: 8px; margin: 4px 0;">
                 <div style="display: flex; align-items: center; gap: 4px;">
-                  <span v-if="!block._result && status === 'running'" class="cr-status-spinner"></span>
+                  <span v-if="isToolBlockRunning(block)" class="cr-status-spinner"></span>
                   <span style="color: #67c23a; font-weight: 500;">🔧 {{ block.name }}</span>
                 </div>
                 <pre v-if="block.displayInput" class="cr-tool-command-block"><code>{{ block.displayInput }}</code></pre>
@@ -91,7 +91,7 @@
           <!-- standalone tool_use -->
           <div v-else-if="msg.type === 'tool_use'" style="background: #f0f9eb; border-radius: 4px; padding: 8px; margin: 4px 0;">
             <div style="display: flex; align-items: center; gap: 4px;">
-              <span v-if="!msg._result && status === 'running'" class="cr-status-spinner"></span>
+              <span v-if="isToolBlockRunning(msg)" class="cr-status-spinner"></span>
               <span style="color: #67c23a; font-weight: 500;">🔧 {{ msg.name }}</span>
             </div>
             <pre v-if="msg.displayInput" class="cr-tool-command-block"><code>{{ msg.displayInput }}</code></pre>
@@ -302,18 +302,6 @@ export default {
             this.$nextTick(() => { this.scrollToBottom() })
             return
           }
-          if (obj.type === 'stream_event') {
-            const evt = obj.event || {}
-            if (evt.type === 'content_block_delta') {
-              const delta = evt.delta || {}
-              if (delta.type === 'thinking_delta' && this._thinkingStreamStartTime === 0) {
-                this._thinkingStreamStartTime = Date.now()
-              }
-            } else if (evt.type === 'message_stop' && this._thinkingStreamStartTime > 0) {
-              this._pendingThinkingDurationMs = Date.now() - this._thinkingStreamStartTime
-              this._thinkingStreamStartTime = 0
-            }
-          }
         } catch (e) { /* ignore */ }
         this._sseLineBuffer.push(line)
         if (!this._sseBatchTimer) {
@@ -353,16 +341,6 @@ export default {
         }
       }
       result.parseState.pendingPatches = []
-      if (this._pendingThinkingDurationMs) {
-        for (let i = this.messages.length - 1; i >= 0; i--) {
-          const m = this.messages[i]
-          if (m.type === 'assistant' && m.thinking) {
-            m._thinkingTiming = { durationMs: this._pendingThinkingDurationMs }
-            break
-          }
-        }
-        this._pendingThinkingDurationMs = 0
-      }
       this.$nextTick(() => { this.scrollToBottom() })
     },
     closeSSE() {
@@ -450,12 +428,17 @@ export default {
       })
     },
     isCurrentThinking(msg) {
-      if (!this._thinkingStreamStartTime) return false
+      const timing = msg && msg._thinkingTiming ? msg._thinkingTiming : null
+      if (!timing || !timing.startMs || timing.durationMs > 0) return false
       for (let i = this.messages.length - 1; i >= 0; i--) {
         const m = this.messages[i]
         if (m.type === 'assistant' && m.thinking) return m === msg
       }
       return false
+    },
+    isToolBlockRunning(block) {
+      if (!block) return false
+      return block._status === 'running' || block._status === 'waiting_result'
     },
     renderMarkdown(text) {
       if (!text) return ''

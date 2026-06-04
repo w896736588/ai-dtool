@@ -2098,21 +2098,6 @@ export default {
             this.$nextTick(() => { this.scrollPromptChatToBottom() })
             return
           }
-          // 追踪思考耗时：首次 thinking_delta 时记录起始时间
-          if (obj.type === 'stream_event') {
-            const evt = obj.event || {}
-            if (evt.type === 'content_block_delta') {
-              const delta = evt.delta || {}
-              if (delta.type === 'thinking_delta' && this._thinkingStreamStartTime === 0) {
-                this._thinkingStreamStartTime = Date.now()
-              }
-            } else if (evt.type === 'message_stop' && this._thinkingStreamStartTime > 0) {
-              const durationMs = Date.now() - this._thinkingStreamStartTime
-              this._thinkingStreamStartTime = 0
-              // 将耗时写入消息——会在 parseChatLines 后应用到对应消息
-              this._pendingThinkingDurationMs = durationMs
-            }
-          }
         } catch (e) { /* ignore parse errors */ }
         // 行缓冲：每 100ms 批量刷新，避免每条 SSE 事件都触发全量解析和 DOM 更新
         this._sseLineBuffer.push(line)
@@ -2176,20 +2161,6 @@ export default {
       }
       result.parseState.pendingPatches.length = 0
       if (result.newMessages.length > 0) {
-        if (this._pendingThinkingDurationMs > 0) {
-          for (let i = this.chatDetailMessages.length - 1; i >= 0; i--) {
-            const msg = this.chatDetailMessages[i]
-            if (msg.type === 'assistant' && msg.thinking) {
-              msg._thinkingTiming = msg._thinkingTiming || { startMs: 0, durationMs: 0 }
-              msg._thinkingTiming.durationMs = this._pendingThinkingDurationMs
-              if (!msg._thinkingManuallyToggled) {
-                msg._thinkingCollapsed = true
-              }
-              break
-            }
-          }
-          this._pendingThinkingDurationMs = 0
-        }
         this.$nextTick(() => {
           this.scrollPromptChatToBottom()
           const boxes = document.querySelectorAll('.thinking-blockquote')
@@ -2250,7 +2221,8 @@ export default {
     },
     // 判断当前消息是否正在思考中（实时流式阶段）
     isCurrentThinking(msg) {
-      if (this._thinkingStreamStartTime === 0) return false
+      const timing = msg && msg._thinkingTiming ? msg._thinkingTiming : null
+      if (!timing || !timing.startMs || timing.durationMs > 0) return false
       for (let i = this.chatDetailMessages.length - 1; i >= 0; i--) {
         const m = this.chatDetailMessages[i]
         if (m.type === 'assistant' && m.thinking) {
