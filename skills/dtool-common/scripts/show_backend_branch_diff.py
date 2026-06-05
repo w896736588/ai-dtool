@@ -3,9 +3,9 @@
 """
 显示当前分支相对指定基分支的“后端范围”改动文件及完整 diff 内容。
 
-脚本不假设项目目录结构；调用方可按需传入需要排除的目录，
-脚本会返回“除这些目录外”的全部改动。默认排除任意 dist 目录。
-如果不传排除目录，则返回全仓库除 dist 外的全部改动。
+脚本不假设项目目录结构；默认按常见后端代码、脚本、SQL、配置文件后缀筛选，
+并支持按需传入需要排除的目录。默认排除任意 dist 目录。
+如果不传排除目录，则返回全仓库内匹配后端范围、且不在 dist 下的全部改动。
 
 用法:
 python show_backend_branch_diff.py <基分支> [排除目录1] [排除目录2] [额外排除路径...]
@@ -13,6 +13,117 @@ python show_backend_branch_diff.py <基分支> [排除目录1] [排除目录2] [
 
 import subprocess
 import sys
+
+BACKEND_PATHSPECS = [
+    "*.php",
+    "*.go",
+    "*.py",
+    "*.rb",
+    "*.java",
+    "*.kt",
+    "*.kts",
+    "*.scala",
+    "*.groovy",
+    "*.cs",
+    "*.fs",
+    "*.rs",
+    "*.c",
+    "*.cc",
+    "*.cpp",
+    "*.cxx",
+    "*.h",
+    "*.hh",
+    "*.hpp",
+    "*.hxx",
+    "*.m",
+    "*.mm",
+    "*.swift",
+    "*.sh",
+    "*.bash",
+    "*.zsh",
+    "*.fish",
+    "*.ps1",
+    "*.bat",
+    "*.cmd",
+    "*.pl",
+    "*.pm",
+    "*.t",
+    "*.lua",
+    "*.sql",
+    "*.prisma",
+    "*.proto",
+    "*.thrift",
+    "*.graphql",
+    "*.gql",
+    "*.ini",
+    "*.conf",
+    "*.config",
+    "*.cfg",
+    "*.cnf",
+    "*.env",
+    "*.env.*",
+    "*.properties",
+    "*.toml",
+    "*.yaml",
+    "*.yml",
+    "*.xml",
+    "*.xsd",
+    "*.xsl",
+    "*.wsdl",
+    "*.json",
+    "*.json5",
+    "*.ndjson",
+    "*.txt",
+    "*.logrotate",
+    "*.service",
+    "*.socket",
+    "*.timer",
+    "*.mount",
+    "*.target",
+    "Dockerfile",
+    "Dockerfile.*",
+    "docker-compose.yml",
+    "docker-compose.yaml",
+    "compose.yml",
+    "compose.yaml",
+    "Makefile",
+    "GNUmakefile",
+    "makefile",
+    "Taskfile.yml",
+    "Taskfile.yaml",
+    ".env",
+    ".env.*",
+    ".gitignore",
+    ".gitattributes",
+    ".editorconfig",
+    ".dockerignore",
+    ".sqlfluff",
+    ".golangci.yml",
+    ".golangci.yaml",
+    ".flake8",
+    ".pylintrc",
+    ".ruff.toml",
+    "pyproject.toml",
+    "poetry.lock",
+    "Pipfile",
+    "Pipfile.lock",
+    "requirements.txt",
+    "requirements-dev.txt",
+    "go.mod",
+    "go.sum",
+    "Cargo.toml",
+    "Cargo.lock",
+    "Gemfile",
+    "Gemfile.lock",
+    "composer.json",
+    "composer.lock",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "settings.gradle",
+    "settings.gradle.kts",
+    "*.md",
+]
 
 
 def git_run(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -39,7 +150,7 @@ def normalize_path(value: str) -> str:
 
 
 def build_pathspecs(exclude_dirs: list[str]) -> list[str]:
-    pathspecs = [".", ":(exclude)**/dist/**"]
+    pathspecs = [*BACKEND_PATHSPECS, ":(exclude)**/dist/**"]
     for path in exclude_dirs:
         normalized = normalize_path(path)
         if normalized:

@@ -1198,6 +1198,7 @@ export default {
       promptChatUnreadCounts: {},
       workflowUnreadCount: 0,
       _workflowUnreadSseId: '',
+      _promptChatHistoryHideHandled: false,
       chatDetailModelName: '',
       chatDetailAgentName: '',
       chatDetailLocalDir: '',
@@ -1360,6 +1361,15 @@ export default {
     this.unregisterWorkflowUnreadSse()
   },
   watch: {
+    promptChatHistoryVisible(val, oldVal) {
+      if (val) {
+        this._promptChatHistoryHideHandled = false
+        return
+      }
+      if (oldVal) {
+        this.handlePromptChatHistoryHide()
+      }
+    },
     parsedTaskDevConfigs: {
       handler(configs) {
         const seen = new Set()
@@ -1579,8 +1589,8 @@ export default {
         return
       }
       // chat 状态变更时刷新执行历史按钮的计数和动画
-      if (data.type === 'chat_status_change') {
-        this.loadChatCounts()
+      if (data.type === 'chat_status_change' || data.type === 'chat_read_change') {
+        this.applyWorkflowChatListSnapshot(data.chat_list || [])
         return
       }
       // 节点状态变更时直接更新本地 nodeStatuses，无需重新请求接口
@@ -1898,11 +1908,29 @@ export default {
       if (this.workflowId <= 0) return
       taskWorkflowApi.TaskWorkflowChatList(this.workflowId, (res) => {
         if (res.ErrCode === 0 && res.Data) {
-          const list = res.Data.list || []
-          this.updateChatCountsFromList(list)
-          this.syncBackgroundChatStreams(list, this.promptChatDetailId || this.chatDetailId)
+          this.applyWorkflowChatListSnapshot(res.Data.list || [])
         }
       })
+    },
+    applyWorkflowChatListSnapshot(list) {
+      const normalizedList = Array.isArray(list) ? list : []
+      this.updateChatCountsFromList(normalizedList)
+      if (this.promptChatHistoryVisible) {
+        const promptType = String(this.promptChatHistoryPromptType || '').trim()
+        this.promptChatHistoryList = promptType
+          ? normalizedList.filter(item => String(item.prompt_type || '').trim() === promptType)
+          : normalizedList.slice()
+      }
+      this.syncBackgroundChatStreams(
+        this.promptChatHistoryVisible ? this.promptChatHistoryList : normalizedList,
+        this.promptChatDetailId || this.chatDetailId,
+      )
+      if (this.chatDetailId > 0) {
+        const current = normalizedList.find(item => Number(item.id || 0) === Number(this.chatDetailId || 0))
+        if (current) {
+          this.chatDetailStatus = current.status || this.chatDetailStatus
+        }
+      }
     },
     // 打开历史对话弹窗（复用执行历史弹窗，查全部对话）
     openChatHistoryDialog() {
@@ -1959,6 +1987,24 @@ export default {
       item.is_read = false
       this.promptChatHistoryList = this.promptChatHistoryList.slice()
       this.adjustPromptUnreadCount(item.prompt_type, 1)
+    },
+    markPromptChatReadOnServer(chatId) {
+      const normalizedChatId = Number(chatId || 0)
+      if (normalizedChatId <= 0) return
+      agentCliApi.AgentChatMarkRead(normalizedChatId, (res) => {
+        if (res && res.ErrCode === 0) {
+          this.markPromptChatReadLocally(normalizedChatId)
+        }
+      })
+    },
+    shouldAutoMarkPromptChatRead(chatId) {
+      const normalizedChatId = Number(chatId || 0)
+      if (normalizedChatId <= 0) return false
+      if (!this.promptChatHistoryVisible) return false
+      if (Number(this.promptChatDetailId || 0) !== normalizedChatId) return false
+      if (Number(this._sseChatId || 0) !== normalizedChatId) return false
+      if (!this._chatEventSource) return false
+      return this._chatEventSource.readyState !== EventSource.CLOSED
     },
     markPromptChatRunningLocally(promptType, chatId, extra = {}) {
       const normalizedPromptType = String(promptType || '').trim()
@@ -2086,6 +2132,7 @@ export default {
         try {
           const obj = JSON.parse(line)
           if (obj.type === 'chat' && obj.subtype === 'completed') {
+            const shouldMarkRead = this.shouldAutoMarkPromptChatRead(chatId)
             this._flushSseBatch()
             this.chatDetailSSELines.push(line)
             this._sseChatId = 0
@@ -2093,8 +2140,10 @@ export default {
             es.close()
             this._chatEventSource = null
             this._sseParseState = null
+            if (shouldMarkRead) {
+              this.markPromptChatReadOnServer(chatId)
+            }
             this.loadChatDetail()
-            this.loadChatCounts()
             this.$nextTick(() => { this.scrollPromptChatToBottom() })
             return
           }
@@ -2123,7 +2172,6 @@ export default {
           return
         }
         this.loadChatDetail()
-        this.loadChatCounts()
       }
     },
     // _flushSseBatch 将缓冲区中的 SSE 行批量增量解析并追加到消息列表。
@@ -2342,7 +2390,6 @@ export default {
             })
             this.connectChatStream(chatId, null, true)
             this.loadChatDetail()
-            this.loadChatCounts()
             this.openPromptChatHistory(promptType, chatId)
           }
         )
@@ -2516,7 +2563,6 @@ export default {
               })
               this.connectChatStream(chatId, null, true)
               this.loadChatDetail()
-              this.loadChatCounts()
               // 打开执行历史，定位到新对话
               this.openPromptChatHistory(this.promptExecPromptType, chatId)
             } else {
@@ -2553,18 +2599,10 @@ export default {
       if (!detail) {
         this.workflowUnreadCount = 0
         this.promptChatUnreadCounts = {}
-        this.loadChatCounts()
-        if (this.promptChatHistoryVisible) {
-          this.loadPromptChatHistoryListSilently()
-        }
         return
       }
       this.workflowUnreadCount = Number(detail.workflow_unread || 0)
       this.promptChatUnreadCounts = { ...(detail.prompt_type_unread || {}) }
-      this.loadChatCounts()
-      if (this.promptChatHistoryVisible) {
-        this.loadPromptChatHistoryListSilently()
-      }
     },
     // 打开按类型的执行历史弹窗
     openPromptChatHistory(promptType, focusChatId) {
@@ -2631,11 +2669,7 @@ export default {
       // English comment: Close the previous foreground SSE before recalculating background streams so the old active chat can move into background tracking.
       this.syncBackgroundChatStreams(this.promptChatHistoryList, row.id)
       if (row.is_read === false && row.status !== 'running') {
-        agentCliApi.AgentChatMarkRead(row.id, (res) => {
-          if (res && res.ErrCode === 0) {
-            this.markPromptChatReadLocally(row.id)
-          }
-        })
+        this.markPromptChatReadOnServer(row.id)
       }
       if (this._sseChatId !== row.id) {
         this.chatDetailSSELines = []
@@ -2676,10 +2710,16 @@ export default {
         }
       })
     },
-    // 关闭执行历史弹窗（保留 SSE 连接和聊天状态）
-    onPromptChatHistoryClosed() {
+    handlePromptChatHistoryHide() {
+      if (this._promptChatHistoryHideHandled) return
+      this._promptChatHistoryHideHandled = true
       this._stopChatHistoryDurationTimer()
       this.stopAllBackgroundChatStreams()
+      this.closePromptChatDetail()
+    },
+    // 关闭执行历史弹窗时立即清理前后台 SSE，避免弹窗已关但流仍然存活
+    onPromptChatHistoryClosed() {
+      this.handlePromptChatHistoryHide()
     },
     // 彻底关闭对话详情（仅在用户主动停止或切换时调用）
     closePromptChatDetail() {
@@ -2771,8 +2811,6 @@ export default {
               this.markPromptChatUnreadLocally(normalizedChatId)
             }
             this.stopBackgroundChatStream(normalizedChatId)
-            this.loadPromptChatHistoryListSilently()
-            this.loadChatCounts()
           }
         } catch (e) {
           // 中文注释：普通流式消息解析失败时只保留计数更新；状态仍由终态事件或静默刷新兜底。

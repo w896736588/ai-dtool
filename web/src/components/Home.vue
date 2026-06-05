@@ -24,10 +24,7 @@
         </el-menu-item>
         <el-menu-item index="/HomeTask" class="menu-item-workflow" :class="{ 'menu-item-workflow--alert': workflowUnreadVisible }">
           <el-icon><List /></el-icon>
-          <span class="menu-item-label-with-dot">
-            <span>Workflow</span>
-            <span v-if="workflowUnreadVisible" class="menu-item-alert-dot"></span>
-          </span>
+          <span>Workflow</span>
         </el-menu-item>
         <el-menu-item v-if="checkModuleOpen('redis')" index="/Redis">
           <el-icon><Coin /></el-icon>
@@ -67,10 +64,7 @@
         </el-menu-item>
         <el-menu-item index="/AgentCli" class="menu-item-agent-cli" :class="{ 'menu-item-agent-cli--alert': agentCliUnreadVisible }">
           <el-icon><Monitor /></el-icon>
-          <span class="menu-item-label-with-dot">
-            <span>Agent Cli</span>
-            <span v-if="agentCliUnreadVisible" class="menu-item-alert-dot"></span>
-          </span>
+          <span>Agent Cli</span>
         </el-menu-item>
         <el-menu-item v-if="checkModuleOpen('shellout')" index="/shellout">
           <el-icon><Monitor /></el-icon>
@@ -1312,20 +1306,4 @@ export default {
 </script>
 
 <style scoped src="@/css/components/Home.css"></style>
-<style scoped>
-.menu-item-label-with-dot {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.menu-item-alert-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #f04438;
-  display: inline-block;
-  flex: 0 0 auto;
-}
-</style>
 

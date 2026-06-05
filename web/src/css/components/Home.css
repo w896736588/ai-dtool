@@ -249,6 +249,8 @@
   transform: rotate(24deg) scale(1.08);
 }
 
+.sidebar-menu .el-menu-item.menu-item-workflow.menu-item-workflow--alert::before,
+.sidebar-menu .el-menu-item.menu-item-agent-cli.menu-item-agent-cli--alert::before,
 .sidebar-menu .el-menu-item.menu-item-settings.menu-item-settings--alert::before {
   content: '';
   position: absolute;

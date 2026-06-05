@@ -1077,6 +1077,8 @@ export default {
     onAgentChatHistoryClosed() {
       this._stopAgentChatHistoryDurationTimer()
       this.stopAllBackgroundChatStreams()
+      this.closeChatDetail()
+      this.agentChatDetailId = 0
     },
     onAgentChatDetailScroll() {
       if (this._autoScrollLocked) return

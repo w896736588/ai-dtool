@@ -2743,6 +2743,49 @@ func buildAgentChatListResponse(rows []map[string]any) []map[string]any {
 }
 
 // TaskWorkflowChatList 列出工作流的所有对话。
+func buildTaskWorkflowChatListSnapshot(workflowID int) ([]map[string]any, error) {
+	if workflowID <= 0 {
+		return []map[string]any{}, nil
+	}
+	rows, err := common.DbMain.TaskWorkflowChatList(workflowID)
+	if err != nil {
+		return nil, err
+	}
+	return buildAgentChatListResponse(rows), nil
+}
+
+func taskWorkflowBroadcastWorkflowDetail(workflowID int, eventType string, chatID int64) {
+	if workflowID <= 0 {
+		return
+	}
+	chatList, err := buildTaskWorkflowChatListSnapshot(workflowID)
+	if err != nil {
+		return
+	}
+	distributeID := define.SseTaskWorkflowPrefix + cast.ToString(workflowID)
+	msg := gstool.JsonEncode(p_define.SseData{
+		SseDistributeId: distributeID,
+		Data: map[string]any{
+			`type`:        strings.TrimSpace(eventType),
+			`chat_id`:     chatID,
+			`workflow_id`: workflowID,
+			`chat_list`:   chatList,
+		},
+		Type: p_define.SseContentTypeMsg,
+	})
+	for _, item := range gsgin.SseStatus() {
+		clientID := strings.TrimSpace(strings.TrimPrefix(item, apiDataChangeSseStatusPrefix))
+		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
+			continue
+		}
+		sse := gsgin.SseGetByClientId(clientID)
+		if sse == nil {
+			continue
+		}
+		_ = sse.SendToChan(msg)
+	}
+}
+
 func TaskWorkflowChatList(c *gin.Context) {
 	var req _struct.TaskWorkflowChatListRequest
 	if err := gsgin.GinPostBody(c, &req); err != nil {
@@ -3008,6 +3051,9 @@ func AgentChatMarkRead(c *gin.Context) {
 	if err := common.DbMain.AgentChatMarkRead(int64(req.ChatID)); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
+	}
+	if cast.ToString(info[`from_type`]) == common.AgentChatSourceTypeWorkflow {
+		taskWorkflowBroadcastWorkflowDetail(cast.ToInt(info[`from_id`]), `chat_read_change`, int64(req.ChatID))
 	}
 	taskWorkflowBroadcastUnreadChanged(int64(req.ChatID))
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
@@ -3719,27 +3765,7 @@ func taskWorkflowBroadcastChatStatus(chatID int64) {
 	if workflowID <= 0 {
 		return
 	}
-	distributeID := define.SseTaskWorkflowPrefix + cast.ToString(workflowID)
-	msg := gstool.JsonEncode(p_define.SseData{
-		SseDistributeId: distributeID,
-		Data: map[string]any{
-			`type`:        `chat_status_change`,
-			`chat_id`:     chatID,
-			`workflow_id`: workflowID,
-		},
-		Type: p_define.SseContentTypeMsg,
-	})
-	for _, item := range gsgin.SseStatus() {
-		clientID := strings.TrimSpace(strings.TrimPrefix(item, apiDataChangeSseStatusPrefix))
-		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
-			continue
-		}
-		sse := gsgin.SseGetByClientId(clientID)
-		if sse == nil {
-			continue
-		}
-		_ = sse.SendToChan(msg)
-	}
+	taskWorkflowBroadcastWorkflowDetail(workflowID, `chat_status_change`, chatID)
 }
 
 // taskWorkflowBroadcastUnreadChanged 在普通 SSE 通道广播未读数量变化，供工作流页与 Agent CLI 页实时更新红点。
