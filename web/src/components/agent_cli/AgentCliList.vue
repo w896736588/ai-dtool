@@ -752,10 +752,8 @@ export default {
       if (this._agentUnreadSseId) return
       const nextId = 'agent_cli_unread_global'
       this._agentUnreadSseId = nextId
-      sseDistribute.InitFromLoginStatus().then((created) => {
-        if (!created && !sseDistribute.GetSseClientId()) return
-        sseDistribute.RegisterReceive(nextId, this.handleAgentUnreadSseMessage)
-      })
+      if (!sseDistribute.GetSseClientId()) return
+      sseDistribute.RegisterReceive(nextId, this.handleAgentUnreadSseMessage)
     },
     unregisterAgentUnreadSse() {
       if (!this._agentUnreadSseId) return

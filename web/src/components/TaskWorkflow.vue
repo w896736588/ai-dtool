@@ -380,14 +380,15 @@
                   >{{ getNodeStatusLabel('requirement-fetch') }}</button>
                 </div>
               </div>
-              <MdEditor
-                v-model="workflow.prompt_plain_text_requirement"
-                class="task-workflow-prompt-editor"
-                preview-theme="github"
-                :preview="true"
-                :toolbars="promptEditorToolbars"
-                height="100%"
-              />
+              <div class="task-workflow-prompt-editor" data-prompt-type="plain_text_requirement">
+                <UnifiedMdEditor
+                  v-model="workflow.prompt_plain_text_requirement"
+                  preview-theme="github"
+                  :preview="true"
+                  :toolbars="promptEditorToolbars"
+                  height="100%"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -449,14 +450,15 @@
               <div class="task-workflow-card__hint">
                 当前片段：{{ requirementFragmentTitle }}
               </div>
-              <MdEditor
-                v-model="workflow.prompt_requirement"
-                class="task-workflow-prompt-editor"
-                preview-theme="github"
-                :preview="true"
-                :toolbars="promptEditorToolbars"
-                height="100%"
-              />
+              <div class="task-workflow-prompt-editor" data-prompt-type="requirement">
+                <UnifiedMdEditor
+                  v-model="workflow.prompt_requirement"
+                  preview-theme="github"
+                  :preview="true"
+                  :toolbars="promptEditorToolbars"
+                  height="100%"
+                />
+              </div>
             </div>
 
             <div v-show="requirementActiveTab === 'design-plan-prompt'" class="task-workflow-prompt-section">
@@ -501,14 +503,15 @@
                   >{{ getNodeStatusLabel('requirement') }}</button>
                 </div>
               </div>
-              <MdEditor
-                v-model="workflow.prompt_design_plan_requirement"
-                class="task-workflow-prompt-editor"
-                preview-theme="github"
-                :preview="true"
-                :toolbars="promptEditorToolbars"
-                height="100%"
-              />
+              <div class="task-workflow-prompt-editor" data-prompt-type="design_plan_requirement">
+                <UnifiedMdEditor
+                  v-model="workflow.prompt_design_plan_requirement"
+                  preview-theme="github"
+                  :preview="true"
+                  :toolbars="promptEditorToolbars"
+                  height="100%"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -555,14 +558,15 @@
                 </div>
               </div>
             </div>
-            <MdEditor
-              v-model="workflow.prompt_design"
-              class="task-workflow-prompt-editor"
-              preview-theme="github"
-              :preview="true"
-              :toolbars="promptEditorToolbars"
-              height="100%"
-            />
+            <div class="task-workflow-prompt-editor" data-prompt-type="design">
+              <UnifiedMdEditor
+                v-model="workflow.prompt_design"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                height="100%"
+              />
+            </div>
           </div>
         </div>
 
@@ -615,14 +619,15 @@
                 </div>
               </div>
             </div>
-            <MdEditor
-              v-model="workflow.prompt_api_dev"
-              class="task-workflow-prompt-editor"
-              preview-theme="github"
-              :preview="true"
-              :toolbars="promptEditorToolbars"
-              height="100%"
-            />
+            <div class="task-workflow-prompt-editor" data-prompt-type="api_dev">
+              <UnifiedMdEditor
+                v-model="workflow.prompt_api_dev"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                height="100%"
+              />
+            </div>
           </div>
         </div>
 
@@ -668,14 +673,15 @@
                 </div>
               </div>
             </div>
-            <MdEditor
-              v-model="workflow.prompt_code_review"
-              class="task-workflow-prompt-editor"
-              preview-theme="github"
-              :preview="true"
-              :toolbars="promptEditorToolbars"
-              height="100%"
-            />
+            <div class="task-workflow-prompt-editor" data-prompt-type="code_review">
+              <UnifiedMdEditor
+                v-model="workflow.prompt_code_review"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                height="100%"
+              />
+            </div>
           </div>
         </div>
 
@@ -721,14 +727,15 @@
                 </div>
               </div>
             </div>
-            <MdEditor
-              v-model="workflow.prompt_browser_test"
-              class="task-workflow-prompt-editor"
-              preview-theme="github"
-              :preview="true"
-              :toolbars="promptEditorToolbars"
-              height="100%"
-            />
+            <div class="task-workflow-prompt-editor" data-prompt-type="browser_test">
+              <UnifiedMdEditor
+                v-model="workflow.prompt_browser_test"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                height="100%"
+              />
+            </div>
           </div>
         </div>
 
@@ -774,14 +781,15 @@
                 </div>
               </div>
             </div>
-            <MdEditor
-              v-model="workflow.prompt_api_test"
-              class="task-workflow-prompt-editor"
-              preview-theme="github"
-              :preview="true"
-              :toolbars="promptEditorToolbars"
-              height="100%"
-            />
+            <div class="task-workflow-prompt-editor" data-prompt-type="api_test">
+              <UnifiedMdEditor
+                v-model="workflow.prompt_api_test"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                height="100%"
+              />
+            </div>
           </div>
         </div>
       </section>
@@ -851,7 +859,7 @@
               style="--el-switch-on-color: #5a8a5a; margin-left: 8px;"
             />
           </div>
-          <MdEditor
+          <UnifiedMdEditor
             v-model="issueFixCombinedText"
             preview-theme="github"
             :preview="true"
@@ -1035,9 +1043,8 @@ import mysqlSetApi from '@/utils/base/mysql_set'
 import apiManagement from '@/utils/base/api'
 import dockerApi from '@/utils/base/compose'
 import smartLinkSetApi from '@/utils/base/smart_link_set'
-import { MdEditor } from 'md-editor-v3'
-import 'md-editor-v3/lib/style.css'
 import MarkdownIt from 'markdown-it'
+import UnifiedMdEditor from '@/components/base/UnifiedMdEditor.vue'
 
 const PROMPT_EDITOR_TOOLBARS = [
   'bold', 'italic', 'strikeThrough', 'title', 'quote',
@@ -1115,7 +1122,7 @@ export default {
     GitActionButton,
     ChatHistoryButton,
     ChatHistoryDialog,
-    MdEditor,
+    UnifiedMdEditor,
     TaskProgressPanel,
   },
   data() {
@@ -1337,7 +1344,7 @@ export default {
     this.loadWorkflowPage()
     this.loadTaskConfigLookupData()
     this.ensureWorkflowUnreadSse()
-    window.addEventListener('keydown', this.handleCtrlS)
+    window.addEventListener('keydown', this.handleCtrlS, true)
   },
   activated() {
     this.ensureWorkflowUnreadSse()
@@ -1349,7 +1356,7 @@ export default {
     }
   },
   beforeUnmount() {
-    window.removeEventListener('keydown', this.handleCtrlS)
+    window.removeEventListener('keydown', this.handleCtrlS, true)
     this._stopChatHistoryDurationTimer()
     if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
     this.unregisterWorkflowSse()
@@ -1400,8 +1407,17 @@ export default {
   },
   methods: {
     handleCtrlS(e) {
-      if (!(e.ctrlKey && e.key === 's')) return
+      if (!((e.ctrlKey || e.metaKey) && String(e.key || '').toLowerCase() === 's')) return
       e.preventDefault()
+      const activeElement = document.activeElement
+      const promptEditor = activeElement && typeof activeElement.closest === 'function'
+        ? activeElement.closest('[data-prompt-type]')
+        : null
+      const promptTypeFromEditor = String(promptEditor?.dataset?.promptType || '').trim()
+      if (promptTypeFromEditor) {
+        this.savePrompts(promptTypeFromEditor)
+        return
+      }
       const nodeToPrompt = { requirement: 'requirement', design: 'design', 'api-dev': 'api_dev', 'api-test-fix': 'api_test', 'code-review': 'code_review', 'browser-test': 'browser_test' }
       let promptType = nodeToPrompt[this.activeNode]
       if (this.activeNode === 'requirement-fetch' && this.requirementFetchActiveTab === 'plain-text-prompt') {
@@ -3809,6 +3825,16 @@ export default {
 .task-workflow-card :deep(.md-editor-input-wrapper),
 .task-workflow-card :deep(.md-editor-preview-wrapper) {
   overflow: auto;
+}
+
+.task-workflow-prompt-editor :deep(.md-editor-input),
+.task-workflow-prompt-editor :deep(.md-editor-preview),
+.task-workflow-prompt-editor :deep(.md-editor-preview-wrapper),
+.task-workflow-issue-fix__editor :deep(.md-editor-input),
+.task-workflow-issue-fix__editor :deep(.md-editor-preview),
+.task-workflow-issue-fix__editor :deep(.md-editor-preview-wrapper) {
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 /* MdEditor 滚动条绿色 */

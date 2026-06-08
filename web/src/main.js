@@ -156,3 +156,8 @@ if (shouldInitSse()) {
   })
 }
 
+// 页面刷新或关闭时主动断开共享 SSE，避免同一 client_id 在浏览器侧短时间残留多条连接记录。
+window.addEventListener('pagehide', () => {
+  sse.Close()
+})
+
