@@ -3411,6 +3411,7 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 			finalStatus = common.TaskWorkflowChatStatusError
 		}
 	}
+	taskWorkflowAutoMarkChatReadIfSseConnected(chatID, distributeID)
 	sendLine(buildChatCompletedEvent(chatID, finalStatus))
 	// 通知工作流页面刷新 chat 状态计数（执行历史按钮动画和状态数量）
 	taskWorkflowBroadcastChatStatus(chatID)
@@ -3636,9 +3637,28 @@ func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessi
 			finalStatus = common.TaskWorkflowChatStatusError
 		}
 	}
+	taskWorkflowAutoMarkChatReadIfSseConnected(chatID, distributeID)
 	sendLine(buildChatCompletedEvent(chatID, finalStatus))
 	taskWorkflowBroadcastChatStatus(chatID)
 	_ = lastAgentMessageText
+}
+
+// taskWorkflowAutoMarkChatReadIfSseConnected 在命令结束时，如果专用 chat SSE 仍在线，则直接标记为已读。
+func taskWorkflowAutoMarkChatReadIfSseConnected(chatID int64, distributeID string) {
+	if chatID <= 0 {
+		return
+	}
+	if strings.TrimSpace(distributeID) == `` {
+		return
+	}
+	if gsgin.SseGetByClientId(distributeID) == nil {
+		return
+	}
+	if err := common.DbMain.AgentChatMarkRead(chatID); err != nil {
+		gstool.FmtPrintlnLogTime("[chat-read-auto] chat_id=%d 自动置已读失败: %v", chatID, err)
+		return
+	}
+	gstool.FmtPrintlnLogTime("[chat-read-auto] chat_id=%d 检测到活跃 SSE，已自动置为已读", chatID)
 }
 
 // buildChatCompletedEvent 构造对话终态 SSE 事件，携带最终状态供前端背景列表即时更新。

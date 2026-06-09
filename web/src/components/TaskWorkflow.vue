@@ -1997,13 +1997,6 @@ export default {
       this.promptChatHistoryList = this.promptChatHistoryList.slice()
       this.adjustPromptUnreadCount(item.prompt_type, -1)
     },
-    markPromptChatUnreadLocally(chatId) {
-      const item = this.promptChatHistoryList.find(row => Number(row.id || 0) === Number(chatId || 0))
-      if (!item || item.is_read === false || item.status === 'running') return
-      item.is_read = false
-      this.promptChatHistoryList = this.promptChatHistoryList.slice()
-      this.adjustPromptUnreadCount(item.prompt_type, 1)
-    },
     markPromptChatReadOnServer(chatId) {
       const normalizedChatId = Number(chatId || 0)
       if (normalizedChatId <= 0) return
@@ -2012,15 +2005,6 @@ export default {
           this.markPromptChatReadLocally(normalizedChatId)
         }
       })
-    },
-    shouldAutoMarkPromptChatRead(chatId) {
-      const normalizedChatId = Number(chatId || 0)
-      if (normalizedChatId <= 0) return false
-      if (!this.promptChatHistoryVisible) return false
-      if (Number(this.promptChatDetailId || 0) !== normalizedChatId) return false
-      if (Number(this._sseChatId || 0) !== normalizedChatId) return false
-      if (!this._chatEventSource) return false
-      return this._chatEventSource.readyState !== EventSource.CLOSED
     },
     markPromptChatRunningLocally(promptType, chatId, extra = {}) {
       const normalizedPromptType = String(promptType || '').trim()
@@ -2148,7 +2132,6 @@ export default {
         try {
           const obj = JSON.parse(line)
           if (obj.type === 'chat' && obj.subtype === 'completed') {
-            const shouldMarkRead = this.shouldAutoMarkPromptChatRead(chatId)
             this._flushSseBatch()
             this.chatDetailSSELines.push(line)
             this._sseChatId = 0
@@ -2156,9 +2139,6 @@ export default {
             es.close()
             this._chatEventSource = null
             this._sseParseState = null
-            if (shouldMarkRead) {
-              this.markPromptChatReadOnServer(chatId)
-            }
             this.loadChatDetail()
             this.$nextTick(() => { this.scrollPromptChatToBottom() })
             return
@@ -2751,13 +2731,6 @@ export default {
         const item = list.find(i => Number(i.id || 0) === normalizedChatId)
         if (item) {
           item.status = status
-          if (status !== 'running') {
-            if (selectedPromptHistoryChatId > 0 && selectedPromptHistoryChatId === normalizedChatId) {
-              this.markPromptChatReadLocally(normalizedChatId)
-            } else {
-              this.markPromptChatUnreadLocally(normalizedChatId)
-            }
-          }
         }
       }
       updateItem(this.promptChatHistoryList)
@@ -2814,18 +2787,10 @@ export default {
         try {
           const obj = JSON.parse(line)
           if (obj.type === 'chat' && obj.subtype === 'completed') {
-            const selectedPromptHistoryChatId = this.promptChatHistoryVisible
-              ? Number(this.promptChatDetailId || 0)
-              : 0
             this.updateBackgroundChatListItem(normalizedChatId, {
               status: String(obj.status || 'completed').trim() || 'completed',
               line_count: state.lineCount,
             })
-            if (selectedPromptHistoryChatId > 0 && selectedPromptHistoryChatId === normalizedChatId) {
-              this.markPromptChatReadLocally(normalizedChatId)
-            } else {
-              this.markPromptChatUnreadLocally(normalizedChatId)
-            }
             this.stopBackgroundChatStream(normalizedChatId)
           }
         } catch (e) {
