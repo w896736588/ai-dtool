@@ -161,18 +161,7 @@
                   <tr v-if="row.type !== 'codex-cli'">
                     <th>McpServers</th>
                     <td>{{ row.mcp_server_count || 0 }} 个</td>
-                    <th>claude-mem</th>
-                    <td>
-                      <div class="agent-cli-table-control">
-                        <el-switch
-                          v-model="row.claude_mem_enabled"
-                          size="small"
-                          :loading="row._togglingMem"
-                          @change="toggleClaudeMem(row)"
-                        />
-                        <span class="agent-cli-switch-line__text">{{ row.claude_mem_enabled ? '已启用' : '已禁用' }}</span>
-                      </div>
-                    </td>
+                    <td colspan="2"></td>
                   </tr>
                   <tr v-else>
                     <th>McpServers</th>
@@ -763,10 +752,8 @@ export default {
       if (this._agentUnreadSseId) return
       const nextId = 'agent_cli_unread_global'
       this._agentUnreadSseId = nextId
-      sseDistribute.InitFromLoginStatus().then((created) => {
-        if (!created && !sseDistribute.GetSseClientId()) return
-        sseDistribute.RegisterReceive(nextId, this.handleAgentUnreadSseMessage)
-      })
+      if (!sseDistribute.GetSseClientId()) return
+      sseDistribute.RegisterReceive(nextId, this.handleAgentUnreadSseMessage)
     },
     unregisterAgentUnreadSse() {
       if (!this._agentUnreadSseId) return
@@ -1088,6 +1075,8 @@ export default {
     onAgentChatHistoryClosed() {
       this._stopAgentChatHistoryDurationTimer()
       this.stopAllBackgroundChatStreams()
+      this.closeChatDetail()
+      this.agentChatDetailId = 0
     },
     onAgentChatDetailScroll() {
       if (this._autoScrollLocked) return
@@ -1267,18 +1256,6 @@ export default {
           this.loadList()
         } else {
           this.$message.error(response?.ErrMsg || '配置失败')
-        }
-      })
-    },
-    toggleClaudeMem(item) {
-      item._togglingMem = true
-      agentCliApi.AgentCliToggleClaudeMem({ id: item.id, enable: item.claude_mem_enabled }, (response) => {
-        item._togglingMem = false
-        if (response && response.ErrCode === 0) {
-          this.$message.success(`claude-mem 已${item.claude_mem_enabled ? '启用' : '禁用'}`)
-        } else {
-          this.$message.error(response?.ErrMsg || '操作失败')
-          item.claude_mem_enabled = !item.claude_mem_enabled
         }
       })
     },
@@ -1504,19 +1481,6 @@ export default {
             this.$nextTick(() => { this.scrollAgentChatToBottom() })
             return
           }
-          if (obj.type === 'stream_event') {
-            const evt = obj.event || {}
-            if (evt.type === 'content_block_delta') {
-              const delta = evt.delta || {}
-              if (delta.type === 'thinking_delta' && this._thinkingStreamStartTime === 0) {
-                this._thinkingStreamStartTime = Date.now()
-              }
-            } else if (evt.type === 'message_stop' && this._thinkingStreamStartTime > 0) {
-              const durationMs = Date.now() - this._thinkingStreamStartTime
-              this._thinkingStreamStartTime = 0
-              this._pendingThinkingDurationMs = durationMs
-            }
-          }
         } catch (e) {
           // SSE 解析失败时跳过该行。 // Skip malformed SSE lines.
         }
@@ -1578,20 +1542,6 @@ export default {
       }
       result.parseState.pendingPatches.length = 0
       if (result.newMessages.length > 0) {
-        if (this._pendingThinkingDurationMs > 0) {
-          for (let i = this.chatDetailMessages.length - 1; i >= 0; i--) {
-            const msg = this.chatDetailMessages[i]
-            if (msg.type === 'assistant' && msg.thinking) {
-              msg._thinkingTiming = msg._thinkingTiming || { startMs: 0, durationMs: 0 }
-              msg._thinkingTiming.durationMs = this._pendingThinkingDurationMs
-              if (!msg._thinkingManuallyToggled) {
-                msg._thinkingCollapsed = true
-              }
-              break
-            }
-          }
-          this._pendingThinkingDurationMs = 0
-        }
         this.$nextTick(() => {
           this.scrollAgentChatToBottom()
           const boxes = document.querySelectorAll('.thinking-blockquote')
@@ -1609,7 +1559,8 @@ export default {
       msg._thinkingManuallyToggled = true
     },
     isCurrentThinking(msg) {
-      if (this._thinkingStreamStartTime === 0) return false
+      const timing = msg && msg._thinkingTiming ? msg._thinkingTiming : null
+      if (!timing || !timing.startMs || timing.durationMs > 0) return false
       for (let i = this.chatDetailMessages.length - 1; i >= 0; i--) {
         const item = this.chatDetailMessages[i]
         if (item.type === 'assistant' && item.thinking) {

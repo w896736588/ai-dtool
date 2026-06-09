@@ -110,12 +110,12 @@ func TaskWorkflowDevPlanInfo(c *gin.Context) {
 	if !ok {
 		return
 	}
-	fragmentID := strings.TrimSpace(cast.ToString(workflowInfo[`dev_plan_fragment_id`]))
-	if fragmentID == `` {
+	fragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`dev_plan_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo))
+	if fragmentRef.FileID == `` {
 		gsgin.GinResponseError(c, `开发执行文档未初始化`, nil)
 		return
 	}
-	fragmentInfo, err := memoryDB.MemoryFragmentInfo(fragmentID)
+	fragmentInfo, err := memoryDB.MemoryFragmentInfo(fragmentRef.FileID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -152,6 +152,7 @@ func TaskWorkflowDevPlanSave(c *gin.Context) {
 		cast.ToString(fragmentInfo[`title`]),
 		request.Content,
 		cast.ToStringSlice(fragmentInfo[`tags`]),
+		cast.ToString(fragmentInfo[`folder_name`]),
 	)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -512,6 +513,10 @@ func taskWorkflowLoadContextForDevPlanByID(c *gin.Context, workflowID int) (map[
 	if !ok {
 		return nil, nil, nil, false
 	}
+	if err = taskWorkflowNormalizeFragmentRefs(workflowInfo, memoryDB); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return nil, nil, nil, false
+	}
 	homeTaskInfo, err := common.DbMain.HomeTaskRow(cast.ToInt(workflowInfo[`home_task_id`]))
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -531,12 +536,12 @@ func taskWorkflowLoadGenerationContextByWorkflowID(c *gin.Context, workflowID in
 	if !ok {
 		return nil, nil, nil, false
 	}
-	requirementFragmentID := strings.TrimSpace(cast.ToString(workflowInfo[`requirement_fragment_id`]))
-	if requirementFragmentID == `` {
+	requirementRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`requirement_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo))
+	if requirementRef.FileID == `` {
 		gsgin.GinResponseError(c, `需求文档未绑定`, nil)
 		return nil, nil, nil, false
 	}
-	requirementFragment, err := memoryDB.MemoryFragmentInfo(requirementFragmentID)
+	requirementFragment, err := memoryDB.MemoryFragmentInfo(requirementRef.FileID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return nil, nil, nil, false
@@ -550,15 +555,15 @@ func taskWorkflowLoadGenerationContextByWorkflowID(c *gin.Context, workflowID in
 }
 
 func ensureTaskWorkflowDevPlanFragment(workflowInfo map[string]any, homeTaskInfo map[string]any, memoryDB common.MemoryFragmentStore) (map[string]any, error) {
-	fragmentID := strings.TrimSpace(cast.ToString(workflowInfo[`dev_plan_fragment_id`]))
-	if fragmentID != `` {
-		return memoryDB.MemoryFragmentInfo(fragmentID)
+	fragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`dev_plan_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo))
+	if fragmentRef.FileID != `` {
+		return memoryDB.MemoryFragmentInfo(fragmentRef.FileID)
 	}
 	fragmentTitle := strings.TrimSpace(cast.ToString(homeTaskInfo[`name`])) + taskWorkflowDevPlanDefaultTitleSuffix
 	if strings.TrimSpace(fragmentTitle) == taskWorkflowDevPlanDefaultTitleSuffix {
 		fragmentTitle = `开发执行文档`
 	}
-	fragmentInfo, err := memoryDB.MemoryFragmentSave(0, fragmentTitle, taskWorkflowDevPlanDefaultTemplate, []string{taskWorkflowDevPlanDefaultTag})
+	fragmentInfo, err := memoryDB.MemoryFragmentSave(0, fragmentTitle, taskWorkflowDevPlanDefaultTemplate, []string{taskWorkflowDevPlanDefaultTag}, taskWorkflowWorkflowFragmentFolderName(workflowInfo))
 	if err != nil {
 		return nil, err
 	}
@@ -568,10 +573,11 @@ func ensureTaskWorkflowDevPlanFragment(workflowInfo map[string]any, homeTaskInfo
 	if fragmentFileID == `` {
 		return nil, gstool.Error(`开发执行片段创建失败`)
 	}
-	if err = common.DbMain.TaskWorkflowBindDevPlanFragment(workflowID, fragmentFileID); err != nil {
+	fragmentFullRef := common.TaskWorkflowBuildFragmentRef(cast.ToString(fragmentInfo[`folder_name`]), fragmentFileID)
+	if err = common.DbMain.TaskWorkflowBindDevPlanFragment(workflowID, fragmentFullRef); err != nil {
 		return nil, err
 	}
-	workflowInfo[`dev_plan_fragment_id`] = fragmentFileID
+	workflowInfo[`dev_plan_fragment_id`] = fragmentFullRef
 	workflowInfo[`status`] = `dev_plan_ready`
 	return fragmentInfo, nil
 }
@@ -593,6 +599,10 @@ func taskWorkflowMemoryDBOrResponse(c *gin.Context) (common.MemoryFragmentStore,
 }
 
 func buildTaskWorkflowResponse(c *gin.Context, workflowInfo map[string]any) (map[string]any, error) {
+	memoryDB := taskWorkflowMemoryDBIfConfigured()
+	if err := taskWorkflowNormalizeFragmentRefs(workflowInfo, memoryDB); err != nil {
+		return nil, err
+	}
 	homeTaskInfo, err := common.DbMain.HomeTaskRow(cast.ToInt(workflowInfo[`home_task_id`]))
 	if err != nil {
 		return nil, err
@@ -630,6 +640,61 @@ func buildTaskWorkflowResponse(c *gin.Context, workflowInfo map[string]any) (map
 		`home_task`:                homeTaskInfo,
 		`requirement_fetch_config`: taskWorkflowRequirementFetchConfig(),
 	}, nil
+}
+
+func taskWorkflowWorkflowFragmentFolderName(workflowInfo map[string]any) string {
+	return common.TaskWorkflowFragmentFolderName(workflowInfo)
+}
+
+func taskWorkflowMemoryDBIfConfigured() common.MemoryFragmentStore {
+	if component.MemoryRuntime == nil {
+		return nil
+	}
+	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
+		return nil
+	}
+	return component.MemoryRuntime.DB()
+}
+
+func taskWorkflowNormalizeFragmentRefs(workflowInfo map[string]any, memoryDB common.MemoryFragmentStore) error {
+	if len(workflowInfo) == 0 {
+		return nil
+	}
+	workflowID := cast.ToInt(workflowInfo[`id`])
+	folderName := taskWorkflowWorkflowFragmentFolderName(workflowInfo)
+	updateData := map[string]any{}
+	if strings.TrimSpace(cast.ToString(workflowInfo[`fragment_folder_name`])) != folderName {
+		updateData[`fragment_folder_name`] = folderName
+		workflowInfo[`fragment_folder_name`] = folderName
+	}
+	for _, column := range common.TaskWorkflowFragmentColumns() {
+		raw := cast.ToString(workflowInfo[column])
+		ref := common.TaskWorkflowParseFragmentRef(raw, folderName)
+		if ref.FileID == `` {
+			continue
+		}
+		nextRef := ref.FullRef
+		if memoryDB != nil {
+			if info, err := memoryDB.MemoryFragmentInfo(ref.FileID); err == nil {
+				nextRef = common.TaskWorkflowBuildFragmentRef(cast.ToString(info[`folder_name`]), ref.FileID)
+			}
+		}
+		if nextRef != `` {
+			workflowInfo[column] = nextRef
+		}
+		if nextRef != strings.TrimSpace(raw) {
+			updateData[column] = nextRef
+		}
+	}
+	if workflowID > 0 && len(updateData) > 0 {
+		updateData[`update_time`] = time.Now().Unix()
+		if _, err := common.DbMain.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
+			`id`: workflowID,
+		}, updateData).Exec(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func taskWorkflowDefaultCoverageReport() map[string]any {
@@ -1507,19 +1572,19 @@ func taskWorkflowBuildAPIToken(c *gin.Context) string {
 
 // taskWorkflowBuildShareURL 为需求文档知识片段生成分享链接。
 func taskWorkflowBuildShareURL(c *gin.Context, workflowInfo map[string]any, apiHost string) string {
-	fragmentID := strings.TrimSpace(cast.ToString(workflowInfo[`requirement_fragment_id`]))
-	if fragmentID == `` || component.MemoryRuntime == nil {
+	fragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`requirement_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo))
+	if fragmentRef.FileID == `` || component.MemoryRuntime == nil {
 		return ``
 	}
 	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
 		return ``
 	}
 	// 确认片段存在。
-	if _, err := component.MemoryRuntime.DB().MemoryFragmentInfo(fragmentID); err != nil {
+	if _, err := component.MemoryRuntime.DB().MemoryFragmentInfo(fragmentRef.FileID); err != nil {
 		return ``
 	}
 	shareStore := memoryFragmentShareStoreForRoot(component.MemoryRuntime.Config().Dir)
-	share, err := shareStore.Create(fragmentID, time.Now())
+	share, err := shareStore.Create(fragmentRef.FileID, time.Now())
 	if err != nil {
 		return ``
 	}
@@ -1533,18 +1598,18 @@ func taskWorkflowBuildShareURL(c *gin.Context, workflowInfo map[string]any, apiH
 
 // taskWorkflowBuildPlainTextShareURL 为纯文本需求知识片段生成分享链接。
 func taskWorkflowBuildPlainTextShareURL(c *gin.Context, workflowInfo map[string]any, apiHost string) string {
-	fragmentID := strings.TrimSpace(cast.ToString(workflowInfo[`plain_text_requirement_fragment_id`]))
-	if fragmentID == `` || component.MemoryRuntime == nil {
+	fragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`plain_text_requirement_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo))
+	if fragmentRef.FileID == `` || component.MemoryRuntime == nil {
 		return ``
 	}
 	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
 		return ``
 	}
-	if _, err := component.MemoryRuntime.DB().MemoryFragmentInfo(fragmentID); err != nil {
+	if _, err := component.MemoryRuntime.DB().MemoryFragmentInfo(fragmentRef.FileID); err != nil {
 		return ``
 	}
 	shareStore := memoryFragmentShareStoreForRoot(component.MemoryRuntime.Config().Dir)
-	share, err := shareStore.Create(fragmentID, time.Now())
+	share, err := shareStore.Create(fragmentRef.FileID, time.Now())
 	if err != nil {
 		return ``
 	}
@@ -1804,12 +1869,12 @@ func TaskWorkflowRequirementFetch(c *gin.Context) {
 		gsgin.GinResponseError(c, `当前任务未配置`+sourceName+`地址`, nil)
 		return
 	}
-	fragmentID := strings.TrimSpace(cast.ToString(workflowInfo[`requirement_fragment_id`]))
-	if fragmentID == `` {
+	fragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`requirement_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo))
+	if fragmentRef.FileID == `` {
 		gsgin.GinResponseError(c, `需求知识片段未绑定`, nil)
 		return
 	}
-	existingFragment, err := memoryDB.MemoryFragmentInfo(fragmentID)
+	existingFragment, err := memoryDB.MemoryFragmentInfo(fragmentRef.FileID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -1819,7 +1884,7 @@ func TaskWorkflowRequirementFetch(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	resultMap, err := buildAsyncHomeTaskRequirementScrapeResultWithLog(fetchType, sourceURL, fragmentID, func(step, message string) {
+	resultMap, err := buildAsyncHomeTaskRequirementScrapeResultWithLog(fetchType, sourceURL, fragmentRef.FileID, func(step, message string) {
 		taskWorkflowBroadcastStep(cast.ToInt(workflowInfo[`id`]), taskWorkflowNormalizeFetchStep(step), `running`, message)
 	})
 	if err != nil {
@@ -1838,10 +1903,11 @@ func TaskWorkflowRequirementFetch(c *gin.Context) {
 	}
 	taskWorkflowBroadcastStep(cast.ToInt(workflowInfo[`id`]), `save_fragment`, `running`, `开始写入需求知识片段`)
 	savedFragment, err := memoryDB.MemoryFragmentSave(
-		fragmentID,
+		fragmentRef.FileID,
 		cast.ToString(existingFragment[`title`]),
 		markdown,
 		cast.ToStringSlice(existingFragment[`tags`]),
+		cast.ToString(existingFragment[`folder_name`]),
 	)
 	if err != nil {
 		_ = common.DbMain.TaskWorkflowMarkRequirementFetchFailed(request.WorkflowID, sourceURL, err.Error())
@@ -1981,7 +2047,7 @@ func taskWorkflowNormalizeFetchStep(step string) string {
 
 // ensureTaskWorkflowPlainTextReqFragment 确保纯文本需求知识片段存在，不存在则自动创建。
 func ensureTaskWorkflowPlainTextReqFragment(workflowInfo map[string]any, homeTaskInfo map[string]any) {
-	if strings.TrimSpace(cast.ToString(workflowInfo[`plain_text_requirement_fragment_id`])) != `` {
+	if common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`plain_text_requirement_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo)).FileID != `` {
 		return
 	}
 	if component.MemoryRuntime == nil {
@@ -1998,7 +2064,7 @@ func ensureTaskWorkflowPlainTextReqFragment(workflowInfo map[string]any, homeTas
 	if strings.TrimSpace(fragmentTitle) == `-纯文本需求` {
 		fragmentTitle = `纯文本需求文档`
 	}
-	fragmentInfo, err := memoryDB.MemoryFragmentSave(0, fragmentTitle, ``, []string{`纯文本需求`})
+	fragmentInfo, err := memoryDB.MemoryFragmentSave(0, fragmentTitle, ``, []string{`纯文本需求`}, taskWorkflowWorkflowFragmentFolderName(workflowInfo))
 	if err != nil {
 		return
 	}
@@ -2008,22 +2074,23 @@ func ensureTaskWorkflowPlainTextReqFragment(workflowInfo map[string]any, homeTas
 	if fragmentFileID == `` {
 		return
 	}
-	if err = common.DbMain.TaskWorkflowBindPlainTextReqFragment(workflowID, fragmentFileID); err != nil {
+	fragmentFullRef := common.TaskWorkflowBuildFragmentRef(cast.ToString(fragmentInfo[`folder_name`]), fragmentFileID)
+	if err = common.DbMain.TaskWorkflowBindPlainTextReqFragment(workflowID, fragmentFullRef); err != nil {
 		return
 	}
-	workflowInfo[`plain_text_requirement_fragment_id`] = fragmentFileID
+	workflowInfo[`plain_text_requirement_fragment_id`] = fragmentFullRef
 }
 
 // taskWorkflowBuildPlainTextFragmentRelativePath 为纯文本需求知识片段构建相对于 fragments/ 目录的相对路径。
 func taskWorkflowBuildPlainTextFragmentRelativePath(workflowInfo map[string]any) string {
-	fragmentID := strings.TrimSpace(cast.ToString(workflowInfo[`plain_text_requirement_fragment_id`]))
-	if fragmentID == `` || component.MemoryRuntime == nil {
+	fragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`plain_text_requirement_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo))
+	if fragmentRef.FileID == `` || component.MemoryRuntime == nil {
 		return ``
 	}
 	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
 		return ``
 	}
-	info, err := component.MemoryRuntime.DB().MemoryFragmentInfo(fragmentID)
+	info, err := component.MemoryRuntime.DB().MemoryFragmentInfo(fragmentRef.FileID)
 	if err != nil {
 		return ``
 	}
@@ -2045,7 +2112,7 @@ func taskWorkflowBuildPlainTextFragmentRelativePath(workflowInfo map[string]any)
 
 // ensureTaskWorkflowDesignPlanReqFragment 确保需求设计方案知识片段存在，不存在则自动创建。
 func ensureTaskWorkflowDesignPlanReqFragment(workflowInfo map[string]any, homeTaskInfo map[string]any) {
-	if strings.TrimSpace(cast.ToString(workflowInfo[`design_plan_requirement_fragment_id`])) != `` {
+	if common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`design_plan_requirement_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo)).FileID != `` {
 		return
 	}
 	if component.MemoryRuntime == nil {
@@ -2062,7 +2129,7 @@ func ensureTaskWorkflowDesignPlanReqFragment(workflowInfo map[string]any, homeTa
 	if strings.TrimSpace(fragmentTitle) == `-需求设计方案` {
 		fragmentTitle = `需求设计方案文档`
 	}
-	fragmentInfo, err := memoryDB.MemoryFragmentSave(0, fragmentTitle, ``, []string{`需求设计方案`})
+	fragmentInfo, err := memoryDB.MemoryFragmentSave(0, fragmentTitle, ``, []string{`需求设计方案`}, taskWorkflowWorkflowFragmentFolderName(workflowInfo))
 	if err != nil {
 		return
 	}
@@ -2072,26 +2139,27 @@ func ensureTaskWorkflowDesignPlanReqFragment(workflowInfo map[string]any, homeTa
 	if fragmentFileID == `` {
 		return
 	}
-	if err = common.DbMain.TaskWorkflowBindDesignPlanReqFragment(workflowID, fragmentFileID); err != nil {
+	fragmentFullRef := common.TaskWorkflowBuildFragmentRef(cast.ToString(fragmentInfo[`folder_name`]), fragmentFileID)
+	if err = common.DbMain.TaskWorkflowBindDesignPlanReqFragment(workflowID, fragmentFullRef); err != nil {
 		return
 	}
-	workflowInfo[`design_plan_requirement_fragment_id`] = fragmentFileID
+	workflowInfo[`design_plan_requirement_fragment_id`] = fragmentFullRef
 }
 
 // taskWorkflowBuildDesignPlanShareURL 为需求设计方案知识片段生成分享链接。
 func taskWorkflowBuildDesignPlanShareURL(c *gin.Context, workflowInfo map[string]any, apiHost string) string {
-	fragmentID := strings.TrimSpace(cast.ToString(workflowInfo[`design_plan_requirement_fragment_id`]))
-	if fragmentID == `` || component.MemoryRuntime == nil {
+	fragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`design_plan_requirement_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo))
+	if fragmentRef.FileID == `` || component.MemoryRuntime == nil {
 		return ``
 	}
 	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
 		return ``
 	}
-	if _, err := component.MemoryRuntime.DB().MemoryFragmentInfo(fragmentID); err != nil {
+	if _, err := component.MemoryRuntime.DB().MemoryFragmentInfo(fragmentRef.FileID); err != nil {
 		return ``
 	}
 	shareStore := memoryFragmentShareStoreForRoot(component.MemoryRuntime.Config().Dir)
-	share, err := shareStore.Create(fragmentID, time.Now())
+	share, err := shareStore.Create(fragmentRef.FileID, time.Now())
 	if err != nil {
 		return ``
 	}
@@ -2105,14 +2173,14 @@ func taskWorkflowBuildDesignPlanShareURL(c *gin.Context, workflowInfo map[string
 
 // taskWorkflowBuildDesignPlanFragmentRelativePath 为需求设计方案知识片段构建相对于 fragments/ 目录的相对路径。
 func taskWorkflowBuildDesignPlanFragmentRelativePath(workflowInfo map[string]any) string {
-	fragmentID := strings.TrimSpace(cast.ToString(workflowInfo[`design_plan_requirement_fragment_id`]))
-	if fragmentID == `` || component.MemoryRuntime == nil {
+	fragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`design_plan_requirement_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo))
+	if fragmentRef.FileID == `` || component.MemoryRuntime == nil {
 		return ``
 	}
 	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
 		return ``
 	}
-	info, err := component.MemoryRuntime.DB().MemoryFragmentInfo(fragmentID)
+	info, err := component.MemoryRuntime.DB().MemoryFragmentInfo(fragmentRef.FileID)
 	if err != nil {
 		return ``
 	}
@@ -2134,7 +2202,7 @@ func taskWorkflowBuildDesignPlanFragmentRelativePath(workflowInfo map[string]any
 
 // ensureTaskWorkflowApiDocFragment 确保接口文档知识片段存在，不存在则自动创建。
 func ensureTaskWorkflowApiDocFragment(workflowInfo map[string]any, homeTaskInfo map[string]any) {
-	if strings.TrimSpace(cast.ToString(workflowInfo[`api_doc_fragment_id`])) != `` {
+	if common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`api_doc_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo)).FileID != `` {
 		return
 	}
 	if component.MemoryRuntime == nil {
@@ -2151,7 +2219,7 @@ func ensureTaskWorkflowApiDocFragment(workflowInfo map[string]any, homeTaskInfo 
 	if strings.TrimSpace(fragmentTitle) == `-接口文档` {
 		fragmentTitle = `接口文档`
 	}
-	fragmentInfo, err := memoryDB.MemoryFragmentSave(0, fragmentTitle, ``, []string{`接口文档`})
+	fragmentInfo, err := memoryDB.MemoryFragmentSave(0, fragmentTitle, ``, []string{`接口文档`}, taskWorkflowWorkflowFragmentFolderName(workflowInfo))
 	if err != nil {
 		return
 	}
@@ -2161,10 +2229,11 @@ func ensureTaskWorkflowApiDocFragment(workflowInfo map[string]any, homeTaskInfo 
 	if fragmentFileID == `` {
 		return
 	}
-	if err = common.DbMain.TaskWorkflowBindApiDocFragment(workflowID, fragmentFileID); err != nil {
+	fragmentFullRef := common.TaskWorkflowBuildFragmentRef(cast.ToString(fragmentInfo[`folder_name`]), fragmentFileID)
+	if err = common.DbMain.TaskWorkflowBindApiDocFragment(workflowID, fragmentFullRef); err != nil {
 		return
 	}
-	workflowInfo[`api_doc_fragment_id`] = fragmentFileID
+	workflowInfo[`api_doc_fragment_id`] = fragmentFullRef
 }
 
 // TaskWorkflowApiDocReset 重置接口文档，将所有关联文件夹下的接口 Markdown 合并覆盖到知识片段中。
@@ -2180,8 +2249,8 @@ func TaskWorkflowApiDocReset(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	fragmentID := strings.TrimSpace(cast.ToString(workflowInfo[`api_doc_fragment_id`]))
-	if fragmentID == `` {
+	fragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`api_doc_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo))
+	if fragmentRef.FileID == `` {
 		gsgin.GinResponseError(c, `接口文档片段未创建`, nil)
 		return
 	}
@@ -2240,7 +2309,7 @@ func TaskWorkflowApiDocReset(c *gin.Context) {
 		return
 	}
 	// 获取现有片段信息以保留标题和标签
-	fragmentInfo, err := memoryDB.MemoryFragmentInfo(fragmentID)
+	fragmentInfo, err := memoryDB.MemoryFragmentInfo(fragmentRef.FileID)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -2256,14 +2325,14 @@ func TaskWorkflowApiDocReset(c *gin.Context) {
 		}
 	}
 	// 覆盖写入知识片段
-	_, err = memoryDB.MemoryFragmentSave(fragmentID, fragmentTitle, combinedMD, tags)
+	_, err = memoryDB.MemoryFragmentSave(fragmentRef.FileID, fragmentTitle, combinedMD, tags, cast.ToString(fragmentInfo[`folder_name`]))
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	component.MemoryRuntime.ScheduleSync()
 	gsgin.GinResponseSuccess(c, `接口文档已重置`, map[string]any{
-		`fragment_id`: fragmentID,
+		`fragment_id`: fragmentRef.FileID,
 	})
 }
 
@@ -2743,6 +2812,49 @@ func buildAgentChatListResponse(rows []map[string]any) []map[string]any {
 }
 
 // TaskWorkflowChatList 列出工作流的所有对话。
+func buildTaskWorkflowChatListSnapshot(workflowID int) ([]map[string]any, error) {
+	if workflowID <= 0 {
+		return []map[string]any{}, nil
+	}
+	rows, err := common.DbMain.TaskWorkflowChatList(workflowID)
+	if err != nil {
+		return nil, err
+	}
+	return buildAgentChatListResponse(rows), nil
+}
+
+func taskWorkflowBroadcastWorkflowDetail(workflowID int, eventType string, chatID int64) {
+	if workflowID <= 0 {
+		return
+	}
+	chatList, err := buildTaskWorkflowChatListSnapshot(workflowID)
+	if err != nil {
+		return
+	}
+	distributeID := define.SseTaskWorkflowPrefix + cast.ToString(workflowID)
+	msg := gstool.JsonEncode(p_define.SseData{
+		SseDistributeId: distributeID,
+		Data: map[string]any{
+			`type`:        strings.TrimSpace(eventType),
+			`chat_id`:     chatID,
+			`workflow_id`: workflowID,
+			`chat_list`:   chatList,
+		},
+		Type: p_define.SseContentTypeMsg,
+	})
+	for _, item := range gsgin.SseStatus() {
+		clientID := strings.TrimSpace(strings.TrimPrefix(item, apiDataChangeSseStatusPrefix))
+		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
+			continue
+		}
+		sse := gsgin.SseGetByClientId(clientID)
+		if sse == nil {
+			continue
+		}
+		_ = sse.SendToChan(msg)
+	}
+}
+
 func TaskWorkflowChatList(c *gin.Context) {
 	var req _struct.TaskWorkflowChatListRequest
 	if err := gsgin.GinPostBody(c, &req); err != nil {
@@ -3008,6 +3120,9 @@ func AgentChatMarkRead(c *gin.Context) {
 	if err := common.DbMain.AgentChatMarkRead(int64(req.ChatID)); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
+	}
+	if cast.ToString(info[`from_type`]) == common.AgentChatSourceTypeWorkflow {
+		taskWorkflowBroadcastWorkflowDetail(cast.ToInt(info[`from_id`]), `chat_read_change`, int64(req.ChatID))
 	}
 	taskWorkflowBroadcastUnreadChanged(int64(req.ChatID))
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
@@ -3365,6 +3480,7 @@ func runClaudeCommand(chatID int64, localDir, prompt string, isResume bool, sess
 			finalStatus = common.TaskWorkflowChatStatusError
 		}
 	}
+	taskWorkflowAutoMarkChatReadIfSseConnected(chatID, distributeID)
 	sendLine(buildChatCompletedEvent(chatID, finalStatus))
 	// 通知工作流页面刷新 chat 状态计数（执行历史按钮动画和状态数量）
 	taskWorkflowBroadcastChatStatus(chatID)
@@ -3590,9 +3706,28 @@ func runCodexCommand(chatID int64, localDir, prompt string, isResume bool, sessi
 			finalStatus = common.TaskWorkflowChatStatusError
 		}
 	}
+	taskWorkflowAutoMarkChatReadIfSseConnected(chatID, distributeID)
 	sendLine(buildChatCompletedEvent(chatID, finalStatus))
 	taskWorkflowBroadcastChatStatus(chatID)
 	_ = lastAgentMessageText
+}
+
+// taskWorkflowAutoMarkChatReadIfSseConnected 在命令结束时，如果专用 chat SSE 仍在线，则直接标记为已读。
+func taskWorkflowAutoMarkChatReadIfSseConnected(chatID int64, distributeID string) {
+	if chatID <= 0 {
+		return
+	}
+	if strings.TrimSpace(distributeID) == `` {
+		return
+	}
+	if gsgin.SseGetByClientId(distributeID) == nil {
+		return
+	}
+	if err := common.DbMain.AgentChatMarkRead(chatID); err != nil {
+		gstool.FmtPrintlnLogTime("[chat-read-auto] chat_id=%d 自动置已读失败: %v", chatID, err)
+		return
+	}
+	gstool.FmtPrintlnLogTime("[chat-read-auto] chat_id=%d 检测到活跃 SSE，已自动置为已读", chatID)
 }
 
 // buildChatCompletedEvent 构造对话终态 SSE 事件，携带最终状态供前端背景列表即时更新。
@@ -3719,27 +3854,7 @@ func taskWorkflowBroadcastChatStatus(chatID int64) {
 	if workflowID <= 0 {
 		return
 	}
-	distributeID := define.SseTaskWorkflowPrefix + cast.ToString(workflowID)
-	msg := gstool.JsonEncode(p_define.SseData{
-		SseDistributeId: distributeID,
-		Data: map[string]any{
-			`type`:        `chat_status_change`,
-			`chat_id`:     chatID,
-			`workflow_id`: workflowID,
-		},
-		Type: p_define.SseContentTypeMsg,
-	})
-	for _, item := range gsgin.SseStatus() {
-		clientID := strings.TrimSpace(strings.TrimPrefix(item, apiDataChangeSseStatusPrefix))
-		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
-			continue
-		}
-		sse := gsgin.SseGetByClientId(clientID)
-		if sse == nil {
-			continue
-		}
-		_ = sse.SendToChan(msg)
-	}
+	taskWorkflowBroadcastWorkflowDetail(workflowID, `chat_status_change`, chatID)
 }
 
 // taskWorkflowBroadcastUnreadChanged 在普通 SSE 通道广播未读数量变化，供工作流页与 Agent CLI 页实时更新红点。

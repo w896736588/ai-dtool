@@ -37,3 +37,4 @@ tmp/build-errors.log
 node
 /skills/superpowers/
 .superpowers
+*.test.mjs

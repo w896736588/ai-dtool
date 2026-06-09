@@ -142,7 +142,7 @@
                   <div v-if="block.type === 'text'" class="markdown-body chat-markdown-body" v-html="renderMarkdown(block.text)"></div>
                   <div v-else-if="block.type === 'tool_use'" class="chat-tool-card">
                     <div class="chat-tool-card__head">
-                      <span v-if="!block._result && detailStatus === 'running'" class="chat-detail-status-spinner"></span>
+                      <span v-if="isToolBlockRunning(block)" class="chat-detail-status-spinner"></span>
                       <span class="chat-tool-card__name">🔧 {{ block.name }}</span>
                     </div>
                     <pre v-if="block.displayInput" class="chat-tool-card__command"><code>{{ block.displayInput }}</code></pre>
@@ -193,7 +193,7 @@
               </div>
               <div v-else-if="msg.type === 'tool_use'" class="chat-tool-card">
                 <div class="chat-tool-card__head">
-                  <span v-if="!msg._result && detailStatus === 'running'" class="chat-detail-status-spinner"></span>
+                  <span v-if="isToolBlockRunning(msg)" class="chat-detail-status-spinner"></span>
                   <span class="chat-tool-card__name">🔧 {{ msg.name }}</span>
                 </div>
                 <pre v-if="msg.displayInput" class="chat-tool-card__command"><code>{{ msg.displayInput }}</code></pre>
@@ -776,6 +776,11 @@ export default {
     },
     isCurrentThinking(msg) {
       return this.isCurrentThinkingFn(msg)
+    },
+    isToolBlockRunning(block) {
+      if (!block) return false
+      const status = block._status || block._codexStatus || ''
+      return status === 'running' || status === 'in_progress' || status === 'waiting_result'
     },
     formatCliType(cliType) {
       return this.formatCliTypeFn(cliType)

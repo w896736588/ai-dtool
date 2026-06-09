@@ -427,16 +427,6 @@ export default {
       type: Object,
       required: true,
     },
-    // draftFragment 统一监听草稿变化，确保父组件与左侧列表同步未保存状态。
-    // draftFragment keeps parent state synced so the sidebar dirty color updates on the first edit.
-    draftFragment: {
-      deep: true,
-      handler() {
-        this.$nextTick(() => {
-          this.handleFormChange()
-        })
-      },
-    },
     savedFragment: {
       type: Object,
       required: true,
@@ -542,6 +532,16 @@ export default {
       immediate: true,
       handler() {
         this.resetDraft(false)
+      },
+    },
+    // draftFragment 统一监听本地草稿变化，确保父组件与左侧列表同步未保存状态。
+    // Watch the local draft instead of a same-named prop so IME input is not disrupted by conflicting state sources.
+    draftFragment: {
+      deep: true,
+      handler() {
+        this.$nextTick(() => {
+          this.handleFormChange()
+        })
       },
     },
     // savedFragment 变化后同步最新已保存内容。
@@ -846,7 +846,7 @@ export default {
       const previewEl = previewBody.querySelector('.md-editor-preview')
       if (!previewEl) return
 
-      const pathRegex = /[A-Za-z]:[\\/][^\s（）()]*[\\/]fragments[\\/]\d{4}[\\/]\d{4}-\d{2}[\\/][\w-]+\.md(?:（[^）]+）|\([^)]+\))?/g
+      const pathRegex = /[A-Za-z]:[\\/][^\s（）()]*[\\/](?!trash[\\/])[^\\/\s（）()]+[\\/]\d{4}[\\/]\d{4}-\d{2}[\\/][\w-]+\.md(?:（[^）]+）|\([^)]+\))?/g
       const paths = []
       const walker = document.createTreeWalker(previewEl, NodeFilter.SHOW_TEXT)
       const textNodes = []
@@ -858,7 +858,7 @@ export default {
           let m
           while ((m = pathRegex.exec(node.textContent)) !== null) {
             const raw = m[0]
-            const pathMatch = raw.match(/([A-Za-z]:[\\/][^\s（）()]*[\\/]fragments[\\/]\d{4}[\\/]\d{4}-\d{2}[\\/][\w-]+\.md)/)
+            const pathMatch = raw.match(/([A-Za-z]:[\\/][^\s（）()]*[\\/](?!trash[\\/])[^\\/\s（）()]+[\\/]\d{4}[\\/]\d{4}-\d{2}[\\/][\w-]+\.md)/)
             if (pathMatch && !paths.includes(pathMatch[1])) {
               paths.push(pathMatch[1])
             }
@@ -869,7 +869,7 @@ export default {
       if (paths.length === 0) return
 
       const replaceNodes = (pathMap) => {
-        const replaceRegex = /[A-Za-z]:[\\/][^\s（）()]*[\\/]fragments[\\/]\d{4}[\\/]\d{4}-\d{2}[\\/][\w-]+\.md(?:（[^）]+）|\([^)]+\))?/g
+        const replaceRegex = /[A-Za-z]:[\\/][^\s（）()]*[\\/](?!trash[\\/])[^\\/\s（）()]+[\\/]\d{4}[\\/]\d{4}-\d{2}[\\/][\w-]+\.md(?:（[^）]+）|\([^)]+\))?/g
         for (const node of textNodes) {
           if (!node.parentNode) continue
           const text = node.textContent
@@ -881,7 +881,7 @@ export default {
           let match
           while ((match = replaceRegex.exec(text)) !== null) {
             const raw = match[0]
-            const pathMatch = raw.match(/([A-Za-z]:[\\/][^\s（）()]*[\\/]fragments[\\/]\d{4}[\\/]\d{4}-\d{2}[\\/][\w-]+\.md)/)
+            const pathMatch = raw.match(/([A-Za-z]:[\\/][^\s（）()]*[\\/](?!trash[\\/])[^\\/\s（）()]+[\\/]\d{4}[\\/]\d{4}-\d{2}[\\/][\w-]+\.md)/)
             if (!pathMatch) continue
             const info = pathMap[pathMatch[1]]
             if (match.index > lastIndex) {
@@ -1487,6 +1487,7 @@ export default {
         this.draftFragment.title,
         this.draftFragment.content,
         this.draftFragment.tags || [],
+        this.draftFragment.folder_name || 'fragments',
         (response) => {
           this.saving = false
           if (response.ErrCode !== 0) {
@@ -1549,6 +1550,7 @@ export default {
         this.draftFragment.title,
         this.organizeResult.content,
         this.draftFragment.tags || [],
+        this.draftFragment.folder_name || 'fragments',
         (response) => {
           this.applyingOrganizeResult = false
           if (response.ErrCode !== 0 || !response.Data) {

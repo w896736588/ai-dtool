@@ -91,6 +91,8 @@
   height: 100%;
   width: 100%;
   min-height: 0;
+  --md-font-size: 13px;
+  --md-code-font-size: 13px;
 }
 
 .desc-editor :deep(.md-editor-content) {
@@ -100,6 +102,13 @@
 
 .desc-editor :deep(.md-editor-input-wrapper) {
   overflow: auto;
+}
+
+.desc-editor :deep(.md-editor-input),
+.desc-editor :deep(.md-editor-preview),
+.desc-editor :deep(.md-editor-preview-wrapper) {
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .config-section,

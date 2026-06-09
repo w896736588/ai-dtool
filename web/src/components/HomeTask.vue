@@ -38,7 +38,6 @@
                 <div>
                   <div class="home-task-card__title">
                     <span>{{ task.name }}</span>
-                    <span v-if="hasHomeTaskWorkflowUnread(task)" class="home-task-card__unread-dot"></span>
                   </div>
                   <div class="home-task-card__meta">
                     <span>开始时间：{{ task.start_time_desc || '-' }}</span>
@@ -91,6 +90,7 @@
                   <GitActionButton
                     compact
                     variant="primary"
+                    :class="{ 'home-task-workflow-btn--unread': hasHomeTaskWorkflowUnread(task) }"
                     :disabled="isHomeTaskBusy(task.id)"
                     v-if="Number(task.use_workflow) !== HOME_TASK_USE_WORKFLOW_NO"
                     @click="openTaskWorkflow(task)"
@@ -170,7 +170,6 @@
                 <div>
                   <div class="home-task-card__title">
                     <span>{{ task.name }}</span>
-                    <span v-if="hasHomeTaskWorkflowUnread(task)" class="home-task-card__unread-dot"></span>
                   </div>
                   <div class="home-task-card__meta">
                     <span>开始时间：{{ task.start_time_desc || '-' }}</span>
@@ -233,6 +232,7 @@
                   <GitActionButton
                     compact
                     variant="primary"
+                    :class="{ 'home-task-workflow-btn--unread': hasHomeTaskWorkflowUnread(task) }"
                     :disabled="isHomeTaskBusy(task.id)"
                     v-if="Number(task.use_workflow) !== HOME_TASK_USE_WORKFLOW_NO"
                     @click="openTaskWorkflow(task)"
@@ -397,6 +397,29 @@
           </el-col>
         </el-row>
         <el-row :gutter="12" v-if="homeTaskForm.use_workflow === HOME_TASK_USE_WORKFLOW_YES">
+          <el-col :xs="24" :sm="12" :md="12">
+            <el-form-item label="知识文件夹">
+              <el-select
+                v-model="homeTaskForm.workflow_fragment_folder_name"
+                filterable
+                style="width: 100%"
+                placeholder="请选择知识片段文件夹"
+                :loading="homeTaskMemoryFolderLoading"
+              >
+                <el-option
+                  v-for="item in homeTaskMemoryFolderList"
+                  :key="item.folder_name"
+                  :label="item.name || item.folder_name"
+                  :value="item.folder_name"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="24">
+            <div style="margin: -4px 0 12px; color: #7a7a6a; font-size: 12px;">
+              工作流里创建、读取和回写的知识片段都会使用这个文件夹。
+            </div>
+          </el-col>
           <el-col :span="24">
             <el-form-item label="开发项目配置">
               <div v-for="(cfg, cfgIdx) in homeTaskForm.dev_configs" :key="cfgIdx" style="border: 2px solid #c8d5b9; border-radius: 4px; padding: 12px 12px 4px; margin-bottom: 10px; position: relative;">
@@ -669,6 +692,7 @@ import dockerApi from '@/utils/base/compose'
 import smartLinkSetApi from '@/utils/base/smart_link_set'
 import taskWorkflowApi from '@/utils/base/task_workflow'
 import sseDistribute from '@/utils/base/sse_distribute'
+import memoryFragmentApi from '@/utils/base/memory_fragment'
 import GitActionButton from "@/components/base/GitActionButton.vue"
 
 const HOME_TASK_TAB_ACTIVE = 'active'
@@ -708,6 +732,7 @@ const HOME_TASK_USE_WORKFLOW_YES = 1
 const HOME_TASK_USE_WORKFLOW_NO = 0
 const HOME_TASK_FETCH_TYPE_TAPD = 'tapd'
 const HOME_TASK_FETCH_TYPE_ZENTAO = 'zentao'
+const HOME_TASK_DEFAULT_WORKFLOW_FRAGMENT_FOLDER = 'fragments'
 const HOME_TASK_WORKFLOW_NODE_KEYS = [
   'requirement-fetch',
   'requirement',
@@ -760,6 +785,7 @@ function createHomeTaskDefaultForm() {
     tapd_url: '',
     zentao_url: '',
     use_workflow: HOME_TASK_USE_WORKFLOW_YES,
+    workflow_fragment_folder_name: HOME_TASK_DEFAULT_WORKFLOW_FRAGMENT_FOLDER,
     dev_configs: [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', mysql_id: '', local_dir: '', parent_branch: '', branch_name: '', rule_entry_file: '', _branchGenerating: false, smart_link_id: '', smart_link_label: '', smart_link_account: '' }],
   }
 }
@@ -784,6 +810,7 @@ export default {
       HOME_TASK_USE_WORKFLOW_NO,
       HOME_TASK_FETCH_TYPE_TAPD,
       HOME_TASK_FETCH_TYPE_ZENTAO,
+      HOME_TASK_DEFAULT_WORKFLOW_FRAGMENT_FOLDER,
       homeTaskActiveTab: HOME_TASK_TAB_ACTIVE,
       homeTaskDialogVisible: false,
       homeTaskLoadingActive: false,
@@ -817,6 +844,8 @@ export default {
       homeTaskDockerLoading: false,
       homeTaskSmartLinkList: [],
       homeTaskSmartLinkLoading: false,
+      homeTaskMemoryFolderList: [],
+      homeTaskMemoryFolderLoading: false,
       homeTaskConfigTableColumns: [
         { key: 'git', label: 'Git仓库' },
         { key: 'api', label: '接口集合' },
@@ -853,6 +882,7 @@ export default {
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES)
     this.loadHomeTaskSmartLinkList()
+    this.loadHomeTaskMemoryFolderList()
   },
   activated() {
     this.ensureWorkflowUnreadSse()
@@ -863,6 +893,7 @@ export default {
     this.loadHomeTaskDockerList()
     this.loadHomeTaskMysqlList()
     this.loadHomeTaskSmartLinkList()
+    this.loadHomeTaskMemoryFolderList()
   },
   beforeUnmount() {
     this.unregisterWorkflowUnreadSse()
@@ -1039,6 +1070,20 @@ export default {
         })
       })
     },
+    loadHomeTaskMemoryFolderList() {
+      this.homeTaskMemoryFolderLoading = true
+      memoryFragmentApi.MemoryFragmentFolderList((response) => {
+        this.homeTaskMemoryFolderLoading = false
+        if (!(response && response.ErrCode === 0)) {
+          return
+        }
+        this.homeTaskMemoryFolderList = Array.isArray(response.Data) ? response.Data : []
+        const exists = this.homeTaskMemoryFolderList.some(item => item.folder_name === this.homeTaskForm.workflow_fragment_folder_name)
+        if (!exists) {
+          this.homeTaskForm.workflow_fragment_folder_name = HOME_TASK_DEFAULT_WORKFLOW_FRAGMENT_FOLDER
+        }
+      })
+    },
     getDevConfigSmartLinkLabels(cfgIdx) {
       const cfg = this.homeTaskForm.dev_configs[cfgIdx]
       if (!cfg || !cfg.smart_link_id) return []
@@ -1146,6 +1191,7 @@ export default {
       this.loadHomeTaskMysqlList()
       this.loadHomeTaskDockerList()
       this.loadHomeTaskSmartLinkList()
+      this.loadHomeTaskMemoryFolderList()
       this.loadHomeTaskUnusedLocalDirs(0)
       this.homeTaskDialogVisible = true
     },
@@ -1241,6 +1287,7 @@ export default {
         tapd_url: task.tapd_url || '',
         zentao_url: task.zentao_url || '',
         use_workflow: Number(task.use_workflow ?? HOME_TASK_USE_WORKFLOW_YES) === HOME_TASK_USE_WORKFLOW_YES ? HOME_TASK_USE_WORKFLOW_YES : HOME_TASK_USE_WORKFLOW_NO,
+        workflow_fragment_folder_name: String(task.workflow_fragment_folder_name || HOME_TASK_DEFAULT_WORKFLOW_FRAGMENT_FOLDER).trim() || HOME_TASK_DEFAULT_WORKFLOW_FRAGMENT_FOLDER,
         dev_configs: devConfigs,
       }
       this.loadHomeTaskGitRepoList()
@@ -1248,6 +1295,7 @@ export default {
       this.loadHomeTaskMysqlList()
       this.loadHomeTaskDockerList()
       this.loadHomeTaskSmartLinkList()
+      this.loadHomeTaskMemoryFolderList()
       const devColIds = new Set()
       for (const cfg of devConfigs) {
         if (cfg.collection_id > 0) devColIds.add(cfg.collection_id)
@@ -1441,6 +1489,11 @@ export default {
         this.$helperNotify.error('任务名称不能超过200字')
         return
       }
+      const workflowFragmentFolderName = String(this.homeTaskForm.workflow_fragment_folder_name || '').trim()
+      if (Number(this.homeTaskForm.use_workflow) === HOME_TASK_USE_WORKFLOW_YES && !workflowFragmentFolderName) {
+        this.$helperNotify.error('知识片段文件夹不能为空')
+        return
+      }
       const validConfigs = this.homeTaskForm.dev_configs
         .filter(cfg => Number(cfg.git_id || 0) > 0 || Number(cfg.collection_id || 0) > 0 || Number(cfg.docker_id || 0) > 0 || Number(cfg.mysql_id || 0) > 0 || String(cfg.local_dir || '').trim() !== '' || String(cfg.parent_branch || '').trim() !== '' || String(cfg.branch_name || '').trim() !== '' || String(cfg.rule_entry_file || '').trim() !== '' || Number(cfg.smart_link_id || 0) > 0)
         .map(cfg => ({
@@ -1471,6 +1524,7 @@ export default {
         zentao_url: zentaoUrl,
         dev_configs: JSON.stringify(validConfigs),
         use_workflow: useWorkflow,
+        workflow_fragment_folder_name: workflowFragmentFolderName,
         api_host: base.GetApiHost() || window.location.origin,
         api_token: base.GetSafeToken(),
       }, (response) => {

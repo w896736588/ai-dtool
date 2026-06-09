@@ -3,32 +3,43 @@
     <aside v-if="memoryConfigured && !sidebarCollapsed" class="memory-sidebar">
       <div class="sidebar-header">
         <div class="sidebar-header-actions">
-          <el-tooltip content="上传ZIP" placement="bottom">
-            <pl-button plain size="small" class="icon-only-btn" @click="triggerUploadZip" :loading="zipUploading">
-              <el-icon><Upload /></el-icon>
+          <div class="sidebar-header-actions-row">
+            <el-tooltip content="上传ZIP" placement="bottom">
+              <pl-button plain size="small" class="icon-only-btn" @click="triggerUploadZip" :loading="zipUploading">
+                <el-icon><Upload /></el-icon>
+              </pl-button>
+            </el-tooltip>
+            <input ref="zipFileInput" type="file" accept=".zip" style="display:none" @change="handleZipUpload" />
+            <el-tooltip content="搜索" placement="bottom">
+              <pl-button plain size="small" class="icon-only-btn" @click="searchDialogVisible = true">
+                <el-icon><Search /></el-icon>
+              </pl-button>
+            </el-tooltip>
+            <el-tooltip content="新建" placement="bottom">
+              <pl-button type="primary" plain size="small" class="icon-only-btn" @click="createFragment">
+                <el-icon><Plus /></el-icon>
+              </pl-button>
+            </el-tooltip>
+            <el-tooltip content="回收站" placement="bottom">
+              <pl-button plain size="small" class="icon-only-btn" @click="openTrashTab">
+                <el-icon><Delete /></el-icon>
+              </pl-button>
+            </el-tooltip>
+            <el-tooltip content="设置" placement="bottom">
+              <pl-button plain size="small" class="icon-only-btn" @click="openSettingsDialog">
+                <el-icon><Setting /></el-icon>
+              </pl-button>
+            </el-tooltip>
+          </div>
+          <div class="sidebar-header-actions-row sidebar-header-actions-row--folders">
+            <pl-button plain size="small" class="sidebar-header-folder-btn" @click="openFolderCreateDialog">
+              <el-icon><FolderAdd /></el-icon>
+              <span>新建文件夹</span>
             </pl-button>
-          </el-tooltip>
-          <input ref="zipFileInput" type="file" accept=".zip" style="display:none" @change="handleZipUpload" />
-          <el-tooltip content="搜索" placement="bottom">
-            <pl-button plain size="small" class="icon-only-btn" @click="searchDialogVisible = true">
-              <el-icon><Search /></el-icon>
+            <pl-button plain size="small" class="sidebar-header-folder-btn" @click="openFolderManageDialog">
+              文件夹管理
             </pl-button>
-          </el-tooltip>
-          <el-tooltip content="新建" placement="bottom">
-            <pl-button type="primary" plain size="small" class="icon-only-btn" @click="createFragment">
-              <el-icon><Plus /></el-icon>
-            </pl-button>
-          </el-tooltip>
-          <el-tooltip content="回收站" placement="bottom">
-            <pl-button plain size="small" class="icon-only-btn" @click="openTrashTab">
-              <el-icon><Delete /></el-icon>
-            </pl-button>
-          </el-tooltip>
-          <el-tooltip content="设置" placement="bottom">
-            <pl-button plain size="small" class="icon-only-btn" @click="openSettingsDialog">
-              <el-icon><Setting /></el-icon>
-            </pl-button>
-          </el-tooltip>
+          </div>
         </div>
       </div>
 
@@ -44,6 +55,15 @@
               <el-icon><Search /></el-icon>
             </template>
           </el-input>
+          <el-select v-model="selectedFolderName" size="small" class="sidebar-folder-select">
+            <el-option label="全部文件夹" value="" />
+            <el-option
+              v-for="folder in selectableFolders"
+              :key="folder.folder_name"
+              :label="folder.name"
+              :value="folder.folder_name"
+            />
+          </el-select>
         </div>
         <div v-if="sidebarFilterLoading" class="sidebar-filter-loading">
           <el-icon class="is-loading"><Loading /></el-icon>
@@ -83,9 +103,37 @@
             </span>
             <div class="sidebar-item-time">{{ item.update_time_desc || '-' }}</div>
           </div>
-          <div v-if="fragmentRefCount(item.id) > 0" class="sidebar-item-refs" @click.stop="toggleFragmentRefs(item.id)">
-            <span class="sidebar-item-refs-badge">被 {{ fragmentRefCount(item.id) }} 个位置使用</span>
-            <div v-if="expandedFragmentRefs[normalizeFragmentId(item.id)]" class="sidebar-item-refs-list">
+          <div v-if="fragmentRefCount(item.id) > 0 || item.folder_label || item.folder_name" class="sidebar-item-refs">
+            <div
+              v-if="fragmentRefCount(item.id) > 0"
+              class="sidebar-item-refs-summary"
+              @click.stop="toggleFragmentRefs(item.id)"
+            >
+              <span class="sidebar-item-refs-badge">被 {{ fragmentRefCount(item.id) }} 个位置使用</span>
+            </div>
+            <el-dropdown
+              class="sidebar-item-folder-dropdown"
+              trigger="click"
+              @command="(folderName) => changeFragmentFolder(item, folderName)"
+            >
+              <span class="sidebar-item-folder-tag">{{ item.folder_label || item.folder_name || '默认文件夹' }}</span>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item
+                    v-for="folder in movableFolders"
+                    :key="folder.folder_name"
+                    :command="folder.folder_name"
+                    :disabled="folder.folder_name === item.folder_name"
+                  >
+                    {{ folder.name }}
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            <div
+              v-if="fragmentRefCount(item.id) > 0 && expandedFragmentRefs[normalizeFragmentId(item.id)]"
+              class="sidebar-item-refs-list"
+            >
               <div
                 v-for="ref in getFragmentRefs(item.id)"
                 :key="ref.type + '-' + ref.id"
@@ -134,6 +182,61 @@
           @tab-remove="closeTab"
           @tab-click="handleTabChange"
         >
+          <el-tab-pane
+            name="home"
+            :closable="false"
+          >
+            <template #label>
+              <span class="tab-label">首页</span>
+            </template>
+            <div class="memory-home-panel">
+              <div class="memory-home-hero">
+                <div class="memory-home-hero__main">
+                  <div class="memory-home-hero__eyebrow">Knowledge Home</div>
+                  <div class="memory-home-hero__title">知识片段文件夹总览</div>
+                  <div class="memory-home-hero__desc">
+                    当前共 {{ folderOverviewList.length }} 个文件夹，收录 {{ totalFolderFragmentCount }} 条知识片段。
+                  </div>
+                </div>
+                <div class="memory-home-hero__stats">
+                  <div class="memory-home-stat">
+                    <div class="memory-home-stat__label">文件夹</div>
+                    <div class="memory-home-stat__value">{{ folderOverviewList.length }}</div>
+                  </div>
+                  <div class="memory-home-stat">
+                    <div class="memory-home-stat__label">知识片段</div>
+                    <div class="memory-home-stat__value">{{ totalFolderFragmentCount }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="folderOverviewList.length > 0" class="memory-home-grid">
+                <button
+                  v-for="folder in folderOverviewList"
+                  :key="folder.folder_name"
+                  class="memory-home-folder-card"
+                  @click="enterFolder(folder.folder_name)"
+                >
+                  <div class="memory-home-folder-card__head">
+                    <div class="memory-home-folder-card__title">{{ folder.name || folder.folder_name }}</div>
+                    <div class="memory-home-folder-card__count">{{ folder.fragment_count || 0 }}</div>
+                  </div>
+                  <div class="memory-home-folder-card__path">{{ folder.folder_name }}</div>
+                  <div class="memory-home-folder-card__meta">
+                    <span>{{ folder.fragment_count || 0 }} 个知识片段</span>
+                    <span v-if="Number(folder.system) === 1">系统</span>
+                    <span v-else>自定义</span>
+                  </div>
+                </button>
+              </div>
+
+              <el-empty
+                v-else
+                description="暂无文件夹"
+              />
+            </div>
+          </el-tab-pane>
+
           <el-tab-pane
             v-if="aiSearchTabVisible"
             name="ai_search"
@@ -436,11 +539,65 @@
         </div>
       </div>
     </el-dialog>
+
+    <el-dialog
+      v-model="folderDialogVisible"
+      title="创建文件夹"
+      width="420px"
+      destroy-on-close
+    >
+      <el-form label-position="top">
+        <el-form-item label="名称">
+          <el-input v-model="folderForm.name" maxlength="50" />
+        </el-form-item>
+        <el-form-item label="文件夹名称">
+          <el-input v-model="folderForm.folder_name" maxlength="50" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="folderDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitFolderCreate">创建</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="folderManageDialogVisible"
+      title="文件夹管理"
+      width="520px"
+      destroy-on-close
+    >
+      <div v-if="folderManageDrafts.length > 0" class="folder-manage-list">
+        <div
+          v-for="folder in folderManageDrafts"
+          :key="folder.folder_name"
+          class="folder-manage-item"
+        >
+          <div class="folder-manage-item__meta">
+            <div class="folder-manage-item__title">{{ folder.folder_name }}</div>
+            <div class="folder-manage-item__label">显示名称</div>
+          </div>
+          <div class="folder-manage-item__actions">
+            <el-input v-model="folder.name" maxlength="50" />
+            <el-button
+              type="primary"
+              :disabled="!folder.folder_name || !folder.name || folder.name === folder.original_name"
+              @click="submitFolderRename(folder)"
+            >
+              保存
+            </el-button>
+          </div>
+        </div>
+      </div>
+      <el-empty v-else description="暂无可管理的文件夹" :image-size="88" />
+      <template #footer>
+        <el-button @click="folderManageDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { ArrowDown, ArrowRight, Check, Close, DArrowLeft, DArrowRight, Delete, Download, HomeFilled, Loading, Plus, Search, Setting, Upload } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowRight, Check, Close, DArrowLeft, DArrowRight, Delete, Download, FolderAdd, HomeFilled, Loading, Plus, Search, Setting, Upload } from '@element-plus/icons-vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
 import set from '@/utils/base/git_set'
 import MemoryEditor from '@/components/memory/MemoryEditor.vue'
@@ -463,6 +620,8 @@ const TAG_FILTER_COLLAPSED_MAX_HEIGHT = 76
 const TAG_FILTER_TOGGLE_MIN_COUNT = 10
 // SEARCH_TAB_NAME 统一定义搜索结果标签页名称，避免散落硬编码。
 const SEARCH_TAB_NAME = 'search'
+// HOME_TAB_NAME 统一定义知识片段首页标签页名称。
+const HOME_TAB_NAME = 'home'
 // TRASH_TAB_NAME 统一定义回收站标签页名称，避免散落硬编码。
 const TRASH_TAB_NAME = 'trash'
 // AI_SEARCH_TAB_NAME 统一定义 AI 智能搜索标签页名称。
@@ -491,6 +650,7 @@ export default {
     DArrowRight,
     Delete,
     Download,
+    FolderAdd,
     HomeFilled,
     Plus,
     Search,
@@ -558,6 +718,15 @@ export default {
       zipUploading: false,
       fragmentReferences: {},
       expandedFragmentRefs: {},
+      folderList: [],
+      selectedFolderName: 'fragments',
+      folderDialogVisible: false,
+      folderManageDialogVisible: false,
+      folderForm: {
+        name: '',
+        folder_name: '',
+      },
+      folderManageDrafts: [],
     }
   },
   computed: {
@@ -567,12 +736,15 @@ export default {
       return tab ? this.normalizeFragmentId(tab.fragment.id) : ''
     },
     // routeFragmentId 返回路由中指定的片段 id。
-    routeFragmentId() {
-      return this.normalizeFragmentId(this.$route.query.fragment_id)
-    },
-    isEmbedded() {
-      return String(this.$route.query.embed || '') === '1'
-    },
+      routeFragmentId() {
+        return this.normalizeFragmentId(this.$route.query.fragment_id)
+      },
+      routeFolderName() {
+        return String(this.$route.query.folder_name || '').trim()
+      },
+      isEmbedded() {
+        return String(this.$route.query.embed || '') === '1'
+      },
     // searchTabLabel 返回搜索结果标签名称。
     searchTabLabel() {
       if (this.submittedSearchQuery.trim() !== '') {
@@ -598,13 +770,32 @@ export default {
       return this.sidebarFilterResults
     },
     // fragmentListHasMore 侧边栏列表是否还有更多数据可加载。
-    fragmentListHasMore() {
-      if (this.sidebarFilterQuery.trim()) return false
-      return this.fragmentHasMore
+      fragmentListHasMore() {
+        if (this.sidebarFilterQuery.trim()) return false
+        return this.fragmentHasMore
+      },
+      folderOverviewList() {
+        return this.selectableFolders
+      },
+      totalFolderFragmentCount() {
+        return this.folderOverviewList.reduce((total, item) => total + Number(item.fragment_count || 0), 0)
+      },
+      selectableFolders() {
+        return this.folderList.filter(item => item.folder_name !== 'trash')
+      },
+    movableFolders() {
+      return this.folderList.filter(item => item.folder_name !== 'trash')
+    },
+    editableFolders() {
+      return this.folderList.filter(item => Number(item.editable) > 0)
+    },
+    manageableFolders() {
+      return this.editableFolders.filter(item => item.folder_name !== 'fragments' && item.folder_name !== 'trash')
     }
   },
   created() {
     this.applySidebarHiddenQuery()
+    this.syncFolderFromRoute()
   },
   mounted() {
     this.aiSearchStepStartTimes = {}
@@ -634,11 +825,17 @@ export default {
     this.clearAllStepTimers()
     this.clearSaveFeedbackTimers()
   },
-  watch: {
-    '$route.fullPath'() {
-      this.routeFragmentHandled = false
-      this.tryOpenRouteFragmentOnEntry()
-      this.applySidebarHiddenQuery()
+    watch: {
+      '$route.fullPath'() {
+        this.routeFragmentHandled = false
+        this.syncFolderFromRoute()
+        this.tryOpenRouteFragmentOnEntry()
+        this.applySidebarHiddenQuery()
+      },
+    selectedFolderName() {
+      this.loadFragmentList()
+      this.rerunSidebarFilter()
+      this.rerunSubmittedSearch()
     },
     sidebarFilterQuery() {
       clearTimeout(this.sidebarFilterTimer)
@@ -654,6 +851,7 @@ export default {
           this.sidebarFilterQuery.trim(),
           KEYWORD_SEARCH_MODE,
           [],
+          this.selectedFolderName,
           0,
           (response) => {
             this.sidebarFilterLoading = false
@@ -678,6 +876,78 @@ export default {
     toggleSidebar() {
       this.sidebarCollapsed = !this.sidebarCollapsed
       localStorage.setItem('memorySidebarCollapsed', this.sidebarCollapsed)
+    },
+    syncFolderFromRoute() {
+      const routeFolderName = this.routeFolderName
+      this.selectedFolderName = routeFolderName || 'fragments'
+    },
+    loadFolderList() {
+      MemoryFragmentApi.MemoryFragmentFolderList((response) => {
+        if (!(response && response.ErrCode === 0)) {
+          return
+        }
+        this.folderList = Array.isArray(response.Data) ? response.Data : []
+        const exists = this.folderList.some(item => item.folder_name === this.selectedFolderName)
+        if (!exists && this.selectedFolderName) {
+          this.selectedFolderName = 'fragments'
+        }
+        if (this.routeFolderName && this.folderList.some(item => item.folder_name === this.routeFolderName)) {
+          this.selectedFolderName = this.routeFolderName
+        }
+      })
+    },
+    openFolderCreateDialog() {
+      this.folderForm = {
+        name: '',
+        folder_name: '',
+      }
+      this.folderDialogVisible = true
+    },
+    openFolderManageDialog() {
+      this.folderManageDrafts = this.manageableFolders.map(item => ({
+        folder_name: item.folder_name,
+        name: item.name || '',
+        original_name: item.name || '',
+      }))
+      this.folderManageDialogVisible = true
+    },
+    submitFolderCreate() {
+      MemoryFragmentApi.MemoryFragmentFolderCreate(this.folderForm.name, this.folderForm.folder_name, (response) => {
+        if (!(response && response.ErrCode === 0)) {
+          return
+        }
+        this.folderDialogVisible = false
+        this.loadFolderList()
+        if (response.Data && response.Data.folder_name) {
+          this.selectedFolderName = response.Data.folder_name
+        }
+      })
+    },
+    submitFolderRename(folder) {
+      if (!folder || !folder.folder_name || !folder.name) {
+        return
+      }
+      MemoryFragmentApi.MemoryFragmentFolderUpdate(folder.folder_name, folder.name, (response) => {
+        if (!(response && response.ErrCode === 0)) {
+          return
+        }
+        folder.original_name = folder.name
+        this.loadFolderList()
+      })
+    },
+    changeFragmentFolder(item, folderName) {
+      if (!item || !folderName) {
+        return
+      }
+      MemoryFragmentApi.MemoryFragmentFolderChange(item.id || item.file_id, folderName, (response) => {
+        if (!(response && response.ErrCode === 0 && response.Data)) {
+          return
+        }
+        this.upsertFragmentTab(response.Data, false)
+        this.loadFragmentList()
+        this.rerunSidebarFilter()
+        this.rerunSubmittedSearch()
+      })
     },
     // registerMemoryFragmentUpdatesSse 注册知识片段实时同步推送。
     registerMemoryFragmentUpdatesSse() {
@@ -711,6 +981,7 @@ export default {
       this.fragmentTotalCount = data && data.fragment_count ? Number(data.fragment_count) : 0
       if (!this.memoryConfigured) {
         this.fragmentList = []
+        this.folderList = []
         this.trashList = []
         this.searchResults = []
         this.fragmentTabs = []
@@ -722,6 +993,7 @@ export default {
       }
       // 首次加载时需要加载列表
       if (this.fragmentList.length === 0 && this.trashList.length === 0) {
+        this.loadFolderList()
         this.loadFragmentList()
         this.loadTrashList()
       }
@@ -871,6 +1143,7 @@ export default {
         this.fragmentTotalCount = response.Data && response.Data.fragment_count ? Number(response.Data.fragment_count) : 0
         if (!this.memoryConfigured) {
           this.fragmentList = []
+          this.folderList = []
           this.trashList = []
           this.searchResults = []
           this.fragmentTabs = []
@@ -881,6 +1154,7 @@ export default {
           return
         }
         if (needReloadLists) {
+          this.loadFolderList()
           this.loadFragmentList()
           this.loadTrashList()
         }
@@ -904,7 +1178,7 @@ export default {
         this.fragmentHasMore = true
       }
       this.fragmentLoadingMore = true
-      MemoryFragmentApi.MemoryFragmentList(this.fragmentPageSize, offset, (response) => {
+      MemoryFragmentApi.MemoryFragmentList(this.fragmentPageSize, offset, this.selectedFolderName, (response) => {
         this.fragmentLoadingMore = false
         const list = Array.isArray(response.Data && response.Data.list) ? response.Data.list : (Array.isArray(response.Data) ? response.Data : [])
         const hasMore = typeof response.Data === 'object' && response.Data !== null && 'has_more' in response.Data ? response.Data.has_more : false
@@ -927,7 +1201,7 @@ export default {
         return
       }
       const currentOrderIds = this.fragmentList.map(item => this.normalizeFragmentId(item.id || item.file_id))
-      MemoryFragmentApi.MemoryFragmentList(this.fragmentPageSize, 0, (response) => {
+      MemoryFragmentApi.MemoryFragmentList(this.fragmentPageSize, 0, this.selectedFolderName, (response) => {
         const rawList = Array.isArray(response.Data && response.Data.list) ? response.Data.list : (Array.isArray(response.Data) ? response.Data : [])
         const hasMore = typeof response.Data === 'object' && response.Data !== null && 'has_more' in response.Data ? response.Data.has_more : false
         const newMap = new Map(rawList.map(item => [this.normalizeFragmentId(item.id || item.file_id), item]))
@@ -968,6 +1242,10 @@ export default {
     // ensureDefaultFragmentTab 在没有激活片段时自动打开列表中的第一个知识片段。
     ensureDefaultFragmentTab() {
       if (!this.memoryConfigured) {
+        return
+      }
+      if (!this.routeFragmentId) {
+        this.activeTab = HOME_TAB_NAME
         return
       }
       if (this.activeTab === SEARCH_TAB_NAME || this.activeTab === TRASH_TAB_NAME || this.activeTab === AI_SEARCH_TAB_NAME) {
@@ -1046,6 +1324,7 @@ export default {
         query,
         mode,
         [],
+        this.selectedFolderName,
         50,
         (response) => {
           this.searchLoading = false
@@ -1104,6 +1383,7 @@ export default {
         query,
         KEYWORD_SEARCH_MODE,
         [],
+        this.selectedFolderName,
         0,
         (response) => {
           this.sidebarFilterLoading = false
@@ -1311,7 +1591,7 @@ export default {
       if (!this.memoryConfigured) {
         return
       }
-      MemoryFragmentApi.MemoryFragmentSave(0, '新知识片段', '# 标签\n\n在这里开始记录。', [], (response) => {
+      MemoryFragmentApi.MemoryFragmentSave(0, '新知识片段', '# 标签\n\n在这里开始记录。', [], this.selectedFolderName || 'fragments', (response) => {
         if (response.ErrCode !== 0 || !response.Data) {
           return
         }
@@ -1390,6 +1670,7 @@ export default {
       if (!fragmentId) {
         this.routeFragmentHandled = true
         this.routeFragmentHandledPath = currentPath
+        this.activeTab = HOME_TAB_NAME
         return
       }
       this.routeFragmentHandled = true
@@ -1423,6 +1704,8 @@ export default {
         title: fragment.title || '',
         content: fragment.content || '',
         file_path: fragment.file_path || '',
+        folder_name: fragment.folder_name || 'fragments',
+        folder_label: fragment.folder_label || '',
         update_time_desc: fragment.update_time_desc || '',
         create_time_desc: fragment.create_time_desc || '',
       }
@@ -1560,7 +1843,19 @@ export default {
       this.activeTab = tabPane.paneName
     },
     goHome() {
-      this.$router.push('/Dashboard')
+      this.activeTab = HOME_TAB_NAME
+    },
+    enterFolder(folderName) {
+      const nextFolderName = folderName || 'fragments'
+      this.selectedFolderName = nextFolderName
+      this.activeTab = HOME_TAB_NAME
+      this.$router.replace({
+        path: '/MemoryFragment',
+        query: {
+          ...this.$route.query,
+          folder_name: nextFolderName,
+        },
+      })
     },
     // openAiSearchTab 打开 AI 智能搜索 tab 并启动 SSE 连接。
     openAiSearchTab(query) {

@@ -18,15 +18,17 @@ import (
 )
 
 var errFragmentNotFound = errors.New(`片段不存在`)
+var errInvalidFragmentID = errors.New(`片段ID不合法`)
 
 // Service 管理文件型知识片段及其内存索引。
 type Service struct {
 	root string
 
-	mu     sync.RWMutex
-	byID   map[string]Fragment
-	byPath map[string]string
-	ready  bool
+	mu      sync.RWMutex
+	byID    map[string]Fragment
+	byPath  map[string]string
+	folders map[string]Folder
+	ready   bool
 
 	watcherMu sync.Mutex
 	watcher   *fsnotify.Watcher
@@ -35,9 +37,10 @@ type Service struct {
 // NewService 创建知识片段服务。
 func NewService(root string) *Service {
 	return &Service{
-		root:   root,
-		byID:   make(map[string]Fragment),
-		byPath: make(map[string]string),
+		root:    root,
+		byID:    make(map[string]Fragment),
+		byPath:  make(map[string]string),
+		folders: make(map[string]Folder),
 	}
 }
 
@@ -46,19 +49,33 @@ func (h *Service) Load() error {
 	h.mu.Lock()
 	h.byID = make(map[string]Fragment)
 	h.byPath = make(map[string]string)
+	h.folders = make(map[string]Folder)
 	h.ready = false
 	h.mu.Unlock()
 
-	for _, item := range []struct {
-		dir       string
-		isDeleted bool
-	}{
-		{dir: filepath.Join(h.root, `fragments`), isDeleted: false},
-		{dir: filepath.Join(h.root, `trash`), isDeleted: true},
-	} {
-		if err := h.scanDir(item.dir, item.isDeleted); err != nil {
+	folders, err := loadFolders(h.root)
+	if err != nil {
+		return err
+	}
+	if err = ensureFolderDirectories(h.root, folders); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	for _, folder := range folders {
+		h.folders[folder.FolderName] = folder
+	}
+	h.mu.Unlock()
+
+	for _, folder := range folders {
+		if folder.FolderName == TrashFolderName {
+			continue
+		}
+		if err = h.scanDir(filepath.Join(h.root, folder.FolderName), false); err != nil {
 			return err
 		}
+	}
+	if err = h.scanDir(filepath.Join(h.root, TrashFolderName), true); err != nil {
+		return err
 	}
 
 	h.mu.Lock()
@@ -83,12 +100,12 @@ func (h *Service) IndexReady() bool {
 
 // FragmentCount 返回正常片段数量。
 func (h *Service) FragmentCount() int {
-	return len(h.listByDeleted(false, 0, 0))
+	return len(h.listByDeleted(false, 0, 0, ``))
 }
 
 // TrashCount 返回回收站片段数量。
 func (h *Service) TrashCount() int {
-	return len(h.listByDeleted(true, 0, 0))
+	return len(h.listByDeleted(true, 0, 0, ``))
 }
 
 // StartWatching 启动目录监听。
@@ -102,7 +119,14 @@ func (h *Service) StartWatching() error {
 	if err != nil {
 		return err
 	}
-	for _, dir := range []string{h.root, filepath.Join(h.root, `fragments`), filepath.Join(h.root, `trash`)} {
+	watchDirs := []string{h.root, filepath.Join(h.root, TrashFolderName)}
+	for _, folder := range h.listFolders() {
+		if folder.FolderName == TrashFolderName {
+			continue
+		}
+		watchDirs = append(watchDirs, filepath.Join(h.root, folder.FolderName))
+	}
+	for _, dir := range watchDirs {
 		if err = h.addWatchRecursive(watcher, dir); err != nil {
 			_ = watcher.Close()
 			return err
@@ -126,13 +150,13 @@ func (h *Service) StopWatching() error {
 }
 
 // MemoryFragmentList 查询正常片段列表。
-func (h *Service) MemoryFragmentList(limit, offset int) ([]map[string]any, error) {
-	return h.listByDeleted(false, limit, offset), nil
+func (h *Service) MemoryFragmentList(limit, offset int, folderName string) ([]map[string]any, error) {
+	return h.listByDeleted(false, limit, offset, folderName), nil
 }
 
 // MemoryFragmentTrashList 查询回收站列表。
 func (h *Service) MemoryFragmentTrashList(limit int) ([]map[string]any, error) {
-	return h.listByDeleted(true, limit, 0), nil
+	return h.listByDeleted(true, limit, 0, ``), nil
 }
 
 // MemoryFragmentInfo 查询单个片段详情。
@@ -146,28 +170,38 @@ func (h *Service) MemoryFragmentInfo(id any) (map[string]any, error) {
 		return nil, err
 	}
 	loaded.FilePath = fragment.FilePath
-	return fragmentToMap(*loaded), nil
+	return h.fragmentToMap(*loaded), nil
 }
 
 // MemoryFragmentSave 保存片段。
-func (h *Service) MemoryFragmentSave(id any, title, content string, _ []string) (map[string]any, error) {
+func (h *Service) MemoryFragmentSave(id any, title, content string, _ []string, folderName string) (map[string]any, error) {
 	idText := normalizeID(id)
 	now := time.Now()
 	if idText == `` || idText == `0` {
 		idText = h.generateFragmentID()
+	} else if !IsValidFragmentID(idText) {
+		return nil, errInvalidFragmentID
 	}
+	folderName = NormalizeFolderName(folderName)
 
 	h.mu.RLock()
 	oldFragment, exists := h.byID[idText]
 	h.mu.RUnlock()
+	if exists && strings.TrimSpace(folderName) == `` {
+		folderName = NormalizeFolderName(oldFragment.FolderName)
+	}
+	if err := h.ensureFolderExists(folderName); err != nil {
+		return nil, err
+	}
 
 	fragment := Fragment{
-		ID:        idText,
-		Title:     title,
-		Content:   normalizeLineBreaks(content),
-		CreatedAt: now,
-		UpdatedAt: now,
-		IsDeleted: false,
+		ID:         idText,
+		Title:      title,
+		Content:    normalizeLineBreaks(content),
+		FolderName: folderName,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		IsDeleted:  false,
 	}
 	if exists {
 		if strings.TrimSpace(content) == `` && strings.TrimSpace(oldFragment.Content) != `` {
@@ -180,6 +214,7 @@ func (h *Service) MemoryFragmentSave(id any, title, content string, _ []string) 
 		fragment.CreatedAt = oldFragment.CreatedAt
 		fragment.IsDeleted = oldFragment.IsDeleted
 		fragment.FilePath = oldFragment.FilePath
+		fragment.FolderName = folderName
 	}
 	if fragment.CreatedAt.IsZero() {
 		fragment.CreatedAt = now
@@ -187,7 +222,7 @@ func (h *Service) MemoryFragmentSave(id any, title, content string, _ []string) 
 	if fragment.IsDeleted {
 		fragment.IsDeleted = false
 	}
-	filePath := BuildFragmentPath(h.root, fragment.CreatedAt, fragment.ID, false)
+	filePath := BuildFragmentPath(h.root, fragment.CreatedAt, fragment.ID, false, fragment.FolderName)
 	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
 		return nil, err
 	}
@@ -207,7 +242,7 @@ func (h *Service) MemoryFragmentSave(id any, title, content string, _ []string) 
 		return nil, err
 	}
 	h.upsert(fragmentMetadata(*parsed))
-	return fragmentToMap(*parsed), nil
+	return h.fragmentToMap(*parsed), nil
 }
 
 // MemoryFragmentSoftDelete 软删除片段。
@@ -216,7 +251,7 @@ func (h *Service) MemoryFragmentSoftDelete(id any) (int64, error) {
 	if !ok || fragment.IsDeleted {
 		return 0, errFragmentNotFound
 	}
-	targetPath := BuildFragmentPath(h.root, fragment.CreatedAt, fragment.ID, true)
+	targetPath := BuildFragmentPath(h.root, fragment.CreatedAt, fragment.ID, true, fragment.FolderName)
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 		return 0, err
 	}
@@ -236,7 +271,11 @@ func (h *Service) MemoryFragmentRestore(id any) (int64, error) {
 	if !ok || !fragment.IsDeleted {
 		return 0, errFragmentNotFound
 	}
-	targetPath := BuildFragmentPath(h.root, fragment.CreatedAt, fragment.ID, false)
+	restoreFolderName := NormalizeFolderName(fragment.FolderName)
+	if !h.folderExists(restoreFolderName) || restoreFolderName == TrashFolderName {
+		restoreFolderName = DefaultFolderName
+	}
+	targetPath := BuildFragmentPath(h.root, fragment.CreatedAt, fragment.ID, false, restoreFolderName)
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 		return 0, err
 	}
@@ -244,6 +283,7 @@ func (h *Service) MemoryFragmentRestore(id any) (int64, error) {
 		return 0, err
 	}
 	fragment.FilePath = targetPath
+	fragment.FolderName = restoreFolderName
 	fragment.IsDeleted = false
 	fragment.UpdatedAt = time.Now()
 	h.upsert(fragment)
@@ -278,26 +318,30 @@ func (h *Service) MemoryFragmentTagList() ([]map[string]any, error) {
 }
 
 // MemoryFragmentSearch 关键词搜索知识片段。
-func (h *Service) MemoryFragmentSearch(_ string, query string, _ []string, limit int) ([]map[string]any, error) {
+func (h *Service) MemoryFragmentSearch(_ string, query string, _ []string, folderName string, limit int) ([]map[string]any, error) {
 	query = normalizeSearchQuery(query)
 	if query == `` {
-		return h.listByDeleted(false, limit, 0), nil
+		return h.listByDeleted(false, limit, 0, folderName), nil
 	}
 	tokenList := strings.Fields(query)
 	if len(tokenList) == 0 {
-		return h.listByDeleted(false, limit, 0), nil
+		return h.listByDeleted(false, limit, 0, folderName), nil
 	}
 	if _, err := exec.LookPath(`rg`); err != nil {
-		return h.searchByTitleOnly(tokenList, limit), nil
+		return h.searchByTitleOnly(tokenList, folderName, limit), nil
 	}
-	return h.searchWithRipgrep(tokenList, limit)
+	return h.searchWithRipgrep(tokenList, folderName, limit)
 }
 
-func (h *Service) listByDeleted(isDeleted bool, limit, offset int) []map[string]any {
+func (h *Service) listByDeleted(isDeleted bool, limit, offset int, folderName string) []map[string]any {
+	folderName = strings.TrimSpace(folderName)
 	h.mu.RLock()
 	rowList := make([]Fragment, 0, len(h.byID))
 	for _, fragment := range h.byID {
 		if fragment.IsDeleted != isDeleted {
+			continue
+		}
+		if folderName != `` && NormalizeFolderName(fragment.FolderName) != NormalizeFolderName(folderName) {
 			continue
 		}
 		rowList = append(rowList, fragment)
@@ -319,7 +363,7 @@ func (h *Service) listByDeleted(isDeleted bool, limit, offset int) []map[string]
 	}
 	result := make([]map[string]any, 0, len(rowList))
 	for _, fragment := range rowList {
-		result = append(result, fragmentToMap(fragment))
+		result = append(result, h.fragmentToMap(fragment))
 	}
 	return result
 }
@@ -409,6 +453,9 @@ func ParseFragmentFile(path string, isDeleted bool, loadContent bool) (*Fragment
 		return nil, err
 	}
 	fragmentID := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	if !IsValidFragmentID(fragmentID) {
+		return nil, fmt.Errorf(`%w: %s`, errInvalidFragmentID, fragmentID)
+	}
 	createdAt := parseTimeOrZero(meta.CreatedAt)
 	updatedAt := parseTimeOrZero(meta.UpdatedAt)
 	if createdAt.IsZero() {
@@ -418,12 +465,13 @@ func ParseFragmentFile(path string, isDeleted bool, loadContent bool) (*Fragment
 		updatedAt = info.ModTime()
 	}
 	fragment := &Fragment{
-		ID:        fragmentID,
-		Title:     NormalizeFragmentTitle(meta.Title, markdownBody),
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-		IsDeleted: isDeleted,
-		FilePath:  path,
+		ID:         fragmentID,
+		Title:      NormalizeFragmentTitle(meta.Title, markdownBody),
+		FolderName: detectFragmentFolder(path, isDeleted, meta.FolderName),
+		CreatedAt:  createdAt,
+		UpdatedAt:  updatedAt,
+		IsDeleted:  isDeleted,
+		FilePath:   path,
 	}
 	if loadContent {
 		fragment.Content = strings.TrimSpace(markdownBody)
@@ -459,6 +507,7 @@ func fragmentToMap(fragment Fragment) map[string]any {
 		`file_path`:        fragment.FilePath,
 		`title`:            fragment.Title,
 		`content`:          fragment.Content,
+		`folder_name`:      NormalizeFolderName(fragment.FolderName),
 		`tags`:             []string{},
 		`create_time`:      fragment.CreatedAt.Unix(),
 		`update_time`:      fragment.UpdatedAt.Unix(),
@@ -466,6 +515,14 @@ func fragmentToMap(fragment Fragment) map[string]any {
 		`update_time_desc`: fragment.UpdatedAt.Format(`2006-01-02 15:04:05`),
 		`is_deleted`:       boolToInt(fragment.IsDeleted),
 	}
+	return result
+}
+
+func (h *Service) fragmentToMap(fragment Fragment) map[string]any {
+	result := fragmentToMap(fragment)
+	folder := h.getFolder(fragment.FolderName)
+	result[`folder_label`] = folder.Name
+	result[`is_system_folder`] = boolToInt(folder.System)
 	return result
 }
 
@@ -478,6 +535,17 @@ func normalizeID(id any) string {
 	text = filepath.Base(filepath.ToSlash(text))
 	text = strings.TrimSuffix(text, `.md`)
 	return text
+}
+
+func IsValidFragmentID(id string) bool {
+	id = strings.TrimSpace(id)
+	if id == `` || id == `.` || id == `..` {
+		return false
+	}
+	if strings.ContainsAny(id, `/\`) {
+		return false
+	}
+	return true
 }
 
 func fragmentMetadata(fragment Fragment) Fragment {
@@ -577,11 +645,14 @@ func (h *Service) handleWatchEvent(watcher *fsnotify.Watcher, event fsnotify.Eve
 	}
 }
 
-func (h *Service) searchByTitleOnly(tokenList []string, limit int) []map[string]any {
+func (h *Service) searchByTitleOnly(tokenList []string, folderName string, limit int) []map[string]any {
 	h.mu.RLock()
 	rowList := make([]Fragment, 0, len(h.byID))
 	for _, fragment := range h.byID {
 		if fragment.IsDeleted {
+			continue
+		}
+		if strings.TrimSpace(folderName) != `` && NormalizeFolderName(fragment.FolderName) != NormalizeFolderName(folderName) {
 			continue
 		}
 		rowList = append(rowList, fragment)
@@ -603,7 +674,7 @@ func (h *Service) searchByTitleOnly(tokenList []string, limit int) []map[string]
 		if !matched {
 			continue
 		}
-		result = append(result, fragmentToMap(fragment))
+		result = append(result, h.fragmentToMap(fragment))
 		if limit > 0 && len(result) >= limit {
 			break
 		}
@@ -611,8 +682,8 @@ func (h *Service) searchByTitleOnly(tokenList []string, limit int) []map[string]
 	return result
 }
 
-func (h *Service) searchWithRipgrep(tokenList []string, limit int) ([]map[string]any, error) {
-	searchRoot := filepath.Join(h.root, `fragments`)
+func (h *Service) searchWithRipgrep(tokenList []string, folderName string, limit int) ([]map[string]any, error) {
+	searchRoot := h.searchRootForFolder(folderName)
 	matchMap := make(map[string][]string)
 	firstToken := true
 	for _, token := range tokenList {
@@ -648,6 +719,9 @@ func (h *Service) searchWithRipgrep(tokenList []string, limit int) ([]map[string
 		if !ok || fragment.IsDeleted {
 			continue
 		}
+		if strings.TrimSpace(folderName) != `` && NormalizeFolderName(fragment.FolderName) != NormalizeFolderName(folderName) {
+			continue
+		}
 		score := len(uniqueStrings(snippets))
 		titleText := strings.ToLower(fragment.Title)
 		for _, token := range tokenList {
@@ -675,7 +749,7 @@ func (h *Service) searchWithRipgrep(tokenList []string, limit int) ([]map[string
 		if idx >= limit {
 			break
 		}
-		row := fragmentToMap(item.fragment)
+		row := h.fragmentToMap(item.fragment)
 		row[`search_snippets`] = item.snippets
 		result = append(result, row)
 	}
@@ -709,6 +783,14 @@ func (h *Service) runRipgrepToken(searchRoot, token string) (map[string][]string
 	return result, nil
 }
 
+func (h *Service) searchRootForFolder(folderName string) string {
+	folderName = strings.TrimSpace(folderName)
+	if folderName == `` {
+		return h.root
+	}
+	return filepath.Join(h.root, NormalizeFolderName(folderName))
+}
+
 func parseRipgrepLine(line string) (string, string, bool) {
 	regList := []*regexp.Regexp{
 		regexp.MustCompile(`^([A-Za-z]:.+?):\d+:(.*)$`),
@@ -735,6 +817,27 @@ func (h *Service) getFragmentByPath(path string) (Fragment, bool) {
 	return fragment, exists
 }
 
+func detectFragmentFolder(path string, isDeleted bool, metaFolderName string) string {
+	metaFolderName = strings.TrimSpace(metaFolderName)
+	if metaFolderName != `` {
+		return NormalizeFolderName(metaFolderName)
+	}
+	normalized := filepath.ToSlash(filepath.Clean(path))
+	parts := strings.Split(normalized, `/`)
+	for idx, part := range parts {
+		if isDeleted && part == TrashFolderName {
+			if idx+1 < len(parts) {
+				return NormalizeFolderName(parts[idx+1])
+			}
+			return DefaultFolderName
+		}
+	}
+	if len(parts) >= 4 {
+		return NormalizeFolderName(parts[len(parts)-4])
+	}
+	return DefaultFolderName
+}
+
 // MemoryFragmentBatchInfoByPaths 批量按文件路径查询片段摘要（id + title）。
 func (h *Service) MemoryFragmentBatchInfoByPaths(paths []string) []map[string]any {
 	results := make([]map[string]any, 0, len(paths))
@@ -754,6 +857,199 @@ func (h *Service) MemoryFragmentBatchInfoByPaths(paths []string) []map[string]an
 		})
 	}
 	return results
+}
+
+func (h *Service) listFolders() []Folder {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	result := make([]Folder, 0, len(h.folders))
+	for _, folder := range h.folders {
+		result = append(result, folder)
+	}
+	sortFolders(result)
+	return result
+}
+
+func (h *Service) getFolder(folderName string) Folder {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	folderName = NormalizeFolderName(folderName)
+	if folder, ok := h.folders[folderName]; ok {
+		return folder
+	}
+	return Folder{
+		FolderName: folderName,
+		Name:       folderName,
+		System:     false,
+		Editable:   true,
+	}
+}
+
+func (h *Service) folderExists(folderName string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	_, ok := h.folders[NormalizeFolderName(folderName)]
+	return ok
+}
+
+func (h *Service) ensureFolderExists(folderName string) error {
+	folderName = NormalizeFolderName(folderName)
+	if folderName == TrashFolderName {
+		return errors.New(`不能将片段保存到回收站`)
+	}
+	if !h.folderExists(folderName) {
+		return fmt.Errorf(`文件夹不存在: %s`, folderName)
+	}
+	return nil
+}
+
+func (h *Service) MemoryFragmentFolderList() ([]map[string]any, error) {
+	folders := h.listFolders()
+	countMap := make(map[string]int)
+	h.mu.RLock()
+	for _, fragment := range h.byID {
+		if fragment.IsDeleted {
+			continue
+		}
+		countMap[NormalizeFolderName(fragment.FolderName)]++
+	}
+	h.mu.RUnlock()
+	result := make([]map[string]any, 0, len(folders))
+	for _, folder := range folders {
+		result = append(result, map[string]any{
+			`folder_name`:    folder.FolderName,
+			`name`:           folder.Name,
+			`system`:         boolToInt(folder.System),
+			`editable`:       boolToInt(folder.Editable),
+			`fragment_count`: countMap[folder.FolderName],
+		})
+	}
+	return result, nil
+}
+
+func (h *Service) MemoryFragmentFolderCreate(name, folderName string) (map[string]any, error) {
+	name = strings.TrimSpace(name)
+	if name == `` {
+		return nil, errors.New(`名称不能为空`)
+	}
+	folderName = strings.TrimSpace(folderName)
+	if err := validateNewFolderName(folderName); err != nil {
+		return nil, err
+	}
+	folders := h.listFolders()
+	for _, folder := range folders {
+		if folder.FolderName == folderName {
+			return nil, errors.New(`文件夹名称不能重复`)
+		}
+		if strings.EqualFold(strings.TrimSpace(folder.Name), name) {
+			return nil, errors.New(`名称不能重复`)
+		}
+	}
+	item := Folder{
+		FolderName: folderName,
+		Name:       name,
+		System:     false,
+		Editable:   true,
+	}
+	folders = append(folders, item)
+	if err := saveFolders(h.root, folders); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Join(h.root, folderName), 0o755); err != nil {
+		return nil, err
+	}
+	h.mu.Lock()
+	h.folders[folderName] = item
+	h.mu.Unlock()
+	return map[string]any{
+		`folder_name`:    item.FolderName,
+		`name`:           item.Name,
+		`system`:         0,
+		`editable`:       1,
+		`fragment_count`: 0,
+	}, nil
+}
+
+func (h *Service) MemoryFragmentFolderUpdate(folderName, name string) (map[string]any, error) {
+	folderName = NormalizeFolderName(folderName)
+	name = strings.TrimSpace(name)
+	if name == `` {
+		return nil, errors.New(`名称不能为空`)
+	}
+	folders := h.listFolders()
+	found := false
+	var updated Folder
+	for idx, folder := range folders {
+		if folder.FolderName == folderName {
+			if !folder.Editable {
+				return nil, errors.New(`该文件夹不允许编辑`)
+			}
+			folder.Name = name
+			folders[idx] = folder
+			updated = folder
+			found = true
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(folder.Name), name) {
+			return nil, errors.New(`名称不能重复`)
+		}
+	}
+	if !found {
+		return nil, errors.New(`文件夹不存在`)
+	}
+	if err := saveFolders(h.root, folders); err != nil {
+		return nil, err
+	}
+	h.mu.Lock()
+	h.folders[folderName] = updated
+	h.mu.Unlock()
+	return map[string]any{
+		`folder_name`:    updated.FolderName,
+		`name`:           updated.Name,
+		`system`:         boolToInt(updated.System),
+		`editable`:       boolToInt(updated.Editable),
+		`fragment_count`: 0,
+	}, nil
+}
+
+func (h *Service) MemoryFragmentChangeFolder(id any, folderName string) (map[string]any, error) {
+	folderName = NormalizeFolderName(folderName)
+	if err := h.ensureFolderExists(folderName); err != nil {
+		return nil, err
+	}
+	fragment, ok := h.getFragment(normalizeID(id))
+	if !ok || fragment.IsDeleted {
+		return nil, errFragmentNotFound
+	}
+	loaded, err := ParseFragmentFile(fragment.FilePath, false, true)
+	if err != nil {
+		return nil, err
+	}
+	if NormalizeFolderName(loaded.FolderName) == folderName {
+		return h.fragmentToMap(*loaded), nil
+	}
+	loaded.FolderName = folderName
+	loaded.UpdatedAt = time.Now()
+	targetPath := BuildFragmentPath(h.root, loaded.CreatedAt, loaded.ID, false, folderName)
+	if err = os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		return nil, err
+	}
+	rendered, err := RenderFragmentMarkdown(*loaded)
+	if err != nil {
+		return nil, err
+	}
+	if err = os.WriteFile(targetPath, []byte(rendered), 0o644); err != nil {
+		return nil, err
+	}
+	if fragment.FilePath != targetPath {
+		_ = os.Remove(fragment.FilePath)
+	}
+	parsed, err := ParseFragmentFile(targetPath, false, true)
+	if err != nil {
+		return nil, err
+	}
+	h.upsert(fragmentMetadata(*parsed))
+	return h.fragmentToMap(*parsed), nil
 }
 
 func uniqueStrings(items []string) []string {
@@ -785,7 +1081,7 @@ func boolToInt(value bool) int {
 
 // SearchFragmentsOr 使用 OR 逻辑搜索片段（任一关键词匹配即返回），用于 AI 智能搜索。
 func (h *Service) SearchFragmentsOr(keywords []string, limit int) ([]map[string]any, error) {
-	searchRoot := filepath.Join(h.root, `fragments`)
+	searchRoot := filepath.Join(h.root, DefaultFolderName)
 	// 逐关键词搜索，用并集合并结果
 	matchMap := make(map[string][]string)
 	for _, token := range keywords {
@@ -832,11 +1128,7 @@ func (h *Service) SearchFragmentsOr(keywords []string, limit int) ([]map[string]
 		if idx >= limit {
 			break
 		}
-		result = append(result, map[string]any{
-			`id`:        item.fragment.ID,
-			`title`:     item.fragment.Title,
-			`file_path`: item.fragment.FilePath,
-		})
+		result = append(result, h.fragmentToMap(item.fragment))
 	}
 	return result, nil
 }
@@ -861,11 +1153,7 @@ func (h *Service) searchByTitleOr(keywords []string, limit int) []map[string]any
 		if !matched {
 			continue
 		}
-		result = append(result, map[string]any{
-			`id`:        fragment.ID,
-			`title`:     fragment.Title,
-			`file_path`: fragment.FilePath,
-		})
+		result = append(result, h.fragmentToMap(fragment))
 		if limit > 0 && len(result) >= limit {
 			break
 		}

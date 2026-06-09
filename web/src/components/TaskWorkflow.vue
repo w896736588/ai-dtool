@@ -380,14 +380,15 @@
                   >{{ getNodeStatusLabel('requirement-fetch') }}</button>
                 </div>
               </div>
-              <MdEditor
-                v-model="workflow.prompt_plain_text_requirement"
-                class="task-workflow-prompt-editor"
-                preview-theme="github"
-                :preview="true"
-                :toolbars="promptEditorToolbars"
-                height="100%"
-              />
+              <div class="task-workflow-prompt-editor" data-prompt-type="plain_text_requirement">
+                <UnifiedMdEditor
+                  v-model="workflow.prompt_plain_text_requirement"
+                  preview-theme="github"
+                  :preview="true"
+                  :toolbars="promptEditorToolbars"
+                  height="100%"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -449,14 +450,15 @@
               <div class="task-workflow-card__hint">
                 当前片段：{{ requirementFragmentTitle }}
               </div>
-              <MdEditor
-                v-model="workflow.prompt_requirement"
-                class="task-workflow-prompt-editor"
-                preview-theme="github"
-                :preview="true"
-                :toolbars="promptEditorToolbars"
-                height="100%"
-              />
+              <div class="task-workflow-prompt-editor" data-prompt-type="requirement">
+                <UnifiedMdEditor
+                  v-model="workflow.prompt_requirement"
+                  preview-theme="github"
+                  :preview="true"
+                  :toolbars="promptEditorToolbars"
+                  height="100%"
+                />
+              </div>
             </div>
 
             <div v-show="requirementActiveTab === 'design-plan-prompt'" class="task-workflow-prompt-section">
@@ -501,14 +503,15 @@
                   >{{ getNodeStatusLabel('requirement') }}</button>
                 </div>
               </div>
-              <MdEditor
-                v-model="workflow.prompt_design_plan_requirement"
-                class="task-workflow-prompt-editor"
-                preview-theme="github"
-                :preview="true"
-                :toolbars="promptEditorToolbars"
-                height="100%"
-              />
+              <div class="task-workflow-prompt-editor" data-prompt-type="design_plan_requirement">
+                <UnifiedMdEditor
+                  v-model="workflow.prompt_design_plan_requirement"
+                  preview-theme="github"
+                  :preview="true"
+                  :toolbars="promptEditorToolbars"
+                  height="100%"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -555,14 +558,15 @@
                 </div>
               </div>
             </div>
-            <MdEditor
-              v-model="workflow.prompt_design"
-              class="task-workflow-prompt-editor"
-              preview-theme="github"
-              :preview="true"
-              :toolbars="promptEditorToolbars"
-              height="100%"
-            />
+            <div class="task-workflow-prompt-editor" data-prompt-type="design">
+              <UnifiedMdEditor
+                v-model="workflow.prompt_design"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                height="100%"
+              />
+            </div>
           </div>
         </div>
 
@@ -615,14 +619,15 @@
                 </div>
               </div>
             </div>
-            <MdEditor
-              v-model="workflow.prompt_api_dev"
-              class="task-workflow-prompt-editor"
-              preview-theme="github"
-              :preview="true"
-              :toolbars="promptEditorToolbars"
-              height="100%"
-            />
+            <div class="task-workflow-prompt-editor" data-prompt-type="api_dev">
+              <UnifiedMdEditor
+                v-model="workflow.prompt_api_dev"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                height="100%"
+              />
+            </div>
           </div>
         </div>
 
@@ -668,14 +673,15 @@
                 </div>
               </div>
             </div>
-            <MdEditor
-              v-model="workflow.prompt_code_review"
-              class="task-workflow-prompt-editor"
-              preview-theme="github"
-              :preview="true"
-              :toolbars="promptEditorToolbars"
-              height="100%"
-            />
+            <div class="task-workflow-prompt-editor" data-prompt-type="code_review">
+              <UnifiedMdEditor
+                v-model="workflow.prompt_code_review"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                height="100%"
+              />
+            </div>
           </div>
         </div>
 
@@ -721,14 +727,15 @@
                 </div>
               </div>
             </div>
-            <MdEditor
-              v-model="workflow.prompt_browser_test"
-              class="task-workflow-prompt-editor"
-              preview-theme="github"
-              :preview="true"
-              :toolbars="promptEditorToolbars"
-              height="100%"
-            />
+            <div class="task-workflow-prompt-editor" data-prompt-type="browser_test">
+              <UnifiedMdEditor
+                v-model="workflow.prompt_browser_test"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                height="100%"
+              />
+            </div>
           </div>
         </div>
 
@@ -774,14 +781,15 @@
                 </div>
               </div>
             </div>
-            <MdEditor
-              v-model="workflow.prompt_api_test"
-              class="task-workflow-prompt-editor"
-              preview-theme="github"
-              :preview="true"
-              :toolbars="promptEditorToolbars"
-              height="100%"
-            />
+            <div class="task-workflow-prompt-editor" data-prompt-type="api_test">
+              <UnifiedMdEditor
+                v-model="workflow.prompt_api_test"
+                preview-theme="github"
+                :preview="true"
+                :toolbars="promptEditorToolbars"
+                height="100%"
+              />
+            </div>
           </div>
         </div>
       </section>
@@ -851,7 +859,7 @@
               style="--el-switch-on-color: #5a8a5a; margin-left: 8px;"
             />
           </div>
-          <MdEditor
+          <UnifiedMdEditor
             v-model="issueFixCombinedText"
             preview-theme="github"
             :preview="true"
@@ -1035,9 +1043,8 @@ import mysqlSetApi from '@/utils/base/mysql_set'
 import apiManagement from '@/utils/base/api'
 import dockerApi from '@/utils/base/compose'
 import smartLinkSetApi from '@/utils/base/smart_link_set'
-import { MdEditor } from 'md-editor-v3'
-import 'md-editor-v3/lib/style.css'
 import MarkdownIt from 'markdown-it'
+import UnifiedMdEditor from '@/components/base/UnifiedMdEditor.vue'
 
 const PROMPT_EDITOR_TOOLBARS = [
   'bold', 'italic', 'strikeThrough', 'title', 'quote',
@@ -1115,7 +1122,7 @@ export default {
     GitActionButton,
     ChatHistoryButton,
     ChatHistoryDialog,
-    MdEditor,
+    UnifiedMdEditor,
     TaskProgressPanel,
   },
   data() {
@@ -1198,6 +1205,7 @@ export default {
       promptChatUnreadCounts: {},
       workflowUnreadCount: 0,
       _workflowUnreadSseId: '',
+      _promptChatHistoryHideHandled: false,
       chatDetailModelName: '',
       chatDetailAgentName: '',
       chatDetailLocalDir: '',
@@ -1336,7 +1344,7 @@ export default {
     this.loadWorkflowPage()
     this.loadTaskConfigLookupData()
     this.ensureWorkflowUnreadSse()
-    window.addEventListener('keydown', this.handleCtrlS)
+    window.addEventListener('keydown', this.handleCtrlS, true)
   },
   activated() {
     this.ensureWorkflowUnreadSse()
@@ -1348,7 +1356,7 @@ export default {
     }
   },
   beforeUnmount() {
-    window.removeEventListener('keydown', this.handleCtrlS)
+    window.removeEventListener('keydown', this.handleCtrlS, true)
     this._stopChatHistoryDurationTimer()
     if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
     this.unregisterWorkflowSse()
@@ -1360,6 +1368,15 @@ export default {
     this.unregisterWorkflowUnreadSse()
   },
   watch: {
+    promptChatHistoryVisible(val, oldVal) {
+      if (val) {
+        this._promptChatHistoryHideHandled = false
+        return
+      }
+      if (oldVal) {
+        this.handlePromptChatHistoryHide()
+      }
+    },
     parsedTaskDevConfigs: {
       handler(configs) {
         const seen = new Set()
@@ -1390,8 +1407,17 @@ export default {
   },
   methods: {
     handleCtrlS(e) {
-      if (!(e.ctrlKey && e.key === 's')) return
+      if (!((e.ctrlKey || e.metaKey) && String(e.key || '').toLowerCase() === 's')) return
       e.preventDefault()
+      const activeElement = document.activeElement
+      const promptEditor = activeElement && typeof activeElement.closest === 'function'
+        ? activeElement.closest('[data-prompt-type]')
+        : null
+      const promptTypeFromEditor = String(promptEditor?.dataset?.promptType || '').trim()
+      if (promptTypeFromEditor) {
+        this.savePrompts(promptTypeFromEditor)
+        return
+      }
       const nodeToPrompt = { requirement: 'requirement', design: 'design', 'api-dev': 'api_dev', 'api-test-fix': 'api_test', 'code-review': 'code_review', 'browser-test': 'browser_test' }
       let promptType = nodeToPrompt[this.activeNode]
       if (this.activeNode === 'requirement-fetch' && this.requirementFetchActiveTab === 'plain-text-prompt') {
@@ -1579,8 +1605,8 @@ export default {
         return
       }
       // chat 状态变更时刷新执行历史按钮的计数和动画
-      if (data.type === 'chat_status_change') {
-        this.loadChatCounts()
+      if (data.type === 'chat_status_change' || data.type === 'chat_read_change') {
+        this.applyWorkflowChatListSnapshot(data.chat_list || [])
         return
       }
       // 节点状态变更时直接更新本地 nodeStatuses，无需重新请求接口
@@ -1898,11 +1924,29 @@ export default {
       if (this.workflowId <= 0) return
       taskWorkflowApi.TaskWorkflowChatList(this.workflowId, (res) => {
         if (res.ErrCode === 0 && res.Data) {
-          const list = res.Data.list || []
-          this.updateChatCountsFromList(list)
-          this.syncBackgroundChatStreams(list, this.promptChatDetailId || this.chatDetailId)
+          this.applyWorkflowChatListSnapshot(res.Data.list || [])
         }
       })
+    },
+    applyWorkflowChatListSnapshot(list) {
+      const normalizedList = Array.isArray(list) ? list : []
+      this.updateChatCountsFromList(normalizedList)
+      if (this.promptChatHistoryVisible) {
+        const promptType = String(this.promptChatHistoryPromptType || '').trim()
+        this.promptChatHistoryList = promptType
+          ? normalizedList.filter(item => String(item.prompt_type || '').trim() === promptType)
+          : normalizedList.slice()
+      }
+      this.syncBackgroundChatStreams(
+        this.promptChatHistoryVisible ? this.promptChatHistoryList : normalizedList,
+        this.promptChatDetailId || this.chatDetailId,
+      )
+      if (this.chatDetailId > 0) {
+        const current = normalizedList.find(item => Number(item.id || 0) === Number(this.chatDetailId || 0))
+        if (current) {
+          this.chatDetailStatus = current.status || this.chatDetailStatus
+        }
+      }
     },
     // 打开历史对话弹窗（复用执行历史弹窗，查全部对话）
     openChatHistoryDialog() {
@@ -1953,12 +1997,14 @@ export default {
       this.promptChatHistoryList = this.promptChatHistoryList.slice()
       this.adjustPromptUnreadCount(item.prompt_type, -1)
     },
-    markPromptChatUnreadLocally(chatId) {
-      const item = this.promptChatHistoryList.find(row => Number(row.id || 0) === Number(chatId || 0))
-      if (!item || item.is_read === false || item.status === 'running') return
-      item.is_read = false
-      this.promptChatHistoryList = this.promptChatHistoryList.slice()
-      this.adjustPromptUnreadCount(item.prompt_type, 1)
+    markPromptChatReadOnServer(chatId) {
+      const normalizedChatId = Number(chatId || 0)
+      if (normalizedChatId <= 0) return
+      agentCliApi.AgentChatMarkRead(normalizedChatId, (res) => {
+        if (res && res.ErrCode === 0) {
+          this.markPromptChatReadLocally(normalizedChatId)
+        }
+      })
     },
     markPromptChatRunningLocally(promptType, chatId, extra = {}) {
       const normalizedPromptType = String(promptType || '').trim()
@@ -2094,24 +2140,8 @@ export default {
             this._chatEventSource = null
             this._sseParseState = null
             this.loadChatDetail()
-            this.loadChatCounts()
             this.$nextTick(() => { this.scrollPromptChatToBottom() })
             return
-          }
-          // 追踪思考耗时：首次 thinking_delta 时记录起始时间
-          if (obj.type === 'stream_event') {
-            const evt = obj.event || {}
-            if (evt.type === 'content_block_delta') {
-              const delta = evt.delta || {}
-              if (delta.type === 'thinking_delta' && this._thinkingStreamStartTime === 0) {
-                this._thinkingStreamStartTime = Date.now()
-              }
-            } else if (evt.type === 'message_stop' && this._thinkingStreamStartTime > 0) {
-              const durationMs = Date.now() - this._thinkingStreamStartTime
-              this._thinkingStreamStartTime = 0
-              // 将耗时写入消息——会在 parseChatLines 后应用到对应消息
-              this._pendingThinkingDurationMs = durationMs
-            }
           }
         } catch (e) { /* ignore parse errors */ }
         // 行缓冲：每 100ms 批量刷新，避免每条 SSE 事件都触发全量解析和 DOM 更新
@@ -2138,7 +2168,6 @@ export default {
           return
         }
         this.loadChatDetail()
-        this.loadChatCounts()
       }
     },
     // _flushSseBatch 将缓冲区中的 SSE 行批量增量解析并追加到消息列表。
@@ -2176,20 +2205,6 @@ export default {
       }
       result.parseState.pendingPatches.length = 0
       if (result.newMessages.length > 0) {
-        if (this._pendingThinkingDurationMs > 0) {
-          for (let i = this.chatDetailMessages.length - 1; i >= 0; i--) {
-            const msg = this.chatDetailMessages[i]
-            if (msg.type === 'assistant' && msg.thinking) {
-              msg._thinkingTiming = msg._thinkingTiming || { startMs: 0, durationMs: 0 }
-              msg._thinkingTiming.durationMs = this._pendingThinkingDurationMs
-              if (!msg._thinkingManuallyToggled) {
-                msg._thinkingCollapsed = true
-              }
-              break
-            }
-          }
-          this._pendingThinkingDurationMs = 0
-        }
         this.$nextTick(() => {
           this.scrollPromptChatToBottom()
           const boxes = document.querySelectorAll('.thinking-blockquote')
@@ -2250,7 +2265,8 @@ export default {
     },
     // 判断当前消息是否正在思考中（实时流式阶段）
     isCurrentThinking(msg) {
-      if (this._thinkingStreamStartTime === 0) return false
+      const timing = msg && msg._thinkingTiming ? msg._thinkingTiming : null
+      if (!timing || !timing.startMs || timing.durationMs > 0) return false
       for (let i = this.chatDetailMessages.length - 1; i >= 0; i--) {
         const m = this.chatDetailMessages[i]
         if (m.type === 'assistant' && m.thinking) {
@@ -2370,7 +2386,6 @@ export default {
             })
             this.connectChatStream(chatId, null, true)
             this.loadChatDetail()
-            this.loadChatCounts()
             this.openPromptChatHistory(promptType, chatId)
           }
         )
@@ -2544,7 +2559,6 @@ export default {
               })
               this.connectChatStream(chatId, null, true)
               this.loadChatDetail()
-              this.loadChatCounts()
               // 打开执行历史，定位到新对话
               this.openPromptChatHistory(this.promptExecPromptType, chatId)
             } else {
@@ -2581,18 +2595,10 @@ export default {
       if (!detail) {
         this.workflowUnreadCount = 0
         this.promptChatUnreadCounts = {}
-        this.loadChatCounts()
-        if (this.promptChatHistoryVisible) {
-          this.loadPromptChatHistoryListSilently()
-        }
         return
       }
       this.workflowUnreadCount = Number(detail.workflow_unread || 0)
       this.promptChatUnreadCounts = { ...(detail.prompt_type_unread || {}) }
-      this.loadChatCounts()
-      if (this.promptChatHistoryVisible) {
-        this.loadPromptChatHistoryListSilently()
-      }
     },
     // 打开按类型的执行历史弹窗
     openPromptChatHistory(promptType, focusChatId) {
@@ -2659,11 +2665,7 @@ export default {
       // English comment: Close the previous foreground SSE before recalculating background streams so the old active chat can move into background tracking.
       this.syncBackgroundChatStreams(this.promptChatHistoryList, row.id)
       if (row.is_read === false && row.status !== 'running') {
-        agentCliApi.AgentChatMarkRead(row.id, (res) => {
-          if (res && res.ErrCode === 0) {
-            this.markPromptChatReadLocally(row.id)
-          }
-        })
+        this.markPromptChatReadOnServer(row.id)
       }
       if (this._sseChatId !== row.id) {
         this.chatDetailSSELines = []
@@ -2704,10 +2706,16 @@ export default {
         }
       })
     },
-    // 关闭执行历史弹窗（保留 SSE 连接和聊天状态）
-    onPromptChatHistoryClosed() {
+    handlePromptChatHistoryHide() {
+      if (this._promptChatHistoryHideHandled) return
+      this._promptChatHistoryHideHandled = true
       this._stopChatHistoryDurationTimer()
       this.stopAllBackgroundChatStreams()
+      this.closePromptChatDetail()
+    },
+    // 关闭执行历史弹窗时立即清理前后台 SSE，避免弹窗已关但流仍然存活
+    onPromptChatHistoryClosed() {
+      this.handlePromptChatHistoryHide()
     },
     // 彻底关闭对话详情（仅在用户主动停止或切换时调用）
     closePromptChatDetail() {
@@ -2723,13 +2731,6 @@ export default {
         const item = list.find(i => Number(i.id || 0) === normalizedChatId)
         if (item) {
           item.status = status
-          if (status !== 'running') {
-            if (selectedPromptHistoryChatId > 0 && selectedPromptHistoryChatId === normalizedChatId) {
-              this.markPromptChatReadLocally(normalizedChatId)
-            } else {
-              this.markPromptChatUnreadLocally(normalizedChatId)
-            }
-          }
         }
       }
       updateItem(this.promptChatHistoryList)
@@ -2786,21 +2787,11 @@ export default {
         try {
           const obj = JSON.parse(line)
           if (obj.type === 'chat' && obj.subtype === 'completed') {
-            const selectedPromptHistoryChatId = this.promptChatHistoryVisible
-              ? Number(this.promptChatDetailId || 0)
-              : 0
             this.updateBackgroundChatListItem(normalizedChatId, {
               status: String(obj.status || 'completed').trim() || 'completed',
               line_count: state.lineCount,
             })
-            if (selectedPromptHistoryChatId > 0 && selectedPromptHistoryChatId === normalizedChatId) {
-              this.markPromptChatReadLocally(normalizedChatId)
-            } else {
-              this.markPromptChatUnreadLocally(normalizedChatId)
-            }
             this.stopBackgroundChatStream(normalizedChatId)
-            this.loadPromptChatHistoryListSilently()
-            this.loadChatCounts()
           }
         } catch (e) {
           // 中文注释：普通流式消息解析失败时只保留计数更新；状态仍由终态事件或静默刷新兜底。
@@ -3799,6 +3790,16 @@ export default {
 .task-workflow-card :deep(.md-editor-input-wrapper),
 .task-workflow-card :deep(.md-editor-preview-wrapper) {
   overflow: auto;
+}
+
+.task-workflow-prompt-editor :deep(.md-editor-input),
+.task-workflow-prompt-editor :deep(.md-editor-preview),
+.task-workflow-prompt-editor :deep(.md-editor-preview-wrapper),
+.task-workflow-issue-fix__editor :deep(.md-editor-input),
+.task-workflow-issue-fix__editor :deep(.md-editor-preview),
+.task-workflow-issue-fix__editor :deep(.md-editor-preview-wrapper) {
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 /* MdEditor 滚动条绿色 */

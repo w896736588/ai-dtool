@@ -10,6 +10,9 @@
             <pl-button class="toolbar-btn toolbar-btn-small" size="small" type="primary" plain @click="openCreateCollectionDialog">
               <el-icon><Plus /></el-icon>新建集合
             </pl-button>
+            <pl-button class="toolbar-btn toolbar-btn-small" size="small" @click="openCleanupDialog">
+              清理
+            </pl-button>
             <pl-button class="toolbar-btn toolbar-btn-small" size="small" type="primary" plain @click="drawerVisibleMarkdown = true">
               <el-icon><QuestionFilled /></el-icon>文档
             </pl-button>
@@ -418,6 +421,50 @@
     </template>
   </el-dialog>
 
+  <el-dialog v-model="dialogShow.cleanupFolders" title="清理文件夹" width="760" @closed="resetCleanupSelection">
+    <div class="cleanup-dialog">
+      <div class="cleanup-toolbar">
+        <div class="cleanup-toolbar-main">
+          <span class="cleanup-toolbar-label">默认显示</span>
+          <el-input-number v-model="dialogData.cleanupFolders.days" :min="1" :max="3650" controls-position="right" />
+          <span class="cleanup-toolbar-label">天未使用</span>
+          <pl-button type="primary" :loading="cleanupLoading" @click="checkCleanupFolders">检查</pl-button>
+        </div>
+        <el-checkbox
+          v-if="dialogData.cleanupFolders.candidates.length > 0"
+          v-model="dialogData.cleanupFolders.selectAll"
+          @change="toggleCleanupSelectAll"
+        >
+          全选
+        </el-checkbox>
+      </div>
+
+      <div class="cleanup-result">
+        <el-empty v-if="!cleanupLoading && dialogData.cleanupFolders.checkedAt === 0" description="点击检查后列出可清理文件夹" />
+        <el-empty v-else-if="!cleanupLoading && dialogData.cleanupFolders.candidates.length === 0" description="没有符合条件的文件夹" />
+        <div v-else class="cleanup-list">
+          <label v-for="folder in dialogData.cleanupFolders.candidates" :key="folder.id" class="cleanup-item">
+            <el-checkbox v-model="dialogData.cleanupFolders.selectedIds" :label="folder.id">
+              <span class="cleanup-item-title">{{ folder.collection_name }} / {{ folder.name }}</span>
+            </el-checkbox>
+            <div class="cleanup-item-meta">
+              <span>接口数 {{ folder.child_count }}</span>
+              <span>最近活动 {{ formatTimestamp(folder.latest_active_time) }}</span>
+              <span>最近执行 {{ formatTimestamp(folder.last_run_time) }}</span>
+              <span>最近修改 {{ formatTimestamp(Math.max(Number(folder.update_time || 0), Number(folder.last_api_update_time || 0))) }}</span>
+            </div>
+          </label>
+        </div>
+      </div>
+    </div>
+    <template #footer>
+      <div class="dialog-footer">
+        <pl-button @click="dialogShow.cleanupFolders = false">取消</pl-button>
+        <pl-button type="danger" :disabled="dialogData.cleanupFolders.selectedIds.length === 0" :loading="cleanupDeleting" @click="confirmCleanupDelete">删除</pl-button>
+      </div>
+    </template>
+  </el-dialog>
+
   <el-drawer
       v-model="drawerVisibleMarkdown"
       direction="rtl"
@@ -510,6 +557,7 @@ export default {
         copyApi: false, //复制接口弹窗
         moveApi: false, //迁移接口弹窗
         jsonImport: false, //JSON导入弹窗
+        cleanupFolders: false, //清理文件夹弹窗
       },
       dialogData: {
         createCollection: {
@@ -567,10 +615,19 @@ export default {
         jsonImport: {
           collection_id: '',
           json: '',
+        },
+        cleanupFolders: {
+          days: 7,
+          candidates: [],
+          selectedIds: [],
+          selectAll: false,
+          checkedAt: 0,
         }
       },
       moveApiFolderOptions: [],
       moveApiFolderOptionsLoading: false,
+      cleanupLoading: false,
+      cleanupDeleting: false,
       // 弹窗保存防重入，避免回车和点击导致重复提交
       dialogSubmitting: {
         createCollection: false,
@@ -1188,6 +1245,18 @@ export default {
         return
       }
       this.$refs.collectionTreeRef.updateKeyChildren(nodeKey, Array.isArray(children) ? children : [])
+    },
+    formatTimestamp(timestamp) {
+      const value = Number(timestamp || 0)
+      if (value <= 0) {
+        return '未执行'
+      }
+      const date = new Date(value * 1000)
+      if (Number.isNaN(date.getTime())) {
+        return '未知'
+      }
+      const pad = (num) => String(num).padStart(2, '0')
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
     },
     syncCollectionNodeFields(target, source) {
       if (!target || !source) {
@@ -2123,6 +2192,76 @@ export default {
       }).catch(() => {
         this.$message.info('已取消删除')
       })
+    },
+    openCleanupDialog() {
+      this.dialogShow.cleanupFolders = true
+      if (this.dialogData.cleanupFolders.checkedAt === 0) {
+        this.checkCleanupFolders()
+      }
+    },
+    resetCleanupSelection() {
+      this.dialogData.cleanupFolders.selectedIds = []
+      this.dialogData.cleanupFolders.selectAll = false
+    },
+    toggleCleanupSelectAll(checked) {
+      this.dialogData.cleanupFolders.selectedIds = checked
+        ? this.dialogData.cleanupFolders.candidates.map((item) => item.id)
+        : []
+    },
+    async checkCleanupFolders() {
+      const days = Number(this.dialogData.cleanupFolders.days || 7)
+      if (days <= 0) {
+        this.$message.error('天数必须大于 0')
+        return
+      }
+      this.cleanupLoading = true
+      try {
+        const data = await this.requestApi('CleanupCandidateFolders', { days })
+        this.dialogData.cleanupFolders.candidates = Array.isArray(data.list) ? data.list : []
+        this.dialogData.cleanupFolders.selectedIds = []
+        this.dialogData.cleanupFolders.selectAll = false
+        this.dialogData.cleanupFolders.checkedAt = Date.now()
+      } catch (error) {
+        this.$message.error(error.message || '检查失败')
+      } finally {
+        this.cleanupLoading = false
+      }
+    },
+    confirmCleanupDelete() {
+      const selectedFolders = this.dialogData.cleanupFolders.candidates.filter((item) =>
+        this.dialogData.cleanupFolders.selectedIds.includes(item.id)
+      )
+      if (selectedFolders.length === 0) {
+        this.$message.error('请选择要删除的文件夹')
+        return
+      }
+      this.$confirm(`删除后进入回收站，确定归档选中的 ${selectedFolders.length} 个文件夹吗？`, '批量删除', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }).then(() => {
+        this.executeCleanupDelete(selectedFolders)
+      }).catch(() => {
+        this.$message.info('已取消删除')
+      })
+    },
+    async executeCleanupDelete(selectedFolders) {
+      this.cleanupDeleting = true
+      try {
+        const folderIds = selectedFolders.map((item) => item.id)
+        await this.requestApi('CleanupArchiveFolders', { folder_ids: folderIds })
+        const collectionIds = [...new Set(selectedFolders.map((item) => Number(item.collection_id || 0)).filter((id) => id > 0))]
+        selectedFolders.forEach((folder) => this.closeWorkspaceTabsByFolder(folder.id))
+        await Promise.all(collectionIds.map((collectionId) => this.refreshCollectionFolders(collectionId)))
+        await this.refreshArchiveNode()
+        this.syncTreeSortCacheFromTree()
+        this.$message.success('已移入回收站')
+        await this.checkCleanupFolders()
+      } catch (error) {
+        this.$message.error(error.message || '删除失败')
+      } finally {
+        this.cleanupDeleting = false
+      }
     },
     //删除集合
     handleCollectionDelete(collection) {

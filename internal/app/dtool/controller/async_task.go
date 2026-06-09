@@ -148,6 +148,7 @@ func AsyncTaskAction(c *gin.Context) {
 			cast.ToString(resultMap[`report_title`]),
 			cast.ToString(resultMap[`markdown`]),
 			cast.ToStringSlice(resultMap[`suggested_tags`]),
+			``,
 		)
 		if saveErr != nil {
 			gsgin.GinResponseError(c, saveErr.Error(), nil)
@@ -191,6 +192,7 @@ func AsyncTaskAction(c *gin.Context) {
 			cast.ToString(resultMap[`title`]),
 			cast.ToString(resultMap[`arranged_content`]),
 			cast.ToStringSlice(existingInfo[`tags`]),
+			``,
 		)
 		if saveErr != nil {
 			gsgin.GinResponseError(c, saveErr.Error(), nil)
@@ -237,6 +239,7 @@ func AsyncTaskAction(c *gin.Context) {
 			existingTitle,
 			markdown,
 			existingTags,
+			``,
 		)
 		if saveErr != nil {
 			gsgin.GinResponseError(c, saveErr.Error(), nil)

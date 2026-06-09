@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -94,7 +95,7 @@ func assignProcessToJob(job syscall.Handle, pid int) error {
 // startClaude Windows 实现。
 // 启动时将 Claude CLI 进程加入 kill-on-close Job Object，
 // 确保 Go 进程崩溃或退出时 npx chrome-devtools-mcp 等子进程不会残留为孤儿。
-func startClaude(ctx context.Context, args []string, workDir string, env []string) (ptyResult, error) {
+func startClaude(ctx context.Context, args []string, workDir string, env []string, stdin io.Reader) (ptyResult, error) {
 	job, jobErr := createKillOnCloseJob()
 	if jobErr != nil {
 		log.Printf("[claude-exec] 创建 Job Object 失败（降级运行，无孤儿进程保护）: %v", jobErr)
@@ -103,6 +104,7 @@ func startClaude(ctx context.Context, args []string, workDir string, env []strin
 	cmd := exec.Command(`claude`, args...)
 	cmd.Dir = workDir
 	cmd.Env = env
+	cmd.Stdin = stdin
 	// CREATE_BREAKAWAY_FROM_JOB 允许进程脱离可能存在的父 Job（如终端 Job），
 	// 以便将其加入我们自己的 Job Object。
 	cmd.SysProcAttr = &syscall.SysProcAttr{

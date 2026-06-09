@@ -36,13 +36,15 @@ func RenderFragmentMarkdown(fragment Fragment) (string, error) {
 	content := strings.TrimSpace(normalizeLineBreaks(fragment.Content))
 	title := NormalizeFragmentTitle(fragment.Title, content)
 	meta := FrontMatter{
-		Title:     title,
-		CreatedAt: fragment.CreatedAt.Format(timeLayout),
-		UpdatedAt: fragment.UpdatedAt.Format(timeLayout),
+		Title:      title,
+		FolderName: NormalizeFolderName(fragment.FolderName),
+		CreatedAt:  fragment.CreatedAt.Format(timeLayout),
+		UpdatedAt:  fragment.UpdatedAt.Format(timeLayout),
 	}
 	return fmt.Sprintf(
-		"---\ntitle: %s\ncreated_at: %s\nupdated_at: %s\n---\n\n%s\n",
+		"---\ntitle: %s\nfolder_name: %s\ncreated_at: %s\nupdated_at: %s\n---\n\n%s\n",
 		renderFrontMatterTitle(meta.Title),
+		renderFrontMatterTitle(meta.FolderName),
 		meta.CreatedAt,
 		meta.UpdatedAt,
 		content,

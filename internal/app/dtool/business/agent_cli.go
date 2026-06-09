@@ -46,9 +46,6 @@ func mergeAgentCliModels(currentModel string, models []string) []string {
 	return append([]string{currentModel}, normalizedModels...)
 }
 
-// claude-mem 插件在 enabledPlugins 中的 key
-const claudeMemPluginKey = "claude-mem@thedotmack"
-
 // ReadAgentCliSettings 读取 settings.json 文件内容，若文件不存在返回空
 func ReadAgentCliSettings(settingsPath string) (exists bool, content string, err error) {
 	data, readErr := os.ReadFile(settingsPath)
@@ -208,13 +205,13 @@ func WriteDeepSeekToSettings(settingsPath string, modelName string, modelList []
 }
 
 // GetAgentCliSettingsSummary 从 settings.json 内容中提取摘要信息
-func GetAgentCliSettingsSummary(content string) (model string, mcpCount int, claudeMemEnabled bool) {
+func GetAgentCliSettingsSummary(content string) (model string, mcpCount int) {
 	if content == "" {
-		return "", 0, false
+		return "", 0
 	}
 	var configData map[string]any
 	if err := json.Unmarshal([]byte(content), &configData); err != nil {
-		return "", 0, false
+		return "", 0
 	}
 	if m, ok := configData["model"]; ok {
 		model = cast.ToString(m)
@@ -224,63 +221,7 @@ func GetAgentCliSettingsSummary(content string) (model string, mcpCount int, cla
 			mcpCount = len(serverMap)
 		}
 	}
-	claudeMemEnabled = IsClaudeMemEnabled(configData)
 	return
-}
-
-// IsClaudeMemEnabled 判断 claude-mem 插件是否已启用
-func IsClaudeMemEnabled(configData map[string]any) bool {
-	if plugins, ok := configData["enabledPlugins"]; ok {
-		if pluginMap, ok := plugins.(map[string]any); ok {
-			if enabled, ok := pluginMap[claudeMemPluginKey]; ok {
-				return cast.ToBool(enabled)
-			}
-		}
-	}
-	return false
-}
-
-// ToggleClaudeMem 启停 settings.json 中的 claude-mem 插件
-func ToggleClaudeMem(settingsPath string, enable bool) error {
-	configData := make(map[string]any)
-	content, readErr := os.ReadFile(settingsPath)
-	if readErr == nil && len(content) > 0 {
-		if err := json.Unmarshal(content, &configData); err != nil {
-			return fmt.Errorf("解析配置文件失败 %s: %w", settingsPath, err)
-		}
-	}
-
-	plugins, ok := configData["enabledPlugins"]
-	if !ok {
-		configData["enabledPlugins"] = map[string]bool{
-			claudeMemPluginKey: enable,
-		}
-	} else {
-		pluginMap, ok := plugins.(map[string]any)
-		if !ok {
-			configData["enabledPlugins"] = map[string]bool{
-				claudeMemPluginKey: enable,
-			}
-		} else {
-			pluginMap[claudeMemPluginKey] = enable
-		}
-	}
-
-	dir := filepath.Dir(settingsPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建配置目录失败 %s: %w", dir, err)
-	}
-
-	newContent, err := json.MarshalIndent(configData, "", "  ")
-	if err != nil {
-		return fmt.Errorf("序列化配置失败: %w", err)
-	}
-	newContent = append(newContent, '\n')
-
-	if err := os.WriteFile(settingsPath, newContent, 0644); err != nil {
-		return fmt.Errorf("写入配置文件失败 %s: %w", settingsPath, err)
-	}
-	return nil
 }
 
 // GetCodexCliConfig 从 DB config JSON 字段解析 Codex CLI 配置

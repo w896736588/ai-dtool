@@ -149,7 +149,7 @@
     </div>
 
     <!-- 开发环境 -->
-    <div v-show="activeTab === 'dev-environment'">
+    <div v-show="activeTab === 'dev-environment'" class="dev-environment-section">
       <div class="set-config-header">
         <h3 class="set-config-title">开发环境</h3>
         <p class="set-config-desc">
@@ -172,15 +172,15 @@
         </span>
       </div>
 
-      <div class="set-config-table-card">
+      <div class="set-config-table-card dev-environment-card">
         <MdEditor
           v-model="form.home_task_dev_environment"
           preview-theme="github"
           :preview="true"
           :toolbars="promptEditorToolbars"
-          style="height: 360px;"
+          class="dev-environment-editor"
         />
-        <div style="padding-top: 12px;">
+        <div class="dev-environment-footer">
           <pl-button type="primary" @click="saveDevEnvironmentConfig">保存开发环境配置</pl-button>
           <pl-button @click="showChangeLog">改动记录</pl-button>
         </div>
@@ -355,6 +355,7 @@
               preview-theme="github"
               :preview="true"
               :toolbars="promptEditorToolbars"
+              class="branch-name-editor"
               style="height: 360px;"
             />
           </el-form-item>
@@ -695,19 +696,33 @@ export default {
 <style scoped src="@/css/components/set/home_task_report.css"></style>
 
 <style>
+.set-config-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
 .prompt-template-section {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
 }
 
 .prompt-template-card {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
+  min-height: 0;
 }
 
 .prompt-template-card .el-tabs {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .prompt-template-card .el-tabs__header {
@@ -718,20 +733,140 @@ export default {
 }
 
 .prompt-template-card .el-tabs__content {
-  overflow: visible;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .prompt-template-card .el-tab-pane {
-  height: auto;
+  height: 100%;
 }
 
-.prompt-template-editor {
+.daily-report-editor,
+.prompt-template-editor,
+.branch-name-editor {
   height: calc(100vh - 460px);
   min-height: 200px;
   max-height: 800px;
 }
 
+.daily-report-editor :deep(.md-editor),
+.prompt-template-editor :deep(.md-editor),
+.branch-name-editor :deep(.md-editor) {
+  --md-font-size: 13px;
+  --md-code-font-size: 13px;
+  --md-font-family: Consolas, Avenir, Helvetica, Arial, sans-serif;
+}
+
+.prompt-template-editor {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.prompt-template-editor :deep(.md-editor) {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.daily-report-editor :deep(.md-editor-input),
+.daily-report-editor :deep(.md-editor-preview-wrapper),
+.daily-report-editor :deep(.cm-content),
+.daily-report-editor :deep(.md-editor-preview),
+.prompt-template-editor :deep(.md-editor-input),
+.prompt-template-editor :deep(.md-editor-preview-wrapper),
+.prompt-template-editor :deep(.cm-content),
+.prompt-template-editor :deep(.md-editor-preview),
+.branch-name-editor :deep(.md-editor-input),
+.branch-name-editor :deep(.md-editor-preview-wrapper),
+.branch-name-editor :deep(.cm-content),
+.branch-name-editor :deep(.md-editor-preview) {
+  font-family: Consolas, Avenir, Helvetica, Arial, sans-serif !important;
+  font-size: 13px !important;
+  line-height: 1.6;
+}
+
+.daily-report-editor :deep(.md-editor-preview p),
+.daily-report-editor :deep(.md-editor-preview li),
+.daily-report-editor :deep(.md-editor-preview blockquote),
+.daily-report-editor :deep(.md-editor-preview table),
+.daily-report-editor :deep(.md-editor-preview td),
+.daily-report-editor :deep(.md-editor-preview th),
+.daily-report-editor :deep(.md-editor-preview code),
+.prompt-template-editor :deep(.md-editor-preview p),
+.prompt-template-editor :deep(.md-editor-preview li),
+.prompt-template-editor :deep(.md-editor-preview blockquote),
+.prompt-template-editor :deep(.md-editor-preview table),
+.prompt-template-editor :deep(.md-editor-preview td),
+.prompt-template-editor :deep(.md-editor-preview th),
+.prompt-template-editor :deep(.md-editor-preview code),
+.branch-name-editor :deep(.md-editor-preview p),
+.branch-name-editor :deep(.md-editor-preview li),
+.branch-name-editor :deep(.md-editor-preview blockquote),
+.branch-name-editor :deep(.md-editor-preview table),
+.branch-name-editor :deep(.md-editor-preview td),
+.branch-name-editor :deep(.md-editor-preview th),
+.branch-name-editor :deep(.md-editor-preview code) {
+  font-size: 13px !important;
+}
+
 .prompt-template-footer {
+  padding-top: 12px;
+  flex-shrink: 0;
+}
+
+.dev-environment-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.dev-environment-card {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dev-environment-editor {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.dev-environment-editor :deep(.md-editor) {
+  --md-font-size: 13px;
+  --md-code-font-size: 13px;
+  --md-font-family: Consolas, Avenir, Helvetica, Arial, sans-serif;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.dev-environment-editor :deep(.md-editor-input),
+.dev-environment-editor :deep(.md-editor-preview-wrapper),
+.dev-environment-editor :deep(.cm-content),
+.dev-environment-editor :deep(.md-editor-preview) {
+  font-family: Consolas, Avenir, Helvetica, Arial, sans-serif !important;
+  font-size: 13px !important;
+  line-height: 1.6;
+}
+
+.dev-environment-editor :deep(.md-editor-preview p),
+.dev-environment-editor :deep(.md-editor-preview li),
+.dev-environment-editor :deep(.md-editor-preview blockquote),
+.dev-environment-editor :deep(.md-editor-preview table),
+.dev-environment-editor :deep(.md-editor-preview td),
+.dev-environment-editor :deep(.md-editor-preview th),
+.dev-environment-editor :deep(.md-editor-preview code) {
+  font-size: 13px !important;
+}
+
+.dev-environment-footer {
   padding-top: 12px;
   flex-shrink: 0;
 }
@@ -767,5 +902,48 @@ export default {
 
 .set-config-page .md-editor .md-editor-preview ::-webkit-scrollbar-corner {
   background: #edf3e8 !important;
+}
+</style>
+
+<style>
+.set-config-page .daily-report-editor .md-editor-preview,
+.set-config-page .daily-report-editor .md-editor-preview-wrapper,
+.set-config-page .daily-report-editor .md-editor-html,
+.set-config-page .prompt-template-editor .md-editor-preview,
+.set-config-page .prompt-template-editor .md-editor-preview-wrapper,
+.set-config-page .prompt-template-editor .md-editor-html,
+.set-config-page .branch-name-editor .md-editor-preview,
+.set-config-page .branch-name-editor .md-editor-preview-wrapper,
+.set-config-page .branch-name-editor .md-editor-html,
+.set-config-page .dev-environment-editor .md-editor-preview,
+.set-config-page .dev-environment-editor .md-editor-preview-wrapper,
+.set-config-page .dev-environment-editor .md-editor-html {
+  font-family: Consolas, Avenir, Helvetica, Arial, sans-serif !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+}
+
+.set-config-page .daily-report-editor .md-editor-preview *,
+.set-config-page .daily-report-editor .md-editor-html *,
+.set-config-page .prompt-template-editor .md-editor-preview *,
+.set-config-page .prompt-template-editor .md-editor-html *,
+.set-config-page .branch-name-editor .md-editor-preview *,
+.set-config-page .branch-name-editor .md-editor-html *,
+.set-config-page .dev-environment-editor .md-editor-preview *,
+.set-config-page .dev-environment-editor .md-editor-html * {
+  font-size: inherit !important;
+}
+
+.set-config-page .daily-report-editor .cm-content,
+.set-config-page .daily-report-editor .md-editor-input,
+.set-config-page .prompt-template-editor .cm-content,
+.set-config-page .prompt-template-editor .md-editor-input,
+.set-config-page .branch-name-editor .cm-content,
+.set-config-page .branch-name-editor .md-editor-input,
+.set-config-page .dev-environment-editor .cm-content,
+.set-config-page .dev-environment-editor .md-editor-input {
+  font-family: Consolas, Avenir, Helvetica, Arial, sans-serif !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
 }
 </style>

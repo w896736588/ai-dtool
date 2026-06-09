@@ -103,6 +103,14 @@ function ArchiveFolderList(data , callBack){
     base.BasePost('/api/ArchiveFolderList', data , callBack)
 }
 
+function CleanupCandidateFolders(data , callBack){
+    base.BasePost('/api/CleanupCandidateFolders', data , callBack)
+}
+
+function CleanupArchiveFolders(data , callBack){
+    base.BasePost('/api/CleanupArchiveFolders', data , callBack)
+}
+
 function RestoreFolder(data , callBack){
     base.BasePost('/api/RestoreFolder', data , callBack)
 }
@@ -136,6 +144,8 @@ export default {
     ApiImportJson,
     FolderDetail,
     ArchiveFolderList,
+    CleanupCandidateFolders,
+    CleanupArchiveFolders,
     RestoreFolder,
     PermanentDeleteDir,
 }

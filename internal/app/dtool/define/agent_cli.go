@@ -128,15 +128,8 @@ type AgentCliStatusItem struct {
 	ModelOptions      []string `json:"model_options"` // 卡片可选模型列表，用于前端执行前选择。 // Selectable models for this card, used before task execution.
 	RequestURL        string   `json:"request_url"`
 	McpServerCount    int      `json:"mcp_server_count"`
-	ClaudeMemEnabled  bool     `json:"claude_mem_enabled"`
 	WebhookConfigName string   `json:"webhook_config_name"`
 	GroupIds          []int    `json:"group_ids"` // 所属分组 ID 列表（多对多） // Group IDs this Agent CLI belongs to.
-}
-
-// AgentCliToggleClaudeMemRequest 切换 claude-mem 启停请求
-type AgentCliToggleClaudeMemRequest struct {
-	Id     int  `json:"id"`
-	Enable bool `json:"enable"`
 }
 
 // AgentCliToggleEnabledRequest 切换 Agent CLI 启停请求 / Toggle Agent CLI enabled status request.

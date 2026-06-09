@@ -73,12 +73,7 @@ function parseOneLine(line, messages, currentItems) {
   } else if (eventType === 'turn.started') {
     // 内部状态，不显示
   } else if (eventType === 'turn.completed') {
-    messages.push({
-      type: 'result',
-      subtype: 'completed',
-      text: '回合完成',
-      usage: obj.usage || null,
-    })
+    // 最终摘要由 result 事件负责展示，这里不再单独生成结果卡。
   } else if (eventType === 'turn.failed') {
     messages.push({
       type: 'error',
@@ -106,6 +101,58 @@ function parseOneLine(line, messages, currentItems) {
     // 未知事件类型，原样输出
     messages.push({ type: 'raw_text', text: line })
   }
+}
+
+function buildCodexToolResult(itemType, item) {
+  if (!item || typeof item !== 'object') return null
+
+  if (itemType === 'command_execution') {
+    const resultParts = []
+    if (item.aggregated_output !== undefined && item.aggregated_output !== null) {
+      const output = String(item.aggregated_output || '').trim()
+      if (output) resultParts.push(output)
+    } else {
+      if (item.stdout) resultParts.push(item.stdout)
+      if (item.stderr) resultParts.push('[stderr] ' + item.stderr)
+    }
+    if (item.exit_code !== undefined && item.exit_code !== 0) resultParts.push('[exit_code] ' + item.exit_code)
+    return { text: resultParts.join('\n'), collapsed: true }
+  }
+
+  if (itemType === 'mcp_tool_call') {
+    const parts = []
+    if (item.error !== undefined && item.error !== null) {
+      parts.push(typeof item.error === 'string' ? item.error : JSON.stringify(item.error, null, 2))
+    }
+    if (item.result !== undefined && item.result !== null) {
+      if (typeof item.result === 'string') {
+        const resultText = item.result.trim()
+        if (resultText) parts.push(resultText)
+      } else {
+        parts.push(JSON.stringify(item.result, null, 2))
+      }
+    }
+    return { text: parts.join('\n\n'), collapsed: true }
+  }
+
+  if (itemType === 'file_change') {
+    const changeLines = Array.isArray(item.changes)
+      ? item.changes.map(ch => `${ch.kind || ch.type || 'update'}: ${ch.path || ''}`.trim()).filter(Boolean)
+      : []
+    return { text: changeLines.join('\n'), collapsed: true }
+  }
+
+  if (itemType === 'web_search') {
+    const parts = []
+    if (item.result !== undefined && item.result !== null) {
+      parts.push(typeof item.result === 'string' ? item.result : JSON.stringify(item.result, null, 2))
+    } else if (item.results !== undefined && item.results !== null) {
+      parts.push(typeof item.results === 'string' ? item.results : JSON.stringify(item.results, null, 2))
+    }
+    return { text: parts.join('\n\n'), collapsed: true }
+  }
+
+  return null
 }
 
 // handleItemEvent 处理 item.started / item.updated / item.completed 事件。
@@ -331,26 +378,14 @@ function handleItemEvent(eventType, obj, messages, currentItems) {
       } else if (itemType === 'command_execution' && existingMsg.content && existingMsg.content.length > 0) {
         const block = existingMsg.content[0]
         block._codexStatus = 'completed'
-        // 添加执行结果（优先使用 aggregated_output，兼容 stdout/stderr）
-        const resultParts = []
-        if (item.aggregated_output !== undefined && item.aggregated_output !== null) {
-          // Codex CLI 的 command_execution 在 completed 时输出内容在 aggregated_output 字段
-          const output = item.aggregated_output.trim()
-          if (output) resultParts.push(output)
-        } else {
-          if (item.stdout) resultParts.push(item.stdout)
-          if (item.stderr) resultParts.push('[stderr] ' + item.stderr)
+        block._result = buildCodexToolResult(itemType, item) || { text: '', collapsed: true }
+      } else if ((itemType === 'file_change' || itemType === 'mcp_tool_call' || itemType === 'web_search') && existingMsg.content && existingMsg.content.length > 0) {
+        const block = existingMsg.content[0]
+        block._codexStatus = 'completed'
+        if (itemType === 'file_change') {
+          block.input = JSON.stringify(item, null, 2)
         }
-        if (item.exit_code !== undefined && item.exit_code !== 0) resultParts.push('[exit_code] ' + item.exit_code)
-        if (resultParts.length > 0) {
-          block._result = { text: resultParts.join('\n'), collapsed: true }
-        } else {
-          // 即使无输出内容，也设置空结果以停止 spinner
-          block._result = { text: '', collapsed: true }
-        }
-      } else if (itemType === 'file_change' && existingMsg.content && existingMsg.content.length > 0) {
-        existingMsg.content[0]._codexStatus = 'completed'
-        existingMsg.content[0].input = JSON.stringify(item, null, 2)
+        block._result = buildCodexToolResult(itemType, item) || { text: '', collapsed: true }
       } else if (itemType === 'todo_list') {
         existingMsg._todoItems = item.items || item.todos || existingMsg._todoItems
         existingMsg.status = 'completed'
@@ -383,16 +418,6 @@ function handleItemEvent(eventType, obj, messages, currentItems) {
         }
         messages.push(msg)
       } else if (itemType === 'command_execution') {
-        // 优先使用 aggregated_output，兼容 stdout/stderr
-        const resultParts = []
-        if (item.aggregated_output !== undefined && item.aggregated_output !== null) {
-          const output = item.aggregated_output.trim()
-          if (output) resultParts.push(output)
-        } else {
-          if (item.stdout) resultParts.push(item.stdout)
-          if (item.stderr) resultParts.push('[stderr] ' + item.stderr)
-        }
-        if (item.exit_code !== undefined && item.exit_code !== 0) resultParts.push('[exit_code] ' + item.exit_code)
         const block = {
           type: 'tool_use',
           name: 'Bash',
@@ -401,12 +426,7 @@ function handleItemEvent(eventType, obj, messages, currentItems) {
           displayInput: item.command || '',
           _codexStatus: 'completed',
         }
-        if (resultParts.length > 0) {
-          block._result = { text: resultParts.join('\n'), collapsed: true }
-        } else {
-          // 即使无输出内容，也设置空结果以停止 spinner
-          block._result = { text: '', collapsed: true }
-        }
+        block._result = buildCodexToolResult(itemType, item) || { text: '', collapsed: true }
         const msg = {
           type: 'assistant',
           role: 'assistant',
@@ -419,52 +439,58 @@ function handleItemEvent(eventType, obj, messages, currentItems) {
       } else if (itemType === 'file_change') {
         const changes = item.changes || []
         const changesSummary = changes.map(ch => `${ch.type || 'modify'}: ${ch.path || ''}`).join('\n')
+        const block = {
+          type: 'tool_use',
+          name: 'FileChange',
+          id: itemId,
+          input: JSON.stringify(item, null, 2),
+          displayInput: changesSummary || '文件变更',
+          _codexStatus: 'completed',
+          _result: buildCodexToolResult(itemType, item) || { text: '', collapsed: true },
+        }
         const msg = {
           type: 'assistant',
           role: 'assistant',
           model: '',
-          content: [{
-            type: 'tool_use',
-            name: 'FileChange',
-            id: itemId,
-            input: JSON.stringify(item, null, 2),
-            displayInput: changesSummary || '文件变更',
-            _codexStatus: 'completed',
-          }],
+          content: [block],
           thinking: '',
           _codexItemId: itemId,
         }
         messages.push(msg)
       } else if (itemType === 'mcp_tool_call') {
+        const block = {
+          type: 'tool_use',
+          name: `MCP:${item.server || ''}/${item.tool || ''}`,
+          id: itemId,
+          input: JSON.stringify(item.arguments || {}, null, 2),
+          displayInput: `${item.server || ''}/${item.tool || ''}`,
+          _codexStatus: 'completed',
+          _result: buildCodexToolResult(itemType, item) || { text: '', collapsed: true },
+        }
         const msg = {
           type: 'assistant',
           role: 'assistant',
           model: '',
-          content: [{
-            type: 'tool_use',
-            name: `MCP:${item.server || ''}/${item.tool || ''}`,
-            id: itemId,
-            input: JSON.stringify(item.arguments || {}, null, 2),
-            displayInput: `${item.server || ''}/${item.tool || ''}`,
-            _codexStatus: 'completed',
-          }],
+          content: [block],
           thinking: '',
           _codexItemId: itemId,
         }
         messages.push(msg)
       } else if (itemType === 'web_search') {
+        const block = {
+          type: 'tool_use',
+          name: 'WebSearch',
+          id: itemId,
+          input: JSON.stringify(item, null, 2),
+          displayInput: item.query || '网络搜索',
+          _codexStatus: 'completed',
+          _result: buildCodexToolResult(itemType, item) || { text: '', collapsed: true },
+        }
         const msg = {
           type: 'assistant',
           role: 'assistant',
           model: '',
-          content: [{
-            type: 'tool_use',
-            name: 'WebSearch',
-            id: itemId,
-            input: JSON.stringify(item, null, 2),
-            displayInput: item.query || '网络搜索',
-            _codexStatus: 'completed',
-          }],
+          content: [block],
           thinking: '',
           _codexItemId: itemId,
         }

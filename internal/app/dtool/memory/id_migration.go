@@ -47,6 +47,26 @@ func MigrateNumericFragmentIDs(root string) (*FragmentIDMigrationReport, error) 
 	return report, nil
 }
 
+// RepairInvalidFragmentIDs 修复明显非法的片段文件名，例如 "."、".."、空名等。
+func RepairInvalidFragmentIDs(root string) (*FragmentIDMigrationReport, error) {
+	report := &FragmentIDMigrationReport{
+		IDMap:   map[string]string{},
+		Renamed: make([]FragmentIDMigrationItem, 0),
+	}
+	for _, bucket := range []struct {
+		dir       string
+		isDeleted bool
+	}{
+		{dir: filepath.Join(root, `fragments`), isDeleted: false},
+		{dir: filepath.Join(root, `trash`), isDeleted: true},
+	} {
+		if err := repairInvalidFragmentBucket(root, bucket.dir, bucket.isDeleted, report); err != nil {
+			return nil, err
+		}
+	}
+	return report, nil
+}
+
 func migrateNumericFragmentBucket(root, bucketPath string, isDeleted bool, report *FragmentIDMigrationReport) error {
 	if err := os.MkdirAll(bucketPath, 0o755); err != nil {
 		return err
@@ -89,10 +109,88 @@ func migrateNumericFragmentBucket(root, bucketPath string, isDeleted bool, repor
 	})
 }
 
+func repairInvalidFragmentBucket(root, bucketPath string, isDeleted bool, report *FragmentIDMigrationReport) error {
+	if err := os.MkdirAll(bucketPath, 0o755); err != nil {
+		return err
+	}
+	return filepath.WalkDir(bucketPath, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || strings.ToLower(filepath.Ext(path)) != `.md` {
+			return nil
+		}
+		oldID := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		if IsValidFragmentID(oldID) {
+			return nil
+		}
+		fragment, parseErr := parseFragmentFileAllowInvalidID(path, isDeleted, false)
+		if parseErr != nil {
+			return parseErr
+		}
+		newID, newPath, buildErr := nextAvailableFragmentUUIDPath(root, fragment.CreatedAt, isDeleted)
+		if buildErr != nil {
+			return buildErr
+		}
+		if err = os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
+			return err
+		}
+		if err = os.Rename(path, newPath); err != nil {
+			return err
+		}
+		report.IDMap[oldID] = newID
+		report.Renamed = append(report.Renamed, FragmentIDMigrationItem{
+			OldID:   oldID,
+			NewID:   newID,
+			OldPath: path,
+			NewPath: newPath,
+			Deleted: isDeleted,
+		})
+		return nil
+	})
+}
+
+func parseFragmentFileAllowInvalidID(path string, isDeleted bool, loadContent bool) (*Fragment, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	content := normalizeLineBreaks(string(body))
+	meta, markdownBody, err := parseFrontMatter(content)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	createdAt := parseTimeOrZero(meta.CreatedAt)
+	updatedAt := parseTimeOrZero(meta.UpdatedAt)
+	if createdAt.IsZero() {
+		createdAt = info.ModTime()
+	}
+	if updatedAt.IsZero() {
+		updatedAt = info.ModTime()
+	}
+	fragment := &Fragment{
+		ID:         strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)),
+		Title:      NormalizeFragmentTitle(meta.Title, markdownBody),
+		FolderName: detectFragmentFolder(path, isDeleted, meta.FolderName),
+		CreatedAt:  createdAt,
+		UpdatedAt:  updatedAt,
+		IsDeleted:  isDeleted,
+		FilePath:   path,
+	}
+	if loadContent {
+		fragment.Content = strings.TrimSpace(markdownBody)
+	}
+	return fragment, nil
+}
+
 func nextAvailableFragmentUUIDPath(root string, createdAt time.Time, isDeleted bool) (string, string, error) {
 	for {
 		id := uuid.NewString()
-		path := BuildFragmentPath(root, createdAt, id, isDeleted)
+		path := BuildFragmentPath(root, createdAt, id, isDeleted, DefaultFolderName)
 		if _, err := os.Stat(path); err == nil {
 			continue
 		} else if !os.IsNotExist(err) {
