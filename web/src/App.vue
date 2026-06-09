@@ -56,6 +56,8 @@ export default {
       gitRepos: [],
       gitDialogVisible: false,
       commitPushLoadingMap: {},
+      sseConnectionHandler: null,
+      gitPendingStatusHandler: null,
     }
   },
   computed: {
@@ -78,20 +80,21 @@ export default {
     this.registerGitPendingStatus()
   },
   unmounted() {
-    sseDistribute.UnRegisterReceive(SseConnectionCountId)
-    sseDistribute.UnRegisterReceive(GitPendingStatusId)
+    sseDistribute.UnRegisterReceive(SseConnectionCountId, this.sseConnectionHandler)
+    sseDistribute.UnRegisterReceive(GitPendingStatusId, this.gitPendingStatusHandler)
   },
   methods: {
     registerSseConnectionCount() {
-      sseDistribute.RegisterReceive(SseConnectionCountId, (data) => {
+      this.sseConnectionHandler = (data) => {
         if (data && typeof data === 'object') {
           this.sseConnectionCount = data.count || 0
           this.sseConnectionTotal = data.total || 0
         }
-      })
+      }
+      sseDistribute.RegisterReceive(SseConnectionCountId, this.sseConnectionHandler)
     },
     registerGitPendingStatus() {
-      sseDistribute.RegisterReceive(GitPendingStatusId, (data) => {
+      this.gitPendingStatusHandler = (data) => {
         if (!data || typeof data !== 'object') {
           this.gitPendingTotalCount = 0
           this.gitRepos = []
@@ -99,7 +102,8 @@ export default {
         }
         this.gitPendingTotalCount = Number(data.total_count || 0)
         this.gitRepos = this.normalizeGitRepos(data.repos)
-      })
+      }
+      sseDistribute.RegisterReceive(GitPendingStatusId, this.gitPendingStatusHandler)
     },
     normalizeRepoFiles(repo) {
       if (!repo || !Array.isArray(repo.files)) return []

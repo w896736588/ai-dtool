@@ -6,6 +6,7 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
+	"dev_tool/internal/app/dtool/memory"
 	"dev_tool/internal/pkg/p_define"
 	"fmt"
 	"io"
@@ -112,6 +113,85 @@ func MemoryFragmentBatchInfoByPaths(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, results)
 }
 
+// MemoryFragmentFolderList 查询文件夹列表。
+func MemoryFragmentFolderList(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	list, err := memoryDB.MemoryFragmentFolderList()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, list)
+}
+
+// MemoryFragmentFolderCreate 创建文件夹。
+func MemoryFragmentFolderCreate(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	info, err := memoryDB.MemoryFragmentFolderCreate(
+		cast.ToString(dataMap[`name`]),
+		cast.ToString(dataMap[`folder_name`]),
+	)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	component.MemoryRuntime.ScheduleSync()
+	gsgin.GinResponseSuccess(c, ``, info)
+}
+
+// MemoryFragmentFolderUpdate 编辑文件夹展示名。
+func MemoryFragmentFolderUpdate(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	info, err := memoryDB.MemoryFragmentFolderUpdate(
+		cast.ToString(dataMap[`folder_name`]),
+		cast.ToString(dataMap[`name`]),
+	)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	component.MemoryRuntime.ScheduleSync()
+	gsgin.GinResponseSuccess(c, ``, info)
+}
+
+// MemoryFragmentFolderChange 切换片段所属文件夹。
+func MemoryFragmentFolderChange(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	info, err := memoryDB.MemoryFragmentChangeFolder(
+		cast.ToString(dataMap[`id`]),
+		cast.ToString(dataMap[`folder_name`]),
+	)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if err = common.DbMain.TaskWorkflowRefreshFragmentRefsByFileID(cast.ToString(info[`file_id`]), cast.ToString(info[`folder_name`])); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	component.MemoryRuntime.ScheduleSync()
+	broadcastMemoryFragmentUpsert(info)
+	gsgin.GinResponseSuccess(c, ``, info)
+}
+
 // MemoryFragmentList 查询知识片段列表。
 func MemoryFragmentList(c *gin.Context) {
 	memoryDB, ok := memoryDBOrResponse(c)
@@ -122,11 +202,12 @@ func MemoryFragmentList(c *gin.Context) {
 	_ = gsgin.GinPostBody(c, &dataMap)
 	limit := cast.ToInt(dataMap[`limit`])
 	offset := cast.ToInt(dataMap[`offset`])
+	folderName := strings.TrimSpace(cast.ToString(dataMap[`folder_name`]))
 	if limit <= 0 {
 		limit = 10
 	}
 	// 多查一条用于判断是否还有更多数据
-	list, err := memoryDB.MemoryFragmentList(limit+1, offset)
+	list, err := memoryDB.MemoryFragmentList(limit+1, offset, folderName)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -175,6 +256,7 @@ func MemoryFragmentSave(c *gin.Context) {
 		cast.ToString(dataMap[`title`]),
 		cast.ToString(dataMap[`content`]),
 		memoryFragmentParseTags(dataMap[`tags`]),
+		cast.ToString(dataMap[`folder_name`]),
 	)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -390,6 +472,7 @@ func MemoryFragmentSearch(c *gin.Context) {
 		cast.ToString(dataMap[`mode`]),
 		cast.ToString(dataMap[`query`]),
 		memoryFragmentParseTags(dataMap[`selected_tags`]),
+		cast.ToString(dataMap[`folder_name`]),
 		cast.ToInt(dataMap[`limit`]),
 	)
 	if err != nil {
@@ -683,7 +766,7 @@ func MemoryFragmentUploadZip(c *gin.Context) {
 	}
 
 	// 创建知识片段
-	info, saveErr := memoryDB.MemoryFragmentSave(``, title, markdownContent, nil)
+	info, saveErr := memoryDB.MemoryFragmentSave(``, title, markdownContent, nil, ``)
 	if saveErr != nil {
 		gsgin.GinResponseError(c, `创建片段失败:`+saveErr.Error(), nil)
 		return
@@ -884,7 +967,7 @@ func MemoryFragmentUpdateZip(c *gin.Context) {
 		markdownContent = prefixMemoryImagePaths(markdownContent)
 	}
 
-	info, saveErr := memoryDB.MemoryFragmentSave(fragmentID, title, markdownContent, nil)
+	info, saveErr := memoryDB.MemoryFragmentSave(fragmentID, title, markdownContent, nil, ``)
 	if saveErr != nil {
 		gsgin.GinResponseError(c, `更新片段失败:`+saveErr.Error(), nil)
 		return
@@ -964,6 +1047,9 @@ func searchFragmentRefsByRg(memoryDir, fragmentID string, memoryDB common.Memory
 		return nil
 	}
 	if strings.TrimSpace(memoryDir) == `` || strings.TrimSpace(fragmentID) == `` {
+		return nil
+	}
+	if !memory.IsValidFragmentID(fragmentID) {
 		return nil
 	}
 	cmd := exec.Command(`rg`, `-l`, `--fixed-strings`, fragmentID, memoryDir, `--glob`, `*.md`)

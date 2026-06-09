@@ -340,32 +340,34 @@ func (h *CSqlite) HomeTaskFragmentReferences(fragmentIDs []string) (map[string][
 		})
 	}
 
-	// 查 tbl_task_workflow 中所有 fragment_id 字段。
+	targetIDMap := make(map[string]struct{}, len(fragmentIDs))
+	for _, id := range fragmentIDs {
+		id = strings.TrimSpace(id)
+		if id != `` {
+			targetIDMap[id] = struct{}{}
+		}
+	}
+
+	// 查 tbl_task_workflow 中所有 fragment_id 字段，兼容“folder/file_id”和旧的纯 file_id。
 	workflowRows, err := h.Client.QueryBySql(
 		`SELECT tw.id, tw.home_task_id, ht.name,
+			tw.fragment_folder_name,
 			tw.requirement_fragment_id, tw.dev_plan_fragment_id,
 			tw.plain_text_requirement_fragment_id, tw.design_plan_requirement_fragment_id,
 			tw.api_doc_fragment_id, tw.design_fragment_id
 		 FROM tbl_task_workflow tw
 		 LEFT JOIN tbl_home_task ht ON ht.id = tw.home_task_id
-		 WHERE tw.requirement_fragment_id IN (`+phStr+`)
-		    OR tw.dev_plan_fragment_id IN (`+phStr+`)
-		    OR tw.plain_text_requirement_fragment_id IN (`+phStr+`)
-		    OR tw.design_plan_requirement_fragment_id IN (`+phStr+`)
-		    OR tw.api_doc_fragment_id IN (`+phStr+`)
-		    OR tw.design_fragment_id IN (`+phStr+`)`,
-		func() []any {
-			combined := make([]any, 0, len(args)*6)
-			for i := 0; i < 6; i++ {
-				combined = append(combined, args...)
-			}
-			return combined
-		}()...,
+		 WHERE tw.requirement_fragment_id <> ''
+		    OR tw.dev_plan_fragment_id <> ''
+		    OR tw.plain_text_requirement_fragment_id <> ''
+		    OR tw.design_plan_requirement_fragment_id <> ''
+		    OR tw.api_doc_fragment_id <> ''
+		    OR tw.design_fragment_id <> ''`,
 	).All()
 	if err != nil {
 		return nil, err
 	}
-	fragColumns := []string{`requirement_fragment_id`, `dev_plan_fragment_id`, `plain_text_requirement_fragment_id`, `design_plan_requirement_fragment_id`, `api_doc_fragment_id`, `design_fragment_id`}
+	fragColumns := TaskWorkflowFragmentColumns()
 	for _, row := range workflowRows {
 		taskID := cast.ToInt(row[`home_task_id`])
 		taskName := cast.ToString(row[`name`])
@@ -373,20 +375,23 @@ func (h *CSqlite) HomeTaskFragmentReferences(fragmentIDs []string) (map[string][
 			continue
 		}
 		for _, col := range fragColumns {
-			fid := strings.TrimSpace(cast.ToString(row[col]))
-			if fid == `` {
+			ref := TaskWorkflowParseFragmentRef(cast.ToString(row[col]), cast.ToString(row[`fragment_folder_name`]))
+			if ref.FileID == `` {
+				continue
+			}
+			if _, ok := targetIDMap[ref.FileID]; !ok {
 				continue
 			}
 			// 去重：同一任务对同一片段只记录一次。
 			exists := false
-			for _, ref := range result[fid] {
-				if ref.Type == fragmentRefTypeWorkflow && ref.ID == taskID {
+			for _, item := range result[ref.FileID] {
+				if item.Type == fragmentRefTypeWorkflow && item.ID == taskID {
 					exists = true
 					break
 				}
 			}
 			if !exists {
-				result[fid] = append(result[fid], fragmentReference{
+				result[ref.FileID] = append(result[ref.FileID], fragmentReference{
 					Type: fragmentRefTypeWorkflow,
 					ID:   taskID,
 					Name: taskName,

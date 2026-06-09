@@ -136,6 +136,11 @@ func LoadMemoryStore() error {
 	}
 
 	config := preparedMemoryStore.Config
+	if repairReport, err := memory.RepairInvalidFragmentIDs(config.Dir); err != nil {
+		return fmt.Errorf(`修复非法知识片段ID失败 %w`, err)
+	} else if len(repairReport.Renamed) > 0 {
+		gstool.FmtPrintlnLogTime(`修复非法知识片段ID完成 count=%d`, len(repairReport.Renamed))
+	}
 	// if migrationReport, err := memory.MigrateNumericFragmentIDs(config.Dir); err != nil {
 	// 	return fmt.Errorf(`迁移旧数字知识片段ID失败 %w`, err)
 	// } else if component.DbMain != nil {

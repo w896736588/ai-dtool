@@ -4,6 +4,7 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
+	"dev_tool/internal/app/dtool/memory"
 	_struct "dev_tool/internal/app/dtool/struct"
 	"encoding/json"
 	"fmt"
@@ -46,6 +47,10 @@ func HomeTaskSave(c *gin.Context) {
 	if useWorkflow != 0 {
 		useWorkflow = 1
 	}
+	workflowFragmentFolderName := common.TaskWorkflowNormalizeFolderName(request.WorkflowFragmentFolderName)
+	if useWorkflow == 1 && strings.TrimSpace(workflowFragmentFolderName) == `` {
+		workflowFragmentFolderName = memory.DefaultFolderName
+	}
 	fetchType := strings.TrimSpace(strings.ToLower(request.FetchType))
 	if fetchType == `` {
 		fetchType = `tapd`
@@ -60,7 +65,7 @@ func HomeTaskSave(c *gin.Context) {
 		var err error
 		memoryFragmentID, err = ensureHomeTaskMemoryFragment(
 			request.ID, request.Name, normalizeHomeTaskMemoryFragmentID(request.MemoryFragmentID),
-			requirementURL, request.ApiHost, request.ApiToken,
+			requirementURL, request.ApiHost, request.ApiToken, workflowFragmentFolderName,
 		)
 		if err != nil {
 			gsgin.GinResponseError(c, err.Error(), nil)
@@ -145,10 +150,19 @@ func HomeTaskSave(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	if request.ID <= 0 && useWorkflow == 1 {
-		_, _ = common.DbMain.TaskWorkflowCreateOrGetByHomeTaskID(cast.ToInt(info[`id`]))
+	if useWorkflow == 1 {
+		workflowInfo, workflowErr := common.DbMain.TaskWorkflowCreateOrGetByHomeTaskID(cast.ToInt(info[`id`]))
+		if workflowErr != nil {
+			gsgin.GinResponseError(c, workflowErr.Error(), nil)
+			return
+		}
+		if updateErr := common.DbMain.TaskWorkflowUpdateFragmentFolderName(cast.ToInt(workflowInfo[`id`]), workflowFragmentFolderName); updateErr != nil {
+			gsgin.GinResponseError(c, updateErr.Error(), nil)
+			return
+		}
 	}
 	enrichHomeTaskListWithMemoryFragment([]map[string]any{info})
+	info[`workflow_fragment_folder_name`] = workflowFragmentFolderName
 
 	gsgin.GinResponseSuccess(c, ``, info)
 }
@@ -161,6 +175,11 @@ func HomeTaskInfo(c *gin.Context) {
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
+	}
+	if cast.ToInt(info[`use_workflow`]) != 0 {
+		if workflowInfo, workflowErr := common.DbMain.TaskWorkflowCreateOrGetByHomeTaskID(cast.ToInt(info[`id`])); workflowErr == nil {
+			info[`workflow_fragment_folder_name`] = common.TaskWorkflowFragmentFolderName(workflowInfo)
+		}
 	}
 	enrichHomeTaskListWithMemoryFragment([]map[string]any{info})
 	gsgin.GinResponseSuccess(c, ``, info)
@@ -256,7 +275,7 @@ func HomeTaskDailyReportGenerate(c *gin.Context) {
 	})
 }
 
-func ensureHomeTaskMemoryFragment(taskID int, taskName string, memoryFragmentID string, requirementURL string, apiHost string, apiToken string) (string, error) {
+func ensureHomeTaskMemoryFragment(taskID int, taskName string, memoryFragmentID string, requirementURL string, apiHost string, apiToken string, folderName string) (string, error) {
 	taskName = strings.TrimSpace(taskName)
 	if taskName == `` {
 		return ``, gstool.Error(`任务名称不能为空`)
@@ -281,7 +300,7 @@ func ensureHomeTaskMemoryFragment(taskID int, taskName string, memoryFragmentID 
 		return ``, nil
 	}
 	fragmentContent := buildHomeTaskFragmentContent(taskName, requirementURL, apiHost, apiToken)
-	fragmentInfo, saveErr := memoryDB.MemoryFragmentSave(0, taskName, fragmentContent, []string{`需求`})
+	fragmentInfo, saveErr := memoryDB.MemoryFragmentSave(0, taskName, fragmentContent, []string{`需求`}, common.TaskWorkflowNormalizeFolderName(folderName))
 	if saveErr != nil {
 		return ``, saveErr
 	}

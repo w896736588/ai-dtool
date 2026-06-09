@@ -29,16 +29,20 @@ type MemoryConfig struct {
 
 // MemoryFragmentStore 定义知识片段运行时存储接口。
 type MemoryFragmentStore interface {
-	MemoryFragmentList(limit, offset int) ([]map[string]any, error)
+	MemoryFragmentList(limit, offset int, folderName string) ([]map[string]any, error)
 	MemoryFragmentTrashList(limit int) ([]map[string]any, error)
 	MemoryFragmentInfo(id any) (map[string]any, error)
-	MemoryFragmentSave(id any, title, content string, tags []string) (map[string]any, error)
+	MemoryFragmentSave(id any, title, content string, tags []string, folderName string) (map[string]any, error)
 	MemoryFragmentSoftDelete(id any) (int64, error)
 	MemoryFragmentRestore(id any) (int64, error)
 	MemoryFragmentHardDelete(id any) error
 	MemoryFragmentHistoryList(id any) ([]map[string]any, error)
 	MemoryFragmentTagList() ([]map[string]any, error)
-	MemoryFragmentSearch(mode, query string, selectedTags []string, limit int) ([]map[string]any, error)
+	MemoryFragmentSearch(mode, query string, selectedTags []string, folderName string, limit int) ([]map[string]any, error)
+	MemoryFragmentFolderList() ([]map[string]any, error)
+	MemoryFragmentFolderCreate(name, folderName string) (map[string]any, error)
+	MemoryFragmentFolderUpdate(folderName, name string) (map[string]any, error)
+	MemoryFragmentChangeFolder(id any, folderName string) (map[string]any, error)
 	MemoryFragmentBatchInfoByPaths(paths []string) []map[string]any
 	SearchFragmentsOr(keywords []string, limit int) ([]map[string]any, error)
 	ReadFragmentContent(filePath string) (string, error)

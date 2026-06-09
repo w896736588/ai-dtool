@@ -73,9 +73,18 @@ function ReceiveMessage() {
             return
         }
         if (objData && objData.sse_distribute_id) {
-            if (SseReceiveIdFunc[objData.sse_distribute_id]) {
+            const receiveHandlers = SseReceiveIdFunc[objData.sse_distribute_id]
+            if (receiveHandlers) {
                 try {
-                    SseReceiveIdFunc[objData.sse_distribute_id](objData.data, objData.type,objData.sse_distribute_id)
+                    if (receiveHandlers instanceof Set) {
+                        receiveHandlers.forEach(function (handler) {
+                            if (typeof handler === 'function') {
+                                handler(objData.data, objData.type, objData.sse_distribute_id)
+                            }
+                        })
+                    } else if (typeof receiveHandlers === 'function') {
+                        receiveHandlers(objData.data, objData.type, objData.sse_distribute_id)
+                    }
                 } catch (e) {
                     console.log('回调处理sse内容失败 %s', '----' + event.data + '----', e)
                 }
@@ -90,11 +99,43 @@ function ReceiveMessage() {
 }
 
 function RegisterReceive(receiveId, callFunc) {
-    SseReceiveIdFunc[receiveId] = callFunc
+    if (!receiveId || typeof callFunc !== 'function') {
+        return
+    }
+    const currentHandlers = SseReceiveIdFunc[receiveId]
+    if (!currentHandlers) {
+        SseReceiveIdFunc[receiveId] = new Set([callFunc])
+        return
+    }
+    if (currentHandlers instanceof Set) {
+        currentHandlers.add(callFunc)
+        return
+    }
+    if (typeof currentHandlers === 'function') {
+        const nextHandlers = new Set([currentHandlers, callFunc])
+        SseReceiveIdFunc[receiveId] = nextHandlers
+    }
 }
 
-function UnRegisterReceive(receiveId){
-    delete SseReceiveIdFunc[receiveId]
+function UnRegisterReceive(receiveId, callFunc){
+    if (!receiveId || !SseReceiveIdFunc[receiveId]) {
+        return
+    }
+    if (typeof callFunc !== 'function') {
+        delete SseReceiveIdFunc[receiveId]
+        return
+    }
+    const currentHandlers = SseReceiveIdFunc[receiveId]
+    if (currentHandlers instanceof Set) {
+        currentHandlers.delete(callFunc)
+        if (currentHandlers.size === 0) {
+            delete SseReceiveIdFunc[receiveId]
+        }
+        return
+    }
+    if (currentHandlers === callFunc) {
+        delete SseReceiveIdFunc[receiveId]
+    }
 }
 
 function Close() {

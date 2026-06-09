@@ -101,6 +101,24 @@ func buildApiBasicInfo(item map[string]any) map[string]any {
 	}
 }
 
+// buildFolderCleanupInfo 构建清理候选文件夹的返回结构。
+func buildFolderCleanupInfo(item map[string]any) map[string]any {
+	return map[string]any{
+		`id`:                   item[`id`],
+		`collection_id`:        item[`collection_id`],
+		`collection_name`:      item[`collection_name`],
+		`name`:                 item[`name`],
+		`child_count`:          cast.ToInt(item[`child_count`]),
+		`create_time`:          cast.ToInt64(item[`create_time`]),
+		`update_time`:          cast.ToInt64(item[`update_time`]),
+		`last_api_update_time`: cast.ToInt64(item[`last_api_update_time`]),
+		`last_run_time`:        cast.ToInt64(item[`last_run_time`]),
+		`latest_active_time`:   cast.ToInt64(item[`latest_active_time`]),
+		`type`:                 define.ApiTypeFolder,
+		`uniqueid`:             fmt.Sprintf(`folder%d`, cast.ToInt(item[`id`])),
+	}
+}
+
 // sortAPIListByIDs 按传入 ID 顺序重排接口列表。
 func sortAPIListByIDs(list []map[string]any, ids []int) []map[string]any {
 	itemMap := make(map[int]map[string]any, len(list))
@@ -216,6 +234,94 @@ func ApiDeleteDir(c *gin.Context) {
 		`folder_id`:     folderId,
 	})
 	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+// ApiCleanupCandidateFolders 查询超过指定天数未修改且未执行的文件夹。
+func ApiCleanupCandidateFolders(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	days := cast.ToInt(dataMap[`days`])
+	if days <= 0 {
+		days = 7
+	}
+	cutoffTime := time.Now().Add(-time.Duration(days) * 24 * time.Hour).Unix()
+	list, err := common.DbMain.Client.QueryBySql(`
+select d.id,
+       d.collection_id,
+       c.name as collection_name,
+       d.name,
+       d.create_time,
+       d.update_time,
+       count(a.id) as child_count,
+       coalesce(max(a.update_time), 0) as last_api_update_time,
+       coalesce(max(a.last_run_time), 0) as last_run_time,
+       max(
+         d.update_time,
+         coalesce(max(a.update_time), 0),
+         coalesce(max(a.last_run_time), 0)
+       ) as latest_active_time
+from tbl_api_dir d
+left join tbl_api_collection c on c.id = d.collection_id
+left join tbl_api a on a.folder_id = d.id
+where d.archived = 0
+group by d.id, d.collection_id, c.name, d.name, d.create_time, d.update_time
+having count(a.id) > 0
+   and max(
+         d.update_time,
+         coalesce(max(a.update_time), 0),
+         coalesce(max(a.last_run_time), 0)
+       ) < ?
+order by latest_active_time asc, d.id asc`, cutoffTime).All()
+	if err != nil {
+		gsgin.GinResponseError(c, `查询失败 `+err.Error(), nil)
+		return
+	}
+	result := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		result = append(result, buildFolderCleanupInfo(item))
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`days`: days,
+		`list`: result,
+	})
+}
+
+// ApiCleanupArchiveFolders 批量归档清理候选文件夹。
+func ApiCleanupArchiveFolders(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	folderIDs := parseApiIDs(dataMap[`folder_ids`])
+	if len(folderIDs) == 0 {
+		gsgin.GinResponseError(c, `请选择文件夹`, nil)
+		return
+	}
+	archivedIDs := make([]int, 0, len(folderIDs))
+	for _, folderID := range folderIDs {
+		folderInfo, _ := common.DbMain.Client.QueryBySql(
+			`SELECT id, collection_id, archived FROM tbl_api_dir WHERE id = ?`, folderID,
+		).One()
+		if len(folderInfo) == 0 || cast.ToInt(folderInfo[`archived`]) == 1 {
+			continue
+		}
+		collectionID := cast.ToInt(folderInfo[`collection_id`])
+		_, err := common.DbMain.Client.ExecBySql(
+			`UPDATE tbl_api_dir SET archived = 1, original_collection_id = ?, update_time = ? WHERE id = ?`,
+			collectionID, time.Now().Unix(), folderID,
+		).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, `归档失败 `+err.Error(), nil)
+			return
+		}
+		archivedIDs = append(archivedIDs, folderID)
+		go BroadcastApiChange(c.GetHeader("SseClientId"), `folder_archived`, map[string]any{
+			`collection_id`: collectionID,
+			`folder_id`:     folderID,
+		})
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`folder_ids`: archivedIDs,
+		`count`:      len(archivedIDs),
+	})
 }
 
 func ApiCreateCollectionEnv(c *gin.Context) {
@@ -728,7 +834,8 @@ func ApiRun(c *gin.Context) {
 	_, _ = common.DbMain.Client.QuickUpdate(`tbl_api`, map[string]any{
 		`id`: id,
 	}, map[string]any{
-		`last_result`: gstool.JsonEncode(apiCli.Result),
+		`last_result`:   gstool.JsonEncode(apiCli.Result),
+		`last_run_time`: time.Now().Unix(),
 	}).Exec()
 	gsgin.GinResponseSuccess(c, ``, apiCli.Result)
 }

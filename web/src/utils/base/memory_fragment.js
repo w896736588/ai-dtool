@@ -6,10 +6,15 @@ function MemoryFragmentStatus(callBack) {
 }
 
 // MemoryFragmentList 查询知识片段列表。
-function MemoryFragmentList(limit, offset, callBack) {
+function MemoryFragmentList(limit, offset, folderName, callBack) {
+  if (typeof folderName === 'function') {
+    callBack = folderName
+    folderName = ''
+  }
   base.BasePost('/api/MemoryFragmentList', {
     limit: limit,
     offset: offset,
+    folder_name: folderName || '',
   }, callBack)
 }
 
@@ -21,11 +26,16 @@ function MemoryFragmentInfo(id, callBack) {
 }
 
 // MemoryFragmentSave 保存知识片段。
-function MemoryFragmentSave(id, title, content, tags, callBack) {
+function MemoryFragmentSave(id, title, content, tags, folderName, callBack) {
+  if (typeof folderName === 'function') {
+    callBack = folderName
+    folderName = ''
+  }
   base.BasePost('/api/MemoryFragmentSave', {
     id: id,
     title: title,
     content: content,
+    folder_name: folderName || '',
   }, callBack)
 }
 
@@ -65,11 +75,46 @@ function MemoryFragmentHistoryList(id, callBack) {
 }
 
 // MemoryFragmentSearch 搜索知识片段。
-function MemoryFragmentSearch(query, mode, selectedTags, limit, callBack) {
+function MemoryFragmentSearch(query, mode, selectedTags, folderName, limit, callBack) {
+  if (typeof folderName === 'number') {
+    callBack = limit
+    limit = folderName
+    folderName = ''
+  } else if (typeof folderName === 'function') {
+    callBack = folderName
+    folderName = ''
+    limit = 0
+  }
   base.BasePost('/api/MemoryFragmentSearch', {
     query: query,
     mode: mode,
+    folder_name: folderName || '',
     limit: limit,
+  }, callBack)
+}
+
+function MemoryFragmentFolderList(callBack) {
+  base.BasePost('/api/MemoryFragmentFolderList', {}, callBack)
+}
+
+function MemoryFragmentFolderCreate(name, folderName, callBack) {
+  base.BasePost('/api/MemoryFragmentFolderCreate', {
+    name: name,
+    folder_name: folderName,
+  }, callBack)
+}
+
+function MemoryFragmentFolderUpdate(folderName, name, callBack) {
+  base.BasePost('/api/MemoryFragmentFolderUpdate', {
+    folder_name: folderName,
+    name: name,
+  }, callBack)
+}
+
+function MemoryFragmentFolderChange(id, folderName, callBack) {
+  base.BasePost('/api/MemoryFragmentFolderChange', {
+    id: id,
+    folder_name: folderName,
   }, callBack)
 }
 
@@ -158,6 +203,10 @@ function MemoryFragmentReferences(fragmentIds, callBack) {
 export default {
   GitPendingStatus,
   MemoryFragmentStatus,
+  MemoryFragmentFolderList,
+  MemoryFragmentFolderCreate,
+  MemoryFragmentFolderUpdate,
+  MemoryFragmentFolderChange,
   MemoryFragmentList,
   MemoryFragmentInfo,
   MemoryFragmentSave,

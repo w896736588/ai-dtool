@@ -2,25 +2,26 @@ package _struct
 
 // HomeTaskSaveRequest 保存首页任务请求。
 type HomeTaskSaveRequest struct {
-	ID               int    `json:"id"`
-	Name             string `json:"name"`
-	TaskStatus       string `json:"task_status"`
-	StartTime        int64  `json:"start_time"`
-	MemoryFragmentID any    `json:"memory_fragment_id"`
-	FetchType        string `json:"fetch_type"`
-	TapdUrl          string `json:"tapd_url"`
-	ZentaoUrl        string `json:"zentao_url"`
-	GitID            int    `json:"git_id"`
-	ApiDevEnabled    int    `json:"api_dev_enabled"`
-	ApiCollectionID  int    `json:"api_collection_id"`
-	ApiDirID         int    `json:"api_dir_id"`
-	ApiHost          string `json:"api_host"`
-	ApiToken         string `json:"api_token"`
-	MysqlID          int    `json:"mysql_id"`
-	GitIds           string `json:"git_ids"`
-	ApiDevEntries    string `json:"api_dev_entries"`
-	DevConfigs       string `json:"dev_configs"`
-	UseWorkflow      int    `json:"use_workflow"`
+	ID                         int    `json:"id"`
+	Name                       string `json:"name"`
+	TaskStatus                 string `json:"task_status"`
+	StartTime                  int64  `json:"start_time"`
+	MemoryFragmentID           any    `json:"memory_fragment_id"`
+	FetchType                  string `json:"fetch_type"`
+	TapdUrl                    string `json:"tapd_url"`
+	ZentaoUrl                  string `json:"zentao_url"`
+	GitID                      int    `json:"git_id"`
+	ApiDevEnabled              int    `json:"api_dev_enabled"`
+	ApiCollectionID            int    `json:"api_collection_id"`
+	ApiDirID                   int    `json:"api_dir_id"`
+	ApiHost                    string `json:"api_host"`
+	ApiToken                   string `json:"api_token"`
+	MysqlID                    int    `json:"mysql_id"`
+	GitIds                     string `json:"git_ids"`
+	ApiDevEntries              string `json:"api_dev_entries"`
+	DevConfigs                 string `json:"dev_configs"`
+	UseWorkflow                int    `json:"use_workflow"`
+	WorkflowFragmentFolderName string `json:"workflow_fragment_folder_name"`
 }
 
 // DevConfig 开发配置条目，组合了 Git 仓库、接口集合/文件夹、Docker、MySQL 配置、自定义网页。

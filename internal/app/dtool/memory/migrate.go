@@ -15,10 +15,11 @@ import (
 const timeLayout = time.RFC3339
 
 // BuildFragmentPath 生成片段文件路径。
-func BuildFragmentPath(root string, createdAt time.Time, id string, isDeleted bool) string {
-	bucket := `fragments`
+func BuildFragmentPath(root string, createdAt time.Time, id string, isDeleted bool, folderName string) string {
+	folderName = NormalizeFolderName(folderName)
+	bucket := folderName
 	if isDeleted {
-		bucket = `trash`
+		bucket = filepath.Join(TrashFolderName, folderName)
 	}
 	year := createdAt.Format(`2006`)
 	month := createdAt.Format(`2006-01`)
@@ -94,7 +95,7 @@ func writeLegacyFragment(targetRoot string, item LegacyFragment, report *Migrati
 		updatedAt = createdAt
 	}
 	newID := legacyFragmentID(item.ID)
-	filePath := BuildFragmentPath(targetRoot, createdAt, newID, item.IsDeleted)
+	filePath := BuildFragmentPath(targetRoot, createdAt, newID, item.IsDeleted, DefaultFolderName)
 	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
 		return err
 	}
