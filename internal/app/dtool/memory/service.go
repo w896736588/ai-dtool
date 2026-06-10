@@ -182,14 +182,16 @@ func (h *Service) MemoryFragmentSave(id any, title, content string, _ []string, 
 	} else if !IsValidFragmentID(idText) {
 		return nil, errInvalidFragmentID
 	}
-	folderName = NormalizeFolderName(folderName)
-
 	h.mu.RLock()
 	oldFragment, exists := h.byID[idText]
 	h.mu.RUnlock()
+
+	// 优先使用请求传入的 folder_name；未传时回填已有片段的 folder_name；
+	// 仅新建片段且未指定文件夹时使用默认文件夹。
 	if exists && strings.TrimSpace(folderName) == `` {
-		folderName = NormalizeFolderName(oldFragment.FolderName)
+		folderName = oldFragment.FolderName
 	}
+	folderName = NormalizeFolderName(folderName)
 	if err := h.ensureFolderExists(folderName); err != nil {
 		return nil, err
 	}

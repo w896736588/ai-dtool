@@ -103,6 +103,28 @@ func (h *Api) sortedHeaders() []codePair {
 	return headers
 }
 
+// effectiveHeaders 中文：返回包含 Content-Type 的完整请求头列表。 English: Return headers with Content-Type from CurlStruct.ContentType if not already present.
+func (h *Api) effectiveHeaders() []codePair {
+	headers := h.sortedHeaders()
+	// 如果 Headers 中已有 Content-Type 则不再重复添加
+	contentTypeFound := false
+	for _, pair := range headers {
+		if strings.EqualFold(pair.Key, `Content-Type`) {
+			contentTypeFound = true
+			break
+		}
+	}
+	if !contentTypeFound && h.CurlStruct.ContentType != `` {
+		headers = append(headers, codePair{Key: `Content-Type`, Value: h.CurlStruct.ContentType})
+	}
+	return headers
+}
+
+// isGetMethod 中文：判断当前请求是否为 GET 方法。 English: Check if the current request method is GET.
+func (h *Api) isGetMethod() bool {
+	return strings.EqualFold(h.CurlStruct.Method, http.MethodGet) || h.CurlStruct.Method == ``
+}
+
 // sortedBodyForm 中文：按字段稳定排序表单项。 English: Sort form fields to keep snippet output deterministic.
 func (h *Api) sortedBodyForm() []p_curl.KeyValue {
 	bodyForm := make([]p_curl.KeyValue, len(h.CurlStruct.BodyForm))
@@ -128,7 +150,7 @@ func (h *Api) buildCurlSnippet(withLocation bool) string {
 		firstLine = fmt.Sprintf("curl --location --request %s '%s' \\", method, escapeSingleQuote(h.CurlStruct.Url))
 	}
 	lines = append(lines, firstLine)
-	for _, header := range h.sortedHeaders() {
+	for _, header := range h.effectiveHeaders() {
 		lines = append(lines, fmt.Sprintf("  --header '%s: %s' \\", escapeSingleQuote(header.Key), escapeSingleQuote(header.Value)))
 	}
 
@@ -163,7 +185,7 @@ func (h *Api) buildFetchSnippet() string {
 	lines := []string{
 		fmt.Sprintf("const url = '%s';", escapeSingleQuote(h.CurlStruct.Url)),
 	}
-	headers := h.sortedHeaders()
+	headers := h.effectiveHeaders()
 	if len(headers) > 0 {
 		lines = append(lines, "const headers = {")
 		for _, header := range headers {
@@ -171,14 +193,17 @@ func (h *Api) buildFetchSnippet() string {
 		}
 		lines = append(lines, "};", "")
 	}
-	bodyLines := h.buildJSBodyLines()
+	var bodyLines []string
+	if !h.isGetMethod() {
+		bodyLines = h.buildJSBodyLines()
+	}
 	lines = append(lines, bodyLines...)
 	lines = append(lines, "fetch(url, {")
 	lines = append(lines, fmt.Sprintf("  method: '%s',", strings.ToUpper(h.CurlStruct.Method)))
 	if len(headers) > 0 {
 		lines = append(lines, "  headers,")
 	}
-	if bodyRef := h.jsBodyRef(); bodyRef != `` {
+	if bodyRef := h.jsBodyRef(); bodyRef != `` && !h.isGetMethod() {
 		lines = append(lines, fmt.Sprintf("  body: %s,", bodyRef))
 	}
 	lines = append(lines, "})")
@@ -194,12 +219,15 @@ func (h *Api) buildAxiosSnippet() string {
 		"import axios from 'axios';",
 		"",
 	}
-	bodyLines := h.buildJSBodyLines()
+	var bodyLines []string
+	if !h.isGetMethod() {
+		bodyLines = h.buildJSBodyLines()
+	}
 	lines = append(lines, bodyLines...)
 	lines = append(lines, "const config = {")
 	lines = append(lines, fmt.Sprintf("  method: '%s',", strings.ToLower(h.CurlStruct.Method)))
 	lines = append(lines, fmt.Sprintf("  url: '%s',", escapeSingleQuote(h.CurlStruct.Url)))
-	headers := h.sortedHeaders()
+	headers := h.effectiveHeaders()
 	if len(headers) > 0 {
 		lines = append(lines, "  headers: {")
 		for _, header := range headers {
@@ -207,7 +235,7 @@ func (h *Api) buildAxiosSnippet() string {
 		}
 		lines = append(lines, "  },")
 	}
-	if bodyRef := h.jsBodyRef(); bodyRef != `` {
+	if bodyRef := h.jsBodyRef(); bodyRef != `` && !h.isGetMethod() {
 		lines = append(lines, fmt.Sprintf("  data: %s,", bodyRef))
 	}
 	lines = append(lines, "};", "", "axios.request(config)")
@@ -223,11 +251,12 @@ func (h *Api) buildAxiosSnippet() string {
 // buildPythonRequestsSnippet 中文：生成 Python requests 示例。 English: Build a Python requests example.
 func (h *Api) buildPythonRequestsSnippet() string {
 	imports := []string{"import requests"}
-	if h.CurlStruct.ContentType == define.ContentTypeJson && strings.TrimSpace(h.requestBodyText()) != `` {
+	// GET 请求不需要 json 模块和 body 参数
+	if !h.isGetMethod() && h.CurlStruct.ContentType == define.ContentTypeJson && strings.TrimSpace(h.requestBodyText()) != `` {
 		imports = append(imports, "import json")
 	}
 	lines := append(imports, "", fmt.Sprintf("url = %q", h.CurlStruct.Url))
-	headers := h.sortedHeaders()
+	headers := h.effectiveHeaders()
 	if len(headers) > 0 {
 		lines = append(lines, "headers = {")
 		for _, header := range headers {
@@ -235,7 +264,11 @@ func (h *Api) buildPythonRequestsSnippet() string {
 		}
 		lines = append(lines, "}", "")
 	}
-	bodyLines, requestArg := h.buildPythonBodyLines()
+	var bodyLines []string
+	var requestArg string
+	if !h.isGetMethod() {
+		bodyLines, requestArg = h.buildPythonBodyLines()
+	}
 	lines = append(lines, bodyLines...)
 	requestLine := fmt.Sprintf("response = requests.%s(url", strings.ToLower(h.CurlStruct.Method))
 	if len(headers) > 0 {
@@ -261,10 +294,10 @@ func (h *Api) buildPHPCurlSnippet() string {
 		"    CURLOPT_RETURNTRANSFER => true,",
 		fmt.Sprintf("    CURLOPT_CUSTOMREQUEST => '%s',", strings.ToUpper(h.CurlStruct.Method)),
 	}
-	if bodyLine := h.buildPHPBodyOption(); bodyLine != `` {
+	if bodyLine := h.buildPHPBodyOption(); bodyLine != `` && !h.isGetMethod() {
 		lines = append(lines, bodyLine)
 	}
-	headers := h.sortedHeaders()
+	headers := h.effectiveHeaders()
 	if len(headers) > 0 {
 		lines = append(lines, "    CURLOPT_HTTPHEADER => [")
 		for _, header := range headers {
@@ -278,28 +311,77 @@ func (h *Api) buildPHPCurlSnippet() string {
 
 // buildGolangSnippet 中文：生成 Golang net/http 示例。 English: Build a Golang net/http example.
 func (h *Api) buildGolangSnippet() string {
+	isMultipart := h.CurlStruct.ContentType == define.ContentTypeMultiForm
+	isGet := h.isGetMethod()
+	// GET 请求不需要 bytes 包（body 为 nil）
+	imports := []string{
+		`	"fmt"`,
+		`	"io"`,
+		`	"net/http"`,
+	}
+	if !isGet || isMultipart {
+		imports = append([]string{`	"bytes"`}, imports...)
+	}
+	if isMultipart {
+		imports = append(imports, `	"mime/multipart"`, `	"os"`)
+	}
+
 	lines := []string{
 		"package main",
 		"",
 		"import (",
-		`	"bytes"`,
-		`	"fmt"`,
-		`	"io"`,
-		`	"net/http"`,
-		")",
-		"",
-		"func main() {",
 	}
-	if bodyLine := h.buildGoBodyDeclaration(); bodyLine != `` {
-		lines = append(lines, bodyLine, "")
+	lines = append(lines, imports...)
+	lines = append(lines, ")", "", "func main() {")
+
+	if isMultipart {
+		// multipart/form-data：使用 multipart.Writer 组装
+		lines = append(lines, "	body := &bytes.Buffer{}")
+		lines = append(lines, "	writer := multipart.NewWriter(body)")
+		for _, item := range h.sortedBodyForm() {
+			if item.Type == p_curl.FieldTypeFile || item.Type == `file` {
+				lines = append(lines, fmt.Sprintf("	// 请替换为真实文件路径: %s", item.Value))
+				lines = append(lines, fmt.Sprintf("	file%s, err := os.Open(%q)", item.Field, item.Value))
+				lines = append(lines, "	if err != nil {")
+				lines = append(lines, "		panic(err)")
+				lines = append(lines, "	}")
+				lines = append(lines, "	defer file"+item.Field+".Close()")
+				lines = append(lines, fmt.Sprintf("	part%s, err := writer.CreateFormFile(%q, file%s.Name())", item.Field, item.Field, item.Field))
+				lines = append(lines, "	if err != nil {")
+				lines = append(lines, "		panic(err)")
+				lines = append(lines, "	}")
+				lines = append(lines, fmt.Sprintf("	io.Copy(part%s, file%s)", item.Field, item.Field))
+			} else {
+				lines = append(lines, fmt.Sprintf("	writer.WriteField(%q, %q)", item.Field, cast.ToString(normalizeBodyValue(item))))
+			}
+		}
+		lines = append(lines, "	writer.Close()", "")
+	} else if !isGet {
+		if bodyLine := h.buildGoBodyDeclaration(); bodyLine != `` {
+			lines = append(lines, bodyLine, "")
+		}
 	}
-	bodyVar := h.goBodyVar()
-	if bodyVar == `` {
-		bodyVar = "nil"
+
+	bodyVar := "nil"
+	if isMultipart {
+		bodyVar = "body"
+	} else if !isGet {
+		bodyVar = h.goBodyVar()
+		if bodyVar == `` {
+			bodyVar = "nil"
+		}
 	}
 	lines = append(lines, fmt.Sprintf(`	req, err := http.NewRequest("%s", "%s", %s)`, strings.ToUpper(h.CurlStruct.Method), h.CurlStruct.Url, bodyVar))
 	lines = append(lines, "	if err != nil {", "		panic(err)", "	}")
-	for _, header := range h.sortedHeaders() {
+
+	if isMultipart {
+		lines = append(lines, "	req.Header.Set(\"Content-Type\", writer.FormDataContentType())")
+	}
+	for _, header := range h.effectiveHeaders() {
+		if strings.EqualFold(header.Key, "Content-Type") {
+			// Content-Type 由 multipart writer 或 effectiveHeaders 自动处理，跳过避免重复
+			continue
+		}
 		lines = append(lines, fmt.Sprintf(`	req.Header.Set("%s", "%s")`, header.Key, header.Value))
 	}
 	lines = append(lines, "", "	client := &http.Client{}", "	resp, err := client.Do(req)", "	if err != nil {", "		panic(err)", "	}", "	defer resp.Body.Close()", "", "	body, err := io.ReadAll(resp.Body)", "	if err != nil {", "		panic(err)", "	}", "", "	fmt.Println(string(body))", "}")
@@ -346,12 +428,22 @@ func (h *Api) buildPostmanCollectionSnippet() string {
 	}
 
 	headers := make([]map[string]string, 0)
-	for _, header := range h.sortedHeaders() {
+	for _, header := range h.effectiveHeaders() {
 		headers = append(headers, map[string]string{
 			"key":   header.Key,
 			"value": header.Value,
 			"type":  "text",
 		})
+	}
+
+	postmanRequest := map[string]any{
+		"method": strings.ToUpper(h.CurlStruct.Method),
+		"header": headers,
+		"url":    h.CurlStruct.Url,
+	}
+	// GET 请求不包含 body 字段
+	if !h.isGetMethod() {
+		postmanRequest["body"] = postmanBody
 	}
 
 	postmanData := map[string]any{
@@ -361,13 +453,8 @@ func (h *Api) buildPostmanCollectionSnippet() string {
 		},
 		"item": []map[string]any{
 			{
-				"name": "Generated Request",
-				"request": map[string]any{
-					"method": strings.ToUpper(h.CurlStruct.Method),
-					"header": headers,
-					"body":   postmanBody,
-					"url":    h.CurlStruct.Url,
-				},
+				"name":    "Generated Request",
+				"request": postmanRequest,
 			},
 		},
 	}
@@ -398,7 +485,16 @@ func (h *Api) buildJSBodyLines() []string {
 			lines = append(lines, fmt.Sprintf("formData.append('%s', '%s');", escapeSingleQuote(item.Field), escapeSingleQuote(cast.ToString(normalizeBodyValue(item)))))
 		}
 		return append(lines, "")
-	case define.ContentTypeJson, define.ContentTypeText, define.ContentTypeRaw:
+	case define.ContentTypeJson:
+		bodyText := h.requestBodyText()
+		if strings.TrimSpace(bodyText) == `` {
+			return nil
+		}
+		return []string{
+			fmt.Sprintf("const payload = JSON.parse('%s');", escapeSingleQuote(bodyText)),
+			"",
+		}
+	case define.ContentTypeText, define.ContentTypeRaw:
 		bodyText := h.requestBodyText()
 		if strings.TrimSpace(bodyText) == `` {
 			return nil
@@ -414,10 +510,17 @@ func (h *Api) buildJSBodyLines() []string {
 
 // jsBodyRef 中文：返回 fetch/axios 里请求体变量名。 English: Return the request body variable reference for JS snippets.
 func (h *Api) jsBodyRef() string {
+	if h.isGetMethod() {
+		return ``
+	}
 	switch h.CurlStruct.ContentType {
 	case define.ContentTypeForm, define.ContentTypeMultiForm:
 		return "formData"
-	case define.ContentTypeJson, define.ContentTypeText, define.ContentTypeRaw:
+	case define.ContentTypeJson:
+		if strings.TrimSpace(h.requestBodyText()) != `` {
+			return "JSON.stringify(payload)"
+		}
+	case define.ContentTypeText, define.ContentTypeRaw:
 		if strings.TrimSpace(h.requestBodyText()) != `` {
 			return "body"
 		}
@@ -427,25 +530,25 @@ func (h *Api) jsBodyRef() string {
 
 // buildGoBodyDeclaration 中文：生成 Go 请求体变量声明。 English: Build the Go request body variable declaration.
 func (h *Api) buildGoBodyDeclaration() string {
+	if h.isGetMethod() {
+		return ``
+	}
 	switch h.CurlStruct.ContentType {
 	case define.ContentTypeJson, define.ContentTypeText, define.ContentTypeRaw:
 		bodyText := h.requestBodyText()
 		if strings.TrimSpace(bodyText) == `` {
 			return ``
 		}
-		return fmt.Sprintf("	bodyReader := bytes.NewBufferString(%q)", bodyText)
+		return fmt.Sprintf("\tbodyReader := bytes.NewBufferString(%q)", bodyText)
 	case define.ContentTypeForm:
 		values := make([]string, 0, len(h.CurlStruct.BodyForm))
 		for _, item := range h.sortedBodyForm() {
 			values = append(values, fmt.Sprintf("%s=%s", item.Field, cast.ToString(normalizeBodyValue(item))))
 		}
-		return fmt.Sprintf("	bodyReader := bytes.NewBufferString(%q)", strings.Join(values, "&"))
+		return fmt.Sprintf("\tbodyReader := bytes.NewBufferString(%q)", strings.Join(values, "&"))
 	case define.ContentTypeMultiForm:
-		lines := []string{
-			"	bodyReader := bytes.NewBufferString(\"\")",
-			"	// 中文：multipart/form-data 里如果包含文件，需要改成 multipart.Writer 动态组装。 English: Replace with multipart.Writer when real files are needed.",
-		}
-		return strings.Join(lines, "\n")
+		// multipart 由 buildGolangSnippet 单独用 multipart.Writer 处理，此处不生成
+		return ``
 	default:
 		return ``
 	}
@@ -453,9 +556,15 @@ func (h *Api) buildGoBodyDeclaration() string {
 
 // goBodyVar 中文：返回 Go 示例里的 body 变量名。 English: Return the Go request body variable name.
 func (h *Api) goBodyVar() string {
+	if h.isGetMethod() {
+		return ``
+	}
 	switch h.CurlStruct.ContentType {
-	case define.ContentTypeJson, define.ContentTypeText, define.ContentTypeRaw, define.ContentTypeForm, define.ContentTypeMultiForm:
+	case define.ContentTypeJson, define.ContentTypeText, define.ContentTypeRaw, define.ContentTypeForm:
 		return "bodyReader"
+	case define.ContentTypeMultiForm:
+		// multipart 由 buildGolangSnippet 单独处理，此处返回空
+		return ``
 	default:
 		return ``
 	}
@@ -481,28 +590,27 @@ func (h *Api) buildPythonBodyLines() ([]string, string) {
 		lines = append(lines, "}", "")
 		return lines, "data=payload"
 	case define.ContentTypeMultiForm:
-		lines := []string{"data = {"}
+		lines := []string{"data = {}"}
 		for _, item := range h.sortedBodyForm() {
 			if item.Type == p_curl.FieldTypeFile || item.Type == `file` {
 				continue
 			}
-			lines = append(lines, fmt.Sprintf("    %q: %q,", item.Field, cast.ToString(normalizeBodyValue(item))))
+			lines = append(lines, fmt.Sprintf("data[%q] = %q", item.Field, cast.ToString(normalizeBodyValue(item))))
 		}
-		lines = append(lines, "}")
-		fileLines := []string{"files = {"}
+		fileLines := []string{"files = {}"}
 		hasFile := false
 		for _, item := range h.sortedBodyForm() {
 			if item.Type != p_curl.FieldTypeFile && item.Type != `file` {
 				continue
 			}
 			hasFile = true
-			fileLines = append(fileLines, fmt.Sprintf("    %q: open(%q, 'rb'),", item.Field, item.Value))
+			fileLines = append(fileLines, fmt.Sprintf("files[%q] = open(%q, 'rb')", item.Field, item.Value))
 		}
-		fileLines = append(fileLines, "}", "")
 		if hasFile {
 			return append(append(lines, ""), fileLines...), "data=data, files=files"
 		}
-		return append(lines, ""), "data=data"
+		// 无文件字段时也需要用 files 强制 multipart 编码
+		return append(lines, "", "files = {}", ""), "data=data, files=files"
 	case define.ContentTypeText, define.ContentTypeRaw:
 		bodyText := h.requestBodyText()
 		if strings.TrimSpace(bodyText) == `` {

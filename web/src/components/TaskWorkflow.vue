@@ -1404,6 +1404,12 @@ export default {
       this.unregisterWorkflowSse()
       this.loadWorkflowPage()
     },
+    // chatContinueInput 变更时实时缓存到 localStorage（按会话ID区分）
+    chatContinueInput(newVal) {
+      if (this.chatDetailId) {
+        this.saveChatInputCache(this.chatDetailId, newVal)
+      }
+    },
   },
   methods: {
     handleCtrlS(e) {
@@ -2306,9 +2312,44 @@ export default {
       this.openPromptExecDialog('issue_fix', prompt)
     },
     // 继续对话
-    // isChatContinueDisabled 统一发送区按钮可用状态，确保“发送/新对话”行为一致。 // Keeps the action buttons under the same enabled-state rule.
+    // isChatContinueDisabled 统一发送区按钮可用状态，确保"发送/新对话"行为一致。 // Keeps the action buttons under the same enabled-state rule.
     isChatContinueDisabled() {
       return this.chatContinueLoading || !String(this.chatContinueInput || '').trim()
+    },
+    // ===== 对话输入框 localStorage 缓存 =====
+    // 缓存键名格式：dtool_chat_input_{chatId}
+    getChatInputCacheKey(chatId) {
+      return 'dtool_chat_input_' + (Number(chatId) || 0)
+    },
+    saveChatInputCache(chatId, value) {
+      try {
+        const key = this.getChatInputCacheKey(chatId)
+        const val = String(value || '').trim()
+        if (val) {
+          localStorage.setItem(key, val)
+        } else {
+          // 空值时清除该缓存，避免残留垃圾数据
+          localStorage.removeItem(key)
+        }
+      } catch (_) {
+        // localStorage 不可用时静默忽略
+      }
+    },
+    getChatInputCache(chatId) {
+      try {
+        const key = this.getChatInputCacheKey(chatId)
+        return localStorage.getItem(key) || ''
+      } catch (_) {
+        return ''
+      }
+    },
+    clearChatInputCache(chatId) {
+      try {
+        const key = this.getChatInputCacheKey(chatId)
+        localStorage.removeItem(key)
+      } catch (_) {
+        // localStorage 不可用时静默忽略
+      }
     },
     continueChat() {
       const input = this.chatContinueInput.trim()
@@ -2318,6 +2359,7 @@ export default {
         this.chatContinueLoading = false
         if (res.ErrCode === 0) {
           this.chatContinueInput = ''
+          this.clearChatInputCache(this.chatDetailId)
           this.chatDetailStatus = 'running'
           this.connectChatStream(this.chatDetailId, input)
           setTimeout(() => { this.loadChatDetail() }, 500)
@@ -2366,6 +2408,7 @@ export default {
             }
             const chatId = chatRes.Data.chat_id
             const cliLabel = cliType === 'codex' ? 'codex' : 'claude code'
+            this.clearChatInputCache(this.chatDetailId)
             this.chatContinueInput = ''
             this.$helperNotify.success('已新建对话并发送到 ' + cliLabel + ' 执行')
             this.chatDetailId = chatId
@@ -2442,7 +2485,7 @@ export default {
       // 加载 Agent CLI 列表
       agentCliApi.AgentCliList((res) => {
         if (res.ErrCode === 0 && res.Data) {
-          // 仅展示“已启用且配置可用”的 Agent，避免把停用实例带入执行弹窗。
+          // 仅展示"已启用且配置可用"的 Agent，避免把停用实例带入执行弹窗。
           this.promptExecCliList = (res.Data.list || []).filter(cli => cli.displayed_enabled)
           // 如果无缓存且仅有一个 CLI，自动选中
           if (!cached && this.promptExecCliList.length === 1) {
@@ -2539,6 +2582,7 @@ export default {
             if (chatRes.ErrCode === 0 && chatRes.Data) {
               const chatId = chatRes.Data.chat_id
               const cliLabel = cliType === 'codex' ? 'codex' : 'claude code'
+              this.clearChatInputCache(this.chatDetailId)
               this.$helperNotify.success('已发送到 ' + cliLabel + ' 执行')
               this.promptExecDialogVisible = false
               // 初始化对话显示状态并连接 SSE 流以启动执行
@@ -2650,8 +2694,14 @@ export default {
     // 点击执行历史列表项
     onPromptChatRowClick(row) {
       if (this.promptChatDetailId === row.id) return
+      // 切换前保存当前会话的输入到缓存
+      if (this.chatDetailId) {
+        this.saveChatInputCache(this.chatDetailId, this.chatContinueInput)
+      }
       this.promptChatDetailId = row.id
       this.chatDetailId = row.id
+      // 切换后从缓存恢复新会话的输入
+      this.chatContinueInput = this.getChatInputCache(row.id)
       this.chatDetailStatus = row.status
       this.chatDetailAutoScroll = true
       this.promptChatDetailShowScrollBtn = false

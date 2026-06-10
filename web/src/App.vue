@@ -1,11 +1,11 @@
 <template>
   <div id="app">
     <router-view/>
-    <div v-if="gitPendingTotalCount > 0" class="status-indicator git-pending-indicator" @click="gitDialogVisible = true">
+    <div v-if="gitPendingTotalCount > 0 && !isEmbedded" class="status-indicator git-pending-indicator" @click="gitDialogVisible = true">
       Git 未提交 {{ gitPendingTotalCount }}
     </div>
     <div
-      v-if="sseConnectionCount > 0"
+      v-if="sseConnectionCount > 0 && !isEmbedded"
       class="status-indicator sse-connection-indicator"
       :style="{ backgroundColor: sseConnectionColor }"
       :title="'当前 SSE 连接数: ' + sseConnectionCount + '/' + sseConnectionTotal"
@@ -61,6 +61,13 @@ export default {
     }
   },
   computed: {
+    isEmbedded() {
+      try {
+        return window.self !== window.top
+      } catch (e) {
+        return true
+      }
+    },
     sseConnectionColor() {
       const total = this.sseConnectionTotal
       if (!total) return '#67C23A'
@@ -76,6 +83,7 @@ export default {
     if (process.env.NODE_ENV === 'production' && favicon) {
       favicon.href = './favicon.ico'
     }
+    if (this.isEmbedded) return
     this.registerSseConnectionCount()
     this.registerGitPendingStatus()
   },
@@ -191,7 +199,7 @@ body {
   line-height: 1.2;
   font-weight: 700;
   text-align: center;
-  z-index: 9999;
+  z-index: 1000;
   user-select: none;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }

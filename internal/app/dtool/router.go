@@ -580,6 +580,9 @@ func agentCli(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/AgentCliGroupSave`, controller.AgentCliGroupSave)
 	tGin.GinPost(`/api/AgentCliGroupDelete`, controller.AgentCliGroupDelete)
 	tGin.GinPost(`/api/AgentCliGroupRelSave`, controller.AgentCliGroupRelSave)
+	tGin.GinPost(`/api/AgentCliPromptTemplateList`, controller.AgentCliPromptTemplateList)
+	tGin.GinPost(`/api/AgentCliPromptTemplateSave`, controller.AgentCliPromptTemplateSave)
+	tGin.GinPost(`/api/AgentCliPromptTemplateDelete`, controller.AgentCliPromptTemplateDelete)
 }
 
 // webhookConfig 路由

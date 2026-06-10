@@ -26,6 +26,7 @@
       </div>
       <div class="agent-cli-header-actions">
         <GitActionButton compact @click="openCreateDialog">新建</GitActionButton>
+        <GitActionButton compact variant="success" @click="openPromptTemplateDialog">提示词模板</GitActionButton>
         <GitActionButton compact variant="info" @click="openWebhookDialog">Webhook 配置</GitActionButton>
         <GitActionButton compact variant="warning" @click="chromeDevtoolsDialogVisible = true">ChromeDevTools</GitActionButton>
         <GitActionButton compact variant="primary" @click="openGroupDialog">分组管理</GitActionButton>
@@ -353,6 +354,84 @@
       </div>
     </el-dialog>
 
+    <el-dialog v-model="promptTemplateDialogVisible" title="提示词模板" width="780px">
+      <div class="agent-cli-template-toolbar">
+        <div class="agent-cli-template-toolbar__desc">可维护多个 Markdown 模板，执行任务时按选择顺序拼接到手动输入提示词后。</div>
+        <el-button type="primary" @click="addPromptTemplate">新增模板</el-button>
+      </div>
+      <div v-if="promptTemplates.length === 0" class="agent-cli-template-empty">暂无提示词模板，点击右上角新增</div>
+      <el-table v-else :data="promptTemplates" size="small" class="agent-cli-template-table">
+        <el-table-column prop="name" label="模板名称" min-width="160">
+          <template #default="{ row }">
+            <span>{{ row.name || '未命名模板' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="目录范围" min-width="120">
+          <template #default="{ row }">
+            <el-tag v-if="row.apply_all_dirs" size="small" type="success">全部目录</el-tag>
+            <span v-else>{{ (row.local_dirs || []).length }} 个目录</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="排序" width="70" align="center">
+          <template #default="{ row }">
+            {{ row.sort_order }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="140" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" link type="primary" @click="editPromptTemplate(row)">编辑</el-button>
+            <el-button size="small" link type="danger" @click="removePromptTemplate(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="promptTemplateDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 提示词模板编辑弹窗 -->
+    <el-dialog v-model="promptTemplateEditVisible" :title="promptTemplateEditForm.id ? '编辑模板' : '新增模板'" width="640px" destroy-on-close @closed="resetPromptTemplateEditForm">
+      <el-form :model="promptTemplateEditForm" label-width="90px">
+        <el-form-item label="模板名称">
+          <el-input v-model="promptTemplateEditForm.name" placeholder="请输入模板名称" maxlength="100" />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="promptTemplateEditForm.sort_order" :min="0" />
+        </el-form-item>
+        <el-form-item label="目录范围">
+          <el-checkbox v-model="promptTemplateEditForm.apply_all_dirs" style="margin-bottom: 8px;">全部工作目录</el-checkbox>
+          <el-select
+            v-model="promptTemplateEditForm.local_dirs"
+            multiple
+            clearable
+            filterable
+            :disabled="promptTemplateEditForm.apply_all_dirs"
+            style="width: 100%;"
+            placeholder="选择关联工作目录"
+          >
+            <el-option
+              v-for="localDir in promptTemplateLocalDirs"
+              :key="localDir"
+              :label="localDir"
+              :value="localDir"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="模板内容">
+          <el-input
+            v-model="promptTemplateEditForm.content"
+            type="textarea"
+            :rows="10"
+            placeholder="请输入 Markdown 提示词模板内容"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="promptTemplateEditVisible = false">取消</el-button>
+        <el-button type="primary" :loading="promptTemplateEditSaving" @click="savePromptTemplate">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- Webhook 配置管理弹窗 -->
     <el-dialog v-model="webhookDialogVisible" title="Webhook 通知配置" width="640px">
       <div style="margin-bottom: 12px; text-align: right;">
@@ -433,6 +512,22 @@
         <el-form-item label="工作目录">
           <el-input v-model="agentExecLocalDir" placeholder="请输入本地工作目录绝对路径" />
         </el-form-item>
+        <el-form-item label="模板">
+          <el-select
+            v-model="agentExecSelectedTemplateIds"
+            multiple
+            style="width: 100%;"
+            placeholder="可多选，按选择顺序拼接"
+          >
+            <el-option
+              v-for="template in availablePromptTemplates"
+              :key="template.id"
+              :label="template.name || '未命名模板'"
+              :value="template.id"
+            />
+          </el-select>
+          <div class="agent-cli-form-tip">仅展示匹配当前工作目录或设置为“全部工作目录”的模板。</div>
+        </el-form-item>
         <el-form-item label="模型">
           <el-select v-model="agentExecModelName" style="width: 100%;" placeholder="请选择模型">
             <el-option
@@ -458,6 +553,15 @@
             type="textarea"
             :rows="10"
             placeholder="请输入要发送给当前 Agent CLI 的提示词"
+          />
+        </el-form-item>
+        <el-form-item label="最终预览">
+          <el-input
+            :model-value="agentExecComposedPrompt"
+            type="textarea"
+            :rows="8"
+            readonly
+            placeholder="选择模板后，这里会展示最终发送内容"
           />
         </el-form-item>
       </el-form>
@@ -582,6 +686,19 @@ export default {
       selectedGroupId: 0,
       // 分组管理弹窗
       groupDialogVisible: false,
+      promptTemplateDialogVisible: false,
+      promptTemplateEditVisible: false,
+      promptTemplateEditSaving: false,
+      promptTemplateEditForm: {
+        id: null,
+        name: '',
+        content: '',
+        apply_all_dirs: false,
+        sort_order: 0,
+        local_dirs: [],
+      },
+      promptTemplates: [],
+      promptTemplateLocalDirs: [],
       groupDialogLoading: false,
       groupDialogList: [],
       groupFormVisible: false,
@@ -618,6 +735,7 @@ export default {
       agentExecHistoryDirs: [],
       agentExecModelName: '',
       agentExecThinkingIntensity: '高',
+      agentExecSelectedTemplateIds: [],
       agentChatHistoryVisible: false,
       agentChatHistoryLoading: false,
       agentChatHistoryTitle: '',
@@ -675,11 +793,26 @@ export default {
     webhookSecretPlaceholder() {
       return this.webhookSecretPlaceholderByType(this.webhookForm.type)
     },
+    availablePromptTemplates() {
+      const localDir = String(this.agentExecLocalDir || '').trim()
+      if (!localDir) return (this.promptTemplates || []).filter(item => item.apply_all_dirs)
+      return (this.promptTemplates || []).filter(item => item.apply_all_dirs || (Array.isArray(item.local_dirs) && item.local_dirs.includes(localDir)))
+    },
+    selectedPromptTemplates() {
+      const selectedIds = Array.isArray(this.agentExecSelectedTemplateIds) ? this.agentExecSelectedTemplateIds : []
+      if (selectedIds.length === 0) return []
+      const templateMap = new Map((this.availablePromptTemplates || []).map(item => [item.id, item]))
+      return selectedIds.map(id => templateMap.get(id)).filter(item => item && String(item.content || '').trim())
+    },
+    agentExecComposedPrompt() {
+      return this.composeAgentExecPrompt()
+    },
   },
   mounted() {
     this.loadList()
     this.loadWebhookOptions()
     this.loadGroupList()
+    this.loadPromptTemplates()
     this.ensureAgentUnreadSse()
     // 恢复上次选中的分组
     try {
@@ -711,8 +844,111 @@ export default {
         return
       }
     },
+    agentExecLocalDir() {
+      const availableIds = new Set(this.availablePromptTemplates.map(item => item.id))
+      this.agentExecSelectedTemplateIds = this.agentExecSelectedTemplateIds.filter(id => availableIds.has(id))
+    },
   },
   methods: {
+    openPromptTemplateDialog() {
+      this.promptTemplateDialogVisible = true
+      this.loadPromptTemplates()
+    },
+    loadPromptTemplates() {
+      agentCliApi.AgentCliPromptTemplateList((response) => {
+        if (!(response && response.ErrCode === 0 && response.Data)) {
+          this.$message.error(response?.ErrMsg || '加载提示词模板失败')
+          return
+        }
+        this.promptTemplates = Array.isArray(response.Data.list)
+          ? response.Data.list.map(item => ({
+            id: String(item.id || ''),
+            name: item.name || '',
+            content: item.content || '',
+            apply_all_dirs: !!item.apply_all_dirs,
+            local_dirs: Array.isArray(item.local_dirs) ? item.local_dirs : [],
+            sort_order: Number(item.sort_order || 0),
+            _saving: false,
+          }))
+          : []
+        this.promptTemplateLocalDirs = Array.isArray(response.Data.local_dirs) ? response.Data.local_dirs : []
+        const availableIds = new Set(this.availablePromptTemplates.map(item => item.id))
+        this.agentExecSelectedTemplateIds = this.agentExecSelectedTemplateIds.filter(id => availableIds.has(id))
+      })
+    },
+    addPromptTemplate() {
+      this.resetPromptTemplateEditForm()
+      this.promptTemplateEditVisible = true
+    },
+    editPromptTemplate(template) {
+      if (!template) return
+      this.promptTemplateEditForm = {
+        id: template.id,
+        name: template.name || '',
+        content: template.content || '',
+        apply_all_dirs: !!template.apply_all_dirs,
+        sort_order: Number(template.sort_order || 0),
+        local_dirs: Array.isArray(template.local_dirs) ? [...template.local_dirs] : [],
+      }
+      this.promptTemplateEditVisible = true
+    },
+    resetPromptTemplateEditForm() {
+      this.promptTemplateEditForm = {
+        id: null,
+        name: '',
+        content: '',
+        apply_all_dirs: false,
+        sort_order: 0,
+        local_dirs: [],
+      }
+    },
+    savePromptTemplate() {
+      const form = this.promptTemplateEditForm
+      if (!String(form.name || '').trim()) {
+        this.$message.warning('模板名称不能为空')
+        return
+      }
+      if (!String(form.content || '').trim()) {
+        this.$message.warning('模板内容不能为空')
+        return
+      }
+      this.promptTemplateEditSaving = true
+      const templateId = String(form.id || '').startsWith('tmp_') ? 0 : Number(form.id || 0)
+      agentCliApi.AgentCliPromptTemplateSave({
+        id: templateId,
+        name: form.name,
+        content: form.content,
+        apply_all_dirs: !!form.apply_all_dirs,
+        sort_order: Number(form.sort_order || 0),
+        local_dirs: Array.isArray(form.local_dirs) ? form.local_dirs : [],
+      }, (response) => {
+        this.promptTemplateEditSaving = false
+        if (!(response && response.ErrCode === 0)) {
+          this.$message.error(response?.ErrMsg || '保存模板失败')
+          return
+        }
+        this.$message.success('模板已保存')
+        this.promptTemplateEditVisible = false
+        this.loadPromptTemplates()
+      })
+    },
+    removePromptTemplate(template) {
+      const templateId = Number(template?.id || 0)
+      if (templateId <= 0) {
+        this.promptTemplates = this.promptTemplates.filter(item => item.id !== template?.id)
+        this.agentExecSelectedTemplateIds = this.agentExecSelectedTemplateIds.filter(id => id !== template?.id)
+        return
+      }
+      agentCliApi.AgentCliPromptTemplateDelete(templateId, (response) => {
+        if (!(response && response.ErrCode === 0)) {
+          this.$message.error(response?.ErrMsg || '删除模板失败')
+          return
+        }
+        this.$message.success('模板已删除')
+        this.promptTemplates = this.promptTemplates.filter(item => item.id !== template.id)
+        this.agentExecSelectedTemplateIds = this.agentExecSelectedTemplateIds.filter(id => id !== template.id)
+      })
+    },
     // openWebhookDialog 打开 webhook 配置弹窗并同步刷新列表。 // openWebhookDialog opens the webhook dialog and refreshes its list before display.
     openWebhookDialog() {
       this.webhookDialogVisible = true
@@ -851,6 +1087,7 @@ export default {
         modelName: this.agentExecModelName,
         thinkingIntensity: this.agentExecThinkingIntensity,
         prompt: this.agentExecPrompt,
+        templateIds: this.agentExecSelectedTemplateIds,
       }
       localStorage.setItem(this.getAgentExecCacheKey(this.agentExecCliId), JSON.stringify(data))
     },
@@ -873,11 +1110,15 @@ export default {
       this.agentExecModelName = cached?.modelName || ''
       this.agentExecThinkingIntensity = cached?.thinkingIntensity || '高'
       this.agentExecPrompt = sharedPrompt || cached?.prompt || ''
+      const templateIds = Array.isArray(cached?.templateIds) ? cached.templateIds.map(item => String(item)) : []
+      const templateIdSet = new Set(this.availablePromptTemplates.map(item => item.id))
+      this.agentExecSelectedTemplateIds = templateIds.filter(id => templateIdSet.has(id))
       if (this.agentExecModelOptions.length === 1 && !this.agentExecModelName) {
         this.agentExecModelName = this.agentExecModelOptions[0]
       }
       this.agentExecDialogVisible = true
       this.loadAgentExecHistoryDirs()
+      this.loadPromptTemplates()
     },
     // loadAgentExecHistoryDirs 加载所有 Agent CLI 共享的历史工作目录。 // Loads globally shared history directories across all Agent CLI cards.
     loadAgentExecHistoryDirs() {
@@ -929,6 +1170,20 @@ export default {
     applyAgentExecHistoryDir(historyDir) {
       this.agentExecLocalDir = String(historyDir || '').trim()
     },
+    composeAgentExecPrompt() {
+      const segments = []
+      const manualPrompt = String(this.agentExecPrompt || '').trim()
+      if (manualPrompt) {
+        segments.push(manualPrompt)
+      }
+      this.selectedPromptTemplates.forEach((item) => {
+        const content = String(item.content || '').trim()
+        if (content) {
+          segments.push(content)
+        }
+      })
+      return segments.join('\n\n')
+    },
     execAgentPrompt() {
       if (!this.agentExecCliId) {
         this.$message.warning('Agent 实例不存在')
@@ -943,8 +1198,9 @@ export default {
         this.$message.warning('请输入工作目录')
         return
       }
-      if (!String(this.agentExecPrompt || '').trim()) {
-        this.$message.warning('请输入提示词')
+      const finalPrompt = this.composeAgentExecPrompt()
+      if (!String(finalPrompt || '').trim()) {
+        this.$message.warning('请输入提示词或选择模板')
         return
       }
       if (this.agentExecModelOptions.length > 0 && !this.agentExecModelName) {
@@ -955,7 +1211,7 @@ export default {
       this.saveAgentExecCache()
       agentCliApi.AgentChatSend({
         agent_cli_id: this.agentExecCliId,
-        prompt: this.agentExecPrompt,
+        prompt: finalPrompt,
         prompt_type: 'agent_cli_manual',
         local_dir: this.agentExecLocalDir.trim(),
         cli_type: this.getAgentExecCliType(),
@@ -979,7 +1235,7 @@ export default {
           taskProgressStore.reset()
           this._initialSseRetryCount = 0
           this.markAgentChatRunningLocally(this.agentExecCliId, chatId, {
-            prompt: this.agentExecPrompt,
+            prompt: finalPrompt,
             localDir: this.agentExecLocalDir.trim(),
             modelName: this.agentExecModelName,
             thinkingIntensity: this.agentExecThinkingIntensity,

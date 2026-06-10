@@ -931,6 +931,17 @@ func (h *CSqlite) AgentChatListByAgentCli(agentCliID int) ([]map[string]any, err
 	return rows, nil
 }
 
+// AgentChatListAll 返回所有 AgentCli 独立执行历史，用于提取共享工作目录。
+func (h *CSqlite) AgentChatListAll() ([]map[string]any, error) {
+	rows, err := h.Client.QuickQuery(agentChatTableName, `*`, map[string]any{
+		`from_type`: AgentChatSourceTypeAgentCli,
+	}).Order(`id DESC`).All()
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // AgentChatMarkRead 将一个已结束对话标记为已读。
 func (h *CSqlite) AgentChatMarkRead(chatID int64) error {
 	if chatID <= 0 {

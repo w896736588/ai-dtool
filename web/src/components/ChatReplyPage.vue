@@ -52,8 +52,8 @@
             <div v-if="msg.thinking" style="margin-bottom: 8px;">
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
                 <span v-if="isCurrentThinking(msg)" class="cr-status-spinner"></span>
-                <span v-if="isCurrentThinking(msg)" style="color: #409eff; font-size: 12px;">思考过程 持续{{ thinkingElapsed }}s</span>
-                <span v-else style="color: #909399; font-size: 12px;">思考过程{{ msg._thinkingTiming && msg._thinkingTiming.durationMs ? ' (' + (msg._thinkingTiming.durationMs / 1000).toFixed(1) + 's)' : '' }}</span>
+                <span v-if="isCurrentThinking(msg)" style="color: #409eff; font-size: 12px;">思考过程</span>
+                <span v-else style="color: #909399; font-size: 12px;">思考过程</span>
                 <span @click="msg._thinkingCollapsed = !msg._thinkingCollapsed" style="cursor: pointer; font-weight: bold; font-size: 12px; color: #909399;">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
               </div>
               <div v-if="!msg._thinkingCollapsed" class="cr-thinking-blockquote">{{ msg.thinking }}</div>
@@ -120,7 +120,7 @@
           <div v-else-if="msg.type === 'assistant_text'" class="markdown-body cr-markdown-body" v-html="renderMarkdown(msg.text)"></div>
           <div v-else-if="msg.type === 'assistant_thinking'" style="color: #909399; font-size: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-              <span>思考过程{{ msg._thinkingTiming && msg._thinkingTiming.durationMs ? ' (' + (msg._thinkingTiming.durationMs / 1000).toFixed(1) + 's)' : '' }}</span>
+              <span>思考过程</span>
               <span @click="msg._thinkingCollapsed = !msg._thinkingCollapsed" style="cursor: pointer; font-weight: bold;">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
             </div>
             <div v-if="!msg._thinkingCollapsed" class="cr-thinking-blockquote">{{ msg.text }}</div>

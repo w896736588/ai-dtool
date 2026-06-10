@@ -132,8 +132,8 @@
                 <div v-if="msg.thinking" class="chat-message-thinking-wrap">
                   <div class="chat-message-thinking-head">
                     <span v-if="isCurrentThinkingFn(msg)" class="chat-detail-status-spinner"></span>
-                    <span v-if="isCurrentThinkingFn(msg)" class="chat-message-thinking-running">思考过程 持续{{ thinkingStreamElapsed }}s</span>
-                    <span v-else class="chat-message-thinking-text">思考过程{{ msg._thinkingTiming && msg._thinkingTiming.durationMs ? ' (' + (msg._thinkingTiming.durationMs / 1000).toFixed(1) + 's)' : '' }}</span>
+                    <span v-if="isCurrentThinkingFn(msg)" class="chat-message-thinking-running">思考过程</span>
+                    <span v-else class="chat-message-thinking-text">思考过程</span>
                     <span class="chat-message-toggle" @click="toggleThinking(msg)">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
                   </div>
                   <div v-if="!msg._thinkingCollapsed" class="thinking-blockquote">{{ msg.thinking }}</div>
@@ -253,7 +253,7 @@
               <div v-else-if="msg.type === 'assistant_text'" class="markdown-body chat-markdown-body" v-html="renderMarkdown(msg.text)"></div>
               <div v-else-if="msg.type === 'assistant_thinking'" class="chat-message-thinking">
                 <div class="chat-message-thinking-head">
-                  <span>思考过程{{ msg._thinkingTiming && msg._thinkingTiming.durationMs ? ' (' + (msg._thinkingTiming.durationMs / 1000).toFixed(1) + 's)' : '' }}</span>
+                  <span>思考过程</span>
                   <span class="chat-message-toggle" @click="toggleThinking(msg)">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
                 </div>
                 <div v-if="!msg._thinkingCollapsed" class="thinking-blockquote">{{ msg.text }}</div>
@@ -305,7 +305,6 @@
                 type="textarea"
                 :rows="3"
                 :placeholder="continuePlaceholder"
-                :disabled="detailStatus === 'running'"
                 class="chat-detail-textarea"
                 @update:model-value="$emit('update:continueInput', $event)"
                 @keydown.enter.exact.prevent="detailStatus !== 'running' && $emit('continue')"
