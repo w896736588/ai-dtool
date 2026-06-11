@@ -9,9 +9,16 @@
 import subprocess
 import sys
 
+# Windows 中文环境下 stdout 默认编码为 GBK，导致 UTF-8 输出乱码。
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 
 def run_git(*args: str) -> str:
-    result = subprocess.run(["git"] + list(args), capture_output=True, text=True)
+    result = subprocess.run(
+        ["git"] + list(args), capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
+    )
     if result.returncode != 0:
         msg = result.stderr.strip()
         print(f"ERROR: {msg}", file=sys.stderr)
@@ -49,18 +56,61 @@ def main() -> int:
         print(f"无法计算 '{base_branch}' 与当前分支的 merge-base", file=sys.stderr)
         sys.exit(1)
 
-    # 获取改动文件列表，排除 dist 目录
+    exclude = ["--", ".", ":(exclude)**/dist/**"]
+
+    # 分别收集各状态文件
+    committed = set()
+    staged = set()
+    modified = set()
+    untracked = set()
+
+    # 已提交：merge_base vs HEAD
     result = subprocess.run(
-        ["git", "diff", "--name-only", merge_base, "HEAD", "--", ".", ":(exclude)**/dist/**"],
-        capture_output=True, text=True,
+        ["git", "diff", "--name-only", merge_base, "HEAD"] + exclude,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if result.returncode != 0:
         print(f"获取改动文件列表失败: {result.stderr.strip()}", file=sys.stderr)
         sys.exit(1)
+    committed = set(f for f in result.stdout.strip().splitlines() if f.strip())
 
-    files = [f for f in result.stdout.strip().splitlines() if f.strip()]
-    for f in files:
-        print(f)
+    # 暂存区：已 git add 未 commit
+    result_cached = subprocess.run(
+        ["git", "diff", "--name-only", "--cached"] + exclude,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if result_cached.returncode == 0:
+        staged = set(f for f in result_cached.stdout.strip().splitlines() if f.strip())
+
+    # 工作区：未 git add 的改动
+    result_wt = subprocess.run(
+        ["git", "diff", "--name-only"] + exclude,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if result_wt.returncode == 0:
+        modified = set(f for f in result_wt.stdout.strip().splitlines() if f.strip())
+
+    # 未跟踪文件
+    result_untracked = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard", "."],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if result_untracked.returncode == 0:
+        untracked = set(f for f in result_untracked.stdout.strip().splitlines() if f.strip())
+
+    # 合并所有文件，标注状态
+    all_files = committed | staged | modified | untracked
+    for f in sorted(all_files):
+        statuses = []
+        if f in committed:
+            statuses.append("Committed")
+        if f in staged:
+            statuses.append("Staged")
+        if f in modified:
+            statuses.append("Modified")
+        if f in untracked:
+            statuses.append("Untracked")
+        print(f"{f}\t[{','.join(statuses)}]")
 
     return 0
 

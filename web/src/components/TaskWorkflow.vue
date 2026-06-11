@@ -112,15 +112,13 @@
                   <span class="task-workflow-header__field-value task-workflow-header__field-value--wrap">
                     <template v-if="cfg.local_dir && fileChangesMap[cfg.local_dir] && !fileChangesMap[cfg.local_dir].error">
                       <span class="file-changes-inline">
-                        <span class="file-changes-inline__item file-changes-inline__item--new" :title="'未跟踪文件数'">{{ fileChangesMap[cfg.local_dir].summary.untracked || 0 }}<small>(new)</small></span>
+                        <span class="file-changes-inline__item file-changes-inline__item--committed" :title="'已提交文件数'">{{ fileChangesMap[cfg.local_dir].summary.committed || 0 }}<small>(C)</small></span>
                         <span class="file-changes-inline__sep">/</span>
-                        <span class="file-changes-inline__item file-changes-inline__item--edit" :title="'编辑文件数'">{{ fileChangesMap[cfg.local_dir].summary.modified || 0 }}<small>(edit)</small></span>
+                        <span class="file-changes-inline__item file-changes-inline__item--staged" :title="'已暂存文件数'">{{ fileChangesMap[cfg.local_dir].summary.staged || 0 }}<small>(S)</small></span>
                         <span class="file-changes-inline__sep">/</span>
-                        <span class="file-changes-inline__item file-changes-inline__item--delete" :title="'删除文件数'">{{ fileChangesMap[cfg.local_dir].summary.deleted || 0 }}<small>(delete)</small></span>
-                        <template v-if="fileChangesMap[cfg.local_dir].summary.other > 0">
-                          <span class="file-changes-inline__sep">/</span>
-                          <span class="file-changes-inline__item file-changes-inline__item--other" :title="'其他变更文件数'">{{ fileChangesMap[cfg.local_dir].summary.other }}<small>(other)</small></span>
-                        </template>
+                        <span class="file-changes-inline__item file-changes-inline__item--modified" :title="'已修改文件数'">{{ fileChangesMap[cfg.local_dir].summary.modified || 0 }}<small>(M)</small></span>
+                        <span class="file-changes-inline__sep">/</span>
+                        <span class="file-changes-inline__item file-changes-inline__item--untracked" :title="'未跟踪文件数'">{{ fileChangesMap[cfg.local_dir].summary.untracked || 0 }}<small>(U)</small></span>
                       </span>
                       <GitActionButton compact variant="info" size-mode="compact-small" @click="openFileChangesDetail(cfg)">详情</GitActionButton>
                     </template>
@@ -3344,21 +3342,24 @@ export default {
     // ===== 文件变更检测（10s 轮询）=====
     // 获取所有需要检测文件变更的本地目录列表
     getFileChangesLocalDirs() {
-      const dirs = []
+      const items = []
       const seen = new Set()
       for (const cfg of this.parsedTaskDevConfigs) {
         const dir = String(cfg.local_dir || '').trim()
         if (!dir || seen.has(dir)) continue
         seen.add(dir)
-        dirs.push(dir)
+        items.push({
+          local_dir: dir,
+          parent_branch: String(cfg.parent_branch || '').trim(),
+        })
       }
-      return dirs
+      return items
     },
     // 检查文件变更（调用 API）
     loadFileChangesSummary() {
-      const dirs = this.getFileChangesLocalDirs()
-      if (dirs.length === 0) return
-      taskWorkflowApi.TaskWorkflowFileChangesSummary(dirs, (response) => {
+      const items = this.getFileChangesLocalDirs()
+      if (items.length === 0) return
+      taskWorkflowApi.TaskWorkflowFileChangesSummary(items, (response) => {
         if (response && response.ErrCode === 0 && response.Data && response.Data.dirs) {
           this.fileChangesMap = { ...this.fileChangesMap, ...response.Data.dirs }
         }
@@ -4771,19 +4772,19 @@ export default {
   opacity: 0.7;
 }
 
-.file-changes-inline__item--new {
+.file-changes-inline__item--committed {
   color: #1a7f37;
 }
 
-.file-changes-inline__item--edit {
+.file-changes-inline__item--staged {
+  color: #0366d6;
+}
+
+.file-changes-inline__item--modified {
   color: #9a6700;
 }
 
-.file-changes-inline__item--delete {
-  color: #cf222e;
-}
-
-.file-changes-inline__item--other {
+.file-changes-inline__item--untracked {
   color: #656d76;
 }
 

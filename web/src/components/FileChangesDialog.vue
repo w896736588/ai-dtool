@@ -16,10 +16,10 @@
           <span class="file-changes-detail__branch">基分支: {{ parentBranch || '-' }}</span>
           <span class="file-changes-detail__summary">
             <template v-if="summary">
-              <span class="file-changes-stat file-changes-stat--added">待add {{ summary.untracked || 0 }}</span>
-              <span class="file-changes-stat file-changes-stat--modified">编辑 {{ summary.modified || 0 }}</span>
-              <span class="file-changes-stat file-changes-stat--deleted">删除 {{ summary.deleted || 0 }}</span>
-              <span v-if="summary.other > 0" class="file-changes-stat file-changes-stat--other">其他 {{ summary.other }}</span>
+              <span class="file-changes-stat file-changes-stat--committed">{{ summary.committed || 0 }} C</span>
+              <span class="file-changes-stat file-changes-stat--staged">{{ summary.staged || 0 }} S</span>
+              <span class="file-changes-stat file-changes-stat--modified">{{ summary.modified || 0 }} M</span>
+              <span class="file-changes-stat file-changes-stat--untracked">{{ summary.untracked || 0 }} U</span>
             </template>
           </span>
         </div>
@@ -34,44 +34,25 @@
       <div class="file-changes-detail__body">
         <!-- 左侧文件树 -->
         <div class="file-changes-detail__tree-panel">
-          <div class="file-changes-detail__tree-title">改动文件列表 ({{ fileTreeTotal }})</div>
+          <div class="file-changes-detail__tree-title">改动文件列表 ({{ files.length }})</div>
           <div class="file-changes-detail__tree">
-            <template v-if="fileTree.length > 0 || rootFiles.length > 0">
-              <div v-for="node in fileTree" :key="node.key">
-                <div
-                  v-if="node.isDir"
-                  class="file-changes-tree__dir"
-                  @click="toggleDir(node.key)"
-                >
-                  <span class="file-changes-tree__dir-icon">{{ node.expanded ? '&#x25BC;' : '&#x25B6;' }}</span>
-                  <span class="file-changes-tree__dir-name">{{ node.name }}/</span>
-                  <span class="file-changes-tree__dir-count">({{ node.fileCount }})</span>
-                </div>
-                <div v-if="node.isDir && node.expanded">
-                  <div
-                    v-for="file in node.files"
-                    :key="file.path"
-                    class="file-changes-tree__file"
-                    :class="{ 'file-changes-tree__file--active': selectedFile === file.path }"
-                    @click="selectFile(file)"
-                  >
-                    <span class="file-changes-tree__file-type file-changes-tree__file-type--{{ file.type }}">{{ file.status_code }}</span>
-                    <span class="file-changes-tree__file-name" :title="file.path">{{ file.name }}</span>
-                  </div>
-                </div>
-              </div>
-              <!-- 根目录文件 -->
-              <div v-if="rootFiles.length > 0">
-                <div
-                  v-for="file in rootFiles"
-                  :key="file.path"
-                  class="file-changes-tree__file"
-                  :class="{ 'file-changes-tree__file--active': selectedFile === file.path }"
-                  @click="selectFile(file)"
-                >
-                  <span class="file-changes-tree__file-type file-changes-tree__file-type--{{ file.type }}">{{ file.status_code }}</span>
-                  <span class="file-changes-tree__file-name" :title="file.path">{{ file.path }}</span>
-                </div>
+            <template v-if="flatTreeItems.length > 0">
+              <div
+                v-for="item in flatTreeItems"
+                :key="item.key"
+                :class="item.isDir ? 'file-changes-tree__dir' : 'file-changes-tree__file'"
+                :style="{ paddingLeft: (12 + item.depth * 16) + 'px' }"
+                @click="item.isDir ? toggleDir(item.key) : selectFile(item)"
+              >
+                <template v-if="item.isDir">
+                  <span class="file-changes-tree__dir-icon">{{ expandedDirs[item.key] !== false ? '▼' : '▶' }}</span>
+                  <span class="file-changes-tree__dir-name">{{ item.name }}/</span>
+                  <span class="file-changes-tree__dir-count">({{ item.fileCount }})</span>
+                </template>
+                <template v-else>
+                  <span class="file-changes-tree__file-type" :class="'file-changes-tree__file-type--' + item.type">{{ item.status_code }}</span>
+                  <span class="file-changes-tree__file-name" :title="item.path">{{ item.name }}</span>
+                </template>
               </div>
             </template>
             <div v-else class="file-changes-detail__tree-empty">暂无文件变更</div>
@@ -79,10 +60,15 @@
         </div>
         <!-- 右侧 diff 视图 -->
         <div class="file-changes-detail__diff-panel">
-          <template v-if="diffError">
+          <template v-if="diffLoading">
+            <div class="file-changes-detail__diff-placeholder">
+              <span>加载 diff 中...</span>
+            </div>
+          </template>
+          <template v-else-if="diffError">
             <div class="file-changes-detail__diff-error">{{ diffError }}</div>
           </template>
-          <template v-else-if="selectedFile && currentDiff">
+          <template v-else-if="selectedFile">
             <div class="file-changes-detail__diff-header">
               <span class="file-changes-detail__diff-file">{{ selectedFile }}</span>
             </div>
@@ -110,6 +96,103 @@ import taskWorkflowApi from '@/utils/base/task_workflow'
 import * as Diff2Html from 'diff2html'
 import 'diff2html/bundles/css/diff2html.min.css'
 
+// CodeMirror MergeView
+import CodeMirror from 'codemirror'
+import 'codemirror/lib/codemirror.css'
+import 'codemirror/addon/merge/merge.js'
+import 'codemirror/addon/merge/merge.css'
+import 'codemirror/addon/fold/foldgutter.css'
+import 'codemirror/addon/fold/foldcode.js'
+import 'codemirror/addon/fold/foldgutter.js'
+
+// 语法高亮模式（按需导入）
+import 'codemirror/mode/javascript/javascript.js'
+import 'codemirror/mode/go/go.js'
+import 'codemirror/mode/python/python.js'
+import 'codemirror/mode/css/css.js'
+import 'codemirror/mode/htmlmixed/htmlmixed.js'
+import 'codemirror/mode/xml/xml.js'
+import 'codemirror/mode/sql/sql.js'
+import 'codemirror/mode/markdown/markdown.js'
+import 'codemirror/mode/shell/shell.js'
+import 'codemirror/mode/yaml/yaml.js'
+import 'codemirror/mode/vue/vue.js'
+import 'codemirror/mode/php/php.js'
+import 'codemirror/mode/ruby/ruby.js'
+import 'codemirror/mode/clike/clike.js'
+import 'codemirror/mode/nginx/nginx.js'
+import 'codemirror/mode/dockerfile/dockerfile.js'
+import 'codemirror/mode/toml/toml.js'
+import 'codemirror/mode/jsx/jsx.js'
+import 'codemirror/mode/sass/sass.js'
+import 'codemirror/mode/powershell/powershell.js'
+
+// diff-match-patch（CodeMirror MergeView 依赖）
+import DiffMatchPatch from 'diff-match-patch'
+// CodeMirror merge addon 直接引用全局常量，需手动挂载
+window.diff_match_patch = DiffMatchPatch
+window.DIFF_EQUAL = DiffMatchPatch.DIFF_EQUAL
+window.DIFF_INSERT = DiffMatchPatch.DIFF_INSERT
+window.DIFF_DELETE = DiffMatchPatch.DIFF_DELETE
+
+// 文件扩展名 → CodeMirror mode 映射
+const EXT_MODE_MAP = {
+  '.js': 'javascript',
+  '.mjs': 'javascript',
+  '.cjs': 'javascript',
+  '.jsx': 'jsx',
+  '.ts': 'javascript',
+  '.tsx': 'jsx',
+  '.vue': 'vue',
+  '.go': 'go',
+  '.py': 'python',
+  '.css': 'css',
+  '.scss': 'sass',
+  '.less': 'css',
+  '.html': 'htmlmixed',
+  '.htm': 'htmlmixed',
+  '.xml': 'xml',
+  '.svg': 'xml',
+  '.sql': 'sql',
+  '.md': 'markdown',
+  '.markdown': 'markdown',
+  '.sh': 'shell',
+  '.bash': 'shell',
+  '.zsh': 'shell',
+  '.yml': 'yaml',
+  '.yaml': 'yaml',
+  '.php': 'php',
+  '.rb': 'ruby',
+  '.java': 'text/x-java',
+  '.c': 'text/x-csrc',
+  '.cpp': 'text/x-c++src',
+  '.h': 'text/x-csrc',
+  '.hpp': 'text/x-c++src',
+  '.cs': 'text/x-csharp',
+  '.json': { name: 'javascript', json: true },
+  '.toml': 'toml',
+  '.ini': 'toml',
+  '.cfg': 'toml',
+  '.conf': 'nginx',
+  '.dockerfile': 'dockerfile',
+  '.ps1': 'shell',
+  '.bat': 'shell',
+  '.cmd': 'shell',
+}
+
+function getModeForFile(filePath) {
+  if (!filePath) return 'text'
+  const fileName = filePath.split('/').pop() || filePath
+  // 特殊文件名
+  if (fileName === 'Dockerfile' || fileName.startsWith('Dockerfile.')) return 'dockerfile'
+  if (fileName === 'Makefile' || fileName === 'Taskfile.yml') return 'yaml'
+  if (fileName === '.gitignore' || fileName === '.dockerignore' || fileName === '.eslintignore') return 'shell'
+  const dotIdx = fileName.lastIndexOf('.')
+  if (dotIdx < 0) return 'text'
+  const ext = fileName.substring(dotIdx).toLowerCase()
+  return EXT_MODE_MAP[ext] || 'text'
+}
+
 export default {
   name: 'FileChangesDialog',
   components: { GitActionButton },
@@ -126,92 +209,241 @@ export default {
       loading: false,
       summary: null,
       files: [],
-      diffs: {},
       selectedFile: '',
       currentDiff: '',
+      oldContent: '',
+      newContent: '',
       diffError: '',
+      diffLoading: false,
       diffMode: 'side-by-side',
-      treeExpanded: {},
-      _rootFiles: [],
+      expandedDirs: {},
+      mergeView: null,
     }
   },
   computed: {
-    fileTree() {
-      const dirMap = {}
-      const rootFiles = []
-      for (const file of this.files) {
-        const path = file.path || ''
-        const slashIdx = path.indexOf('/')
-        if (slashIdx < 0) {
-          rootFiles.push(file)
-        } else {
-          const dirName = path.substring(0, slashIdx)
-          const fileName = path.substring(slashIdx + 1)
-          if (!dirMap[dirName]) {
-            dirMap[dirName] = { name: dirName, files: [], fileCount: 0 }
+    treeNodes() {
+      return this.buildTree(this.files)
+    },
+    flatTreeItems() {
+      const result = []
+      const flatten = (nodes, depth) => {
+        for (const node of nodes) {
+          if (node.isDir) {
+            result.push({
+              isDir: true,
+              name: node.name,
+              key: node.key,
+              path: node.path,
+              fileCount: node.fileCount,
+              depth,
+            })
+            if (this.expandedDirs[node.key] !== false) {
+              flatten(node.children, depth + 1)
+              for (const file of node.files) {
+                result.push({
+                  isDir: false,
+                  name: file.name,
+                  key: 'file_' + file.path,
+                  path: file.path,
+                  status_code: file.status_code,
+                  type: file.type,
+                  depth: depth + 1,
+                })
+              }
+            }
+          } else {
+            result.push({
+              isDir: false,
+              name: node.name,
+              key: node.key,
+              path: node.path,
+              status_code: node.status_code,
+              type: node.type,
+              depth,
+            })
           }
-          dirMap[dirName].files.push({ ...file, name: fileName })
-          dirMap[dirName].fileCount++
         }
       }
-      const tree = []
-      for (const dirName of Object.keys(dirMap).sort()) {
-        const node = dirMap[dirName]
-        node.isDir = true
-        node.key = 'dir_' + dirName
-        node.expanded = this.treeExpanded[node.key] !== false
-        tree.push(node)
-      }
-      this._rootFiles = rootFiles
-      return tree
-    },
-    rootFiles() {
-      return this._rootFiles || []
-    },
-    fileTreeTotal() {
-      return this.files.length
+      flatten(this.treeNodes, 0)
+      return result
     },
   },
   watch: {
     visible(val) {
       if (val) {
         this.initData()
-        this.loadDetail()
+      } else {
+        this.destroyMergeView()
       }
     },
+  },
+  beforeUnmount() {
+    this.destroyMergeView()
   },
   methods: {
     initData() {
       this.summary = this.initialSummary ? { ...this.initialSummary } : null
       this.files = Array.isArray(this.initialFiles) ? [...this.initialFiles] : []
-      this.diffs = {}
       this.selectedFile = ''
       this.currentDiff = ''
+      this.oldContent = ''
+      this.newContent = ''
       this.diffError = ''
-      this.treeExpanded = {}
+      this.diffLoading = false
+      this.expandedDirs = {}
+      this.loadFileList()
     },
-    loadDetail() {
+    loadFileList() {
       if (!this.localDir) return
-      // 如果有初始数据，不显示 loading 遮罩，优先展示已有数据
-      if (!this.summary && this.files.length === 0) {
-        this.loading = true
-      }
+      this.loading = true
       taskWorkflowApi.TaskWorkflowFileChangesDetail(this.localDir, this.parentBranch, (response) => {
         this.loading = false
         if (response && response.ErrCode === 0 && response.Data) {
+          if (response.Data.summary) {
+            this.summary = response.Data.summary
+          }
+          if (Array.isArray(response.Data.files)) {
+            this.files = response.Data.files
+          }
+          if (response.Data.error) {
+            this.diffError = response.Data.error
+          }
+        }
+      })
+    },
+    buildTree(files) {
+      if (!files || files.length === 0) return []
+
+      const dirMap = {}
+
+      const ensureDir = (dirPath) => {
+        if (dirMap[dirPath]) return dirMap[dirPath]
+        const parts = dirPath.split('/')
+        const name = parts[parts.length - 1]
+        const parentPath = parts.slice(0, -1).join('/')
+        const dirNode = {
+          isDir: true,
+          name,
+          key: 'dir_' + dirPath,
+          path: dirPath,
+          files: [],
+          children: [],
+          fileCount: 0,
+        }
+        dirMap[dirPath] = dirNode
+        if (parentPath) {
+          ensureDir(parentPath).children.push(dirNode)
+        }
+        return dirNode
+      }
+
+      const rootFiles = []
+
+      for (const file of files) {
+        const path = file.path || ''
+        const slashIdx = path.lastIndexOf('/')
+        const dirPath = slashIdx >= 0 ? path.substring(0, slashIdx) : ''
+        const fileName = slashIdx >= 0 ? path.substring(slashIdx + 1) : path
+        const fileObj = { ...file, name: fileName }
+
+        if (dirPath === '') {
+          rootFiles.push({ ...fileObj, isDir: false, key: 'file_' + file.path })
+        } else {
+          ensureDir(dirPath)
+          dirMap[dirPath].files.push(fileObj)
+        }
+      }
+
+      const topLevelDirPaths = new Set()
+      for (const dirPath of Object.keys(dirMap)) {
+        const parts = dirPath.split('/')
+        if (parts.length === 1) {
+          topLevelDirPaths.add(dirPath)
+        }
+      }
+
+      const computeFileCount = (dirNode) => {
+        let count = dirNode.files.length
+        for (const child of dirNode.children) {
+          count += computeFileCount(child)
+        }
+        dirNode.fileCount = count
+        return count
+      }
+
+      const sortDir = (dirNode) => {
+        dirNode.children.sort((a, b) => a.name.localeCompare(b.name))
+        dirNode.files.sort((a, b) => a.name.localeCompare(b.name))
+        for (const child of dirNode.children) {
+          sortDir(child)
+        }
+      }
+
+      const topDirs = []
+      for (const dirPath of topLevelDirPaths) {
+        topDirs.push(dirMap[dirPath])
+      }
+
+      for (const dir of topDirs) {
+        computeFileCount(dir)
+        sortDir(dir)
+      }
+
+      const result = []
+      for (const dir of topDirs.sort((a, b) => a.name.localeCompare(b.name))) {
+        result.push(dir)
+      }
+      for (const file of rootFiles.sort((a, b) => a.name.localeCompare(b.name))) {
+        result.push(file)
+      }
+
+      return result
+    },
+    toggleDir(key) {
+      this.expandedDirs = {
+        ...this.expandedDirs,
+        [key]: this.expandedDirs[key] !== false ? false : true,
+      }
+    },
+    selectFile(item) {
+      this.selectedFile = item.path
+      this.diffError = ''
+      this.loadFileDiff(item)
+    },
+    loadFileDiff(file) {
+      if (!this.parentBranch) {
+        this.diffError = '未指定基分支，无法获取 diff。'
+        return
+      }
+      this.diffLoading = true
+      this.currentDiff = ''
+      this.oldContent = ''
+      this.newContent = ''
+      this.destroyMergeView()
+      taskWorkflowApi.TaskWorkflowFileChangesFileDiff(this.localDir, this.parentBranch, file.path, (response) => {
+        this.diffLoading = false
+        if (response && response.ErrCode === 0 && response.Data) {
           const data = response.Data
-          // 修复 JS 空数组 truthy 陷阱：[] || [...] 返回 []，需要检查 length
-          if (data.summary && typeof data.summary === 'object' && Object.keys(data.summary).length > 0) {
-            this.summary = data.summary
+          // 优先使用 old_content/new_content（CodeMirror MergeView）
+          if (data.old_content !== undefined && data.new_content !== undefined) {
+            this.oldContent = data.old_content || ''
+            this.newContent = data.new_content || ''
           }
-          if (Array.isArray(data.files) && data.files.length > 0) {
-            this.files = data.files
+          if (data.diff) {
+            this.currentDiff = data.diff
           }
-          if (data.diffs && typeof data.diffs === 'object') {
-            this.diffs = data.diffs
+          // 如果没有 old/new 内容但有 diff 文本，降级到 diff2html
+          if (!this.oldContent && !this.newContent && this.currentDiff) {
+            this.renderDiff2Html(this.currentDiff)
+          } else {
+            this.renderDiff()
           }
         } else {
-          this.diffError = (response && response.ErrMsg) || '加载详情失败'
+          if (file.type === 'untracked') {
+            this.diffError = '文件 "' + file.path + '" 是未跟踪的新文件，暂无法对比差异。'
+          } else {
+            this.diffError = (response && response.ErrMsg) || '获取 diff 失败'
+          }
         }
       })
     },
@@ -219,55 +451,256 @@ export default {
       this.$emit('update:visible', false)
       this.selectedFile = ''
       this.currentDiff = ''
-      this.diffError = ''
+      this.oldContent = ''
+      this.newContent = ''
+      this.destroyMergeView()
     },
-    toggleDir(key) {
-      this.treeExpanded = {
-        ...this.treeExpanded,
-        [key]: this.treeExpanded[key] === true ? false : true,
+    destroyMergeView() {
+      if (this.mergeView) {
+        try {
+          this.mergeView.editor().toTextArea?.()
+        } catch (e) { /* ignore */ }
+        this.mergeView = null
+      }
+      const container = this.$refs.diffContainer
+      if (container) {
+        container.innerHTML = ''
       }
     },
-    selectFile(file) {
-      this.selectedFile = file.path
-      this.diffError = ''
-      if (this.diffs && this.diffs[file.path]) {
-        this.renderDiff(this.diffs[file.path])
-      } else if (file.type === 'untracked') {
-        this.diffError = `文件 "${file.path}" 是未跟踪的新文件，暂无法对比差异。`
-      } else {
-        this.diffError = `该文件暂无差异数据。`
-      }
+    renderDiff() {
+      this.$nextTick(() => {
+        const container = this.$refs.diffContainer
+        if (!container) return
+
+        this.destroyMergeView()
+        container.innerHTML = ''
+
+        const mode = getModeForFile(this.selectedFile)
+
+        if (this.diffMode === 'side-by-side') {
+          // 横向对比：使用 CodeMirror MergeView（左右双面板 + 中间连接线）
+          this.mergeView = CodeMirror.MergeView(container, {
+            value: this.newContent || '',
+            orig: this.oldContent || '',
+            lineNumbers: true,
+            mode: mode,
+            theme: 'default',
+            collapseIdentical: true,
+            revertButtons: false,
+            readOnly: true,
+            lineWrapping: false,
+            scrollbarStyle: 'native',
+          })
+          // 注入箭头到连接线上
+          this.$nextTick(() => this.addConnectArrows())
+          // 监听滚动和更新事件，重绘箭头
+          const editor = this.mergeView.editor()
+          const orig = this.mergeView.leftOriginal()
+          if (editor) editor.on('scroll', () => this.scheduleRedrawArrows())
+          if (orig) orig.on('scroll', () => this.scheduleRedrawArrows())
+        } else {
+          // 纵向对比：使用 CodeMirror 单面板 + diff 高亮
+          this.renderInlineDiff(container, mode)
+        }
+      })
     },
-    renderDiff(diffText) {
+    renderInlineDiff(container, mode) {
+      // 纵向对比：交替显示删除行（红底）和新增行（绿底）
+      const Diff = require('diff')
+      const changes = Diff.diffLines(this.oldContent || '', this.newContent || '')
+
+      // 构建带类型标注的行列表
+      let annotatedLines = []
+      for (const change of changes) {
+        const text = change.value.replace(/\n$/, '')
+        const lines = text.split('\n')
+        for (let i = 0; i < lines.length; i++) {
+          // 跳过末尾空行（diffLines 会多出一个换行）
+          if (i === lines.length - 1 && lines[i] === '' && change.value.endsWith('\n')) continue
+          let type = 'unchanged'
+          if (change.added) type = 'added'
+          else if (change.removed) type = 'removed'
+          annotatedLines.push({ text: lines[i], type })
+        }
+      }
+
+      // 构建 CodeMirror 显示内容（删除行前加 - 前缀，新增行前加 + 前缀）
+      const displayText = annotatedLines.map(l => {
+        if (l.type === 'removed') return '- ' + l.text
+        if (l.type === 'added') return '+ ' + l.text
+        return '  ' + l.text
+      }).join('\n')
+
+      const editor = CodeMirror(container, {
+        value: displayText,
+        lineNumbers: true,
+        mode: mode,
+        readOnly: true,
+        lineWrapping: false,
+        gutters: ['CodeMirror-linenumbers', 'diff-gutter'],
+      })
+
+      // 标记每行的背景色和 gutter 符号
+      for (let i = 0; i < annotatedLines.length; i++) {
+        const line = annotatedLines[i]
+        if (line.type === 'added') {
+          editor.addLineClass(i, 'background', 'diff-line-added')
+          editor.setGutterMarker(i, 'diff-gutter', (() => {
+            const el = document.createElement('div')
+            el.className = 'diff-gutter-marker diff-gutter-marker--add'
+            el.textContent = '+'
+            return el
+          })())
+        } else if (line.type === 'removed') {
+          editor.addLineClass(i, 'background', 'diff-line-removed')
+          editor.setGutterMarker(i, 'diff-gutter', (() => {
+            const el = document.createElement('div')
+            el.className = 'diff-gutter-marker diff-gutter-marker--del'
+            el.textContent = '-'
+            return el
+          })())
+        }
+      }
+
+      editor.setSize('100%', '100%')
+    },
+    renderDiff2Html(diffText) {
+      this.destroyMergeView()
       try {
         const diffHtml = Diff2Html.html(diffText, {
           drawFileList: false,
           matching: 'lines',
-          outputFormat: this.diffMode,
+          outputFormat: 'line-by-line',
           renderNothingWhenEmpty: false,
         })
-        this.currentDiff = diffHtml
-        this.$nextTick(() => {
+        const container = this.$refs.diffContainer
+        if (container) {
+          container.innerHTML = diffHtml
+          const codeLines = container.querySelectorAll('.d2h-code-line')
+          codeLines.forEach(line => {
+            const contentCells = line.querySelectorAll('.d2h-code-line-ctn')
+            contentCells.forEach(cell => {
+              cell.innerHTML = cell.textContent.replace(/\n/g, '<br>')
+            })
+          })
+        }
+      } catch (e) {
+        this.diffError = '渲染 diff 失败: ' + (e.message || String(e))
+      }
+    },
+    renderDiff2HtmlFromContent(oldText, newText) {
+      // 使用 diff 库生成 unified diff，再用 diff2html 渲染
+      try {
+        const Diff = require('diff')
+        const patch = Diff.createPatch(this.selectedFile, oldText || '', newText || '', '旧版本', '新版本')
+        if (patch && patch.trim()) {
+          this.renderDiff2Html(patch)
+        } else {
           const container = this.$refs.diffContainer
           if (container) {
-            container.innerHTML = diffHtml
-            const codeLines = container.querySelectorAll('.d2h-code-line')
-            codeLines.forEach(line => {
-              const contentCells = line.querySelectorAll('.d2h-code-line-ctn')
-              contentCells.forEach(cell => {
-                cell.innerHTML = cell.textContent.replace(/\n/g, '<br>')
-              })
-            })
+            container.innerHTML = '<div style="padding:20px;color:#909399;text-align:center;">文件内容无差异</div>'
           }
-        })
+        }
       } catch (e) {
         this.diffError = '渲染 diff 失败: ' + (e.message || String(e))
       }
     },
     renderCurrentDiff() {
-      if (this.selectedFile && this.diffs && this.diffs[this.selectedFile]) {
-        this.renderDiff(this.diffs[this.selectedFile])
+      if (this.selectedFile && (this.oldContent || this.newContent || this.currentDiff)) {
+        this.renderDiff()
       }
+    },
+    // 箭头重绘节流
+    scheduleRedrawArrows() {
+      if (this._arrowTimer) return
+      this._arrowTimer = setTimeout(() => {
+        this._arrowTimer = null
+        this.addConnectArrows()
+      }, 80)
+    },
+    // 在 MergeView 的 SVG 连接线上注入方向箭头
+    addConnectArrows() {
+      const container = this.$refs.diffContainer
+      if (!container) return
+      const svg = container.querySelector('.CodeMirror-merge-gap svg')
+      if (!svg) return
+
+      const svgNS = 'http://www.w3.org/2000/svg'
+      // 清除旧箭头
+      svg.querySelectorAll('.diff-arrow').forEach(el => el.remove())
+
+      // 注入 marker 定义（只需一次）
+      if (!svg.querySelector('#diff-arrow-marker')) {
+        const defs = svg.querySelector('defs') || svg.insertBefore(document.createElementNS(svgNS, 'defs'), svg.firstChild)
+        const marker = document.createElementNS(svgNS, 'marker')
+        marker.setAttribute('id', 'diff-arrow-marker')
+        marker.setAttribute('viewBox', '0 0 10 10')
+        marker.setAttribute('refX', '5')
+        marker.setAttribute('refY', '5')
+        marker.setAttribute('markerWidth', '6')
+        marker.setAttribute('markerHeight', '6')
+        marker.setAttribute('orient', 'auto-start-reverse')
+        const polygon = document.createElementNS(svgNS, 'polygon')
+        polygon.setAttribute('points', '0,0 10,5 0,10')
+        polygon.setAttribute('fill', '#0366d6')
+        marker.appendChild(polygon)
+        defs.appendChild(marker)
+      }
+
+      // 为每个连接路径添加箭头线
+      const paths = svg.querySelectorAll('path')
+      paths.forEach(path => {
+        const d = path.getAttribute('d')
+        if (!d) return
+
+        // 解析路径提取关键坐标点
+        // 路径格式：M -1 topRpx C... L (w+2) botLpx C... z
+        // 顶部连线中点和底部连线中点
+        const coords = []
+        const re = /[-+]?[\d.]+/g
+        let match
+        while ((match = re.exec(d)) !== null) {
+          coords.push(parseFloat(match[0]))
+        }
+        // coords: [x1, topR, cx1, cy1, cx2, cy2, x2, topL, x3, botL, cx3, cy3, cx4, cy4, x4, botR]
+        if (coords.length < 16) return
+
+        const w = coords[6] // 右侧 x (约 w+2)
+        const topRightY = coords[1]
+        const topLeftY = coords[7]
+        const botLeftY = coords[9]
+        const botRightY = coords[15]
+        const midX = w / 2
+
+        // 顶部连线中点（从右到左）
+        const topMidY = (topRightY + topLeftY) / 2
+        // 底部连线中点（从左到右）
+        const botMidY = (botLeftY + botRightY) / 2
+
+        // 绘制箭头线：从右（old）到左（new）方向，在顶部连线中点
+        const arrowLine1 = document.createElementNS(svgNS, 'line')
+        arrowLine1.setAttribute('x1', String(w * 0.8))
+        arrowLine1.setAttribute('y1', String(topMidY))
+        arrowLine1.setAttribute('x2', String(w * 0.2))
+        arrowLine1.setAttribute('y2', String(topMidY))
+        arrowLine1.setAttribute('stroke', '#0366d6')
+        arrowLine1.setAttribute('stroke-width', '2')
+        arrowLine1.setAttribute('marker-end', 'url(#diff-arrow-marker)')
+        arrowLine1.setAttribute('class', 'diff-arrow')
+        svg.appendChild(arrowLine1)
+
+        // 绘制箭头线：从左（new）到右（old）方向，在底部连线中点
+        const arrowLine2 = document.createElementNS(svgNS, 'line')
+        arrowLine2.setAttribute('x1', String(w * 0.2))
+        arrowLine2.setAttribute('y1', String(botMidY))
+        arrowLine2.setAttribute('x2', String(w * 0.8))
+        arrowLine2.setAttribute('y2', String(botMidY))
+        arrowLine2.setAttribute('stroke', '#0366d6')
+        arrowLine2.setAttribute('stroke-width', '2')
+        arrowLine2.setAttribute('marker-end', 'url(#diff-arrow-marker)')
+        arrowLine2.setAttribute('class', 'diff-arrow')
+        svg.appendChild(arrowLine2)
+      })
     },
   },
 }
@@ -317,7 +750,34 @@ export default {
 
 .file-changes-detail__summary {
   display: flex;
-  gap: 4px;
+  gap: 6px;
+}
+
+.file-changes-stat {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.file-changes-stat--committed {
+  background: #dafbe1;
+  color: #1a7f37;
+}
+
+.file-changes-stat--staged {
+  background: #f0f7ff;
+  color: #0366d6;
+}
+
+.file-changes-stat--modified {
+  background: #fff8c5;
+  color: #9a6700;
+}
+
+.file-changes-stat--untracked {
+  background: #f3f4f6;
+  color: #656d76;
 }
 
 .file-changes-detail__body {
@@ -381,6 +841,7 @@ export default {
   font-size: 10px;
   width: 14px;
   text-align: center;
+  flex-shrink: 0;
 }
 
 .file-changes-tree__dir-name {
@@ -418,14 +879,19 @@ export default {
   font-family: monospace;
   padding: 0 4px;
   border-radius: 3px;
-  min-width: 24px;
+  min-width: 20px;
   text-align: center;
   line-height: 18px;
 }
 
-.file-changes-tree__file-type--added {
+.file-changes-tree__file-type--committed {
   background: #dafbe1;
   color: #1a7f37;
+}
+
+.file-changes-tree__file-type--staged {
+  background: #f0f7ff;
+  color: #0366d6;
 }
 
 .file-changes-tree__file-type--modified {
@@ -433,22 +899,7 @@ export default {
   color: #9a6700;
 }
 
-.file-changes-tree__file-type--deleted {
-  background: #ffebe9;
-  color: #cf222e;
-}
-
 .file-changes-tree__file-type--untracked {
-  background: #f3f4f6;
-  color: #656d76;
-}
-
-.file-changes-tree__file-type--renamed {
-  background: #f0f7ff;
-  color: #0366d6;
-}
-
-.file-changes-tree__file-type--other {
   background: #f3f4f6;
   color: #656d76;
 }
@@ -484,8 +935,8 @@ export default {
 
 .file-changes-detail__diff-content {
   flex: 1;
-  overflow: auto;
-  padding: 8px;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .file-changes-detail__diff-placeholder {
@@ -512,7 +963,89 @@ export default {
   text-align: right;
 }
 
-/* diff2html 适配 */
+/* ===== CodeMirror MergeView 适配样式 ===== */
+.file-changes-detail__diff-content :deep(.CodeMirror) {
+  height: 100%;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.file-changes-detail__diff-content :deep(.CodeMirror-merge) {
+  height: 100%;
+}
+
+.file-changes-detail__diff-content :deep(.CodeMirror-merge-pane) {
+  height: 100%;
+}
+
+/* 改动行背景色 */
+.file-changes-detail__diff-content :deep(.CodeMirror-merge-r-deleted),
+.file-changes-detail__diff-content :deep(.CodeMirror-merge-l-deleted) {
+  background-color: #fecdd3;
+}
+
+.file-changes-detail__diff-content :deep(.CodeMirror-merge-r-inserted),
+.file-changes-detail__diff-content :deep(.CodeMirror-merge-l-inserted) {
+  background-color: #bbf7d0;
+}
+
+/* 中间连接线区域 */
+.file-changes-detail__diff-content :deep(.CodeMirror-merge-gap) {
+  background: #f6f8fa;
+  border-left: 1px solid #d0d7de;
+  border-right: 1px solid #d0d7de;
+  z-index: 2;
+  min-width: 50px;
+}
+
+/* 连接线路径 — 蓝色填充 + 描边 */
+.file-changes-detail__diff-content :deep(.CodeMirror-merge-l-connect),
+.file-changes-detail__diff-content :deep(.CodeMirror-merge-r-connect) {
+  fill: rgba(3, 102, 214, 0.12);
+  stroke: rgba(3, 102, 214, 0.4);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+
+.file-changes-detail__diff-content :deep(.CodeMirror-gutters) {
+  background: #f6f8fa;
+  border-right: 1px solid #e8ecf1;
+}
+
+/* ===== 纵向对比 CodeMirror 行标记样式 ===== */
+.file-changes-detail__diff-content :deep(.diff-line-added) {
+  background-color: #bbf7d0 !important;
+}
+
+.file-changes-detail__diff-content :deep(.diff-line-removed) {
+  background-color: #fecdd3 !important;
+}
+
+.file-changes-detail__diff-content :deep(.diff-gutter-marker) {
+  font-weight: 700;
+  font-size: 14px;
+  width: 16px;
+  text-align: center;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.file-changes-detail__diff-content :deep(.diff-gutter-marker--add) {
+  color: #1a7f37;
+}
+
+.file-changes-detail__diff-content :deep(.diff-gutter-marker--del) {
+  color: #cf222e;
+}
+
+/* diff2html 纵向对比适配 */
+.file-changes-detail__diff-content :deep(.d2h-wrapper) {
+  height: 100%;
+  overflow: auto;
+}
+
 .file-changes-detail__diff-content :deep(.d2h-code-line-ctn) {
   white-space: pre-wrap;
   word-break: break-all;

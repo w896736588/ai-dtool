@@ -385,6 +385,7 @@ func taskWorkflow(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/task/workflow/zcode/delete`, controller.TaskWorkflowZcodeDelete)
 	tGin.GinPost(`/api/task/workflow/file-changes/summary`, controller.TaskWorkflowFileChangesSummary)
 	tGin.GinPost(`/api/task/workflow/file-changes/detail`, controller.TaskWorkflowFileChangesDetail)
+	tGin.GinPost(`/api/task/workflow/file-changes/file-diff`, controller.TaskWorkflowFileChangesFileDiff)
 }
 
 func shellOut(tGin *p_gin.Gin) {

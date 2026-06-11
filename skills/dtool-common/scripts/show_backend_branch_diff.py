@@ -14,6 +14,10 @@ python show_backend_branch_diff.py <基分支> [排除目录1] [排除目录2] [
 import subprocess
 import sys
 
+# Windows 中文环境下 stdout 默认编码为 GBK，导致 UTF-8 输出乱码。
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 BACKEND_PATHSPECS = [
     "*.php",
     "*.go",
@@ -195,21 +199,45 @@ def main() -> int:
 
     pathspecs = build_pathspecs(normalized_excludes)
 
-    name_result = git_run(["diff", "--name-only", merge_base, "HEAD", "--", *pathspecs])
-    if name_result.returncode != 0:
-        print(f"获取改动文件列表失败: {name_result.stderr.strip()}", file=sys.stderr)
-        sys.exit(1)
+    # 收集改动文件：已提交 + 暂存区 + 工作区
+    files = set()
 
-    if not name_result.stdout.strip():
+    committed_names = git_run(["diff", "--name-only", merge_base, "HEAD", "--", *pathspecs])
+    if committed_names.returncode == 0:
+        files.update(f for f in committed_names.stdout.strip().splitlines() if f.strip())
+
+    cached_names = git_run(["diff", "--name-only", "--cached", "--", *pathspecs])
+    if cached_names.returncode == 0:
+        files.update(f for f in cached_names.stdout.strip().splitlines() if f.strip())
+
+    wt_names = git_run(["diff", "--name-only", "--", *pathspecs])
+    if wt_names.returncode == 0:
+        files.update(f for f in wt_names.stdout.strip().splitlines() if f.strip())
+
+    if not files:
         print("当前分支没有匹配范围内的改动")
         return 0
 
-    diff_result = git_run(["diff", merge_base, "HEAD", "--", *pathspecs])
-    if diff_result.returncode != 0:
-        print(f"获取 diff 内容失败: {diff_result.stderr.strip()}", file=sys.stderr)
-        sys.exit(1)
+    # 逐文件获取 diff（兼容未提交改动）
+    diff_parts = []
+    for f in sorted(files):
+        # 优先已提交的 diff
+        r = git_run(["diff", merge_base, "HEAD", "--", f])
+        if r.returncode == 0 and r.stdout.strip():
+            diff_parts.append(r.stdout)
+            continue
+        # 暂存区 diff
+        r = git_run(["diff", "--cached", "--", f])
+        if r.returncode == 0 and r.stdout.strip():
+            diff_parts.append(r.stdout)
+            continue
+        # 工作区 diff
+        r = git_run(["diff", "--", f])
+        if r.returncode == 0 and r.stdout.strip():
+            diff_parts.append(r.stdout)
 
-    sys.stdout.buffer.write(diff_result.stdout.encode("utf-8", errors="replace"))
+    combined = "\n".join(diff_parts)
+    sys.stdout.buffer.write(combined.encode("utf-8", errors="replace"))
     return 0
 
 

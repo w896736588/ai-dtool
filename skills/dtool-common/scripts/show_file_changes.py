@@ -26,6 +26,10 @@ import subprocess
 import sys
 import traceback
 
+# Windows 中文环境下 stdout 默认编码为 GBK，导致 UTF-8 输出乱码。
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 
 def run_git(local_dir: str, *args: str) -> str:
     """在指定目录执行 git 命令，返回 stdout（去除末尾换行）。失败时抛异常。"""
@@ -94,12 +98,29 @@ def extract_file_path(status_line: str) -> str:
 
 
 def get_git_diff(local_dir: str, merge_base: str, file_path: str = None) -> str:
-    """获取 git diff（相对于 merge_base），可选限定文件路径。"""
-    args = ["diff", merge_base, "HEAD"]
-    if file_path:
-        args.extend(["--", file_path])
-    else:
-        args.extend(["--", ".", ":(exclude)**/dist/**"])
+    """获取 git diff（相对于 merge_base），可选限定文件路径。包含暂存区和工作区改动。"""
+    path_args = ["--", file_path] if file_path else ["--", ".", ":(exclude)**/dist/**"]
+
+    # 1) 已提交的 diff
+    args = ["diff", merge_base, "HEAD"] + path_args
+    result = subprocess.run(
+        ["git", "-C", local_dir] + args,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout
+
+    # 2) 暂存区 diff
+    args = ["diff", "--cached"] + path_args
+    result = subprocess.run(
+        ["git", "-C", local_dir] + args,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout
+
+    # 3) 工作区 diff
+    args = ["diff"] + path_args
     result = subprocess.run(
         ["git", "-C", local_dir] + args,
         capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -113,11 +134,25 @@ def get_git_diff(local_dir: str, merge_base: str, file_path: str = None) -> str:
 def get_all_files_diff(local_dir: str, merge_base: str) -> dict:
     """
     逐文件获取 diff，返回 { "relative/path": "diff text" }。
+    包含已提交、暂存区和工作区的改动。
     """
-    changed = run_git(local_dir, "diff", "--name-only", merge_base, "HEAD", "--", ".", ":(exclude)**/dist/**")
-    files = [f.strip() for f in changed.splitlines() if f.strip()]
+    exclude = ["--", ".", ":(exclude)**/dist/**"]
+    files = set()
+
+    # 已提交
+    committed = run_git(local_dir, "diff", "--name-only", merge_base, "HEAD", *exclude)
+    files.update(f.strip() for f in committed.splitlines() if f.strip())
+
+    # 暂存区
+    cached = run_git(local_dir, "diff", "--name-only", "--cached", *exclude)
+    files.update(f.strip() for f in cached.splitlines() if f.strip())
+
+    # 工作区
+    wt = run_git(local_dir, "diff", "--name-only", *exclude)
+    files.update(f.strip() for f in wt.splitlines() if f.strip())
+
     diffs = {}
-    for f in files:
+    for f in sorted(files):
         try:
             diffs[f] = get_git_diff(local_dir, merge_base, f)
         except Exception as e:

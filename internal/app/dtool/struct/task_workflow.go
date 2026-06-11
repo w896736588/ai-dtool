@@ -160,14 +160,26 @@ type AgentChatMarkReadRequest struct {
 	ChatID int `json:"chat_id"`
 }
 
+// TaskWorkflowFileChangesSummaryItem 文件变更汇总请求的单个目录条目。
+type TaskWorkflowFileChangesSummaryItem struct {
+	LocalDir     string `json:"local_dir"`
+	ParentBranch string `json:"parent_branch"`
+}
+
 // TaskWorkflowFileChangesSummaryRequest 获取文件变更汇总请求。
 type TaskWorkflowFileChangesSummaryRequest struct {
-	LocalDirs    []string `json:"local_dirs"`
-	ParentBranch string   `json:"parent_branch"`
+	Items []TaskWorkflowFileChangesSummaryItem `json:"items"`
 }
 
 // TaskWorkflowFileChangesDetailRequest 获取文件变更详情请求。
 type TaskWorkflowFileChangesDetailRequest struct {
 	LocalDir     string `json:"local_dir"`
 	ParentBranch string `json:"parent_branch"`
+}
+
+// TaskWorkflowFileChangesFileDiffRequest 获取单个文件 diff 请求。
+type TaskWorkflowFileChangesFileDiffRequest struct {
+	LocalDir     string `json:"local_dir"`
+	ParentBranch string `json:"parent_branch"`
+	FilePath     string `json:"file_path"`
 }
