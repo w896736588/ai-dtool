@@ -144,6 +144,21 @@ function TaskWorkflowChatListByAgentCli(agentCliId, callBack) {
   }, callBack)
 }
 
+// TaskWorkflowFileChangesSummary 获取文件变更汇总。
+function TaskWorkflowFileChangesSummary(localDirs, callBack) {
+  base.BasePost('/api/task/workflow/file-changes/summary', {
+    local_dirs: localDirs,
+  }, callBack)
+}
+
+// TaskWorkflowFileChangesDetail 获取文件变更详情（含 diff）。
+function TaskWorkflowFileChangesDetail(localDir, parentBranch, callBack) {
+  base.BasePost('/api/task/workflow/file-changes/detail', {
+    local_dir: localDir,
+    parent_branch: parentBranch || '',
+  }, callBack)
+}
+
 export default {
   TaskWorkflowBatchNodeStatus,
   TaskWorkflowCreateOrGet,
@@ -165,4 +180,6 @@ export default {
   TaskWorkflowZcodeDelete,
   TaskWorkflowChatListByPromptType,
   TaskWorkflowChatListByAgentCli,
+  TaskWorkflowFileChangesSummary,
+  TaskWorkflowFileChangesDetail,
 }

@@ -39,6 +39,15 @@ function MemoryFragmentSave(id, title, content, tags, folderName, callBack) {
   }, callBack)
 }
 
+// MemoryFragmentSaveByPath 通过相对路径更新知识片段（含任务归属校验）。
+function MemoryFragmentSaveByPath(taskId, relativePath, content, callBack) {
+  base.BasePost('/api/MemoryFragmentSaveByPath', {
+    task_id: taskId,
+    relative_path: relativePath,
+    content: content,
+  }, callBack)
+}
+
 // MemoryFragmentDelete 删除知识片段。
 function MemoryFragmentDelete(id, callBack) {
   base.BasePost('/api/MemoryFragmentDelete', {
@@ -210,6 +219,7 @@ export default {
   MemoryFragmentList,
   MemoryFragmentInfo,
   MemoryFragmentSave,
+  MemoryFragmentSaveByPath,
   MemoryFragmentDelete,
   MemoryFragmentTrashList,
   MemoryFragmentRestore,

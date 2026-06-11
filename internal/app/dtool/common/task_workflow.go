@@ -870,16 +870,21 @@ func (h *CSqlite) TaskWorkflowChatList(workflowID int) ([]map[string]any, error)
 }
 
 // TaskWorkflowChatMarkRunning 标记对话为运行中（用于继续对话）。
-func (h *CSqlite) TaskWorkflowChatMarkRunning(chatID int64) error {
+// continuePrompt 非空时同步更新 prompt 字段，用于继续对话时保存用户新输入。
+func (h *CSqlite) TaskWorkflowChatMarkRunning(chatID int64, continuePrompt string) error {
 	now := time.Now().Format(`2006-01-02 15:04:05`)
 	gstool.FmtPrintlnLogTime("[db-mark-running] chat_id=%d 准备将状态更新为running，时间=%s", chatID, now)
-	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
-		`id`: chatID,
-	}, map[string]any{
+	updateFields := map[string]any{
 		`is_read`:    agentChatReadYes,
 		`status`:     taskWorkflowChatStatusRunning,
 		`updated_at`: now,
-	}).Exec()
+	}
+	if continuePrompt != `` {
+		updateFields[`prompt`] = continuePrompt
+	}
+	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
+		`id`: chatID,
+	}, updateFields).Exec()
 	if err != nil {
 		gstool.FmtPrintlnLogTime("[db-mark-running] chat_id=%d 更新失败: %v", chatID, err)
 		return err

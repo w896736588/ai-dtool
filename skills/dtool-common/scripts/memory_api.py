@@ -5,19 +5,22 @@
 from api_common import call_api
 
 
-def memory_fragment_update_by_path(relative_path, content):
+def memory_fragment_update_by_path(relative_path, content, task_id):
     """
     通过相对路径更新知识片段内容（不会修改标题）
 
     传入的是相对于 fragments/ 的路径。
+    task_id 为必传参数，后端会校验片段是否属于该任务。
     """
     filename = relative_path.replace("\\", "/").split("/")[-1]
     fragment_id = filename.rsplit(".", 1)[0] if "." in filename else filename
 
-    result = call_api("/api/MemoryFragmentSave", {
-        "id": fragment_id,
+    result = call_api("/api/MemoryFragmentSaveByPath", {
+        "task_id": int(task_id),
+        "relative_path": relative_path,
         "content": content,
     })
+
     if result.get("code") == 0:
         data = result.get("data", {})
         print(f"更新成功: id={data.get('id')}, title={data.get('title')}")

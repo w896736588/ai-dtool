@@ -2189,12 +2189,17 @@ func SetRemoteBranchCheck(c *gin.Context) {
 								cmdShell.Echo(`BRANCH_BEGIN`)
 								cmdShell.GitShowBranch()
 								cmdShell.Echo(`BRANCH_END`)
+								cmdShell.Echo(`UPSTREAM_BEGIN`)
+								cmdShell.GitShowUpstream()
+								cmdShell.Echo(`UPSTREAM_END`)
 								result, runErr := sshClient.RunCommandWait(cmdShell.GetCommand().ToStr(), time.Second*4)
 								if runErr != nil {
 									row[`remote_dir_error`] = `SSH执行失败: ` + runErr.Error()
 								} else {
 									remoteDirBranch := extractBranchBetweenMarkers(result, `BRANCH_BEGIN`, `BRANCH_END`)
+									remoteDirUpstream := extractBranchBetweenMarkers(result, `UPSTREAM_BEGIN`, `UPSTREAM_END`)
 									row[`remote_dir_current_branch`] = remoteDirBranch
+									row[`remote_dir_remote_branch`] = remoteDirUpstream
 									row[`remote_dir_branch_match`] = remoteDirBranch == branchName
 								}
 							}
@@ -2205,7 +2210,12 @@ func SetRemoteBranchCheck(c *gin.Context) {
 							remoteDirBranchCmd := exec.Command(`git`, `-C`, codePath, `rev-parse`, `--abbrev-ref`, `HEAD`)
 							remoteDirBranchOutput, _ := remoteDirBranchCmd.CombinedOutput()
 							remoteDirBranch := strings.TrimSpace(string(remoteDirBranchOutput))
+							// 获取远程工作空间的上游跟踪分支
+							remoteDirUpstreamCmd := exec.Command(`git`, `-C`, codePath, `rev-parse`, `--abbrev-ref`, `@{upstream}`)
+							remoteDirUpstreamOutput, _ := remoteDirUpstreamCmd.CombinedOutput()
+							remoteDirUpstream := strings.TrimSpace(string(remoteDirUpstreamOutput))
 							row[`remote_dir_current_branch`] = remoteDirBranch
+							row[`remote_dir_remote_branch`] = remoteDirUpstream
 							row[`remote_dir_branch_match`] = remoteDirBranch == branchName
 						} else {
 							if codeStatErr != nil {

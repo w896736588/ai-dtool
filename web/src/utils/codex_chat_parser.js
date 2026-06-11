@@ -38,7 +38,7 @@ function parseOneLine(line, messages, currentItems) {
   if (eventType === 'thread.started') {
     messages.push({
       type: 'system_init',
-      text: '会话已创建',
+      text: obj.is_resume ? '继续对话' : '会话已创建',
       model: obj.model || '',
       sessionId: obj.thread_id || '',
     })
@@ -92,6 +92,9 @@ function parseOneLine(line, messages, currentItems) {
     // 后端注入的 system/command 提示词展示（runCodexCommand 推送）
     if (obj.subtype === 'command') {
       messages.push({ type: 'system_command', text: obj.text || '', cliType: obj.cli_type || '', cmdLine: obj.cmd_line || '', collapsed: true })
+    } else if (obj.subtype === 'init') {
+      // 后端注入的会话初始化/继续对话标记（runCodexCommand resume 时推送）
+      messages.push({ type: 'system_init', text: obj.is_resume ? '继续对话' : '会话已创建', model: obj.model || '', sessionId: obj.session_id || '' })
     } else if (obj.subtype === 'task_updated') {
       messages.push(buildSystemTaskMessage(obj))
     } else {

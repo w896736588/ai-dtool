@@ -311,6 +311,7 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/MemoryFragmentList`, controller.MemoryFragmentList)
 	tGin.GinPost(`/api/MemoryFragmentInfo`, controller.MemoryFragmentInfo)
 	tGin.GinPost(`/api/MemoryFragmentSave`, controller.MemoryFragmentSave)
+	tGin.GinPost(`/api/MemoryFragmentSaveByPath`, controller.MemoryFragmentSaveByPath)
 	tGin.GinPost(`/api/MemoryFragmentDelete`, controller.MemoryFragmentDelete)
 	tGin.GinPost(`/api/MemoryFragmentTrashList`, controller.MemoryFragmentTrashList)
 	tGin.GinPost(`/api/MemoryFragmentRestore`, controller.MemoryFragmentRestore)
@@ -382,6 +383,8 @@ func taskWorkflow(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/task/workflow/zcode/save`, controller.TaskWorkflowZcodeSave)
 	tGin.GinPost(`/api/task/workflow/zcode/get`, controller.TaskWorkflowZcodeGet)
 	tGin.GinPost(`/api/task/workflow/zcode/delete`, controller.TaskWorkflowZcodeDelete)
+	tGin.GinPost(`/api/task/workflow/file-changes/summary`, controller.TaskWorkflowFileChangesSummary)
+	tGin.GinPost(`/api/task/workflow/file-changes/detail`, controller.TaskWorkflowFileChangesDetail)
 }
 
 func shellOut(tGin *p_gin.Gin) {

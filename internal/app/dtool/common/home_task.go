@@ -403,6 +403,43 @@ func (h *CSqlite) HomeTaskFragmentReferences(fragmentIDs []string) (map[string][
 	return result, nil
 }
 
+// HomeTaskContainsFragmentID 检查指定知识片段是否属于指定任务。
+// 检查范围包括：tbl_home_task.memory_fragment_id 以及 tbl_task_workflow 中所有 fragment_id 列。
+func (h *CSqlite) HomeTaskContainsFragmentID(homeTaskID int, fragmentID string) (bool, error) {
+	if homeTaskID <= 0 || strings.TrimSpace(fragmentID) == `` {
+		return false, nil
+	}
+	fragmentID = strings.TrimSpace(fragmentID)
+
+	// 1. 检查 tbl_home_task.memory_fragment_id。
+	homeTask, err := h.Client.QuickQuery(`tbl_home_task`, `memory_fragment_id`, map[string]any{
+		`id`: homeTaskID,
+	}).One()
+	if err == nil && homeTask != nil {
+		if strings.TrimSpace(cast.ToString(homeTask[`memory_fragment_id`])) == fragmentID {
+			return true, nil
+		}
+	}
+
+	// 2. 检查 tbl_task_workflow 中所有 fragment_id 列。
+	workflowCols := TaskWorkflowFragmentColumns()
+	workflow, wfErr := h.Client.QuickQuery(`tbl_task_workflow`, strings.Join(workflowCols, `,`)+`, fragment_folder_name`, map[string]any{
+		`home_task_id`: homeTaskID,
+	}).One()
+	if wfErr != nil || workflow == nil {
+		return false, nil
+	}
+	folderName := cast.ToString(workflow[`fragment_folder_name`])
+	for _, col := range workflowCols {
+		ref := TaskWorkflowParseFragmentRef(cast.ToString(workflow[col]), folderName)
+		if ref.FileID != `` && ref.FileID == fragmentID {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // HomeTaskLastDevConfigByGitId 根据 git_id 查找最近一个包含该 Git 仓库的任务，返回匹配的 dev_config。
 func (h *CSqlite) HomeTaskLastDevConfigByGitId(gitID int) (map[string]any, error) {
 	if gitID <= 0 {

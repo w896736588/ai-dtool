@@ -1032,6 +1032,18 @@ export default {
     handleRemoteUpsertFragment(fragmentId, fragment) {
       const targetTab = this.fragmentTabs.find(item => this.normalizeFragmentId(item.fragment.id) === fragmentId)
       if (targetTab && targetTab.dirty) {
+        // 中文注释：当 SSE 携带的片段内容与本地草稿一致时，说明是本地保存操作的 SSE 回传，
+        // 此时静默同步即可，避免竞态条件导致误弹警告。
+        // English comment: When SSE content matches the local draft, it's our own save being echoed back.
+        // Silently sync instead of warning to avoid a race-condition false alarm.
+        if (fragment && typeof fragment === 'object' && fragment.content !== undefined) {
+          const localContent = (targetTab.fragment.content || '').trim()
+          const remoteContent = (fragment.content || '').trim()
+          if (localContent === remoteContent) {
+            this.upsertFragmentTab(fragment, false)
+            return
+          }
+        }
         // 中文注释：本地有未保存改动时只提醒，不直接覆盖，避免把用户草稿冲掉。
         // English comment: Warn instead of overwriting when the local editor still has unsaved draft changes.
         this.$helperNotify.warning('当前片段已被其他操作更新，请先处理本地未保存内容')
@@ -1245,6 +1257,10 @@ export default {
         return
       }
       if (!this.routeFragmentId) {
+        // 如果当前已经在查看某个知识片段 tab，不要强行切回首页，避免打断用户操作。
+        if (isMemoryFragmentTabName(this.activeTab)) {
+          return
+        }
         this.activeTab = HOME_TAB_NAME
         return
       }
@@ -1681,17 +1697,19 @@ export default {
     upsertFragmentTab(fragment, switchTab) {
       const tabName = `fragment-${fragment.id}`
       const normalized = this.normalizeFragment(fragment)
-      const existingIndex = this.fragmentTabs.findIndex(item => item.name === tabName)
-      const newTab = {
-        name: tabName,
-        fragment: normalized,
-        savedFragment: this.cloneFragment(normalized),
-        dirty: false,
-      }
-      if (existingIndex >= 0) {
-        this.fragmentTabs.splice(existingIndex, 1, newTab)
+      const existingTab = this.fragmentTabs.find(item => item.name === tabName)
+      if (existingTab) {
+        // 原地更新现有 tab，避免 splice 导致 el-tabs 检测到当前 tab 暂时消失而重置 activeTab。
+        existingTab.fragment = normalized
+        existingTab.savedFragment = this.cloneFragment(normalized)
+        existingTab.dirty = false
       } else {
-        this.fragmentTabs.push(newTab)
+        this.fragmentTabs.push({
+          name: tabName,
+          fragment: normalized,
+          savedFragment: this.cloneFragment(normalized),
+          dirty: false,
+        })
       }
       if (switchTab) {
         this.activeTab = tabName
@@ -1748,6 +1766,16 @@ export default {
       }
       this.loadTrashList()
       this.rerunSubmittedSearch()
+      // 防御：确保保存完成后不会因 el-tabs 内部重评估或异步回调副作用而跳到首页。
+      // 使用两次 $nextTick 保证在 Vue 响应式更新和 DOM 重渲染完成后再校验。
+      const savedTab = tabName
+      this.$nextTick(() => {
+        this.$nextTick(() => {
+          if (this.activeTab !== savedTab && this.fragmentTabs.some(t => t.name === savedTab)) {
+            this.activeTab = savedTab
+          }
+        })
+      })
     },
     // handleFragmentDeleted 删除片段后清理 tab 和列表。
     handleFragmentDeleted(fragmentId) {

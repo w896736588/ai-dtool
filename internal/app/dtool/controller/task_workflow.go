@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -1619,6 +1620,8 @@ func buildTaskWorkflowPlaceholderMap(c *gin.Context, homeTaskInfo map[string]any
 		`{网页标签}`:               taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo, `smart_link_label`),
 		`{账号}`:                 taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo, `smart_link_account`),
 	}
+	// 内置占位符 {任务名称}，替换为当前任务的名称
+	result[`{任务名称}`] = cast.ToString(homeTaskInfo[`name`])
 	// 内置占位符 {工作流程ID}，替换为工作流程任务的 ID
 	result[`{工作流程ID}`] = cast.ToString(workflowInfo[`id`])
 	// 内置占位符 {任务ID}，替换为该工作流程关联的任务ID（tbl_home_task表的id）
@@ -2194,8 +2197,8 @@ func taskWorkflowBuildPlainTextFragmentRelativePath(workflowInfo map[string]any)
 	if filePath == `` {
 		return ``
 	}
-	fragmentsDir := filepath.Join(component.MemoryRuntime.Config().Dir, `fragments`)
-	relPath, err := filepath.Rel(fragmentsDir, filePath)
+	memoryDir := component.MemoryRuntime.Config().Dir
+	relPath, err := filepath.Rel(memoryDir, filePath)
 	if err != nil {
 		return ``
 	}
@@ -2267,7 +2270,7 @@ func taskWorkflowBuildDesignPlanShareURL(c *gin.Context, workflowInfo map[string
 	return shareURL.String()
 }
 
-// taskWorkflowBuildDesignPlanFragmentRelativePath 为需求设计方案知识片段构建相对于 fragments/ 目录的相对路径。
+// taskWorkflowBuildDesignPlanFragmentRelativePath 为需求设计方案知识片段构建相对路径。
 func taskWorkflowBuildDesignPlanFragmentRelativePath(workflowInfo map[string]any) string {
 	fragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`design_plan_requirement_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo))
 	if fragmentRef.FileID == `` || component.MemoryRuntime == nil {
@@ -2284,8 +2287,8 @@ func taskWorkflowBuildDesignPlanFragmentRelativePath(workflowInfo map[string]any
 	if filePath == `` {
 		return ``
 	}
-	fragmentsDir := filepath.Join(component.MemoryRuntime.Config().Dir, `fragments`)
-	relPath, err := filepath.Rel(fragmentsDir, filePath)
+	memoryDir := component.MemoryRuntime.Config().Dir
+	relPath, err := filepath.Rel(memoryDir, filePath)
 	if err != nil {
 		return ``
 	}
@@ -2499,6 +2502,7 @@ func extractSessionID(line string) string {
 
 // startChatCommand 根据 chatID 启动 CLI 命令 goroutine。
 // 从 DB 加载 chat 配置后根据 cli_type 分发到不同的 CLI 执行器。
+// 当 sessionID 非空时，视为继续对话（isResume=true），CLI 使用 --resume 恢复会话。
 func startChatCommand(chatID int64) {
 	chatInfo, err := common.DbMain.TaskWorkflowChatInfo(chatID)
 	if err != nil || len(chatInfo) == 0 {
@@ -2509,6 +2513,8 @@ func startChatCommand(chatID int64) {
 	prompt := cast.ToString(chatInfo[`prompt`])
 	sessionID := cast.ToString(chatInfo[`session_id`])
 	fromType := cast.ToString(chatInfo[`from_type`])
+	// sessionID 非空表示继续对话（resume），用于正确标记 system_init 的 is_resume 字段
+	isResume := sessionID != ``
 
 	cliType := cast.ToString(chatInfo[`cli_type`])
 	switch cliType {
@@ -2524,7 +2530,7 @@ func startChatCommand(chatID int64) {
 			}
 		}
 		selectedModelName := strings.TrimSpace(cast.ToString(chatInfo[`model_name`]))
-		go runCodexCommand(chatID, fromType, localDir, prompt, false, sessionID, configJson, selectedModelName)
+		go runCodexCommand(chatID, fromType, localDir, prompt, isResume, sessionID, configJson, selectedModelName)
 	default:
 		settingsPath := cast.ToString(chatInfo[`settings_path`])
 		modelName, baseURL, apiKey := ``, ``, ``
@@ -2541,7 +2547,7 @@ func startChatCommand(chatID int64) {
 		thinkingIntensity := cast.ToString(chatInfo[`thinking_intensity`])
 		thinkingBudget := define.ThinkingIntensityBudgetMap[thinkingIntensity]
 		thinkingEffort := define.ThinkingIntensityEffortMap[thinkingIntensity]
-		go runClaudeCommand(chatID, fromType, localDir, prompt, false, sessionID, baseURL, apiKey, modelName, settingsPath, thinkingEffort, thinkingBudget)
+		go runClaudeCommand(chatID, fromType, localDir, prompt, isResume, sessionID, baseURL, apiKey, modelName, settingsPath, thinkingEffort, thinkingBudget)
 	}
 }
 
@@ -2731,12 +2737,13 @@ func TaskWorkflowChatContinue(c *gin.Context) {
 	}
 	gstool.FmtPrintlnLogTime("[chat-continue] chat_id=%d 确认无活跃goroutine", chatID)
 
-	if err := common.DbMain.TaskWorkflowChatMarkRunning(chatID); err != nil {
+	continuePrompt := strings.TrimSpace(req.Prompt)
+	if err := common.DbMain.TaskWorkflowChatMarkRunning(chatID, continuePrompt); err != nil {
 		gstool.FmtPrintlnLogTime("[chat-continue] chat_id=%d MarkRunning 失败: %v", chatID, err)
 		gsgin.GinResponseError(c, `更新对话状态失败: `+err.Error(), nil)
 		return
 	}
-	gstool.FmtPrintlnLogTime("[chat-continue] chat_id=%d 状态已设为 running（旧状态: %s）", chatID, currentStatus)
+	gstool.FmtPrintlnLogTime("[chat-continue] chat_id=%d 状态已设为 running（旧状态: %s），prompt已更新长度=%d", chatID, currentStatus, len(continuePrompt))
 
 	// 立即验证DB状态是否真正更新为running
 	verifyInfo, verifyErr := common.DbMain.TaskWorkflowChatInfo(chatID)
@@ -3690,6 +3697,20 @@ func runCodexCommand(chatID int64, fromType string, localDir, prompt string, isR
 		sendLine(string(promptJSON))
 	}
 
+	// 继续对话时注入 system_init 行，前端解析为"继续对话"分隔气泡
+	// Codex resume 不输出 thread.started 事件，需要手动补充
+	if isResume {
+		initJSON, _ := json.Marshal(map[string]any{
+			`type`:        `system`,
+			`subtype`:     `init`,
+			`is_resume`:   true,
+			`continue_at`: time.Now().UnixMilli(),
+			`model`:       selectedModelName,
+			`session_id`:  sessionID,
+		})
+		sendLine(string(initJSON))
+	}
+
 	stopped := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	chatCancelFuncs.Store(chatID, func() {
@@ -4024,4 +4045,206 @@ func extractAssistantText(data map[string]any) string {
 		}
 	}
 	return strings.Join(texts, "\n")
+}
+
+// taskWorkflowFileChangesSummary 获取指定本地目录的文件变更汇总（快速，仅 git status --short 分类统计）。
+func taskWorkflowFileChangesSummary(localDir string) map[string]any {
+	result := map[string]any{
+		`local_dir`:   localDir,
+		`error`:       ``,
+		`summary`:     map[string]int{`added`: 0, `modified`: 0, `deleted`: 0, `renamed`: 0, `untracked`: 0, `other`: 0, `total`: 0},
+		`files`:       []map[string]string{},
+		`has_changes`: false,
+	}
+
+	info, statErr := os.Stat(localDir)
+	if statErr != nil || !info.IsDir() {
+		result[`error`] = `目录不存在`
+		return result
+	}
+
+	cmd := exec.Command(`git`, `-C`, localDir, `status`, `--short`)
+	output, runErr := cmd.CombinedOutput()
+	if runErr != nil {
+		msg := strings.TrimSpace(string(output))
+		if msg == `` {
+			msg = runErr.Error()
+		}
+		result[`error`] = msg
+		return result
+	}
+
+	trimmed := strings.TrimSpace(string(output))
+	if trimmed == `` {
+		return result
+	}
+
+	summary := map[string]int{`added`: 0, `modified`: 0, `deleted`: 0, `renamed`: 0, `untracked`: 0, `other`: 0, `total`: 0}
+	files := make([]map[string]string, 0)
+
+	lines := strings.Split(trimmed, "\n")
+	for _, line := range lines {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) == `` {
+			continue
+		}
+		cat, filePath := categorizeGitStatusLine(line)
+		summary[cat]++
+		summary[`total`]++
+		files = append(files, map[string]string{
+			`path`:        filePath,
+			`type`:        cat,
+			`status_code`: line[:min(2, len(line))],
+		})
+	}
+
+	result[`summary`] = summary
+	result[`files`] = files
+	result[`has_changes`] = summary[`total`] > 0
+	return result
+}
+
+// categorizeGitStatusLine 解析 git status --short 的单行输出，返回分类和文件路径。
+func categorizeGitStatusLine(line string) (category string, filePath string) {
+	if len(line) < 3 {
+		return `other`, strings.TrimSpace(line)
+	}
+	code := strings.TrimSpace(line[:2])
+	rest := strings.TrimSpace(line[3:])
+
+	// 处理重命名 "R  old -> new"
+	if idx := strings.Index(rest, ` -> `); idx >= 0 {
+		rest = strings.TrimSpace(rest[idx+4:])
+		return `renamed`, rest
+	}
+
+	filePath = rest
+
+	switch {
+	case code == `??`:
+		return `untracked`, filePath
+	case code == `A `, code == `AM`, code == `A?`:
+		return `added`, filePath
+	case code == `D `, code == ` D`, code == `DM`, code == `MD`:
+		return `deleted`, filePath
+	case code == ` M`, code == `M `, code == `MM`:
+		return `modified`, filePath
+	case code == `R `, code == ` R`:
+		return `renamed`, filePath
+	default:
+		return `other`, filePath
+	}
+}
+
+// TaskWorkflowFileChangesSummary 获取文件变更汇总（按本地目录批量）。
+func TaskWorkflowFileChangesSummary(c *gin.Context) {
+	var req _struct.TaskWorkflowFileChangesSummaryRequest
+	_ = gsgin.GinPostBody(c, &req)
+
+	if len(req.LocalDirs) == 0 {
+		gsgin.GinResponseError(c, `local_dirs 不能为空`, nil)
+		return
+	}
+
+	result := make(map[string]map[string]any, len(req.LocalDirs))
+	for _, dir := range req.LocalDirs {
+		dir = strings.TrimSpace(dir)
+		if dir == `` {
+			continue
+		}
+		result[dir] = taskWorkflowFileChangesSummary(dir)
+	}
+
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`dirs`: result,
+	})
+}
+
+// TaskWorkflowFileChangesDetail 获取文件变更详情（调用 dtool-common 脚本获取完整 diff）。
+func TaskWorkflowFileChangesDetail(c *gin.Context) {
+	var req _struct.TaskWorkflowFileChangesDetailRequest
+	_ = gsgin.GinPostBody(c, &req)
+
+	req.LocalDir = strings.TrimSpace(req.LocalDir)
+	if req.LocalDir == `` {
+		gsgin.GinResponseError(c, `local_dir 不能为空`, nil)
+		return
+	}
+
+	req.ParentBranch = strings.TrimSpace(req.ParentBranch)
+
+	result := taskWorkflowFileChangesSummary(req.LocalDir)
+	if result[`error`] != nil && result[`error`] != `` {
+		gsgin.GinResponseError(c, cast.ToString(result[`error`]), result)
+		return
+	}
+
+	// 如果有父分支且存在变更，尝试获取 diff
+	if req.ParentBranch != `` {
+		diffResult, err := taskWorkflowGetFileDiffs(os.Getenv(`WORKSPACE`), req.LocalDir, req.ParentBranch)
+		if err != nil {
+			result[`diff_error`] = err.Error()
+		} else {
+			result[`diffs`] = diffResult
+		}
+	}
+
+	gsgin.GinResponseSuccess(c, ``, result)
+}
+
+// taskWorkflowGetFileDiffs 调用 Python 脚本获取文件变更的 diff 详情。
+// workspaceRoot 是 dtool 项目根目录（用于定位脚本），localDir 是 git 仓库目录。
+func taskWorkflowGetFileDiffs(workspaceRoot, localDir, parentBranch string) (map[string]string, error) {
+	if workspaceRoot == `` {
+		workspaceRoot = getDefaultWorkspaceRoot()
+	}
+	scriptPath := filepath.Join(workspaceRoot, `skills`, `dtool-common`, `scripts`, `show_file_changes.py`)
+
+	args := []string{scriptPath, localDir, parentBranch, `--with-diffs`}
+	cmd := exec.Command(`python`, args...)
+
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		errMsg := stderr.String()
+		if errMsg == `` {
+			errMsg = err.Error()
+		}
+		return nil, fmt.Errorf(`执行 Python 脚本失败: %s`, strings.TrimSpace(errMsg))
+	}
+
+	var result map[string]any
+	if jsonErr := json.Unmarshal([]byte(stdout.String()), &result); jsonErr != nil {
+		return nil, fmt.Errorf(`解析脚本输出失败: %s`, jsonErr.Error())
+	}
+
+	if errMsg, ok := result[`error`].(string); ok && errMsg != `` {
+		return nil, fmt.Errorf(errMsg)
+	}
+
+	if diffErr, ok := result[`diff_error`].(string); ok && diffErr != `` {
+		return nil, fmt.Errorf(diffErr)
+	}
+
+	diffsRaw, ok := result[`diffs`].(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+
+	diffs := make(map[string]string, len(diffsRaw))
+	for k, v := range diffsRaw {
+		diffs[k] = cast.ToString(v)
+	}
+	return diffs, nil
+}
+
+// getDefaultWorkspaceRoot 获取默认的工作空间根目录。
+func getDefaultWorkspaceRoot() string {
+	if wd, err := os.Getwd(); err == nil {
+		return wd
+	}
+	return `.`
 }

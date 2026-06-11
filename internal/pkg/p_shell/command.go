@@ -50,6 +50,11 @@ func (h *Command) Echo(msg string) *Command {
 	return h
 }
 
+func (h *Command) GitShowUpstream() *Command {
+	h.SetCommand(h.sudo + `git rev-parse --abbrev-ref @{upstream} 2>/dev/null`)
+	return h
+}
+
 func (h *Command) GitShowOriginBranch() *Command {
 	h.SetCommand(h.sudo + `git ls-remote --heads origin "$(` + h.sudo + ` git symbolic-ref --short -q HEAD)"`)
 	return h
