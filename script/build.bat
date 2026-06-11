@@ -59,8 +59,6 @@ echo [3/5] Copy runtime resources
 copy /Y "%ROOT_DIR%\go.mod" "%PKG_DIR%\go.mod" >nul || goto :error
 if not exist "%PKG_DIR%\config\dtool" mkdir "%PKG_DIR%\config\dtool" || goto :error
 REM Copy only company.ini and rename it to config.ini
-copy /Y "%ROOT_DIR%\config\dtool\company.ini" "%PKG_DIR%\config\dtool\config.ini" >nul || goto :error
-copy /Y "%ROOT_DIR%\config\dtool\frog.db" "%PKG_DIR%\config\dtool\frog.db" >nul || goto :error
 xcopy "%ROOT_DIR%\web\dist" "%PKG_DIR%\web\" /E /I /Y >nul || goto :error
 xcopy "%ROOT_DIR%\internal\pkg\p_js" "%PKG_DIR%\internal\pkg\p_js" /E /I /Y >nul || goto :error
 xcopy "%ROOT_DIR%\internal\app\dtool\database" "%PKG_DIR%\internal\app\dtool\database" /E /I /Y >nul || goto :error

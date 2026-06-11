@@ -10,7 +10,6 @@ import (
 
 	"github.com/spf13/cast"
 	"github.com/w896736588/go-tool/gsdb"
-	"github.com/w896736588/go-tool/gsssh"
 	"github.com/w896736588/go-tool/gstool"
 )
 
@@ -49,18 +48,18 @@ func (h *TRedis) GetClient(redisConfig map[string]any, call *p_common.Call) (*gs
 		if sshConfigErr != nil {
 			return nil, gstool.Error(`获取ssh配置失败 %s`, sshConfigErr.Error())
 		}
-		gsRedis.SshBridge = gsssh.NewSshBridge(gsssh.NewSsh(&gsssh.SshConfig{
-			Name:     cast.ToString(sshConfig[`name`]),
-			Host:     cast.ToString(sshConfig[`host`]),
-			Port:     cast.ToString(sshConfig[`port`]),
-			UserName: cast.ToString(sshConfig[`username`]),
-			Password: cast.ToString(sshConfig[`password`]),
-		}))
+		gstool.FmtPrintlnLogTime(`[p_db.redis] create ssh bridge redis_id=%s ssh_id=%s target=%s:%d`,
+			redisId, cast.ToString(redisConfig[`ssh_id`]), cast.ToString(redisConfig[`host`]), cast.ToInt64(redisConfig[`port`]))
+		gsRedis.SshBridge = NewConfiguredSshBridge(sshConfig)
 	}
+	gstool.FmtPrintlnLogTime(`[p_db.redis] CreateConn begin redis_id=%s host=%s port=%d use_ssh=%v`,
+		redisId, cast.ToString(redisConfig[`host`]), cast.ToInt64(redisConfig[`port`]), cast.ToInt(redisConfig[`ssh_id`]) != 0)
 	connErr := gsRedis.CreateConn()
 	if connErr != nil {
+		gstool.FmtPrintlnLogTime(`[p_db.redis] CreateConn failed redis_id=%s err=%s`, redisId, connErr.Error())
 		return nil, connErr
 	}
+	gstool.FmtPrintlnLogTime(`[p_db.redis] CreateConn success redis_id=%s`, redisId)
 	h.RedisClientMap[redisId] = gsRedis
 	return gsRedis, nil
 }

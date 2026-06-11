@@ -38,3 +38,5 @@ node
 /skills/superpowers/
 .superpowers
 *.test.mjs
+*_test_*.py
+*tmp*.py

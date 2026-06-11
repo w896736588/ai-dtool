@@ -870,16 +870,36 @@ func (h *CSqlite) TaskWorkflowChatList(workflowID int) ([]map[string]any, error)
 }
 
 // TaskWorkflowChatMarkRunning 标记对话为运行中（用于继续对话）。
-func (h *CSqlite) TaskWorkflowChatMarkRunning(chatID int64) error {
+// continuePrompt 非空时同步更新 prompt 字段，用于继续对话时保存用户新输入。
+func (h *CSqlite) TaskWorkflowChatMarkRunning(chatID int64, continuePrompt string) error {
 	now := time.Now().Format(`2006-01-02 15:04:05`)
-	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
-		`id`: chatID,
-	}, map[string]any{
+	gstool.FmtPrintlnLogTime("[db-mark-running] chat_id=%d 准备将状态更新为running，时间=%s", chatID, now)
+	updateFields := map[string]any{
 		`is_read`:    agentChatReadYes,
 		`status`:     taskWorkflowChatStatusRunning,
 		`updated_at`: now,
-	}).Exec()
-	return err
+	}
+	if continuePrompt != `` {
+		updateFields[`prompt`] = continuePrompt
+	}
+	_, err := h.Client.QuickUpdate(agentChatTableName, map[string]any{
+		`id`: chatID,
+	}, updateFields).Exec()
+	if err != nil {
+		gstool.FmtPrintlnLogTime("[db-mark-running] chat_id=%d 更新失败: %v", chatID, err)
+		return err
+	}
+	gstool.FmtPrintlnLogTime("[db-mark-running] chat_id=%d 更新成功", chatID)
+
+	// 立即验证写入是否生效
+	verifyInfo, verifyErr := h.TaskWorkflowChatInfo(chatID)
+	if verifyErr != nil {
+		gstool.FmtPrintlnLogTime("[db-mark-running] chat_id=%d 验证查询失败: %v", chatID, verifyErr)
+	} else {
+		verifyStatus := cast.ToString(verifyInfo[`status`])
+		gstool.FmtPrintlnLogTime("[db-mark-running] chat_id=%d 验证查询状态=%s", chatID, verifyStatus)
+	}
+	return nil
 }
 
 // TaskWorkflowChatMarkInterrupted 标记对话为用户主动中断。
@@ -924,6 +944,17 @@ func (h *CSqlite) AgentChatListByAgentCli(agentCliID int) ([]map[string]any, err
 	rows, err := h.Client.QuickQuery(agentChatTableName, `*`, map[string]any{
 		`from_type`:    AgentChatSourceTypeAgentCli,
 		`agent_cli_id`: agentCliID,
+	}).Order(`id DESC`).All()
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// AgentChatListAll 返回所有 AgentCli 独立执行历史，用于提取共享工作目录。
+func (h *CSqlite) AgentChatListAll() ([]map[string]any, error) {
+	rows, err := h.Client.QuickQuery(agentChatTableName, `*`, map[string]any{
+		`from_type`: AgentChatSourceTypeAgentCli,
 	}).Order(`id DESC`).All()
 	if err != nil {
 		return nil, err

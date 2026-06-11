@@ -267,6 +267,64 @@ func MemoryFragmentSave(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, info)
 }
 
+// MemoryFragmentSaveByPath 通过相对路径更新知识片段，要求传入 task_id 并校验片段是否归属于该任务。
+func MemoryFragmentSaveByPath(c *gin.Context) {
+	memoryDB, ok := memoryDBOrResponse(c)
+	if !ok {
+		return
+	}
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+
+	taskID := cast.ToInt(dataMap[`task_id`])
+	if taskID <= 0 {
+		gsgin.GinResponseError(c, `任务ID不能为空`, nil)
+		return
+	}
+
+	relativePath := strings.TrimSpace(cast.ToString(dataMap[`relative_path`]))
+	if relativePath == `` {
+		gsgin.GinResponseError(c, `片段路径不能为空`, nil)
+		return
+	}
+
+	// 从路径提取 fragment id（与 Python 端 memory_fragment_update_by_path 逻辑一致）
+	filename := strings.ReplaceAll(relativePath, `\`, `/`)
+	if idx := strings.LastIndex(filename, `/`); idx >= 0 {
+		filename = filename[idx+1:]
+	}
+	fragmentID := filename
+	if dotIdx := strings.LastIndex(filename, `.`); dotIdx > 0 {
+		fragmentID = filename[:dotIdx]
+	}
+
+	if fragmentID == `` || fragmentID == `0` {
+		gsgin.GinResponseError(c, `无法从路径中提取片段ID`, nil)
+		return
+	}
+
+	// 校验片段是否属于该任务
+	isOwner, err := common.DbMain.HomeTaskContainsFragmentID(taskID, fragmentID)
+	if err != nil {
+		gsgin.GinResponseError(c, fmt.Sprintf(`校验任务归属失败: %s`, err.Error()), nil)
+		return
+	}
+	if !isOwner {
+		gsgin.GinResponseError(c, `该知识片段不属于指定任务`, nil)
+		return
+	}
+
+	content := cast.ToString(dataMap[`content`])
+	info, saveErr := memoryDB.MemoryFragmentSave(fragmentID, ``, content, nil, ``)
+	if saveErr != nil {
+		gsgin.GinResponseError(c, saveErr.Error(), nil)
+		return
+	}
+	component.MemoryRuntime.ScheduleSync()
+	broadcastMemoryFragmentUpsert(info)
+	gsgin.GinResponseSuccess(c, ``, info)
+}
+
 // MemoryFragmentDelete 软删除知识片段。
 func MemoryFragmentDelete(c *gin.Context) {
 	memoryDB, ok := memoryDBOrResponse(c)
@@ -401,7 +459,7 @@ func broadcastMemoryFragmentEvent(action, fragmentID string, fragment map[string
 	// English comment: Reuse the shared SSE channel so fragment sync does not require a second long-lived connection.
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, memoryFragmentSseStatusPrefix))
-		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
+		if clientID == `` || clientID == item {
 			continue
 		}
 		sse := gsgin.SseGetByClientId(clientID)

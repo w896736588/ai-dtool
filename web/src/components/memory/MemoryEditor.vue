@@ -692,6 +692,8 @@ export default {
         content: this.fragment.content || '',
         file_path: this.fragment.file_path || '',
         tags: Array.isArray(this.fragment.tags) ? [...this.fragment.tags] : [],
+        folder_name: this.fragment.folder_name || 'fragments',
+        folder_label: this.fragment.folder_label || '',
         update_time_desc: this.fragment.update_time_desc || '',
         create_time_desc: this.fragment.create_time_desc || '',
       }

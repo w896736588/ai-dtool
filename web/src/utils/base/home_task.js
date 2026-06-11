@@ -75,6 +75,21 @@ function LocalBranchMismatchDetail(items, callBack) {
   base.BasePost('/api/Set/LocalBranchMismatchDetail', { items: items }, callBack)
 }
 
+// RemoteBranchCheck 批量检查本地目录当前 Git 分支的远程推送状态和同步状态。
+function RemoteBranchCheck(items, callBack) {
+  base.BasePost('/api/Set/RemoteBranchCheck', { items: items }, callBack)
+}
+
+// RemoteBranchPush 推送当前分支并设置上游追踪。
+function RemoteBranchPush(data, callBack) {
+  base.BasePost('/api/Set/RemoteBranchPush', data, callBack)
+}
+
+// RemoteBranchSwitch 通过 git_id 切换远程工作目录的分支。
+function RemoteBranchSwitch(gitId, branchName, callBack) {
+  base.BasePost('/api/GitChangeBranchById', { git_id: gitId, branch_name: branchName }, callBack)
+}
+
 export default {
   HomeTaskList,
   HomeTaskSave,
@@ -91,4 +106,7 @@ export default {
   HomeTaskUnusedLocalDirs,
   LocalBranchBatchCheck,
   LocalBranchMismatchDetail,
+  RemoteBranchCheck,
+  RemoteBranchPush,
+  RemoteBranchSwitch,
 }

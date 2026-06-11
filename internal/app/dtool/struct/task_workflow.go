@@ -159,3 +159,15 @@ type AgentChatListByAgentCliRequest struct {
 type AgentChatMarkReadRequest struct {
 	ChatID int `json:"chat_id"`
 }
+
+// TaskWorkflowFileChangesSummaryRequest 获取文件变更汇总请求。
+type TaskWorkflowFileChangesSummaryRequest struct {
+	LocalDirs    []string `json:"local_dirs"`
+	ParentBranch string   `json:"parent_branch"`
+}
+
+// TaskWorkflowFileChangesDetailRequest 获取文件变更详情请求。
+type TaskWorkflowFileChangesDetailRequest struct {
+	LocalDir     string `json:"local_dir"`
+	ParentBranch string `json:"parent_branch"`
+}

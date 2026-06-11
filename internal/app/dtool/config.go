@@ -509,16 +509,23 @@ func InitComponent() {
 
 func Stop() {
 	fmt.Println(`停止`)
+	gstool.FmtPrintlnLogTime(`退出流程: 开始停止服务`)
 	// 停止Shell连接状态广播器
 	if controller.ShellConnectionsBroadcasterInstance != nil {
+		gstool.FmtPrintlnLogTime(`退出流程: 停止 ShellConnectionsBroadcaster`)
 		controller.ShellConnectionsBroadcasterInstance.Stop()
+		gstool.FmtPrintlnLogTime(`退出流程: ShellConnectionsBroadcaster 已停止`)
 	}
+	gstool.FmtPrintlnLogTime(`退出流程: 开始停止 Gin，共 %d 个实例`, len(component.TGins))
 	task := gstask.NewTask()
 	for key, tGin := range component.TGins {
+		port := tGin.Port
 		task.Add(gstask.CallbackFunc{
 			Id: cast.ToString(key),
 			Func: func() *gstask.Result {
+				gstool.FmtPrintlnLogTime(`退出流程: Gin[%s] 开始停止`, port)
 				_ = tGin.GinStop(1)
+				gstool.FmtPrintlnLogTime(`退出流程: Gin[%s] 已停止`, port)
 				return &gstask.Result{
 					Result: nil,
 					Err:    nil,
@@ -528,11 +535,25 @@ func Stop() {
 		})
 	}
 	task.RunAll()
+	gstool.FmtPrintlnLogTime(`退出流程: 所有 Gin 停止完成`)
+	gstool.FmtPrintlnLogTime(`退出流程: 开始停止 CronScheduler`)
 	business.StopCronScheduler()
+	gstool.FmtPrintlnLogTime(`退出流程: CronScheduler 已停止`)
+	gstool.FmtPrintlnLogTime(`退出流程: 开始停止 BrowserPortPool`)
 	controller.ShutdownBrowserPortPool()
-	_ = component.PlaywrightClient.Log.Close()
-	if component.VariableClient != nil && component.VariableClient.GetLog() != nil {
-		_ = component.VariableClient.GetLog().Close()
+	gstool.FmtPrintlnLogTime(`退出流程: BrowserPortPool 已停止`)
+	if component.PlaywrightClient != nil && component.PlaywrightClient.Log != nil {
+		gstool.FmtPrintlnLogTime(`退出流程: 开始关闭 Playwright 日志`)
+		_ = component.PlaywrightClient.Log.Close()
+		gstool.FmtPrintlnLogTime(`退出流程: Playwright 日志已关闭`)
 	}
-	_ = component.GsLog.Close()
+	if component.VariableClient != nil && component.VariableClient.GetLog() != nil {
+		gstool.FmtPrintlnLogTime(`退出流程: 开始关闭 Variable 日志`)
+		_ = component.VariableClient.GetLog().Close()
+		gstool.FmtPrintlnLogTime(`退出流程: Variable 日志已关闭`)
+	}
+	if component.GsLog != nil {
+		gstool.FmtPrintlnLogTime(`退出流程: 开始关闭主日志`)
+		_ = component.GsLog.Close()
+	}
 }

@@ -725,7 +725,7 @@ func broadcastChromeDevtoolsPortStatusChange() {
 
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, chromeDevtoolsPortStatusSsePrefix))
-		if clientID == "" || clientID == item || isChatStreamSseClient(clientID) {
+		if clientID == "" || clientID == item {
 			continue
 		}
 		sse := gsgin.SseGetByClientId(clientID)

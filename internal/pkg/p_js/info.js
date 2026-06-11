@@ -61,7 +61,7 @@
         /* ========== 统一漂亮样式 ========== */
         Object.assign(floater.style, {
             position: 'fixed',
-            zIndex: '9999',
+            zIndex: '1000',
             padding: '10px 14px',
             fontSize: '13px',
             fontFamily: 'system-ui, Segoe UI, Roboto, sans-serif',

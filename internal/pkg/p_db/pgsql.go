@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cast"
 	"github.com/w896736588/go-tool/gsdb"
-	"github.com/w896736588/go-tool/gsssh"
 	"github.com/w896736588/go-tool/gstool"
 )
 
@@ -59,18 +58,18 @@ func (h *TPgsql) GetClient(dbConfig map[string]any, call *p_common.Call) (*gsdb.
 		if sshConfigErr != nil {
 			return nil, gstool.Error(`获取ssh配置失败 %s`, sshConfigErr.Error())
 		}
-		gsPgsql.SshBridge = gsssh.NewSshBridge(gsssh.NewSsh(&gsssh.SshConfig{
-			Name:     cast.ToString(sshConfig[`name`]),
-			Host:     cast.ToString(sshConfig[`host`]),
-			Port:     cast.ToString(sshConfig[`port`]),
-			UserName: cast.ToString(sshConfig[`username`]),
-			Password: cast.ToString(sshConfig[`password`]),
-		}))
+		gstool.FmtPrintlnLogTime(`[p_db.pgsql] create ssh bridge db_id=%s ssh_id=%s target=%s:%d`,
+			dbId, cast.ToString(dbConfig[`ssh_id`]), cast.ToString(dbConfig[`host`]), cast.ToInt64(dbConfig[`port`]))
+		gsPgsql.SshBridge = NewConfiguredSshBridge(sshConfig)
 	}
+	gstool.FmtPrintlnLogTime(`[p_db.pgsql] CreateConn begin db_id=%s db=%s host=%s port=%d use_ssh=%v`,
+		dbId, cast.ToString(dbConfig[`dbname`]), cast.ToString(dbConfig[`host`]), cast.ToInt64(dbConfig[`port`]), cast.ToInt(dbConfig[`ssh_id`]) != 0)
 	connErr := gsPgsql.CreateConn()
 	if connErr != nil {
+		gstool.FmtPrintlnLogTime(`[p_db.pgsql] CreateConn failed db_id=%s err=%s`, dbId, connErr.Error())
 		return nil, connErr
 	}
+	gstool.FmtPrintlnLogTime(`[p_db.pgsql] CreateConn success db_id=%s`, dbId)
 	h.PgsqlClientMap[dbId] = gsPgsql
 	return gsPgsql, nil
 }

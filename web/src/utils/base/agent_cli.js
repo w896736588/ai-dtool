@@ -94,6 +94,21 @@ function AgentCliGroupRelSave(data, callBack) {
   base.BasePost('/api/AgentCliGroupRelSave', data, callBack)
 }
 
+// AgentCliPromptTemplateList 获取提示词模板和可选工作目录
+function AgentCliPromptTemplateList(callBack) {
+  base.BasePost('/api/AgentCliPromptTemplateList', {}, callBack)
+}
+
+// AgentCliPromptTemplateSave 新增/编辑提示词模板
+function AgentCliPromptTemplateSave(data, callBack) {
+  base.BasePost('/api/AgentCliPromptTemplateSave', data, callBack)
+}
+
+// AgentCliPromptTemplateDelete 删除提示词模板
+function AgentCliPromptTemplateDelete(id, callBack) {
+  base.BasePost('/api/AgentCliPromptTemplateDelete', { id: id }, callBack)
+}
+
 export default {
   AgentCliList,
   AgentCliSave,
@@ -113,4 +128,7 @@ export default {
   AgentCliGroupSave,
   AgentCliGroupDelete,
   AgentCliGroupRelSave,
+  AgentCliPromptTemplateList,
+  AgentCliPromptTemplateSave,
+  AgentCliPromptTemplateDelete,
 }

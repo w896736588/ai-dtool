@@ -89,10 +89,10 @@ function ReceiveMessage() {
                     console.log('回调处理sse内容失败 %s', '----' + event.data + '----', e)
                 }
             } else {
-                console.log('未找到对应的回调函数 %s', objData.sse_distribute_id)
+                //console.log('未找到对应的回调函数 %s', objData.sse_distribute_id)
             }
         } else {
-            console.log('未找到对应的回调函数 %s', event.data)
+            //console.log('未找到对应的回调函数 %s', event.data)
         }
 
     };
@@ -259,4 +259,5 @@ export default {
     ReceiveMessage,
     GetSseDistributeId,
     GetSseClientId,
+    fetchAvailableSsePort,
 }

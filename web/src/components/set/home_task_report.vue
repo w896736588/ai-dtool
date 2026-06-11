@@ -61,6 +61,9 @@
         >
           {{ ph.label }}
           <el-icon class="prompt-placeholder-tag__icon"><CopyDocument /></el-icon>
+          <el-tooltip v-if="ph.tip" :content="ph.tip" placement="top">
+            <el-icon class="prompt-placeholder-tag__help"><QuestionFilled /></el-icon>
+          </el-tooltip>
         </span>
       </div>
 
@@ -169,6 +172,9 @@
         >
           {{ ph.label }}
           <el-icon class="prompt-placeholder-tag__icon"><CopyDocument /></el-icon>
+          <el-tooltip v-if="ph.tip" :content="ph.tip" placement="top">
+            <el-icon class="prompt-placeholder-tag__help"><QuestionFilled /></el-icon>
+          </el-tooltip>
         </span>
       </div>
 
@@ -328,6 +334,9 @@
         >
           {{ ph.label }}
           <el-icon class="prompt-placeholder-tag__icon"><CopyDocument /></el-icon>
+          <el-tooltip v-if="ph.tip" :content="ph.tip" placement="top">
+            <el-icon class="prompt-placeholder-tag__help"><QuestionFilled /></el-icon>
+          </el-tooltip>
         </span>
       </div>
 
@@ -403,29 +412,31 @@ import AiSetApi from '@/utils/base/ai_set'
 import SmartLinkSet from '@/utils/base/smart_link_set'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
-import { CopyDocument } from '@element-plus/icons-vue'
+import { CopyDocument, QuestionFilled } from '@element-plus/icons-vue'
 
 const DEFAULT_HOME_TASK_DAILY_REPORT_PROMPT = '请基于当前活跃任务生成中文工作日报，按已完成、进行中、风险与阻塞三个部分总结，输出 Markdown，禁止编造未提供的信息。'
 
 const PROMPT_PLACEHOLDERS = [
-  { label: '需求文档地址', value: '{需求文档地址}' },
-  { label: '需求文档纯文本地址', value: '{需求文档纯文本地址}' },
-  { label: '需求文档纯文本文件相对地址', value: '{需求文档纯文本文件相对地址}' },
-  { label: '需求设计方案文档地址', value: '{需求设计方案文档地址}' },
-  { label: '需求设计方案文件相对地址', value: '{需求设计方案文件相对地址}' },
-  { label: '接口开发API地址', value: '{接口开发API地址}' },
-  { label: '接口开发API的token', value: '{接口开发API的token}' },
-  { label: '开发项目配置', value: '{开发项目配置}' },
-  { label: '自定义网页', value: '{自定义网页}' },
-  { label: '网页标签', value: '{网页标签}' },
-  { label: '账号', value: '{账号}' },
-  { label: 'dtool-api地址', value: '{dtool-api地址}' },
-  { label: 'dtool-common地址', value: '{dtool-common地址}' },
-  { label: 'dtool-workflow地址', value: '{dtool-workflow地址}' },
-  { label: 'dtool-playwright地址', value: '{dtool-playwright地址}' },
-  { label: 'dtool-notify地址', value: '{dtool-notify地址}' },
-  { label: '工作流程ID', value: '{工作流程ID}' },
-  { label: '开发环境', value: '{开发环境}' },
+  { label: '任务名称', value: '{任务名称}', tip: '替换为当前任务的名称' },
+  { label: '需求文档地址', value: '{需求文档地址}', tip: '替换为需求知识片段的分享链接' },
+  { label: '需求文档纯文本地址', value: '{需求文档纯文本地址}', tip: '替换为纯文本需求片段的分享链接' },
+  { label: '需求文档纯文本文件相对地址', value: '{需求文档纯文本文件相对地址}', tip: '替换为纯文本需求片段文件的相对路径' },
+  { label: '需求设计方案文档地址', value: '{需求设计方案文档地址}', tip: '替换为设计方案片段的分享链接' },
+  { label: '需求设计方案文件相对地址', value: '{需求设计方案文件相对地址}', tip: '替换为设计方案片段文件的相对路径' },
+  { label: '接口开发API地址', value: '{接口开发API地址}', tip: '替换为当前服务的 API 基地址（scheme://host）' },
+  { label: '接口开发API的token', value: '{接口开发API的token}', tip: '替换为请求的 Authorization token' },
+  { label: '开发项目配置', value: '{开发项目配置}', tip: '替换为开发项目配置的 Markdown 列表' },
+  { label: '自定义网页', value: '{自定义网页}', tip: '替换为智能链接（smart_link）的名称和 ID' },
+  { label: '网页标签', value: '{网页标签}', tip: '替换为智能链接的标签（smart_link_label）' },
+  { label: '账号', value: '{账号}', tip: '替换为智能链接的账号（smart_link_account）' },
+  { label: 'dtool-api地址', value: '{dtool-api地址}', tip: '替换为 skills/dtool-api 目录的本地路径' },
+  { label: 'dtool-common地址', value: '{dtool-common地址}', tip: '替换为 skills/dtool-common 目录的本地路径' },
+  { label: 'dtool-workflow地址', value: '{dtool-workflow地址}', tip: '替换为 skills/dtool-workflow 目录的本地路径' },
+  { label: 'dtool-playwright地址', value: '{dtool-playwright地址}', tip: '替换为 skills/dtool-playwright 目录的本地路径' },
+  { label: 'dtool-notify地址', value: '{dtool-notify地址}', tip: '替换为 skills/dtool-notify 目录的本地路径' },
+  { label: '工作流程ID', value: '{工作流程ID}', tip: '替换为当前工作流程的 ID' },
+  { label: '任务ID', value: '{任务ID}', tip: '替换为当前任务的 ID' },
+  { label: '开发环境', value: '{开发环境}', tip: '替换为开发环境配置（已递归解析内部占位符）' },
 ]
 
 const PROMPT_EDITOR_TOOLBARS = [
@@ -487,9 +498,9 @@ export default {
   computed: {
     branchNamePlaceholders() {
       return [
-        { label: '需求名', value: '{需求名}' },
-        { label: '父分支', value: '{父分支}' },
-        { label: '任务创建日期', value: '{任务创建日期}' },
+        { label: '需求名', value: '{需求名}', tip: '替换为任务名称' },
+        { label: '父分支', value: '{父分支}', tip: '替换为父分支名称' },
+        { label: '任务创建日期', value: '{任务创建日期}', tip: '替换为任务创建日期' },
       ]
     },
     devEnvironmentPlaceholders() {

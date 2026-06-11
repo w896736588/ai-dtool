@@ -57,16 +57,82 @@
             </div>
           </div>
           <div v-if="parsedTaskDevConfigs.length > 0" class="task-workflow-header__meta">
-            <div v-for="(cfg, idx) in parsedTaskDevConfigs" :key="idx" class="task-workflow-header__dev-row">
-              <span class="task-workflow-header__dev-item">Git仓库: {{ getTaskConfigName('git', cfg.git_id) }}</span>
-              <span class="task-workflow-header__dev-sep">|</span>
-              <span class="task-workflow-header__dev-item task-workflow-header__dev-item--link" @click="openApiDevDialog(cfg)">接口集合: {{ truncateWorkflowLabel(getTaskConfigApiLabel(cfg)) }}</span>
-              <span class="task-workflow-header__dev-sep">|</span>
-              <span class="task-workflow-header__dev-item">父分支: {{ cfg.parent_branch || '-' }}</span>
-              <span class="task-workflow-header__dev-sep">|</span>
-              <span class="task-workflow-header__dev-item">分支名: <span class="task-workflow-header__branch" @click="copyText(cfg.branch_name, '分支名已复制')" :title="cfg.branch_name">{{ truncateWorkflowLabel(cfg.branch_name || '-') }}</span><el-tooltip v-if="cfg.local_dir && cfg.branch_name && branchStatusMap[cfg.local_dir + '|' + cfg.branch_name]" :content="branchStatusMap[cfg.local_dir + '|' + cfg.branch_name].matched ? '分支匹配' : '当前分支: ' + (branchStatusMap[cfg.local_dir + '|' + cfg.branch_name].current_branch || '未知')" placement="top"><span style="display: inline-flex; align-items: center; vertical-align: middle; margin-left: 4px;" :style="{ color: branchStatusMap[cfg.local_dir + '|' + cfg.branch_name].matched ? '#4caf50' : '#e53935' }"><svg v-if="branchStatusMap[cfg.local_dir + '|' + cfg.branch_name].matched" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span></el-tooltip></span>
-              <span class="task-workflow-header__dev-sep">|</span>
-              <span class="task-workflow-header__dev-item">本地目录: {{ cfg.local_dir || '-' }}<el-tooltip v-if="cfg.local_dir && localDirStatusMap[cfg.local_dir] !== undefined" :content="localDirStatusMap[cfg.local_dir] ? '目录存在' : '目录不存在'" placement="top"><span style="display: inline-flex; align-items: center; vertical-align: middle; margin-left: 4px;" :style="{ color: localDirStatusMap[cfg.local_dir] ? '#4caf50' : '#e53935' }"><svg v-if="localDirStatusMap[cfg.local_dir]" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span></el-tooltip></span>
+            <div v-for="(cfg, idx) in parsedTaskDevConfigs" :key="idx" class="task-workflow-header__dev-card">
+              <div class="task-workflow-header__field-grid">
+                <!-- Git仓库 -->
+                <div class="task-workflow-header__field task-workflow-header__field--compact">
+                  <span class="task-workflow-header__field-label">Git仓库</span>
+                  <span class="task-workflow-header__field-value" :title="getTaskConfigName('git', cfg.git_id)">{{ getTaskConfigName('git', cfg.git_id) }}</span>
+                </div>
+                <!-- 接口集合 -->
+                <div class="task-workflow-header__field task-workflow-header__field--link task-workflow-header__field--wrap" @click="openApiDevDialog(cfg)">
+                  <span class="task-workflow-header__field-label">接口集合</span>
+                  <span class="task-workflow-header__field-value task-workflow-header__field-value--wrap">{{ getTaskConfigApiLabel(cfg) || '-' }}</span>
+                </div>
+                <!-- 分支名 -->
+                <div class="task-workflow-header__field task-workflow-header__field--wrap">
+                  <span class="task-workflow-header__field-label">分支名</span>
+                  <span class="task-workflow-header__field-value task-workflow-header__field-value--wrap">
+                    <span class="task-workflow-header__branch" @click="copyText(cfg.branch_name, '分支名已复制')" :title="cfg.branch_name">{{ cfg.branch_name || '-' }}</span>
+                    <el-tooltip v-if="cfg.local_dir && cfg.branch_name && branchStatusMap[cfg.local_dir + '|' + cfg.branch_name]" :content="branchStatusMap[cfg.local_dir + '|' + cfg.branch_name].matched ? '分支匹配' : '当前分支: ' + (branchStatusMap[cfg.local_dir + '|' + cfg.branch_name].current_branch || '未知')" placement="top">
+                      <span class="task-workflow-header__status-icon" :class="branchStatusMap[cfg.local_dir + '|' + cfg.branch_name].matched ? 'task-workflow-header__status-icon--ok' : 'task-workflow-header__status-icon--err'">
+                        <svg v-if="branchStatusMap[cfg.local_dir + '|' + cfg.branch_name].matched" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:3px"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg><svg v-if="branchStatusMap[cfg.local_dir + '|' + cfg.branch_name].matched" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                      </span>
+                    </el-tooltip>
+                    <!-- 远程分支状态（推送状态 + 远程工作目录分支） -->
+                    <el-tooltip v-if="showRemoteBranchWarning(cfg)" :content="getRemoteBranchStatusTooltip(cfg)" placement="top">
+                      <span class="task-workflow-header__status-icon task-workflow-header__status-icon--remote-warn" @click.stop="openRemoteBranchDialog(cfg)">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:3px"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                      </span>
+                    </el-tooltip>
+                    <el-tooltip v-else-if="showRemoteBranchOk(cfg)" content="远程分支已同步且工作目录分支匹配" placement="top">
+                      <span class="task-workflow-header__status-icon task-workflow-header__status-icon--ok">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:3px"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                      </span>
+                    </el-tooltip>
+                  </span>
+                </div>
+                <!-- 本地目录 -->
+                <div class="task-workflow-header__field">
+                  <span class="task-workflow-header__field-label">本地目录</span>
+                  <span class="task-workflow-header__field-value">
+                    {{ cfg.local_dir || '-' }}
+                    <el-tooltip v-if="cfg.local_dir && localDirStatusMap[cfg.local_dir] !== undefined" :content="localDirStatusMap[cfg.local_dir] ? '目录存在' : '目录不存在'" placement="top">
+                      <span class="task-workflow-header__status-icon" :class="localDirStatusMap[cfg.local_dir] ? 'task-workflow-header__status-icon--ok' : 'task-workflow-header__status-icon--err'">
+                        <svg v-if="localDirStatusMap[cfg.local_dir]" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                      </span>
+                    </el-tooltip>
+                  </span>
+                </div>
+                <!-- 文件变更 -->
+                <div class="task-workflow-header__field task-workflow-header__field--wrap">
+                  <span class="task-workflow-header__field-label">文件变更</span>
+                  <span class="task-workflow-header__field-value task-workflow-header__field-value--wrap">
+                    <template v-if="cfg.local_dir && fileChangesMap[cfg.local_dir] && !fileChangesMap[cfg.local_dir].error">
+                      <span class="file-changes-inline">
+                        <span class="file-changes-inline__item file-changes-inline__item--new" :title="'未跟踪文件数'">{{ fileChangesMap[cfg.local_dir].summary.untracked || 0 }}<small>(new)</small></span>
+                        <span class="file-changes-inline__sep">/</span>
+                        <span class="file-changes-inline__item file-changes-inline__item--edit" :title="'编辑文件数'">{{ fileChangesMap[cfg.local_dir].summary.modified || 0 }}<small>(edit)</small></span>
+                        <span class="file-changes-inline__sep">/</span>
+                        <span class="file-changes-inline__item file-changes-inline__item--delete" :title="'删除文件数'">{{ fileChangesMap[cfg.local_dir].summary.deleted || 0 }}<small>(delete)</small></span>
+                        <template v-if="fileChangesMap[cfg.local_dir].summary.other > 0">
+                          <span class="file-changes-inline__sep">/</span>
+                          <span class="file-changes-inline__item file-changes-inline__item--other" :title="'其他变更文件数'">{{ fileChangesMap[cfg.local_dir].summary.other }}<small>(other)</small></span>
+                        </template>
+                      </span>
+                      <GitActionButton compact variant="info" size-mode="compact-small" @click="openFileChangesDetail(cfg)">详情</GitActionButton>
+                    </template>
+                    <template v-else-if="cfg.local_dir && fileChangesMap[cfg.local_dir] && fileChangesMap[cfg.local_dir].error">
+                      <span class="task-workflow-header__field-value--dim" :title="fileChangesMap[cfg.local_dir].error">检测失败</span>
+                    </template>
+                    <template v-else>
+                      <span class="task-workflow-header__field-value--dim">-</span>
+                    </template>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -178,9 +244,117 @@
         </template>
       </el-dialog>
 
+      <!-- 文件变更详情弹窗 -->
+      <FileChangesDialog
+        v-model:visible="fileChangesDialogVisible"
+        :local-dir="fileChangesDetailLocalDir"
+        :parent-branch="fileChangesDetailParentBranch"
+        :initial-summary="fileChangesDetailInitialSummary"
+        :initial-files="fileChangesDetailInitialFiles"
+      />
+
+      <!-- 远程分支状态弹窗 -->
+      <el-dialog
+        v-model="remoteBranchDialogVisible"
+        title="远程分支检查"
+        width="700px"
+        :close-on-click-modal="true"
+        @close="closeRemoteBranchDialog"
+      >
+        <div v-loading="remoteBranchDialogLoading" class="remote-branch-dialog">
+          <div class="remote-branch-dialog__info">
+            <div class="remote-branch-dialog__row">
+              <span class="remote-branch-dialog__label">本地目录</span>
+              <span class="remote-branch-dialog__value">{{ remoteBranchDialogItem.local_dir || '-' }}</span>
+            </div>
+            <div class="remote-branch-dialog__row">
+              <span class="remote-branch-dialog__label">当前分支</span>
+              <span class="remote-branch-dialog__value">{{ remoteBranchDialogItem.current_branch || '-' }}</span>
+            </div>
+            <div class="remote-branch-dialog__row">
+              <span class="remote-branch-dialog__label">期望分支</span>
+              <span class="remote-branch-dialog__value">{{ remoteBranchDialogItem.branch_name || '-' }}</span>
+            </div>
+            <div class="remote-branch-dialog__row">
+              <span class="remote-branch-dialog__label">远程工作空间的本地分支</span>
+              <span class="remote-branch-dialog__value">
+                <template v-if="remoteBranchDialogItem.remote_dir_current_branch">
+                  {{ remoteBranchDialogItem.remote_dir_current_branch }}
+                  <el-tag :type="remoteBranchDialogItem.remote_dir_branch_match ? 'success' : 'warning'" size="small" style="margin-left: 8px;">
+                    {{ remoteBranchDialogItem.remote_dir_branch_match ? '匹配' : '不匹配' }}
+                  </el-tag>
+                </template>
+                <span v-else style="color: #c0c4cc;">-</span>
+              </span>
+            </div>
+            <div class="remote-branch-dialog__row">
+              <span class="remote-branch-dialog__label">远程工作空间的远程分支</span>
+              <span class="remote-branch-dialog__value">{{ remoteBranchDialogItem.remote_dir_remote_branch || '-' }}</span>
+            </div>
+          </div>
+          <div class="remote-branch-dialog__status">
+            <div class="remote-branch-dialog__status-row">
+              <span class="remote-branch-dialog__status-label">推送状态</span>
+              <el-tag :type="remoteBranchDialogItem.pushed ? 'success' : 'danger'" size="small">
+                {{ remoteBranchDialogItem.pushed ? '已推送' : '未推送' }}
+              </el-tag>
+            </div>
+            <div class="remote-branch-dialog__status-row">
+              <span class="remote-branch-dialog__status-label">远程分支</span>
+              <el-tag :type="remoteBranchDialogItem.remote_exists ? 'success' : 'info'" size="small">
+                {{ remoteBranchDialogItem.remote_exists ? (remoteBranchDialogItem.remote_branch_name || '存在') : '不存在' }}
+              </el-tag>
+            </div>
+            <div class="remote-branch-dialog__status-row">
+              <span class="remote-branch-dialog__status-label">同步状态</span>
+              <span v-if="remoteBranchDialogItem.error" class="remote-branch-dialog__error">{{ remoteBranchDialogItem.error }}</span>
+              <template v-else-if="remoteBranchDialogItem.remote_exists">
+                <span style="color: #303133; font-size: 13px;">
+                  本地领先 <b>{{ remoteBranchDialogItem.local_ahead }}</b> 个提交，远程领先 <b>{{ remoteBranchDialogItem.remote_ahead }}</b> 个提交
+                </span>
+                <el-tag v-if="remoteBranchDialogItem.consistent" type="success" size="small">已同步</el-tag>
+                <el-tag v-else type="warning" size="small">未同步</el-tag>
+              </template>
+              <span v-else style="color: #909399; font-size: 13px;">—</span>
+            </div>
+            <div class="remote-branch-dialog__status-row">
+              <span class="remote-branch-dialog__status-label">远程工作目录分支</span>
+              <template v-if="remoteBranchDialogItem.remote_dir_error">
+                <span class="remote-branch-dialog__error">{{ remoteBranchDialogItem.remote_dir_error }}</span>
+                <el-tag type="danger" size="small">检测失败</el-tag>
+              </template>
+              <template v-else-if="remoteBranchDialogItem.remote_dir_branch_match !== undefined">
+                <span style="color: #303133; font-size: 13px;">{{ remoteBranchDialogItem.remote_dir_current_branch || '-' }}</span>
+                <el-tag :type="remoteBranchDialogItem.remote_dir_branch_match ? 'success' : 'warning'" size="small">
+                  {{ remoteBranchDialogItem.remote_dir_branch_match ? '一致' : '不一致' }}
+                </el-tag>
+              </template>
+              <span v-else style="color: #909399; font-size: 13px;">—</span>
+            </div>
+          </div>
+          <div v-if="remoteBranchDialogPushResult" class="remote-branch-dialog__result" :class="remoteBranchDialogPushResult.success ? 'remote-branch-dialog__result--ok' : 'remote-branch-dialog__result--err'">
+            {{ remoteBranchDialogPushResult.message }}
+          </div>
+        </div>
+        <template #footer>
+          <div class="remote-branch-dialog__footer">
+            <GitActionButton compact variant="info" @click="closeRemoteBranchDialog">关闭</GitActionButton>
+            <GitActionButton compact variant="warning" @click="refreshRemoteBranchDialog">刷新检测</GitActionButton>
+            <GitActionButton
+              compact
+              variant="success"
+              :loading="remoteBranchPushing"
+              @click="handleRemoteBranchPush"
+            >
+              推送并切换分支
+            </GitActionButton>
+          </div>
+        </template>
+      </el-dialog>
+
       <section class="task-workflow-nodes">
         <button
-          v-for="node in workflowNodes"
+          v-for="(node, idx) in workflowNodes"
           :key="node.key"
           type="button"
           class="task-workflow-node"
@@ -202,8 +376,10 @@
             <span v-else-if="getNodeStatus(node.key) === 'pending'" class="status-icon status-icon--pending"></span>
             <span v-else class="status-icon status-icon--running"><span class="spinner-ring"></span></span>
           </span>
-          <span class="task-workflow-node__label">{{ node.label }}</span>
-          <span class="task-workflow-node__desc">{{ node.desc }}</span>
+          <span class="task-workflow-node__row">
+            <span class="task-workflow-node__badge">{{ idx + 1 }}</span>
+            <span class="task-workflow-node__label">{{ node.label }}</span>
+          </span>
         </button>
       </section>
 
@@ -211,7 +387,7 @@
         <div v-if="activeNode === 'task-config'" class="task-workflow-tab">
           <div class="task-workflow-card task-workflow-config-card">
             <div class="task-workflow-card__header">
-              <div class="task-workflow-card__title">任务配置</div>
+              <div class="task-workflow-card__title">任务配置<span class="task-workflow-card__title-desc">查看当前任务的所有配置信息</span></div>
             </div>
             <div class="task-workflow-config-content">
               <div class="task-workflow-config-section">
@@ -294,7 +470,7 @@
         <div v-else-if="activeNode === 'requirement-fetch'" class="task-workflow-tab">
           <div class="task-workflow-card">
             <div class="task-workflow-card__header">
-              <div class="task-workflow-card__title">抓取 {{ requirementSourceName }} 需求</div>
+              <div class="task-workflow-card__title">抓取 {{ requirementSourceName }} 需求<span class="task-workflow-card__title-desc">自动登录和解析需求内容到知识片段，转为markdown格式供AI解析</span></div>
               <div class="task-workflow-card__switch">
                 <div class="task-workflow-inner-tabs">
                   <button
@@ -396,7 +572,7 @@
         <div v-else-if="activeNode === 'requirement'" class="task-workflow-tab">
           <div class="task-workflow-card">
             <div class="task-workflow-card__header">
-              <div class="task-workflow-card__title">需求分析</div>
+              <div class="task-workflow-card__title">需求分析<span class="task-workflow-card__title-desc">编写提示词，AI自动结合数据库和代码分析需求，形成开发文档</span></div>
               <div class="task-workflow-card__switch">
                 <div class="task-workflow-inner-tabs">
 
@@ -519,7 +695,7 @@
         <div v-else-if="activeNode === 'design'" class="task-workflow-tab">
           <div class="task-workflow-card">
             <div class="task-workflow-card__header">
-              <div class="task-workflow-card__title">开发提示词</div>
+              <div class="task-workflow-card__title">开发提示词<span class="task-workflow-card__title-desc">编写提示词，AI自动结合数据库，代码和开发文档进行开发</span></div>
               <div class="task-workflow-card__switch">
                 <GitActionButton compact :loading="promptSaving === 'design'" @click="savePrompts('design')">
                   保存提示词
@@ -573,7 +749,7 @@
         <div v-else-if="activeNode === 'api-dev'" class="task-workflow-tab">
           <div class="task-workflow-card">
             <div class="task-workflow-card__header">
-              <div class="task-workflow-card__title">接口开发生成提示词</div>
+              <div class="task-workflow-card__title">接口开发生成提示词<span class="task-workflow-card__title-desc">编写提示词，AI自动获取登录态，将所有改动接口写入接口开发中</span></div>
               <div class="task-workflow-card__switch">
                 <GitActionButton compact @click="openFragmentInDialog(workflow.api_doc_fragment_id, '接口文档')">
                   <template #icon><el-icon><Link /></el-icon></template>
@@ -634,7 +810,7 @@
         <div v-else-if="activeNode === 'code-review'" class="task-workflow-tab">
           <div class="task-workflow-card">
             <div class="task-workflow-card__header">
-              <div class="task-workflow-card__title">代码检查提示词</div>
+              <div class="task-workflow-card__title">代码检查提示词<span class="task-workflow-card__title-desc">让AI进行code review</span></div>
               <div class="task-workflow-card__switch">
                 <GitActionButton compact :loading="promptSaving === 'code_review'" @click="savePrompts('code_review')">
                   保存提示词
@@ -688,7 +864,7 @@
         <div v-else-if="activeNode === 'browser-test'" class="task-workflow-tab">
           <div class="task-workflow-card">
             <div class="task-workflow-card__header">
-              <div class="task-workflow-card__title">需求核对浏览器测试提示词</div>
+              <div class="task-workflow-card__title">需求核对浏览器测试提示词<span class="task-workflow-card__title-desc">编写提示词，AI核对浏览器测试结果是否满足需求</span></div>
               <div class="task-workflow-card__switch">
                 <GitActionButton compact :loading="promptSaving === 'browser_test'" @click="savePrompts('browser_test')">
                   保存提示词
@@ -742,7 +918,7 @@
         <div v-else class="task-workflow-tab">
           <div class="task-workflow-card">
             <div class="task-workflow-card__header">
-              <div class="task-workflow-card__title">接口自动化测试修复提示词</div>
+              <div class="task-workflow-card__title">接口自动化测试修复提示词<span class="task-workflow-card__title-desc">AI自动根据接口开发中的接口设计测试流程，自动上传代码+自动重启服务+自动修复BUG</span></div>
               <div class="task-workflow-card__switch">
                 <GitActionButton compact :loading="promptSaving === 'api_test'" @click="savePrompts('api_test')">
                   保存提示词
@@ -1035,6 +1211,7 @@ import taskWorkflowApi from '@/utils/base/task_workflow'
 import homeTaskApi from '@/utils/base/home_task'
 import baseUtils from '@/utils/base'
 import sseDistribute from '@/utils/base/sse_distribute'
+import sseBusiness from '@/utils/base/sse_business'
 import chatParser from '@/utils/chat_parser'
 import TaskProgressPanel from '@/components/TaskProgressPanel.vue'
 import taskProgressStore from '@/utils/task_progress_store'
@@ -1045,6 +1222,7 @@ import dockerApi from '@/utils/base/compose'
 import smartLinkSetApi from '@/utils/base/smart_link_set'
 import MarkdownIt from 'markdown-it'
 import UnifiedMdEditor from '@/components/base/UnifiedMdEditor.vue'
+import FileChangesDialog from '@/components/FileChangesDialog.vue'
 
 const PROMPT_EDITOR_TOOLBARS = [
   'bold', 'italic', 'strikeThrough', 'title', 'quote',
@@ -1103,13 +1281,13 @@ const TASK_WORKFLOW_CONFIG_MAX_CHARS = 20
 
 const WORKFLOW_NODES = [
   { key: 'task-config', label: '任务配置', desc: '查看当前任务的所有配置信息' },
-  { key: 'requirement-fetch', label: '1.抓取需求', desc: '自动登录和解析需求内容到知识片段，转为markdown格式供AI解析' },
-  { key: 'requirement', label: '2.需求分析', desc: '编写提示词，AI自动结合数据库和代码分析需求，形成开发文档' },
-  { key: 'design', label: '3.开发执行', desc: '编写提示词，AI自动结合数据库，代码和开发文档进行开发' },
-  { key: 'api-dev', label: '4.接口生成', desc: '编写提示词，AI自动获取登录态，将所有改动接口写入接口开发中' },
-  { key: 'api-test-fix', label: '5.自动化测试+修复', desc: 'AI自动根据接口开发中的接口设计测试流程，自动上传代码+自动重启服务+自动修复BUG' },
-  { key: 'code-review', label: '6.代码检查', desc: '让AI进行code review' },
-  { key: 'browser-test', label: '7.需求核对浏览器测试', desc: '编写提示词，AI核对浏览器测试结果是否满足需求' },
+  { key: 'requirement-fetch', label: '抓取需求', desc: '自动登录和解析需求内容到知识片段，转为markdown格式供AI解析' },
+  { key: 'requirement', label: '需求分析', desc: '编写提示词，AI自动结合数据库和代码分析需求，形成开发文档' },
+  { key: 'design', label: '开发执行', desc: '编写提示词，AI自动结合数据库，代码和开发文档进行开发' },
+  { key: 'api-dev', label: '接口生成', desc: '编写提示词，AI自动获取登录态，将所有改动接口写入接口开发中' },
+  { key: 'api-test-fix', label: '自动化测试+修复', desc: 'AI自动根据接口开发中的接口设计测试流程，自动上传代码+自动重启服务+自动修复BUG' },
+  { key: 'code-review', label: '代码检查', desc: '让AI进行code review' },
+  { key: 'browser-test', label: '需求核对浏览器测试', desc: '编写提示词，AI核对浏览器测试结果是否满足需求' },
 ]
 
 // markdown-it 实例，用于在"执行历史"对话框中渲染 markdown（包括表格）
@@ -1123,6 +1301,7 @@ export default {
     ChatHistoryButton,
     ChatHistoryDialog,
     UnifiedMdEditor,
+    FileChangesDialog,
     TaskProgressPanel,
   },
   data() {
@@ -1174,14 +1353,13 @@ export default {
       chatDetailStatus: '',
       chatDetailMessages: [],
       chatDetailLastUsageSummary: null,
-      chatDetailSSERegistered: false,
       chatDetailSSELines: [], // SSE 累积的原始行
       chatDetailAutoScroll: true,
       _autoScrollLocked: false, // 程序化滚动锁
       _sseLineBuffer: [], // SSE 行缓冲（批处理），每100ms刷新一次
       _sseBatchTimer: null, // 批处理定时器
       _sseParseState: null, // 增量解析状态 { currentMessage, toolUseMap, pendingPatches }
-      _initialSseRetryCount: 0, // 初始 start=1 SSE 失败后的重试计数
+      _continueInProgress: false, // continueChat 进行中标志，防止旧 chat_status_change SSE 覆盖本地 running 状态
       thinkingStreamElapsed: 0, // 思考流式阶段的实时已用秒数
       chatContinueInput: '',
       chatContinueLoading: false,
@@ -1211,7 +1389,6 @@ export default {
       chatDetailLocalDir: '',
       chatDetailThinkingIntensity: '',
       chatDetailCliType: 'claude',
-      _backgroundChatEventSources: {},
       // zcode 配置
       zcodeConfigDialogVisible: false,
       zcodeDirInput: '',
@@ -1241,6 +1418,21 @@ export default {
         branch_name: '',
       },
       _branchSwitchEventSource: null,
+      // 远程分支状态检测
+      remoteBranchStatusMap: {},
+      remoteBranchDialogVisible: false,
+      remoteBranchDialogItem: {},
+      remoteBranchDialogLoading: false,
+      remoteBranchPushing: false,
+      remoteBranchDialogPushResult: null,
+      // 文件变更检测
+      fileChangesMap: {},
+      _fileChangesPollTimer: null,
+      fileChangesDialogVisible: false,
+      fileChangesDetailLocalDir: '',
+      fileChangesDetailParentBranch: '',
+      fileChangesDetailInitialSummary: null,
+      fileChangesDetailInitialFiles: [],
     }
   },
   computed: {
@@ -1344,6 +1536,7 @@ export default {
     this.loadWorkflowPage()
     this.loadTaskConfigLookupData()
     this.ensureWorkflowUnreadSse()
+    this.connectBusinessSse()
     window.addEventListener('keydown', this.handleCtrlS, true)
   },
   activated() {
@@ -1354,17 +1547,16 @@ export default {
     } else {
       this.loadChatCounts()
     }
+    this.startFileChangesPolling()
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this.handleCtrlS, true)
     this._stopChatHistoryDurationTimer()
     if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
+    this.stopFileChangesPolling()
     this.unregisterWorkflowSse()
-    this.stopAllBackgroundChatStreams()
-    if (this._chatEventSource) {
-      this._chatEventSource.close()
-      this._chatEventSource = null
-    }
+    this.unregisterChatOutputSse()
+    sseBusiness.CloseBusinessSse('task_workflow')
     this.unregisterWorkflowUnreadSse()
   },
   watch: {
@@ -1403,6 +1595,12 @@ export default {
       this.branchMismatchPromptedTaskId = 0
       this.unregisterWorkflowSse()
       this.loadWorkflowPage()
+    },
+    // chatContinueInput 变更时实时缓存到 localStorage（按会话ID区分）
+    chatContinueInput(newVal) {
+      if (this.chatDetailId) {
+        this.saveChatInputCache(this.chatDetailId, newVal)
+      }
     },
   },
   methods: {
@@ -1459,6 +1657,8 @@ export default {
         this.applyWorkflowPayload(response.Data)
         this.checkWorkflowLocalDirExists()
         this.checkWorkflowBranchStatus()
+        this.checkWorkflowRemoteBranchStatus()
+        this.startFileChangesPolling()
         this.activeNode = this.restoreActiveNodeCache() || this.firstRunningNodeKey
         this.loadRequirementFragment(() => {
           this.loading = false
@@ -1937,13 +2137,11 @@ export default {
           ? normalizedList.filter(item => String(item.prompt_type || '').trim() === promptType)
           : normalizedList.slice()
       }
-      this.syncBackgroundChatStreams(
-        this.promptChatHistoryVisible ? this.promptChatHistoryList : normalizedList,
-        this.promptChatDetailId || this.chatDetailId,
-      )
       if (this.chatDetailId > 0) {
         const current = normalizedList.find(item => Number(item.id || 0) === Number(this.chatDetailId || 0))
-        if (current) {
+        // 正在进行 continue 操作时，不覆盖本地已设置的 running 状态，
+        // 避免 chat_status_change SSE 中携带的旧状态（interrupted）覆盖掉 running
+        if (current && !this._continueInProgress) {
           this.chatDetailStatus = current.status || this.chatDetailStatus
         }
       }
@@ -2029,7 +2227,6 @@ export default {
           this.adjustPromptUnreadCount(normalizedPromptType, -1)
         }
         this.promptChatHistoryList = this.promptChatHistoryList.slice()
-        this.syncBackgroundChatStreams(this.promptChatHistoryList, this.promptChatDetailId || this.chatDetailId)
         return
       }
       this.promptChatHistoryList = [{
@@ -2046,14 +2243,18 @@ export default {
         thinking_intensity: extra.thinkingIntensity || '',
         cli_type: extra.cliType || 'claude',
       }, ...this.promptChatHistoryList]
-      this.syncBackgroundChatStreams(this.promptChatHistoryList, this.promptChatDetailId || this.chatDetailId)
     },
     // 加载对话详情
     loadChatDetail() {
       if (!this.chatDetailId) return
+      console.log('[loadChatDetail] 开始加载对话详情 chatId=', this.chatDetailId, '当前本地状态=', this.chatDetailStatus)
+      console.trace('[loadChatDetail] 调用栈:')
       taskWorkflowApi.TaskWorkflowChatDetail(this.chatDetailId, (res) => {
+        // loadChatDetail 完成后清除 continue 保护标志，让后续 chat_status_change 正常同步状态
+        this._continueInProgress = false
         if (res.ErrCode === 0 && res.Data) {
           const data = res.Data
+          const oldStatus = this.chatDetailStatus
           this.chatDetailPrompt = data.prompt || ''
           this.chatDetailSessionId = data.session_id || ''
           this.chatDetailStatus = data.status || ''
@@ -2063,6 +2264,7 @@ export default {
           this.chatDetailThinkingIntensity = data.thinking_intensity || ''
           this.chatDetailLastUsageSummary = data.last_usage_summary || null
           this.chatDetailCliType = data.cli_type || 'claude'
+          console.log('[loadChatDetail] 状态变化: ' + oldStatus + ' -> ' + this.chatDetailStatus + ' (来自服务端status=' + data.status + ')')
           // 同步更新左侧列表中的状态
           this.updateChatListStatus(this.chatDetailId, this.chatDetailStatus)
           // 合并历史行 + SSE 加载期间收到的新行（有则去重）
@@ -2081,93 +2283,77 @@ export default {
             }
           })
           this.$nextTick(() => { this.scrollPromptChatToBottom(true) })
-          // 正在执行的对话未连接 SSE 时自动重连，保证刷新后仍能实时更新
-          if (this.chatDetailStatus === 'running' && this._sseChatId !== this.chatDetailId) {
-            this.connectChatStream(this.chatDetailId)
+          if (this.chatDetailStatus === 'running') {
+            this._flushSseBatch()
+            this._sseParseState = null
+            this._sseLineBuffer = []
           }
         }
       })
     },
-    // connectChatStream 创建专用 EventSource 连接以实时接收对话输出。
-    // isNewChat: true 表示新对话首次启动（需后端启动 claude 进程），false 表示重连已有对话。
-    connectChatStream(chatId, continuePrompt, isNewChat) {
-      if (this._sseChatId === chatId && this._chatEventSource && this._chatEventSource.readyState !== EventSource.CLOSED) return
-      // 关闭上一个 chat 的 SSE 连接
-      if (this._chatEventSource) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
+    connectBusinessSse() {
+      sseBusiness.fetchAvailableSsePort().then(port => {
+        if (!port) return
+        const clientId = sseDistribute.GetSseClientId() || ('biz_tw_' + Date.now())
+        sseBusiness.ConnectBusinessSse('task_workflow', port, clientId)
+        this.registerChatOutputSse()
+      })
+    },
+    registerChatOutputSse() {
+      this._chatOutputHandler = (data) => {
+        if (!data || data.line === undefined || data.chat_id === undefined) return
+        const chatId = Number(data.chat_id)
+        const line = data.line
+        if (chatId === Number(this.chatDetailId || 0)) {
+          this._processChatSseLine(line)
+        }
       }
-      this._sseChatId = chatId
-      this.chatDetailSSERegistered = true
-      this._thinkingStreamStartTime = 0 // 当前对话思考计时的起始时间戳
-      // 初始化增量解析状态
-      this._sseParseState = this.chatDetailCliType === 'codex'
-        ? { currentItems: new Map(), pendingPatches: [] }
-        : { currentMessage: null, toolUseMap: new Map(), pendingPatches: [] }
-      this._sseLineBuffer = []
-      if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
-      // 启动思考耗时动态更新定时器
-      if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
-      this.thinkingStreamElapsed = 0
-      this._thinkingTimer = setInterval(() => {
-        if (this._thinkingStreamStartTime > 0) {
-          this.thinkingStreamElapsed = Math.floor((Date.now() - this._thinkingStreamStartTime) / 1000)
-        } else {
+      sseBusiness.RegisterBusinessReceive('task_workflow', 'task_workflow_chat_output', this._chatOutputHandler)
+    },
+    unregisterChatOutputSse() {
+      if (this._chatOutputHandler) {
+        sseBusiness.UnRegisterBusinessReceive('task_workflow', 'task_workflow_chat_output', this._chatOutputHandler)
+        this._chatOutputHandler = null
+      }
+    },
+    _processChatSseLine(line) {
+      if (!line) return
+      if (!this._sseParseState) {
+        this._sseParseState = this.chatDetailCliType === 'codex'
+          ? { currentItems: new Map(), pendingPatches: [] }
+          : { currentMessage: null, toolUseMap: new Map(), pendingPatches: [] }
+        this._sseLineBuffer = []
+        this._thinkingStreamStartTime = 0
+        if (!this._thinkingTimer) {
           this.thinkingStreamElapsed = 0
+          this._thinkingTimer = setInterval(() => {
+            if (this._thinkingStreamStartTime > 0) {
+              this.thinkingStreamElapsed = Math.floor((Date.now() - this._thinkingStreamStartTime) / 1000)
+            } else {
+              this.thinkingStreamElapsed = 0
+            }
+          }, 200)
         }
-      }, 200)
-      const sseHost = baseUtils.GetSseApiHost()
-      let url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + chatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
-      if (isNewChat) {
-        url += '&start=1'
       }
-      if (continuePrompt) {
-        url += '&continue=1&prompt=' + encodeURIComponent(continuePrompt)
-      }
-      const es = new EventSource(url)
-      this._chatEventSource = es
-      es.onmessage = (event) => {
-        const line = event.data
-        if (!line) return
-        try {
-          const obj = JSON.parse(line)
-          if (obj.type === 'chat' && obj.subtype === 'completed') {
-            this._flushSseBatch()
-            this.chatDetailSSELines.push(line)
-            this._sseChatId = 0
-            this.chatDetailSSERegistered = false
-            es.close()
-            this._chatEventSource = null
-            this._sseParseState = null
-            this.loadChatDetail()
-            this.$nextTick(() => { this.scrollPromptChatToBottom() })
-            return
+      try {
+        const obj = JSON.parse(line)
+        if (obj.type === 'chat' && obj.subtype === 'completed') {
+          this._flushSseBatch()
+          this.chatDetailSSELines.push(line)
+          this._sseParseState = null
+          // 当前正在查看该对话，自动标记为已读
+          if (obj.chat_id === Number(this.chatDetailId || 0)) {
+            this.markPromptChatReadOnServer(obj.chat_id)
           }
-        } catch (e) { /* ignore parse errors */ }
-        // 行缓冲：每 100ms 批量刷新，避免每条 SSE 事件都触发全量解析和 DOM 更新
-        this._sseLineBuffer.push(line)
-        if (!this._sseBatchTimer) {
-          this._sseBatchTimer = setTimeout(() => {
-            this._flushSseBatch()
-          }, 100)
-        }
-      }
-      es.onerror = () => {
-        this._flushSseBatch()
-        if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
-        this.thinkingStreamElapsed = 0
-        this.chatDetailSSERegistered = false
-        es.close()
-        this._chatEventSource = null
-        this._sseParseState = null
-        // 如果是初始 start=1 连接失败且尚无任何输出，重试一次 start=1 连接
-        // 避免 loadChatDetail 中不带 start/continue 的重连将对话错误标记为"中断"
-        if (this._initialSseRetryCount < 1 && this.chatDetailSSELines.length === 0 && this.chatDetailStatus === 'running') {
-          this._initialSseRetryCount++
-          this.connectChatStream(this.chatDetailId, null, true)
+          this.loadChatDetail()
+          this.loadChatCounts()
+          this.$nextTick(() => { this.scrollPromptChatToBottom() })
           return
         }
-        this.loadChatDetail()
+      } catch (e) {}
+      this._sseLineBuffer.push(line)
+      if (!this._sseBatchTimer) {
+        this._sseBatchTimer = setTimeout(() => { this._flushSseBatch() }, 100)
       }
     },
     // _flushSseBatch 将缓冲区中的 SSE 行批量增量解析并追加到消息列表。
@@ -2283,13 +2469,6 @@ export default {
       if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
       this.thinkingStreamElapsed = 0
       this._thinkingStreamStartTime = 0
-      this._initialSseRetryCount = 0
-      if (this._chatEventSource) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
-      }
-      this._sseChatId = 0
-      this.chatDetailSSERegistered = false
       this.chatDetailMessages = []
       this.chatDetailSSELines = []
       taskProgressStore.reset()
@@ -2306,22 +2485,73 @@ export default {
       this.openPromptExecDialog('issue_fix', prompt)
     },
     // 继续对话
-    // isChatContinueDisabled 统一发送区按钮可用状态，确保“发送/新对话”行为一致。 // Keeps the action buttons under the same enabled-state rule.
+    // isChatContinueDisabled 统一发送区按钮可用状态，确保"发送/新对话"行为一致。 // Keeps the action buttons under the same enabled-state rule.
     isChatContinueDisabled() {
       return this.chatContinueLoading || !String(this.chatContinueInput || '').trim()
+    },
+    // ===== 对话输入框 localStorage 缓存 =====
+    // 缓存键名格式：dtool_chat_input_{chatId}
+    getChatInputCacheKey(chatId) {
+      return 'dtool_chat_input_' + (Number(chatId) || 0)
+    },
+    saveChatInputCache(chatId, value) {
+      try {
+        const key = this.getChatInputCacheKey(chatId)
+        const val = String(value || '').trim()
+        if (val) {
+          localStorage.setItem(key, val)
+        } else {
+          // 空值时清除该缓存，避免残留垃圾数据
+          localStorage.removeItem(key)
+        }
+      } catch (_) {
+        // localStorage 不可用时静默忽略
+      }
+    },
+    getChatInputCache(chatId) {
+      try {
+        const key = this.getChatInputCacheKey(chatId)
+        return localStorage.getItem(key) || ''
+      } catch (_) {
+        return ''
+      }
+    },
+    clearChatInputCache(chatId) {
+      try {
+        const key = this.getChatInputCacheKey(chatId)
+        localStorage.removeItem(key)
+      } catch (_) {
+        // localStorage 不可用时静默忽略
+      }
     },
     continueChat() {
       const input = this.chatContinueInput.trim()
       if (!input) return
+      console.log('[continueChat] ========== 开始继续对话 ==========')
+      console.log('[continueChat] chatId=', this.chatDetailId, 'promptLength=', input.length)
+      // 在 API 调用前先清空旧会话数据，避免 SSE 消息在 API 回调前到达时被覆盖丢失
+      // （SSE 消息可能在 API 回调触发前就到达，若回调中再清除会丢掉已收到的"继续"气泡等行）
+      this.chatDetailSSELines = []
+      this.chatDetailMessages = []
+      this.chatDetailLastUsageSummary = null
+      taskProgressStore.reset()
+      this._sseParseState = null
+      this._sseLineBuffer = []
+      // 标记正在进行 continue 操作，防止 chat_status_change SSE 中的旧状态覆盖本地 running 状态
+      this._continueInProgress = true
       this.chatContinueLoading = true
       taskWorkflowApi.TaskWorkflowChatContinue(this.chatDetailId, input, (res) => {
         this.chatContinueLoading = false
+        console.log('[continueChat] API返回: ErrCode=', res.ErrCode, 'ErrMsg=', res.ErrMsg)
         if (res.ErrCode === 0) {
           this.chatContinueInput = ''
+          this.clearChatInputCache(this.chatDetailId)
+          console.log('[continueChat] 设置本地状态为 running')
           this.chatDetailStatus = 'running'
-          this.connectChatStream(this.chatDetailId, input)
+          this.updateChatListStatus(this.chatDetailId, 'running')
           setTimeout(() => { this.loadChatDetail() }, 500)
         } else {
+          this._continueInProgress = false
           this.$helperNotify.error(res.ErrMsg || '发送失败')
         }
       })
@@ -2366,6 +2596,7 @@ export default {
             }
             const chatId = chatRes.Data.chat_id
             const cliLabel = cliType === 'codex' ? 'codex' : 'claude code'
+            this.clearChatInputCache(this.chatDetailId)
             this.chatContinueInput = ''
             this.$helperNotify.success('已新建对话并发送到 ' + cliLabel + ' 执行')
             this.chatDetailId = chatId
@@ -2375,7 +2606,6 @@ export default {
             this.chatDetailMessages = []
             this.chatDetailLastUsageSummary = null
             taskProgressStore.reset()
-            this._initialSseRetryCount = 0
             this.markPromptChatRunningLocally(promptType, chatId, {
               prompt,
               modelName,
@@ -2384,7 +2614,8 @@ export default {
               cliType,
               agentName: this.chatDetailAgentName || '',
             })
-            this.connectChatStream(chatId, null, true)
+            this._sseParseState = null
+            this._sseLineBuffer = []
             this.loadChatDetail()
             this.openPromptChatHistory(promptType, chatId)
           }
@@ -2394,12 +2625,8 @@ export default {
     // 停止对话
     stopChat() {
       // 关闭 SSE 连接
-      if (this._chatEventSource) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
-      }
-      this._sseChatId = 0
-      this.chatDetailSSERegistered = false
+      this._sseParseState = null
+      this._sseLineBuffer = []
       // 通知后端停止
       taskWorkflowApi.TaskWorkflowChatStop(this.chatDetailId, (res) => {
         if (res.ErrCode !== 0) {
@@ -2442,7 +2669,7 @@ export default {
       // 加载 Agent CLI 列表
       agentCliApi.AgentCliList((res) => {
         if (res.ErrCode === 0 && res.Data) {
-          // 仅展示“已启用且配置可用”的 Agent，避免把停用实例带入执行弹窗。
+          // 仅展示"已启用且配置可用"的 Agent，避免把停用实例带入执行弹窗。
           this.promptExecCliList = (res.Data.list || []).filter(cli => cli.displayed_enabled)
           // 如果无缓存且仅有一个 CLI，自动选中
           if (!cached && this.promptExecCliList.length === 1) {
@@ -2539,6 +2766,7 @@ export default {
             if (chatRes.ErrCode === 0 && chatRes.Data) {
               const chatId = chatRes.Data.chat_id
               const cliLabel = cliType === 'codex' ? 'codex' : 'claude code'
+              this.clearChatInputCache(this.chatDetailId)
               this.$helperNotify.success('已发送到 ' + cliLabel + ' 执行')
               this.promptExecDialogVisible = false
               // 初始化对话显示状态并连接 SSE 流以启动执行
@@ -2548,7 +2776,6 @@ export default {
               this.chatDetailSSELines = []
               this.chatDetailMessages = []
               taskProgressStore.reset()
-              this._initialSseRetryCount = 0
               this.markPromptChatRunningLocally(this.promptExecPromptType, chatId, {
                 prompt: this.promptExecPromptValue,
                 modelName: this.promptExecModelName,
@@ -2557,7 +2784,8 @@ export default {
                 cliType,
                 agentName: selectedCli?.name || '',
               })
-              this.connectChatStream(chatId, null, true)
+              this._sseParseState = null
+              this._sseLineBuffer = []
               this.loadChatDetail()
               // 打开执行历史，定位到新对话
               this.openPromptChatHistory(this.promptExecPromptType, chatId)
@@ -2627,7 +2855,6 @@ export default {
         if (res.ErrCode === 0 && res.Data) {
           this.promptChatHistoryList = res.Data.list || []
           this._startChatHistoryDurationTimer()
-          this.syncBackgroundChatStreams(this.promptChatHistoryList, focusChatId || this.promptChatDetailId || this.chatDetailId)
           if (focusChatId) {
             const found = this.promptChatHistoryList.find(item => item.id === focusChatId)
             if (found) {
@@ -2650,24 +2877,25 @@ export default {
     // 点击执行历史列表项
     onPromptChatRowClick(row) {
       if (this.promptChatDetailId === row.id) return
+      // 切换前保存当前会话的输入到缓存
+      if (this.chatDetailId) {
+        this.saveChatInputCache(this.chatDetailId, this.chatContinueInput)
+      }
+      const oldChatDetailId = this.chatDetailId
       this.promptChatDetailId = row.id
       this.chatDetailId = row.id
+      // 切换后从缓存恢复新会话的输入
+      this.chatContinueInput = this.getChatInputCache(row.id)
       this.chatDetailStatus = row.status
       this.chatDetailAutoScroll = true
       this.promptChatDetailShowScrollBtn = false
-      // 切到不同 chat 时才断开旧 SSE
-      if (this._chatEventSource && this._sseChatId !== row.id) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
-        this._sseChatId = 0
-      }
-      // 中文注释：先关闭旧前台 SSE，再决定哪些对话转入后台监听，避免旧选中对话漏挂后台连接。
-      // English comment: Close the previous foreground SSE before recalculating background streams so the old active chat can move into background tracking.
-      this.syncBackgroundChatStreams(this.promptChatHistoryList, row.id)
+      // 重置 SSE 解析状态，新对话输出由业务 SSE 回调自动接收
+      this._sseParseState = null
+      this._sseLineBuffer = []
       if (row.is_read === false && row.status !== 'running') {
         this.markPromptChatReadOnServer(row.id)
       }
-      if (this._sseChatId !== row.id) {
+      if (oldChatDetailId !== row.id) {
         this.chatDetailSSELines = []
         this.chatDetailMessages = []
         this._thinkingStreamStartTime = 0
@@ -2710,7 +2938,6 @@ export default {
       if (this._promptChatHistoryHideHandled) return
       this._promptChatHistoryHideHandled = true
       this._stopChatHistoryDurationTimer()
-      this.stopAllBackgroundChatStreams()
       this.closePromptChatDetail()
     },
     // 关闭执行历史弹窗时立即清理前后台 SSE，避免弹窗已关但流仍然存活
@@ -2734,107 +2961,6 @@ export default {
         }
       }
       updateItem(this.promptChatHistoryList)
-      this.syncBackgroundChatStreams(this.promptChatHistoryList, this.promptChatDetailId || this.chatDetailId)
-    },
-    syncBackgroundChatStreams(list, selectedChatId) {
-      const normalizedSelectedChatId = Number(selectedChatId || 0)
-      const runningIds = new Set(
-        (Array.isArray(list) ? list : [])
-          .filter(item => item && item.status === 'running')
-          .map(item => Number(item.id || 0))
-          .filter(id => id > 0 && id !== normalizedSelectedChatId)
-      )
-      Object.keys(this._backgroundChatEventSources || {}).forEach((key) => {
-        const chatId = Number(key)
-        if (!runningIds.has(chatId)) {
-          this.stopBackgroundChatStream(chatId)
-        }
-      })
-      runningIds.forEach((chatId) => {
-        if (chatId !== Number(this._sseChatId || 0)) {
-          this.startBackgroundChatStream(chatId)
-        }
-      })
-    },
-    startBackgroundChatStream(chatId) {
-      const normalizedChatId = Number(chatId || 0)
-      if (normalizedChatId <= 0) return
-      if (normalizedChatId === Number(this._sseChatId || 0)) return
-      if (this._backgroundChatEventSources[normalizedChatId]) return
-      const currentItem = this.promptChatHistoryList.find(item => Number(item.id || 0) === normalizedChatId)
-      const sseHost = baseUtils.GetSseApiHost()
-      const url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + normalizedChatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
-      const es = new EventSource(url)
-      const state = {
-        es,
-        // 中文注释：背景 SSE 维护独立行数基线，确保非选中执行中的历史项也能实时更新 xx 条。
-        // English comment: Background SSE keeps its own line-count baseline so non-selected running chats can still update the visible message counter.
-        lineCount: Number(currentItem?.line_count || 0),
-      }
-      this._backgroundChatEventSources = {
-        ...this._backgroundChatEventSources,
-        [normalizedChatId]: state,
-      }
-      es.onmessage = (event) => {
-        const line = event.data
-        if (!line) return
-        // 中文注释：先按消息级别递增行数，再解析终态事件更新状态，避免必须等 DB flush 才看到条数变化。
-        // English comment: Increment line count before terminal-event parsing so the UI reflects new lines immediately without waiting for DB flushes.
-        state.lineCount += 1
-        this.updateBackgroundChatListItem(normalizedChatId, {
-          line_count: state.lineCount,
-        })
-        try {
-          const obj = JSON.parse(line)
-          if (obj.type === 'chat' && obj.subtype === 'completed') {
-            this.updateBackgroundChatListItem(normalizedChatId, {
-              status: String(obj.status || 'completed').trim() || 'completed',
-              line_count: state.lineCount,
-            })
-            this.stopBackgroundChatStream(normalizedChatId)
-          }
-        } catch (e) {
-          // 中文注释：普通流式消息解析失败时只保留计数更新；状态仍由终态事件或静默刷新兜底。
-          // English comment: Parse failures on normal stream lines only skip terminal-state parsing; the count update already happened.
-        }
-      }
-      es.onerror = () => {
-        this.stopBackgroundChatStream(normalizedChatId)
-      }
-    },
-    updateBackgroundChatListItem(chatId, patch) {
-      const normalizedChatId = Number(chatId || 0)
-      if (normalizedChatId <= 0 || !patch) return
-      const item = this.promptChatHistoryList.find(row => Number(row.id || 0) === normalizedChatId)
-      if (!item) return
-      Object.keys(patch).forEach((key) => {
-        if (patch[key] !== undefined) {
-          item[key] = patch[key]
-        }
-      })
-      if (normalizedChatId === Number(this.chatDetailId || 0) && patch.status) {
-        this.chatDetailStatus = patch.status
-      }
-      if (Object.prototype.hasOwnProperty.call(patch, 'is_read')) {
-        item.is_read = patch.is_read
-      }
-      this.promptChatHistoryList = this.promptChatHistoryList.slice()
-    },
-    stopBackgroundChatStream(chatId) {
-      const normalizedChatId = Number(chatId || 0)
-      if (normalizedChatId <= 0) return
-      const entry = this._backgroundChatEventSources[normalizedChatId]
-      if (entry?.es) {
-        entry.es.close()
-      }
-      const nextMap = { ...this._backgroundChatEventSources }
-      delete nextMap[normalizedChatId]
-      this._backgroundChatEventSources = nextMap
-    },
-    stopAllBackgroundChatStreams() {
-      Object.keys(this._backgroundChatEventSources || {}).forEach((key) => {
-        this.stopBackgroundChatStream(Number(key))
-      })
     },
     loadPromptChatHistoryListSilently() {
       if (!this.promptChatHistoryVisible || this.promptChatHistoryLoading) return
@@ -2845,7 +2971,6 @@ export default {
       loadApi((res) => {
         if (!(res && res.ErrCode === 0 && res.Data)) return
         this.promptChatHistoryList = res.Data.list || []
-        this.syncBackgroundChatStreams(this.promptChatHistoryList, this.promptChatDetailId || this.chatDetailId)
         if (this.chatDetailId > 0) {
           const current = this.promptChatHistoryList.find(item => item.id === this.chatDetailId)
           if (current) {
@@ -2886,10 +3011,10 @@ export default {
           this.promptChatHistoryList = this.promptChatHistoryList.slice()
         }
         // SSE 运行时同步 line_count
-        if (this._sseChatId > 0 && this.chatDetailSSELines.length > 0) {
+        if (this.chatDetailId > 0 && this.chatDetailSSELines.length > 0) {
           const count = this.chatDetailSSELines.length
           const updateLineCount = (list) => {
-            const item = list.find(i => i.id === this._sseChatId)
+            const item = list.find(i => i.id === this.chatDetailId)
             if (item && item.line_count !== count) {
               item.line_count = count
             }
@@ -3109,7 +3234,7 @@ export default {
     },
     // 获取列表项的消息数：运行中的对话使用实时SSE消息计数，否则使用数据库持久化的line_count
     getItemMsgCount(item) {
-      if (item.status === 'running' && this._sseChatId > 0 && item.id === this._sseChatId) {
+      if (item.status === 'running' && this.chatDetailId > 0 && item.id === this.chatDetailId) {
         return this.chatDetailSSELines.length
       }
       return item.line_count || 0
@@ -3215,6 +3340,61 @@ export default {
         })
       }
       return items
+    },
+    // ===== 文件变更检测（10s 轮询）=====
+    // 获取所有需要检测文件变更的本地目录列表
+    getFileChangesLocalDirs() {
+      const dirs = []
+      const seen = new Set()
+      for (const cfg of this.parsedTaskDevConfigs) {
+        const dir = String(cfg.local_dir || '').trim()
+        if (!dir || seen.has(dir)) continue
+        seen.add(dir)
+        dirs.push(dir)
+      }
+      return dirs
+    },
+    // 检查文件变更（调用 API）
+    loadFileChangesSummary() {
+      const dirs = this.getFileChangesLocalDirs()
+      if (dirs.length === 0) return
+      taskWorkflowApi.TaskWorkflowFileChangesSummary(dirs, (response) => {
+        if (response && response.ErrCode === 0 && response.Data && response.Data.dirs) {
+          this.fileChangesMap = { ...this.fileChangesMap, ...response.Data.dirs }
+        }
+      })
+    },
+    // 启动文件变更轮询（10s 间隔）
+    startFileChangesPolling() {
+      this.stopFileChangesPolling()
+      this.loadFileChangesSummary()
+      this._fileChangesPollTimer = setInterval(() => {
+        this.loadFileChangesSummary()
+      }, 10000)
+    },
+    // 停止文件变更轮询
+    stopFileChangesPolling() {
+      if (this._fileChangesPollTimer) {
+        clearInterval(this._fileChangesPollTimer)
+        this._fileChangesPollTimer = null
+      }
+    },
+    // 获取指定目录的文件变更汇总
+    getFileChangesSummary(localDir) {
+      if (!localDir || !this.fileChangesMap[localDir]) return null
+      const item = this.fileChangesMap[localDir]
+      if (item.error) return null
+      return item.summary || null
+    },
+    // 打开文件变更详情弹窗
+    openFileChangesDetail(cfg) {
+      const localDir = String(cfg.local_dir || '').trim()
+      const parentBranch = String(cfg.parent_branch || '').trim()
+      this.fileChangesDetailLocalDir = localDir
+      this.fileChangesDetailParentBranch = parentBranch
+      this.fileChangesDetailInitialSummary = this.fileChangesMap[localDir]?.summary || null
+      this.fileChangesDetailInitialFiles = this.fileChangesMap[localDir]?.files || []
+      this.fileChangesDialogVisible = true
     },
     getBranchMismatchItemKey(item) {
       return String(item.local_dir || '') + '|' + String(item.expected_branch || item.branch_name || '')
@@ -3334,6 +3514,137 @@ export default {
         this._branchSwitchEventSource = null
       }
     },
+    // 远程分支状态检测
+    getRemoteBranchStatusKey(cfg) {
+      return (cfg.local_dir || '') + '|' + (cfg.branch_name || '')
+    },
+    getRemoteBranchStatus(cfg) {
+      return this.remoteBranchStatusMap[this.getRemoteBranchStatusKey(cfg)] || null
+    },
+    getRemoteBranchStatusTooltip(cfg) {
+      const s = this.getRemoteBranchStatus(cfg)
+      if (!s) return ''
+      if (s.error) return '远程检测失败: ' + s.error
+      if (!s.remote_exists) return '远程分支不存在，点击查看详情'
+      if (!s.consistent) return '本地与远程不一致（本地领先' + (s.local_ahead || 0) + '，远程领先' + (s.remote_ahead || 0) + '），点击查看详情'
+      if (!s.pushed) return '分支未推送到远程，点击查看详情'
+      if (s.remote_dir_error) return '远程工作目录检测失败: ' + s.remote_dir_error
+      if (!s.remote_dir_branch_match) return '远程工作目录分支不一致（当前: ' + (s.remote_dir_current_branch || '未知') + '），点击查看详情'
+      return ''
+    },
+    showRemoteBranchWarning(cfg) {
+      const s = this.getRemoteBranchStatus(cfg)
+      if (!s) return false
+      if (s.error) return true
+      if (s.remote_dir_error) return true
+      return !s.remote_exists || !s.pushed || !s.consistent || !s.remote_dir_branch_match
+    },
+    showRemoteBranchOk(cfg) {
+      const s = this.getRemoteBranchStatus(cfg)
+      if (!s) return false
+      return !s.error && s.remote_exists && s.pushed && s.consistent && s.remote_dir_branch_match !== false
+    },
+    checkWorkflowRemoteBranchStatus() {
+      const items = this.getWorkflowBranchCheckItems()
+      if (items.length === 0) return
+      homeTaskApi.RemoteBranchCheck(items, (response) => {
+        if (response && response.ErrCode === 0 && response.Data) {
+          this.remoteBranchStatusMap = { ...this.remoteBranchStatusMap, ...response.Data }
+        }
+      })
+    },
+    openRemoteBranchDialog(cfg) {
+      this.remoteBranchDialogVisible = true
+      this.remoteBranchDialogPushResult = null
+      this.remoteBranchDialogLoading = true
+      this.remoteBranchDialogItem = {
+        local_dir: cfg.local_dir || '',
+        branch_name: cfg.branch_name || '',
+        git_id: Number(cfg.git_id || 0),
+      }
+      // 重新检测远程分支状态
+      const item = {
+        local_dir: cfg.local_dir || '',
+        branch_name: cfg.branch_name || '',
+        git_id: Number(cfg.git_id || 0),
+      }
+      homeTaskApi.RemoteBranchCheck([item], (response) => {
+        this.remoteBranchDialogLoading = false
+        if (response && response.ErrCode === 0 && response.Data) {
+          const key = this.getRemoteBranchStatusKey(cfg)
+          const info = response.Data[key]
+          if (info) {
+            this.remoteBranchDialogItem = { ...this.remoteBranchDialogItem, ...info }
+            this.remoteBranchStatusMap = { ...this.remoteBranchStatusMap, [key]: info }
+          }
+        } else {
+          this.remoteBranchDialogItem = { ...this.remoteBranchDialogItem, error: '检测失败' }
+        }
+      })
+    },
+    closeRemoteBranchDialog() {
+      this.remoteBranchDialogVisible = false
+      this.remoteBranchDialogPushResult = null
+    },
+    refreshRemoteBranchDialog() {
+      this.openRemoteBranchDialog({
+        local_dir: this.remoteBranchDialogItem.local_dir,
+        branch_name: this.remoteBranchDialogItem.branch_name,
+        git_id: this.remoteBranchDialogItem.git_id,
+      })
+    },
+    handleRemoteBranchPush() {
+      if (!this.remoteBranchDialogItem.local_dir || !this.remoteBranchDialogItem.branch_name) {
+        this.$helperNotify.warning('目录或分支信息不完整')
+        return
+      }
+      const item = this.remoteBranchDialogItem
+      // 如果已推送且同步，跳过推送，直接切换远程工作目录分支
+      if (item.pushed && item.consistent) {
+        this.switchRemoteBranch()
+        return
+      }
+      // 否则先推送再切换
+      this.remoteBranchPushing = true
+      this.remoteBranchDialogPushResult = null
+      homeTaskApi.RemoteBranchPush({
+        local_dir: item.local_dir,
+        branch_name: item.branch_name,
+        git_id: item.git_id,
+      }, (response) => {
+        if (response && response.ErrCode === 0) {
+          this.$helperNotify.success('远程分支推送成功')
+          // 推送成功后继续切换远程工作目录分支
+          this.switchRemoteBranch()
+        } else {
+          this.remoteBranchPushing = false
+          this.remoteBranchDialogPushResult = { success: false, message: response?.ErrMsg || response?.Msg || '推送失败' }
+          this.$helperNotify.error('远程分支推送失败')
+        }
+      })
+    },
+    switchRemoteBranch() {
+      const item = this.remoteBranchDialogItem
+      if (!item.git_id || !item.branch_name) {
+        this.remoteBranchPushing = false
+        this.$helperNotify.warning('缺少Git配置或分支名，无法切换远程分支')
+        return
+      }
+      this.remoteBranchPushing = true
+      homeTaskApi.RemoteBranchSwitch(item.git_id, item.branch_name, (response) => {
+        this.remoteBranchPushing = false
+        if (response && response.ErrCode === 0) {
+          this.remoteBranchDialogPushResult = { success: true, message: '远程工作目录分支切换成功' }
+          this.$helperNotify.success('远程工作目录分支切换成功')
+          setTimeout(() => {
+            this.refreshRemoteBranchDialog()
+          }, 1500)
+        } else {
+          this.remoteBranchDialogPushResult = { success: false, message: response?.ErrMsg || response?.Msg || '远程分支切换失败' }
+          this.$helperNotify.error('远程分支切换失败')
+        }
+      })
+    },
     appendBranchSwitchLog(text, level = 'info') {
       this.branchSwitchStreamLines.push({ text, level })
       this.$nextTick(() => {
@@ -3403,6 +3714,7 @@ export default {
             this.appendBranchSwitchLog(parsed.message || '分支切换完成', 'success')
             this.$helperNotify.success(`已切换到 ${payload.branch_name}`)
             this.checkWorkflowBranchStatus()
+            this.checkWorkflowRemoteBranchStatus()
             this.loadBranchMismatchDetail({ showDialog: true, mode: this.branchMismatchDialogMode })
           } else {
             this.appendBranchSwitchLog(parsed.message || '清理并切换分支失败', 'error')
@@ -3574,11 +3886,8 @@ export default {
 .task-workflow-header__meta {
   display: flex;
   flex-direction: column;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 6px;
-  color: #909399;
-  font-size: 13px;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .task-workflow-header__unread {
@@ -3587,26 +3896,77 @@ export default {
   font-weight: 600;
 }
 
-.task-workflow-header__dev-row {
+.task-workflow-header__dev-card {
+  background: #f9fafb;
+  border: 1px solid #e8ecf1;
+  border-radius: 8px;
+  padding: 12px 16px;
+  transition: border-color 0.2s;
+}
+
+.task-workflow-header__dev-card:hover {
+  border-color: #c8cdd5;
+}
+
+.task-workflow-header__field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px 20px;
+}
+
+.task-workflow-header__field {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px 0;
 }
 
-.task-workflow-header__dev-item {
+.task-workflow-header__field--compact {
+  max-width: 150px;
+}
+
+.task-workflow-header__field--link {
+  cursor: pointer;
+}
+
+.task-workflow-header__field--link .task-workflow-header__field-value {
+  color: #3a7a3a;
+  transition: color 0.2s;
+}
+
+.task-workflow-header__field--link:hover .task-workflow-header__field-value {
+  color: #2d5f2d;
+  text-decoration: underline;
+}
+
+.task-workflow-header__field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #909399;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+
+.task-workflow-header__field-value {
+  font-size: 13px;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.task-workflow-header__dev-sep {
-  color: #dcdfe6;
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .task-workflow-header__branch {
   color: #3a7a3a;
   cursor: pointer;
   transition: color 0.2s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-workflow-header__branch:hover {
@@ -3614,15 +3974,122 @@ export default {
   text-decoration: underline;
 }
 
-.task-workflow-header__dev-item--link {
-  color: #3a7a3a;
+.task-workflow-header__status-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+
+.task-workflow-header__status-icon--ok {
+  color: #4caf50;
+}
+
+.task-workflow-header__status-icon--err {
+  color: #e53935;
+}
+
+.task-workflow-header__field--wrap {
+  grid-column: span 2;
+}
+
+.task-workflow-header__field-value--wrap {
+  white-space: normal;
+  word-break: break-all;
+  overflow: visible;
+}
+
+.task-workflow-header__status-icon--remote-warn {
+  color: #e6a23c;
   cursor: pointer;
   transition: color 0.2s;
 }
 
-.task-workflow-header__dev-item--link:hover {
+.task-workflow-header__status-icon--remote-warn:hover {
+  color: #d48806;
+}
+
+/* 远程分支检查弹窗 */
+.remote-branch-dialog__info {
+  background: #f5f7fa;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.remote-branch-dialog__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.remote-branch-dialog__row + .remote-branch-dialog__row {
+  border-top: 1px solid #ebeef5;
+}
+
+.remote-branch-dialog__label {
+  font-size: 13px;
+  color: #909399;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.remote-branch-dialog__value {
+  font-size: 13px;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.remote-branch-dialog__status {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.remote-branch-dialog__status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.remote-branch-dialog__status-label {
+  font-size: 13px;
+  color: #909399;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.remote-branch-dialog__error {
+  font-size: 13px;
+  color: #e53935;
+}
+
+.remote-branch-dialog__result {
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.remote-branch-dialog__result--ok {
+  background: #f0f9f0;
   color: #2d5f2d;
-  text-decoration: underline;
+  border: 1px solid #c8e6c9;
+}
+
+.remote-branch-dialog__result--err {
+  background: #fef0f0;
+  color: #c62828;
+  border: 1px solid #ffcdd2;
+}
+
+.remote-branch-dialog__footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .task-workflow-header__link {
@@ -3678,14 +4145,15 @@ export default {
   border: 1px solid #e8e8e0;
   border-radius: 8px;
   background: #fff;
-  min-height: 50px;
-  padding: 14px 16px;
+  min-height: 46px;
+  padding: 8px 10px;
   text-align: left;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .task-workflow-node:hover {
@@ -3717,10 +4185,31 @@ export default {
 }
 
 .task-workflow-node__label {
-  font-size: 15px;
-  line-height: 1.4;
+  font-size: 13px;
+  line-height: 1.3;
   color: #303133;
   font-weight: 600;
+}
+
+.task-workflow-node__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.task-workflow-node__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #9fb39a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .task-workflow-node__desc {
@@ -3872,6 +4361,16 @@ export default {
   font-size: 16px;
   font-weight: 600;
   color: #303133;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.task-workflow-card__title-desc {
+  font-size: 12px;
+  font-weight: 400;
+  color: #909399;
 }
 
 .task-workflow-card__hint {
@@ -4243,6 +4742,55 @@ export default {
 
 .thinking-blockquote::-webkit-scrollbar-thumb:hover {
   background: #909399;
+}
+
+/* ===== 文件变更样式（header 列的统计标签，详情弹窗样式在 FileChangesDialog.vue 中） ===== */
+.task-workflow-header__field-value--dim {
+  color: #c0c4cc;
+  font-style: italic;
+}
+
+/* 文件变更内联统计 */
+.file-changes-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.file-changes-inline__item {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.file-changes-inline__item small {
+  font-weight: 400;
+  font-size: 10px;
+  margin-left: 1px;
+  opacity: 0.7;
+}
+
+.file-changes-inline__item--new {
+  color: #1a7f37;
+}
+
+.file-changes-inline__item--edit {
+  color: #9a6700;
+}
+
+.file-changes-inline__item--delete {
+  color: #cf222e;
+}
+
+.file-changes-inline__item--other {
+  color: #656d76;
+}
+
+.file-changes-inline__sep {
+  color: #c0c4cc;
+  margin: 0 5px;
+  font-size: 11px;
 }
 
 </style>

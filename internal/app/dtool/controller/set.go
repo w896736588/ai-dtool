@@ -14,6 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"dev_tool/internal/pkg/p_common"
+	"dev_tool/internal/pkg/p_db"
+	"dev_tool/internal/pkg/p_shell"
+
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 	"github.com/w896736588/go-tool/gsdb"
@@ -408,13 +412,7 @@ func testRedisConn(redisConfig map[string]any) *gstask.Result {
 				Result: redisConfig[`id`],
 			}
 		}
-		gsRedis.SshBridge = gsssh.NewSshBridge(gsssh.NewSsh(&gsssh.SshConfig{
-			Name:     cast.ToString(sshConfig[`name`]),
-			Host:     cast.ToString(sshConfig[`host`]),
-			Port:     cast.ToString(sshConfig[`port`]),
-			UserName: cast.ToString(sshConfig[`username`]),
-			Password: cast.ToString(sshConfig[`password`]),
-		}))
+		gsRedis.SshBridge = p_db.NewConfiguredSshBridge(sshConfig)
 	}
 	connErr := gsRedis.CreateConn()
 	if connErr != nil {
@@ -466,21 +464,23 @@ func testDbConn(dbConfig map[string]any) *gstask.Result {
 	if dbType == `` {
 		dbType = DbTypeMysql
 	}
+	gstool.FmtPrintlnLogTime(`[Set.testDbConn] begin db_id=%s db_type=%s ssh_id=%s target=%s:%s db=%s`,
+		cast.ToString(dbConfig[`id`]), dbType, cast.ToString(dbConfig[`ssh_id`]),
+		cast.ToString(dbConfig[`host`]), cast.ToString(dbConfig[`port`]), cast.ToString(dbConfig[`dbname`]))
 	sshBridge := func() *gsssh.SshBridge {
 		if cast.ToInt(dbConfig[`ssh_id`]) == 0 {
 			return nil
 		}
 		sshConfig, sshConfigErr := common.DbMain.GetSshConfig(dbConfig[`ssh_id`])
 		if sshConfigErr != nil {
+			gstool.FmtPrintlnLogTime(`[Set.testDbConn] load ssh config failed db_id=%s ssh_id=%s err=%s`,
+				cast.ToString(dbConfig[`id`]), cast.ToString(dbConfig[`ssh_id`]), sshConfigErr.Error())
 			return nil
 		}
-		return gsssh.NewSshBridge(gsssh.NewSsh(&gsssh.SshConfig{
-			Name:     cast.ToString(sshConfig[`name`]),
-			Host:     cast.ToString(sshConfig[`host`]),
-			Port:     cast.ToString(sshConfig[`port`]),
-			UserName: cast.ToString(sshConfig[`username`]),
-			Password: cast.ToString(sshConfig[`password`]),
-		}))
+		gstool.FmtPrintlnLogTime(`[Set.testDbConn] use ssh bridge db_id=%s ssh_name=%s ssh_host=%s:%s post_connect_cmds=%q`,
+			cast.ToString(dbConfig[`id`]), cast.ToString(sshConfig[`name`]), cast.ToString(sshConfig[`host`]),
+			cast.ToString(sshConfig[`port`]), cast.ToString(sshConfig[`post_connect_cmds`]))
+		return p_db.NewConfiguredSshBridge(sshConfig)
 	}()
 	var connErr error
 	if dbType == DbTypePgsql {
@@ -511,11 +511,13 @@ func testDbConn(dbConfig map[string]any) *gstask.Result {
 		connErr = gsMysql.CreateConn()
 	}
 	if connErr != nil {
+		gstool.FmtPrintlnLogTime(`[Set.testDbConn] failed db_id=%s err=%s`, cast.ToString(dbConfig[`id`]), connErr.Error())
 		return &gstask.Result{
 			Err:    connErr,
 			Result: dbConfig[`id`],
 		}
 	}
+	gstool.FmtPrintlnLogTime(`[Set.testDbConn] success db_id=%s`, cast.ToString(dbConfig[`id`]))
 	return &gstask.Result{
 		Err:    nil,
 		Result: dbConfig[`id`],
@@ -2040,4 +2042,261 @@ func SetLocalBranchMismatchDetail(c *gin.Context) {
 		result = append(result, row)
 	}
 	gsgin.GinResponseSuccess(c, ``, result)
+}
+
+// SetRemoteBranchCheck 批量检查本地目录当前 Git 分支的远程推送状态和同步状态，同时检查远程工作目录分支是否一致。
+// 入参: { items: [{ local_dir: "C:\\...", branch_name: "feature_xxx", git_id: 1 }] }
+// 出参: map[string]object，key 为 "local_dir|branch_name"，
+//
+//	value 含 pushed / remote_branch_name / remote_exists / local_ahead / remote_ahead / consistent / error
+//	      以及 remote_dir_code_path / remote_dir_current_branch / remote_dir_branch_match / remote_dir_error
+func SetRemoteBranchCheck(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	itemsRaw, _ := dataMap[`items`].([]any)
+	result := make(map[string]map[string]any, len(itemsRaw))
+	for _, raw := range itemsRaw {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		localDir := strings.TrimSpace(cast.ToString(item[`local_dir`]))
+		branchName := strings.TrimSpace(cast.ToString(item[`branch_name`]))
+		if localDir == `` || branchName == `` {
+			continue
+		}
+		key := localDir + localBranchBatchCheckKeySep + branchName
+		if _, exists := result[key]; exists {
+			continue
+		}
+		row := map[string]any{
+			`local_dir`:   localDir,
+			`branch_name`: branchName,
+		}
+
+		// 检查目录是否存在
+		info, statErr := os.Stat(localDir)
+		if statErr != nil || !info.IsDir() {
+			row[`pushed`] = false
+			row[`remote_exists`] = false
+			row[`consistent`] = false
+			row[`error`] = `目录不存在`
+			result[key] = row
+			continue
+		}
+
+		// 检查是否有远程 origin
+		remoteCmd := exec.Command(`git`, `-C`, localDir, `remote`)
+		remoteOutput, _ := remoteCmd.CombinedOutput()
+		hasRemote := strings.Contains(strings.TrimSpace(string(remoteOutput)), `origin`)
+
+		if !hasRemote {
+			row[`pushed`] = false
+			row[`remote_exists`] = false
+			row[`consistent`] = false
+			row[`error`] = `未配置远程仓库 origin`
+			result[key] = row
+			continue
+		}
+
+		// 检查远程分支是否存在
+		lsCmd := exec.Command(`git`, `-C`, localDir, `ls-remote`, `--heads`, `origin`, branchName)
+		lsOutput, lsErr := lsCmd.CombinedOutput()
+		remoteExists := lsErr == nil && strings.TrimSpace(string(lsOutput)) != ``
+
+		// 检查当前本地分支（确认目录下确实是该分支）
+		currentBranchCmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, `--abbrev-ref`, `HEAD`)
+		currentBranchOutput, _ := currentBranchCmd.CombinedOutput()
+		currentBranch := strings.TrimSpace(string(currentBranchOutput))
+
+		row[`remote_exists`] = remoteExists
+
+		if !remoteExists {
+			row[`pushed`] = false
+			row[`consistent`] = false
+			row[`current_branch`] = currentBranch
+			result[key] = row
+			continue
+		}
+
+		// 远程分支存在则已推送
+		row[`pushed`] = true
+
+		// 先 fetch 以获取最新远程信息（静默 fetch）
+		fetchCmd := exec.Command(`git`, `-C`, localDir, `fetch`, `origin`, branchName)
+		fetchCmd.CombinedOutput() // 忽略 fetch 错误，继续检查
+
+		// 获取追踪的远程分支名
+		trackCmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, `--abbrev-ref`, branchName+`@{upstream}`)
+		trackOutput, trackErr := trackCmd.CombinedOutput()
+		if trackErr == nil {
+			row[`remote_branch_name`] = strings.TrimSpace(string(trackOutput))
+		} else {
+			row[`remote_branch_name`] = `origin/` + branchName
+		}
+
+		// 检查 ahead/behind
+		revListCmd := exec.Command(`git`, `-C`, localDir, `rev-list`, `--left-right`, `--count`, branchName+`...origin/`+branchName)
+		revOutput, revErr := revListCmd.CombinedOutput()
+		localAhead := 0
+		remoteAhead := 0
+		if revErr == nil {
+			parts := strings.Fields(strings.TrimSpace(string(revOutput)))
+			if len(parts) >= 2 {
+				localAhead = cast.ToInt(parts[0])
+				remoteAhead = cast.ToInt(parts[1])
+			}
+		}
+
+		row[`current_branch`] = currentBranch
+		row[`local_ahead`] = localAhead
+		row[`remote_ahead`] = remoteAhead
+		row[`consistent`] = localAhead == 0 && remoteAhead == 0 && currentBranch == branchName
+
+		// 检查远程工作目录（tbl_git.code_path）的当前分支是否与配置的分支名一致
+		gitID := cast.ToInt(item[`git_id`])
+		if gitID > 0 {
+			row[`remote_dir_current_branch`] = ``
+			row[`remote_dir_branch_match`] = false
+
+			// 先查询 Git 配置
+			gitInfo, gitErr := common.DbMain.Client.QuickQuery(`tbl_git`, `*`, map[string]any{
+				`id`: gitID,
+			}).One()
+			if gitErr != nil || len(gitInfo) == 0 {
+				row[`remote_dir_error`] = `未找到Git配置`
+			} else {
+				codePath := strings.TrimSpace(cast.ToString(gitInfo[`code_path`]))
+				row[`remote_dir_code_path`] = codePath
+				if codePath == `` {
+					row[`remote_dir_error`] = `Git项目未配置code_path`
+				} else {
+					sshID := cast.ToInt(gitInfo[`ssh_id`])
+					if sshID > 0 {
+						// 通过 SSH 连接远程服务器检查工作目录分支
+						sshConfig, sshConfErr := common.DbMain.GetSshConfig(sshID)
+						if sshConfErr != nil || len(sshConfig) == 0 {
+							row[`remote_dir_error`] = `获取SSH配置失败`
+						} else {
+							uniqueKey := p_common.TBaseClient.GetCombineKey(sshID, gitID)
+							sshClient, sshCliErr := component.ShellClient.GetClient(sshConfig, uniqueKey, nil, nil, nil, nil)
+							if sshCliErr != nil {
+								row[`remote_dir_error`] = `创建SSH连接失败: ` + sshCliErr.Error()
+							} else {
+								cmdShell := p_shell.NewCommand()
+								cmdShell.Init()
+								cmdShell.Cd(codePath)
+								cmdShell.Echo(`BRANCH_BEGIN`)
+								cmdShell.GitShowBranch()
+								cmdShell.Echo(`BRANCH_END`)
+								cmdShell.Echo(`UPSTREAM_BEGIN`)
+								cmdShell.GitShowUpstream()
+								cmdShell.Echo(`UPSTREAM_END`)
+								result, runErr := sshClient.RunCommandWait(cmdShell.GetCommand().ToStr(), time.Second*4)
+								if runErr != nil {
+									row[`remote_dir_error`] = `SSH执行失败: ` + runErr.Error()
+								} else {
+									remoteDirBranch := extractBranchBetweenMarkers(result, `BRANCH_BEGIN`, `BRANCH_END`)
+									remoteDirUpstream := extractBranchBetweenMarkers(result, `UPSTREAM_BEGIN`, `UPSTREAM_END`)
+									row[`remote_dir_current_branch`] = remoteDirBranch
+									row[`remote_dir_remote_branch`] = remoteDirUpstream
+									row[`remote_dir_branch_match`] = remoteDirBranch == branchName
+								}
+							}
+						}
+					} else {
+						// 无 SSH 配置，尝试在本地检查工作目录
+						if codeInfo, codeStatErr := os.Stat(codePath); codeStatErr == nil && codeInfo.IsDir() {
+							remoteDirBranchCmd := exec.Command(`git`, `-C`, codePath, `rev-parse`, `--abbrev-ref`, `HEAD`)
+							remoteDirBranchOutput, _ := remoteDirBranchCmd.CombinedOutput()
+							remoteDirBranch := strings.TrimSpace(string(remoteDirBranchOutput))
+							// 获取远程工作空间的上游跟踪分支
+							remoteDirUpstreamCmd := exec.Command(`git`, `-C`, codePath, `rev-parse`, `--abbrev-ref`, `@{upstream}`)
+							remoteDirUpstreamOutput, _ := remoteDirUpstreamCmd.CombinedOutput()
+							remoteDirUpstream := strings.TrimSpace(string(remoteDirUpstreamOutput))
+							row[`remote_dir_current_branch`] = remoteDirBranch
+							row[`remote_dir_remote_branch`] = remoteDirUpstream
+							row[`remote_dir_branch_match`] = remoteDirBranch == branchName
+						} else {
+							if codeStatErr != nil {
+								row[`remote_dir_error`] = codeStatErr.Error()
+							} else {
+								row[`remote_dir_error`] = `远程工作目录路径不存在`
+							}
+						}
+					}
+				}
+			}
+		}
+
+		result[key] = row
+	}
+	gsgin.GinResponseSuccess(c, ``, result)
+}
+
+// SetRemoteBranchPush 推送当前分支并设置上游追踪。
+// 入参: { local_dir: "C:\\...", branch_name: "feature_xxx", git_id: 1 }
+// 出参: { success: bool, message: string }
+func SetRemoteBranchPush(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	localDir := strings.TrimSpace(cast.ToString(dataMap[`local_dir`]))
+	branchName := strings.TrimSpace(cast.ToString(dataMap[`branch_name`]))
+	if localDir == `` || branchName == `` {
+		gsgin.GinResponseError(c, `参数不完整`, nil)
+		return
+	}
+
+	info, statErr := os.Stat(localDir)
+	if statErr != nil || !info.IsDir() {
+		gsgin.GinResponseError(c, `目录不存在: `+localDir, nil)
+		return
+	}
+
+	// 执行 git push -u origin branch
+	pushCmd := exec.Command(`git`, `-C`, localDir, `push`, `-u`, `origin`, branchName)
+	output, pushErr := pushCmd.CombinedOutput()
+	if pushErr != nil {
+		errText := strings.TrimSpace(string(output))
+		if errText == `` {
+			errText = pushErr.Error()
+		}
+		gsgin.GinResponseError(c, `推送失败: `+errText, nil)
+		return
+	}
+	msg := strings.TrimSpace(string(output))
+	if msg == `` {
+		msg = `推送成功`
+	}
+	gsgin.GinResponseSuccess(c, msg, map[string]any{
+		`success`: true,
+		`message`: msg,
+	})
+}
+
+// extractBranchBetweenMarkers 从 SSH 输出中提取两个标记之间的分支名，清理终端控制字符和提示符。
+func extractBranchBetweenMarkers(output, beginMarker, endMarker string) string {
+	// 先过滤终端控制字符
+	output = p_common.TBaseClient.FilterTerminalChars(output)
+
+	// 定位开始标记
+	beginIdx := strings.Index(output, beginMarker)
+	if beginIdx < 0 {
+		return ``
+	}
+	beginIdx += len(beginMarker)
+
+	// 定位结束标记
+	endIdx := strings.Index(output[beginIdx:], endMarker)
+	if endIdx < 0 {
+		return ``
+	}
+
+	// 提取中间内容
+	inner := output[beginIdx : beginIdx+endIdx]
+	inner = strings.TrimSpace(inner)
+	inner = strings.ReplaceAll(inner, "\n", "")
+	inner = strings.ReplaceAll(inner, "\r", "")
+
+	return inner
 }

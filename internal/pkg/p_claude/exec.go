@@ -94,9 +94,6 @@ func RunClaudeStream(ctx context.Context, cfg RunConfig, callback func(msg Strea
 				continue
 			}
 			lineCount++
-			if lineCount <= 3 {
-				log.Printf("[claude-exec] 收到第%d行(len=%d): %.200s", lineCount, len(line), line)
-			}
 			msg := parseLine(line)
 			callback(msg)
 

@@ -26,6 +26,7 @@
       </div>
       <div class="agent-cli-header-actions">
         <GitActionButton compact @click="openCreateDialog">新建</GitActionButton>
+        <GitActionButton compact variant="success" @click="openPromptTemplateDialog">提示词模板</GitActionButton>
         <GitActionButton compact variant="info" @click="openWebhookDialog">Webhook 配置</GitActionButton>
         <GitActionButton compact variant="warning" @click="chromeDevtoolsDialogVisible = true">ChromeDevTools</GitActionButton>
         <GitActionButton compact variant="primary" @click="openGroupDialog">分组管理</GitActionButton>
@@ -353,6 +354,84 @@
       </div>
     </el-dialog>
 
+    <el-dialog v-model="promptTemplateDialogVisible" title="提示词模板" width="780px">
+      <div class="agent-cli-template-toolbar">
+        <div class="agent-cli-template-toolbar__desc">可维护多个 Markdown 模板，执行任务时按选择顺序拼接到手动输入提示词后。</div>
+        <el-button type="primary" @click="addPromptTemplate">新增模板</el-button>
+      </div>
+      <div v-if="promptTemplates.length === 0" class="agent-cli-template-empty">暂无提示词模板，点击右上角新增</div>
+      <el-table v-else :data="promptTemplates" size="small" class="agent-cli-template-table">
+        <el-table-column prop="name" label="模板名称" min-width="160">
+          <template #default="{ row }">
+            <span>{{ row.name || '未命名模板' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="目录范围" min-width="120">
+          <template #default="{ row }">
+            <el-tag v-if="row.apply_all_dirs" size="small" type="success">全部目录</el-tag>
+            <span v-else>{{ (row.local_dirs || []).length }} 个目录</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="排序" width="70" align="center">
+          <template #default="{ row }">
+            {{ row.sort_order }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="140" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" link type="primary" @click="editPromptTemplate(row)">编辑</el-button>
+            <el-button size="small" link type="danger" @click="removePromptTemplate(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="promptTemplateDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 提示词模板编辑弹窗 -->
+    <el-dialog v-model="promptTemplateEditVisible" :title="promptTemplateEditForm.id ? '编辑模板' : '新增模板'" width="640px" destroy-on-close @closed="resetPromptTemplateEditForm">
+      <el-form :model="promptTemplateEditForm" label-width="90px">
+        <el-form-item label="模板名称">
+          <el-input v-model="promptTemplateEditForm.name" placeholder="请输入模板名称" maxlength="100" />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="promptTemplateEditForm.sort_order" :min="0" />
+        </el-form-item>
+        <el-form-item label="目录范围">
+          <el-checkbox v-model="promptTemplateEditForm.apply_all_dirs" style="margin-bottom: 8px;">全部工作目录</el-checkbox>
+          <el-select
+            v-model="promptTemplateEditForm.local_dirs"
+            multiple
+            clearable
+            filterable
+            :disabled="promptTemplateEditForm.apply_all_dirs"
+            style="width: 100%;"
+            placeholder="选择关联工作目录"
+          >
+            <el-option
+              v-for="localDir in promptTemplateLocalDirs"
+              :key="localDir"
+              :label="localDir"
+              :value="localDir"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="模板内容">
+          <el-input
+            v-model="promptTemplateEditForm.content"
+            type="textarea"
+            :rows="10"
+            placeholder="请输入 Markdown 提示词模板内容"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="promptTemplateEditVisible = false">取消</el-button>
+        <el-button type="primary" :loading="promptTemplateEditSaving" @click="savePromptTemplate">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- Webhook 配置管理弹窗 -->
     <el-dialog v-model="webhookDialogVisible" title="Webhook 通知配置" width="640px">
       <div style="margin-bottom: 12px; text-align: right;">
@@ -433,6 +512,22 @@
         <el-form-item label="工作目录">
           <el-input v-model="agentExecLocalDir" placeholder="请输入本地工作目录绝对路径" />
         </el-form-item>
+        <el-form-item label="模板">
+          <el-select
+            v-model="agentExecSelectedTemplateIds"
+            multiple
+            style="width: 100%;"
+            placeholder="可多选，按选择顺序拼接"
+          >
+            <el-option
+              v-for="template in availablePromptTemplates"
+              :key="template.id"
+              :label="template.name || '未命名模板'"
+              :value="template.id"
+            />
+          </el-select>
+          <div class="agent-cli-form-tip">仅展示匹配当前工作目录或设置为“全部工作目录”的模板。</div>
+        </el-form-item>
         <el-form-item label="模型">
           <el-select v-model="agentExecModelName" style="width: 100%;" placeholder="请选择模型">
             <el-option
@@ -458,6 +553,15 @@
             type="textarea"
             :rows="10"
             placeholder="请输入要发送给当前 Agent CLI 的提示词"
+          />
+        </el-form-item>
+        <el-form-item label="最终预览">
+          <el-input
+            :model-value="agentExecComposedPrompt"
+            type="textarea"
+            :rows="8"
+            readonly
+            placeholder="选择模板后，这里会展示最终发送内容"
           />
         </el-form-item>
       </el-form>
@@ -522,6 +626,7 @@ import ChatHistoryDialog from '@/components/shared/ChatHistoryDialog.vue'
 import taskWorkflowApi from '@/utils/base/task_workflow'
 import baseUtils from '@/utils/base'
 import sseDistribute from '@/utils/base/sse_distribute'
+import sseBusiness from '@/utils/base/sse_business'
 import chatParser from '@/utils/chat_parser'
 import taskProgressStore from '@/utils/task_progress_store'
 import MarkdownIt from 'markdown-it'
@@ -582,6 +687,19 @@ export default {
       selectedGroupId: 0,
       // 分组管理弹窗
       groupDialogVisible: false,
+      promptTemplateDialogVisible: false,
+      promptTemplateEditVisible: false,
+      promptTemplateEditSaving: false,
+      promptTemplateEditForm: {
+        id: null,
+        name: '',
+        content: '',
+        apply_all_dirs: false,
+        sort_order: 0,
+        local_dirs: [],
+      },
+      promptTemplates: [],
+      promptTemplateLocalDirs: [],
       groupDialogLoading: false,
       groupDialogList: [],
       groupFormVisible: false,
@@ -618,6 +736,7 @@ export default {
       agentExecHistoryDirs: [],
       agentExecModelName: '',
       agentExecThinkingIntensity: '高',
+      agentExecSelectedTemplateIds: [],
       agentChatHistoryVisible: false,
       agentChatHistoryLoading: false,
       agentChatHistoryTitle: '',
@@ -640,8 +759,6 @@ export default {
       chatDetailMessages: [],
       chatDetailSSELines: [],
       chatDetailAutoScroll: true,
-      chatDetailSSERegistered: false,
-      _backgroundChatEventSources: {},
       agentChatDetailShowScrollBtn: false,
       chatContinueInput: '',
       chatContinueLoading: false,
@@ -675,12 +792,28 @@ export default {
     webhookSecretPlaceholder() {
       return this.webhookSecretPlaceholderByType(this.webhookForm.type)
     },
+    availablePromptTemplates() {
+      const localDir = String(this.agentExecLocalDir || '').trim()
+      if (!localDir) return (this.promptTemplates || []).filter(item => item.apply_all_dirs)
+      return (this.promptTemplates || []).filter(item => item.apply_all_dirs || (Array.isArray(item.local_dirs) && item.local_dirs.includes(localDir)))
+    },
+    selectedPromptTemplates() {
+      const selectedIds = Array.isArray(this.agentExecSelectedTemplateIds) ? this.agentExecSelectedTemplateIds : []
+      if (selectedIds.length === 0) return []
+      const templateMap = new Map((this.availablePromptTemplates || []).map(item => [item.id, item]))
+      return selectedIds.map(id => templateMap.get(id)).filter(item => item && String(item.content || '').trim())
+    },
+    agentExecComposedPrompt() {
+      return this.composeAgentExecPrompt()
+    },
   },
   mounted() {
     this.loadList()
     this.loadWebhookOptions()
     this.loadGroupList()
+    this.loadPromptTemplates()
     this.ensureAgentUnreadSse()
+    this.connectBusinessSse()
     // 恢复上次选中的分组
     try {
       const cached = parseInt(localStorage.getItem(AGENT_CLI_GROUP_CACHE_KEY))
@@ -699,7 +832,8 @@ export default {
   },
   beforeUnmount() {
     this.closeChatDetail()
-    this.stopAllBackgroundChatStreams()
+    this.unregisterChatOutputSse()
+    sseBusiness.CloseBusinessSse('agent_cli')
     this._stopAgentChatHistoryDurationTimer()
     this.unregisterAgentUnreadSse()
   },
@@ -711,8 +845,111 @@ export default {
         return
       }
     },
+    agentExecLocalDir() {
+      const availableIds = new Set(this.availablePromptTemplates.map(item => item.id))
+      this.agentExecSelectedTemplateIds = this.agentExecSelectedTemplateIds.filter(id => availableIds.has(id))
+    },
   },
   methods: {
+    openPromptTemplateDialog() {
+      this.promptTemplateDialogVisible = true
+      this.loadPromptTemplates()
+    },
+    loadPromptTemplates() {
+      agentCliApi.AgentCliPromptTemplateList((response) => {
+        if (!(response && response.ErrCode === 0 && response.Data)) {
+          this.$message.error(response?.ErrMsg || '加载提示词模板失败')
+          return
+        }
+        this.promptTemplates = Array.isArray(response.Data.list)
+          ? response.Data.list.map(item => ({
+            id: String(item.id || ''),
+            name: item.name || '',
+            content: item.content || '',
+            apply_all_dirs: !!item.apply_all_dirs,
+            local_dirs: Array.isArray(item.local_dirs) ? item.local_dirs : [],
+            sort_order: Number(item.sort_order || 0),
+            _saving: false,
+          }))
+          : []
+        this.promptTemplateLocalDirs = Array.isArray(response.Data.local_dirs) ? response.Data.local_dirs : []
+        const availableIds = new Set(this.availablePromptTemplates.map(item => item.id))
+        this.agentExecSelectedTemplateIds = this.agentExecSelectedTemplateIds.filter(id => availableIds.has(id))
+      })
+    },
+    addPromptTemplate() {
+      this.resetPromptTemplateEditForm()
+      this.promptTemplateEditVisible = true
+    },
+    editPromptTemplate(template) {
+      if (!template) return
+      this.promptTemplateEditForm = {
+        id: template.id,
+        name: template.name || '',
+        content: template.content || '',
+        apply_all_dirs: !!template.apply_all_dirs,
+        sort_order: Number(template.sort_order || 0),
+        local_dirs: Array.isArray(template.local_dirs) ? [...template.local_dirs] : [],
+      }
+      this.promptTemplateEditVisible = true
+    },
+    resetPromptTemplateEditForm() {
+      this.promptTemplateEditForm = {
+        id: null,
+        name: '',
+        content: '',
+        apply_all_dirs: false,
+        sort_order: 0,
+        local_dirs: [],
+      }
+    },
+    savePromptTemplate() {
+      const form = this.promptTemplateEditForm
+      if (!String(form.name || '').trim()) {
+        this.$message.warning('模板名称不能为空')
+        return
+      }
+      if (!String(form.content || '').trim()) {
+        this.$message.warning('模板内容不能为空')
+        return
+      }
+      this.promptTemplateEditSaving = true
+      const templateId = String(form.id || '').startsWith('tmp_') ? 0 : Number(form.id || 0)
+      agentCliApi.AgentCliPromptTemplateSave({
+        id: templateId,
+        name: form.name,
+        content: form.content,
+        apply_all_dirs: !!form.apply_all_dirs,
+        sort_order: Number(form.sort_order || 0),
+        local_dirs: Array.isArray(form.local_dirs) ? form.local_dirs : [],
+      }, (response) => {
+        this.promptTemplateEditSaving = false
+        if (!(response && response.ErrCode === 0)) {
+          this.$message.error(response?.ErrMsg || '保存模板失败')
+          return
+        }
+        this.$message.success('模板已保存')
+        this.promptTemplateEditVisible = false
+        this.loadPromptTemplates()
+      })
+    },
+    removePromptTemplate(template) {
+      const templateId = Number(template?.id || 0)
+      if (templateId <= 0) {
+        this.promptTemplates = this.promptTemplates.filter(item => item.id !== template?.id)
+        this.agentExecSelectedTemplateIds = this.agentExecSelectedTemplateIds.filter(id => id !== template?.id)
+        return
+      }
+      agentCliApi.AgentCliPromptTemplateDelete(templateId, (response) => {
+        if (!(response && response.ErrCode === 0)) {
+          this.$message.error(response?.ErrMsg || '删除模板失败')
+          return
+        }
+        this.$message.success('模板已删除')
+        this.promptTemplates = this.promptTemplates.filter(item => item.id !== template.id)
+        this.agentExecSelectedTemplateIds = this.agentExecSelectedTemplateIds.filter(id => id !== template.id)
+      })
+    },
     // openWebhookDialog 打开 webhook 配置弹窗并同步刷新列表。 // openWebhookDialog opens the webhook dialog and refreshes its list before display.
     openWebhookDialog() {
       this.webhookDialogVisible = true
@@ -804,7 +1041,6 @@ export default {
         existing.status = 'running'
         existing.is_read = true
         this.agentChatHistoryList = this.agentChatHistoryList.slice()
-        this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
         return
       }
       this.agentChatHistoryList = [{
@@ -821,7 +1057,6 @@ export default {
         thinking_intensity: extra.thinkingIntensity || '',
         cli_type: extra.cliType || 'claude',
       }, ...this.agentChatHistoryList]
-      this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
     },
     getAgentChatCounts(agentCliId) {
       return this.agentChatCounts[agentCliId] || { running: 0, interrupted: 0, total: 0, unread: 0 }
@@ -851,6 +1086,7 @@ export default {
         modelName: this.agentExecModelName,
         thinkingIntensity: this.agentExecThinkingIntensity,
         prompt: this.agentExecPrompt,
+        templateIds: this.agentExecSelectedTemplateIds,
       }
       localStorage.setItem(this.getAgentExecCacheKey(this.agentExecCliId), JSON.stringify(data))
     },
@@ -873,11 +1109,15 @@ export default {
       this.agentExecModelName = cached?.modelName || ''
       this.agentExecThinkingIntensity = cached?.thinkingIntensity || '高'
       this.agentExecPrompt = sharedPrompt || cached?.prompt || ''
+      const templateIds = Array.isArray(cached?.templateIds) ? cached.templateIds.map(item => String(item)) : []
+      const templateIdSet = new Set(this.availablePromptTemplates.map(item => item.id))
+      this.agentExecSelectedTemplateIds = templateIds.filter(id => templateIdSet.has(id))
       if (this.agentExecModelOptions.length === 1 && !this.agentExecModelName) {
         this.agentExecModelName = this.agentExecModelOptions[0]
       }
       this.agentExecDialogVisible = true
       this.loadAgentExecHistoryDirs()
+      this.loadPromptTemplates()
     },
     // loadAgentExecHistoryDirs 加载所有 Agent CLI 共享的历史工作目录。 // Loads globally shared history directories across all Agent CLI cards.
     loadAgentExecHistoryDirs() {
@@ -929,6 +1169,20 @@ export default {
     applyAgentExecHistoryDir(historyDir) {
       this.agentExecLocalDir = String(historyDir || '').trim()
     },
+    composeAgentExecPrompt() {
+      const segments = []
+      const manualPrompt = String(this.agentExecPrompt || '').trim()
+      if (manualPrompt) {
+        segments.push(manualPrompt)
+      }
+      this.selectedPromptTemplates.forEach((item) => {
+        const content = String(item.content || '').trim()
+        if (content) {
+          segments.push(content)
+        }
+      })
+      return segments.join('\n\n')
+    },
     execAgentPrompt() {
       if (!this.agentExecCliId) {
         this.$message.warning('Agent 实例不存在')
@@ -943,8 +1197,9 @@ export default {
         this.$message.warning('请输入工作目录')
         return
       }
-      if (!String(this.agentExecPrompt || '').trim()) {
-        this.$message.warning('请输入提示词')
+      const finalPrompt = this.composeAgentExecPrompt()
+      if (!String(finalPrompt || '').trim()) {
+        this.$message.warning('请输入提示词或选择模板')
         return
       }
       if (this.agentExecModelOptions.length > 0 && !this.agentExecModelName) {
@@ -955,7 +1210,7 @@ export default {
       this.saveAgentExecCache()
       agentCliApi.AgentChatSend({
         agent_cli_id: this.agentExecCliId,
-        prompt: this.agentExecPrompt,
+        prompt: finalPrompt,
         prompt_type: 'agent_cli_manual',
         local_dir: this.agentExecLocalDir.trim(),
         cli_type: this.getAgentExecCliType(),
@@ -977,15 +1232,13 @@ export default {
           this.chatDetailSSELines = []
           this.chatDetailMessages = []
           taskProgressStore.reset()
-          this._initialSseRetryCount = 0
           this.markAgentChatRunningLocally(this.agentExecCliId, chatId, {
-            prompt: this.agentExecPrompt,
+            prompt: finalPrompt,
             localDir: this.agentExecLocalDir.trim(),
             modelName: this.agentExecModelName,
             thinkingIntensity: this.agentExecThinkingIntensity,
             cliType: this.getAgentExecCliType(),
           })
-          this.connectChatStream(chatId, null, true)
           this.loadChatDetail()
           this.loadAgentChatCounts()
           if (currentCli) {
@@ -1007,7 +1260,6 @@ export default {
         }
         this.agentChatHistoryList = Array.isArray(response.Data.list) ? response.Data.list : []
         this._startAgentChatHistoryDurationTimer()
-        this.syncBackgroundChatStreams(this.agentChatHistoryList, focusChatId || this.agentChatDetailId || this.chatDetailId)
         this.agentChatCounts = {
           ...this.agentChatCounts,
           [row.id]: {
@@ -1036,14 +1288,10 @@ export default {
       this.chatDetailStatus = row.status
       this.chatDetailAutoScroll = true
       this.agentChatDetailShowScrollBtn = false
-      if (this._chatEventSource && this._sseChatId !== row.id) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
-        this._sseChatId = 0
-      }
-      // 中文注释：先关闭旧前台 SSE，再把旧选中且仍在运行的对话切到后台监听。
-      // English comment: Close the previous foreground SSE first, then reattach the previously selected running chat as a background stream if needed.
-      this.syncBackgroundChatStreams(this.agentChatHistoryList, row.id)
+      // 重置 SSE 解析状态，新对话输出由业务 SSE 回调自动接收
+      this._sseParseState = null
+      this._sseLineBuffer = []
+      if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
       if (row.is_read === false && row.status !== 'running') {
         agentCliApi.AgentChatMarkRead(row.id, (res) => {
           if (res && res.ErrCode === 0) {
@@ -1061,7 +1309,7 @@ export default {
           }
         })
       }
-      if (this._sseChatId !== row.id) {
+      if (this.chatDetailId !== row.id) {
         this.chatDetailSSELines = []
         this.chatDetailMessages = []
         this._thinkingStreamStartTime = 0
@@ -1074,7 +1322,6 @@ export default {
     },
     onAgentChatHistoryClosed() {
       this._stopAgentChatHistoryDurationTimer()
-      this.stopAllBackgroundChatStreams()
       this.closeChatDetail()
       this.agentChatDetailId = 0
     },
@@ -1110,9 +1357,9 @@ export default {
         if (this.agentChatHistoryList.some(item => item.status === 'running')) {
           this.agentChatHistoryList = this.agentChatHistoryList.slice()
         }
-        if (this._sseChatId > 0 && this.chatDetailSSELines.length > 0) {
+        if (this.chatDetailId > 0 && this.chatDetailSSELines.length > 0) {
           const count = this.chatDetailSSELines.length
-          const item = this.agentChatHistoryList.find(row => row.id === this._sseChatId)
+          const item = this.agentChatHistoryList.find(row => row.id === this.chatDetailId)
           if (item && item.line_count !== count) {
             item.line_count = count
           }
@@ -1423,89 +1670,94 @@ export default {
             }
           })
           this.$nextTick(() => { this.scrollAgentChatToBottom(true) })
-          if (this.chatDetailStatus === 'running' && this._sseChatId !== this.chatDetailId) {
-            this.connectChatStream(this.chatDetailId)
+          // running 状态下初始化 SSE 解析状态以接收后续输出
+          if (this.chatDetailStatus === 'running') {
+            this._sseParseState = this.chatDetailCliType === 'codex'
+              ? { currentItems: new Map(), pendingPatches: [] }
+              : { currentMessage: null, toolUseMap: new Map(), pendingPatches: [] }
           }
         }
       })
     },
-    // connectChatStream 创建专用 EventSource 连接以实时接收对话输出。 // Creates a dedicated EventSource for execution output streaming.
-    connectChatStream(chatId, continuePrompt, isNewChat) {
-      if (this._sseChatId === chatId && this._chatEventSource && this._chatEventSource.readyState !== EventSource.CLOSED) return
-      if (this._chatEventSource) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
+    // connectBusinessSse 建立 AgentCli 业务 SSE 连接
+    connectBusinessSse() {
+      sseBusiness.fetchAvailableSsePort().then(port => {
+        if (!port) return
+        const clientId = sseDistribute.GetSseClientId() || ('biz_ac_' + Date.now())
+        sseBusiness.ConnectBusinessSse('agent_cli', port, clientId)
+        this.registerChatOutputSse()
+      })
+    },
+    // registerChatOutputSse 注册 agent_cli_chat_output 分发回调
+    registerChatOutputSse() {
+      this._chatOutputHandler = (data) => {
+        if (!data || data.line === undefined || data.chat_id === undefined) return
+        const chatId = Number(data.chat_id)
+        const line = data.line
+        // 仅处理当前选中对话的输出
+        if (chatId === Number(this.chatDetailId || 0)) {
+          this._processChatSseLine(line)
+        }
       }
-      this._sseChatId = chatId
-      this.chatDetailSSERegistered = true
-      this._thinkingStreamStartTime = 0
-      this._sseParseState = this.chatDetailCliType === 'codex'
-        ? { currentItems: new Map(), pendingPatches: [] }
-        : { currentMessage: null, toolUseMap: new Map(), pendingPatches: [] }
-      this._sseLineBuffer = []
-      if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
-      if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
-      this.thinkingStreamElapsed = 0
-      this._thinkingTimer = setInterval(() => {
-        if (this._thinkingStreamStartTime > 0) {
-          this.thinkingStreamElapsed = Math.floor((Date.now() - this._thinkingStreamStartTime) / 1000)
-        } else {
+      sseBusiness.RegisterBusinessReceive('agent_cli', 'agent_cli_chat_output', this._chatOutputHandler)
+    },
+    // unregisterChatOutputSse 注销 agent_cli_chat_output 分发回调
+    unregisterChatOutputSse() {
+      if (this._chatOutputHandler) {
+        sseBusiness.UnRegisterBusinessReceive('agent_cli', 'agent_cli_chat_output', this._chatOutputHandler)
+        this._chatOutputHandler = null
+      }
+    },
+    // _processChatSseLine 处理从业务 SSE 收到的对话输出行
+    _processChatSseLine(line) {
+      if (!line) return
+      // 初始化解析状态
+      if (!this._sseParseState) {
+        this._sseParseState = this.chatDetailCliType === 'codex'
+          ? { currentItems: new Map(), pendingPatches: [] }
+          : { currentMessage: null, toolUseMap: new Map(), pendingPatches: [] }
+        this._sseLineBuffer = []
+        this._thinkingStreamStartTime = 0
+        if (!this._thinkingTimer) {
           this.thinkingStreamElapsed = 0
+          this._thinkingTimer = setInterval(() => {
+            if (this._thinkingStreamStartTime > 0) {
+              this.thinkingStreamElapsed = Math.floor((Date.now() - this._thinkingStreamStartTime) / 1000)
+            } else {
+              this.thinkingStreamElapsed = 0
+            }
+          }, 200)
         }
-      }, 200)
-      const sseHost = baseUtils.GetSseApiHost()
-      let url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + chatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
-      if (isNewChat) {
-        url += '&start=1'
       }
-      if (continuePrompt) {
-        url += '&continue=1&prompt=' + encodeURIComponent(continuePrompt)
-      }
-      const es = new EventSource(url)
-      this._chatEventSource = es
-      es.onmessage = (event) => {
-        const line = event.data
-        if (!line) return
-        try {
-          const obj = JSON.parse(line)
-          if (obj.type === 'chat' && obj.subtype === 'completed') {
-            this._flushSseBatch()
-            this.chatDetailSSELines.push(line)
-            this._sseChatId = 0
-            this.chatDetailSSERegistered = false
-            es.close()
-            this._chatEventSource = null
-            this._sseParseState = null
-            this.loadChatDetail()
-            this.loadAgentChatCounts()
-            this.$nextTick(() => { this.scrollAgentChatToBottom() })
-            return
+      try {
+        const obj = JSON.parse(line)
+        if (obj.type === 'chat' && obj.subtype === 'completed') {
+          this._flushSseBatch()
+          this.chatDetailSSELines.push(line)
+          this._sseParseState = null
+          // 当前正在查看该对话，自动标记为已读
+          if (obj.chat_id === Number(this.chatDetailId || 0)) {
+            agentCliApi.AgentChatMarkRead(obj.chat_id, (res) => {
+              if (res && res.ErrCode === 0) {
+                const item = this.agentChatHistoryList.find(i => i.id === obj.chat_id)
+                if (item) item.is_read = true
+                this.agentChatHistoryList = this.agentChatHistoryList.slice()
+              }
+            })
           }
-        } catch (e) {
-          // SSE 解析失败时跳过该行。 // Skip malformed SSE lines.
-        }
-        this._sseLineBuffer.push(line)
-        if (!this._sseBatchTimer) {
-          this._sseBatchTimer = setTimeout(() => {
-            this._flushSseBatch()
-          }, 100)
-        }
-      }
-      es.onerror = () => {
-        this._flushSseBatch()
-        if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
-        this.thinkingStreamElapsed = 0
-        this.chatDetailSSERegistered = false
-        es.close()
-        this._chatEventSource = null
-        this._sseParseState = null
-        if (this._initialSseRetryCount < 1 && this.chatDetailSSELines.length === 0 && this.chatDetailStatus === 'running') {
-          this._initialSseRetryCount++
-          this.connectChatStream(this.chatDetailId, null, true)
+          this.loadChatDetail()
+          this.loadAgentChatCounts()
+          this.$nextTick(() => { this.scrollAgentChatToBottom() })
           return
         }
-        this.loadChatDetail()
-        this.loadAgentChatCounts()
+      } catch (e) {
+        // 解析失败跳过
+      }
+      this._sseLineBuffer.push(line)
+      if (!this._sseBatchTimer) {
+        this._sseBatchTimer = setTimeout(() => {
+          this._flushSseBatch()
+        }, 100)
       }
     },
     _flushSseBatch() {
@@ -1597,13 +1849,6 @@ export default {
       if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
       this.thinkingStreamElapsed = 0
       this._thinkingStreamStartTime = 0
-      this._initialSseRetryCount = 0
-      if (this._chatEventSource) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
-      }
-      this._sseChatId = 0
-      this.chatDetailSSERegistered = false
       this.chatDetailMessages = []
       this.chatDetailSSELines = []
       this.chatContinueInput = ''
@@ -1614,111 +1859,12 @@ export default {
     updateChatListStatus(chatId, status) {
       const item = this.agentChatHistoryList.find(row => row.id === chatId)
       if (item) item.status = status
-      this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
-    },
-    syncBackgroundChatStreams(list, selectedChatId) {
-      const normalizedSelectedChatId = Number(selectedChatId || 0)
-      const runningIds = new Set(
-        (Array.isArray(list) ? list : [])
-          .filter(item => item && item.status === 'running')
-          .map(item => Number(item.id || 0))
-          .filter(id => id > 0 && id !== normalizedSelectedChatId)
-      )
-      Object.keys(this._backgroundChatEventSources || {}).forEach((key) => {
-        const chatId = Number(key)
-        if (!runningIds.has(chatId)) {
-          this.stopBackgroundChatStream(chatId)
-        }
-      })
-      runningIds.forEach((chatId) => {
-        if (chatId !== Number(this._sseChatId || 0)) {
-          this.startBackgroundChatStream(chatId)
-        }
-      })
-    },
-    startBackgroundChatStream(chatId) {
-      const normalizedChatId = Number(chatId || 0)
-      if (normalizedChatId <= 0) return
-      if (normalizedChatId === Number(this._sseChatId || 0)) return
-      if (this._backgroundChatEventSources[normalizedChatId]) return
-      const currentItem = this.agentChatHistoryList.find(item => Number(item.id || 0) === normalizedChatId)
-      const sseHost = baseUtils.GetSseApiHost()
-      const url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + normalizedChatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
-      const es = new EventSource(url)
-      const state = {
-        es,
-        // 中文注释：背景 SSE 自己维护 line_count，避免未选中执行历史只能等列表刷新。
-        // English comment: Background SSE keeps line_count locally so non-selected execution rows do not have to wait for a list refresh.
-        lineCount: Number(currentItem?.line_count || 0),
-      }
-      this._backgroundChatEventSources = {
-        ...this._backgroundChatEventSources,
-        [normalizedChatId]: state,
-      }
-      es.onmessage = (event) => {
-        const line = event.data
-        if (!line) return
-        state.lineCount += 1
-        this.updateBackgroundChatListItem(normalizedChatId, {
-          line_count: state.lineCount,
-        })
-        try {
-          const obj = JSON.parse(line)
-          if (obj.type === 'chat' && obj.subtype === 'completed') {
-            this.updateBackgroundChatListItem(normalizedChatId, {
-              status: String(obj.status || 'completed').trim() || 'completed',
-              line_count: state.lineCount,
-            })
-            this.stopBackgroundChatStream(normalizedChatId)
-            this.loadAgentChatHistoryListSilently()
-            this.loadAgentChatCounts()
-          }
-        } catch (e) {
-          // 中文注释：普通增量消息只更新计数；状态由 completed 终态事件或后续静默刷新修正。
-          // English comment: Non-terminal background messages only advance the counter; terminal state still comes from completed events or silent refresh fallback.
-        }
-      }
-      es.onerror = () => {
-        this.stopBackgroundChatStream(normalizedChatId)
-      }
-    },
-    updateBackgroundChatListItem(chatId, patch) {
-      const normalizedChatId = Number(chatId || 0)
-      if (normalizedChatId <= 0 || !patch) return
-      const item = this.agentChatHistoryList.find(row => Number(row.id || 0) === normalizedChatId)
-      if (!item) return
-      Object.keys(patch).forEach((key) => {
-        if (patch[key] !== undefined) {
-          item[key] = patch[key]
-        }
-      })
-      if (normalizedChatId === Number(this.chatDetailId || 0) && patch.status) {
-        this.chatDetailStatus = patch.status
-      }
-      this.agentChatHistoryList = this.agentChatHistoryList.slice()
-    },
-    stopBackgroundChatStream(chatId) {
-      const normalizedChatId = Number(chatId || 0)
-      if (normalizedChatId <= 0) return
-      const entry = this._backgroundChatEventSources[normalizedChatId]
-      if (entry?.es) {
-        entry.es.close()
-      }
-      const nextMap = { ...this._backgroundChatEventSources }
-      delete nextMap[normalizedChatId]
-      this._backgroundChatEventSources = nextMap
-    },
-    stopAllBackgroundChatStreams() {
-      Object.keys(this._backgroundChatEventSources || {}).forEach((key) => {
-        this.stopBackgroundChatStream(Number(key))
-      })
     },
     loadAgentChatHistoryListSilently() {
       if (!this.agentChatHistoryVisible || this.agentChatHistoryLoading || this.agentChatHistoryCliId <= 0) return
       agentCliApi.AgentChatListByAgentCli(this.agentChatHistoryCliId, (response) => {
         if (!(response && response.ErrCode === 0 && response.Data)) return
         this.agentChatHistoryList = Array.isArray(response.Data.list) ? response.Data.list : []
-        this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
         this.agentChatCounts = {
           ...this.agentChatCounts,
           [this.agentChatHistoryCliId]: {
@@ -1757,7 +1903,7 @@ export default {
       return this.formatDurationDisplay(ms)
     },
     getItemMsgCount(item) {
-      if (item.status === 'running' && this._sseChatId > 0 && item.id === this._sseChatId) {
+      if (item.status === 'running' && this.chatDetailId > 0 && item.id === this.chatDetailId) {
         return this.chatDetailSSELines.length
       }
       return item.line_count || 0
@@ -1803,7 +1949,8 @@ export default {
         if (res.ErrCode === 0) {
           this.chatContinueInput = ''
           this.chatDetailStatus = 'running'
-          this.connectChatStream(this.chatDetailId, input)
+          this._sseParseState = null
+          this._sseLineBuffer = []
           setTimeout(() => { this.loadChatDetail() }, 500)
         } else {
           this.$message.error(res.ErrMsg || '发送失败')
@@ -1844,7 +1991,6 @@ export default {
         this.chatDetailMessages = []
         this.chatDetailLastUsageSummary = null
         taskProgressStore.reset()
-        this._initialSseRetryCount = 0
         this.markAgentChatRunningLocally(agentCliId, chatId, {
           prompt,
           localDir: String(this.chatDetailLocalDir || '').trim(),
@@ -1852,7 +1998,6 @@ export default {
           thinkingIntensity: String(this.chatDetailThinkingIntensity || '高').trim() || '高',
           cliType: this.chatDetailCliType || 'claude',
         })
-        this.connectChatStream(chatId, null, true)
         this.loadChatDetail()
         this.loadAgentChatCounts()
         this.openAgentChatHistory({ id: agentCliId, name: this.agentChatHistoryTitle }, chatId)
@@ -1860,12 +2005,9 @@ export default {
     },
     // stopChat 停止当前 Agent CLI 历史对话。 // stopChat interrupts the selected standalone AgentCli chat immediately on both UI and backend.
     stopChat() {
-      if (this._chatEventSource) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
-      }
-      this._sseChatId = 0
-      this.chatDetailSSERegistered = false
+      this._sseParseState = null
+      this._sseLineBuffer = []
+      if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
       taskWorkflowApi.TaskWorkflowChatStop(this.chatDetailId, (res) => {
         if (res.ErrCode !== 0) {
           this.$message.error(res.ErrMsg || '停止失败')

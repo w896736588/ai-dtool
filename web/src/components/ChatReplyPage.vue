@@ -52,8 +52,8 @@
             <div v-if="msg.thinking" style="margin-bottom: 8px;">
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
                 <span v-if="isCurrentThinking(msg)" class="cr-status-spinner"></span>
-                <span v-if="isCurrentThinking(msg)" style="color: #409eff; font-size: 12px;">思考过程 持续{{ thinkingElapsed }}s</span>
-                <span v-else style="color: #909399; font-size: 12px;">思考过程{{ msg._thinkingTiming && msg._thinkingTiming.durationMs ? ' (' + (msg._thinkingTiming.durationMs / 1000).toFixed(1) + 's)' : '' }}</span>
+                <span v-if="isCurrentThinking(msg)" style="color: #409eff; font-size: 12px;">思考过程</span>
+                <span v-else style="color: #909399; font-size: 12px;">思考过程</span>
                 <span @click="msg._thinkingCollapsed = !msg._thinkingCollapsed" style="cursor: pointer; font-weight: bold; font-size: 12px; color: #909399;">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
               </div>
               <div v-if="!msg._thinkingCollapsed" class="cr-thinking-blockquote">{{ msg.thinking }}</div>
@@ -120,7 +120,7 @@
           <div v-else-if="msg.type === 'assistant_text'" class="markdown-body cr-markdown-body" v-html="renderMarkdown(msg.text)"></div>
           <div v-else-if="msg.type === 'assistant_thinking'" style="color: #909399; font-size: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-              <span>思考过程{{ msg._thinkingTiming && msg._thinkingTiming.durationMs ? ' (' + (msg._thinkingTiming.durationMs / 1000).toFixed(1) + 's)' : '' }}</span>
+              <span>思考过程</span>
               <span @click="msg._thinkingCollapsed = !msg._thinkingCollapsed" style="cursor: pointer; font-weight: bold;">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
             </div>
             <div v-if="!msg._thinkingCollapsed" class="cr-thinking-blockquote">{{ msg.text }}</div>
@@ -185,10 +185,13 @@
 
 <script>
 import taskWorkflowApi from '@/utils/base/task_workflow'
+import agentCliApi from '@/utils/base/agent_cli'
 import baseUtils from '@/utils/base'
 import chatParser from '@/utils/chat_parser'
 import MarkdownIt from 'markdown-it'
 import resultSummaryUtils from '@/utils/chat_result_summary.cjs'
+import sseBusiness from '@/utils/base/sse_business'
+import sseDistribute from '@/utils/base/sse_distribute'
 
 const md = new MarkdownIt({ html: true, breaks: true, linkify: true })
 
@@ -210,6 +213,7 @@ export default {
       showScrollBtn: false,
       autoScroll: true,
       thinkingElapsed: 0,
+      fromType: '',
     }
   },
   computed: {
@@ -229,7 +233,12 @@ export default {
     }
   },
   beforeUnmount() {
-    this.closeSSE()
+    this.unregisterChatOutputSse()
+    if (this.fromType === 'agent_cli') {
+      sseBusiness.CloseBusinessSse('agent_cli')
+    } else {
+      sseBusiness.CloseBusinessSse('task_workflow')
+    }
     if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
     if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
   },
@@ -244,6 +253,7 @@ export default {
           this.localDir = data.local_dir || ''
           this.thinkingIntensity = data.thinking_intensity || ''
           this.cliType = data.cli_type || 'claude'
+          this.fromType = data.from_type || ''
           this.status = data.status || ''
           const historicalLines = data.lines || []
           const newSseLines = this.sseLines.filter(l => !historicalLines.includes(l))
@@ -254,17 +264,49 @@ export default {
             if (msg.type === 'assistant_thinking') msg._thinkingCollapsed = true
           })
           this.$nextTick(() => { this.scrollToBottom(true) })
-          if (this.status === 'running' && this._sseChatId !== this.chatId) {
-            this.connectChatStream(this.chatId)
-          }
+          // 在 fromType 确定后才建立业务 SSE 连接，避免连接到错误路由
+          this.connectBusinessSse(() => {
+            // ConnectBusinessSse 会清空 receiveHandlers，必须在连接建立后再注册
+            if (this.status === 'running') {
+              this._initSseParseState()
+              this.registerChatOutputSse()
+            }
+          })
         }
       })
     },
-    connectChatStream(chatId, continuePrompt) {
-      if (this._sseChatId === chatId && this._chatEventSource && this._chatEventSource.readyState !== EventSource.CLOSED) return
-      this.closeSSE()
-      this._sseChatId = chatId
-      this._thinkingStreamStartTime = 0
+    connectBusinessSse(onConnected) {
+      sseBusiness.fetchAvailableSsePort().then(port => {
+        if (!port) return
+        const clientId = sseDistribute.GetSseClientId() || ('biz_cr_' + Date.now())
+        const bizType = this.fromType === 'agent_cli' ? 'agent_cli' : 'task_workflow'
+        sseBusiness.ConnectBusinessSse(bizType, port, clientId)
+        // ConnectBusinessSse 会重置 receiveHandlers，必须在之后注册回调
+        if (typeof onConnected === 'function') onConnected()
+      })
+    },
+    registerChatOutputSse() {
+      this.unregisterChatOutputSse()
+      const bizType = this.fromType === 'agent_cli' ? 'agent_cli' : 'task_workflow'
+      const topic = bizType === 'agent_cli' ? 'agent_cli_chat_output' : 'task_workflow_chat_output'
+      this._chatOutputHandler = (data) => {
+        if (!data || data.line === undefined || data.chat_id === undefined) return
+        const chatId = Number(data.chat_id)
+        const line = data.line
+        if (chatId !== Number(this.chatId || 0)) return
+        this._processChatSseLine(line)
+      }
+      sseBusiness.RegisterBusinessReceive(bizType, topic, this._chatOutputHandler)
+    },
+    unregisterChatOutputSse() {
+      if (this._chatOutputHandler) {
+        const bizType = this.fromType === 'agent_cli' ? 'agent_cli' : 'task_workflow'
+        const topic = bizType === 'agent_cli' ? 'agent_cli_chat_output' : 'task_workflow_chat_output'
+        sseBusiness.UnRegisterBusinessReceive(bizType, topic, this._chatOutputHandler)
+        this._chatOutputHandler = null
+      }
+    },
+    _initSseParseState() {
       this._sseParseState = this.cliType === 'codex'
         ? { currentItems: new Map(), pendingPatches: [] }
         : { currentMessage: null, toolUseMap: new Map(), pendingPatches: [] }
@@ -272,6 +314,7 @@ export default {
       if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
       if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
       this.thinkingElapsed = 0
+      this._thinkingStreamStartTime = 0
       this._thinkingTimer = setInterval(() => {
         if (this._thinkingStreamStartTime > 0) {
           this.thinkingElapsed = Math.floor((Date.now() - this._thinkingStreamStartTime) / 1000)
@@ -279,43 +322,30 @@ export default {
           this.thinkingElapsed = 0
         }
       }, 200)
-      const sseHost = baseUtils.GetSseApiHost()
-      let url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + chatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
-      if (continuePrompt) {
-        url += '&continue=1&prompt=' + encodeURIComponent(continuePrompt)
-      }
-      const es = new EventSource(url)
-      this._chatEventSource = es
-      es.onmessage = (event) => {
-        const line = event.data
-        if (!line) return
-        try {
-          const obj = JSON.parse(line)
-          if (obj.type === 'chat' && obj.subtype === 'completed') {
-            this._flushSseBatch()
-            this.sseLines.push(line)
-            this._sseChatId = 0
-            es.close()
-            this._chatEventSource = null
-            this._sseParseState = null
-            this.loadChatDetail()
-            this.$nextTick(() => { this.scrollToBottom() })
-            return
-          }
-        } catch (e) { /* ignore */ }
-        this._sseLineBuffer.push(line)
-        if (!this._sseBatchTimer) {
-          this._sseBatchTimer = setTimeout(() => { this._flushSseBatch() }, 100)
+    },
+    _processChatSseLine(line) {
+      if (!line) return
+      try {
+        const obj = JSON.parse(line)
+        if (obj.type === 'chat' && obj.subtype === 'completed') {
+          this._flushSseBatch()
+          this.sseLines.push(line)
+          this._sseParseState = null
+          this.unregisterChatOutputSse()
+          // 当前正在查看该对话，自动标记为已读
+          agentCliApi.AgentChatMarkRead(this.chatId, (res) => {
+            if (res && res.ErrCode === 0) {
+              this.status = obj.status || 'completed'
+            }
+          })
+          this.loadChatDetail()
+          this.$nextTick(() => { this.scrollToBottom() })
+          return
         }
-      }
-      es.onerror = () => {
-        this._flushSseBatch()
-        if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
-        this.thinkingElapsed = 0
-        es.close()
-        this._chatEventSource = null
-        this._sseParseState = null
-        this.loadChatDetail()
+      } catch (e) { /* ignore */ }
+      this._sseLineBuffer.push(line)
+      if (!this._sseBatchTimer) {
+        this._sseBatchTimer = setTimeout(() => { this._flushSseBatch() }, 100)
       }
     },
     _flushSseBatch() {
@@ -343,13 +373,6 @@ export default {
       result.parseState.pendingPatches = []
       this.$nextTick(() => { this.scrollToBottom() })
     },
-    closeSSE() {
-      if (this._chatEventSource) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
-      }
-      this._sseChatId = 0
-    },
     continueChat() {
       const input = this.continueInput.trim()
       if (!input) return
@@ -359,7 +382,8 @@ export default {
         if (res.ErrCode === 0) {
           this.continueInput = ''
           this.status = 'running'
-          this.connectChatStream(this.chatId, input)
+          this._initSseParseState()
+          this.registerChatOutputSse()
           setTimeout(() => { this.loadChatDetail() }, 500)
         } else {
           this.$message.error(res.ErrMsg || '发送失败')
@@ -367,7 +391,11 @@ export default {
       })
     },
     stopChat() {
-      this.closeSSE()
+      this._sseParseState = null
+      this._sseLineBuffer = []
+      if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
+      if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
+      this.unregisterChatOutputSse()
       taskWorkflowApi.TaskWorkflowChatStop(this.chatId, (res) => {
         if (res.ErrCode !== 0) {
           this.$message.error(res.ErrMsg || '停止失败')

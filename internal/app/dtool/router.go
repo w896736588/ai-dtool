@@ -280,6 +280,8 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/LocalDirBatchCheck`, controller.SetLocalDirBatchCheck)
 	tGin.GinPost(`/api/Set/LocalBranchBatchCheck`, controller.SetLocalBranchBatchCheck)
 	tGin.GinPost(`/api/Set/LocalBranchMismatchDetail`, controller.SetLocalBranchMismatchDetail)
+	tGin.GinPost(`/api/Set/RemoteBranchCheck`, controller.SetRemoteBranchCheck)
+	tGin.GinPost(`/api/Set/RemoteBranchPush`, controller.SetRemoteBranchPush)
 	tGin.GinPost(`/api/Set/OpenLocalDir`, controller.SetOpenLocalDir)
 }
 
@@ -309,6 +311,7 @@ func setMemoryFragment(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/MemoryFragmentList`, controller.MemoryFragmentList)
 	tGin.GinPost(`/api/MemoryFragmentInfo`, controller.MemoryFragmentInfo)
 	tGin.GinPost(`/api/MemoryFragmentSave`, controller.MemoryFragmentSave)
+	tGin.GinPost(`/api/MemoryFragmentSaveByPath`, controller.MemoryFragmentSaveByPath)
 	tGin.GinPost(`/api/MemoryFragmentDelete`, controller.MemoryFragmentDelete)
 	tGin.GinPost(`/api/MemoryFragmentTrashList`, controller.MemoryFragmentTrashList)
 	tGin.GinPost(`/api/MemoryFragmentRestore`, controller.MemoryFragmentRestore)
@@ -380,6 +383,8 @@ func taskWorkflow(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/task/workflow/zcode/save`, controller.TaskWorkflowZcodeSave)
 	tGin.GinPost(`/api/task/workflow/zcode/get`, controller.TaskWorkflowZcodeGet)
 	tGin.GinPost(`/api/task/workflow/zcode/delete`, controller.TaskWorkflowZcodeDelete)
+	tGin.GinPost(`/api/task/workflow/file-changes/summary`, controller.TaskWorkflowFileChangesSummary)
+	tGin.GinPost(`/api/task/workflow/file-changes/detail`, controller.TaskWorkflowFileChangesDetail)
 }
 
 func shellOut(tGin *p_gin.Gin) {
@@ -534,8 +539,6 @@ func apiUse(tGin *p_gin.Gin) {
 		}))
 		sse.UnRegister()
 	})
-	// Claude Code 对话实时推送 SSE（每个 chat 独立 EventSource）
-	tGin.SseRoute(`/api/task/workflow/chat/stream`, controller.TaskWorkflowChatStreamOpen, controller.TaskWorkflowChatStreamClose)
 	// SSE 可用端口查询接口（所有 gin 实例均可访问）
 	tGin.GinPost(`/api/SseAvailablePort`, controller.SseAvailablePort)
 	// 判断当前 gin 实例是否是 SSE 端口，仅 SSE 端口才注册 /sse 路由
@@ -543,6 +546,10 @@ func apiUse(tGin *p_gin.Gin) {
 		openFunc := controller.BuildSseOpenFunc(tGin.Port)
 		closeFunc := controller.BuildSseCloseFunc()
 		tGin.SseRoute(`/sse`, openFunc, closeFunc)
+		// AgentCli 业务独立 SSE
+		tGin.SseRoute(`/sse/agent_cli`, controller.AgentCliChatSseOpen, controller.AgentCliChatSseClose)
+		// TaskWorkflow 业务独立 SSE
+		tGin.SseRoute(`/sse/task_workflow`, controller.TaskWorkflowChatSseOpen, controller.TaskWorkflowChatSseClose)
 	}
 }
 
@@ -580,6 +587,9 @@ func agentCli(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/AgentCliGroupSave`, controller.AgentCliGroupSave)
 	tGin.GinPost(`/api/AgentCliGroupDelete`, controller.AgentCliGroupDelete)
 	tGin.GinPost(`/api/AgentCliGroupRelSave`, controller.AgentCliGroupRelSave)
+	tGin.GinPost(`/api/AgentCliPromptTemplateList`, controller.AgentCliPromptTemplateList)
+	tGin.GinPost(`/api/AgentCliPromptTemplateSave`, controller.AgentCliPromptTemplateSave)
+	tGin.GinPost(`/api/AgentCliPromptTemplateDelete`, controller.AgentCliPromptTemplateDelete)
 }
 
 // webhookConfig 路由

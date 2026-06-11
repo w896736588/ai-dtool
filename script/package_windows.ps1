@@ -61,10 +61,6 @@ Write-Step "[2/4] 复制运行资源"
 Copy-Item $WebExe (Join-Path $TempPackageDir "dtool.exe") -Force
 Copy-Item (Join-Path $RootDir "go.mod") (Join-Path $TempPackageDir "go.mod") -Force
 New-Item -ItemType Directory -Force -Path (Join-Path $TempPackageDir "config/dtool") | Out-Null
-Copy-Item (Join-Path $RootDir "config/dtool/company.ini") (Join-Path $TempPackageDir "config/dtool/config.ini") -Force
-if (Test-Path (Join-Path $RootDir "config/dtool/frog.db")) {
-    Copy-Item (Join-Path $RootDir "config/dtool/frog.db") (Join-Path $TempPackageDir "config/dtool/frog.db") -Force
-}
 New-Item -ItemType Directory -Force -Path (Join-Path $TempPackageDir "web") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $TempPackageDir "web/dist") | Out-Null
 Copy-Item (Join-Path $FrontendDistDir "*") (Join-Path $TempPackageDir "web/dist") -Recurse -Force

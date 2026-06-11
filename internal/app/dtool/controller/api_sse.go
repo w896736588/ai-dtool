@@ -11,14 +11,6 @@ import (
 
 const apiDataChangeSseStatusPrefix = `ClientId:`
 
-// isChatStreamSseClient 判断 SSE 客户端是否为 chat stream 专用连接。
-// chat stream 连接使用 task_workflow_chat_ 前缀的 distributeID，
-// 此类连接仅用于接收对话输出流，不应接收全局广播消息，
-// 否则广播消息会穿透到前端 EventSource 的 onmessage 中，导致对话详情显示无关内容。
-func isChatStreamSseClient(clientID string) bool {
-	return strings.HasPrefix(clientID, define.SseTaskWorkflowChatPrefix)
-}
-
 // BroadcastApiChange 将 API 数据变更广播到所有已连接的 SSE 客户端。
 // sourceClientId 是触发变更的前端 SSE 客户端 ID，前端据此跳过自身。
 // changeType 参见 plan 中的 change_type 枚举。
@@ -38,7 +30,7 @@ func BroadcastApiChange(sourceClientId, changeType string, ids map[string]any) {
 
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, apiDataChangeSseStatusPrefix))
-		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
+		if clientID == `` || clientID == item {
 			continue
 		}
 		sse := gsgin.SseGetByClientId(clientID)

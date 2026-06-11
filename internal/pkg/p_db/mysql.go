@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cast"
 	"github.com/w896736588/go-tool/gsdb"
-	"github.com/w896736588/go-tool/gsssh"
 	"github.com/w896736588/go-tool/gstool"
 )
 
@@ -60,18 +59,18 @@ func (h *TMysql) GetClient(mysqlConfig map[string]any, call *p_common.Call) (*gs
 		if sshConfigErr != nil {
 			return nil, gstool.Error(`获取ssh配置失败 %s`, sshConfigErr.Error())
 		}
-		gsMysql.SshBridge = gsssh.NewSshBridge(gsssh.NewSsh(&gsssh.SshConfig{
-			Name:     cast.ToString(sshConfig[`name`]),
-			Host:     cast.ToString(sshConfig[`host`]),
-			Port:     cast.ToString(sshConfig[`port`]),
-			UserName: cast.ToString(sshConfig[`username`]),
-			Password: cast.ToString(sshConfig[`password`]),
-		}))
+		gstool.FmtPrintlnLogTime(`[p_db.mysql] create ssh bridge mysql_id=%s ssh_id=%s target=%s:%d`,
+			mysqlId, cast.ToString(mysqlConfig[`ssh_id`]), cast.ToString(mysqlConfig[`host`]), cast.ToInt64(mysqlConfig[`port`]))
+		gsMysql.SshBridge = NewConfiguredSshBridge(sshConfig)
 	}
+	gstool.FmtPrintlnLogTime(`[p_db.mysql] CreateConn begin mysql_id=%s db=%s host=%s port=%d use_ssh=%v`,
+		mysqlId, cast.ToString(mysqlConfig[`dbname`]), cast.ToString(mysqlConfig[`host`]), cast.ToInt64(mysqlConfig[`port`]), cast.ToInt(mysqlConfig[`ssh_id`]) != 0)
 	connErr := gsMysql.CreateConn()
 	if connErr != nil {
+		gstool.FmtPrintlnLogTime(`[p_db.mysql] CreateConn failed mysql_id=%s err=%s`, mysqlId, connErr.Error())
 		return nil, connErr
 	}
+	gstool.FmtPrintlnLogTime(`[p_db.mysql] CreateConn success mysql_id=%s`, mysqlId)
 	h.MysqlClientMap[mysqlId] = gsMysql
 	return gsMysql, nil
 }
