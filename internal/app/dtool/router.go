@@ -536,8 +536,6 @@ func apiUse(tGin *p_gin.Gin) {
 		}))
 		sse.UnRegister()
 	})
-	// Claude Code 对话实时推送 SSE（每个 chat 独立 EventSource）
-	tGin.SseRoute(`/api/task/workflow/chat/stream`, controller.TaskWorkflowChatStreamOpen, controller.TaskWorkflowChatStreamClose)
 	// SSE 可用端口查询接口（所有 gin 实例均可访问）
 	tGin.GinPost(`/api/SseAvailablePort`, controller.SseAvailablePort)
 	// 判断当前 gin 实例是否是 SSE 端口，仅 SSE 端口才注册 /sse 路由
@@ -545,6 +543,10 @@ func apiUse(tGin *p_gin.Gin) {
 		openFunc := controller.BuildSseOpenFunc(tGin.Port)
 		closeFunc := controller.BuildSseCloseFunc()
 		tGin.SseRoute(`/sse`, openFunc, closeFunc)
+		// AgentCli 业务独立 SSE
+		tGin.SseRoute(`/sse/agent_cli`, controller.AgentCliChatSseOpen, controller.AgentCliChatSseClose)
+		// TaskWorkflow 业务独立 SSE
+		tGin.SseRoute(`/sse/task_workflow`, controller.TaskWorkflowChatSseOpen, controller.TaskWorkflowChatSseClose)
 	}
 }
 

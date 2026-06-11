@@ -20,6 +20,8 @@ const (
 	SseTaskWorkflowChatPrefix   = `task_workflow_chat_`         //任务工作流 claude code 对话推送前缀
 	SseConnectionCount          = `sse_connection_count`        //SSE连接数推送
 	SseChromeDevtoolsPortStatus = `chrome_devtools_port_status` //Chrome DevTools 端口占用状态变更推送
+	SseAgentCliChatOutput       = `agent_cli_chat_output`       //AgentCli 页面聊天输出分发
+	SseTaskWorkflowChatOutput   = `task_workflow_chat_output`   //TaskWorkflow 页面聊天输出分发
 )
 
 const (

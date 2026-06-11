@@ -259,4 +259,5 @@ export default {
     ReceiveMessage,
     GetSseDistributeId,
     GetSseClientId,
+    fetchAvailableSsePort,
 }

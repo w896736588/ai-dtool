@@ -401,7 +401,7 @@ func broadcastMemoryFragmentEvent(action, fragmentID string, fragment map[string
 	// English comment: Reuse the shared SSE channel so fragment sync does not require a second long-lived connection.
 	for _, item := range gsgin.SseStatus() {
 		clientID := strings.TrimSpace(strings.TrimPrefix(item, memoryFragmentSseStatusPrefix))
-		if clientID == `` || clientID == item || isChatStreamSseClient(clientID) {
+		if clientID == `` || clientID == item {
 			continue
 		}
 		sse := gsgin.SseGetByClientId(clientID)

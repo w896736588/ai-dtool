@@ -626,6 +626,7 @@ import ChatHistoryDialog from '@/components/shared/ChatHistoryDialog.vue'
 import taskWorkflowApi from '@/utils/base/task_workflow'
 import baseUtils from '@/utils/base'
 import sseDistribute from '@/utils/base/sse_distribute'
+import sseBusiness from '@/utils/base/sse_business'
 import chatParser from '@/utils/chat_parser'
 import taskProgressStore from '@/utils/task_progress_store'
 import MarkdownIt from 'markdown-it'
@@ -758,8 +759,6 @@ export default {
       chatDetailMessages: [],
       chatDetailSSELines: [],
       chatDetailAutoScroll: true,
-      chatDetailSSERegistered: false,
-      _backgroundChatEventSources: {},
       agentChatDetailShowScrollBtn: false,
       chatContinueInput: '',
       chatContinueLoading: false,
@@ -814,6 +813,7 @@ export default {
     this.loadGroupList()
     this.loadPromptTemplates()
     this.ensureAgentUnreadSse()
+    this.connectBusinessSse()
     // 恢复上次选中的分组
     try {
       const cached = parseInt(localStorage.getItem(AGENT_CLI_GROUP_CACHE_KEY))
@@ -832,7 +832,8 @@ export default {
   },
   beforeUnmount() {
     this.closeChatDetail()
-    this.stopAllBackgroundChatStreams()
+    this.unregisterChatOutputSse()
+    sseBusiness.CloseBusinessSse('agent_cli')
     this._stopAgentChatHistoryDurationTimer()
     this.unregisterAgentUnreadSse()
   },
@@ -1040,7 +1041,6 @@ export default {
         existing.status = 'running'
         existing.is_read = true
         this.agentChatHistoryList = this.agentChatHistoryList.slice()
-        this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
         return
       }
       this.agentChatHistoryList = [{
@@ -1057,7 +1057,6 @@ export default {
         thinking_intensity: extra.thinkingIntensity || '',
         cli_type: extra.cliType || 'claude',
       }, ...this.agentChatHistoryList]
-      this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
     },
     getAgentChatCounts(agentCliId) {
       return this.agentChatCounts[agentCliId] || { running: 0, interrupted: 0, total: 0, unread: 0 }
@@ -1233,7 +1232,6 @@ export default {
           this.chatDetailSSELines = []
           this.chatDetailMessages = []
           taskProgressStore.reset()
-          this._initialSseRetryCount = 0
           this.markAgentChatRunningLocally(this.agentExecCliId, chatId, {
             prompt: finalPrompt,
             localDir: this.agentExecLocalDir.trim(),
@@ -1241,7 +1239,6 @@ export default {
             thinkingIntensity: this.agentExecThinkingIntensity,
             cliType: this.getAgentExecCliType(),
           })
-          this.connectChatStream(chatId, null, true)
           this.loadChatDetail()
           this.loadAgentChatCounts()
           if (currentCli) {
@@ -1263,7 +1260,6 @@ export default {
         }
         this.agentChatHistoryList = Array.isArray(response.Data.list) ? response.Data.list : []
         this._startAgentChatHistoryDurationTimer()
-        this.syncBackgroundChatStreams(this.agentChatHistoryList, focusChatId || this.agentChatDetailId || this.chatDetailId)
         this.agentChatCounts = {
           ...this.agentChatCounts,
           [row.id]: {
@@ -1292,14 +1288,10 @@ export default {
       this.chatDetailStatus = row.status
       this.chatDetailAutoScroll = true
       this.agentChatDetailShowScrollBtn = false
-      if (this._chatEventSource && this._sseChatId !== row.id) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
-        this._sseChatId = 0
-      }
-      // 中文注释：先关闭旧前台 SSE，再把旧选中且仍在运行的对话切到后台监听。
-      // English comment: Close the previous foreground SSE first, then reattach the previously selected running chat as a background stream if needed.
-      this.syncBackgroundChatStreams(this.agentChatHistoryList, row.id)
+      // 重置 SSE 解析状态，新对话输出由业务 SSE 回调自动接收
+      this._sseParseState = null
+      this._sseLineBuffer = []
+      if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
       if (row.is_read === false && row.status !== 'running') {
         agentCliApi.AgentChatMarkRead(row.id, (res) => {
           if (res && res.ErrCode === 0) {
@@ -1317,7 +1309,7 @@ export default {
           }
         })
       }
-      if (this._sseChatId !== row.id) {
+      if (this.chatDetailId !== row.id) {
         this.chatDetailSSELines = []
         this.chatDetailMessages = []
         this._thinkingStreamStartTime = 0
@@ -1330,7 +1322,6 @@ export default {
     },
     onAgentChatHistoryClosed() {
       this._stopAgentChatHistoryDurationTimer()
-      this.stopAllBackgroundChatStreams()
       this.closeChatDetail()
       this.agentChatDetailId = 0
     },
@@ -1366,9 +1357,9 @@ export default {
         if (this.agentChatHistoryList.some(item => item.status === 'running')) {
           this.agentChatHistoryList = this.agentChatHistoryList.slice()
         }
-        if (this._sseChatId > 0 && this.chatDetailSSELines.length > 0) {
+        if (this.chatDetailId > 0 && this.chatDetailSSELines.length > 0) {
           const count = this.chatDetailSSELines.length
-          const item = this.agentChatHistoryList.find(row => row.id === this._sseChatId)
+          const item = this.agentChatHistoryList.find(row => row.id === this.chatDetailId)
           if (item && item.line_count !== count) {
             item.line_count = count
           }
@@ -1679,89 +1670,94 @@ export default {
             }
           })
           this.$nextTick(() => { this.scrollAgentChatToBottom(true) })
-          if (this.chatDetailStatus === 'running' && this._sseChatId !== this.chatDetailId) {
-            this.connectChatStream(this.chatDetailId)
+          // running 状态下初始化 SSE 解析状态以接收后续输出
+          if (this.chatDetailStatus === 'running') {
+            this._sseParseState = this.chatDetailCliType === 'codex'
+              ? { currentItems: new Map(), pendingPatches: [] }
+              : { currentMessage: null, toolUseMap: new Map(), pendingPatches: [] }
           }
         }
       })
     },
-    // connectChatStream 创建专用 EventSource 连接以实时接收对话输出。 // Creates a dedicated EventSource for execution output streaming.
-    connectChatStream(chatId, continuePrompt, isNewChat) {
-      if (this._sseChatId === chatId && this._chatEventSource && this._chatEventSource.readyState !== EventSource.CLOSED) return
-      if (this._chatEventSource) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
+    // connectBusinessSse 建立 AgentCli 业务 SSE 连接
+    connectBusinessSse() {
+      sseBusiness.fetchAvailableSsePort().then(port => {
+        if (!port) return
+        const clientId = sseDistribute.GetSseClientId() || ('biz_ac_' + Date.now())
+        sseBusiness.ConnectBusinessSse('agent_cli', port, clientId)
+        this.registerChatOutputSse()
+      })
+    },
+    // registerChatOutputSse 注册 agent_cli_chat_output 分发回调
+    registerChatOutputSse() {
+      this._chatOutputHandler = (data) => {
+        if (!data || data.line === undefined || data.chat_id === undefined) return
+        const chatId = Number(data.chat_id)
+        const line = data.line
+        // 仅处理当前选中对话的输出
+        if (chatId === Number(this.chatDetailId || 0)) {
+          this._processChatSseLine(line)
+        }
       }
-      this._sseChatId = chatId
-      this.chatDetailSSERegistered = true
-      this._thinkingStreamStartTime = 0
-      this._sseParseState = this.chatDetailCliType === 'codex'
-        ? { currentItems: new Map(), pendingPatches: [] }
-        : { currentMessage: null, toolUseMap: new Map(), pendingPatches: [] }
-      this._sseLineBuffer = []
-      if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
-      if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
-      this.thinkingStreamElapsed = 0
-      this._thinkingTimer = setInterval(() => {
-        if (this._thinkingStreamStartTime > 0) {
-          this.thinkingStreamElapsed = Math.floor((Date.now() - this._thinkingStreamStartTime) / 1000)
-        } else {
+      sseBusiness.RegisterBusinessReceive('agent_cli', 'agent_cli_chat_output', this._chatOutputHandler)
+    },
+    // unregisterChatOutputSse 注销 agent_cli_chat_output 分发回调
+    unregisterChatOutputSse() {
+      if (this._chatOutputHandler) {
+        sseBusiness.UnRegisterBusinessReceive('agent_cli', 'agent_cli_chat_output', this._chatOutputHandler)
+        this._chatOutputHandler = null
+      }
+    },
+    // _processChatSseLine 处理从业务 SSE 收到的对话输出行
+    _processChatSseLine(line) {
+      if (!line) return
+      // 初始化解析状态
+      if (!this._sseParseState) {
+        this._sseParseState = this.chatDetailCliType === 'codex'
+          ? { currentItems: new Map(), pendingPatches: [] }
+          : { currentMessage: null, toolUseMap: new Map(), pendingPatches: [] }
+        this._sseLineBuffer = []
+        this._thinkingStreamStartTime = 0
+        if (!this._thinkingTimer) {
           this.thinkingStreamElapsed = 0
+          this._thinkingTimer = setInterval(() => {
+            if (this._thinkingStreamStartTime > 0) {
+              this.thinkingStreamElapsed = Math.floor((Date.now() - this._thinkingStreamStartTime) / 1000)
+            } else {
+              this.thinkingStreamElapsed = 0
+            }
+          }, 200)
         }
-      }, 200)
-      const sseHost = baseUtils.GetSseApiHost()
-      let url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + chatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
-      if (isNewChat) {
-        url += '&start=1'
       }
-      if (continuePrompt) {
-        url += '&continue=1&prompt=' + encodeURIComponent(continuePrompt)
-      }
-      const es = new EventSource(url)
-      this._chatEventSource = es
-      es.onmessage = (event) => {
-        const line = event.data
-        if (!line) return
-        try {
-          const obj = JSON.parse(line)
-          if (obj.type === 'chat' && obj.subtype === 'completed') {
-            this._flushSseBatch()
-            this.chatDetailSSELines.push(line)
-            this._sseChatId = 0
-            this.chatDetailSSERegistered = false
-            es.close()
-            this._chatEventSource = null
-            this._sseParseState = null
-            this.loadChatDetail()
-            this.loadAgentChatCounts()
-            this.$nextTick(() => { this.scrollAgentChatToBottom() })
-            return
+      try {
+        const obj = JSON.parse(line)
+        if (obj.type === 'chat' && obj.subtype === 'completed') {
+          this._flushSseBatch()
+          this.chatDetailSSELines.push(line)
+          this._sseParseState = null
+          // 当前正在查看该对话，自动标记为已读
+          if (obj.chat_id === Number(this.chatDetailId || 0)) {
+            agentCliApi.AgentChatMarkRead(obj.chat_id, (res) => {
+              if (res && res.ErrCode === 0) {
+                const item = this.agentChatHistoryList.find(i => i.id === obj.chat_id)
+                if (item) item.is_read = true
+                this.agentChatHistoryList = this.agentChatHistoryList.slice()
+              }
+            })
           }
-        } catch (e) {
-          // SSE 解析失败时跳过该行。 // Skip malformed SSE lines.
-        }
-        this._sseLineBuffer.push(line)
-        if (!this._sseBatchTimer) {
-          this._sseBatchTimer = setTimeout(() => {
-            this._flushSseBatch()
-          }, 100)
-        }
-      }
-      es.onerror = () => {
-        this._flushSseBatch()
-        if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
-        this.thinkingStreamElapsed = 0
-        this.chatDetailSSERegistered = false
-        es.close()
-        this._chatEventSource = null
-        this._sseParseState = null
-        if (this._initialSseRetryCount < 1 && this.chatDetailSSELines.length === 0 && this.chatDetailStatus === 'running') {
-          this._initialSseRetryCount++
-          this.connectChatStream(this.chatDetailId, null, true)
+          this.loadChatDetail()
+          this.loadAgentChatCounts()
+          this.$nextTick(() => { this.scrollAgentChatToBottom() })
           return
         }
-        this.loadChatDetail()
-        this.loadAgentChatCounts()
+      } catch (e) {
+        // 解析失败跳过
+      }
+      this._sseLineBuffer.push(line)
+      if (!this._sseBatchTimer) {
+        this._sseBatchTimer = setTimeout(() => {
+          this._flushSseBatch()
+        }, 100)
       }
     },
     _flushSseBatch() {
@@ -1853,13 +1849,6 @@ export default {
       if (this._thinkingTimer) { clearInterval(this._thinkingTimer); this._thinkingTimer = null }
       this.thinkingStreamElapsed = 0
       this._thinkingStreamStartTime = 0
-      this._initialSseRetryCount = 0
-      if (this._chatEventSource) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
-      }
-      this._sseChatId = 0
-      this.chatDetailSSERegistered = false
       this.chatDetailMessages = []
       this.chatDetailSSELines = []
       this.chatContinueInput = ''
@@ -1870,111 +1859,12 @@ export default {
     updateChatListStatus(chatId, status) {
       const item = this.agentChatHistoryList.find(row => row.id === chatId)
       if (item) item.status = status
-      this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
-    },
-    syncBackgroundChatStreams(list, selectedChatId) {
-      const normalizedSelectedChatId = Number(selectedChatId || 0)
-      const runningIds = new Set(
-        (Array.isArray(list) ? list : [])
-          .filter(item => item && item.status === 'running')
-          .map(item => Number(item.id || 0))
-          .filter(id => id > 0 && id !== normalizedSelectedChatId)
-      )
-      Object.keys(this._backgroundChatEventSources || {}).forEach((key) => {
-        const chatId = Number(key)
-        if (!runningIds.has(chatId)) {
-          this.stopBackgroundChatStream(chatId)
-        }
-      })
-      runningIds.forEach((chatId) => {
-        if (chatId !== Number(this._sseChatId || 0)) {
-          this.startBackgroundChatStream(chatId)
-        }
-      })
-    },
-    startBackgroundChatStream(chatId) {
-      const normalizedChatId = Number(chatId || 0)
-      if (normalizedChatId <= 0) return
-      if (normalizedChatId === Number(this._sseChatId || 0)) return
-      if (this._backgroundChatEventSources[normalizedChatId]) return
-      const currentItem = this.agentChatHistoryList.find(item => Number(item.id || 0) === normalizedChatId)
-      const sseHost = baseUtils.GetSseApiHost()
-      const url = sseHost + '/api/task/workflow/chat/stream?chat_id=' + normalizedChatId + '&token=' + encodeURIComponent(baseUtils.GetSafeToken())
-      const es = new EventSource(url)
-      const state = {
-        es,
-        // 中文注释：背景 SSE 自己维护 line_count，避免未选中执行历史只能等列表刷新。
-        // English comment: Background SSE keeps line_count locally so non-selected execution rows do not have to wait for a list refresh.
-        lineCount: Number(currentItem?.line_count || 0),
-      }
-      this._backgroundChatEventSources = {
-        ...this._backgroundChatEventSources,
-        [normalizedChatId]: state,
-      }
-      es.onmessage = (event) => {
-        const line = event.data
-        if (!line) return
-        state.lineCount += 1
-        this.updateBackgroundChatListItem(normalizedChatId, {
-          line_count: state.lineCount,
-        })
-        try {
-          const obj = JSON.parse(line)
-          if (obj.type === 'chat' && obj.subtype === 'completed') {
-            this.updateBackgroundChatListItem(normalizedChatId, {
-              status: String(obj.status || 'completed').trim() || 'completed',
-              line_count: state.lineCount,
-            })
-            this.stopBackgroundChatStream(normalizedChatId)
-            this.loadAgentChatHistoryListSilently()
-            this.loadAgentChatCounts()
-          }
-        } catch (e) {
-          // 中文注释：普通增量消息只更新计数；状态由 completed 终态事件或后续静默刷新修正。
-          // English comment: Non-terminal background messages only advance the counter; terminal state still comes from completed events or silent refresh fallback.
-        }
-      }
-      es.onerror = () => {
-        this.stopBackgroundChatStream(normalizedChatId)
-      }
-    },
-    updateBackgroundChatListItem(chatId, patch) {
-      const normalizedChatId = Number(chatId || 0)
-      if (normalizedChatId <= 0 || !patch) return
-      const item = this.agentChatHistoryList.find(row => Number(row.id || 0) === normalizedChatId)
-      if (!item) return
-      Object.keys(patch).forEach((key) => {
-        if (patch[key] !== undefined) {
-          item[key] = patch[key]
-        }
-      })
-      if (normalizedChatId === Number(this.chatDetailId || 0) && patch.status) {
-        this.chatDetailStatus = patch.status
-      }
-      this.agentChatHistoryList = this.agentChatHistoryList.slice()
-    },
-    stopBackgroundChatStream(chatId) {
-      const normalizedChatId = Number(chatId || 0)
-      if (normalizedChatId <= 0) return
-      const entry = this._backgroundChatEventSources[normalizedChatId]
-      if (entry?.es) {
-        entry.es.close()
-      }
-      const nextMap = { ...this._backgroundChatEventSources }
-      delete nextMap[normalizedChatId]
-      this._backgroundChatEventSources = nextMap
-    },
-    stopAllBackgroundChatStreams() {
-      Object.keys(this._backgroundChatEventSources || {}).forEach((key) => {
-        this.stopBackgroundChatStream(Number(key))
-      })
     },
     loadAgentChatHistoryListSilently() {
       if (!this.agentChatHistoryVisible || this.agentChatHistoryLoading || this.agentChatHistoryCliId <= 0) return
       agentCliApi.AgentChatListByAgentCli(this.agentChatHistoryCliId, (response) => {
         if (!(response && response.ErrCode === 0 && response.Data)) return
         this.agentChatHistoryList = Array.isArray(response.Data.list) ? response.Data.list : []
-        this.syncBackgroundChatStreams(this.agentChatHistoryList, this.agentChatDetailId || this.chatDetailId)
         this.agentChatCounts = {
           ...this.agentChatCounts,
           [this.agentChatHistoryCliId]: {
@@ -2013,7 +1903,7 @@ export default {
       return this.formatDurationDisplay(ms)
     },
     getItemMsgCount(item) {
-      if (item.status === 'running' && this._sseChatId > 0 && item.id === this._sseChatId) {
+      if (item.status === 'running' && this.chatDetailId > 0 && item.id === this.chatDetailId) {
         return this.chatDetailSSELines.length
       }
       return item.line_count || 0
@@ -2059,7 +1949,8 @@ export default {
         if (res.ErrCode === 0) {
           this.chatContinueInput = ''
           this.chatDetailStatus = 'running'
-          this.connectChatStream(this.chatDetailId, input)
+          this._sseParseState = null
+          this._sseLineBuffer = []
           setTimeout(() => { this.loadChatDetail() }, 500)
         } else {
           this.$message.error(res.ErrMsg || '发送失败')
@@ -2100,7 +1991,6 @@ export default {
         this.chatDetailMessages = []
         this.chatDetailLastUsageSummary = null
         taskProgressStore.reset()
-        this._initialSseRetryCount = 0
         this.markAgentChatRunningLocally(agentCliId, chatId, {
           prompt,
           localDir: String(this.chatDetailLocalDir || '').trim(),
@@ -2108,7 +1998,6 @@ export default {
           thinkingIntensity: String(this.chatDetailThinkingIntensity || '高').trim() || '高',
           cliType: this.chatDetailCliType || 'claude',
         })
-        this.connectChatStream(chatId, null, true)
         this.loadChatDetail()
         this.loadAgentChatCounts()
         this.openAgentChatHistory({ id: agentCliId, name: this.agentChatHistoryTitle }, chatId)
@@ -2116,12 +2005,9 @@ export default {
     },
     // stopChat 停止当前 Agent CLI 历史对话。 // stopChat interrupts the selected standalone AgentCli chat immediately on both UI and backend.
     stopChat() {
-      if (this._chatEventSource) {
-        this._chatEventSource.close()
-        this._chatEventSource = null
-      }
-      this._sseChatId = 0
-      this.chatDetailSSERegistered = false
+      this._sseParseState = null
+      this._sseLineBuffer = []
+      if (this._sseBatchTimer) { clearTimeout(this._sseBatchTimer); this._sseBatchTimer = null }
       taskWorkflowApi.TaskWorkflowChatStop(this.chatDetailId, (res) => {
         if (res.ErrCode !== 0) {
           this.$message.error(res.ErrMsg || '停止失败')
