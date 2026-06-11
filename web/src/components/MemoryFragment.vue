@@ -1003,21 +1003,31 @@ export default {
     handleMemoryFragmentSseUpdate(payload) {
       const fragmentId = this.normalizeFragmentId(payload?.fragment_id || payload?.fragment?.id || payload?.fragment?.file_id)
       const action = String(payload?.action || '').trim()
-      this.loadFragmentList()
-      this.loadTrashList()
-      this.rerunSubmittedSearch()
-      this.rerunSidebarFilter()
       if (!fragmentId) {
+        // 无法定点更新时才全量刷新作为兜底。
+        this.loadFragmentList()
+        this.loadTrashList()
+        this.rerunSubmittedSearch()
+        this.rerunSidebarFilter()
         return
       }
       if (action === MEMORY_FRAGMENT_SSE_ACTION_DELETE) {
         this.handleRemoteDeletedFragment(fragmentId)
+        this.loadTrashList()
+        this.rerunSidebarFilter()
         return
       }
       if (action !== MEMORY_FRAGMENT_SSE_ACTION_UPSERT) {
+        this.loadFragmentList()
+        this.loadTrashList()
+        this.rerunSubmittedSearch()
+        this.rerunSidebarFilter()
         return
       }
+      // upsert：定点更新列表项，若文件夹变更则从当前列表移除，无需全量刷新。
       this.handleRemoteUpsertFragment(fragmentId, payload?.fragment || null)
+      this.applySseUpsertToList(fragmentId, payload?.fragment || null)
+      this.loadTrashList()
     },
     // handleRemoteDeletedFragment 同步处理远端删除的片段。
     handleRemoteDeletedFragment(fragmentId) {
@@ -1748,6 +1758,81 @@ export default {
       target.fragment = this.normalizeFragment(fragment)
       target.dirty = JSON.stringify(this.cloneFragment(target.fragment)) !== JSON.stringify(this.cloneFragment(target.savedFragment))
     },
+    // applySseUpsertToList SSE upsert 事件时定点更新侧边栏列表，处理文件夹变更的移除逻辑。
+    applySseUpsertToList(fragmentId, fragment) {
+      if (!fragmentId) return
+      const currentFolder = this.selectedFolderName
+      // 若携带了 fragment 信息，判断文件夹是否变更。
+      if (fragment && typeof fragment === 'object' && Object.keys(fragment).length > 0) {
+        const newFolderName = fragment.folder_name || 'fragments'
+        // 如果当前筛选了特定文件夹，且片段不再属于该文件夹，从列表中移除。
+        if (currentFolder && newFolderName !== currentFolder) {
+          const idx = this.fragmentList.findIndex(item => this.normalizeFragmentId(item.id || item.file_id) === fragmentId)
+          if (idx !== -1) {
+            this.fragmentList.splice(idx, 1)
+          }
+          const filterIdx = this.sidebarFilterResults.findIndex(item => this.normalizeFragmentId(item.id || item.file_id) === fragmentId)
+          if (filterIdx !== -1) {
+            this.sidebarFilterResults.splice(filterIdx, 1)
+          }
+          // 更新首页文件夹统计。
+          this.loadFolderList()
+          return
+        }
+        // 文件夹未变，定点更新。
+        this.updateFragmentListItem(fragment)
+        return
+      }
+      // SSE 未携带 fragment 详情，用 API 获取后定点更新。
+      MemoryFragmentApi.MemoryFragmentInfo(fragmentId, (response) => {
+        if (!(response && response.ErrCode === 0 && response.Data)) return
+        const frag = response.Data
+        const newFolderName = frag.folder_name || 'fragments'
+        if (currentFolder && newFolderName !== currentFolder) {
+          const idx = this.fragmentList.findIndex(item => this.normalizeFragmentId(item.id || item.file_id) === fragmentId)
+          if (idx !== -1) {
+            this.fragmentList.splice(idx, 1)
+          }
+          const filterIdx = this.sidebarFilterResults.findIndex(item => this.normalizeFragmentId(item.id || item.file_id) === fragmentId)
+          if (filterIdx !== -1) {
+            this.sidebarFilterResults.splice(filterIdx, 1)
+          }
+          this.loadFolderList()
+          return
+        }
+        this.updateFragmentListItem(frag)
+      })
+    },
+    // updateFragmentListItem 定点更新侧边栏列表中指定片段的信息，避免全量刷新导致 tab 切换。
+    updateFragmentListItem(fragment) {
+      const normalizedId = this.normalizeFragmentId(fragment.id || fragment.file_id)
+      if (!normalizedId) return
+      const fields = {
+        title: fragment.title,
+        file_path: fragment.file_path,
+        folder_name: fragment.folder_name,
+        folder_label: fragment.folder_label,
+        update_time_desc: fragment.update_time_desc,
+        create_time_desc: fragment.create_time_desc,
+      }
+      const patch = (list) => {
+        const idx = list.findIndex(item => this.normalizeFragmentId(item.id || item.file_id) === normalizedId)
+        if (idx !== -1) {
+          const existing = list[idx]
+          const merged = { ...existing }
+          for (const key of Object.keys(fields)) {
+            if (fields[key] !== undefined && fields[key] !== '') {
+              merged[key] = fields[key]
+            }
+          }
+          list.splice(idx, 1, merged)
+        }
+      }
+      patch(this.fragmentList)
+      if (this.sidebarFilterQuery.trim()) {
+        patch(this.sidebarFilterResults)
+      }
+    },
     // handleFragmentSaved 处理片段保存成功后的联动。
     handleFragmentSaved(tabName, fragment) {
       const target = this.fragmentTabs.find(item => item.name === tabName)
@@ -1758,24 +1843,10 @@ export default {
       target.savedFragment = this.cloneFragment(target.fragment)
       target.dirty = false
       this.triggerFragmentSaveFeedback(target.fragment.id)
-      if (this.sidebarFilterQuery.trim()) {
-        this.loadFragmentListPreservingOrder()
-        this.rerunSidebarFilter()
-      } else {
-        this.loadFragmentList()
-      }
-      this.loadTrashList()
-      this.rerunSubmittedSearch()
-      // 防御：确保保存完成后不会因 el-tabs 内部重评估或异步回调副作用而跳到首页。
-      // 使用两次 $nextTick 保证在 Vue 响应式更新和 DOM 重渲染完成后再校验。
-      const savedTab = tabName
-      this.$nextTick(() => {
-        this.$nextTick(() => {
-          if (this.activeTab !== savedTab && this.fragmentTabs.some(t => t.name === savedTab)) {
-            this.activeTab = savedTab
-          }
-        })
-      })
+      // 定点更新侧边栏列表中该片段的信息，避免全量刷新列表导致 tab 被切换到首页。
+      this.updateFragmentListItem(fragment)
+      // 更新首页文件夹统计信息。
+      this.loadFolderList()
     },
     // handleFragmentDeleted 删除片段后清理 tab 和列表。
     handleFragmentDeleted(fragmentId) {

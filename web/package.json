@@ -19,6 +19,7 @@
     "codemirror-editor-vue3": "^2.7.0",
     "core-js": "^3.8.3",
     "diff": "^8.0.2",
+    "diff-match-patch": "^1.0.5",
     "diff2html": "^3.4.52",
     "dompurify": "^3.2.6",
     "element-plus": "^2.4.1",

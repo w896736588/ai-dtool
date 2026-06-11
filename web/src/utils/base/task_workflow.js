@@ -145,17 +145,26 @@ function TaskWorkflowChatListByAgentCli(agentCliId, callBack) {
 }
 
 // TaskWorkflowFileChangesSummary 获取文件变更汇总。
-function TaskWorkflowFileChangesSummary(localDirs, callBack) {
+function TaskWorkflowFileChangesSummary(items, callBack) {
   base.BasePost('/api/task/workflow/file-changes/summary', {
-    local_dirs: localDirs,
+    items: items,
   }, callBack)
 }
 
-// TaskWorkflowFileChangesDetail 获取文件变更详情（含 diff）。
+// TaskWorkflowFileChangesDetail 获取文件变更详情。
 function TaskWorkflowFileChangesDetail(localDir, parentBranch, callBack) {
   base.BasePost('/api/task/workflow/file-changes/detail', {
     local_dir: localDir,
     parent_branch: parentBranch || '',
+  }, callBack)
+}
+
+// TaskWorkflowFileChangesFileDiff 获取单个文件的 diff。
+function TaskWorkflowFileChangesFileDiff(localDir, parentBranch, filePath, callBack) {
+  base.BasePost('/api/task/workflow/file-changes/file-diff', {
+    local_dir: localDir,
+    parent_branch: parentBranch || '',
+    file_path: filePath,
   }, callBack)
 }
 
@@ -182,4 +191,5 @@ export default {
   TaskWorkflowChatListByAgentCli,
   TaskWorkflowFileChangesSummary,
   TaskWorkflowFileChangesDetail,
+  TaskWorkflowFileChangesFileDiff,
 }
