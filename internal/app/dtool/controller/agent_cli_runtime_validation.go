@@ -22,6 +22,8 @@ func normalizeAgentCliRuntimeType(cliType string) string {
 		return define.AgentCliTypeCodexCli
 	case `claude`, ``, define.AgentCliTypeClaudeCodeCli:
 		return define.AgentCliTypeClaudeCodeCli
+	case `claude-agent`, define.AgentCliTypeClaudeAgentSdk:
+		return define.AgentCliTypeClaudeAgentSdk
 	default:
 		return strings.TrimSpace(cliType)
 	}
@@ -47,6 +49,8 @@ func validateAgentCliRuntimeConfig(agentCliID int, cliType string) error {
 		return validateCodexAgentCliRuntimeConfig(row)
 	case define.AgentCliTypeClaudeCodeCli:
 		return validateClaudeAgentCliRuntimeConfig(row)
+	case define.AgentCliTypeClaudeAgentSdk:
+		return validateClaudeAgentSdkRuntimeConfig(row)
 	default:
 		return fmt.Errorf(`不支持的 Agent Cli 类型: %s`, cliType)
 	}
@@ -126,6 +130,24 @@ func validateClaudeAgentCliRuntimeConfig(row map[string]any) error {
 	var settingsData map[string]any
 	if err := json.Unmarshal(content, &settingsData); err != nil {
 		return fmt.Errorf(`解析 settings.json 失败 %s: %w`, settingsPath, err)
+	}
+	return nil
+}
+
+// validateClaudeAgentSdkRuntimeConfig 校验 Claude Agent SDK 配置。
+// SDK 类型的配置存储在 tbl_agent_cli.config JSON 字段中，需要验证 API Key 和模型配置。
+func validateClaudeAgentSdkRuntimeConfig(row map[string]any) error {
+	configJson := cast.ToString(row[`config`])
+	if strings.TrimSpace(configJson) == `` {
+		return fmt.Errorf(`Claude Agent SDK 配置不能为空`)
+	}
+	var cfg define.ClaudeAgentSdkConfig
+	if err := json.Unmarshal([]byte(configJson), &cfg); err != nil {
+		return fmt.Errorf(`解析 Claude Agent SDK 配置失败: %w`, err)
+	}
+	// API Key 和 OAuth Token 二选一必填
+	if strings.TrimSpace(cfg.ApiKey) == `` && strings.TrimSpace(cfg.OAuthToken) == `` {
+		return fmt.Errorf(`API Key 或 OAuth Token 至少需要配置一个`)
 	}
 	return nil
 }

@@ -2,8 +2,9 @@ package define
 
 // 支持的 Agent CLI 类型常量
 const (
-	AgentCliTypeClaudeCodeCli = "claude-code-cli"
-	AgentCliTypeCodexCli      = "codex-cli"
+	AgentCliTypeClaudeCodeCli  = "claude-code-cli"
+	AgentCliTypeCodexCli       = "codex-cli"
+	AgentCliTypeClaudeAgentSdk = "claude-agent-cli" // 基于 claude-agent-sdk-go 的双向控制协议
 )
 
 // Agent CLI 启停状态常量 / Agent CLI enabled flag constants.
@@ -137,3 +138,26 @@ type AgentCliToggleEnabledRequest struct {
 	Id     int  `json:"id"`
 	Enable bool `json:"enable"`
 }
+
+// ClaudeAgentSdkConfig Claude Agent SDK 实例配置（存储在 tbl_agent_cli.config JSON 字段中）
+type ClaudeAgentSdkConfig struct {
+	ApiKey          string   `json:"api_key"`                     // ANTHROPIC_API_KEY 或 CLAUDE_API_KEY
+	OAuthToken      string   `json:"oauth_token,omitempty"`       // CLAUDE_CODE_OAUTH_TOKEN（Max 订阅）
+	Model           string   `json:"model"`                       // 默认模型，如 claude-sonnet-4-20250514
+	Models          []string `json:"models,omitempty"`            // 可选模型列表
+	BaseURL         string   `json:"base_url,omitempty"`          // 自定义 API 端点（ANTHROPIC_BASE_URL）
+	UserDataDir     string   `json:"user_data_dir,omitempty"`     // --user-data-dir
+	SettingsPath    string   `json:"settings_path,omitempty"`     // --settings 路径
+	PermissionMode  string   `json:"permission_mode,omitempty"`   // 默认权限模式：bypassPermissions / acceptEdits / default
+	AllowedTools    []string `json:"allowed_tools,omitempty"`     // 允许的工具列表
+	MaxTurns        int      `json:"max_turns,omitempty"`         // 最大对话轮次
+	EnableHooks     bool     `json:"enable_hooks,omitempty"`      // 是否启用 Hook 事件推送
+	EnableMcpStatus bool     `json:"enable_mcp_status,omitempty"` // 是否启用 MCP 状态查询
+}
+
+// ClaudeAgentSdkPermissionMode 权限模式常量
+const (
+	ClaudeAgentSdkPermissionBypass  = "bypassPermissions"
+	ClaudeAgentSdkPermissionAccept  = "acceptEdits"
+	ClaudeAgentSdkPermissionDefault = "default"
+)

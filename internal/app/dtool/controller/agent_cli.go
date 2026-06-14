@@ -5,6 +5,7 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -85,6 +86,21 @@ func AgentCliList(c *gin.Context) {
 			item.SettingsExists = configJson != ""
 			item.DisplayedEnabled = item.Enabled == define.AgentCliEnabled && item.SettingsExists
 			item.McpServerCount = business.GetCodexMcpServerCount()
+		} else if item.Type == define.AgentCliTypeClaudeAgentSdk {
+			// Claude Agent SDK：数据来自 config JSON 字段，不走 settings.json
+			configJson := cast.ToString(row["config"])
+			item.Config = configJson
+			sdkModel, sdkBaseURL, _ := business.GetClaudeAgentSdkModelConfig(configJson)
+			item.ModelOptions = business.GetClaudeAgentSdkModelOptions(configJson)
+			if sdkModel != "" {
+				item.CurrentModel = sdkModel
+			} else {
+				item.CurrentModel = "-"
+			}
+			item.RequestURL = sdkBaseURL
+			item.SettingsExists = configJson != ""
+			item.DisplayedEnabled = item.Enabled == define.AgentCliEnabled && item.SettingsExists
+			item.McpServerCount = 0 // SDK 模式下 MCP 通过配置文件管理，此处暂不计入
 		} else {
 			exists, content, _ := business.ReadAgentCliSettings(item.SettingsPath)
 			item.SettingsExists = exists
@@ -120,7 +136,6 @@ func AgentCliSave(c *gin.Context) {
 			gsgin.GinResponseError(c, "Codex CLI 配置不能为空", nil)
 			return
 		}
-		// 验证 config JSON 中 api_key 必填
 		var cfgErr error
 		codexCfg, cfgErr = business.GetCodexCliConfig(req.Config)
 		if cfgErr != nil {
@@ -129,6 +144,20 @@ func AgentCliSave(c *gin.Context) {
 		}
 		if codexCfg.ApiKey == "" {
 			gsgin.GinResponseError(c, "Codex CLI API Key 不能为空", nil)
+			return
+		}
+	} else if req.Type == define.AgentCliTypeClaudeAgentSdk {
+		if req.Config == "" {
+			gsgin.GinResponseError(c, "Claude Agent SDK 配置不能为空", nil)
+			return
+		}
+		sdkCfg, sdkErr := business.GetClaudeAgentSdkConfig(req.Config)
+		if sdkErr != nil {
+			gsgin.GinResponseError(c, sdkErr.Error(), nil)
+			return
+		}
+		if strings.TrimSpace(sdkCfg.ApiKey) == "" && strings.TrimSpace(sdkCfg.OAuthToken) == "" {
+			gsgin.GinResponseError(c, "API Key 或 OAuth Token 至少需要配置一个", nil)
 			return
 		}
 	}
@@ -176,6 +205,8 @@ func AgentCliSave(c *gin.Context) {
 		if name == "" {
 			if req.Type == define.AgentCliTypeCodexCli {
 				name = "Codex CLI"
+			} else if req.Type == define.AgentCliTypeClaudeAgentSdk {
+				name = "Claude Agent SDK"
 			} else {
 				name = "Claude Code CLI"
 			}

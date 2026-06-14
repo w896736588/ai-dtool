@@ -260,6 +260,46 @@ func GetCodexCliModelConfig(configJson string) (model string, baseURL string) {
 	return cfg.Model, cfg.BaseURL
 }
 
+// GetClaudeAgentSdkConfig 从 DB config JSON 字段解析 ClaudeAgentSdkConfig。
+func GetClaudeAgentSdkConfig(configJson string) (define.ClaudeAgentSdkConfig, error) {
+	var cfg define.ClaudeAgentSdkConfig
+	if configJson == "" {
+		return cfg, fmt.Errorf("Claude Agent SDK 配置为空")
+	}
+	if err := json.Unmarshal([]byte(configJson), &cfg); err != nil {
+		return cfg, fmt.Errorf("解析 Claude Agent SDK 配置失败: %w", err)
+	}
+	cfg.Models = mergeAgentCliModels(cfg.Model, cfg.Models)
+	if cfg.Model == "" && len(cfg.Models) > 0 {
+		cfg.Model = cfg.Models[0]
+	}
+	return cfg, nil
+}
+
+// GetClaudeAgentSdkModelConfig 从 config JSON 中提取 SDK 模型和请求地址。
+func GetClaudeAgentSdkModelConfig(configJson string) (model, baseURL, apiKey string) {
+	if configJson == "" {
+		return "", "", ""
+	}
+	var cfg define.ClaudeAgentSdkConfig
+	if err := json.Unmarshal([]byte(configJson), &cfg); err != nil {
+		return "", "", ""
+	}
+	return cfg.Model, cfg.BaseURL, cfg.ApiKey
+}
+
+// GetClaudeAgentSdkModelOptions 从 config JSON 中提取 SDK 可选模型列表。
+func GetClaudeAgentSdkModelOptions(configJson string) []string {
+	if configJson == "" {
+		return nil
+	}
+	cfg, err := GetClaudeAgentSdkConfig(configJson)
+	if err != nil || len(cfg.Models) == 0 {
+		return nil
+	}
+	return append([]string{}, cfg.Models...)
+}
+
 // GetCodexCliModelOptions 从 config JSON 中提取 Codex CLI 可选模型列表。
 // GetCodexCliModelOptions extracts selectable model options from config JSON.
 func GetCodexCliModelOptions(configJson string) []string {

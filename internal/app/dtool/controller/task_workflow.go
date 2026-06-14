@@ -9,6 +9,7 @@ import (
 	"dev_tool/internal/app/dtool/define"
 	_struct "dev_tool/internal/app/dtool/struct"
 	"dev_tool/internal/pkg/p_claude"
+	"dev_tool/internal/pkg/p_claude_sdk"
 	"dev_tool/internal/pkg/p_codex"
 	"dev_tool/internal/pkg/p_define"
 	"encoding/json"
@@ -2535,6 +2536,20 @@ func startChatCommand(chatID int64) {
 		}
 		selectedModelName := strings.TrimSpace(cast.ToString(chatInfo[`model_name`]))
 		go runCodexCommand(chatID, fromType, localDir, prompt, isResume, sessionID, configJson, selectedModelName)
+	case `claude-agent`:
+		// Claude Agent SDK 模式：从 tbl_agent_cli.config 加载配置
+		agentCliId := cast.ToInt(chatInfo[`agent_cli_id`])
+		configJson := ``
+		if agentCliId > 0 {
+			cliRow, _ := common.DbMain.Client.QueryBySql(
+				`SELECT config FROM tbl_agent_cli WHERE id = ?`, agentCliId,
+			).One()
+			if len(cliRow) > 0 {
+				configJson = cast.ToString(cliRow[`config`])
+			}
+		}
+		selectedModelName := strings.TrimSpace(cast.ToString(chatInfo[`model_name`]))
+		go runClaudeSdkCommand(chatID, fromType, localDir, prompt, isResume, sessionID, configJson, selectedModelName)
 	default:
 		settingsPath := cast.ToString(chatInfo[`settings_path`])
 		modelName, baseURL, apiKey := ``, ``, ``
@@ -3245,6 +3260,38 @@ func AgentChatMarkRead(c *gin.Context) {
 	})
 }
 
+// AgentChatApprove 处理前端权限审批响应。
+// SDK 模式下，前端用户点击允许/拒绝后调用此接口。
+func AgentChatApprove(c *gin.Context) {
+	var req struct {
+		RequestID string `json:"request_id"`
+		Approved  bool   `json:"approved"`
+		Reason    string `json:"reason,omitempty"`
+	}
+	if err := gsgin.GinPostBody(c, &req); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if strings.TrimSpace(req.RequestID) == "" {
+		gsgin.GinResponseError(c, "request_id 不能为空", nil)
+		return
+	}
+
+	resp := &p_claude_sdk.ApprovalResponse{
+		RequestID: req.RequestID,
+		Approved:  req.Approved,
+		Reason:    req.Reason,
+	}
+
+	if err := p_claude_sdk.HandleApprovalResponse(resp); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	gstool.FmtPrintlnLogTime("[sdk-approve] 审批响应已处理: request_id=%s approved=%v", req.RequestID, req.Approved)
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
 // agentChatListByAgentCli 返回一个 Agent CLI 的独立执行历史。
 // agentChatListByAgentCli is shared by the new Agent endpoint and the temporary workflow-compatible endpoint.
 func agentChatListByAgentCli(c *gin.Context, agentCliID int) {
@@ -3497,9 +3544,10 @@ func runClaudeCommand(chatID int64, fromType string, localDir, prompt string, is
 	}
 
 	stopped := make(chan struct{})
+	var stopOnce sync.Once
 	ctx, cancel := context.WithCancel(context.Background())
 	chatCancelFuncs.Store(chatID, func() {
-		close(stopped)
+		stopOnce.Do(func() { close(stopped) })
 		cancel()
 	})
 	defer func() {
@@ -3595,6 +3643,201 @@ func runClaudeCommand(chatID int64, fromType string, localDir, prompt string, is
 	taskWorkflowBroadcastChatStatus(chatID)
 	_ = lastAssistantText
 	_ = lastResultText
+}
+
+// runClaudeSdkCommand 使用 claude-agent-sdk-go 模式执行对话。
+// 结构与 runClaudeCommand 对齐，复用 SSE 推送和 DB 写入逻辑。
+func runClaudeSdkCommand(chatID int64, fromType string, localDir, prompt string, isResume bool, sessionID string, configJson string, selectedModelName string) {
+	defer func() {
+		if r := recover(); r != nil {
+			gstool.FmtPrintlnLogTime("[sdk-run] chat_id=%d panic: %v", chatID, r)
+			_ = common.DbMain.TaskWorkflowChatMarkError(chatID)
+			broadcastChatLineToBusinessSse(chatID, fromType, buildChatCompletedEvent(chatID, "error"))
+			taskWorkflowBroadcastChatStatus(chatID)
+		}
+	}()
+
+	// 解析 ClaudeAgentSdkConfig
+	var sdkCfg define.ClaudeAgentSdkConfig
+	if configJson != "" {
+		if err := json.Unmarshal([]byte(configJson), &sdkCfg); err != nil {
+			gstool.FmtPrintlnLogTime("[sdk-run] chat_id=%d 解析 SDK 配置失败: %v", chatID, err)
+		}
+	}
+	// 选中的模型优先
+	if selectedModelName != "" {
+		sdkCfg.Model = selectedModelName
+	}
+
+	// DB 写入通道：将批量写 DB 与 SSE 推送解耦
+	dbWriteCh := make(chan string, 4096)
+	dbWriteDone := make(chan struct{})
+
+	go func() {
+		defer close(dbWriteDone)
+		dbBuf := make([]string, 0, common.ChatOutputFlushBatchSize)
+		flushTimer := time.NewTicker(2 * time.Second)
+		defer flushTimer.Stop()
+
+		flushDB := func() {
+			if len(dbBuf) == 0 {
+				return
+			}
+			lines := make([]string, len(dbBuf))
+			copy(lines, dbBuf)
+			dbBuf = dbBuf[:0]
+			_ = common.DbMain.TaskWorkflowChatAppendOutputBatch(chatID, lines)
+		}
+
+		for {
+			select {
+			case line, ok := <-dbWriteCh:
+				if !ok {
+					flushDB()
+					return
+				}
+				dbBuf = append(dbBuf, line)
+				if len(dbBuf) >= common.ChatOutputFlushBatchSize {
+					flushDB()
+				}
+			case <-flushTimer.C:
+				flushDB()
+			}
+		}
+	}()
+
+	defer func() {
+		close(dbWriteCh)
+		<-dbWriteDone
+	}()
+
+	// sendLine SSE 实时推送 + DB 异步写入
+	sendLine := func(line string) {
+		select {
+		case dbWriteCh <- line:
+		default:
+		}
+		broadcastChatLineToBusinessSse(chatID, fromType, line)
+	}
+
+	// 构建 SDK RunConfig
+	permissionMode := sdkCfg.PermissionMode
+	if permissionMode == "" {
+		permissionMode = define.ClaudeAgentSdkPermissionDefault
+	}
+
+	cfg := p_claude_sdk.RunConfig{
+		Prompt:         prompt,
+		SessionID:      sessionID,
+		Model:          sdkCfg.Model,
+		BaseURL:        sdkCfg.BaseURL,
+		APIKey:         sdkCfg.ApiKey,
+		OAuthToken:     sdkCfg.OAuthToken,
+		WorkingDir:     localDir,
+		UserDataDir:    sdkCfg.UserDataDir,
+		SettingsPath:   sdkCfg.SettingsPath,
+		PermissionMode: permissionMode,
+		AllowedTools:   sdkCfg.AllowedTools,
+		MaxTurns:       sdkCfg.MaxTurns,
+		EnableHooks:    sdkCfg.EnableHooks,
+		ProcessStartCallback: func(pid int) {
+			_ = common.DbMain.TaskWorkflowChatUpdatePID(chatID, pid)
+		},
+	}
+
+	// 推送命令到前端展示
+	if prompt != "" {
+		cmdMsg := p_claude_sdk.BuildCommandEvent(
+			p_claude_sdk.BuildSdkCommandLine(cfg),
+			prompt,
+			define.AgentCliTypeClaudeAgentSdk,
+		)
+		sendLine(cmdMsg.RawJSON)
+	}
+
+	stopped := make(chan struct{})
+	var stopOnce sync.Once
+	ctx, cancel := context.WithCancel(context.Background())
+	chatCancelFuncs.Store(chatID, func() {
+		stopOnce.Do(func() { close(stopped) })
+		cancel()
+	})
+	defer func() {
+		cancel()
+		// 清理待审批请求
+		p_claude_sdk.CleanupPendingApprovals(chatID)
+		chatCancelFuncs.Delete(chatID)
+	}()
+
+	sessionExtracted := isResume
+	callbackCount := 0
+
+	gstool.FmtPrintlnLogTime("[sdk-run] chat_id=%d 开始RunClaudeSdkStream dir=%s model=%s permission_mode=%s",
+		chatID, localDir, sdkCfg.Model, permissionMode)
+
+	_, err := p_claude_sdk.RunClaudeSdkStream(ctx, cfg, func(msg p_claude_sdk.StreamMessage) {
+		callbackCount++
+		if callbackCount <= 3 {
+			gstool.FmtPrintlnLogTime("[sdk-run] callback:%d type=%s subtype=%s len=%d",
+				callbackCount, msg.Type, msg.Subtype, len(msg.RawJSON))
+		}
+		rawJSON := msg.RawJSON
+		// 注入 is_resume 和 continue_at（与 runClaudeCommand 逻辑一致）
+		if msg.Type == "system" && msg.Subtype == "init" {
+			var initData map[string]any
+			if err := json.Unmarshal([]byte(rawJSON), &initData); err == nil {
+				initData["is_resume"] = isResume
+				if isResume {
+					initData["continue_at"] = time.Now().UnixMilli()
+				}
+				if modified, e := json.Marshal(initData); e == nil {
+					rawJSON = string(modified)
+				}
+			}
+		}
+		sendLine(rawJSON)
+
+		if !sessionExtracted && msg.Type == "system" && msg.Subtype == "init" {
+			if sid, ok := msg.Data["session_id"].(string); ok && sid != "" {
+				_ = common.DbMain.TaskWorkflowChatUpdateSessionID(chatID, sid)
+				sessionExtracted = true
+			}
+		}
+	})
+
+	gstool.FmtPrintlnLogTime("[sdk-run] chat_id=%d RunClaudeSdkStream结束 callbackCount=%d err=%v",
+		chatID, callbackCount, err)
+
+	if err != nil {
+		errJSON, _ := json.Marshal(map[string]string{
+			"type": "error",
+			"text": err.Error(),
+		})
+		sendLine(string(errJSON))
+		select {
+		case <-stopped:
+			gstool.FmtPrintlnLogTime("[sdk-run] chat_id=%d 检测到stopped信号，设置状态为interrupted", chatID)
+			_ = common.DbMain.TaskWorkflowChatMarkInterrupted(chatID)
+		default:
+			gstool.FmtPrintlnLogTime("[sdk-run] chat_id=%d 异常退出，错误=%v，设置状态为error", chatID, err)
+			_ = common.DbMain.TaskWorkflowChatMarkError(chatID)
+		}
+	} else {
+		gstool.FmtPrintlnLogTime("[sdk-run] chat_id=%d 正常完成，设置状态为completed", chatID)
+		_ = common.DbMain.TaskWorkflowChatMarkCompleted(chatID)
+	}
+	finalStatus := common.TaskWorkflowChatStatusCompleted
+	if err != nil {
+		select {
+		case <-stopped:
+			finalStatus = common.TaskWorkflowChatStatusInterrupted
+		default:
+			finalStatus = common.TaskWorkflowChatStatusError
+		}
+	}
+	gstool.FmtPrintlnLogTime("[sdk-run] chat_id=%d 最终状态=%s，发送completed事件", chatID, finalStatus)
+	sendLine(buildChatCompletedEvent(chatID, finalStatus))
+	taskWorkflowBroadcastChatStatus(chatID)
 }
 
 // runCodexCommand 执行 Codex CLI 命令并通过业务 SSE 连接向所有活跃连接广播输出。
@@ -3716,9 +3959,10 @@ func runCodexCommand(chatID int64, fromType string, localDir, prompt string, isR
 	}
 
 	stopped := make(chan struct{})
+	var stopOnce sync.Once
 	ctx, cancel := context.WithCancel(context.Background())
 	chatCancelFuncs.Store(chatID, func() {
-		close(stopped)
+		stopOnce.Do(func() { close(stopped) })
 		cancel()
 	})
 	defer func() {

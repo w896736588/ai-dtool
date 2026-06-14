@@ -380,6 +380,7 @@ func taskWorkflow(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/agent/chat/send`, controller.AgentChatSend)
 	tGin.GinPost(`/api/agent/chat/list-by-agent-cli`, controller.AgentChatListByAgentCli)
 	tGin.GinPost(`/api/agent/chat/mark-read`, controller.AgentChatMarkRead)
+	tGin.GinPost(`/api/agent/chat/approve`, controller.AgentChatApprove)
 	tGin.GinPost(`/api/task/workflow/zcode/save`, controller.TaskWorkflowZcodeSave)
 	tGin.GinPost(`/api/task/workflow/zcode/get`, controller.TaskWorkflowZcodeGet)
 	tGin.GinPost(`/api/task/workflow/zcode/delete`, controller.TaskWorkflowZcodeDelete)

@@ -49,14 +49,14 @@
             <span style="margin-left: 8px; font-size: 11px;">{{ msg.status === 'started' ? '启动' : msg.status }}</span>
           </div>
           <div v-else-if="msg.type === 'assistant'">
-            <div v-if="msg.thinking" style="margin-bottom: 8px;">
+            <div v-if="cleanThinking(msg.thinking)" style="margin-bottom: 8px;">
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
                 <span v-if="isCurrentThinking(msg)" class="cr-status-spinner"></span>
                 <span v-if="isCurrentThinking(msg)" style="color: #409eff; font-size: 12px;">思考过程</span>
                 <span v-else style="color: #909399; font-size: 12px;">思考过程</span>
                 <span @click="msg._thinkingCollapsed = !msg._thinkingCollapsed" style="cursor: pointer; font-weight: bold; font-size: 12px; color: #909399;">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
               </div>
-              <div v-if="!msg._thinkingCollapsed" class="cr-thinking-blockquote">{{ msg.thinking }}</div>
+              <div v-if="!msg._thinkingCollapsed" class="cr-thinking-blockquote">{{ cleanThinking(msg.thinking) }}</div>
             </div>
             <div v-for="(block, bi) in msg.content" :key="bi">
               <div v-if="block.type === 'text'" class="markdown-body cr-markdown-body" v-html="renderMarkdown(block.text)"></div>
@@ -123,7 +123,7 @@
               <span>思考过程</span>
               <span @click="msg._thinkingCollapsed = !msg._thinkingCollapsed" style="cursor: pointer; font-weight: bold;">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
             </div>
-            <div v-if="!msg._thinkingCollapsed" class="cr-thinking-blockquote">{{ msg.text }}</div>
+            <div v-if="!msg._thinkingCollapsed" class="cr-thinking-blockquote">{{ cleanThinking(msg.text) }}</div>
           </div>
           <div v-else-if="msg.type === 'result'" class="cr-result-card">
             <div class="cr-result-header">
@@ -463,6 +463,10 @@ export default {
         if (m.type === 'assistant' && m.thinking) return m === msg
       }
       return false
+    },
+    // cleanThinking 清理 thinking 文本中的无意义标记（如 [thinking_tokens]），保留实质内容。
+    cleanThinking(text) {
+      return chatParser.cleanThinkingText(text)
     },
     isToolBlockRunning(block) {
       if (!block) return false

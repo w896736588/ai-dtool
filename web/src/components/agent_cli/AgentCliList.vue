@@ -71,7 +71,7 @@
             </div>
             <div class="agent-cli-card__meta">
               <span>ID：{{ row.id }}</span>
-              <span v-if="row.type !== 'codex-cli'">配置文件：{{ row.settings_exists ? '存在' : '不存在' }}</span>
+              <span v-if="row.type !== 'codex-cli' && row.type !== 'claude-agent-cli'">配置文件：{{ row.settings_exists ? '存在' : '不存在' }}</span>
               <span>可选模型：{{ formatModelOptions(row.model_options) }}</span>
               <span>McpServers：{{ row.mcp_server_count || 0 }} 个</span>
             </div>
@@ -149,7 +149,7 @@
                       </div>
                     </td>
                   </tr>
-                  <tr v-if="row.type !== 'codex-cli'">
+                  <tr v-if="row.type !== 'codex-cli' && row.type !== 'claude-agent-cli'">
                     <th>路径</th>
                     <td class="agent-cli-config-table__value agent-cli-config-table__value--break">{{ row.settings_path || '-' }}</td>
                     <th>配置文件</th>
@@ -159,7 +159,7 @@
                       </el-tag>
                     </td>
                   </tr>
-                  <tr v-if="row.type !== 'codex-cli'">
+                  <tr v-if="row.type !== 'codex-cli' && row.type !== 'claude-agent-cli'">
                     <th>McpServers</th>
                     <td>{{ row.mcp_server_count || 0 }} 个</td>
                     <td colspan="2"></td>
@@ -228,16 +228,59 @@
     <el-dialog v-model="dialogVisible" :title="editingId > 0 ? '编辑' : '新建 Agent Cli'" width="720px">
       <el-form :model="form" label-width="140px">
         <el-form-item label="名称">
-          <el-input v-model="form.name" :placeholder="form.type === 'codex-cli' ? '默认 Codex CLI' : '默认 Claude Code CLI'" />
+          <el-input v-model="form.name" :placeholder="getTypePlaceholder()" />
         </el-form-item>
         <el-form-item label="类型">
           <el-select v-model="form.type" style="width: 100%" @change="onTypeChange">
             <el-option label="Claude Code CLI" value="claude-code-cli" />
             <el-option label="Codex CLI" value="codex-cli" />
+            <el-option label="Claude Agent SDK" value="claude-agent-cli" />
           </el-select>
         </el-form-item>
+        <!-- Claude Agent SDK 配置 -->
+        <template v-if="form.type === 'claude-agent-cli'">
+          <el-form-item label="API Key" required>
+            <el-input v-model="form.sdk_api_key" type="password" show-password placeholder="请输入 ANTHROPIC_API_KEY" />
+          </el-form-item>
+          <el-form-item label="OAuth Token">
+            <el-input v-model="form.sdk_oauth_token" type="password" show-password placeholder="Max 订阅用户可选" />
+            <div class="agent-cli-form-tip">API Key 与 OAuth Token 二选一必填。</div>
+          </el-form-item>
+          <el-form-item label="模型列表">
+            <el-input
+              v-model="form.sdk_model_list_text"
+              type="textarea"
+              :rows="4"
+              placeholder="每行一个模型；首个模型作为默认模型；执行任务时可再选择具体模型。"
+            />
+          </el-form-item>
+          <el-form-item label="API 端点">
+            <el-input v-model="form.sdk_base_url" placeholder="自定义 ANTHROPIC_BASE_URL（可选）" />
+          </el-form-item>
+          <el-form-item label="权限模式" required>
+            <el-select v-model="form.sdk_permission_mode" style="width: 100%">
+              <el-option label="全部放行（bypassPermissions）" value="bypassPermissions" />
+              <el-option label="自动允许编辑（acceptEdits）" value="acceptEdits" />
+              <el-option label="全需审批（default）" value="default" />
+            </el-select>
+            <div class="agent-cli-form-tip">
+              推荐：受信环境选"全部放行"，开发场景选"自动允许编辑"，安全敏感选"全需审批"。
+            </div>
+          </el-form-item>
+          <el-form-item label="允许工具">
+            <el-input v-model="form.sdk_allowed_tools_text" placeholder="如 Bash, Write, Read，逗号分隔（可选）" />
+          </el-form-item>
+          <el-form-item label="最大轮次">
+            <el-input-number v-model="form.sdk_max_turns" :min="0" :max="999" placeholder="0=无限制" />
+            <div class="agent-cli-form-tip">0 表示不限制最大对话轮次。</div>
+          </el-form-item>
+          <el-form-item label="启用 Hook">
+            <el-switch v-model="form.sdk_enable_hooks" />
+            <div class="agent-cli-form-tip">启用后将在前端展示工具调用前后的 Hook 事件。</div>
+          </el-form-item>
+        </template>
         <!-- Claude Code CLI 配置 -->
-        <template v-if="form.type !== 'codex-cli'">
+        <template v-else-if="form.type !== 'codex-cli'">
           <el-form-item label="settings.json 路径" required>
             <el-input v-model="form.settings_path" placeholder="请输入 settings.json 目标绝对路径，文件可先不存在" />
             <div class="agent-cli-form-tip">例如: C:\Users\xxx\.claude\settings.json。文件不存在时，后续写入模型/MCP 配置会自动创建。</div>
@@ -679,6 +722,15 @@ export default {
         codex_wire_api: 'responses',
         codex_sandbox_mode: '',
         codex_supports_websockets: false,
+        // Claude Agent SDK 专属字段
+        sdk_api_key: '',
+        sdk_oauth_token: '',
+        sdk_model_list_text: '',
+        sdk_base_url: '',
+        sdk_permission_mode: 'bypassPermissions',
+        sdk_allowed_tools_text: '',
+        sdk_max_turns: 0,
+        sdk_enable_hooks: false,
         // 分组多选
         group_ids: [],
       },
@@ -963,6 +1015,9 @@ export default {
       if (type === 'claude-code-cli') {
         return 'Claude Code CLI'
       }
+      if (type === 'claude-agent-cli') {
+        return 'Claude Agent SDK'
+      }
       return type || '-'
     },
     loadList() {
@@ -1067,7 +1122,9 @@ export default {
     getAgentExecCliType() {
       const cli = this.getAgentExecCli()
       if (!cli) return 'claude'
-      return cli.type === 'codex-cli' ? 'codex' : 'claude'
+      if (cli.type === 'codex-cli') return 'codex'
+      if (cli.type === 'claude-agent-cli') return 'claude-agent'
+      return 'claude'
     },
     getAgentExecCacheKey(agentCliId) {
       return AGENT_EXEC_CACHE_PREFIX + String(agentCliId || 0)
@@ -1284,6 +1341,7 @@ export default {
     onAgentChatRowClick(row) {
       if (this.agentChatDetailId === row.id) return
       this.agentChatDetailId = row.id
+      const prevChatId = this.chatDetailId
       this.chatDetailId = row.id
       this.chatDetailStatus = row.status
       this.chatDetailAutoScroll = true
@@ -1309,7 +1367,7 @@ export default {
           }
         })
       }
-      if (this.chatDetailId !== row.id) {
+      if (prevChatId !== row.id) {
         this.chatDetailSSELines = []
         this.chatDetailMessages = []
         this._thinkingStreamStartTime = 0
@@ -1390,6 +1448,14 @@ export default {
         codex_wire_api: 'responses',
         codex_sandbox_mode: '',
         codex_supports_websockets: false,
+        sdk_api_key: '',
+        sdk_oauth_token: '',
+        sdk_model_list_text: '',
+        sdk_base_url: '',
+        sdk_permission_mode: 'bypassPermissions',
+        sdk_allowed_tools_text: '',
+        sdk_max_turns: 0,
+        sdk_enable_hooks: false,
         group_ids: [],
       }
       this.dialogVisible = true
@@ -1398,17 +1464,32 @@ export default {
       // 类型切换时同步默认启停状态 / Sync default enabled status when type changes.
       this.form.enabled = this.form.type === 'codex-cli' ? 0 : 1
     },
+    getTypePlaceholder() {
+      if (this.form.type === 'codex-cli') return '默认 Codex CLI'
+      if (this.form.type === 'claude-agent-cli') return '默认 Claude Agent SDK'
+      return '默认 Claude Code CLI'
+    },
     saveItem() {
       const isCodex = this.form.type === 'codex-cli'
+      const isSdk = this.form.type === 'claude-agent-cli'
       const claudeModels = this.parseModelList(this.form.model_list_text, '')
       const codexModels = this.parseModelList(this.form.codex_model_list_text, '')
+      const sdkModels = this.parseModelList(this.form.sdk_model_list_text, '')
       if (isCodex) {
-        // Codex 现在只保留模型列表字段，首项作为默认模型 / Codex now only uses the model list and the first item becomes default.
         if (!this.form.codex_api_key.trim()) {
           this.$message.warning('请输入 API Key')
           return
         }
         if (codexModels.length === 0) {
+          this.$message.warning('请输入模型列表')
+          return
+        }
+      } else if (isSdk) {
+        if (!this.form.sdk_api_key.trim() && !this.form.sdk_oauth_token.trim()) {
+          this.$message.warning('请输入 API Key 或 OAuth Token')
+          return
+        }
+        if (sdkModels.length === 0) {
           this.$message.warning('请输入模型列表')
           return
         }
@@ -1423,7 +1504,7 @@ export default {
         id: this.editingId,
         name: this.form.name,
         type: this.form.type,
-        settings_path: isCodex ? '' : this.form.settings_path.trim(),
+        settings_path: (isCodex || isSdk) ? '' : this.form.settings_path.trim(),
         enabled: this.form.enabled,
         webhook_config_id: parseInt(this.form.webhook_config_id) || 0,
       }
@@ -1438,6 +1519,22 @@ export default {
           sandbox_mode: this.form.codex_sandbox_mode.trim() || undefined,
           supports_websockets: this.form.codex_base_url.trim() ? !!this.form.codex_supports_websockets : undefined,
         })
+      } else if (isSdk) {
+        // Claude Agent SDK 类型：将配置序列化为 config JSON
+        const allowedTools = this.form.sdk_allowed_tools_text.trim()
+          ? this.form.sdk_allowed_tools_text.split(',').map(s => s.trim()).filter(Boolean)
+          : []
+        data.config = JSON.stringify({
+          api_key: this.form.sdk_api_key.trim(),
+          oauth_token: this.form.sdk_oauth_token.trim() || undefined,
+          model: sdkModels[0] || '',
+          models: sdkModels,
+          base_url: this.form.sdk_base_url.trim() || undefined,
+          permission_mode: this.form.sdk_permission_mode || 'bypassPermissions',
+          allowed_tools: allowedTools.length > 0 ? allowedTools : undefined,
+          max_turns: this.form.sdk_max_turns || 0,
+          enable_hooks: this.form.sdk_enable_hooks,
+        })
       }
       agentCliApi.AgentCliSave(data, (response) => {
         if (response && response.ErrCode === 0) {
@@ -1448,7 +1545,7 @@ export default {
           // 保存分组关联，并同步本地列表，避免页面仍显示旧分组数据。
           this._saveGroupRel(this.editingId)
           // Claude 类型：只要配置项有输入就同步写入 settings.json，避免仅改模型时运行仍读取旧配置。
-          if (!isCodex && (claudeModels.length > 0 || this.form.api_key.trim() || this.form.base_url.trim())) {
+          if (!isCodex && !isSdk && (claudeModels.length > 0 || this.form.api_key.trim() || this.form.base_url.trim())) {
             const dsData = {
               id: this.editingId,
               model_name: claudeModels.length > 0 ? claudeModels[0] : '',
@@ -1531,6 +1628,7 @@ export default {
     editItem(item) {
       this.editingId = item.id
       const isCodex = item.type === 'codex-cli'
+      const isSdk = item.type === 'claude-agent-cli'
       this.form = {
         name: item.name || '',
         type: item.type || 'claude-code-cli',
@@ -1547,6 +1645,14 @@ export default {
         codex_wire_api: 'responses',
         codex_sandbox_mode: '',
         codex_supports_websockets: false,
+        sdk_api_key: '',
+        sdk_oauth_token: '',
+        sdk_model_list_text: '',
+        sdk_base_url: '',
+        sdk_permission_mode: 'bypassPermissions',
+        sdk_allowed_tools_text: '',
+        sdk_max_turns: 0,
+        sdk_enable_hooks: false,
         group_ids: Array.isArray(item.group_ids) ? [...item.group_ids] : [],
       }
       // Codex: 从 config JSON 预填
@@ -1560,12 +1666,28 @@ export default {
           this.form.codex_sandbox_mode = cfg.sandbox_mode || ''
           this.form.codex_supports_websockets = cfg.supports_websockets !== false
         } catch (e) {
-          // 解析失败时忽略，保持编辑弹窗可用。 // Ignore parse errors and keep the editor usable.
+          // 解析失败时忽略，保持编辑弹窗可用。
+        }
+      }
+      // SDK: 从 config JSON 预填
+      if (isSdk && item.config) {
+        try {
+          const cfg = JSON.parse(item.config)
+          this.form.sdk_api_key = cfg.api_key || ''
+          this.form.sdk_oauth_token = cfg.oauth_token || ''
+          this.form.sdk_model_list_text = Array.isArray(cfg.models) ? cfg.models.join('\n') : (cfg.model || '')
+          this.form.sdk_base_url = cfg.base_url || ''
+          this.form.sdk_permission_mode = cfg.permission_mode || 'bypassPermissions'
+          this.form.sdk_allowed_tools_text = Array.isArray(cfg.allowed_tools) ? cfg.allowed_tools.join(', ') : ''
+          this.form.sdk_max_turns = cfg.max_turns || 0
+          this.form.sdk_enable_hooks = !!cfg.enable_hooks
+        } catch (e) {
+          // 解析失败时忽略
         }
       }
       this.dialogVisible = true
-      // Claude: 读取 settings.json 以预填密钥字段
-      if (!isCodex) {
+      // Claude Code CLI: 读取 settings.json 以预填密钥字段
+      if (!isCodex && !isSdk) {
         agentCliApi.AgentCliReadSettings(item.id, (response) => {
           if (response && response.ErrCode === 0 && response.Data && response.Data.content) {
             try {
@@ -1582,7 +1704,7 @@ export default {
                 this.form.base_url = config.env.ANTHROPIC_BASE_URL || ''
               }
             } catch(e) {
-              // 读取历史配置失败时忽略。 // Ignore malformed history config.
+              // 读取历史配置失败时忽略。
             }
           }
         })
@@ -1793,6 +1915,19 @@ export default {
         }
       }
       result.parseState.pendingPatches.length = 0
+      // 当已有消息的 content 发生变化（如新增 tool_use block）而 newMessages 为空时，
+      // 使用 $set 替换特定消息的 content 数组来精准触发 Vue 响应式，避免 $forceUpdate 破坏流式感。
+      if (result.newMessages.length === 0 && this._sseParseState.currentMessage) {
+        const currentMsg = this._sseParseState.currentMessage
+        for (let i = this.chatDetailMessages.length - 1; i >= 0; i--) {
+          if (this.chatDetailMessages[i] === currentMsg && Array.isArray(currentMsg.content)) {
+            const updatedContent = currentMsg.content.slice()
+            this.$set(this.chatDetailMessages[i], 'content', updatedContent)
+            this._sseParseState.currentMessage.content = updatedContent
+            break
+          }
+        }
+      }
       if (result.newMessages.length > 0) {
         this.$nextTick(() => {
           this.scrollAgentChatToBottom()

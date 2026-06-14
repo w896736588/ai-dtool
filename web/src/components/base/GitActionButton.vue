@@ -20,11 +20,13 @@ const BUTTON_DEFAULT_TYPE = 'primary'
 const BUTTON_DEFAULT_PLAIN = true
 // BUTTON_VARIANT_* defines reusable semantic styles so pages can distinguish actions without redefining CSS.
 const BUTTON_VARIANT_PRIMARY = 'primary'
+const BUTTON_VARIANT_SUCCESS = 'success'
 const BUTTON_VARIANT_INFO = 'info'
 const BUTTON_VARIANT_WARNING = 'warning'
 const BUTTON_VARIANT_DANGER = 'danger'
 const BUTTON_VARIANT_LIST = [
   BUTTON_VARIANT_PRIMARY,
+  BUTTON_VARIANT_SUCCESS,
   BUTTON_VARIANT_INFO,
   BUTTON_VARIANT_WARNING,
   BUTTON_VARIANT_DANGER,

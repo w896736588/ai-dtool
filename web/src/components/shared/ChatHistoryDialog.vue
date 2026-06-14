@@ -129,14 +129,14 @@
                 <span class="chat-message-system-task__state">{{ msg.status === 'started' ? '启动' : msg.status }}</span>
               </div>
               <div v-else-if="msg.type === 'assistant'">
-                <div v-if="msg.thinking" class="chat-message-thinking-wrap">
+                <div v-if="cleanThinking(msg.thinking)" class="chat-message-thinking-wrap">
                   <div class="chat-message-thinking-head">
                     <span v-if="isCurrentThinkingFn(msg)" class="chat-detail-status-spinner"></span>
                     <span v-if="isCurrentThinkingFn(msg)" class="chat-message-thinking-running">思考过程</span>
                     <span v-else class="chat-message-thinking-text">思考过程</span>
                     <span class="chat-message-toggle" @click="toggleThinking(msg)">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
                   </div>
-                  <div v-if="!msg._thinkingCollapsed" class="thinking-blockquote">{{ msg.thinking }}</div>
+                  <div v-if="!msg._thinkingCollapsed" class="thinking-blockquote">{{ cleanThinking(msg.thinking) }}</div>
                 </div>
                 <div v-for="(block, bi) in msg.content" :key="bi">
                   <div v-if="block.type === 'text'" class="markdown-body chat-markdown-body" v-html="renderMarkdown(block.text)"></div>
@@ -256,7 +256,7 @@
                   <span>思考过程</span>
                   <span class="chat-message-toggle" @click="toggleThinking(msg)">{{ msg._thinkingCollapsed ? '▶' : '▼' }}</span>
                 </div>
-                <div v-if="!msg._thinkingCollapsed" class="thinking-blockquote">{{ msg.text }}</div>
+                <div v-if="!msg._thinkingCollapsed" class="thinking-blockquote">{{ cleanThinking(msg.text) }}</div>
               </div>
               <div v-else-if="msg.type === 'result'" class="chat-result-card">
                 <div class="chat-result-header">
@@ -293,6 +293,38 @@
               <div v-else-if="msg.type === 'error'" class="chat-message-error">
                 <span class="chat-message-error__label">错误:</span>
                 <span>{{ msg.text }}</span>
+              </div>
+              <!-- 权限审批请求（Claude Agent SDK） -->
+              <div v-else-if="msg.type === 'permission_request'" class="chat-message-permission">
+                <div class="chat-message-permission__head">
+                  <span class="chat-message-permission__icon">🔐</span>
+                  <span>工具权限请求: {{ msg.toolName || '-' }}</span>
+                </div>
+                <pre v-if="msg.input" class="chat-message-permission__input">{{ typeof msg.input === 'string' ? msg.input : JSON.stringify(msg.input, null, 2) }}</pre>
+              </div>
+              <!-- 权限审批超时（Claude Agent SDK） -->
+              <div v-else-if="msg.type === 'permission_timeout'" class="chat-message-permission-timeout">
+                <span class="chat-message-permission-timeout__icon">⏰</span>
+                <span>{{ msg.text }} ({{ msg.toolName || '未知工具' }})</span>
+              </div>
+              <!-- Hook 事件（Claude Agent SDK） -->
+              <div v-else-if="msg.type === 'hook_event'" class="chat-message-hook-event">
+                <span class="chat-message-toggle" @click="msg.collapsed = !msg.collapsed">
+                  {{ msg.collapsed ? '▶' : '▼' }}
+                </span>
+                <span class="chat-message-hook-event__label">🪝 {{ msg.text }}</span>
+                <div v-if="!msg.collapsed && msg.input" class="chat-message-hook-event__detail">
+                  <pre class="chat-message-hook-event__pre">{{ typeof msg.input === 'string' ? msg.input : JSON.stringify(msg.input, null, 2) }}</pre>
+                </div>
+                <div v-if="!msg.collapsed && msg.output" class="chat-message-hook-event__detail">
+                  <div class="chat-message-hook-event__output-label">输出:</div>
+                  <pre class="chat-message-hook-event__pre">{{ typeof msg.output === 'string' ? msg.output : JSON.stringify(msg.output, null, 2) }}</pre>
+                </div>
+              </div>
+              <!-- 未知消息类型兜底渲染 -->
+              <div v-else class="chat-message-unknown">
+                <span class="chat-message-unknown__label">[{{ msg.type || 'unknown' }}]</span>
+                <span>{{ typeof msg.text === 'string' ? msg.text : JSON.stringify(msg) }}</span>
               </div>
             </div>
           </div>
@@ -353,6 +385,7 @@
 
 <script>
 import resultSummaryUtils from '@/utils/chat_result_summary.cjs'
+import chatParser from '@/utils/chat_parser'
 
 // STORAGE_KEY_GROUP_COLLAPSED localStorage 键名，用于持久化分组展开/关闭状态。
 const STORAGE_KEY_GROUP_COLLAPSED = 'chat_history_group_collapsed'
@@ -763,6 +796,10 @@ export default {
     toggleThinking(msg) {
       msg._thinkingCollapsed = !msg._thinkingCollapsed
       msg._thinkingManuallyToggled = true
+    },
+    // cleanThinking 清理 thinking 文本中的无意义标记（如 [thinking_tokens]），保留实质内容。 // Cleans thinking text by removing meaningless markers.
+    cleanThinking(text) {
+      return chatParser.cleanThinkingText(text)
     },
     formatDurationDisplay(durationMs) {
       return this.formatDurationDisplayFn(durationMs)

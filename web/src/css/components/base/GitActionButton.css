@@ -30,6 +30,15 @@
   --git-button-hover-background-color: #eef4ea;
 }
 
+.git-action-button--success {
+  --git-button-text-color: #ffffff;
+  --git-button-border-color: #4caf50;
+  --git-button-background-color: #4caf50;
+  --git-button-hover-text-color: #ffffff;
+  --git-button-hover-border-color: #388e3c;
+  --git-button-hover-background-color: #43a047;
+}
+
 .git-action-button--info {
   --git-button-text-color: #4b627a;
   --git-button-border-color: #d3dbe5;

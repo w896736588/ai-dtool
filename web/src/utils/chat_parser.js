@@ -180,8 +180,22 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
       const taskMsg = { type: 'system_task', description: obj.summary || '', taskId: obj.task_id || '', status: obj.status || '', _msgIndex: idxOffset + messages.length }
       messages.push(taskMsg)
       taskStore.updateFromMessage(taskMsg)
+    } else if (subtype === 'api_retry') {
+      // Claude CLI API 重试通知
+      const retryMsg = obj.message || 'API 调用重试中...'
+      messages.push({ type: 'system_status', status: 'retrying', text: '重试中: ' + retryMsg })
+    } else if (subtype === 'cooldown') {
+      // Claude CLI API 冷却通知（限流等待）
+      const cooldownMsg = obj.message || 'API 限流冷却中...'
+      messages.push({ type: 'system_status', status: 'cooldown', text: '冷却中: ' + cooldownMsg })
+    } else if (subtype === 'thinking_tokens') {
+      // Claude CLI extended thinking 的 token 估算事件，无需展示 // Internal token estimation events, skip rendering.
     } else {
-      messages.push({ type: 'system', text: JSON.stringify(obj) })
+      // 未知 system subtype：优先取 message，其次 text/summary，最后取 subtype 名
+      const subtypeLabel = obj.subtype || 'unknown'
+      const keyInfo = obj.message || obj.text || obj.summary || ''
+      const displayText = keyInfo ? `${keyInfo}` : `[${subtypeLabel}]`
+      messages.push({ type: 'system', text: displayText, _rawData: obj })
     }
   } else if (lineType === 'stream_event') {
     const event = obj.event || {}
@@ -420,6 +434,56 @@ function parseOneLine(line, messages, currentMessageRef, toolUseMap, msgIndexOff
       currentMessageRef.value = null
     }
     messages.push({ type: 'error', text: obj.text || '' })
+  } else if (lineType === 'permission_request') {
+    // Claude Agent SDK 权限审批请求
+    try {
+      const raw = typeof obj.raw === 'string' ? JSON.parse(obj.raw) : (obj.raw || obj)
+      messages.push({
+        type: 'permission_request',
+        requestId: raw.request_id || '',
+        toolName: raw.tool_name || '',
+        input: raw.input || null,
+        sessionId: raw.session_id || '',
+        chatId: raw.chat_id || 0,
+        text: '工具权限请求: ' + (raw.tool_name || ''),
+      })
+    } catch (e) {
+      messages.push({ type: 'permission_request', text: '工具权限请求', requestId: obj.request_id || '' })
+    }
+  } else if (lineType === 'permission_timeout') {
+    // 权限审批超时通知
+    messages.push({
+      type: 'permission_timeout',
+      text: '权限审批超时',
+      requestId: obj.request_id || '',
+      toolName: obj.tool_name || '',
+    })
+  } else if (lineType === 'hook_event') {
+    // Claude Agent SDK Hook 事件
+    try {
+      const raw = typeof obj.raw === 'string' ? JSON.parse(obj.raw) : (obj.raw || obj)
+      messages.push({
+        type: 'hook_event',
+        hookType: raw.hook_type || '',
+        toolName: raw.tool_name || '',
+        input: raw.input || null,
+        output: raw.output || null,
+        sessionId: raw.session_id || '',
+        chatId: raw.chat_id || 0,
+        text: 'Hook: ' + (raw.hook_type || '') + (raw.tool_name ? ' - ' + raw.tool_name : ''),
+        collapsed: true,
+      })
+    } catch (e) {
+      messages.push({ type: 'hook_event', text: 'Hook 事件', collapsed: true })
+    }
+  } else {
+    // 未知消息类型兜底：尝试提取关键信息展示，避免静默丢弃
+    const rawText = obj.text || obj.message || obj.summary || obj.result || ''
+    if (rawText && typeof rawText === 'string') {
+      messages.push({ type: 'raw_text', text: `[${lineType}] ${rawText}` })
+    } else {
+      messages.push({ type: 'raw_text', text: `[${lineType}] 未知消息`, _rawData: obj })
+    }
   }
 
   return cm
@@ -607,10 +671,27 @@ function flushParseStateDispatch(parseState, cliType) {
   return flushParseState(parseState)
 }
 
+// =============================================================================
+// THINKING_STRIP_RE — 匹配 Claude SDK thinking 输出中的纯标记行。 // Regex matching Claude SDK thinking output marker-only lines.
+// =============================================================================
+// THINKING_STRIP_RE strips lines that are: // 匹配以下无意义标记行：
+//   - "[thinking_tokens]" （仅标记 // standalone marker）
+//   - 空白行  // blank lines
+// =============================================================================
+const THINKING_STRIP_RE = /^\s*$|^\[thinking_tokens\]\s*$/gim
+
+// cleanThinkingText 清理 thinking 文本中的无意义标记和空白，保留实质内容。 // Cleans thinking text by removing marker-only lines and collapsing whitespace.
+function cleanThinkingText(text) {
+  if (!text) return ''
+  const cleaned = text.replace(THINKING_STRIP_RE, '').replace(/\n{3,}/g, '\n\n').trim()
+  return cleaned
+}
+
 export default {
   parseChatLines: parseChatLinesDispatch,
   parseChatLinesIncremental: parseChatLinesIncrementalDispatch,
   flushParseState: flushParseStateDispatch,
+  cleanThinkingText,
   // 保留直接访问原始 Claude 解析器的途径（向后兼容）
   _claudeParseChatLines: parseChatLines,
   _claudeParseChatLinesIncremental: parseChatLinesIncremental,
