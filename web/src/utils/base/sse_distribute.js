@@ -286,6 +286,19 @@ function IsSseOpen() {
     return _sseIsOpen
 }
 
+// GetSseInfo 获取当前 SSE 连接的详细信息，用于 SSE 连接详情弹窗展示
+// 返回 { clientId, url, connected } 或 null（无活动连接时）
+function GetSseInfo() {
+    if (!SseConn) {
+        return null
+    }
+    return {
+        clientId: sseClientId || '',
+        url: sseUrl || '',
+        connected: _sseIsOpen,
+    }
+}
+
 export default {
     OpenFunc,
     ErrorFunc,
@@ -302,4 +315,5 @@ export default {
     fetchAvailableSsePort,
     WaitForOpen,
     IsSseOpen,
+    GetSseInfo,
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -124,4 +125,53 @@ func BuildSseCloseFunc() func(sse *gsgin.Sse) {
 		}
 		sse.UnRegister()
 	}
+}
+
+// sseClientIdStatusPrefix gsgin.SseStatus 返回值中 clientId 的前缀
+const sseClientIdStatusPrefix = `ClientId:`
+
+// SseConnectionDetails 返回服务端所有活跃 SSE 连接详情，供前端弹窗展示
+func SseConnectionDetails(c *gin.Context) {
+	statusList := gsgin.SseStatus()
+	conns := make([]map[string]any, 0, len(statusList))
+	for _, status := range statusList {
+		connID := strings.TrimSpace(strings.TrimPrefix(status, sseClientIdStatusPrefix))
+		if connID == `` {
+			continue
+		}
+		connType, displayClientID := classifySseConnID(connID)
+		conns = append(conns, map[string]any{
+			`client_id`: displayClientID,
+			`type`:      connType,
+		})
+	}
+	gsgin.GinResponseSuccess(c, `获取成功`, map[string]any{
+		`connections`: conns,
+	})
+}
+
+// classifySseConnID 根据 connID 判断 SSE 连接类型并返回展示用的 clientID
+// connID 规则：
+//   - general:    原始 clientID（如 sse_client_id_xxx）
+//   - agent_cli:  格式 "agent_cli_sse_<clientID>_<timestamp>"
+//   - task_workflow: 格式 "task_workflow_sse_<clientID>_<timestamp>"
+func classifySseConnID(connID string) (connType string, displayClientID string) {
+	if strings.HasPrefix(connID, `agent_cli_sse_`) {
+		return `agent_cli`, extractBusinessClientID(connID, `agent_cli_sse_`)
+	}
+	if strings.HasPrefix(connID, `task_workflow_sse_`) {
+		return `task_workflow`, extractBusinessClientID(connID, `task_workflow_sse_`)
+	}
+	return `general`, connID
+}
+
+// extractBusinessClientID 从业务 SSE 的 connID 中提取原始 clientID
+// connID 格式: "<prefix><clientID>_<timestamp>"
+func extractBusinessClientID(connID string, prefix string) string {
+	remain := strings.TrimPrefix(connID, prefix)
+	lastIdx := strings.LastIndex(remain, `_`)
+	if lastIdx > 0 {
+		return remain[:lastIdx]
+	}
+	return remain
 }

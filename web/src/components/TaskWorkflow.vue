@@ -573,14 +573,34 @@
                       height="100%"
                     />
                   </div>
-                  <div v-else class="preview-body">
-                    <div class="preview-renderer">
+                  <div v-else class="preview-body" :class="{ 'preview-body--with-outline': promptTocItems.length > 0 }">
+                    <div ref="promptPreviewBody" class="preview-renderer" @scroll="handlePromptPreviewScroll">
                       <MdPreview
                         :model-value="getStepPrompt(activeNode)"
                         preview-theme="github"
                         :auto-fold-threshold="999999"
+                        :on-get-catalog="onPromptCatalog"
                       />
                     </div>
+                    <aside v-if="promptTocItems.length > 0" class="preview-outline">
+                      <div class="preview-outline-card">
+                        <div class="preview-outline-title">目录</div>
+                        <button
+                          v-for="item in promptTocItems"
+                          :key="item.id"
+                          type="button"
+                          class="preview-outline-item"
+                          :class="[
+                            { active: promptActiveHeading === item.id },
+                            { 'preview-outline-item--child': item.level > 1 },
+                            { 'preview-outline-item--grandchild': item.level > 2 },
+                          ]"
+                          @click="scrollToPromptHeading(item.id)"
+                        >
+                          {{ item.text }}
+                        </button>
+                      </div>
+                    </aside>
                   </div>
                 </div>
                 <!-- 文档 Tab -->
@@ -601,7 +621,9 @@
                               <GitActionButton
                                 variant="info"
                                 compact
-                                class="toolbar-icon-button mode-button-active"
+                                class="toolbar-icon-button"
+                                :class="{ 'mode-button-active': !docEditMode }"
+                                @click="switchDocToViewMode"
                               >
                                 <el-icon><View /></el-icon>
                               </GitActionButton>
@@ -610,6 +632,8 @@
                               <GitActionButton
                                 compact
                                 class="toolbar-icon-button"
+                                :class="{ 'mode-button-active': docEditMode }"
+                                @click="switchDocToEditMode"
                               >
                                 <el-icon><Edit /></el-icon>
                               </GitActionButton>
@@ -630,6 +654,8 @@
                                 variant="info"
                                 compact
                                 class="toolbar-icon-button"
+                                @click="downloadActiveDocZip"
+                                :disabled="!getActiveDocFileId()"
                               >
                                 <el-icon><Download /></el-icon>
                               </GitActionButton>
@@ -638,8 +664,22 @@
                               <GitActionButton
                                 compact
                                 class="toolbar-icon-button"
+                                @click="saveActiveDoc"
+                                :disabled="!getActiveDocContent()"
                               >
                                 <el-icon><Check /></el-icon>
+                              </GitActionButton>
+                            </el-tooltip>
+                            <el-tooltip content="分享" placement="top">
+                              <GitActionButton
+                                variant="info"
+                                compact
+                                class="toolbar-icon-button"
+                                :loading="docSharing"
+                                @click="shareActiveDoc"
+                                :disabled="!getActiveDocFileId()"
+                              >
+                                <el-icon><Share /></el-icon>
                               </GitActionButton>
                             </el-tooltip>
                             <el-tooltip content="打开知识片段" placement="top">
@@ -658,26 +698,122 @@
                                 variant="info"
                                 compact
                                 class="toolbar-icon-button"
+                                :class="{ 'mode-button-active': docSearchBarVisible }"
+                                @click="toggleDocSearchBar"
+                                :disabled="!getActiveDocContent()"
                               >
                                 <el-icon><Search /></el-icon>
                               </GitActionButton>
                             </el-tooltip>
+                            <el-dropdown
+                              trigger="click"
+                              class="editor-action-dropdown"
+                              @command="handleDocToolbarAction"
+                            >
+                              <button class="editor-action-trigger" type="button" aria-label="更多操作">
+                                <el-icon><MoreFilled /></el-icon>
+                              </button>
+                              <template #dropdown>
+                                <el-dropdown-menu>
+                                  <el-dropdown-item command="history">
+                                    历史记录
+                                  </el-dropdown-item>
+                                </el-dropdown-menu>
+                              </template>
+                            </el-dropdown>
                           </div>
                         </div>
                       </div>
+                  <!-- 文档搜索栏 -->
+                  <div v-show="docSearchBarVisible" class="editor-search-row">
+                    <div class="editor-search-main">
+                      <el-input
+                        ref="docSearchInput"
+                        v-model="docSearchQuery"
+                        class="editor-search-input"
+                        clearable
+                        placeholder="在当前文档中搜索..."
+                        @input="handleDocSearchInput"
+                        @keydown.enter.prevent="jumpDocSearchMatch(1)"
+                        @keydown.shift.enter.prevent="jumpDocSearchMatch(-1)"
+                        @keydown.esc.prevent="clearDocSearch"
+                        @clear="clearDocSearch"
+                      />
+                      <span class="editor-search-summary">
+                        {{ docSearchSummaryText }}
+                      </span>
+                    </div>
+                    <div class="editor-search-actions">
+                      <GitActionButton
+                        variant="info"
+                        :disabled="!docHasSearchMatches"
+                        @click="jumpDocSearchMatch(-1)"
+                      >
+                        上一个
+                      </GitActionButton>
+                      <GitActionButton
+                        variant="info"
+                        :disabled="!docHasSearchMatches"
+                        @click="jumpDocSearchMatch(1)"
+                      >
+                        下一个
+                      </GitActionButton>
+                      <GitActionButton
+                        variant="info"
+                        :disabled="!docSearchQuery"
+                        @click="clearDocSearch"
+                      >
+                        清空
+                      </GitActionButton>
                     </div>
                   </div>
-                  <div v-if="getActiveDocLoading()" class="step-tab-panel__loading">
+                    </div>
+                  </div>
+              <div v-if="getActiveDocLoading()" class="step-tab-panel__loading">
                     <el-icon class="is-loading"><Loading /></el-icon>
                     <span>加载中...</span>
                   </div>
-                  <div v-else-if="getActiveDocContent()" class="preview-body">
-                    <div class="preview-renderer">
-                      <MdPreview
+                  <div v-else-if="getActiveDocContent()">
+                    <!-- 编辑模式 -->
+                    <div v-if="docEditMode" class="task-workflow-doc-editor">
+                      <UnifiedMdEditor
                         :model-value="getActiveDocContent()"
+                        @update:model-value="val => setActiveDocContent(val)"
                         preview-theme="github"
-                        :auto-fold-threshold="999999"
+                        :preview="true"
+                        :toolbars="promptEditorToolbars"
+                        height="100%"
                       />
+                    </div>
+                    <!-- 查看模式 -->
+                    <div v-else class="preview-body" :class="{ 'preview-body--with-outline': docTocItems.length > 0 }">
+                      <div ref="docPreviewBody" class="preview-renderer" @scroll="handleDocPreviewScroll">
+                        <MdPreview
+                          :model-value="getActiveDocContent()"
+                          preview-theme="github"
+                          :auto-fold-threshold="999999"
+                          :on-get-catalog="onDocCatalog"
+                        />
+                      </div>
+                      <aside v-if="docTocItems.length > 0" class="preview-outline">
+                        <div class="preview-outline-card">
+                          <div class="preview-outline-title">目录</div>
+                          <button
+                            v-for="item in docTocItems"
+                            :key="item.id"
+                            type="button"
+                            class="preview-outline-item"
+                            :class="[
+                              { active: docActiveHeading === item.id },
+                              { 'preview-outline-item--child': item.level > 1 },
+                              { 'preview-outline-item--grandchild': item.level > 2 },
+                            ]"
+                            @click="scrollToDocHeading(item.id)"
+                          >
+                            {{ item.text }}
+                          </button>
+                        </div>
+                      </aside>
                     </div>
                   </div>
                   <div v-else class="step-tab-panel__empty">
@@ -709,6 +845,11 @@
         </div>
       </div>
     </el-dialog>
+
+    <MemoryHistoryDialog
+      v-model="docHistoryVisible"
+      :fragment-id="docHistoryFragmentId"
+    />
 
     <el-dialog
       v-model="issueFixDialogVisible"
@@ -1002,7 +1143,7 @@
 </template>
 
 <script>
-import { HomeFilled, View, Edit, Check, CopyDocument, MoreFilled, RefreshLeft, Link, Download, Search } from '@element-plus/icons-vue'
+import { HomeFilled, View, Edit, Check, CopyDocument, MoreFilled, RefreshLeft, Link, Download, Search, Share } from '@element-plus/icons-vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 import ChatHistoryButton from '@/components/shared/ChatHistoryButton.vue'
 import ChatHistoryDialog from '@/components/shared/ChatHistoryDialog.vue'
@@ -1026,6 +1167,7 @@ import { MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import UnifiedMdEditor from '@/components/base/UnifiedMdEditor.vue'
 import FileChangesDialog from '@/components/FileChangesDialog.vue'
+import MemoryHistoryDialog from '@/components/memory/MemoryHistoryDialog.vue'
 
 const PROMPT_EDITOR_TOOLBARS = [
   'bold', 'italic', 'strikeThrough', 'title', 'quote',
@@ -1103,9 +1245,11 @@ export default {
     Link,
     Download,
     Search,
+    Share,
     GitActionButton,
     ChatHistoryButton,
     ChatHistoryDialog,
+    MemoryHistoryDialog,
     UnifiedMdEditor,
     FileChangesDialog,
     TaskProgressPanel,
@@ -1248,9 +1392,27 @@ export default {
       // 步骤左侧Tab相关
       stepActiveTab: '__prompt__', // 当前激活的左侧Tab，'__prompt__' 为提示词，其他为文档id/name
       promptEditMode: true, // 提示词是否为编辑模式（false为查看模式）
+      docEditMode: false, // 文档Tab是否为编辑模式（false为查看模式）
       stepDocContents: {}, // 文档内容缓存 { docKey: { content, loading, fileId } }
       stepPromptTitle: '', // 提示词Tab标题（可编辑）
       stepDocTitle: '', // 文档Tab标题（可编辑）
+      // 文档编辑/搜索/分享/历史
+      docSearchBarVisible: false,
+      docSearchQuery: '',
+      docSearchMatchIndex: -1,
+      docSearchMatchCount: 0,
+      _docSearchMatches: null,
+      docSharing: false,
+      docHistoryVisible: false,
+      docHistoryFragmentId: '',
+      // 提示词预览目录导航相关
+      promptTocItems: [], // 提示词预览目录项列表
+      promptActiveHeading: '', // 提示词预览当前高亮的目录项 id
+      promptScrollObserver: null, // 提示词预览滚动监听器
+      // 文档预览目录导航相关
+      docTocItems: [], // 文档预览目录项列表
+      docActiveHeading: '', // 文档预览当前高亮的目录项 id
+      docScrollObserver: null, // 文档预览滚动监听器
     }
   },
   computed: {
@@ -1355,6 +1517,16 @@ export default {
     hasTemplate() {
       return this._cachedTemplateSteps && this._cachedTemplateSteps.length > 0
     },
+    // 文档搜索是否有匹配结果
+    docHasSearchMatches() {
+      return this.docSearchMatchCount > 0
+    },
+    // 文档搜索结果摘要文本
+    docSearchSummaryText() {
+      if (!this.docSearchQuery) return ''
+      if (this.docSearchMatchCount === 0) return '无匹配'
+      return `${this.docSearchMatchIndex + 1}/${this.docSearchMatchCount}`
+    },
   },
   mounted() {
     this.loadWorkflowPage()
@@ -1384,6 +1556,8 @@ export default {
     this.unregisterFragmentUpdateSse()
     sseBusiness.CloseBusinessSse('task_workflow')
     this.unregisterWorkflowUnreadSse()
+    this.cleanupPromptScrollObserver()
+    this.cleanupDocScrollObserver()
   },
   watch: {
     promptChatHistoryVisible(val, oldVal) {
@@ -1433,6 +1607,15 @@ export default {
       this.promptEditMode = true
       this.stepPromptTitle = this.getActiveNodeLabel()
       this.stepDocTitle = ''
+      this.docEditMode = false
+      // 清理目录导航状态和搜索状态
+      this.clearDocSearch()
+      this.cleanupPromptScrollObserver()
+      this.cleanupDocScrollObserver()
+      this.promptTocItems = []
+      this.promptActiveHeading = ''
+      this.docTocItems = []
+      this.docActiveHeading = ''
     },
   },
   methods: {
@@ -3190,6 +3373,421 @@ export default {
       if (!fileId) return
       this.openFragmentInDialog(fileId, this.getActiveDocName())
     },
+    // 切换到文档查看模式
+    switchDocToViewMode() {
+      this.clearDocSearch()
+      this.docEditMode = false
+    },
+    // 切换到文档编辑模式
+    switchDocToEditMode() {
+      this.clearDocSearch()
+      this.docEditMode = true
+    },
+    // 设置当前激活文档内容（编辑模式下双向绑定使用）
+    setActiveDocContent(val) {
+      const docKey = this.stepActiveTab
+      if (this.stepDocContents[docKey]) {
+        this.stepDocContents[docKey] = { ...this.stepDocContents[docKey], content: val }
+        this.stepDocContents = { ...this.stepDocContents }
+      }
+    },
+    // 下载当前激活文档的知识片段 ZIP 包
+    downloadActiveDocZip() {
+      const fileId = this.getActiveDocFileId()
+      if (!fileId) {
+        this.$helperNotify.error('无法下载，文档未关联知识片段')
+        return
+      }
+      MemoryFragmentApi.MemoryFragmentDownloadZip(fileId)
+    },
+    // 分享当前激活文档（创建24小时有效分享链接并复制到剪贴板）
+    shareActiveDoc() {
+      if (this.docSharing) return
+      const fileId = this.getActiveDocFileId()
+      if (!fileId) {
+        this.$helperNotify.error('无法分享，文档未关联知识片段')
+        return
+      }
+      this.docSharing = true
+      MemoryFragmentApi.MemoryFragmentShareCreate(fileId, async (response) => {
+        this.docSharing = false
+        if (response.ErrCode !== 0 || !response.Data || !response.Data.token) {
+          if (response.ErrMsg) {
+            this.$helperNotify.error(response.ErrMsg)
+          }
+          return
+        }
+        const shareUrl = new URL(`/#/MemoryFragmentShare?t=${encodeURIComponent(response.Data.token)}`, window.location.origin).toString()
+        try {
+          await navigator.clipboard.writeText(shareUrl)
+          this.$helperNotify.success('分享链接已复制到剪贴板（24小时有效）')
+        } catch {
+          this.$helperNotify.success('分享链接创建成功')
+        }
+      })
+    },
+    // 处理文档工具栏下拉菜单命令（目前仅支持历史记录）
+    handleDocToolbarAction(command) {
+      if (command === 'history') {
+        const fileId = this.getActiveDocFileId()
+        if (!fileId) {
+          this.$helperNotify.error('无法查看历史，文档未关联知识片段')
+          return
+        }
+        this.docHistoryFragmentId = fileId
+        this.docHistoryVisible = true
+      }
+    },
+    // 切换文档搜索栏显示/隐藏
+    toggleDocSearchBar() {
+      this.docSearchBarVisible = !this.docSearchBarVisible
+      if (this.docSearchBarVisible) {
+        this.$nextTick(() => {
+          const inputEl = this.$refs.docSearchInput
+          if (inputEl && typeof inputEl.focus === 'function') {
+            inputEl.focus()
+          }
+        })
+        return
+      }
+      this.clearDocSearch()
+    },
+    // 清空文档搜索状态
+    clearDocSearch() {
+      this.docSearchQuery = ''
+      this.docSearchMatchIndex = -1
+      this.docSearchMatchCount = 0
+      this.removeDocSearchHighlights()
+    },
+    // 搜索输入变化时触发搜索
+    handleDocSearchInput() {
+      this.docSearchMatchIndex = 0
+      this.$nextTick(() => {
+        this.performDocSearch()
+      })
+    },
+    // 执行文档内容搜索（在 MdPreview 渲染的 DOM 中搜索文本并高亮，编辑模式下不生效）
+    performDocSearch() {
+      this.removeDocSearchHighlights()
+      if (!this.docSearchQuery || this.docEditMode) {
+        this.docSearchMatchCount = 0
+        this.docSearchMatchIndex = -1
+        return
+      }
+      const previewBody = this.$refs.docPreviewBody
+      if (!previewBody) return
+      const previewEl = previewBody.querySelector('.md-editor-preview')
+      if (!previewEl) return
+      this._docSearchMatches = []
+      const query = this.docSearchQuery
+      const lowerQuery = query.toLowerCase()
+      const iterateTextNodes = (node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent
+          const lowerText = text.toLowerCase()
+          let startIdx = 0
+          while ((startIdx = lowerText.indexOf(lowerQuery, startIdx)) !== -1) {
+            this._docSearchMatches.push({ node, start: startIdx, end: startIdx + query.length })
+            startIdx += query.length
+          }
+          return
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) return
+        const tag = node.tagName?.toLowerCase()
+        if (tag === 'script' || tag === 'style') return
+        for (const child of node.childNodes) {
+          iterateTextNodes(child)
+        }
+      }
+      iterateTextNodes(previewEl)
+      this.docSearchMatchCount = this._docSearchMatches.length
+      this.docSearchMatchIndex = this.docSearchMatchCount > 0 ? 0 : -1
+      this.$nextTick(() => {
+        this.highlightDocSearchMatches()
+        if (this.docSearchMatchCount > 0) {
+          this.scrollToDocSearchMatch(0)
+        }
+      })
+    },
+    // 高亮文档搜索结果（在所有匹配文本节点外包一层 span）
+    highlightDocSearchMatches() {
+      if (!this._docSearchMatches || this._docSearchMatches.length === 0) return
+      // 从后往前处理，避免前面的 DOM 修改影响后续索引
+      for (let i = this._docSearchMatches.length - 1; i >= 0; i--) {
+        const m = this._docSearchMatches[i]
+        const textNode = m.node
+        if (!textNode || !textNode.parentNode) continue
+        try {
+          const range = document.createRange()
+          range.setStart(textNode, m.start)
+          range.setEnd(textNode, m.end)
+          const wrapper = document.createElement('span')
+          wrapper.className = 'doc-search-highlight'
+          range.surroundContents(wrapper)
+        } catch (e) {
+          // 如果文本节点已被修改则忽略
+        }
+      }
+    },
+    // 移除文档搜索结果高亮标记
+    removeDocSearchHighlights() {
+      this._docSearchMatches = null
+      const previewBody = this.$refs.docPreviewBody
+      if (!previewBody) return
+      // 从 DOM 中移除所有高亮 span（unwrap 恢复原始文本）
+      const highlights = previewBody.querySelectorAll('.doc-search-highlight')
+      highlights.forEach(el => {
+        const parent = el.parentNode
+        if (!parent) return
+        while (el.firstChild) {
+          parent.insertBefore(el.firstChild, el)
+        }
+        parent.removeChild(el)
+      })
+    },
+    // 跳转到上一个/下一个搜索匹配项（delta: -1 上一个, 1 下一个）
+    jumpDocSearchMatch(delta) {
+      if (this.docSearchMatchCount === 0) return
+      let idx = this.docSearchMatchIndex + delta
+      if (idx >= this.docSearchMatchCount) idx = 0
+      if (idx < 0) idx = this.docSearchMatchCount - 1
+      this.docSearchMatchIndex = idx
+      this.scrollToDocSearchMatch(idx)
+    },
+    // 滚动到指定索引的搜索匹配项
+    scrollToDocSearchMatch(idx) {
+      const previewBody = this.$refs.docPreviewBody
+      if (!previewBody) return
+      const highlights = previewBody.querySelectorAll('.doc-search-highlight')
+      if (!highlights || highlights.length <= idx) return
+      const target = highlights[idx]
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    },
+    // 保存当前激活文档内容为知识片段
+    saveActiveDoc() {
+      const content = this.getActiveDocContent()
+      if (!content) {
+        this.$helperNotify.error('没有可保存的内容')
+        return
+      }
+      const fileId = this.getActiveDocFileId()
+      if (!fileId) {
+        this.$helperNotify.error('未找到对应的知识片段标识')
+        return
+      }
+      const docName = this.getActiveDocName() || '文档'
+      // 调用知识片段保存接口 (id, title, content, tags, folderName, callBack)
+      MemoryFragmentApi.MemoryFragmentSave(fileId, docName, content, '', '', (response) => {
+        if (response && response.ErrCode === 0) {
+          this.$helperNotify.success('文档已保存')
+          // 更新缓存中的文件ID
+          const docKey = this.stepActiveTab
+          if (this.stepDocContents[docKey]) {
+            const newFileId = response.Data?.file_id || response.Data?.FileId || fileId
+            this.stepDocContents[docKey] = { ...this.stepDocContents[docKey], fileId: newFileId }
+            this.stepDocContents = { ...this.stepDocContents }
+          }
+        } else {
+          this.$helperNotify.error(response?.ErrMsg || '保存文档失败')
+        }
+      })
+    },
+    // ===== 提示词预览目录导航方法 =====
+    // MdPreview 渲染完成后的目录回调，结合 DOM 获取标题 ID
+    onPromptCatalog(catalogList) {
+      if (!catalogList || catalogList.length === 0) {
+        this.promptTocItems = []
+        return
+      }
+      this.$nextTick(() => {
+        const previewEl = this.$refs.promptPreviewBody
+        if (!previewEl) {
+          this.promptTocItems = catalogList.map((item) => ({
+            level: item.level,
+            text: item.text,
+            id: '',
+          }))
+          return
+        }
+        const mdPreviewEl = previewEl.closest('.preview-body')?.querySelector('.md-editor-preview')
+        const domHeadings = (mdPreviewEl || previewEl).querySelectorAll('h1, h2, h3, h4')
+        this.promptTocItems = catalogList.map((item, i) => ({
+          level: item.level,
+          text: item.text,
+          id: domHeadings[i] ? domHeadings[i].id : '',
+        }))
+        if (this.promptTocItems.length > 0) {
+          this.$nextTick(() => this.setupPromptScrollSpy())
+        }
+      })
+    },
+    // 点击目录项，平滑滚动到对应标题
+    scrollToPromptHeading(id) {
+      const el = document.getElementById(id)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        this.promptActiveHeading = id
+      }
+    },
+    // 提示词预览滚动时同步目录高亮（使用 requestAnimationFrame 节流）
+    handlePromptPreviewScroll() {
+      if (this._promptPreviewScrollRafId) {
+        cancelAnimationFrame(this._promptPreviewScrollRafId)
+      }
+      this._promptPreviewScrollRafId = requestAnimationFrame(() => {
+        this.syncPromptOutlineByScroll()
+      })
+    },
+    // 根据预览区滚动位置高亮最接近的目录项
+    syncPromptOutlineByScroll() {
+      const previewBody = this.$refs.promptPreviewBody
+      if (!previewBody || this.promptTocItems.length === 0) {
+        this.promptActiveHeading = ''
+        return
+      }
+      const mdPreviewEl = previewBody.closest('.preview-body')?.querySelector('.md-editor-preview')
+      const headingList = (mdPreviewEl || previewBody).querySelectorAll('h1, h2, h3, h4')
+      if (headingList.length === 0) {
+        this.promptActiveHeading = this.promptTocItems[0].id
+        return
+      }
+      const scrollTop = previewBody.scrollTop
+      const matchedHeading = Array.from(headingList).reduce((current, heading) => {
+        if (heading.offsetTop <= scrollTop + 100) return heading
+        return current
+      }, headingList[0])
+      this.promptActiveHeading = matchedHeading.id || this.promptTocItems[0].id
+    },
+    // 使用 IntersectionObserver 追踪当前可见标题
+    setupPromptScrollSpy() {
+      this.cleanupPromptScrollObserver()
+      const previewBody = this.$refs.promptPreviewBody
+      if (!previewBody) return
+      const mdPreviewEl = previewBody.closest('.preview-body')?.querySelector('.md-editor-preview')
+      const headingEls = (mdPreviewEl || previewBody).querySelectorAll('h1, h2, h3, h4')
+      if (headingEls.length === 0) return
+      this.promptScrollObserver = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting && entry.target.id) {
+              this.promptActiveHeading = entry.target.id
+              break
+            }
+          }
+        },
+        { rootMargin: '-80px 0px -60% 0px', threshold: 0.1 }
+      )
+      headingEls.forEach((el) => this.promptScrollObserver.observe(el))
+    },
+    // 清理提示词预览滚动监听器
+    cleanupPromptScrollObserver() {
+      if (this.promptScrollObserver) {
+        this.promptScrollObserver.disconnect()
+        this.promptScrollObserver = null
+      }
+      if (this._promptPreviewScrollRafId) {
+        cancelAnimationFrame(this._promptPreviewScrollRafId)
+        this._promptPreviewScrollRafId = 0
+      }
+    },
+    // ===== 文档预览目录导航方法 =====
+    // MdPreview 渲染完成后的目录回调，结合 DOM 获取标题 ID
+    onDocCatalog(catalogList) {
+      if (!catalogList || catalogList.length === 0) {
+        this.docTocItems = []
+        return
+      }
+      this.$nextTick(() => {
+        const previewEl = this.$refs.docPreviewBody
+        if (!previewEl) {
+          this.docTocItems = catalogList.map((item) => ({
+            level: item.level,
+            text: item.text,
+            id: '',
+          }))
+          return
+        }
+        const mdPreviewEl = previewEl.closest('.preview-body')?.querySelector('.md-editor-preview')
+        const domHeadings = (mdPreviewEl || previewEl).querySelectorAll('h1, h2, h3, h4')
+        this.docTocItems = catalogList.map((item, i) => ({
+          level: item.level,
+          text: item.text,
+          id: domHeadings[i] ? domHeadings[i].id : '',
+        }))
+        if (this.docTocItems.length > 0) {
+          this.$nextTick(() => this.setupDocScrollSpy())
+        }
+      })
+    },
+    // 点击目录项，平滑滚动到对应标题
+    scrollToDocHeading(id) {
+      const el = document.getElementById(id)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        this.docActiveHeading = id
+      }
+    },
+    // 文档预览滚动时同步目录高亮（使用 requestAnimationFrame 节流）
+    handleDocPreviewScroll() {
+      if (this._docPreviewScrollRafId) {
+        cancelAnimationFrame(this._docPreviewScrollRafId)
+      }
+      this._docPreviewScrollRafId = requestAnimationFrame(() => {
+        this.syncDocOutlineByScroll()
+      })
+    },
+    // 根据预览区滚动位置高亮最接近的目录项
+    syncDocOutlineByScroll() {
+      const previewBody = this.$refs.docPreviewBody
+      if (!previewBody || this.docTocItems.length === 0) {
+        this.docActiveHeading = ''
+        return
+      }
+      const mdPreviewEl = previewBody.closest('.preview-body')?.querySelector('.md-editor-preview')
+      const headingList = (mdPreviewEl || previewBody).querySelectorAll('h1, h2, h3, h4')
+      if (headingList.length === 0) {
+        this.docActiveHeading = this.docTocItems[0].id
+        return
+      }
+      const scrollTop = previewBody.scrollTop
+      const matchedHeading = Array.from(headingList).reduce((current, heading) => {
+        if (heading.offsetTop <= scrollTop + 100) return heading
+        return current
+      }, headingList[0])
+      this.docActiveHeading = matchedHeading.id || this.docTocItems[0].id
+    },
+    // 使用 IntersectionObserver 追踪当前可见标题
+    setupDocScrollSpy() {
+      this.cleanupDocScrollObserver()
+      const previewBody = this.$refs.docPreviewBody
+      if (!previewBody) return
+      const mdPreviewEl = previewBody.closest('.preview-body')?.querySelector('.md-editor-preview')
+      const headingEls = (mdPreviewEl || previewBody).querySelectorAll('h1, h2, h3, h4')
+      if (headingEls.length === 0) return
+      this.docScrollObserver = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting && entry.target.id) {
+              this.docActiveHeading = entry.target.id
+              break
+            }
+          }
+        },
+        { rootMargin: '-80px 0px -60% 0px', threshold: 0.1 }
+      )
+      headingEls.forEach((el) => this.docScrollObserver.observe(el))
+    },
+    // 清理文档预览滚动监听器
+    cleanupDocScrollObserver() {
+      if (this.docScrollObserver) {
+        this.docScrollObserver.disconnect()
+        this.docScrollObserver = null
+      }
+      if (this._docPreviewScrollRafId) {
+        cancelAnimationFrame(this._docPreviewScrollRafId)
+        this._docPreviewScrollRafId = 0
+      }
+    },
     // SSE推送文档内容变更时重新加载对应文档
     reloadDocContentByFileId(fileId) {
       if (!fileId) return
@@ -4617,6 +5215,95 @@ export default {
   min-height: 0;
 }
 
+/* ===== 步骤Tab预览区目录导航（复用 MemoryEditor 样式） ===== */
+.step-tab-panel .preview-body {
+  gap: 18px;
+}
+
+.step-tab-panel .preview-body--with-outline {
+  align-items: stretch;
+}
+
+.step-tab-panel .preview-outline {
+  width: 220px;
+  flex: 0 0 220px;
+  min-width: 0;
+}
+
+.step-tab-panel .preview-outline-card {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: calc(100vh - 320px);
+  overflow: auto;
+  padding: 14px 12px;
+  border: 1px solid rgba(196, 217, 186, 0.9);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fbfcf8 0%, #f6f8f2 100%);
+}
+
+.step-tab-panel .preview-outline-title {
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #50604a;
+}
+
+.step-tab-panel .preview-outline-item {
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #4a5b44;
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1.5;
+  text-align: left;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.step-tab-panel .preview-outline-item:hover {
+  background: #eef4e8;
+  color: #30412d;
+}
+
+.step-tab-panel .preview-outline-item.active {
+  background: #e6f1de;
+  color: #264224;
+  font-weight: 600;
+}
+
+.step-tab-panel .preview-outline-item--child {
+  padding-left: 22px;
+}
+
+.step-tab-panel .preview-outline-item--grandchild {
+  padding-left: 34px;
+}
+
+.step-tab-panel .preview-outline-card::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.step-tab-panel .preview-outline-card::-webkit-scrollbar-track {
+  background: #edf3e8;
+  border-radius: 999px;
+}
+
+.step-tab-panel .preview-outline-card::-webkit-scrollbar-thumb {
+  background: #9fb39a;
+  border: 2px solid #edf3e8;
+  border-radius: 999px;
+}
+
+.step-tab-panel .preview-outline-card::-webkit-scrollbar-thumb:hover {
+  background: #869c82;
+}
+
 .task-workflow-content .task-workflow-prompt-editor {
   flex: 1;
   min-height: 0;
@@ -5122,7 +5809,10 @@ export default {
   font-size: 11px;
 }
 
-
+/* 文档编辑模式下的编辑器容器 */
+.task-workflow-doc-editor {
+  height: 100%;
+}
 
 </style>
 
@@ -5366,5 +6056,13 @@ export default {
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* 文档搜索结果高亮（非 scoped，由 JavaScript 动态添加到 DOM） */
+.doc-search-highlight {
+  background-color: #ffd54f;
+  color: #000;
+  padding: 1px 0;
+  border-radius: 2px;
 }
 </style>

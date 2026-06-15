@@ -35,6 +35,7 @@ function ConnectBusinessSse(businessType, ssePort, clientId) {
     biz.conn = null
   }
   biz.url = url
+  biz.clientId = clientId
   biz.receiveHandlers = {}
   biz.conn = new EventSource(url)
   biz.conn.onmessage = function (event) {
@@ -130,7 +131,28 @@ function CloseBusinessSse(businessType) {
     biz.conn = null
   }
   biz.url = ''
+  biz.clientId = ''
   biz.receiveHandlers = {}
+}
+
+// GetAllBusinessInfos 获取所有业务级 SSE 连接的详细信息，用于 SSE 连接详情弹窗展示
+// 返回 [{ businessType, clientId, url, connected }, ...]
+function GetAllBusinessInfos() {
+  const infos = []
+  const types = Object.keys(businessSse)
+  for (let i = 0; i < types.length; i++) {
+    const biz = businessSse[types[i]]
+    // 只返回已建连的业务
+    if (biz.conn || biz.url) {
+      infos.push({
+        businessType: types[i],
+        clientId: biz.clientId || '',
+        url: biz.url || '',
+        connected: !!biz.conn && biz.conn.readyState === EventSource.OPEN,
+      })
+    }
+  }
+  return infos
 }
 
 // 复用全局 SSE 的端口查询
@@ -144,4 +166,5 @@ export default {
   UnRegisterBusinessReceive,
   CloseBusinessSse,
   fetchAvailableSsePort,
+  GetAllBusinessInfos,
 }

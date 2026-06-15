@@ -562,6 +562,8 @@ func apiUse(tGin *p_gin.Gin) {
 	})
 	// SSE 可用端口查询接口（所有 gin 实例均可访问）
 	tGin.GinPost(`/api/SseAvailablePort`, controller.SseAvailablePort)
+	// SSE 所有活跃连接详情接口
+	tGin.GinPost(`/api/SseConnectionDetails`, controller.SseConnectionDetails)
 	// 判断当前 gin 实例是否是 SSE 端口，仅 SSE 端口才注册 /sse 路由
 	if controller.IsSsePort(tGin.Port) {
 		openFunc := controller.BuildSseOpenFunc(tGin.Port)
