@@ -493,6 +493,8 @@ export default {
       activeOutlineSlug: '',
       editorScrollElement: null,
       previewScrollSyncRafId: 0,
+      previewOutlineRafId: 0,
+      cachedHeadingElements: null,
       fragmentPathCache: {},
       draftFragment: {
         id: 0,
@@ -525,6 +527,10 @@ export default {
     this.unregisterOrganizeSse()
     this.detachEditorScrollListener()
     this.cancelPreviewScrollSync()
+    if (this.previewOutlineRafId) {
+      cancelAnimationFrame(this.previewOutlineRafId)
+      this.previewOutlineRafId = 0
+    }
   },
   watch: {
     // fragment.id 变化时重置本地草稿，避免旧数据残留。
@@ -1256,13 +1262,15 @@ export default {
         this.syncActiveOutlineByEditorScroll()
       })
     },
-    // decoratePreviewHeadings 给预览区标题写入稳定锚点，供目录点击跳转。
+    // decoratePreviewHeadings 给预览区标题写入稳定锚点，供目录点击跳转，并缓存 heading 元素。
     decoratePreviewHeadings() {
       const previewBody = this.$refs.previewBody
       if (!previewBody) {
+        this.cachedHeadingElements = null
         return
       }
-      const headingList = previewBody.querySelectorAll('.md-editor-preview h1, .md-editor-preview h2, .md-editor-preview h3')
+      const headingList = Array.from(previewBody.querySelectorAll('.md-editor-preview h1, .md-editor-preview h2, .md-editor-preview h3'))
+      this.cachedHeadingElements = headingList.length > 0 ? headingList : null
       headingList.forEach((heading, index) => {
         const outlineItem = this.outlineItems[index]
         if (!outlineItem) {
@@ -1294,9 +1302,15 @@ export default {
       })
       this.activeOutlineSlug = slug
     },
-    // handlePreviewScroll 在预览滚动时同步当前目录高亮。
+    // handlePreviewScroll 在预览滚动时同步当前目录高亮（RAF 节流）。
     handlePreviewScroll() {
-      this.syncActiveOutlineByScroll()
+      if (this.previewOutlineRafId) {
+        return
+      }
+      this.previewOutlineRafId = requestAnimationFrame(() => {
+        this.previewOutlineRafId = 0
+        this.syncActiveOutlineByScroll()
+      })
     },
     // syncActiveOutlineByScroll 根据正文滚动位置高亮最接近的目录项。
     syncActiveOutlineByScroll() {
@@ -1305,7 +1319,7 @@ export default {
         this.activeOutlineSlug = ''
         return
       }
-      const headingList = Array.from(
+      const headingList = this.cachedHeadingElements || Array.from(
         previewBody.querySelectorAll('.md-editor-preview h1, .md-editor-preview h2, .md-editor-preview h3')
       )
       if (headingList.length === 0) {

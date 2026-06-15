@@ -6,7 +6,7 @@
       <div class="collection-section">
         <div class="section-header">
           <span class="section-header-title">集合列表</span>
-          <div class="section-header-actions">
+          <div v-if="!filterFolderId" class="section-header-actions">
             <pl-button class="toolbar-btn toolbar-btn-small" size="small" type="primary" plain @click="openCreateCollectionDialog">
               <el-icon><Plus /></el-icon>新建集合
             </pl-button>
@@ -30,7 +30,7 @@
                 :lazy="true"
                 :load="loadTreeNode"
                 :props="treeProps"
-                :draggable="true"
+                :draggable="!filterFolderId"
                 :allow-drop="allowTreeNodeDrop"
                 :allow-drag="allowTreeNodeDrag"
                 node-key="uniqueid"
@@ -63,7 +63,7 @@
                     <el-tag v-if="data.method === 'POST'" size="small" type="primary">P</el-tag>
                     {{ node.label }}
                   </span>
-                  <span v-if="data.type === 'collection'" class="node-actions">
+                  <span v-if="data.type === 'collection' && !filterFolderId" class="node-actions">
                     <el-dropdown>
                       <pl-button class="node-action-trigger" link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
@@ -92,7 +92,7 @@
                       </template>
                     </el-dropdown>
                   </span>
-                  <span v-else-if="data.type === 'folder' && !data.is_archived" class="node-actions">
+                  <span v-else-if="data.type === 'folder' && !data.is_archived && !filterFolderId" class="node-actions">
                     <el-dropdown>
                       <pl-button class="node-action-trigger" link type="primary" @click.stop>
                         <el-icon><More/></el-icon>
@@ -649,6 +649,9 @@ export default {
       // 拖拽事件处理器缓存（用于可靠解绑）
       sidebarResizeMoveHandler: null,
       sidebarResizeUpHandler: null,
+      // 过滤模式：仅显示指定文件夹及其下的接口（从 TaskWorkflow 跳转时启用）
+      filterFolderId: 0,
+      filterCollectionId: 0,
     }
   },
   mounted() {
@@ -656,8 +659,15 @@ export default {
     this.sidebarResizeUpHandler = this.stopSidebarResize.bind(this)
     // 初始化左侧面板宽度缓存
     this.loadSidebarWidthCache()
+    // 读取路由参数：过滤模式（仅显示指定文件夹）
+    const query = this.$route.query
+    this.filterCollectionId = parseInt(query.collection_id || 0)
+    this.filterFolderId = parseInt(query.filter_folder_id || 0)
     this.loadCollectionData()
-    this.loadArchivedItems()
+    // 过滤模式下不加载归档
+    if (!this.filterFolderId) {
+      this.loadArchivedItems()
+    }
     // 注册 API 数据变更 SSE 回调
     sseDistribute.RegisterReceive('api_data_change', this.handleApiChangeSSE)
   },
@@ -1312,6 +1322,10 @@ export default {
           collection_id: collectionNode.id,
         })
         collectionNode.children = (data.list || []).map((folder) => this.normalizeFolderNode(folder, collectionNode.id))
+        // 过滤模式：仅保留指定文件夹
+        if (this.filterFolderId > 0) {
+          collectionNode.children = collectionNode.children.filter((folder) => Number(folder.id) === this.filterFolderId)
+        }
         collectionNode.child_count = collectionNode.children.length
         collectionNode.isLeaf = collectionNode.child_count <= 0
         collectionNode.loaded = true
@@ -1457,11 +1471,19 @@ export default {
       let _that = this
       Api.CollectionListBasic({}, function (res) {
         if (res.ErrCode === 0) {
-          _that.treeData = (res.Data.list || []).map((collection) => _that.normalizeCollectionNode(collection))
+          let list = (res.Data.list || []).map((collection) => _that.normalizeCollectionNode(collection))
+          // 过滤模式：仅保留指定集合
+          if (_that.filterCollectionId > 0) {
+            list = list.filter((collection) => Number(collection.id) === _that.filterCollectionId)
+          }
+          _that.treeData = list
           // 加载集合树后按本地缓存恢复排序
           _that.applyTreeSortCache()
-          // 末尾追加虚拟归档集合节点
-          _that.pushArchiveNode(res.Data.archive_count || 0)
+          // 过滤模式下不追加归档节点
+          if (!_that.filterFolderId) {
+            // 末尾追加虚拟归档集合节点
+            _that.pushArchiveNode(res.Data.archive_count || 0)
+          }
           _that.initTreeExpansion()
           // 处理从任务清单跳转过来的初始导航
           _that.handleInitialNavigation()

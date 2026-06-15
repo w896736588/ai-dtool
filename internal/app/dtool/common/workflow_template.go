@@ -536,7 +536,7 @@ func (h *CSqlite) WorkflowStepPromptsSave(workflowID int, stepKey, stepPrompt st
 	}
 
 	// 同时写入旧的 prompt_xxx 字段（向后兼容）
-	_ = h.workflowStepPromptsSyncLegacy(workflowID, existing)
+	_ = h.WorkflowStepPromptsSyncLegacy(workflowID, existing)
 
 	return nil
 }
@@ -572,7 +572,7 @@ func (h *CSqlite) WorkflowStepPromptsRestore(workflowID int, templateSteps []map
 	}
 
 	// 同步到旧字段
-	_ = h.workflowStepPromptsSyncLegacy(workflowID, prompts)
+	_ = h.WorkflowStepPromptsSyncLegacy(workflowID, prompts)
 
 	return nil
 }
@@ -609,8 +609,8 @@ func (h *CSqlite) workflowTemplateCreateFixedSteps(templateID int) error {
 	return nil
 }
 
-// workflowStepPromptsSyncLegacy 将 step_prompts 同步到旧的 prompt_xxx 字段（向后兼容）。
-func (h *CSqlite) workflowStepPromptsSyncLegacy(workflowID int, prompts map[string]string) error {
+// WorkflowStepPromptsSyncLegacy 将 step_prompts 同步到旧的 prompt_xxx 字段（向后兼容）。
+func (h *CSqlite) WorkflowStepPromptsSyncLegacy(workflowID int, prompts map[string]string) error {
 	now := time.Now().Unix()
 	_, err := h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
 		`id`: workflowID,
@@ -635,6 +635,131 @@ func (h *CSqlite) workflowStepPromptsSyncLegacy(workflowID int, prompts map[stri
 // dbExec 执行原生 SQL（忽略影响行数，仅关心是否有错误）。
 func (h *CSqlite) dbExec(sql string) (int64, error) {
 	return h.Client.ExecBySql(sql).Exec()
+}
+
+// WorkflowMigrateLegacyStepKeys 将已有工作流的 step_prompts 和 node_statuses 中的旧 step_key 迁移到 custom_xx 格式。
+// 应在 SQL 迁移（将模板步骤 step_key 更新为 custom_xx）之后调用。
+// 该操作是幂等的：已使用新 key 的记录不会被重复修改。
+func (h *CSqlite) WorkflowMigrateLegacyStepKeys() {
+	// 旧 step_name → old step_key 的固定映射（来自旧版默认模板定义）
+	nameToOldKey := map[string]string{
+		`需求分析`:      `requirement`,
+		`开发执行`:      `design`,
+		`接口生成`:      `api-dev`,
+		`自动化测试+修复`:  `api-test-fix`,
+		`代码检查`:      `code-review`,
+		`需求核对浏览器测试`: `browser-test`,
+	}
+
+	// 读取默认模板步骤，构建 name → new step_key 映射
+	steps, err := h.WorkflowTemplateStepsByTemplateID(1)
+	if err != nil {
+		gstool.FmtPrintlnLogTime(`[workflow] 迁移旧step_key失败: 读取模板步骤 err=%v`, err)
+		return
+	}
+
+	oldToNew := map[string]string{}
+	for _, step := range steps {
+		name := cast.ToString(step[`name`])
+		stepKey := cast.ToString(step[`step_key`])
+		if oldKey, ok := nameToOldKey[name]; ok {
+			if stepKey != `` && stepKey != oldKey {
+				oldToNew[oldKey] = stepKey
+			}
+		}
+	}
+
+	if len(oldToNew) == 0 {
+		return // 无需迁移
+	}
+
+	// 遍历所有工作流
+	workflows, err := h.Client.QuickQuery(`tbl_task_workflow`, `*`, nil).All()
+	if err != nil {
+		gstool.FmtPrintlnLogTime(`[workflow] 迁移旧step_key失败: 查询工作流 err=%v`, err)
+		return
+	}
+
+	now := time.Now().Unix()
+	migratedCount := 0
+	for _, wf := range workflows {
+		workflowID := cast.ToInt(wf[`id`])
+		needUpdate := false
+		updateData := map[string]any{`update_time`: now}
+
+		// 迁移 step_prompts：重命名 key + 替换值中的旧 step_key 引用
+		stepPromptsRaw := cast.ToString(wf[`step_prompts`])
+		if stepPromptsRaw != `` {
+			prompts := map[string]string{}
+			if json.Unmarshal([]byte(stepPromptsRaw), &prompts) == nil {
+				keyChanged := migrateMapKeys(prompts, oldToNew)
+				valChanged := migratePromptValues(prompts, oldToNew)
+				if keyChanged || valChanged {
+					newJSON, _ := json.Marshal(prompts)
+					updateData[`step_prompts`] = string(newJSON)
+					needUpdate = true
+				}
+			}
+		}
+
+		// 迁移 node_statuses
+		nodeStatusesRaw := cast.ToString(wf[`node_statuses`])
+		if nodeStatusesRaw != `` {
+			statuses := map[string]string{}
+			if json.Unmarshal([]byte(nodeStatusesRaw), &statuses) == nil {
+				if migrateMapKeys(statuses, oldToNew) {
+					newJSON, _ := json.Marshal(statuses)
+					updateData[`node_statuses`] = string(newJSON)
+					needUpdate = true
+				}
+			}
+		}
+
+		if needUpdate {
+			_, _ = h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{`id`: workflowID}, updateData).Exec()
+			migratedCount++
+		}
+	}
+
+	if migratedCount > 0 {
+		gstool.FmtPrintlnLogTime(`[workflow] 迁移旧step_key完成: 更新了 %d 个工作流`, migratedCount)
+	}
+}
+
+// migrateMapKeys 将 map 中的旧 key 替换为新 key。
+// 若新 key 已有值则保留（不覆盖），返回是否发生了任何变更。
+func migrateMapKeys(m map[string]string, oldToNew map[string]string) bool {
+	changed := false
+	for oldKey, newKey := range oldToNew {
+		if val, ok := m[oldKey]; ok {
+			delete(m, oldKey)
+			// 若新 key 已有值则保留（不覆盖），优先保留用户可能已用新 key 保存的值
+			if _, exists := m[newKey]; !exists {
+				m[newKey] = val
+			}
+			changed = true
+		}
+	}
+	return changed
+}
+
+// migratePromptValues 将 prompt 值中的旧 step_key 文本替换为新 step_key。
+// 例如将 "当前步骤：requirement" 替换为 "当前步骤：custom_3"。
+// 返回是否发生了任何变更。
+func migratePromptValues(prompts map[string]string, oldToNew map[string]string) bool {
+	// 构建反向映射：newKey → oldKey
+	newToOld := map[string]string{}
+	for oldK, newK := range oldToNew {
+		newToOld[newK] = oldK
+	}
+	changed := false
+	for newKey, oldKey := range newToOld {
+		if val, ok := prompts[newKey]; ok && strings.Contains(val, oldKey) {
+			prompts[newKey] = strings.ReplaceAll(val, oldKey, newKey)
+			changed = true
+		}
+	}
+	return changed
 }
 
 // trimSpace 封装 strings.TrimSpace，方便本文件内使用。

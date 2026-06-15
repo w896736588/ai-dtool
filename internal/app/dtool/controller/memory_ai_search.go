@@ -86,7 +86,10 @@ func aiSearchStopped(stopC chan int) bool {
 
 // runAiSearchFlow 执行多步骤 AI 搜索流程。
 func runAiSearchFlow(query string, memoryDB common.MemoryFragmentStore, modelID int, sse *gsgin.Sse, stopC chan int) {
-	defer close(stopC)
+	defer func() {
+		defer func() { recover() }()
+		close(stopC)
+	}()
 
 	// ---- 步骤1: AI 生成扩展关键词 ----
 	sendSearchEvent(sse, `keywords`, `running`, `正在扩展搜索关键词...`, nil)

@@ -4,20 +4,17 @@
 用法:
     from update_workflow_status import update_workflow_status
     update_workflow_status(base_url='http://localhost:17170', token='temptoken', workflow_id=69, step='requirement', status='running')
+
+支持的 step 值：
+    - 固定步骤: requirement-fetch, task-config, issue_fix
+    - 开发步骤: requirement, design, api-dev, api-test-fix, code-review, browser-test
+    - 文档步骤: plain_text_requirement, design_plan_requirement
+    - 自定义步骤: custom_{id} (如 custom_10)
 """
 
 import json
 import urllib.request
 import urllib.error
-
-VALID_STEPS = {
-    "requirement",
-    "design",
-    "api-dev",
-    "api-test-fix",
-    "code-review",
-    "browser-test",
-}
 
 VALID_STATUSES = {"pending", "running", "completed"}
 
@@ -46,11 +43,9 @@ def update_workflow_status(base_url, token, workflow_id, step, status):
         base_url: dtool 服务地址
         token: 认证令牌
         workflow_id: 工作流程 ID
-        step: 步骤 key（requirement/design/api-dev/api-test-fix/code-review/browser-test）
+        step: 步骤 key（固定步骤/自定义步骤 custom_{id} 均支持）
         status: 状态值（pending/running/completed）
     """
-    if step not in VALID_STEPS:
-        raise ValueError(f"无效步骤 '{step}'，合法值: {', '.join(sorted(VALID_STEPS))}")
     if status not in VALID_STATUSES:
         raise ValueError(f"无效状态 '{status}'，合法值: {', '.join(sorted(VALID_STATUSES))}")
 

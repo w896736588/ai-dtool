@@ -23,19 +23,66 @@ const (
 	homeTaskApiDevEnabled  = 1
 )
 
-// HomeTaskList 查询首页任务列表。
+// HomeTaskList 查询首页任务列表，同时返回 Git 仓库列表和 API 集合列表。
 func HomeTaskList(c *gin.Context) {
 	request := _struct.HomeTaskListRequest{}
 	_ = gsgin.GinPostBody(c, &request)
+
 	list, err := common.DbMain.HomeTaskList(request.IsArchived)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	enrichHomeTaskListWithMemoryFragment(list)
-	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`task_list`: list,
-	})
+
+	result := map[string]any{
+		`task_list`:           list,
+		`git_group_list`:      queryGitGroupList(),
+		`git_list`:            queryGitList(),
+		`api_collection_list`: queryApiCollectionList(),
+	}
+	gsgin.GinResponseSuccess(c, ``, result)
+}
+
+// queryGitGroupList 查询 Git 分组列表。
+func queryGitGroupList() []map[string]any {
+	list, _ := common.DbMain.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
+		`type`: define.GroupTypeGit,
+	}).All()
+	for k := range list {
+		list[k][`id`] = cast.ToString(list[k][`id`])
+	}
+	return list
+}
+
+// queryGitList 查询 Git 仓库列表。
+func queryGitList() []map[string]any {
+	list, _ := common.DbMain.Client.QuickQuery(`tbl_git`, `*`, nil).All()
+	for k := range list {
+		list[k][`id`] = cast.ToString(list[k][`id`])
+		list[k][`git_group_id`] = cast.ToString(list[k][`git_group_id`])
+	}
+	return list
+}
+
+// queryApiCollectionList 查询 API 集合基础列表。
+func queryApiCollectionList() []map[string]any {
+	list, _ := common.DbMain.Client.QueryBySql(`
+select c.id,
+       c.name,
+       c.create_time,
+       c.update_time,
+       count(d.id) as child_count
+from tbl_api_collection c
+left join tbl_api_dir d on d.collection_id = c.id and d.archived = 0
+group by c.id, c.name, c.create_time, c.update_time
+order by c.id asc`).All()
+	result := make([]map[string]any, 0, len(list))
+	for _, row := range list {
+		row[`id`] = cast.ToString(row[`id`])
+		result = append(result, row)
+	}
+	return result
 }
 
 // HomeTaskSave 保存首页任务。

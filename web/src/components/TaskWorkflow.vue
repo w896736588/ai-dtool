@@ -371,9 +371,6 @@
           class="task-workflow-node"
           :class="{
             'task-workflow-node--active': activeNode === node.key,
-            'task-workflow-node--success': node.key === 'requirement-fetch' && activeNode === node.key && requirementFetchStatus === 'success',
-            'task-workflow-node--failed': node.key === 'requirement-fetch' && activeNode === node.key && requirementFetchStatus === 'failed',
-            'task-workflow-node--running': node.key === 'requirement-fetch' && activeNode === node.key && requirementFetchStatus === 'running',
             'task-workflow-node--status-pending': getNodeStatus(node.key) === 'pending',
             'task-workflow-node--status-running': getNodeStatus(node.key) === 'running',
             'task-workflow-node--status-completed': getNodeStatus(node.key) === 'completed',
@@ -381,15 +378,15 @@
           }"
           @click="selectNode(node.key)"
         >
-          <span class="task-workflow-node__status-icon">
-            <span v-if="getNodeStatus(node.key) === 'completed'" class="status-icon status-icon--completed">&#10003;</span>
-            <span v-else-if="getNodeStatus(node.key) === 'skipped'" class="status-icon status-icon--skipped">&#10003;</span>
-            <span v-else-if="getNodeStatus(node.key) === 'pending'" class="status-icon status-icon--pending"></span>
-            <span v-else class="status-icon status-icon--running"><span class="spinner-ring"></span></span>
-          </span>
           <span class="task-workflow-node__row">
             <span class="task-workflow-node__badge">{{ idx + 1 }}</span>
             <span class="task-workflow-node__label">{{ node.label }}</span>
+            <span class="task-workflow-node__status-icon">
+              <span v-if="getNodeStatus(node.key) === 'completed'" class="status-icon status-icon--completed">&#10003;</span>
+              <span v-else-if="getNodeStatus(node.key) === 'skipped'" class="status-icon status-icon--skipped">&#10003;</span>
+              <span v-else-if="getNodeStatus(node.key) === 'pending'" class="status-icon status-icon--pending"></span>
+              <span v-else class="status-icon status-icon--running"><span class="spinner-ring"></span></span>
+            </span>
             <el-tooltip
               v-if="showDocumentMigrationWarning && nodeHasStepDocuments(node.key)"
               content="步骤文档尚未生成，请点击「重置提示词」以生成"
@@ -402,8 +399,8 @@
       </section>
 
       <section class="task-workflow-content">
-        <!-- 抓取需求步骤（特殊：TAPD抓取功能） -->
-        <div v-if="activeNode === 'requirement-fetch'" class="task-workflow-card">
+        <!-- 抓取需求步骤（无模板时的特殊UI：TAPD抓取功能） -->
+        <template v-if="activeNode === 'requirement-fetch' && !hasTemplate">
             <div class="task-workflow-card__header">
               <div class="task-workflow-card__title">
                 {{ getActiveNodeLabel() }}
@@ -445,10 +442,10 @@
                 知识片段分享链接生成中...
               </div>
             </div>
-        </div>
+        </template>
 
         <!-- 通用步骤渲染（左侧Tab: 提示词 + 文档） -->
-        <div v-else class="task-workflow-card task-workflow-card--with-tabs">
+        <template v-else>
             <div class="task-workflow-card__header">
               <div class="task-workflow-card__title">
                 <div class="task-workflow-node-status-inline">
@@ -689,7 +686,7 @@
                 </div>
               </div>
             </div>
-        </div>
+        </template>
       </section>
     </div>
 
@@ -1354,6 +1351,10 @@ export default {
       }
       return map
     },
+    // 是否使用了工作流模板（有模板步骤数据）
+    hasTemplate() {
+      return this._cachedTemplateSteps && this._cachedTemplateSteps.length > 0
+    },
   },
   mounted() {
     this.loadWorkflowPage()
@@ -1450,8 +1451,8 @@ export default {
       const nodeToPrompt = {}
       // 当前步骤即 promptType
       let promptType = this.activeNode
-      if (this.activeNode === 'requirement-fetch') {
-        // 抓取需求步骤不需要 Ctrl+S 保存提示词
+      if (this.activeNode === 'requirement-fetch' && !this.hasTemplate) {
+        // 无模板时抓取需求步骤不需要 Ctrl+S 保存提示词
         return
       }
       if (promptType) {
@@ -3044,6 +3045,7 @@ export default {
       params.set('collection_id', String(colId))
       if (dirId > 0) {
         params.set('folder_id', String(dirId))
+        params.set('filter_folder_id', String(dirId))
       }
       params.set('hide_menu', '1')
       this.apiDevDialogUrl = new URL(`/#/Api?${params.toString()}`, window.location.origin).toString()
@@ -4156,8 +4158,7 @@ export default {
 }
 
 .task-workflow-nodes {
-  display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  display: flex;
   gap: 10px;
   flex-shrink: 0;
 }
@@ -4168,13 +4169,15 @@ export default {
   background: #fff;
   min-height: 46px;
   padding: 8px 10px;
-  text-align: left;
+  text-align: center;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
+  flex: 1;
+  min-width: 0;
 }
 
 .task-workflow-node:hover {
@@ -4210,12 +4213,18 @@ export default {
   line-height: 1.3;
   color: #303133;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .task-workflow-node__row {
   display: flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .task-workflow-node__badge {
@@ -4260,36 +4269,24 @@ export default {
   gap: 12px;
 }
 
-.task-workflow-card {
-  border-radius: 12px;
-  padding: 16px;
-  background: #fafaf7;
-  border: 1px solid #e8e8e0;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 .task-workflow-prompt-editor {
   flex: 1;
   height: 100%;
   min-height: 0;
 }
 
-.task-workflow-card :deep(.md-editor) {
+.task-workflow-content :deep(.md-editor) {
   flex: 1;
   height: 100%;
   min-height: 0;
 }
 
-.task-workflow-card :deep(.md-editor-content) {
+.task-workflow-content :deep(.md-editor-content) {
   min-height: 0;
 }
 
-.task-workflow-card :deep(.md-editor-input-wrapper),
-.task-workflow-card :deep(.md-editor-preview-wrapper) {
+.task-workflow-content :deep(.md-editor-input-wrapper),
+.task-workflow-content :deep(.md-editor-preview-wrapper) {
   overflow: auto;
 }
 
@@ -4304,34 +4301,34 @@ export default {
 }
 
 /* MdEditor 滚动条绿色 */
-.task-workflow-card :deep(.md-editor) {
+.task-workflow-content :deep(.md-editor) {
   --md-scrollbar-bg-color: #edf3e8;
   --md-scrollbar-thumb-color: #9fb39a;
   --md-scrollbar-thumb-hover-color: #869c82;
   --md-scrollbar-thumb-active-color: #7a8f76;
 }
 
-.task-workflow-card :deep(.md-editor .md-editor-preview ::-webkit-scrollbar) {
+.task-workflow-content :deep(.md-editor .md-editor-preview ::-webkit-scrollbar) {
   width: 10px !important;
   height: 10px !important;
 }
 
-.task-workflow-card :deep(.md-editor .md-editor-preview ::-webkit-scrollbar-track) {
+.task-workflow-content :deep(.md-editor .md-editor-preview ::-webkit-scrollbar-track) {
   background: #edf3e8 !important;
   border-radius: 999px !important;
 }
 
-.task-workflow-card :deep(.md-editor .md-editor-preview ::-webkit-scrollbar-thumb) {
+.task-workflow-content :deep(.md-editor .md-editor-preview ::-webkit-scrollbar-thumb) {
   background: #9fb39a !important;
   border: 2px solid #edf3e8 !important;
   border-radius: 999px !important;
 }
 
-.task-workflow-card :deep(.md-editor .md-editor-preview ::-webkit-scrollbar-thumb:hover) {
+.task-workflow-content :deep(.md-editor .md-editor-preview ::-webkit-scrollbar-thumb:hover) {
   background: #869c82 !important;
 }
 
-.task-workflow-card :deep(.md-editor .md-editor-preview ::-webkit-scrollbar-corner) {
+.task-workflow-content :deep(.md-editor .md-editor-preview ::-webkit-scrollbar-corner) {
   background: #edf3e8 !important;
 }
 
@@ -4621,7 +4618,7 @@ export default {
   min-height: 0;
 }
 
-.task-workflow-card--with-tabs .task-workflow-prompt-editor {
+.task-workflow-content .task-workflow-prompt-editor {
   flex: 1;
   min-height: 0;
 }
@@ -4856,7 +4853,7 @@ export default {
 
 @media (max-width: 1100px) {
   .task-workflow-nodes {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex-wrap: wrap;
   }
 
   .task-workflow-grid {
@@ -4892,17 +4889,11 @@ export default {
 }
 
 /* 节点状态图标 */
-.task-workflow-node {
-  position: relative;
-}
-
 .task-workflow-node__status-icon {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .status-icon {
@@ -4953,18 +4944,18 @@ export default {
 }
 /* 节点按钮状态边框色 */
 .task-workflow-node--status-pending {
-  border-left: 3px solid #909399;
+  border-top: 3px solid #909399;
 }
 .task-workflow-node--status-completed {
-  border-left: 3px solid #67c23a;
+  border-top: 3px solid #67c23a;
 }
 
 .task-workflow-node--status-skipped {
-  border-left: 3px solid #e6a23c;
+  border-top: 3px solid #e6a23c;
 }
 
 .task-workflow-node--status-running {
-  border-left: 3px solid #409eff;
+  border-top: 3px solid #409eff;
 }
 
 /* 节点状态切换（内联，位于还原为默认提示词右侧） */

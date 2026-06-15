@@ -12,6 +12,11 @@ let sseClientId = ''
 let sseUrl = ''
 let initFromLoginStatusPromise = null
 let sseLimitDialogShown = false
+
+// SSE 连接打开状态追踪（用于等待 onopen 事件）
+let _sseIsOpen = false
+let _sseOpenResolve = null
+let _sseOpenPromise = null
 //全局获取sse 客户端id
 function GetSseClientId(){
     return sseClientId
@@ -35,7 +40,19 @@ function Create(ssePort) {
     }
     sseClientId = nextClientId
     sseUrl = url
+    // 重置 open 状态，等待新的 onopen 事件
+    _sseIsOpen = false
+    _sseOpenPromise = new Promise(resolve => {
+        _sseOpenResolve = resolve
+    })
     SseConn = new EventSource(url)
+    SseConn.addEventListener('open', function() {
+        _sseIsOpen = true
+        if (_sseOpenResolve) {
+            _sseOpenResolve()
+            _sseOpenResolve = null
+        }
+    }, { once: true })
     return true
 }
 
@@ -147,6 +164,9 @@ function Close() {
     sseUrl = ''
     sseClientId = ''
     SseReceiveIdFunc = {}
+    _sseIsOpen = false
+    _sseOpenPromise = null
+    _sseOpenResolve = null
 }
 
 // showSseLimitDialog 无可用端口时弹窗确认是否关闭页面，防重复弹出
@@ -246,6 +266,26 @@ function GetSseDistributeId(businessId){
     return businessId
 }
 
+// WaitForOpen 等待 SSE 连接真正打开（onopen 事件触发）。
+// 返回 Promise<boolean>：true 表示连接已就绪，false 表示没有活动连接。
+function WaitForOpen() {
+    if (_sseIsOpen) {
+        return Promise.resolve(true)
+    }
+    if (!SseConn) {
+        return Promise.resolve(false)
+    }
+    if (_sseOpenPromise) {
+        return _sseOpenPromise.then(() => true)
+    }
+    return Promise.resolve(false)
+}
+
+// IsSseOpen 同步检查 SSE 连接是否已打开。
+function IsSseOpen() {
+    return _sseIsOpen
+}
+
 export default {
     OpenFunc,
     ErrorFunc,
@@ -260,4 +300,6 @@ export default {
     GetSseDistributeId,
     GetSseClientId,
     fetchAvailableSsePort,
+    WaitForOpen,
+    IsSseOpen,
 }

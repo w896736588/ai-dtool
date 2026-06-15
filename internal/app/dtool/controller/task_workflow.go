@@ -744,47 +744,40 @@ func buildTaskWorkflowResponse(c *gin.Context, workflowInfo map[string]any) (map
 	// 知识片段创建完成后，逐个初始化缺失的提示词。
 	// 优先从模板步骤的 prompt_content 获取，回退到旧全局配置。
 	if workflowID > 0 {
-		prompts := resolveTaskWorkflowPrompts(c, homeTaskInfo, workflowInfo)
-		// 有模板步骤时，优先使用模板步骤的 prompt_content 覆盖
+		// 有模板步骤时，使用模板步骤的 prompt_content 初始化 step_prompts JSON
 		if len(templateSteps) > 0 {
 			placeholders := buildTaskWorkflowPlaceholderMap(c, homeTaskInfo, workflowInfo)
+			existingPrompts, _ := common.DbMain.WorkflowStepPromptsRead(workflowID)
+			needUpdate := false
 			for _, step := range templateSteps {
 				stepKey := cast.ToString(step[`step_key`])
 				promptContent := strings.TrimSpace(cast.ToString(step[`prompt_content`]))
 				if promptContent == `` {
 					continue
 				}
-				// 将模板步骤的 prompt_content 映射到 prompts map 的 key
-				key := templateStepKeyToPromptKey(stepKey)
-				if key != `` {
-					prompts[key] = taskWorkflowResolvePlaceholders(promptContent, placeholders)
+				// 只填充当前为空的，保留用户已有修改
+				if strings.TrimSpace(existingPrompts[stepKey]) != `` {
+					continue
 				}
-			}
-		}
-		// 只填充当前为空的字段，保留已有的提示词内容
-		currentPrompts := map[string]string{
-			`requirement`:             strings.TrimSpace(cast.ToString(workflowInfo[`prompt_requirement`])),
-			`api_dev`:                 strings.TrimSpace(cast.ToString(workflowInfo[`prompt_api_dev`])),
-			`api_test`:                strings.TrimSpace(cast.ToString(workflowInfo[`prompt_api_test`])),
-			`design`:                  strings.TrimSpace(cast.ToString(workflowInfo[`prompt_design`])),
-			`plain_text_requirement`:  strings.TrimSpace(cast.ToString(workflowInfo[`prompt_plain_text_requirement`])),
-			`design_plan_requirement`: strings.TrimSpace(cast.ToString(workflowInfo[`prompt_design_plan_requirement`])),
-			`browser_test`:            strings.TrimSpace(cast.ToString(workflowInfo[`prompt_browser_test`])),
-			`code_review`:             strings.TrimSpace(cast.ToString(workflowInfo[`prompt_code_review`])),
-		}
-		needUpdate := false
-		for key, promptVal := range prompts {
-			if currentPrompts[key] == `` && strings.TrimSpace(promptVal) != `` {
-				currentPrompts[key] = promptVal
+				// 注入步骤级占位符：{步骤ID} 替换为当前步骤的 step_key
+				placeholders[`{步骤ID}`] = stepKey
+				existingPrompts[stepKey] = taskWorkflowResolvePlaceholders(promptContent, placeholders)
 				needUpdate = true
 			}
-		}
-		if needUpdate {
-			_ = common.DbMain.TaskWorkflowUpdatePrompts(workflowID, currentPrompts[`requirement`], currentPrompts[`api_dev`], currentPrompts[`api_test`], currentPrompts[`design`], currentPrompts[`plain_text_requirement`], currentPrompts[`design_plan_requirement`], currentPrompts[`browser_test`], currentPrompts[`code_review`])
-			// 从数据库刷新，确保返回给前端的数据包含已初始化的提示词
-			updatedInfo, updateErr := common.DbMain.TaskWorkflowInfo(workflowID)
-			if updateErr == nil {
-				workflowInfo = updatedInfo
+			if needUpdate {
+				jsonBytes, _ := json.Marshal(existingPrompts)
+				now := time.Now().Unix()
+				common.DbMain.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{`id`: workflowID}, map[string]any{
+					`step_prompts`: string(jsonBytes),
+					`update_time`:  now,
+				}).Exec()
+				// 同步到旧 prompt_xxx 字段（向后兼容）
+				_ = common.DbMain.WorkflowStepPromptsSyncLegacy(workflowID, existingPrompts)
+				// 从数据库刷新，确保返回给前端的数据包含已初始化的提示词
+				updatedInfo, updateErr := common.DbMain.TaskWorkflowInfo(workflowID)
+				if updateErr == nil {
+					workflowInfo = updatedInfo
+				}
 			}
 		}
 	}
@@ -1589,8 +1582,8 @@ func taskWorkflowMergeNodeStatus(workflowID int, step, status string) (string, e
 
 // TaskWorkflowPromptsSave 保存工作流提示词。
 // 支持两种模式：
-//   1. 新模式：传 step_key + step_prompt，保存到 step_prompts JSON 字段
-//   2. 旧模式：传 prompt_xxx 系列字段（向后兼容）
+//  1. 新模式：传 step_key + step_prompt，保存到 step_prompts JSON 字段
+//  2. 旧模式：传 prompt_xxx 系列字段（向后兼容）
 func TaskWorkflowPromptsSave(c *gin.Context) {
 	if common.DbMain == nil || common.DbMain.Client == nil {
 		gsgin.GinResponseError(c, `主库未初始化`, nil)
@@ -1693,6 +1686,8 @@ func TaskWorkflowPromptsRestore(c *gin.Context) {
 			}
 			promptContent := strings.TrimSpace(cast.ToString(step[`prompt_content`]))
 			if promptContent != `` {
+				// 注入步骤级占位符：{步骤ID} 替换为当前步骤的 step_key
+				placeholders[`{步骤ID}`] = cast.ToString(step[`step_key`])
 				stepCopy[`prompt_content`] = taskWorkflowResolvePlaceholders(promptContent, placeholders)
 			}
 			resolvedSteps[i] = stepCopy
@@ -1715,6 +1710,20 @@ func TaskWorkflowPromptsRestore(c *gin.Context) {
 
 	// 清空所有提示词类型对应的执行历史
 	allPromptTypes := []string{`plain_text_requirement`, `requirement`, `design_plan_requirement`, `design`, `api_dev`, `code_review`, `browser_test`, `api_test`}
+	// 使用模板时，附加模板步骤的 step_key（如 custom_3、issue_fix 等）
+	if templateErr == nil && len(templateSteps) > 0 {
+		seen := make(map[string]bool, len(allPromptTypes)+len(templateSteps))
+		for _, k := range allPromptTypes {
+			seen[k] = true
+		}
+		for _, step := range templateSteps {
+			stepKey := cast.ToString(step[`step_key`])
+			if stepKey != `` && !seen[stepKey] {
+				seen[stepKey] = true
+				allPromptTypes = append(allPromptTypes, stepKey)
+			}
+		}
+	}
 	for _, promptType := range allPromptTypes {
 		_ = common.DbMain.TaskWorkflowClearChatSessionIDs(request.WorkflowID, promptType)
 	}
@@ -1752,23 +1761,6 @@ func resolveTaskWorkflowPrompts(c *gin.Context, homeTaskInfo map[string]any, wor
 		`design_plan_requirement`: taskWorkflowResolvePlaceholders(promptDesignPlanRequirement, placeholders),
 		`browser_test`:            taskWorkflowResolvePlaceholders(promptBrowserTest, placeholders),
 		`code_review`:             taskWorkflowResolvePlaceholders(promptCodeReview, placeholders),
-	}
-}
-
-// templateStepKeyToPromptKey 将模板步骤的 step_key 映射到 resolveTaskWorkflowPrompts 返回的 prompts map key。
-// 模板步骤使用连字符命名（如 api-dev），prompts map 使用下划线命名（如 api_dev）。
-func templateStepKeyToPromptKey(stepKey string) string {
-	switch stepKey {
-	case `api-dev`:
-		return `api_dev`
-	case `api-test-fix`:
-		return `api_test`
-	case `browser-test`:
-		return `browser_test`
-	case `code-review`:
-		return `code_review`
-	default:
-		return stepKey
 	}
 }
 
@@ -2656,9 +2648,25 @@ func ensureTaskWorkflowStepFragments(c *gin.Context, workflowInfo map[string]any
 	basePlaceholders := taskWorkflowBuildBasePlaceholderMap(c, homeTaskInfo, workflowInfo)
 	requirementFragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`requirement_fragment_id`]), folderName)
 	plainTextRequirementFragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`plain_text_requirement_fragment_id`]), folderName)
+	designPlanRequirementFragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`design_plan_requirement_fragment_id`]), folderName)
+	apiDocFragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`api_doc_fragment_id`]), folderName)
+	devPlanFragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`dev_plan_fragment_id`]), folderName)
+	designFragmentRef := common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`design_fragment_id`]), folderName)
+	// builtInDocNameToRef 内置文档类型名称到已有片段引用的映射。
+	// 当步骤文档的 Name 匹配内置类型名称时，复用已有片段而非创建新片段，避免产生重复知识片段。
+	builtInDocNameToRef := map[string]common.TaskWorkflowFragmentRef{
+		common.TaskWorkflowDocumentTypeName(common.TaskWorkflowDocTypeRequirement):           requirementFragmentRef,
+		common.TaskWorkflowDocumentTypeName(common.TaskWorkflowDocTypePlainTextRequirement):  plainTextRequirementFragmentRef,
+		common.TaskWorkflowDocumentTypeName(common.TaskWorkflowDocTypeDesignPlanRequirement): designPlanRequirementFragmentRef,
+		common.TaskWorkflowDocumentTypeName(common.TaskWorkflowDocTypeApiDoc):                apiDocFragmentRef,
+		common.TaskWorkflowDocumentTypeName(common.TaskWorkflowDocTypeDevPlan):               devPlanFragmentRef,
+		common.TaskWorkflowDocumentTypeName(common.TaskWorkflowDocTypeDesign):                designFragmentRef,
+	}
 	changed := false
 	for _, step := range templateSteps {
 		stepKey := cast.ToString(step[`step_key`])
+		// 注入步骤级占位符：{步骤ID} 替换为当前步骤的 step_key
+		basePlaceholders[`{步骤ID}`] = stepKey
 		docs := common.WorkflowTemplateStepDocumentsParse(cast.ToString(step[`step_documents`]))
 		if len(docs) == 0 {
 			continue
@@ -2680,26 +2688,28 @@ func ensureTaskWorkflowStepFragments(c *gin.Context, workflowInfo map[string]any
 			}
 			ref := refs[i]
 			placeholder := strings.TrimSpace(doc.Placeholder)
-			// 抓取需求步骤的默认文档绑定到任务创建时已存在的需求知识片段，避免重复创建空片段
-			if stepKey == common.WorkflowFixedStepRequirementFetch {
-				var boundRef common.TaskWorkflowFragmentRef
-				var shouldBind bool
-				if placeholder == `{需求文档地址}` {
-					boundRef = requirementFragmentRef
-					shouldBind = boundRef.FileID != ``
-				} else if placeholder == `{需求文档纯文本地址}` {
-					boundRef = plainTextRequirementFragmentRef
-					shouldBind = boundRef.FileID != ``
+			// 步骤文档绑定到任务创建时已存在的内置知识片段，避免重复创建空片段。
+			// 优先按占位符匹配（向后兼容旧模板），再按文档名称匹配内置类型。
+			var boundRef common.TaskWorkflowFragmentRef
+			var shouldBind bool
+			if placeholder == `{需求文档地址}` {
+				boundRef = requirementFragmentRef
+				shouldBind = boundRef.FileID != ``
+			} else if placeholder == `{需求文档纯文本地址}` {
+				boundRef = plainTextRequirementFragmentRef
+				shouldBind = boundRef.FileID != ``
+			} else if docRef, ok := builtInDocNameToRef[doc.Name]; ok && docRef.FileID != `` {
+				boundRef = docRef
+				shouldBind = true
+			}
+			if shouldBind {
+				if ref[`file_id`] != boundRef.FileID || ref[`folder_name`] != boundRef.FolderName || ref[`placeholder`] != placeholder {
+					ref[`file_id`] = boundRef.FileID
+					ref[`folder_name`] = boundRef.FolderName
+					ref[`placeholder`] = placeholder
+					changed = true
 				}
-				if shouldBind {
-					if ref[`file_id`] != boundRef.FileID || ref[`folder_name`] != boundRef.FolderName || ref[`placeholder`] != placeholder {
-						ref[`file_id`] = boundRef.FileID
-						ref[`folder_name`] = boundRef.FolderName
-						ref[`placeholder`] = placeholder
-						changed = true
-					}
-					continue
-				}
+				continue
 			}
 			fileID := strings.TrimSpace(ref[`file_id`])
 			if fileID != `` {
@@ -2709,7 +2719,12 @@ func ensureTaskWorkflowStepFragments(c *gin.Context, workflowInfo map[string]any
 			}
 			title := taskWorkflowResolvePlaceholders(doc.Title, basePlaceholders)
 			if strings.TrimSpace(title) == `` {
-				title = doc.Name
+				taskName := strings.TrimSpace(cast.ToString(homeTaskInfo[`name`]))
+				if taskName != `` {
+					title = taskName + `-` + doc.Name
+				} else {
+					title = doc.Name
+				}
 			}
 			content := taskWorkflowResolvePlaceholders(doc.Content, basePlaceholders)
 			tags := []string{doc.Name}

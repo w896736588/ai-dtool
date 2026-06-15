@@ -944,16 +944,20 @@ export default {
         if (!created || !sseDistribute.GetSseClientId()) {
           return false
         }
-        const pDataId = 'home_task_page_data'
-        const pDirId = 'home_task_page_data_dir_status'
-        const pBranchId = 'home_task_page_data_branch_status'
-        this._ssePageDataId = pDataId
-        this._sseDirStatusId = pDirId
-        this._sseBranchStatusId = pBranchId
-        sseDistribute.RegisterReceive(pDataId, this.handleHomeTaskPageData)
-        sseDistribute.RegisterReceive(pDirId, this.handleHomeTaskDirStatus)
-        sseDistribute.RegisterReceive(pBranchId, this.handleHomeTaskBranchStatus)
-        return true
+        // 等待 SSE 连接真正建立（onopen 事件触发），避免 POST 请求先于 SSE 握手到达后端
+        return sseDistribute.WaitForOpen().then((opened) => {
+          if (!opened) return false
+          const pDataId = 'home_task_page_data'
+          const pDirId = 'home_task_page_data_dir_status'
+          const pBranchId = 'home_task_page_data_branch_status'
+          this._ssePageDataId = pDataId
+          this._sseDirStatusId = pDirId
+          this._sseBranchStatusId = pBranchId
+          sseDistribute.RegisterReceive(pDataId, this.handleHomeTaskPageData)
+          sseDistribute.RegisterReceive(pDirId, this.handleHomeTaskDirStatus)
+          sseDistribute.RegisterReceive(pBranchId, this.handleHomeTaskBranchStatus)
+          return true
+        })
       })
       return this._homeTaskPageDataSsePromise
     },
@@ -1149,20 +1153,15 @@ export default {
         }))
         if (isArchived === HOME_TASK_ARCHIVED_YES) {
           this.homeTaskArchivedList = taskList
-          // 归档列表也需要工作流计数，但不触发完整 SSE 推送
+          // 归档列表也需要工作流计数
           this.loadHomeTaskWorkflowCounts(taskList)
         } else {
           this.homeTaskActiveList = taskList
         }
 
-        // 仅在活跃列表加载完成后触发 SSE 推送附加数据
-        if (isArchived === HOME_TASK_ARCHIVED_NO) {
-          this.triggerHomeTaskPageDataLoad()
-          // 批量检查本地目录是否存在 → 改为 SSE 推送
-          this.triggerLocalDirCheck(taskList)
-          // 批量检查本地目录的 Git 分支是否匹配 → 改为 SSE 推送
-          this.triggerBranchStatusCheck(taskList)
-        }
+        // 从列表接口中直接获取 Git 仓库列表和 API 集合列表
+        this.populateGitRepoListFromResponse(response.Data)
+        this.populateApiCollectionListFromResponse(response.Data)
       })
     },
     refreshAllHomeTaskList() {
@@ -1171,6 +1170,28 @@ export default {
     },
     resetHomeTaskForm() {
       this.homeTaskForm = createHomeTaskDefaultForm()
+    },
+    populateGitRepoListFromResponse(data) {
+      if (!data) return
+      const gitList = Array.isArray(data.git_list) ? data.git_list : []
+      const groupList = Array.isArray(data.git_group_list) ? data.git_group_list : []
+      if (gitList.length === 0) return
+      const groupMap = {}
+      for (const g of groupList) {
+        groupMap[Number(g.id)] = g.name
+      }
+      this.homeTaskGitRepoList = gitList.map(repo => ({
+        ...repo,
+        git_group_name: groupMap[Number(repo.git_group_id)] || '未分组',
+      }))
+      this.homeTaskGitRepoLoading = false
+    },
+    populateApiCollectionListFromResponse(data) {
+      if (!data) return
+      const list = Array.isArray(data.api_collection_list) ? data.api_collection_list : []
+      if (list.length === 0) return
+      this.homeTaskApiCollectionList = list
+      this.homeTaskApiCollectionLoading = false
     },
     loadHomeTaskGitRepoList() {
       this.homeTaskGitRepoLoading = true
@@ -1391,8 +1412,6 @@ export default {
     },
     openCreateHomeTaskDialog() {
       this.resetHomeTaskForm()
-      this.loadHomeTaskGitRepoList()
-      this.loadHomeTaskApiCollections()
       this.loadHomeTaskMysqlList()
       this.loadHomeTaskDockerList()
       this.loadHomeTaskSmartLinkList()
@@ -1497,8 +1516,6 @@ export default {
         workflow_template_id: Number(task.workflow_template_id || 0),
         dev_configs: devConfigs,
       }
-      this.loadHomeTaskGitRepoList()
-      this.loadHomeTaskApiCollections()
       this.loadHomeTaskMysqlList()
       this.loadHomeTaskDockerList()
       this.loadHomeTaskSmartLinkList()
@@ -1561,7 +1578,7 @@ export default {
     },
     getHomeTaskDevConfigTags(task) {
       const DEV_CONFIG_TAG_TYPE_GIT = 'success'
-      const DEV_CONFIG_TAG_TYPE_API = ''
+      const DEV_CONFIG_TAG_TYPE_API = 'info'
       const DEV_CONFIG_TAG_TYPE_DOCKER = 'info'
       const DEV_CONFIG_TAG_TYPE_DB = 'warning'
       const DEV_CONFIG_TAG_TYPE_DIR = 'danger'
@@ -1618,7 +1635,7 @@ export default {
           group.push({ type: 'local_dir', label: dirPath, fullPath: dirPath, tagType: DEV_CONFIG_TAG_TYPE_DIR })
         }
         if (String(cfg.parent_branch || '').trim() !== '') {
-          group.push({ type: 'parent_branch', label: '分支: ' + String(cfg.parent_branch).trim(), tagType: '' })
+          group.push({ type: 'parent_branch', label: '分支: ' + String(cfg.parent_branch).trim(), tagType: 'info' })
         }
         if (String(cfg.branch_name || '').trim() !== '') {
           group.push({ type: 'branch_name', label: String(cfg.branch_name).trim(), tagType: 'success', localDir: String(cfg.local_dir || '').trim() })
@@ -1626,7 +1643,7 @@ export default {
         if (Number(cfg.smart_link_id || 0) > 0) {
           const sl = this.homeTaskSmartLinkList.find(s => Number(s.id) === Number(cfg.smart_link_id))
           if (sl) {
-            group.push({ type: 'smart_link', label: sl.name, id: Number(cfg.smart_link_id), tagType: '' })
+            group.push({ type: 'smart_link', label: sl.name, id: Number(cfg.smart_link_id), tagType: 'info' })
           }
         }
         if (String(cfg.smart_link_label || '').trim() !== '') {

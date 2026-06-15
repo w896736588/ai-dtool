@@ -335,6 +335,8 @@ func initSqlite() {
 	common.DbMain = component.DbMain
 	component.DataBaseUp = business.NewTDataBaseUp(component.DbMain, component.EnvClient.DatabaseUpPath)
 	component.DataBaseUp.Run()
+	// SQL 迁移后将旧 step_key 统一迁移到 custom_xx 格式
+	component.DbMain.WorkflowMigrateLegacyStepKeys()
 	initLogSqlite()
 	if err = business.LoadMemoryStore(); err != nil {
 		panic(err.Error())

@@ -362,6 +362,7 @@ const REQUIREMENT_FETCH_DEFAULT_DOC_PLACEHOLDER = '{需求文档地址}'
 // 内置占位符列表（不包含 skills 和步骤文档占位符，这两类会动态生成）
 const PROMPT_PLACEHOLDERS = [
   { label: '任务名称', value: '{任务名称}', tip: '替换为当前任务的名称' },
+  { label: '步骤ID', value: '{步骤ID}', tip: '替换为当前步骤的 step_key，用于更新步骤执行状态' },
   { label: '需求文档地址', value: '{需求文档地址}', tip: '替换为需求知识片段的分享链接' },
   { label: '需求文档地址ID', value: '{需求文档地址ID}', tip: '替换为需求知识片段的 file_id' },
   { label: '需求文档纯文本地址', value: '{需求文档纯文本地址}', tip: '替换为纯文本需求片段的分享链接' },

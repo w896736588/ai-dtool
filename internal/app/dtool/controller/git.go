@@ -135,7 +135,10 @@ func GitCleanupAndSwitchBranchByIdStream(urlValues url.Values, stopC chan int, c
 	clientID := `git_cleanup_switch_` + cast.ToString(time.Now().UnixNano())
 	sse := gsgin.SseRegister(clientID, stopC, c)
 	go func() {
-		defer close(stopC)
+		defer func() {
+			defer func() { recover() }()
+			close(stopC)
+		}()
 		sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
 			Type:    `meta`,
 			Status:  `running`,

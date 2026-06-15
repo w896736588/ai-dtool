@@ -90,6 +90,8 @@ func HotReloadMainDB(changedKey string) error {
 
 	// 3. 执行新主库迁移
 	NewTDataBaseUp(newDbMain, component.EnvClient.DatabaseUpPath).Run()
+	// SQL 迁移后将旧 step_key 统一迁移到 custom_xx 格式
+	newDbMain.WorkflowMigrateLegacyStepKeys()
 
 	// 4. 判断 log 库是否受影响
 	logDBAffected := false
