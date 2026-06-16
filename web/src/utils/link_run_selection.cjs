@@ -3,11 +3,9 @@ function normalizeCommandPart(value) {
   return String(value).trim()
 }
 
-function hasConfiguredLinkAccounts(envCmdOrEnvData) {
-  const envData = envCmdOrEnvData && envCmdOrEnvData.data && envCmdOrEnvData.data.env
-    ? envCmdOrEnvData.data.env
-    : envCmdOrEnvData
-  const userList = Array.isArray(envData && envData.userList) ? envData.userList : []
+function hasConfiguredLinkAccounts(linkCmd) {
+  const linkData = linkCmd && linkCmd.data ? linkCmd.data : linkCmd
+  const userList = Array.isArray(linkData && linkData.userList) ? linkData.userList : []
   return userList.length > 0
 }
 
@@ -15,41 +13,19 @@ function getLinkRunSelection(stack) {
   const sourceStack = Array.isArray(stack) ? stack : []
   const actionIndex = sourceStack.findIndex(item => item && item.action === 'linkRun')
   if (actionIndex < 0) {
-    return {
-      configCmd: null,
-      envCmd: null,
-      accountCmd: null,
-    }
+    return { linkCmd: null, accountCmd: null }
   }
   const tailStack = sourceStack.slice(actionIndex + 1)
-  const envCmd = tailStack.find(item => item && item.data && item.data.__linkType === 'env') || null
+  const linkCmd = tailStack.find(item => item && item.data && item.data.__linkType === 'link') || null
   return {
-    configCmd: tailStack.find(item => item && item.data && item.data.__linkType === 'config') || (envCmd && envCmd.data && envCmd.data.config ? { data: envCmd.data.config } : null),
-    envCmd,
+    linkCmd,
     accountCmd: tailStack.find(item => item && item.data && item.data.__linkType === 'account') || null,
   }
 }
 
-function buildLinkEnvOptionsFromConfig(configCmd, normalize = normalizeCommandPart) {
-  const linkList = Array.isArray(configCmd && configCmd.data && configCmd.data.linkList) ? configCmd.data.linkList : []
-  return linkList.map((item, index) => {
-    const envName = normalize(item && item.label) || `环境${index + 1}`
-    return {
-      command: envName,
-      name: envName,
-      dynamicChildren: hasConfiguredLinkAccounts(item) ? 'linkAccountList' : undefined,
-      data: {
-        __linkType: 'env',
-        env: item || {},
-        config: (configCmd && configCmd.data) || {},
-      },
-    }
-  })
-}
-
-function buildLinkAccountOptionsFromEnv(envCmd, normalize = normalizeCommandPart) {
-  const userListRaw = Array.isArray(envCmd && envCmd.data && envCmd.data.env && envCmd.data.env.userList) ? envCmd.data.env.userList : []
-  const userList = userListRaw.length > 0 ? userListRaw : [{ user_name: '默认账号(空)', password: '' }]
+function buildLinkAccountOptionsFromLink(linkCmd, normalize = normalizeCommandPart) {
+  const userListRaw = Array.isArray(linkCmd && linkCmd.data && linkCmd.data.userList) ? linkCmd.data.userList : []
+  if (userListRaw.length === 0) return []
   return userListRaw.map((item, index) => {
     const userName = normalize(item && item.user_name) || `账号${index + 1}`
     return {
@@ -57,44 +33,35 @@ function buildLinkAccountOptionsFromEnv(envCmd, normalize = normalizeCommandPart
       name: userName,
       data: {
         __linkType: 'account',
-        account: {
-          user_name: normalize(item && item.user_name),
-          password: normalize(item && item.password),
-        },
+        account: { user_name: normalize(item.user_name), password: normalize(item.password) },
       },
     }
   })
 }
 
 function isLinkRunSelectionComplete(selection) {
-  if (!(selection && selection.envCmd)) {
-    return false
-  }
-  if (!hasConfiguredLinkAccounts(selection.envCmd)) {
-    return true
-  }
+  if (!(selection && selection.linkCmd)) return false
+  if (!hasConfiguredLinkAccounts(selection.linkCmd)) return true
   return !!selection.accountCmd
 }
 
 function buildLinkRunPayload(selection, sseDistributeId, normalize = normalizeCommandPart) {
-  const configData = ((selection && selection.configCmd) || {}).data || (((selection && selection.envCmd) || {}).data || {}).config || {}
-  const envData = (((selection && selection.envCmd) || {}).data || {}).env || {}
+  const linkData = (((selection && selection.linkCmd) || {}).data) || {}
   const accountData = (((selection && selection.accountCmd) || {}).data || {}).account || {}
 
   return {
-    id: configData.id,
-    label: normalize(envData.label),
+    id: linkData.id,
+    label: normalize(linkData.label),
     user_name: normalize(accountData.user_name),
     password: normalize(accountData.password),
-    open_num: normalize(configData.open_num),
-    open_type: normalize(configData.open_type),
+    open_num: normalize(linkData.open_num),
+    open_type: normalize(linkData.open_type),
     sse_distribute_id: sseDistributeId,
   }
 }
 
 module.exports = {
-  buildLinkAccountOptionsFromEnv,
-  buildLinkEnvOptionsFromConfig,
+  buildLinkAccountOptionsFromLink,
   buildLinkRunPayload,
   getLinkRunSelection,
   hasConfiguredLinkAccounts,

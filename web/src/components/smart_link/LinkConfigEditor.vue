@@ -2,39 +2,6 @@
   <el-form class="link-config-editor" label-position="top">
     <div class="editor-section">
       <div class="editor-section__header">
-        <div class="editor-section__title">链接配置</div>
-        <GitActionButton compact size="small" @click="openCreateLinkDialog">新增链接</GitActionButton>
-      </div>
-
-      <el-input
-        v-if="linkItems.length > 0"
-        v-model="linkSearchKeyword"
-        placeholder="搜索链接名称或地址"
-        clearable
-        prefix-icon="Search"
-        class="link-search-input"
-      />
-      <div v-if="linkItems.length === 0" class="editor-empty">暂无链接，请先新增一条。</div>
-      <div v-else class="link-list">
-        <div v-for="(item, index) in filteredLinkItems" :key="item.uid" class="link-list-item">
-          <div class="link-list-item__main">
-            <div class="link-list-item__title">
-              <span class="link-list-item__index">#{{ index + 1 }}</span>
-              <span>{{ item.label || '未命名链接' }}</span>
-            </div>
-            <div class="link-list-item__meta">{{ item.link || '未配置链接地址' }}</div>
-          </div>
-          <div class="link-list-item__actions">
-            <GitActionButton compact size="small" @click="openEditLinkDialog(item._originalIndex)">编辑</GitActionButton>
-            <GitActionButton compact size="small" variant="danger" @click="removeLinkItem(item._originalIndex)">删除</GitActionButton>
-          </div>
-        </div>
-        <div v-if="filteredLinkItems.length === 0 && linkItems.length > 0" class="editor-empty">无匹配结果。</div>
-      </div>
-    </div>
-
-    <div class="editor-section">
-      <div class="editor-section__header">
         <div class="editor-section__title">信息提取</div>
         <GitActionButton compact size="small" @click="addCookieItem">新增规则</GitActionButton>
       </div>
@@ -93,110 +60,13 @@
         <GitActionButton compact size="small" variant="danger" @click="removeFilterItem(index)">删除</GitActionButton>
       </div>
     </div>
-
-    <el-dialog
-      v-model="linkItemDialogVisible"
-      title="新增/编辑链接"
-      width="760px"
-      append-to-body
-      class="link-item-dialog"
-    >
-      <el-form label-position="top" class="link-item-form">
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="展示名称">
-              <el-input v-model="linkItemDraft.label" placeholder="例如 生产环境" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="跳转地址">
-              <el-input v-model="linkItemDraft.link" placeholder="https://example.com 或 /path" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="浏览器认证用户名">
-              <el-input v-model="linkItemDraft.browser_auth_username" placeholder="可选" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="浏览器认证密码">
-              <el-input v-model="linkItemDraft.browser_auth_password" placeholder="可选" show-password />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="账号列表">
-              <el-select
-                v-model="linkItemDraft.account_group_name"
-                clearable
-                filterable
-                placeholder="请选择账号分组"
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="group in accountGroupOptions"
-                  :key="group.id"
-                  :label="group.name"
-                  :value="group.name"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="Cookie">
-              <el-input v-model="linkItemDraft.cookie" placeholder="可选" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="请求头(JSON)">
-          <el-input
-            v-model="linkItemDraft.headers"
-            type="textarea"
-            :rows="4"
-            placeholder='可选，例如 {"Authorization":"Bearer xxx"}'
-          />
-        </el-form-item>
-        <el-form-item label="执行流程">
-          <el-alert :closable="false" show-icon title="留空则使用总链接配置的执行流程" type="info" />
-          <el-select v-model="linkItemDraft.process_id" clearable placeholder="使用默认流程" style="width: 100%">
-            <el-option
-              v-for="proc in processOptions"
-              :key="proc.id"
-              :label="proc.name"
-              :value="proc.id"
-            />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <GitActionButton @click="closeLinkDialog">取消</GitActionButton>
-        <GitActionButton @click="saveLinkItem">保存</GitActionButton>
-      </template>
-    </el-dialog>
   </el-form>
 </template>
 
 <script>
-import accountSet from '@/utils/base/account_set'
-import Process from '@/utils/base/smart_link_proces'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 
 const createUid = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
-const createLinkItem = () => ({
-  uid: createUid('link'),
-  label: '',
-  link: '',
-  browser_auth_username: '',
-  browser_auth_password: '',
-  account_list: '',
-  account_group_name: '',
-  cookie: '',
-  headers: '',
-  process_id: 0,
-})
 const createCookieItem = () => ({
   uid: createUid('cookie'),
   find_type: 'cookie',
@@ -210,128 +80,34 @@ const createFilterItem = () => ({ uid: createUid('filter'), value: '' })
 
 function safeParseJson(text, fallback) {
   if (!text) return fallback
-  try {
-    return JSON.parse(text)
-  } catch (error) {
-    return fallback
-  }
+  try { return JSON.parse(text) } catch (error) { return fallback }
 }
 
 export default {
   name: 'LinkConfigEditor',
-  components: {
-    GitActionButton,
-  },
+  components: { GitActionButton },
   props: {
-    modelValue: {
-      type: Object,
-      default: () => ({}),
-    },
+    modelValue: { type: Object, default: () => ({}) },
   },
   emits: ['update:modelValue'],
   data() {
     return {
-      accountGroupOptions: [],
-      processOptions: [],
-      linkItems: [],
-      linkSearchKeyword: '',
-      linkItemDialogVisible: false,
-      editingLinkIndex: -1,
-      linkItemDraft: createLinkItem(),
       cookieItems: [],
       filterItems: [],
       syncingFromParent: false,
       lastEditorPayloadSignature: '',
     }
   },
-  computed: {
-    filteredLinkItems() {
-      const keyword = this.linkSearchKeyword.trim().toLowerCase()
-      if (!keyword) {
-        return this.linkItems.map((item, index) => ({ ...item, _originalIndex: index }))
-      }
-      return this.linkItems
-        .map((item, index) => ({ ...item, _originalIndex: index }))
-        .filter(item => {
-          const label = (item.label || '').toLowerCase()
-          const link = (item.link || '').toLowerCase()
-          return label.includes(keyword) || link.includes(keyword)
-        })
-    },
-  },
-  mounted() {
-    // 加载账号分组选项 / Load account group options for the single-select field.
-    this.loadAccountGroupOptions()
-    this.loadProcessOptions()
-  },
   watch: {
     modelValue: {
-      deep: true,
-      immediate: true,
-      handler(value) {
-        this.syncFromModel(value || {})
-      },
+      deep: true, immediate: true,
+      handler(value) { this.syncFromModel(value || {}) },
     },
-    linkItems: { deep: true, handler() { this.emitChange() } },
     cookieItems: { deep: true, handler() { this.emitChange() } },
     filterItems: { deep: true, handler() { this.emitChange() } },
   },
   methods: {
-    // 解析旧配置中的账号组占位符 / Parse persisted placeholder format into group name.
-    parseAccountGroupName(accountListValue) {
-      const rawValue = String(accountListValue || '').trim()
-      const matched = rawValue.match(/^\{group:account:(.+)\}$/)
-      return matched ? matched[1] : ''
-    },
-    // 保存时恢复后端协议 / Convert selected group back to backend placeholder syntax.
-    formatAccountListValue(groupName) {
-      const normalizedGroupName = String(groupName || '').trim()
-      return normalizedGroupName ? `{group:account:${normalizedGroupName}}` : ''
-    },
-    loadAccountGroupOptions() {
-      const _that = this
-      accountSet.AccountGroupList(function (response) {
-        // 只有接口成功时才覆盖选项 / Replace options only when the API call succeeds.
-        if (response && response.ErrCode === 0 && Array.isArray(response.Data)) {
-          _that.accountGroupOptions = response.Data
-        }
-      })
-    },
-    loadProcessOptions() {
-      const _that = this
-      Process.SmartProcessList(function (response) {
-        if (response && response.ErrCode === 0 && response.Data && Array.isArray(response.Data.list)) {
-          _that.processOptions = response.Data.list
-        }
-      })
-    },
-    // 复制链接项草稿，避免弹窗内联动列表 / Clone draft data so dialog edits do not mutate the list before save.
-    cloneLinkItem(item = {}) {
-      return {
-        uid: item.uid || createUid('link'),
-        label: item.label || '',
-        link: item.link || '',
-        browser_auth_username: item.browser_auth_username || '',
-        browser_auth_password: item.browser_auth_password || '',
-        account_list: item.account_list || '',
-        account_group_name: item.account_group_name || this.parseAccountGroupName(item.account_list),
-        cookie: item.cookie || '',
-        headers: typeof item.headers === 'string' ? item.headers : JSON.stringify(item.headers || {}, null, 2),
-        process_id: item.process_id || 0,
-      }
-    },
-    // 生成编辑器受控字段快照 / Build normalized payload for loop-safe sync.
     buildEditorPayload() {
-      const links = this.linkItems.map(item => ({
-        label: item.label,
-        link: item.link,
-        browser_auth_username: item.browser_auth_username,
-        browser_auth_password: item.browser_auth_password,
-        account_list: this.formatAccountListValue(item.account_group_name),
-        cookie: item.cookie,
-        headers: safeParseJson(item.headers, {}),
-        process_id: item.process_id || 0,
-      }))
       const showCookies = this.cookieItems.map(item => ({
         find_type: item.find_type,
         format_list: item.format_list_text.split(',').map(v => v.trim()).filter(Boolean),
@@ -342,8 +118,6 @@ export default {
       }))
       const filterUris = this.filterItems.map(item => item.value.trim()).filter(Boolean).join('\n')
       return {
-        links: JSON.stringify(links),
-        linkList: links,
         show_cookies: JSON.stringify(showCookies),
         filter_uris: filterUris,
       }
@@ -353,22 +127,15 @@ export default {
     },
     syncFromModel(value) {
       const incomingSignature = this.createPayloadSignature({
-        links: value.links || '',
-        linkList: Array.isArray(value.linkList) ? value.linkList : safeParseJson(value.links, []),
         show_cookies: value.show_cookies || '',
         filter_uris: value.filter_uris || '',
       })
-      // 相同内容不重复同步 / Skip sync when parent payload is effectively unchanged.
-      if (!this.syncingFromParent && incomingSignature === this.lastEditorPayloadSignature) {
-        return
-      }
+      if (!this.syncingFromParent && incomingSignature === this.lastEditorPayloadSignature) return
 
       this.syncingFromParent = true
-      const links = Array.isArray(value.linkList) ? value.linkList : safeParseJson(value.links, [])
       const cookies = safeParseJson(value.show_cookies, [])
       const filters = String(value.filter_uris || '').split('\n').map(item => item.trim()).filter(Boolean)
 
-      this.linkItems = links.map(item => this.cloneLinkItem(item))
       this.cookieItems = Array.isArray(cookies) ? cookies.map(item => ({
         uid: createUid('cookie'),
         find_type: item.find_type || 'cookie',
@@ -381,51 +148,16 @@ export default {
       this.filterItems = filters.map(item => ({ uid: createUid('filter'), value: item }))
 
       this.lastEditorPayloadSignature = this.createPayloadSignature(this.buildEditorPayload())
-      this.$nextTick(() => {
-        this.syncingFromParent = false
-      })
+      this.$nextTick(() => { this.syncingFromParent = false })
     },
     emitChange() {
       if (this.syncingFromParent) return
       const editorPayload = this.buildEditorPayload()
       const nextSignature = this.createPayloadSignature(editorPayload)
-      if (nextSignature === this.lastEditorPayloadSignature) {
-        return
-      }
+      if (nextSignature === this.lastEditorPayloadSignature) return
       this.lastEditorPayloadSignature = nextSignature
-      this.$emit('update:modelValue', {
-        ...this.modelValue,
-        ...editorPayload,
-      })
+      this.$emit('update:modelValue', { ...this.modelValue, ...editorPayload })
     },
-    // 打开新增弹窗 / Open create dialog for a new link item.
-    openCreateLinkDialog() {
-      this.editingLinkIndex = -1
-      this.linkItemDraft = this.cloneLinkItem()
-      this.linkItemDialogVisible = true
-    },
-    // 打开编辑弹窗 / Open edit dialog for an existing link item.
-    openEditLinkDialog(index) {
-      this.editingLinkIndex = index
-      this.linkItemDraft = this.cloneLinkItem(this.linkItems[index])
-      this.linkItemDialogVisible = true
-    },
-    closeLinkDialog() {
-      this.linkItemDialogVisible = false
-      this.editingLinkIndex = -1
-      this.linkItemDraft = this.cloneLinkItem()
-    },
-    // 保存链接项，新增或覆盖列表项 / Save dialog draft by insert or replace.
-    saveLinkItem() {
-      const nextItem = this.cloneLinkItem(this.linkItemDraft)
-      if (this.editingLinkIndex >= 0) {
-        this.linkItems.splice(this.editingLinkIndex, 1, nextItem)
-      } else {
-        this.linkItems.push(nextItem)
-      }
-      this.closeLinkDialog()
-    },
-    removeLinkItem(index) { this.linkItems.splice(index, 1) },
     addCookieItem() { this.cookieItems.push(createCookieItem()) },
     removeCookieItem(index) { this.cookieItems.splice(index, 1) },
     addFilterItem() { this.filterItems.push(createFilterItem()) },

@@ -16,7 +16,13 @@
   <div class="link-run-page">
     <div class="link-run-header-card">
       <div class="link-run-header-title">
-        <div class="link-run-header-title__main">自定义网页</div>
+        <div class="link-run-header-title__main">
+          自定义网页工作台
+          <span class="link-run-migrate-tip" @click="migrateOldData">
+            <template v-if="migrating">迁移中...</template>
+            <template v-else>迁移老数据</template>
+          </span>
+        </div>
         <div class="link-run-header-title__desc">集中管理页面入口、运行方式和流程跳转，顶部操作区独立展示更利于快速切换。</div>
       </div>
       <div class="link-run-toolbar">
@@ -45,143 +51,122 @@
       </div>
     </div>
     <div class="link-run-content">
-      <!--      <pl-button type="primary" @click="showDialogRunLog">运行日志({{shellController.sshResult.length}})</pl-button>&nbsp;-->
-      <!--      <el-link type="primary" @click="showMarkdown">使用说明</el-link>-->
-      <div v-for="(smartValue, smartLinkIndex) in smartList" :key="smartLinkIndex" class="link-run-card">
-        <a style="display: inline-block;text-decoration: underline;cursor:pointer;font-size:17px;font-weight: bold;" @click="showEditDialog(smartValue)">
-          {{ smartValue.id + " " + smartValue.name }}
-        </a>
-        <el-tooltip content="编辑" placement="top">
-          <el-icon size="small" style="margin-left:20px;" @click="showEditDialog(smartValue)">
-            <Setting/>
-          </el-icon>
-        </el-tooltip>
-        <el-tooltip content="展示账号密码" placement="top">
-          <el-icon size="small" style="margin: 10px;" @click="showUserPasswordList(smartValue)">
-            <Notebook/>
-          </el-icon>
-        </el-tooltip>
-        <el-tooltip content="删除" placement="top">
-          <el-popconfirm
-              cancel-button-text="取消"
-              confirm-button-text="删除"
-              icon-color="#626AEF"
-              title="确定删除吗?"
-              @confirm="deleteSmartLink(smartValue)"
-          >
-            <template #reference>
-              <el-icon size="small">
-                <Delete/>
-              </el-icon>
-            </template>
-          </el-popconfirm>
-        </el-tooltip>
-        <el-row :gutter="20" class="link-run-links-row">
-          <el-col v-for="(linkValue, linkIndex) in smartValue.linkList" :key="linkIndex" :span="4">
-            <div class="grid-content bg-purple">
-              <!--            选择后内置核心打开-->
-              <template v-if="(linkValue.userList && linkValue.userList.length > 0) || parseInt(smartValue.open_num) > 0">
-                <!--              供选择的环境列表-->
-                <el-radio v-model="smartValue.chooseSmartLinkIndex" :label="linkValue.label"
-                          @change="changeChooseLink(smartLinkIndex , linkIndex)">
-                  {{ linkValue.label }}
+      <div v-for="group in groupedSmartList" :key="group.groupId" class="link-run-card">
+        <div class="link-group-header">
+          <span class="link-group-name">{{ group.groupName }}</span>
+          <span class="link-group-count">{{ group.items.length }} 个链接</span>
+        </div>
+        <el-row :gutter="8" class="link-run-links-row">
+          <el-col v-for="link in group.items" :key="link.id" :xs="24" :sm="12" :md="12" :lg="8">
+            <div class="link-grid-item">
+              <div class="link-grid-item__row link-grid-item__row--top">
+                <a class="link-grid-item__label" @click="showEditDialog(link)" :title="link.label">{{ link.label || '未命名' }}</a>
+                <div class="link-grid-item__top-right">
+                  <span v-if="link.runNum" class="link-grid-item__run-num">运行中: {{ link.runNum }}</span>
+                  <el-popconfirm cancel-button-text="取消" confirm-button-text="删除" title="确定删除吗?" @confirm="deleteSmartLinkItem(link)">
+                    <template #reference>
+                      <el-icon size="14" style="cursor: pointer; color: #999;"><Delete/></el-icon>
+                    </template>
+                  </el-popconfirm>
+                </div>
+              </div>
+              <div class="link-grid-item__row link-grid-item__row--bottom">
+                <!-- 账号列表 -->
+                <template v-if="link.userList && link.userList.length > 0">
+                  <el-select v-model="link.chooseUserName" placeholder="选择账号" size="small" class="link-account-select">
+                    <el-option v-for="(user, uk) in link.userList" :key="uk" :label="user.user_name" :value="user.user_name"/>
+                  </el-select>
+                </template>
 
-                  <span v-if="linkValue.runNum" style="font-size: 12px;color:green;">({{ linkValue.runNum }})</span>
-                </el-radio>
-              </template>
-
-              <!--            直接打开-->
-              <template v-if="!linkValue.userList && parseInt(smartValue.open_type) === 1 && parseInt(smartValue.open_num) === 0">
-                <el-link style="padding: 10px;" type="primary" @click="redirectLink(linkValue)">
-                  {{ linkValue.label }}
-                </el-link>
-              </template>
-
-              <!--            内置核心打开-->
-              <template v-if="(!linkValue.userList || linkValue.userList.length === 0) && (parseInt(smartValue.open_type) === 2 || parseInt(smartValue.open_type) === 3) && parseInt(smartValue.open_num) === 0">
-                <el-link style="padding: 10px;" type="primary" @click="smartLinkRun(smartLinkIndex,linkIndex)">
-                  {{ linkValue.label }}
-                  <span v-if="linkValue.runNum" style="font-size: 12px;color:green;">
-                    ({{ linkValue.runNum }})
-                  </span>
-                </el-link>
-              </template>
-
+                <!-- 执行操作 -->
+                <div class="link-grid-item__exec">
+                  <GitActionButton v-if="parseInt(link.open_type) === 1 && parseInt(link.open_num) === 0" compact size="small" @click="redirectLink(link)">
+                    打开
+                  </GitActionButton>
+                  <template v-if="parseInt(link.open_type) === 2 || parseInt(link.open_type) === 3">
+<el-select v-if="parseInt(link.open_type) === 2" v-model="link.open_type_new" size="small" style="width: 200px">
+                    <el-option v-for="opt in openTypeList" :key="opt.value" :label="opt.label" :value="opt.value"/>
+                  </el-select>
+                    <el-input v-if="link.open_num > 0" v-model="link.open_num_new" size="small" placeholder="次" style="width: 38px"/>
+                    <GitActionButton compact size="small" @click="smartLinkRunItem(link)">执行</GitActionButton>
+                  </template>
+                </div>
+              </div>
             </div>
           </el-col>
         </el-row>
-        <!--      账号列表-->
-        <el-form v-if="smartValue.linkList[smartValue.chooseLinkIndex] &&
-          (smartValue.linkList[smartValue.chooseLinkIndex].userList || smartValue.open_num > 0 )" :inline="true" class="demo-form-inline"
-                 label-width="auto" style="margin: 0 auto;">
-          <el-form-item v-if="smartValue.linkList[smartValue.chooseLinkIndex].userList && smartValue.linkList[smartValue.chooseLinkIndex].userList.length > 0" label="账号列表">
-            <el-select v-model="smartValue.linkList[smartValue.chooseLinkIndex].chooseUserName" placeholder="选择账号">
-              <template v-for="(user,userkey) in smartValue.linkList[smartValue.chooseLinkIndex].userList" :key="userkey">
-                <el-option :label="user.user_name" :value="user.user_name"/>
-              </template>
-            </el-select>
-          </el-form-item>
-          <el-form-item v-if="smartValue.open_type === 2" label="打开方式">
-            <el-select v-model="smartValue.open_type_new" placeholder="选择类型">
-              <template v-for="(value,key) in openTypeList" :key="key">
-                <el-option :label="value.label" :value="value.value"/>
-              </template>
-            </el-select>
-          </el-form-item>
-          <el-form-item v-if="smartValue.open_num > 0" label="打开数">
-            <el-input v-model="smartValue.open_num_new" placeholder="Please input" style="width: 240px"/>
-          </el-form-item>
-          <el-form-item>
-            <GitActionButton v-if="smartValue.linkList[smartValue.chooseLinkIndex].chooseUserName || smartValue.open_num > 0" @click="smartLinkRun(smartLinkIndex,null)">
-              执行
-            </GitActionButton>
-          </el-form-item>
-        </el-form>
+      </div>
+      <div v-if="groupedSmartList.length === 0" class="link-run-card" style="text-align:center;color:#999;padding:30px;">
+        暂无链接，请先"迁移老数据"或点击"创建"新增
       </div>
     </div>
   </div>
-  <!--新增弹窗-->
+
+  <!-- 新增/编辑弹窗 / Create/Edit dialog -->
   <el-dialog v-model="dialogSmartLink" title="创建/编辑链接" width="90%" class="smart-link-dialog">
     <el-form label-width="auto" class="smart-link-dialog__form">
-      <el-form-item label="名称">
-        <el-input v-model="smartLinkConfig.name"/>
+      <el-form-item label="展示名称(label)">
+        <el-input v-model="smartLinkConfig.label" placeholder="例如 生产环境"/>
+      </el-form-item>
+      <el-form-item label="跳转地址(link)">
+        <el-input v-model="smartLinkConfig.link" placeholder="https://example.com"/>
+      </el-form-item>
+      <el-form-item label="分组">
+        <el-select v-model="smartLinkConfig.smart_link_group_id" clearable filterable placeholder="选择分组" style="width: 100%">
+          <el-option v-for="g in groupOptions" :key="g.id" :label="g.name" :value="g.id"/>
+        </el-select>
+      </el-form-item>
+      <el-row :gutter="12">
+        <el-col :span="12">
+          <el-form-item label="浏览器认证用户名">
+            <el-input v-model="smartLinkConfig.browser_auth_username" placeholder="可选"/>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="浏览器认证密码">
+            <el-input v-model="smartLinkConfig.browser_auth_password" placeholder="可选" show-password/>
+          </el-form-item>
+        </el-col>
+      </el-row>
+      <el-row :gutter="12">
+        <el-col :span="12">
+          <el-form-item label="账号列表">
+            <el-select v-model="accountGroupName" clearable filterable placeholder="请选择账号分组" style="width: 100%">
+              <el-option v-for="group in accountGroupOptions" :key="group.id" :label="group.name" :value="group.name"/>
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="Cookie">
+            <el-input v-model="smartLinkConfig.cookie" placeholder="可选"/>
+          </el-form-item>
+        </el-col>
+      </el-row>
+      <el-form-item label="请求头(JSON)">
+        <el-input v-model="smartLinkConfig.headers" type="textarea" :rows="4" placeholder='可选，例如 {"Authorization":"Bearer xxx"}'/>
       </el-form-item>
       <el-form-item label="类型">
         <el-select v-model="smartLinkConfig.open_type" placeholder="选择类型">
-          <template v-for="(value,key) in openTypeList" :key="key">
-            <el-option :label="value.label" :value="value.value"/>
-          </template>
+          <el-option v-for="opt in openTypeList" :key="opt.value" :label="opt.label" :value="opt.value"/>
         </el-select>
       </el-form-item>
       <el-form-item v-if="parseInt(smartLinkConfig.open_type) !== 1" label="浏览器">
-        <el-alert :closable="false" show-icon title="如果选择chrome，那么支持播放视频（其他区别还没发现）但是耗费更多内存，会卡一些" type="info"/>
         <el-select v-model="smartLinkConfig.channel" placeholder="选择类型">
-          <template v-for="(value,key) in channelList" :key="key">
-            <el-option :label="value.label" :value="value.value"/>
-          </template>
+          <el-option v-for="opt in channelList" :key="opt.value" :label="opt.label" :value="opt.value"/>
         </el-select>
       </el-form-item>
-      <el-form-item label="自动关闭">
-        <el-alert :closable="false" show-icon title="多少秒之内没有操作，页面自动关闭，0表示无限" type="info"/>
-        <el-input v-model="smartLinkConfig.auto_close_second" type="text"></el-input>
+      <el-form-item label="自动关闭(秒)">
+        <el-input v-model="smartLinkConfig.auto_close_second" placeholder="0表示无限"/>
       </el-form-item>
       <el-form-item label="打开次数">
-        <el-alert :closable="false" show-icon title="如果只需要打开一个，那么设置为0，否则设置为1，运行时会出现输入框自定义" type="info"/>
-        <el-input v-model="smartLinkConfig.open_num" type="text"></el-input>
+        <el-input v-model="smartLinkConfig.open_num" placeholder="0表示不需要自定义"/>
       </el-form-item>
-      <!--      <el-form-item label="下载匹配项">-->
-      <!--        <el-alert title="哪些请求路由会被定义为下载，英文逗号分割" type="info" show-icon :closable="false"/>-->
-      <!--        <el-input v-model="smartLinkConfig.download_finds" type="textarea" :rows="5"/>-->
-      <!--      </el-form-item>-->
       <el-form-item label="执行逻辑">
-        <el-alert :closable="false" show-icon title="打开链接后执行的流程，切换到编辑执行逻辑页面，可查看执行逻辑" type="info"/>
-        <el-select v-model="smartLinkConfig.process_id" placeholder="选择执行逻辑">
-          <template v-for="(value,key) in processList" :key="key">
-            <el-option :label="value.name" :value="value.id"/>
-          </template>
+        <el-select v-model="smartLinkConfig.process_id" clearable placeholder="选择执行逻辑">
+          <el-option v-for="proc in processList" :key="proc.id" :label="proc.name" :value="proc.id"/>
         </el-select>
       </el-form-item>
-      <el-form-item v-if="dialogSmartLink" label="链接配置" class="smart-link-dialog__link-config">
+      <el-form-item v-if="dialogSmartLink" label="信息提取" class="smart-link-dialog__link-config">
         <LinkConfigEditor v-model="smartLinkConfig" />
       </el-form-item>
       <el-form-item label="排序值">
@@ -195,56 +180,20 @@
   </el-dialog>
 
   <shellResult ref="shellRef" :btnName="'运行日志'" :isRunning="shellController.isRunning" :shellShowResult="shellController.sshResult" :show-model="shellController.showModel"></shellResult>
-  <el-dialog v-model="dialogShowUserPass" title="账号密码列表" width="90%">
-    <el-input v-model="userPassSearchKeyword" clearable placeholder="搜索环境、用户名或密码" style="margin-bottom: 12px" />
-    <el-table
-        :data="filteredUserPassList"
-        border
-        highlight-current-row
-        stripe
-        style="width: 100%"
-    >
-      <el-table-column
-          label="环境"
-          prop="label"
-      ></el-table-column>
-      <el-table-column
-          label="用户名"
-          prop="username"
-      ></el-table-column>
-      <el-table-column
-          label="密码"
-          prop="password"
-      ></el-table-column>
-    </el-table>
-  </el-dialog>
 
-  <el-drawer
-      v-model="drawerVisibleMarkdown"
-      direction="rtl"
-      size="90%"
-      title="文档"
-  >
+  <el-drawer v-model="drawerVisibleMarkdown" direction="rtl" size="90%" title="文档">
     <Markdown v-if="drawerVisibleMarkdown" :markdownType="markdownType"></Markdown>
   </el-drawer>
 
-  <SettingsDialog
-      v-model="accountSettingsVisible"
-      title="账号设置"
-      width="82%"
-      @closed="refreshLinkAfterAccountSettingsClose"
-  >
+  <SettingsDialog v-model="accountSettingsVisible" title="账号设置" width="82%" @closed="refreshLinkAfterAccountSettingsClose">
     <AccountSettingPage @changed="handleAccountSettingsChanged" />
   </SettingsDialog>
 </template>
 <style scoped src="@/css/components/smart_link/link_run.css"></style>
 <script>
 import smart_link_set from "@/utils/base/smart_link_set"
-import base from "@/utils/base";
 import ticker_step from "@/utils/base/ticker_step"
-import t from "@/utils/base/type"
 import Markdown from "@/components/Markdown.vue";
-import Init from "@/utils/base/set_init";
 import Process from '@/utils/base/smart_link_proces'
 import shellResult from "@/components/shell/result_button.vue";
 import sse from "@/utils/base/sse";
@@ -253,17 +202,11 @@ import LinkConfigEditor from "@/components/smart_link/LinkConfigEditor.vue";
 import GitActionButton from "@/components/base/GitActionButton.vue";
 import SettingsDialog from '@/components/base/SettingsDialog.vue'
 import AccountSettingPage from '@/components/set/account.vue'
-import { Plus, Tools, Refresh, Download, QuestionFilled, Setting, Notebook, Delete, User, FolderOpened } from '@element-plus/icons-vue'
-
-const { mergeSavedSmartLinkIntoList } = require('@/utils/smart_link_config_sync.cjs')
-const { DEFAULT_RUNTIME_CONFIG, buildRuntimeApiUrl, buildRuntimeRequestOptions, resolveRuntimeRefreshActions } = require('@/utils/smart_link_runtime.cjs')
+import accountSet from '@/utils/base/account_set'
+import { Plus, Tools, Refresh, Download, QuestionFilled, Delete, User, FolderOpened } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 export default {
-  props: {
-    shellShowResult: {
-      type: String
-    },
-  },
   components: {
     shellResult,
     Markdown,
@@ -272,8 +215,6 @@ export default {
     Refresh,
     Download,
     QuestionFilled,
-    Setting,
-    Notebook,
     Delete,
     User,
     FolderOpened,
@@ -293,11 +234,6 @@ export default {
       },
       drawerVisibleMarkdown: false,
       markdownType: 'Link',
-      dialogShowMarkdown: false,
-      dialogShowUserPass: false,
-      dialogSsePushLog: false,
-      showUserPassList: [],
-      userPassSearchKeyword: '',
       dialogSmartLink: false,
       openTypeList: [
         {label: '通过js直接打开', value: 1},
@@ -309,102 +245,83 @@ export default {
         {label: 'chrome(完整浏览器功能)', value: 'chrome'},
         {label: 'chromium(内存占用低)', value: 'chromium'},
       ],
-      sse_distribute_id : '',
+      sse_distribute_id: '',
       processList: [],
+      groupOptions: [],
+      accountGroupOptions: [],
+      accountGroupName: '',
       smartLinkConfig: {
-        id: 0,
-        name: '',
-        links: '',
-        open_num: 0,
-        open_type: '',
-        status: '',
-        combine_type: 4,
-        weight: 0,
-        download_finds: '',
-        channel: '',
-        show_cookies: '',
-        process_id: 0,
+        id: 0, label: '', link: '', smart_link_group_id: 0,
+        account_list: '', browser_auth_username: '', browser_auth_password: '',
+        cookie: '', headers: '', open_num: 0, open_type: '', channel: '',
+        process_id: 0, download_finds: '', auto_close_second: 0, weight: 0,
+        show_cookies: '', filter_uris: '', combine_type: 4,
       },
       defaultSmartLinkConfig: {
-        id: 0,
-        name: '',
-        links: '',
-        open_num: 0,
-        open_type: '',
-        status: '',
-        combine_type: 4,
-        weight: 0,
-        download_finds: '',
-        channel: '',
-        show_cookies: '',
-        process_id: 0,
+        id: 0, label: '', link: '', smart_link_group_id: 0,
+        account_list: '', browser_auth_username: '', browser_auth_password: '',
+        cookie: '', headers: '', open_num: 0, open_type: '', channel: '',
+        process_id: 0, download_finds: '', auto_close_second: 0, weight: 0,
+        show_cookies: '', filter_uris: '', combine_type: 4,
       },
       name: 'Link',
       smartList: [],
-      smartValue: {},
-      smartLinkProcessList: [],
       smartLinkRunList: {},
       tickerKey: 'link',
       versionInfo: {},
-      //当前选中的配置
-      chooseSmartLinkIndex: 0, //选中的第几个配置
-      //已打开数量
       openPageNum: 0,
-      //是否在安装中
       is_install: 0,
-      // Node.js 安装提示
       node_install_tip: {
         show: false,
         install_url: 'https://nodejs.org/zh-cn/download',
         install_tip: '请先安装 Node.js（建议 LTS 版本），安装完成后刷新当前页面。',
       },
       accountSettingsVisible: false,
-      runtimeConfig: {...DEFAULT_RUNTIME_CONFIG},
+      migrating: false,
     }
   },
   computed: {
-    canExecute() {
-      return !this.node_install_tip.show
-    },
-    filteredUserPassList() {
-      const keyword = this.userPassSearchKeyword.trim().toLowerCase()
-      if (!keyword) return this.showUserPassList
-      return this.showUserPassList.filter(item =>
-        (item.label || '').toLowerCase().includes(keyword) ||
-        (item.username || '').toLowerCase().includes(keyword) ||
-        (item.password || '').toLowerCase().includes(keyword)
-      )
+    // groupedSmartList 将 smartList 按 smart_link_group_id 分组展示
+    groupedSmartList() {
+      const groups = {}
+      // 先按分组收集
+      for (let i = 0; i < this.smartList.length; i++) {
+        const item = this.smartList[i]
+        const gid = Number(item.smart_link_group_id || 0)
+        if (!groups[gid]) {
+          const groupInfo = this.groupOptions.find(g => Number(g.id) === gid)
+          groups[gid] = {
+            groupId: gid,
+            groupName: groupInfo ? groupInfo.name : '未分组',
+            items: [],
+          }
+        }
+        groups[gid].items.push(item)
+      }
+      // 转为数组：有名字的分组在前，未分组(smart_link_group_id=0)在后
+      const result = []
+      for (const gid of Object.keys(groups)) {
+        if (Number(gid) !== 0) result.push(groups[gid])
+      }
+      return result
     },
   },
   mounted: function () {
     this.sse_distribute_id = sseDistribute.GetSseDistributeId('link')
     this.sseCreate()
     this.init()
-    this.refreshRuntimeConfigState()
-  },
-  beforeUnmount() {
   },
   activated() {
-    if (Init.GetIsInit('smart_link') === true) {
-      let _that = this
-      _that.init()
-      Init.DelInit('smart_link')
-    }
-    // 页面从设置页切回时需要重新读取运行模式，否则会继续显示旧的 server 模式。
-    // Reload runtime mode when the page is re-activated so the UI does not stay on stale server mode after settings changes.
+    this.init()
     this.refreshRuntimeConfigState()
   },
   methods: {
     sseCreate: function () {
       let _that = this
-      sseDistribute.RegisterReceive(_that.sse_distribute_id , function (msg,msgType,sseDistributeId){
+      sseDistribute.RegisterReceive(_that.sse_distribute_id, function (msg) {
         if (msg === sse.SseEventClean) {
           _that.shellController.sshResult = ''
-          _that.shellController.sourceSshResult = '';
-        } else if (msg === sse.SseEventLogin) {
-          _that.dialogLoginUserName = true
-        } else if (msg.startsWith(sse.SseEventProcess)) { //准备替换
-          _that.replaceRegex = msg.replace(sse.SseEventProcess, '')
+          _that.shellController.sourceSshResult = ''
         } else {
           _that.shellController.sourceSshResult += msg
           _that.shellController.sshResult = _that.shellController.sourceSshResult
@@ -412,446 +329,274 @@ export default {
       })
     },
     init: function () {
-      let _that = this
-      _that.GetProcessList()
-      _that.GetConfigList()
-      let _height = base.GetDivHeight()
-      _that.windowChange()
-      _that.tickerRunList()
-      _that.SmartLinkChromeVersion()
-      setTimeout(function () {
-        let _height = base.GetDivHeight2()
-        _that.shellController.divHeight = parseInt(_height) - 60
-        _that.windowChange()
-      }, 1000)
+      this.GetProcessList()
+      this.GetConfigList()
+      this.loadAccountGroupOptions()
+      this.tickerRunList()
+      this.SmartLinkChromeVersion()
     },
-    // openAccountSettings 打开账号设置弹窗，在自定义网页页内维护账号与分组。
-    // Open the account settings modal so account and group maintenance stays inside the custom web page.
+    loadAccountGroupOptions() {
+      accountSet.AccountGroupList((response) => {
+        if (response && response.ErrCode === 0 && Array.isArray(response.Data)) {
+          this.accountGroupOptions = response.Data
+        }
+      })
+    },
+    // migrateOldData 点击触发老数据迁移
+    migrateOldData: function () {
+      if (this.migrating) return
+      this.migrating = true
+      smart_link_set.SmartLinkMigrateOldData((response) => {
+        this.migrating = false
+        if (response && response.ErrCode === 0) {
+          const data = response.Data || {}
+          const parts = [`${data.group_count || 0} 个分组`]
+          if (data.process_fixed_count > 0) parts.push(`${data.process_fixed_count} 条执行逻辑已修复`)
+          if (data.group_fixed_count > 0) parts.push(`${data.group_fixed_count} 条分组已修复`)
+          parts.push(`共 ${data.total_links || 0} 链接`)
+          ElMessage.success(`迁移完成：${parts.join('，')}`)
+          this.GetConfigList()
+        } else {
+          ElMessage.error((response && response.ErrMsg) || '迁移失败')
+        }
+      })
+    },
     openAccountSettings: function () {
       this.accountSettingsVisible = true
     },
-    // handleAccountSettingsChanged 账号配置变化后刷新自定义网页配置列表，让账号选择立即生效。
-    // Refresh smart link configs after account settings change so account selections take effect immediately.
     handleAccountSettingsChanged: function () {
       this.GetConfigList()
     },
-    // refreshLinkAfterAccountSettingsClose 在弹窗关闭时再刷新一次，兜底覆盖更多修改路径。
-    // Refresh once more when the modal closes as a fallback for additional account edit flows.
     refreshLinkAfterAccountSettingsClose: function () {
       this.GetConfigList()
     },
-    // applyNodeInstallTip 解析并展示 Node.js 安装提示
     applyNodeInstallTip: function (response) {
-      let _that = this
       let data = response && response.Data ? response.Data : {}
       let needInstall = data.need_install_node === 1
-      _that.node_install_tip.show = needInstall
+      this.node_install_tip.show = needInstall
       if (needInstall) {
-        _that.node_install_tip.install_url = data.install_url || 'https://nodejs.org/zh-cn/download'
-        _that.node_install_tip.install_tip = data.install_tip || '请先安装 Node.js（建议 LTS 版本），安装完成后刷新当前页面。'
+        this.node_install_tip.install_url = data.install_url || 'https://nodejs.org/zh-cn/download'
+        this.node_install_tip.install_tip = data.install_tip || '请先安装 Node.js（建议 LTS 版本），安装完成后刷新当前页面。'
       }
       return needInstall
     },
     SmartLinkChromeVersion: function () {
-      let _that = this
-      smart_link_set.SmartLinkChromeVersion(_that.sse_distribute_id , function (response) {
+      smart_link_set.SmartLinkChromeVersion(this.sse_distribute_id, (response) => {
         if (response.ErrCode === 0) {
-          _that.versionInfo = response.Data.version
-          _that.is_install = response.Data.is_install
-          _that.applyNodeInstallTip(response)
+          this.versionInfo = response.Data.version
+          this.is_install = response.Data.is_install
+          this.applyNodeInstallTip(response)
         } else {
-          if (!_that.applyNodeInstallTip(response)) {
-            _that.$helperNotify.error('失败')
+          if (!this.applyNodeInstallTip(response)) {
+            ElMessage.error('获取版本失败')
           }
         }
       })
     },
-    changeChooseLink: function (smartLinkIndex, linkIndex) {
+    // smartLinkRunItem 执行某个链接 / Execute a single link
+    smartLinkRunItem: function (item) {
       let _that = this
-      _that.chooseSmartLinkIndex = smartLinkIndex
-      _that.smartList[smartLinkIndex].chooseLinkIndex = linkIndex
-      ticker_step.Active(_that.tickerKey)
-    },
-    // loadRuntimeConfig 拉取最新运行模式。
-    // loadRuntimeConfig fetches the latest run mode.
-    loadRuntimeConfig: function () {
-      let _that = this
-      return fetch(
-        buildRuntimeApiUrl(base.GetApiHost(), '/api/smart-link/runtime-config'),
-        buildRuntimeRequestOptions(base.GetSafeToken())
-      )
-        .then(res => res.json())
-        .then(data => {
-          if (data.ErrCode === 0 && data.Data) {
-            const nextState = resolveRuntimeRefreshActions(_that.runtimeConfig, data.Data)
-            _that.runtimeConfig = nextState.runtimeConfig
-          }
-        })
-        .catch(() => {
-          // 使用默认值
-        })
-    },
-    // refreshRuntimeConfigState 在页面初始化和重新激活时同步运行模式。
-    // refreshRuntimeConfigState keeps runtime mode in sync on mount and when the kept-alive page is activated again.
-    refreshRuntimeConfigState: function () {
-      return this.loadRuntimeConfig()
-    },
-    smartLinkRun: function (smartLinkIndex, linkIndex) {
-      let _that = this
-
-      if (smartLinkIndex !== null && smartLinkIndex !== undefined && linkIndex === null) {
-        _that.chooseSmartLinkIndex = smartLinkIndex
-        smartLinkIndex = _that.chooseSmartLinkIndex
-        linkIndex = _that.smartList[_that.chooseSmartLinkIndex].chooseLinkIndex
-      }
-
-      let chooseSmartLink = _that.smartList[smartLinkIndex]
-      let chooseLink = chooseSmartLink.linkList[linkIndex]
-
+      if (!item) return
       let chooseUser = {}
-      for (let i in chooseLink.userList) {
-        if (chooseLink.userList[i].user_name === chooseLink.chooseUserName) {
-          chooseUser = chooseLink.userList[i]
+      if (item.userList && item.userList.length > 0 && item.chooseUserName) {
+        for (let i in item.userList) {
+          if (item.userList[i].user_name === item.chooseUserName) {
+            chooseUser = item.userList[i]
+            break
+          }
         }
       }
       let runParams = {
-        id: chooseSmartLink.id,
-        label: chooseLink.label,
-        user_name: chooseUser.user_name,
-        password: chooseUser.password,
-        open_num: chooseSmartLink.open_num_new,
-        open_type : chooseSmartLink.open_type_new,
-        sse_distribute_id : _that.sse_distribute_id,
+        id: item.id,
+        label: item.label,
+        user_name: chooseUser.user_name || '',
+        password: chooseUser.password || '',
+        open_num: item.open_num_new || item.open_num || 0,
+        open_type: item.open_type_new || item.open_type,
+        sse_distribute_id: _that.sse_distribute_id,
       }
-      smart_link_set.SmartLinkRun(runParams, function (response) {
+      smart_link_set.SmartLinkRun(runParams, (response) => {
         if (response.ErrCode !== 0) {
           if (!_that.applyNodeInstallTip(response)) {
-            _that.$helperNotify.error(response.ErrMsg || '执行失败')
+            ElMessage.error(response.ErrMsg || '执行失败')
           }
           return
         }
         ticker_step.Active(_that.tickerKey)
-      });
-    },
-    tickerRunList: function () {
-      let _that = this
-      ticker_step.Register(_that.tickerKey, 5, function () {
-        _that.runList()
       })
     },
-    processMsg: function (msg) {
-      let _that = this
-      //处理进度
-      const regReceivingObjects = new RegExp(_that.replaceRegex);
-
-      let regList = [regReceivingObjects]
-      let boolFind = false
-      for (let i in regList) {
-        let reg = regList[i]
-        let matchList = msg.match(reg); //收到的消息是否匹配到
-        if (t.IsArray(matchList) && matchList.length > 0) {
-          let strMatchList = _that.shellController.sourceSshResult.match(reg)
-          if (t.IsArray(strMatchList) && strMatchList.length > 0) {
-            _that.shellController.sourceSshResult = _that.shellController.sourceSshResult.replace(reg, matchList[0])
-            boolFind = true
-          }
-        }
-      }
-      if (!boolFind) {
-        _that.shellController.sourceSshResult += msg
-      }
+    tickerRunList: function () {
+      ticker_step.Register(this.tickerKey, 5, () => { this.runList() })
     },
     runList: function () {
-      let _that = this
-      smart_link_set.SmartLinkRunList(_that.sse_distribute_id , function (response) {
+      smart_link_set.SmartLinkRunList(this.sse_distribute_id, (response) => {
         if (response.ErrCode !== 0) {
-          _that.applyNodeInstallTip(response)
+          this.applyNodeInstallTip(response)
           return
         }
         let runList = response.Data
-        _that.openPageNum = 0
-        _that.smartLinkRunList = {};
+        this.openPageNum = 0
+        this.smartLinkRunList = {}
         for (let i in runList) {
-          if (_that.smartLinkRunList[runList[i].name]) {
-            _that.smartLinkRunList[runList[i].name] += runList[i].page_num
+          if (this.smartLinkRunList[runList[i].name]) {
+            this.smartLinkRunList[runList[i].name] += runList[i].page_num
           } else {
-            _that.smartLinkRunList[runList[i].name] = runList[i].page_num
+            this.smartLinkRunList[runList[i].name] = runList[i].page_num
           }
-          _that.openPageNum += runList[i].page_num
+          this.openPageNum += runList[i].page_num
         }
-        //赋值
-        for (let i in _that.smartList) {
-          for (let j in _that.smartList[i].linkList) {
-            _that.smartList[i].linkList[j].runNum = 0
-            for (let runName in _that.smartLinkRunList) {
-              if (runName === "link_id_"+_that.smartList[i].id + "_label_" + _that.smartList[i].linkList[j].label) {
-                _that.smartList[i].linkList[j].runNum = _that.smartLinkRunList[runName]
-              }
-            }
-          }
+        // 为每个链接分配运行数
+        for (let i in this.smartList) {
+          let item = this.smartList[i]
+          let runName = "link_id_" + item.id + "_label_" + item.label
+          item.runNum = this.smartLinkRunList[runName] || 0
         }
-      });
+      })
+    },
+    // formatAccountList 将账号组名格式化为后端协议格式 / Convert account group name to backend format
+    formatAccountList: function (groupName) {
+      const name = String(groupName || '').trim()
+      return name ? `{group:account:${name}}` : ''
+    },
+    // parseAccountGroupName 从后端协议格式解析账号组名 / Parse account group name from backend format
+    parseAccountGroupName: function (accountListValue) {
+      const raw = String(accountListValue || '').trim()
+      const matched = raw.match(/^\{group:account:(.+)\}$/)
+      return matched ? matched[1] : ''
     },
     saveSmartLink: function () {
       let _that = this
-      _that.smartLinkConfig.linkList = JSON.parse(_that.smartLinkConfig.links || '[]')
+      // 构建 account_list 字段
+      _that.smartLinkConfig.account_list = _that.formatAccountList(_that.accountGroupName)
       _that.smartLinkConfig.combine_type = 4
-      smart_link_set.SmartLinkAdd(_that.smartLinkConfig, function (response) {
+      smart_link_set.SmartLinkItemAdd(_that.smartLinkConfig, function (response) {
         if (response.ErrCode === 0) {
-          _that.smartList = mergeSavedSmartLinkIntoList(_that.smartList, response.Data)
           _that.dialogSmartLink = false
+          _that.GetConfigList()
         } else {
-          _that.$helperNotify.error('失败')
+          ElMessage.error('保存失败：' + (response.ErrMsg || ''))
         }
         ticker_step.Active(_that.tickerKey)
       })
     },
-    showEditDialog: function (smartLink) {
-      let _that = this
-      if (smartLink !== undefined) {
-        _that.smartLinkConfig = JSON.parse(JSON.stringify(smartLink))
-      }
-      _that.dialogSmartLink = true
+    showEditDialog: function (item) {
+      this.smartLinkConfig = JSON.parse(JSON.stringify(item))
+      this.accountGroupName = this.parseAccountGroupName(item.account_list || '')
+      this.dialogSmartLink = true
     },
-    showUserPasswordList: function (smartLink) {
-      let linkList = smartLink.linkList
-      let showList = []
-      if (linkList && t.IsArray(linkList)) {
-        for (let i in linkList) {
-          //浏览器自带验证
-          if (linkList[i].browser_auth_username) {
-            showList.push({
-              label: linkList[i].label,
-              username: linkList[i].browser_auth_username,
-              password: linkList[i].browser_auth_password
-            })
-          }
-          //自己设置的账号密码
-          let userList = linkList[i].userList
-          if (userList && t.IsArray(userList)) {
-            for (let j in userList) {
-              showList.push({
-                label: linkList[i].label,
-                username: userList[j].user_name,
-                password: userList[j].password
-              })
-            }
-          }
-        }
-      }
-      this.showUserPassList = showList
-      this.dialogShowUserPass = true
-    },
-    deleteSmartLink: function (smartLink) {
-      let _that = this
-      smart_link_set.SmartLinkDelete(smartLink, function (response) {
+    deleteSmartLinkItem: function (item) {
+      smart_link_set.SmartLinkItemDelete({ id: item.id }, (response) => {
         if (response.ErrCode === 0) {
-          _that.GetConfigList()
+          this.GetConfigList()
         } else {
-          _that.$helperNotify.error('失败')
-        }
-      })
-    },
-    showMarkdown: function () {
-      let _that = this
-      _that.dialogShowMarkdown = true
-    },
-    changeToProcess: function () {
-      let _that = this
-      _that.$emit('changeModelToEditProcess')
-    },
-    changeToFlow : function () {
-      let _that = this
-      _that.$emit('changeModelToFlow')
-    },
-    showDialogRunLog : function (){
-      let _that = this
-      _that.dialogSsePushLog = true
-      setTimeout(function (){
-        // shell.ShellDivToBottom(true)
-      },500)
-    },
-    downloadPath: function () {
-      let _that = this
-      smart_link_set.SmartLinkDownloadPath(_that.sse_distribute_id , function (response) {
-        if (response.ErrCode !== 0) {
-          if (!_that.applyNodeInstallTip(response)) {
-            _that.$helperNotify.error('失败')
-          }
-        }
-      })
-    },
-    openDataDir: function () {
-      let _that = this
-      smart_link_set.SmartLinkOpenDataDir(function (response) {
-        if (response.ErrCode !== 0) {
-          _that.$helperNotify.error(response.ErrMsg || '打开失败')
-        }
-      })
-    },
-    install: function () {
-      let _that = this
-      smart_link_set.SmartLinkChromeUpdate(_that.sse_distribute_id , function (response) {
-        if (response.ErrCode === 0) {
-          _that.GetConfigList()
-          _that.runList()
-        } else {
-          if (!_that.applyNodeInstallTip(response)) {
-            _that.$helperNotify.error('失败')
-          }
-        }
-      })
-    },
-    recycle: function () {
-      let _that = this
-      smart_link_set.SmartLinkRecycle(_that.sse_distribute_id , function (response) {
-        if (response.ErrCode === 0) {
-          _that.GetConfigList()
-          _that.runList()
-        } else {
-          if (!_that.applyNodeInstallTip(response)) {
-            _that.$helperNotify.error('失败')
-          }
+          ElMessage.error('删除失败')
         }
       })
     },
     showCreateDialog: function () {
-      let _that = this
-      _that.smartLinkConfig = JSON.parse(JSON.stringify(_that.defaultSmartLinkConfig))
-      _that.dialogSmartLink = true
+      this.smartLinkConfig = JSON.parse(JSON.stringify(this.defaultSmartLinkConfig))
+      this.accountGroupName = ''
+      this.dialogSmartLink = true
     },
     GetConfigList: function () {
-      let _that = this
-      smart_link_set.SmartLinkList(function (response) {
+      smart_link_set.SmartLinkItemList((response) => {
         if (response.ErrCode === 0) {
-          _that.smartList = response.Data.smart_link_list
-          _that.formatSmartList()
+          // 在赋值给 this.smartList 前初始化 chooseUserName，确保 Vue 2 能追踪属性变化
+          const list = response.Data.smart_link_list || []
+          for (let item of list) {
+            item.open_num_new = item.open_num || 0
+            item.open_type_new = item.open_type || 2
+            item.runNum = 0
+            if (Array.isArray(item.userList) && item.userList.length > 0 && !item.chooseUserName) {
+              item.chooseUserName = item.userList[0].user_name
+            }
+          }
+          // 排序：按 weight 升序
+          list.sort((a, b) => (Number(a.weight) || 0) - (Number(b.weight) || 0))
+          this.smartList = list
+          this.groupOptions = response.Data.group_list || []
         } else {
-          _that.$helperNotify.error('失败')
+          ElMessage.error('获取列表失败')
         }
       })
     },
     GetProcessList: function () {
-      let _that = this
-      Process.SmartProcessList(function (response) {
+      Process.SmartProcessList((response) => {
         if (response.ErrCode === 0) {
-          _that.processList = response.Data.list
-        } else {
-          _that.$helperNotify.error('获取执行列表失败')
+          this.processList = (response.Data && response.Data.list) ? response.Data.list : []
         }
       })
     },
-    windowChange: function () {
-      let _that = this
-      window.addEventListener('resize', function () {
-        let _height = base.GetDivHeight2()
-        _that.shellController.divHeight = parseInt(_height) - 60
-      });
+
+    redirectLink: function (item) {
+      window.open(item.link, '_blank')
+      ticker_step.Active(this.tickerKey)
     },
-    formatSmartList: function () {
-      let _that = this
-      _that.chooseSmartLinkIndex = '0' //默认第一个
-      for (let i in _that.smartList) {
-        _that.smartList[i].linkList = JSON.parse(_that.smartList[i].links)
-        _that.smartList[i].open_num_new = _that.smartList[i].open_num
-        _that.smartList[i].open_type_new = _that.smartList[i].open_type
-        //排序
-        // _that.smartList[i].linkList = arr.SortByKey(this.smartList[i].linkList, 'value', 'asc')
-        //默认选中第一个的第一个
-        if (parseInt(i) === 0) {
-          _that.smartList[i].chooseSmartLinkIndex = _that.smartList[i].linkList[0].value //默认选中第一个的第一个
-          _that.smartList[i].chooseLinkIndex = 0 //默认选中第一个的第一个的账号列表
+    changeToProcess: function () { this.$emit('changeModelToEditProcess') },
+    changeToFlow: function () { this.$emit('changeModelToFlow') },
+    downloadPath: function () {
+      smart_link_set.SmartLinkDownloadPath(this.sse_distribute_id, (response) => {
+        if (response.ErrCode !== 0) {
+          if (!this.applyNodeInstallTip(response)) { ElMessage.error('失败') }
         }
-        //如果有userList 那么默认第一个
-        for (let j in _that.smartList[i].linkList) {
-          if (_that.smartList[i].linkList[j].userList && _that.smartList[i].linkList[j].userList.length > 0 && !_that.smartList[i].linkList[j].chooseUserName) {
-            _that.smartList[i].linkList[j].chooseUserName = _that.smartList[i].linkList[j].userList[0].user_name
-          }
-        }
-      }
+      })
     },
-    redirectLink: function (linkValue) {
-      let _that = this
-      window.open(linkValue.link, '_blank')
-      ticker_step.Active(_that.tickerKey)
-    }
-  }
+    openDataDir: function () {
+      smart_link_set.SmartLinkOpenDataDir((response) => {
+        if (response.ErrCode !== 0) { ElMessage.error(response.ErrMsg || '打开失败') }
+      })
+    },
+    install: function () {
+      smart_link_set.SmartLinkChromeUpdate(this.sse_distribute_id, (response) => {
+        if (response.ErrCode === 0) {
+          this.GetConfigList(); this.runList()
+        } else {
+          if (!this.applyNodeInstallTip(response)) { ElMessage.error('失败') }
+        }
+      })
+    },
+    recycle: function () {
+      smart_link_set.SmartLinkRecycle(this.sse_distribute_id, (response) => {
+        if (response.ErrCode === 0) {
+          this.GetConfigList(); this.runList()
+        } else {
+          if (!this.applyNodeInstallTip(response)) { ElMessage.error('失败') }
+        }
+      })
+    },
+    refreshRuntimeConfigState: function () {},
+  },
 }
 </script>
 
 <style scoped>
-.link-run-page {
-  min-height: calc(100vh - 110px);
-  color: #4a4a4a;
-}
-
-.link-run-header-card {
-  background: #fff;
-  border: 1px solid #e8e8e0;
-  border-radius: 12px;
-  padding: 16px 18px;
-  margin-bottom: 12px;
-}
-
-.link-run-header-title {
-  margin-bottom: 12px;
-}
-
-.link-run-header-title__main {
-  color: #4a4a4a;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.link-run-header-title__desc {
-  margin-top: 6px;
-  color: #74806f;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.link-run-content {
-  padding: 0 2px 2px;
-}
-
-.link-run-toolbar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.link-run-card {
-  min-height: 70px;
-  padding: 14px 14px 12px;
-  margin-bottom: 12px;
-  background: #fff;
-  border: 1px solid #e6e8de;
-  border-radius: 10px;
-  box-sizing: border-box;
-}
-
-.link-run-links-row {
-  margin-top: 15px;
-  margin-bottom: 10px;
-}
-
-.smart-link-dialog :deep(.el-dialog__body) {
-  padding-top: 18px;
-}
-
-.smart-link-dialog__form {
-  width: 100%;
-}
-
-.smart-link-dialog__link-config {
-  width: 100%;
-}
-
-.smart-link-dialog__link-config :deep(.el-form-item__content) {
-  width: 100%;
-  display: block;
-}
+.link-run-page { min-height: calc(100vh - 110px); color: #4a4a4a; }
+.link-run-header-card { background: #fff; border: 1px solid #e8e8e0; border-radius: 12px; padding: 12px 16px; margin-bottom: 10px; }
+.link-run-header-title { margin-bottom: 8px; }
+.link-run-header-title__main { color: #4a4a4a; font-size: 18px; font-weight: 600; }
+.link-run-migrate-tip { font-size: 12px; font-weight: 400; color: #409EFF; cursor: pointer; margin-left: 12px; text-decoration: underline; }
+.link-run-header-title__desc { margin-top: 6px; color: #74806f; font-size: 13px; line-height: 1.6; }
+.link-run-content { padding: 0 2px 2px; }
+.link-run-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+/* 分组卡片 */
+.link-run-card { padding: 10px 10px 8px; margin-bottom: 10px; background: #fff; border: 1px solid #e6e8de; border-radius: 10px; }
+/* 分组头 */
+.link-group-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.link-group-name { font-size: 15px; font-weight: bold; cursor: pointer; text-decoration: underline; color: #333; }
+.link-group-count { font-size: 11px; color: #999; }
+/* 链接行 */
+.link-run-links-row { margin: 0; }
+/* 网格链接项 */
+.link-grid-item { padding: 8px 10px; border: 1px solid #e8ece0; border-radius: 6px; background: #fafbf7; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
+.link-grid-item__row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.link-grid-item__row--top { justify-content: space-between; }
+.link-grid-item__label { font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: underline; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.link-grid-item__top-right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.link-grid-item__run-num { font-size: 10px; color: green; white-space: nowrap; }
+.link-account-select { width: 140px; }
+.link-grid-item__exec { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.smart-link-dialog :deep(.el-dialog__body) { padding-top: 18px; }
+.smart-link-dialog__form { width: 100%; }
+.smart-link-dialog__link-config { width: 100%; }
+.smart-link-dialog__link-config :deep(.el-form-item__content) { width: 100%; display: block; }
 </style>
-
-

@@ -335,7 +335,7 @@ const commandConfig = [
     path: '/Link',
     action: 'linkRun',
     needTarget: true,
-    dynamicChildren: 'linkEnvList'
+    dynamicChildren: 'linkList'
   }
 ]
 
