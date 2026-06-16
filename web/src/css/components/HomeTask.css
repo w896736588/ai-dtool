@@ -38,16 +38,16 @@
   gap: 8px;
 }
 
-.home-task-tabs-bar {
+.home-task-content {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
-  border: 1px solid #e8e8e0;
-  border-radius: 12px;
   padding: 0 18px;
-  overflow: hidden;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-color: #b0c8a0 #eef3e8;
+  scrollbar-width: thin;
 }
 
 .home-task-form {
@@ -91,35 +91,23 @@
   color: #456c45;
 }
 
-.home-task-list {
-  height: 100%;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.home-task-list::-webkit-scrollbar {
+.home-task-content::-webkit-scrollbar {
   width: 6px;
 }
 
-.home-task-list::-webkit-scrollbar-track {
+.home-task-content::-webkit-scrollbar-track {
   background: #eef3e8;
   border-radius: 999px;
 }
 
-.home-task-list::-webkit-scrollbar-thumb {
+.home-task-content::-webkit-scrollbar-thumb {
   background: #b0c8a0;
   border-radius: 999px;
   opacity: 0.7;
 }
 
-.home-task-list::-webkit-scrollbar-thumb:hover {
+.home-task-content::-webkit-scrollbar-thumb:hover {
   background: #96b386;
-}
-
-.home-task-list {
-  scrollbar-color: #b0c8a0 #eef3e8;
-  scrollbar-width: thin;
 }
 
 .home-task-empty {
@@ -507,11 +495,184 @@
     flex-wrap: wrap;
   }
 
-  .home-task-tabs-bar {
+  .home-task-content {
     padding: 0 14px;
   }
 
   .home-task-card__header {
     flex-direction: column;
   }
+}
+
+/* ========== 状态管理面板 ========== */
+.home-task-body {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  min-height: 0;
+}
+
+.home-task-status-panel {
+  width: 220px;
+  min-width: 220px;
+  background: #ffffff;
+  border: 1px solid #e8e8e0;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.home-task-status-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e8e8e0;
+}
+
+.home-task-status-panel__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4a4a4a;
+}
+
+.home-task-status-panel__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-task-status-panel__list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.home-task-status-panel__list::-webkit-scrollbar-thumb {
+  background: #d0d8c8;
+  border-radius: 999px;
+}
+
+.home-task-status-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  margin-bottom: 2px;
+  transition: background 0.15s;
+  cursor: pointer;
+}
+
+.home-task-status-item:hover {
+  background: #f3f5ef;
+}
+
+.home-task-status-item--active {
+  background: #eaf0e4 !important;
+  font-weight: 600;
+}
+
+.home-task-status-item--active .home-task-status-item__name {
+  color: #3a5a3a;
+}
+
+.home-task-status-item--active .home-task-status-item__count {
+  background: #d4e0cf;
+  color: #3a5a3a;
+}
+
+.home-task-status-item--archived {
+  margin-top: auto;
+  border-top: 1px solid #e8e8e0;
+  padding-top: 10px;
+}
+
+.home-task-status-item__name {
+  font-size: 13px;
+  color: #3a3a3a;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-task-status-item__count {
+  font-size: 11px;
+  color: #999;
+  background: #f0f0eb;
+  border-radius: 10px;
+  padding: 1px 7px;
+  min-width: 20px;
+  text-align: center;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.home-task-status-item__more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: #bbb;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.home-task-status-item:hover .home-task-status-item__more {
+  opacity: 1;
+}
+
+.home-task-status-item__more:hover {
+  background: #e8e8e0;
+  color: #666;
+}
+
+.home-task-status-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.home-task-status-popover__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #4a4a4a;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.home-task-status-popover__item:hover {
+  background: #f3f5ef;
+}
+
+.home-task-status-popover__item--disabled {
+  color: #ccc;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.home-task-status-popover__item--danger {
+  color: #e05252;
+}
+
+.home-task-status-popover__item--danger:hover {
+  background: #fef0f0;
+}
+
+/* 右侧任务内容区 */
+.home-task-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }

@@ -114,6 +114,26 @@ function HomeTaskPageDataBranchCheck(clientId, items, callBack) {
   ssePost('/api/HomeTaskPageDataBranchCheck', { client_id: clientId, items: items }, callBack)
 }
 
+// TaskStatusList 查询所有任务状态。
+function TaskStatusList(callBack) {
+  base.BasePost('/api/TaskStatusList', {}, callBack)
+}
+
+// TaskStatusSave 新增或编辑任务状态。
+function TaskStatusSave(data, callBack) {
+  base.BasePost('/api/TaskStatusSave', data, callBack)
+}
+
+// TaskStatusDelete 删除任务状态。
+function TaskStatusDelete(id, callBack) {
+  base.BasePost('/api/TaskStatusDelete', { id: id }, callBack)
+}
+
+// TaskStatusSort 更新任务状态排序。
+function TaskStatusSort(ids, callBack) {
+  base.BasePost('/api/TaskStatusSort', { ids: ids }, callBack)
+}
+
 // LocalBranchBatchCheck 批量检查本地目录当前 Git 分支是否与期望分支匹配。
 function LocalBranchBatchCheck(items, callBack) {
   base.BasePost('/api/Set/LocalBranchBatchCheck', { items: items }, callBack)
@@ -162,4 +182,8 @@ export default {
   HomeTaskPageDataLoad,
   HomeTaskPageDataDirCheck,
   HomeTaskPageDataBranchCheck,
+  TaskStatusList,
+  TaskStatusSave,
+  TaskStatusDelete,
+  TaskStatusSort,
 }

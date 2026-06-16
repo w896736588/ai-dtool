@@ -1530,6 +1530,7 @@ export default {
   mounted() {
     this.loadWorkflowPage()
     this.loadTaskConfigLookupData()
+    this.loadTaskStatusList()
     this.ensureWorkflowUnreadSse()
     this.connectBusinessSse()
     this.registerFragmentUpdateSse()
@@ -1680,6 +1681,16 @@ export default {
           this.maybeAutoFetchRequirement()
         })
         this.loadChatCounts()
+      })
+    },
+    loadTaskStatusList() {
+      homeTaskApi.TaskStatusList((response) => {
+        if (response && response.ErrCode === 0 && response.Data) {
+          const list = Array.isArray(response.Data.list) ? response.Data.list : []
+          if (list.length > 0) {
+            this.taskStatusOptions = list.map(s => s.name)
+          }
+        }
       })
     },
     applyWorkflowPayload(data) {

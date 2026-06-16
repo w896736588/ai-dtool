@@ -41,6 +41,7 @@ func InitRouter(tGin *p_gin.Gin) {
 	setMarkdown(tGin)
 	setMemoryFragment(tGin)
 	homeTask(tGin)
+	taskStatus(tGin)
 	taskWorkflow(tGin)
 	workflowTemplate(tGin)
 	shellOut(tGin)
@@ -352,6 +353,14 @@ func homeTask(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/HomeTaskPageDataLoad`, controller.HomeTaskPageDataLoad)
 	tGin.GinPost(`/api/HomeTaskPageDataDirCheck`, controller.CheckAndPushLocalDirs)
 	tGin.GinPost(`/api/HomeTaskPageDataBranchCheck`, controller.CheckAndPushBranchStatus)
+}
+
+// taskStatus 任务状态管理路由
+func taskStatus(tGin *p_gin.Gin) {
+	tGin.GinPost(`/api/TaskStatusList`, controller.TaskStatusList)
+	tGin.GinPost(`/api/TaskStatusSave`, controller.TaskStatusSave)
+	tGin.GinPost(`/api/TaskStatusDelete`, controller.TaskStatusDelete)
+	tGin.GinPost(`/api/TaskStatusSort`, controller.TaskStatusSort)
 }
 
 func taskWorkflow(tGin *p_gin.Gin) {

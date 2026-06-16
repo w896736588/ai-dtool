@@ -21,19 +21,91 @@
       </div>
     </div>
 
-    <div class="home-task-tabs-bar">
-      <el-tabs v-model="homeTaskActiveTab" class="home-task-tabs" @tab-change="handleHomeTaskTabChange">
-        <el-tab-pane :label="'活跃中 (' + homeTaskActiveList.length + ')'" :name="HOME_TASK_TAB_ACTIVE">
-          <div v-loading="homeTaskLoadingActive" class="home-task-list">
-            <div v-if="homeTaskActiveList.length === 0" class="home-task-empty">
-              当前没有未归档任务
-            </div>
-            <div
-              v-for="task in homeTaskActiveList"
-              :key="task.id"
-              class="home-task-card"
-              :class="{ 'edit-success': !!homeTaskEditFeedbackMap[task.id] }"
+    <div class="home-task-body">
+      <!-- 左侧状态管理面板 -->
+      <div class="home-task-status-panel">
+        <div class="home-task-status-panel__header">
+          <span class="home-task-status-panel__title">任务状态管理</span>
+          <el-button size="small" type="primary" text @click="openAddTaskStatusDialog">
+            + 新增
+          </el-button>
+        </div>
+        <div class="home-task-status-panel__list">
+          <!-- 固定项：活跃中 -->
+          <div
+            class="home-task-status-item"
+            :class="{ 'home-task-status-item--active': selectedStatus === HOME_TASK_SELECTED_ACTIVE }"
+            @click="handleStatusClick(HOME_TASK_SELECTED_ACTIVE)"
+          >
+            <span class="home-task-status-item__name">活跃中</span>
+            <span class="home-task-status-item__count">{{ homeTaskActiveList.length }}</span>
+            <span class="home-task-status-item__more" style="visibility:hidden;pointer-events:none;"></span>
+          </div>
+          <!-- 动态状态列表 -->
+          <div
+            v-for="(status, idx) in taskStatusList"
+            :key="status.id"
+            class="home-task-status-item"
+            :class="{ 'home-task-status-item--active': selectedStatus === status.name }"
+            @click="handleStatusClick(status.name)"
+          >
+            <span class="home-task-status-item__name">{{ status.name }}</span>
+            <span class="home-task-status-item__count">{{ taskStatusCountMap[status.name] || 0 }}</span>
+            <el-popover
+              placement="right-start"
+              :width="120"
+              trigger="click"
             >
+              <template #reference>
+                <span class="home-task-status-item__more" @click.stop>
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                </span>
+              </template>
+              <div class="home-task-status-popover">
+                <div class="home-task-status-popover__item" @click.stop="openEditTaskStatusDialog(status)">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                  <span>编辑</span>
+                </div>
+                <div class="home-task-status-popover__item" :class="{ 'home-task-status-popover__item--disabled': idx === 0 }" @click.stop="idx > 0 && moveTaskStatusUp(idx)">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+                  <span>上移</span>
+                </div>
+                <div class="home-task-status-popover__item" :class="{ 'home-task-status-popover__item--disabled': idx === taskStatusList.length - 1 }" @click.stop="idx < taskStatusList.length - 1 && moveTaskStatusDown(idx)">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                  <span>下移</span>
+                </div>
+                <div class="home-task-status-popover__item home-task-status-popover__item--danger" @click.stop="deleteTaskStatus(status)">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  <span>删除</span>
+                </div>
+              </div>
+            </el-popover>
+          </div>
+          <!-- 固定项：已归档 -->
+          <div
+            class="home-task-status-item home-task-status-item--archived"
+            :class="{ 'home-task-status-item--active': selectedStatus === HOME_TASK_SELECTED_ARCHIVED }"
+            @click="handleStatusClick(HOME_TASK_SELECTED_ARCHIVED)"
+          >
+            <span class="home-task-status-item__name">已归档</span>
+            <span class="home-task-status-item__count">{{ homeTaskArchivedTotal }}</span>
+            <span class="home-task-status-item__more" style="visibility:hidden;pointer-events:none;"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧任务列表 -->
+      <!-- 活跃中 / 按状态筛选 -->
+      <div v-loading="homeTaskLoadingActive" class="home-task-content">
+        <div v-if="filteredTaskList.length === 0" class="home-task-empty">
+          {{ selectedStatus === HOME_TASK_SELECTED_ACTIVE ? '当前没有未归档任务' : '当前没有"' + selectedStatus + '"状态的任务' }}
+        </div>
+        <div
+          v-for="task in filteredTaskList"
+          :key="task.id"
+          class="home-task-card"
+          :class="{ 'edit-success': !!homeTaskEditFeedbackMap[task.id] }"
+        >
               <div class="home-task-card__header">
                 <div>
                   <div class="home-task-card__title">
@@ -153,19 +225,18 @@
                 </div>
               </div>
             </div>
-          </div>
-        </el-tab-pane>
-        <el-tab-pane :label="'归档 (' + homeTaskArchivedTotal + ')'" :name="HOME_TASK_TAB_ARCHIVED">
-          <div v-loading="homeTaskLoadingArchived" class="home-task-list" ref="archivedListRef" @scroll="handleArchivedScroll">
-            <div v-if="homeTaskArchivedList.length === 0 && !homeTaskLoadingArchived" class="home-task-empty">
-              当前没有归档任务
-            </div>
-            <div
-              v-for="task in homeTaskArchivedList"
-              :key="task.id"
-              class="home-task-card home-task-card--archived"
-              :class="{ 'edit-success': !!homeTaskEditFeedbackMap[task.id] }"
-            >
+      </div>
+      <!-- 已归档任务列表 -->
+      <div v-if="isArchivedMode" v-loading="homeTaskLoadingArchived" class="home-task-content" ref="archivedListRef" @scroll="handleArchivedScroll">
+        <div v-if="homeTaskArchivedList.length === 0 && !homeTaskLoadingArchived" class="home-task-empty">
+          当前没有归档任务
+        </div>
+        <div
+          v-for="task in homeTaskArchivedList"
+          :key="task.id"
+          class="home-task-card home-task-card--archived"
+          :class="{ 'edit-success': !!homeTaskEditFeedbackMap[task.id] }"
+        >
               <div class="home-task-card__header">
                 <div>
                   <div class="home-task-card__title">
@@ -295,18 +366,15 @@
                 </div>
               </div>
                           </div>
-          </div>
-          <div v-if="homeTaskArchivedTotal > homeTaskArchivedPageSize" class="home-task-pagination">
-            <div v-if="homeTaskArchivedLoadingMore" class="home-task-loading-more">
-              <i class="el-icon-loading" style="margin-right:6px"></i>加载中...
-            </div>
-            <div v-else-if="homeTaskArchivedNoMore" class="home-task-no-more">
-              已加载全部 {{ homeTaskArchivedTotal }} 条归档任务
-            </div>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
-    </div>
+      </div>
+      <div v-if="homeTaskArchivedTotal > homeTaskArchivedPageSize" class="home-task-pagination">
+        <div v-if="homeTaskArchivedLoadingMore" class="home-task-loading-more">
+          <i class="el-icon-loading" style="margin-right:6px"></i>加载中...
+        </div>
+        <div v-else-if="homeTaskArchivedNoMore" class="home-task-no-more">
+          已加载全部 {{ homeTaskArchivedTotal }} 条归档任务
+        </div>
+      </div>
 
     <el-dialog
       v-model="homeTaskDialogVisible"
@@ -708,6 +776,38 @@
       </template>
     </el-dialog>
 
+    <!-- 状态编辑弹窗 -->
+    <el-dialog
+      v-model="taskStatusDialogVisible"
+      :title="taskStatusDialogTitle"
+      width="420px"
+      top="25vh"
+      destroy-on-close
+    >
+      <el-form label-width="72px" @submit.prevent>
+        <el-form-item label="状态名称">
+          <el-input
+            v-model="taskStatusForm.name"
+            maxlength="50"
+            placeholder="例如：待开始"
+            @keyup.enter="saveTaskStatus"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="home-task-dialog__footer">
+          <GitActionButton compact variant="info" @click="taskStatusDialogVisible = false">
+            取消
+          </GitActionButton>
+          <GitActionButton compact :loading="taskStatusSaving" @click="saveTaskStatus">
+            保存
+          </GitActionButton>
+        </div>
+      </template>
+    </el-dialog>
+
+    </div><!-- /home-task-body -->
+
   </div>
 </template>
 
@@ -727,6 +827,8 @@ import GitActionButton from "@/components/base/GitActionButton.vue"
 
 const HOME_TASK_TAB_ACTIVE = 'active'
 const HOME_TASK_TAB_ARCHIVED = 'archived'
+const HOME_TASK_SELECTED_ACTIVE = 'active'
+const HOME_TASK_SELECTED_ARCHIVED = 'archived'
 const HOME_TASK_ARCHIVED_NO = 0
 const HOME_TASK_ARCHIVED_YES = 1
 const HOME_TASK_ARCHIVED_ALL = -1
@@ -827,6 +929,8 @@ export default {
     return {
       HOME_TASK_TAB_ACTIVE,
       HOME_TASK_TAB_ARCHIVED,
+      HOME_TASK_SELECTED_ACTIVE,
+      HOME_TASK_SELECTED_ARCHIVED,
       HOME_TASK_ARCHIVED_NO,
       HOME_TASK_ARCHIVED_YES,
       HOME_TASK_OPERATE_STATUS,
@@ -843,7 +947,7 @@ export default {
       HOME_TASK_FETCH_TYPE_TAPD,
       HOME_TASK_FETCH_TYPE_ZENTAO,
       HOME_TASK_DEFAULT_WORKFLOW_FRAGMENT_FOLDER,
-      homeTaskActiveTab: HOME_TASK_TAB_ACTIVE,
+      selectedStatus: HOME_TASK_SELECTED_ACTIVE,
       homeTaskDialogVisible: false,
       homeTaskLoadingActive: false,
       homeTaskLoadingArchived: false,
@@ -859,7 +963,6 @@ export default {
       homeTaskArchivedLoaded: false,
       homeTaskArchivedLoadingMore: false,
       homeTaskArchivedNoMore: false,
-      homeTaskStatusOptions: HOME_TASK_STATUS_OPTIONS,
       homeTaskForm: createHomeTaskDefaultForm(),
       homeTaskExpandedFragments: {},
       homeTaskEditFeedbackMap: {},
@@ -893,11 +996,35 @@ export default {
         { key: 'branch_name', label: '分支名' },
         { key: 'local_dir', label: '本地目录' },
       ],
+      // 任务状态管理
+      taskStatusList: [],
+      taskStatusLoading: false,
+      taskStatusDialogVisible: false,
+      taskStatusSaving: false,
+      taskStatusForm: { id: 0, name: '' },
     }
   },
   computed: {
     homeTaskDialogTitle() {
       return this.homeTaskForm.id > 0 ? '编辑任务' : '新增任务'
+    },
+    homeTaskStatusOptions() {
+      if (this.taskStatusList.length > 0) {
+        return this.taskStatusList.map(s => s.name)
+      }
+      // 兜底：使用默认选项
+      return HOME_TASK_STATUS_OPTIONS
+    },
+    taskStatusDialogTitle() {
+      return this.taskStatusForm.id > 0 ? '编辑状态' : '新增状态'
+    },
+    taskStatusCountMap() {
+      const map = {}
+      for (const task of this.homeTaskActiveList) {
+        const s = task.task_status || ''
+        map[s] = (map[s] || 0) + 1
+      }
+      return map
     },
     homeTaskGitRepoGroupedOptions() {
       const groupMap = {}
@@ -912,6 +1039,15 @@ export default {
       }
       return groupOrder.map(name => ({ label: name, options: groupMap[name] }))
     },
+    isArchivedMode() {
+      return this.selectedStatus === HOME_TASK_SELECTED_ARCHIVED
+    },
+    filteredTaskList() {
+      if (this.selectedStatus === HOME_TASK_SELECTED_ACTIVE) {
+        return this.homeTaskActiveList
+      }
+      return this.homeTaskActiveList.filter(t => t.task_status === this.selectedStatus)
+    },
   },
   mounted() {
     // 仅注册 SSE 监听；数据加载由 activated() 统一处理
@@ -925,6 +1061,7 @@ export default {
     // 默认只加载活跃任务；归档数量通过轻量接口获取，归档数据点击 tab 时才懒加载
     this.loadHomeTaskCounts()
     this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
+    this.loadTaskStatusList()
   },
   beforeUnmount() {
     this.unregisterWorkflowUnreadSse()
@@ -1136,9 +1273,11 @@ export default {
         })
       })
     },
-    handleHomeTaskTabChange(tabName) {
-      // 切换到归档 tab 时，首次懒加载归档数据
-      if (tabName === HOME_TASK_TAB_ARCHIVED && !this.homeTaskArchivedLoaded) {
+    handleStatusClick(statusKey) {
+      if (this.selectedStatus === statusKey) return
+      this.selectedStatus = statusKey
+      // 切换到归档时，首次懒加载归档数据
+      if (statusKey === HOME_TASK_SELECTED_ARCHIVED && !this.homeTaskArchivedLoaded) {
         this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES, 1, this.homeTaskArchivedPageSize)
       }
     },
@@ -1220,8 +1359,8 @@ export default {
       this.homeTaskArchivedLoadingMore = false
       this.loadHomeTaskCounts()
       this.loadHomeTaskList(HOME_TASK_ARCHIVED_NO)
-      // 如果当前正在查看归档 tab，也需要刷新归档列表
-      if (this.homeTaskActiveTab === HOME_TASK_TAB_ARCHIVED) {
+      // 如果当前正在查看归档，也需要刷新归档列表
+      if (this.selectedStatus === HOME_TASK_SELECTED_ARCHIVED) {
         this.loadHomeTaskList(HOME_TASK_ARCHIVED_YES, 1, this.homeTaskArchivedPageSize)
       }
     },
@@ -2170,6 +2309,88 @@ export default {
     copyUnusedLocalDir(dir) {
       navigator.clipboard.writeText(dir).then(() => {
         this.$message.success('已复制')
+      })
+    },
+    // ========== 任务状态管理 ==========
+    loadTaskStatusList() {
+      homeTaskApi.TaskStatusList((response) => {
+        if (response && response.ErrCode === 0 && response.Data) {
+          this.taskStatusList = Array.isArray(response.Data.list) ? response.Data.list : []
+        }
+      })
+    },
+    openAddTaskStatusDialog() {
+      this.taskStatusForm = { id: 0, name: '' }
+      this.taskStatusDialogVisible = true
+    },
+    openEditTaskStatusDialog(status) {
+      this.taskStatusForm = { id: status.id, name: status.name }
+      this.taskStatusDialogVisible = true
+    },
+    saveTaskStatus() {
+      const name = (this.taskStatusForm.name || '').trim()
+      if (!name) {
+        this.$message.warning('状态名称不能为空')
+        return
+      }
+      const sortOrder = this.taskStatusForm.id > 0
+        ? undefined
+        : this.taskStatusList.length
+      this.taskStatusSaving = true
+      homeTaskApi.TaskStatusSave({
+        id: this.taskStatusForm.id,
+        name: name,
+        sort_order: sortOrder,
+      }, (response) => {
+        this.taskStatusSaving = false
+        if (response && response.ErrCode === 0 && response.Data) {
+          this.taskStatusList = Array.isArray(response.Data.list) ? response.Data.list : []
+          this.taskStatusDialogVisible = false
+          this.$message.success(this.taskStatusForm.id > 0 ? '状态已更新' : '状态已添加')
+        } else {
+          this.$message.error(response?.ErrMsg || '保存失败')
+        }
+      })
+    },
+    deleteTaskStatus(status) {
+      this.$confirm(`确定要删除状态"${status.name}"吗？`, '确认删除', {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }).then(() => {
+        homeTaskApi.TaskStatusDelete(status.id, (response) => {
+          if (response && response.ErrCode === 0 && response.Data) {
+            this.taskStatusList = Array.isArray(response.Data.list) ? response.Data.list : []
+            this.$message.success('状态已删除')
+          } else {
+            this.$message.error(response?.ErrMsg || '删除失败')
+          }
+        })
+      }).catch(() => {})
+    },
+    moveTaskStatusUp(idx) {
+      if (idx <= 0) return
+      const ids = this.taskStatusList.map(s => s.id)
+      const tmp = ids[idx]
+      ids[idx] = ids[idx - 1]
+      ids[idx - 1] = tmp
+      this.saveTaskStatusSort(ids)
+    },
+    moveTaskStatusDown(idx) {
+      if (idx >= this.taskStatusList.length - 1) return
+      const ids = this.taskStatusList.map(s => s.id)
+      const tmp = ids[idx]
+      ids[idx] = ids[idx + 1]
+      ids[idx + 1] = tmp
+      this.saveTaskStatusSort(ids)
+    },
+    saveTaskStatusSort(ids) {
+      homeTaskApi.TaskStatusSort(ids, (response) => {
+        if (response && response.ErrCode === 0 && response.Data) {
+          this.taskStatusList = Array.isArray(response.Data.list) ? response.Data.list : []
+        } else {
+          this.$message.error(response?.ErrMsg || '排序失败')
+        }
       })
     },
   },

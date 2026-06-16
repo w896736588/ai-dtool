@@ -348,9 +348,13 @@ func normalizeHomeTaskStartTime(startTime int64) int64 {
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
 }
 
-// isValidHomeTaskStatus 校验首页任务状态是否合法。
+// isValidHomeTaskStatus 校验首页任务状态是否合法（从数据库动态读取）。
 func isValidHomeTaskStatus(taskStatus string) bool {
-	for _, item := range define.HomeTaskStatusList {
+	names, err := DbMain.TaskStatusNames()
+	if err != nil {
+		return false
+	}
+	for _, item := range names {
 		if item == taskStatus {
 			return true
 		}
@@ -476,6 +480,89 @@ func (h *CSqlite) HomeTaskFragmentReferences(fragmentIDs []string) (map[string][
 	}
 
 	return result, nil
+}
+
+// TaskStatusList 查询所有任务状态，按 sort_order 升序排列。
+func (h *CSqlite) TaskStatusList() ([]map[string]any, error) {
+	return h.Client.QuickQuery(`tbl_task_status`, `*`, nil).Order(`sort_order asc, id asc`).All()
+}
+
+// TaskStatusSave 新增或编辑任务状态。
+func (h *CSqlite) TaskStatusSave(id int, name string, sortOrder int) ([]map[string]any, error) {
+	name = strings.TrimSpace(name)
+	if name == `` {
+		return nil, errors.New(`状态名称不能为空`)
+	}
+	now := time.Now().Unix()
+	if id > 0 {
+		// 编辑
+		_, err := h.Client.QuickUpdate(`tbl_task_status`, map[string]any{
+			`id`: id,
+		}, map[string]any{
+			`name`:        name,
+			`sort_order`:  sortOrder,
+			`update_time`: now,
+		}).Exec()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// 新增
+		_, err := h.Client.QuickCreate(`tbl_task_status`, map[string]any{
+			`name`:        name,
+			`sort_order`:  sortOrder,
+			`create_time`: now,
+			`update_time`: now,
+		}).Exec()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return h.TaskStatusList()
+}
+
+// TaskStatusDelete 删除任务状态。
+func (h *CSqlite) TaskStatusDelete(id int) error {
+	if id <= 0 {
+		return errors.New(`状态id不能为空`)
+	}
+	_, err := h.Client.QuickDelete(`tbl_task_status`, map[string]any{
+		`id`: id,
+	}).Exec()
+	return err
+}
+
+// TaskStatusSort 批量更新任务状态排序。
+func (h *CSqlite) TaskStatusSort(ids []int) error {
+	if len(ids) == 0 {
+		return errors.New(`排序列表不能为空`)
+	}
+	now := time.Now().Unix()
+	for i, id := range ids {
+		_, err := h.Client.QuickUpdate(`tbl_task_status`, map[string]any{
+			`id`: id,
+		}, map[string]any{
+			`sort_order`:  i,
+			`update_time`: now,
+		}).Exec()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// TaskStatusNames 获取所有任务状态名称列表（用于校验）。
+func (h *CSqlite) TaskStatusNames() ([]string, error) {
+	list, err := h.TaskStatusList()
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(list))
+	for _, item := range list {
+		names = append(names, cast.ToString(item[`name`]))
+	}
+	return names, nil
 }
 
 // HomeTaskContainsFragmentID 检查指定知识片段是否属于指定任务。
