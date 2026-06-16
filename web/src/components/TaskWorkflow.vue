@@ -497,10 +497,10 @@
                   :key="doc.id || doc.name"
                   type="button"
                   class="step-tab-btn"
-                  :class="{ 'step-tab-btn--active': stepActiveTab === (doc.id || doc.name), 'step-tab-btn--doc': true }"
+                  :class="{ 'step-tab-btn--active': stepActiveTab === (doc.id || doc.name), 'step-tab-btn--doc': true, 'step-tab-btn--unread': docUnreadFlags[doc.id || doc.name] }"
                   :title="doc.name"
                   @click="switchToDocTab(doc)"
-                >{{ doc.name }}</button>
+                ><span class="step-tab-btn__dot" v-if="docUnreadFlags[doc.id || doc.name]"></span>{{ doc.name }}</button>
               </div>
               <div class="step-tab-content">
                 <!-- 提示词 Tab -->
@@ -1392,6 +1392,7 @@ export default {
       promptEditMode: true, // 提示词是否为编辑模式（false为查看模式）
       docEditMode: false, // 文档Tab是否为编辑模式（false为查看模式）
       stepDocContents: {}, // 文档内容缓存 { docKey: { content, loading, fileId } }
+      docUnreadFlags: {}, // 文档未读红点标记 { docKey: true } — SSE 推送后置位，切换Tab时清除
       stepPromptTitle: '', // 提示词Tab标题（可编辑）
       stepDocTitle: '', // 文档Tab标题（可编辑）
       // 文档编辑/搜索/分享/历史
@@ -1867,7 +1868,13 @@ export default {
     handleMemoryFragmentUpdateForWorkflow(payload) {
       const fragmentId = String(payload?.fragment_id || payload?.fragment?.id || payload?.fragment?.file_id || '').trim()
       if (!fragmentId) return
+      // 查找该 fileId 对应的文档 key（用于未读红点标记）
+      const docKey = this.findDocKeyByFileId(fragmentId)
       this.reloadDocContentByFileId(fragmentId)
+      // 如果不是当前正在查看的文档，则标记未读红点
+      if (docKey && docKey !== this.stepActiveTab) {
+        this.docUnreadFlags = { ...this.docUnreadFlags, [docKey]: true }
+      }
     },
     maybeAutoFetchRequirement() {
       if (this.requirementFetchAutoTriggered) {
@@ -3292,6 +3299,10 @@ export default {
       const docKey = doc.id || doc.name
       this.stepActiveTab = docKey
       this.stepDocTitle = doc.name || ''
+      // 清除该文档的未读红点
+      if (this.docUnreadFlags[docKey]) {
+        this.docUnreadFlags = { ...this.docUnreadFlags, [docKey]: false }
+      }
       this.loadDocContentIfNeeded(doc)
     },
     // 按需加载文档的知识片段内容
@@ -3785,6 +3796,45 @@ export default {
         cancelAnimationFrame(this._docPreviewScrollRafId)
         this._docPreviewScrollRafId = 0
       }
+    },
+    // 根据 fileId 反向查找文档 key（用于未读红点标记）
+    findDocKeyByFileId(fileId) {
+      if (!fileId) return null
+      const fid = String(fileId)
+      // 1. 先从已加载的 stepDocContents 中查找（快速路径）
+      for (const docKey of Object.keys(this.stepDocContents)) {
+        if (String(this.stepDocContents[docKey]?.fileId || '') === fid) return docKey
+      }
+      // 2. 从 workflowDocuments 构建反向映射（file_id → document_id / document_name）
+      const fidToDocId = {}
+      const fidToDocName = {}
+      for (const wd of this.workflowDocuments) {
+        const wFid = String(wd.file_id || '')
+        if (!wFid) continue
+        if (wd.document_id) fidToDocId[wFid] = String(wd.document_id)
+        if (wd.document_name) fidToDocName[wFid] = String(wd.document_name)
+      }
+      // 3. 遍历所有模板步骤的文档，匹配 fileId
+      for (const step of (this._cachedTemplateSteps || [])) {
+        const docs = this.parseStepDocumentsRaw(step)
+        for (const doc of docs) {
+          const docId = String(doc.id || '')
+          const docName = String(doc.name || '')
+          if ((docId && fidToDocId[fid] === docId) || (docName && fidToDocName[fid] === docName)) {
+            return docId || docName
+          }
+        }
+      }
+      return null
+    },
+    // 解析步骤文档 JSON（与 getActiveStepDocuments 逻辑一致，但不依赖 activeNode）
+    parseStepDocumentsRaw(step) {
+      if (!step || !step.step_documents) return []
+      try {
+        const docs = typeof step.step_documents === 'string'
+          ? JSON.parse(step.step_documents) : step.step_documents
+        return Array.isArray(docs) ? docs : []
+      } catch { return [] }
     },
     // SSE推送文档内容变更时重新加载对应文档
     reloadDocContentByFileId(fileId) {
@@ -4994,6 +5044,21 @@ export default {
 .step-tab-btn--doc {
   font-weight: 400;
   font-size: 12px;
+}
+
+.step-tab-btn--unread {
+  position: relative;
+}
+
+.step-tab-btn__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f56c6c;
+  margin-right: 5px;
+  flex-shrink: 0;
+  align-self: center;
 }
 
 .step-tab-content {

@@ -260,6 +260,8 @@ func TaskWorkflowDevPlanSave(c *gin.Context) {
 		return
 	}
 	component.MemoryRuntime.ScheduleSync()
+	// 广播片段变更 SSE 事件，使前端文档 Tab 实时更新
+	broadcastMemoryFragmentUpsert(savedInfo)
 	updatedWorkflowInfo, err := common.DbMain.TaskWorkflowInfo(cast.ToInt(workflowInfo[`id`]))
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -2879,12 +2881,14 @@ func TaskWorkflowApiDocReset(c *gin.Context) {
 		}
 	}
 	// 覆盖写入知识片段
-	_, err = memoryDB.MemoryFragmentSave(fragmentFileID, fragmentTitle, combinedMD, tags, cast.ToString(fragmentInfo[`folder_name`]))
+	info, err := memoryDB.MemoryFragmentSave(fragmentFileID, fragmentTitle, combinedMD, tags, cast.ToString(fragmentInfo[`folder_name`]))
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	component.MemoryRuntime.ScheduleSync()
+	// 广播片段变更 SSE 事件，使前端文档 Tab 实时更新
+	broadcastMemoryFragmentUpsert(info)
 	gsgin.GinResponseSuccess(c, `接口文档已重置`, map[string]any{
 		`fragment_id`: fragmentFileID,
 	})
