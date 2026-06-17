@@ -56,45 +56,44 @@
           <span class="link-group-name">{{ group.groupName }}</span>
           <span class="link-group-count">{{ group.items.length }} 个链接</span>
         </div>
-        <el-row :gutter="8" class="link-run-links-row">
-          <el-col v-for="link in group.items" :key="link.id" :xs="24" :sm="12" :md="12" :lg="8">
-            <div class="link-grid-item">
-              <div class="link-grid-item__row link-grid-item__row--top">
-                <a class="link-grid-item__label" @click="showEditDialog(link)" :title="link.label">{{ link.label || '未命名' }}</a>
-                <div class="link-grid-item__top-right">
-                  <span v-if="link.runNum" class="link-grid-item__run-num">运行中: {{ link.runNum }}</span>
-                  <el-popconfirm cancel-button-text="取消" confirm-button-text="删除" title="确定删除吗?" @confirm="deleteSmartLinkItem(link)">
-                    <template #reference>
-                      <el-icon size="14" style="cursor: pointer; color: #999;"><Delete/></el-icon>
-                    </template>
-                  </el-popconfirm>
-                </div>
+        <div class="link-run-links-row">
+          <div v-for="link in group.items" :key="link.id" class="link-grid-item">
+            <div class="link-grid-item__row link-grid-item__row--top">
+              <a class="link-grid-item__label" @click="showEditDialog(link)" :title="link.label">{{ link.label || '未命名' }}</a>
+              <div class="link-grid-item__top-right">
+                <span v-if="link.runNum" class="link-grid-item__run-num">运行中: {{ link.runNum }}</span>
+                <el-icon size="14" class="link-grid-item__edit-icon" @click="showEditDialog(link)"><Edit/></el-icon>
+                <el-popconfirm cancel-button-text="取消" confirm-button-text="删除" title="确定删除吗?" @confirm="deleteSmartLinkItem(link)">
+                  <template #reference>
+                    <el-icon size="14" style="cursor: pointer; color: #999;"><Delete/></el-icon>
+                  </template>
+                </el-popconfirm>
               </div>
-              <div class="link-grid-item__row link-grid-item__row--bottom">
-                <!-- 账号列表 -->
-                <template v-if="link.userList && link.userList.length > 0">
-                  <el-select v-model="link.chooseUserName" placeholder="选择账号" size="small" class="link-account-select">
-                    <el-option v-for="(user, uk) in link.userList" :key="uk" :label="user.user_name" :value="user.user_name"/>
-                  </el-select>
-                </template>
+            </div>
+            <div class="link-grid-item__row link-grid-item__row--bottom">
+              <!-- 账号列表 -->
+              <template v-if="link.userList && link.userList.length > 0">
+                <el-select v-model="link.chooseUserName" placeholder="选择账号" size="small" class="link-account-select">
+                  <el-option v-for="(user, uk) in link.userList" :key="uk" :label="user.user_name" :value="user.user_name"/>
+                </el-select>
+              </template>
 
-                <!-- 执行操作 -->
-                <div class="link-grid-item__exec">
-                  <GitActionButton v-if="parseInt(link.open_type) === 1 && parseInt(link.open_num) === 0" compact size="small" @click="redirectLink(link)">
-                    打开
-                  </GitActionButton>
-                  <template v-if="parseInt(link.open_type) === 2 || parseInt(link.open_type) === 3">
+              <!-- 执行操作 -->
+              <div class="link-grid-item__exec">
+                <GitActionButton v-if="parseInt(link.open_type) === 1 && parseInt(link.open_num) === 0" compact size="small" @click="redirectLink(link)">
+                  打开
+                </GitActionButton>
+                <template v-if="parseInt(link.open_type) === 2 || parseInt(link.open_type) === 3">
 <el-select v-if="parseInt(link.open_type) === 2" v-model="link.open_type_new" size="small" style="width: 200px">
                     <el-option v-for="opt in openTypeList" :key="opt.value" :label="opt.label" :value="opt.value"/>
                   </el-select>
-                    <el-input v-if="link.open_num > 0" v-model="link.open_num_new" size="small" placeholder="次" style="width: 38px"/>
-                    <GitActionButton compact size="small" @click="smartLinkRunItem(link)">执行</GitActionButton>
-                  </template>
-                </div>
+                  <el-input v-if="link.open_num > 0" v-model="link.open_num_new" size="small" placeholder="次" style="width: 38px"/>
+                  <GitActionButton compact size="small" @click="smartLinkRunItem(link)">执行</GitActionButton>
+                </template>
               </div>
             </div>
-          </el-col>
-        </el-row>
+          </div>
+        </div>
       </div>
       <div v-if="groupedSmartList.length === 0" class="link-run-card" style="text-align:center;color:#999;padding:30px;">
         暂无链接，请先"迁移老数据"或点击"创建"新增
@@ -203,7 +202,7 @@ import GitActionButton from "@/components/base/GitActionButton.vue";
 import SettingsDialog from '@/components/base/SettingsDialog.vue'
 import AccountSettingPage from '@/components/set/account.vue'
 import accountSet from '@/utils/base/account_set'
-import { Plus, Tools, Refresh, Download, QuestionFilled, Delete, User, FolderOpened } from '@element-plus/icons-vue'
+import { Plus, Tools, Refresh, Download, QuestionFilled, Delete, User, FolderOpened, Edit } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 export default {
@@ -218,6 +217,7 @@ export default {
     Delete,
     User,
     FolderOpened,
+    Edit,
     LinkConfigEditor,
     GitActionButton,
     SettingsDialog,
@@ -591,17 +591,34 @@ export default {
 .link-group-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .link-group-name { font-size: 15px; font-weight: bold; cursor: pointer; text-decoration: underline; color: #333; }
 .link-group-count { font-size: 11px; color: #999; }
-/* 链接行 */
-.link-run-links-row { margin: 0; }
-/* 网格链接项 */
-.link-grid-item { padding: 8px 10px; border: 1px solid #e8ece0; border-radius: 6px; background: #fafbf7; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
-.link-grid-item__row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* 链接行 - 弹性布局，根据内容自动调整宽度 */
+.link-run-links-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+/* 网格链接项 - 宽度由内容决定 */
+.link-grid-item {
+  padding: 8px 10px;
+  border: 1px solid #e8ece0;
+  border-radius: 6px;
+  background: #fafbf7;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-width: 200px;
+}
+.link-grid-item__row { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
 .link-grid-item__row--top { justify-content: space-between; }
 .link-grid-item__label { font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: underline; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
-.link-grid-item__top-right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.link-grid-item__top-right { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0; }
+.link-grid-item__edit-icon { cursor: pointer; color: #999; flex-shrink: 0; }
+.link-grid-item__edit-icon:hover { color: #409EFF; }
 .link-grid-item__run-num { font-size: 10px; color: green; white-space: nowrap; }
 .link-account-select { width: 140px; }
-.link-grid-item__exec { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.link-grid-item__exec { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
 .smart-link-dialog :deep(.el-dialog__body) { padding-top: 18px; }
 .smart-link-dialog__form { width: 100%; }
 .smart-link-dialog__link-config { width: 100%; }
