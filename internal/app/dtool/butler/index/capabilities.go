@@ -23,7 +23,8 @@ func GenerateCapabilitiesIndex() string {
 	sb.WriteString("| file_read | 读取文件内容 |\n")
 	sb.WriteString("| file_write | 创建或覆盖写入文件（自动创建父目录） |\n")
 	sb.WriteString("| file_modify | 查找并替换文件中的指定文本 |\n")
-	sb.WriteString("| file_delete | 删除文件 |\n\n")
+	sb.WriteString("| file_delete | 删除文件 |\n")
+	sb.WriteString("| http_call | 调用 dtool 的 HTTP API 接口（自动拼接基地址） |\n\n")
 
 	sb.WriteString("## 索引与自进化\n\n")
 	sb.WriteString("- scripts.md：扫描 skills/ 目录，生成脚本工具索引\n")

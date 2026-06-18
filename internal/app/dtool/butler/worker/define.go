@@ -6,4 +6,5 @@ const (
 	ToolFileWrite  = `file_write`
 	ToolFileModify = `file_modify`
 	ToolFileDelete = `file_delete`
+	ToolHttpCall   = `http_call` // 调用 dtool HTTP API
 )

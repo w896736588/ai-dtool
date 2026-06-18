@@ -169,7 +169,11 @@ func buildScriptsMarkdown(skills []SkillInfo) string {
 		// 脚本列表
 		if len(skill.Scripts) > 0 {
 			sb.WriteString(`- 脚本: `)
-			sb.WriteString(strings.Join(skill.Scripts, `, `))
+			scriptPaths := make([]string, len(skill.Scripts))
+			for i, s := range skill.Scripts {
+				scriptPaths[i] = fmt.Sprintf(`skills/%s/scripts/%s`, skill.Name, s)
+			}
+			sb.WriteString(strings.Join(scriptPaths, `, `))
 			sb.WriteString("\n")
 		}
 		// 功能索引

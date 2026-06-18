@@ -88,4 +88,5 @@ type ButlerEnv struct {
 	MemoryDbPath  string
 	DatabaseUpDir string
 	LogPath       string
+	DtoolBaseURL  string // dtool API 基地址（如 http://localhost:17170），供 http_call 工具使用
 }

@@ -51,6 +51,10 @@ func NewCore(
 	// 解析索引路径
 	indexPath := index.ResolveIndexPath(config, env)
 	skillsRoot := index.GetSkillsRoot()
+	// 设置 worker 包的 skills 根目录，供文件工具路径解析使用
+	worker.SetSkillsRoot(skillsRoot)
+	// 设置 worker 包的 dtool API 基地址，供 http_call 工具使用
+	worker.SetDtoolBaseURL(env.DtoolBaseURL)
 	return &Core{
 		db:              db,
 		config:          config,
@@ -317,10 +321,12 @@ func (c *Core) fcLoopReply(msg bot.IncomingMessage, fcModelId int) (string, []st
 	// 检索索引：尝试匹配已有脚本
 	retrieveResult := index.Retrieve(c.db, fcModelId, c.indexPath, msg.Text)
 	if retrieveResult.Found {
-		retrieveInfo := fmt.Sprintf(`\n\n💡 索引匹配：找到相关脚本 %s/%s — %s`,
-			retrieveResult.SkillName, retrieveResult.ScriptName, retrieveResult.Summary)
+		// 构建完整相对路径：skills/{skill_name}/scripts/{script_name}
+		scriptPath := fmt.Sprintf(`skills/%s/scripts/%s`, retrieveResult.SkillName, retrieveResult.ScriptName)
+		retrieveInfo := fmt.Sprintf(`\n\n💡 索引匹配：找到相关脚本 %s — %s。请使用 file_read("%s") 读取脚本内容了解用法。`,
+			scriptPath, retrieveResult.Summary, scriptPath)
 		fcSystemPrompt += retrieveInfo
-		gstool.FmtPrintlnLogTime(`[butler-core] 索引命中 skill=%s script=%s`, retrieveResult.SkillName, retrieveResult.ScriptName)
+		gstool.FmtPrintlnLogTime(`[butler-core] 索引命中 skill=%s script=%s path=%s`, retrieveResult.SkillName, retrieveResult.ScriptName, scriptPath)
 	}
 	// 执行 FC 循环
 	result := worker.RunFCLoop(c.db, fcModelId, fcSystemPrompt, fcHistory, msg.Text)
@@ -393,14 +399,48 @@ func (c *Core) saveTaskRecordWithStatus(sessionId, title, result string, toolsUs
 // fcSystemPromptSuffix FC 循环的 system prompt 补充说明，指导 AI 使用工具。
 const fcSystemPromptSuffix = `
 
-你可以使用以下工具来完成用户的任务：
+## 可用工具
+
 - file_read: 读取文件内容
 - file_write: 创建或覆盖写入文件（自动创建父目录）
 - file_modify: 修改文件中的指定文本（查找并替换）
 - file_delete: 删除文件
+- http_call: 调用 dtool 的 HTTP API 接口（POST 方法，基地址自动拼接）
 
-当用户要求执行文件操作时，请使用对应的工具完成任务。完成任务后，简要总结执行结果。
-如果只是普通对话，不需要使用工具，直接回复即可。`
+## 工作目录说明
+
+- 所有技能脚本位于 skills/{skill_name}/scripts/ 目录下，例如 skills/dtool-git/scripts/git_api.py
+- API 索引文档：apis.md 列出了 dtool 所有可用的 HTTP 接口及其说明
+- 脚本工具索引：scripts.md 列出了已有的 Python 脚本工具
+- 项目根目录下的文件和目录可以直接使用相对路径访问
+
+## 工作流程（发现 → 执行 → 进化）
+
+收到用户任务后，按以下顺序处理：
+
+### 1. 索引匹配
+如果 system prompt 中已包含索引命中提示（💡），直接读取对应脚本了解用法。
+如未命中，优先读取 apis.md 发现 dtool 提供的 HTTP 接口。
+
+### 2. API 发现与调用
+如果 apis.md 中有相关接口，按以下步骤操作：
+- 先调用配置查询接口（如 /api/GitConfigList）获取资源列表
+- 从列表中匹配用户提到的资源（如仓库名 common3），提取其 ID
+- 再调用对应的操作接口（如 /api/GitRemoteBranchList）执行具体操作
+- http_call 调用示例：http_call("/api/GitConfigList", "{}")
+
+### 3. 结果汇总
+将执行结果以友好、清晰的格式呈现给用户。
+
+### 4. 自进化评估（任务完成后必须执行）
+任务完成后，评估此操作模式是否具有复用价值：
+- 如果本次使用了新的 API 组合或多步骤操作流程，且 scripts.md 中没有对应脚本
+- 如果此操作可能被频繁使用
+→ 使用 file_write 在 skills/ 下创建新的 SKILL.md 和 Python 脚本
+→ 脚本中应封装本次操作的完整逻辑（API 调用链）
+→ 告知用户已创建新技能脚本及其路径
+
+如果只是普通对话或已有脚本可复用，跳过此步骤。`
 
 // reply 通过消息携带的 SessionWebhook 回复。
 // SessionWebhook 为空时，通过消息来源机器人的 Gateway 使用 Open API 单聊发送回退。

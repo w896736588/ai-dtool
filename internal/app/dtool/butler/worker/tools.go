@@ -83,5 +83,26 @@ func ToolDefinitions() []map[string]any {
 				},
 			},
 		},
+		{
+			`type`: `function`,
+			`function`: map[string]any{
+				`name`:        ToolHttpCall,
+				`description`: `调用 dtool 的 HTTP API 接口。所有接口均为 POST 方法，基地址已自动拼接，只需传接口路径和 JSON 请求体。`,
+				`parameters`: map[string]any{
+					`type`: `object`,
+					`properties`: map[string]any{
+						`path`: map[string]any{
+							`type`:        `string`,
+							`description`: `API 接口路径，如 /api/GitConfigList、/api/GitRemoteBranchList`,
+						},
+						`body`: map[string]any{
+							`type`:        `string`,
+							`description`: `JSON 格式的请求体，如 {}、{"ssh_id":"5","code_path":"/var/www/common3"}`,
+						},
+					},
+					`required`: []string{`path`, `body`},
+				},
+			},
+		},
 	}
 }

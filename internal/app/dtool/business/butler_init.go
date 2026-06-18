@@ -315,6 +315,11 @@ func GetButlerRuntime() *ButlerRuntime {
 func buildButlerEnv() *define.ButlerEnv {
 	env := component.EnvClient
 	memoryDbPath := common.ResolveDefaultDToolDir(env.ConfigBase.MemoryDBPath)
+	// 构建 dtool API 基地址：默认取第一个 API 端口
+	baseURL := `http://localhost:17170`
+	if len(env.ApiPorts) > 0 {
+		baseURL = fmt.Sprintf(`http://localhost:%s`, env.ApiPorts[0])
+	}
 	return &define.ButlerEnv{
 		RootPath:      env.RootPath,
 		ConfigPath:    env.ConfigPath,
@@ -325,6 +330,7 @@ func buildButlerEnv() *define.ButlerEnv {
 		MemoryDbPath:  memoryDbPath,
 		DatabaseUpDir: env.DatabaseUpPath,
 		LogPath:       env.LogPath,
+		DtoolBaseURL:  baseURL,
 	}
 }
 
