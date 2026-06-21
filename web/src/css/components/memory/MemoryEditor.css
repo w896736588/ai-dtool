@@ -524,6 +524,31 @@
   padding-left: 34px;
 }
 
+/* 编辑模式下的右侧目录导航栏 */
+.editor-outline {
+  width: 200px;
+  flex: 0 0 200px;
+  min-width: 0;
+}
+
+.editor-outline .preview-outline-card {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid #e0e4dc;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fbfcf8 0%, #f6f8f2 100%);
+}
+
+.editor-edit-layout--with-outline {
+  gap: 14px;
+}
+
 .organize-dialog-layout {
   display: flex;
   flex-direction: column;

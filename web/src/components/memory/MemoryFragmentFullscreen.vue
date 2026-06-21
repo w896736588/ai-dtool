@@ -19,6 +19,7 @@
         :fragment="fragmentData"
         :saved-fragment="savedFragment"
         :available-tags="[]"
+        :show-outline-sidebar="true"
         @change="handleEditorChange"
         @saved="handleEditorSaved"
         @deleted="handleEditorDeleted"

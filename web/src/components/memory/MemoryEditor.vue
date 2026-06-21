@@ -204,7 +204,7 @@
       </div>
 
       <div v-if="contentEditMode" class="editor-body-content">
-        <div class="editor-edit-layout">
+        <div :class="['editor-edit-layout', { 'editor-edit-layout--with-outline': showOutlineSidebar }]">
           <div ref="editorScrollShell" class="editor-scroll-shell">
             <MdEditor
               ref="editorRef"
@@ -230,6 +230,25 @@
               />
             </div>
           </div>
+          <aside v-if="showOutlineSidebar && hasOutline" class="editor-outline">
+            <div class="preview-outline-card">
+              <div class="preview-outline-title">目录</div>
+              <button
+                v-for="item in outlineItems"
+                :key="item.slug"
+                type="button"
+                class="preview-outline-item"
+                :class="{
+                  active: activeOutlineSlug === item.slug,
+                  'preview-outline-item--child': item.level > 1,
+                  'preview-outline-item--grandchild': item.level > 2,
+                }"
+                @click="scrollToOutline(item.slug)"
+              >
+                {{ item.text }}
+              </button>
+            </div>
+          </aside>
         </div>
       </div>
       <div v-else class="preview-body" :class="{ 'preview-body--with-outline': hasOutline }">
@@ -448,6 +467,11 @@ export default {
     availableTags: {
       type: Array,
       default: () => [],
+    },
+    // showOutlineSidebar 控制编辑模式下是否显示右侧目录导航栏。
+    showOutlineSidebar: {
+      type: Boolean,
+      default: false,
     },
   },
   emits: ['change', 'saved', 'deleted', 'show-history'],
