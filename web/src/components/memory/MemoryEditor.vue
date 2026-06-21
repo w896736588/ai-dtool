@@ -125,6 +125,17 @@
                     <el-icon><Search /></el-icon>
                   </GitActionButton>
                 </el-tooltip>
+                <el-tooltip :content="fullscreenButtonText" placement="top">
+                  <GitActionButton
+                    variant="info"
+                    compact
+                    class="toolbar-icon-button"
+                    :aria-label="fullscreenButtonText"
+                    @click="handleFullscreen"
+                  >
+                    <el-icon><FullScreen /></el-icon>
+                  </GitActionButton>
+                </el-tooltip>
                 <el-dropdown
                   trigger="click"
                   class="editor-action-dropdown"
@@ -308,7 +319,7 @@
 <script>
 import { MdEditor, MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
-import { Check, CopyDocument, Download, Edit, MagicStick, MoreFilled, Search, Share, Upload, View } from '@element-plus/icons-vue'
+import { Check, CopyDocument, Download, Edit, FullScreen, MagicStick, MoreFilled, Search, Share, Upload, View } from '@element-plus/icons-vue'
 import DiffMarkdown from '@/components/base/diff_markwodn.vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 import MemoryFragmentApi from '@/utils/base/memory_fragment'
@@ -403,6 +414,8 @@ const SEARCH_EMPTY_SUMMARY_TEXT = '搜索范围：标题和正文'
 const SEARCH_NO_RESULT_TEXT = '0 项匹配'
 // SEARCH_BUTTON_TEXT 搜索按钮的提示文案。
 const SEARCH_BUTTON_TEXT = '搜索'
+// FULLSCREEN_BUTTON_TEXT 全屏编辑按钮的提示文案。
+const FULLSCREEN_BUTTON_TEXT = '全屏编辑'
 
 export default {
   name: 'MemoryEditor',
@@ -413,6 +426,7 @@ export default {
       CopyDocument,
       Download,
       Edit,
+      FullScreen,
       MagicStick,
       MoreFilled,
       Search,
@@ -478,6 +492,7 @@ export default {
       moreActionsText: MORE_ACTIONS_TEXT,
       detailSearchPlaceholderText: DETAIL_SEARCH_PLACEHOLDER_TEXT,
       searchButtonText: SEARCH_BUTTON_TEXT,
+      fullscreenButtonText: FULLSCREEN_BUTTON_TEXT,
       showSearchBar: false,
       searchQuery: '',
       currentSearchMatchIndex: -1,
@@ -1353,6 +1368,21 @@ export default {
         return currentItem
       }, this.outlineItems[0])
       this.activeOutlineSlug = matchedItem ? matchedItem.slug : ''
+    },
+    /**
+     * handleFullscreen 打开全屏编辑页面。
+     * 在新窗口中打开独立的编辑页面，仅包含当前片段详情和编辑器。
+     */
+    handleFullscreen() {
+      if (!this.draftFragment.id) {
+        this.$helperNotify.warning('请先保存片段后再全屏编辑')
+        return
+      }
+      const url = this.$router.resolve({
+        name: 'memory-fragment-fullscreen',
+        query: { fragment_id: this.draftFragment.id },
+      }).href
+      window.open(url, '_blank')
     },
     // handleToolbarActionCommand / 统一处理右侧下拉操作 / Dispatch commands from the toolbar dropdown.
     handleToolbarActionCommand(command) {

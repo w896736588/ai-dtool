@@ -1,0 +1,43 @@
+.memory-fullscreen-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f8f9f6;
+}
+
+/* 加载中 */
+.memory-fullscreen-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex: 1;
+  color: #5f6758;
+  font-size: 15px;
+}
+
+/* 编辑器容器：占据全部高度 */
+.memory-fullscreen-editor-wrapper {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.memory-fullscreen-editor-wrapper :deep(.memory-editor) {
+  height: 100%;
+}
+
+/* 确保编辑器内部工具栏在滚动区域内 */
+.memory-fullscreen-editor-wrapper :deep(.editor-body) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.memory-fullscreen-editor-wrapper :deep(.editor-body-content) {
+  flex: 1;
+  overflow: hidden;
+}

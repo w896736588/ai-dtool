@@ -183,6 +183,12 @@ const router = createRouter({
       meta: { keepAlive: false, title: '知识片段分享' },
     },
     {
+      path: '/MemoryFragmentFullscreen',
+      name: 'memory-fragment-fullscreen',
+      component: () => import('../components/memory/MemoryFragmentFullscreen.vue'),
+      meta: { keepAlive: false, title: '知识片段全屏编辑' },
+    },
+    {
       path: '/ChatReply/:chatId',
       name: 'chat-reply',
       component: () => import('../components/ChatReplyPage.vue'),
