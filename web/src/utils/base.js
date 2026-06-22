@@ -3,7 +3,7 @@ import store from './base/store'
 import module from './module'
 import {globals} from '@/main'
 
-const DEV_PORT = '17170'
+const DEV_PORT = '18170'
 const SAFE_TOKEN_KEY = 'safe_token'
 let runtimeSsePort = ''
 

@@ -531,7 +531,6 @@ func (h *CSqlite) WorkflowTemplateStepSort(templateID int, stepIDs []int) error 
 // ===================== 工作流实例提示词相关 =====================
 
 // WorkflowStepPromptsRead 读取工作流实例的 step_prompts JSON，返回 map。
-// 优先读取新字段 step_prompts，为空则回退读取旧 prompt_xxx 字段。
 func (h *CSqlite) WorkflowStepPromptsRead(workflowID int) (map[string]string, error) {
 	if workflowID <= 0 {
 		return nil, errors.New(`工作流id不能为空`)
@@ -544,28 +543,13 @@ func (h *CSqlite) WorkflowStepPromptsRead(workflowID int) (map[string]string, er
 		return nil, errors.New(`工作流不存在`)
 	}
 
-	// 优先读取新的 step_prompts JSON
+	result := make(map[string]string)
 	stepPromptsRaw := cast.ToString(info[`step_prompts`])
 	if stepPromptsRaw != `` {
-		result := make(map[string]string)
-		if err := json.Unmarshal([]byte(stepPromptsRaw), &result); err == nil {
-			return result, nil
+		if err := json.Unmarshal([]byte(stepPromptsRaw), &result); err != nil {
+			gstool.FmtPrintlnLogTime(`[workflow] step_prompts JSON 解析失败 workflowID=%d err=%v`, workflowID, err)
 		}
-		// JSON 解析失败，记录日志后回退
-		gstool.FmtPrintlnLogTime(`[workflow] step_prompts JSON 解析失败 workflowID=%d err=%v`, workflowID, err)
 	}
-
-	// 回退：从旧的 prompt_xxx 字段构建
-	result := make(map[string]string)
-	result[`requirement`] = cast.ToString(info[`prompt_requirement`])
-	result[`api-dev`] = cast.ToString(info[`prompt_api_dev`])
-	result[`api-test-fix`] = cast.ToString(info[`prompt_api_test`])
-	result[`design`] = cast.ToString(info[`prompt_design`])
-	result[`plain_text_requirement`] = cast.ToString(info[`prompt_plain_text_requirement`])
-	result[`design_plan_requirement`] = cast.ToString(info[`prompt_design_plan_requirement`])
-	result[`browser-test`] = cast.ToString(info[`prompt_browser_test`])
-	result[`code-review`] = cast.ToString(info[`prompt_code_review`])
-	result[`issue_fix`] = ``
 	return result, nil
 }
 
@@ -606,9 +590,6 @@ func (h *CSqlite) WorkflowStepPromptsSave(workflowID int, stepKey, stepPrompt st
 		return err
 	}
 
-	// 同时写入旧的 prompt_xxx 字段（向后兼容）
-	_ = h.WorkflowStepPromptsSyncLegacy(workflowID, existing)
-
 	return nil
 }
 
@@ -638,12 +619,6 @@ func (h *CSqlite) WorkflowStepPromptsRestore(workflowID int, templateSteps []map
 		`step_prompts`: string(jsonBytes),
 		`update_time`:  now,
 	}).Exec()
-	if err != nil {
-		return err
-	}
-
-	// 同步到旧字段
-	_ = h.WorkflowStepPromptsSyncLegacy(workflowID, prompts)
 
 	return nil
 }
@@ -676,29 +651,6 @@ func (h *CSqlite) workflowTemplateCreateFixedSteps(templateID int) error {
 		if err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-// WorkflowStepPromptsSyncLegacy 将 step_prompts 同步到旧的 prompt_xxx 字段（向后兼容）。
-func (h *CSqlite) WorkflowStepPromptsSyncLegacy(workflowID int, prompts map[string]string) error {
-	now := time.Now().Unix()
-	_, err := h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
-		`id`: workflowID,
-	}, map[string]any{
-		`prompt_requirement`:             prompts[`requirement`],
-		`prompt_api_dev`:                 prompts[`api-dev`],
-		`prompt_api_test`:                prompts[`api-test-fix`],
-		`prompt_design`:                  prompts[`design`],
-		`prompt_plain_text_requirement`:  prompts[`plain_text_requirement`],
-		`prompt_design_plan_requirement`: prompts[`design_plan_requirement`],
-		`prompt_browser_test`:            prompts[`browser-test`],
-		`prompt_code_review`:             prompts[`code-review`],
-		`update_time`:                    now,
-	}).Exec()
-	// 忽略错误，旧字段同步失败不影响新路径
-	if err != nil {
-		gstool.FmtPrintlnLogTime(`[workflow] 同步旧字段失败 workflowID=%d err=%v`, workflowID, err)
 	}
 	return nil
 }
