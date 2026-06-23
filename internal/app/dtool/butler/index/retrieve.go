@@ -47,6 +47,11 @@ func Retrieve(db *common.CSqlite, modelId int, indexPath, userMessage string) *R
 // retrieveSystemPrompt 检索匹配的系统提示词。
 const retrieveSystemPrompt = `你是一个脚本检索器。根据用户任务描述，判断现有脚本工具索引中是否有可以直接复用的脚本。
 
+**优先级规则**：
+- dtool-butler 节下的自进化脚本通常比模块通用脚本更具体、更贴合实际任务，应优先匹配
+- 如果 dtool-butler 节和模块通用节都有匹配项，优先选择 dtool-butler 下的脚本
+- 同一个任务可以有多个匹配，选择最具体、功能描述最接近的那个
+
 如果找到匹配的脚本，请输出 JSON 格式：
 {"found": true, "skill_name": "skill名称", "script_name": "脚本名称", "summary": "匹配原因简述"}
 

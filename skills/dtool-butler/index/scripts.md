@@ -39,4 +39,4 @@
 
 ## [dtool-butler] 自进化生成：任务状态查询、自测任务列表、知识片段统计
 - skills/dtool-butler/scripts/list_tasks_in_status.py — 查询任务清单中处于自测状态的任务（自进化生成）
-- skills/dtool-butler/scripts/query_git_branch.py — 查询指定 Git 分组和项目的当前分支（支持命令行参数，使用 api_common）[更新：替换硬编码脚本，接受参数并调用 api_common]
+- skills/dtool-butler/scripts/query_git_branch.py — 查询指定 Git 分组和项目的当前分支及远程跟踪分支（支持命令行参数，使用 api_common）

@@ -118,6 +118,7 @@ func WriteArchiveScript(rootPath, scriptName, content string) (string, error) {
 
 // AppendArchiveIndex 向 scripts.md 追加一条归档脚本索引条目（一行格式）。
 // description 为 AI 产出的完整索引行，格式: `- skills/dtool-butler/scripts/xxx.py — 功能说明`
+// 追加前会检查 scripts.md 中是否已存在同名脚本条目，若已存在则跳过追加，避免重复索引。
 func AppendArchiveIndex(rootPath string, description string) error {
 	indexPath := filepath.Join(rootPath, `skills`, `dtool-butler`, `index`, `scripts.md`)
 	// 读取现有内容
@@ -129,6 +130,14 @@ func AppendArchiveIndex(rootPath string, description string) error {
 	desc := strings.TrimSpace(description)
 	// 去掉可能的前缀换行
 	desc = strings.TrimLeft(desc, "\n\r")
+
+	// 从索引行中提取脚本文件名（如 "query_git_branch.py"）
+	// 格式: `- skills/dtool-butler/scripts/xxx.py — ...`
+	scriptName := extractScriptNameFromIndex(desc)
+	if scriptName != `` && strings.Contains(string(existing), scriptName) {
+		return fmt.Errorf(`scripts.md 中已存在脚本 %s 的索引条目，跳过追加以避免重复`, scriptName)
+	}
+
 	var sb strings.Builder
 	sb.Write(existing)
 	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
@@ -137,4 +146,27 @@ func AppendArchiveIndex(rootPath string, description string) error {
 	sb.WriteString(desc)
 	sb.WriteString("\n")
 	return os.WriteFile(indexPath, []byte(sb.String()), 0644)
+}
+
+// extractScriptNameFromIndex 从索引描述行中提取脚本文件名。
+// 输入: `- skills/dtool-butler/scripts/query_git_branch.py — 功能说明`
+// 输出: `query_git_branch.py`
+func extractScriptNameFromIndex(desc string) string {
+	// 找到 "scripts/" 后的 .py 文件名
+	idx := strings.Index(desc, `scripts/`)
+	if idx == -1 {
+		return ``
+	}
+	rest := desc[idx+len(`scripts/`):]
+	// 截取到空格、—、中文标点之前
+	end := strings.IndexAny(rest, ` —-，。`)
+	if end == -1 {
+		end = len(rest)
+	}
+	name := strings.TrimSpace(rest[:end])
+	// 确保是 .py 文件
+	if !strings.HasSuffix(name, `.py`) {
+		return ``
+	}
+	return name
 }

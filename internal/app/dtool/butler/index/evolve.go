@@ -9,8 +9,16 @@ import (
 
 // EvolveAppend 向 scripts.md 追加新脚本条目（自进化）。
 // 当子管家创建了新脚本时，调用此函数将脚本信息追加到索引中。
+// 追加前会检查 scripts.md 中是否已存在同名脚本条目，若已存在则跳过。
 func EvolveAppend(indexPath, skillName, scriptName, description string) error {
 	scriptsContent := ReadIndexFile(indexPath, ScriptsFileName)
+
+	// 检查 scripts.md 中是否已存在同名脚本条目
+	if strings.Contains(scriptsContent, scriptName) {
+		gstool.FmtPrintlnLogTime(`[butler-evolve] 脚本 %s 已存在于索引中，跳过追加`, scriptName)
+		return nil
+	}
+
 	entry := buildEvolveEntry(skillName, scriptName, description)
 	// 追加到文件末尾
 	newContent := scriptsContent

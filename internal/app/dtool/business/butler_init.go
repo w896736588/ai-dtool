@@ -619,6 +619,17 @@ func (r *ButlerRuntime) processArchiveItem(config *define.ButlerConfigItem, item
 		return
 	}
 
+	// 检查脚本文件是否已存在（避免重复归档）
+	scriptsDir := filepath.Join(r.butlerEnv.RootPath, `skills`, `dtool-butler`, `scripts`)
+	existingScriptPath := filepath.Join(scriptsDir, scriptName)
+	if _, statErr := os.Stat(existingScriptPath); statErr == nil {
+		logBuilder.WriteString(fmt.Sprintf("脚本 %s 已存在，跳过归档以避免重复\n", scriptName))
+		gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 脚本 %s 已存在→跳过归档`, archiveId, scriptName)
+		_ = r.db.UpdateArchiveStatus(archiveId, define.ArchiveStatusIgnored, logBuilder.String(),
+			fmt.Sprintf(`脚本 %s 已存在，跳过归档以避免重复`, scriptName), ``, ``)
+		return
+	}
+
 	// 写入脚本文件
 	scriptFile, writeErr := common.WriteArchiveScript(r.butlerEnv.RootPath, scriptName, scriptContent)
 	if writeErr != nil {

@@ -336,8 +336,8 @@ func (c *Core) fcReply(msg bot.IncomingMessage) (string, []string) {
 	return c.fcLoopReply(msg, fcModelId)
 }
 
-// fcLoopReply 执行 FC 循环生成回复（Phase 4 逻辑）。
-// Phase 6 增强：执行前检索索引，将匹配的脚本信息注入 system prompt。
+// fcLoopReply 执行 FC 循环生成回复。
+// 分为两个阶段：①规划（检索资源→制定计划→单独发送）②执行（按计划执行→返回结果）。
 func (c *Core) fcLoopReply(msg bot.IncomingMessage, fcModelId int) (string, []string) {
 	// 加载历史消息（最近 MaxHistoryStore 条）
 	historyMessages, err := c.history.ListBySession(msg.ConversationId, c.config.MaxHistoryStore)
@@ -345,31 +345,58 @@ func (c *Core) fcLoopReply(msg bot.IncomingMessage, fcModelId int) (string, []st
 		gstool.FmtPrintlnLogTime(`[butler-core] 加载历史失败 %s，使用无历史对话`, err.Error())
 		historyMessages = nil
 	}
-	// 转换历史消息为 FC 循环所需格式
 	fcHistory := historyToFcMessages(historyMessages)
-	// 构建 FC 系统提示词（基础角色 + 工具使用指引 + 检索结果）
-	fcSystemPrompt := c.systemPrompt + fcSystemPromptSuffix
-	// 检索索引：尝试匹配已有脚本
-	retrieveResult := index.Retrieve(c.db, fcModelId, c.indexPath, msg.Text)
-	if retrieveResult.Found {
-		// 构建完整相对路径：skills/{skill_name}/scripts/{script_name}
-		scriptPath := fmt.Sprintf(`skills/%s/scripts/%s`, retrieveResult.SkillName, retrieveResult.ScriptName)
-		retrieveInfo := fmt.Sprintf(`\n\n💡 索引匹配：找到相关脚本 %s — %s。请使用 file_read("%s") 读取脚本内容了解用法。`,
-			scriptPath, retrieveResult.Summary, scriptPath)
-		fcSystemPrompt += retrieveInfo
-		gstool.FmtPrintlnLogTime(`[butler-core] 索引命中 skill=%s script=%s path=%s`, retrieveResult.SkillName, retrieveResult.ScriptName, scriptPath)
+
+	// ========== 阶段一：资源检索 + 制定执行计划（单独发送给用户） ==========
+	planPrompt := c.systemPrompt + `
+## 当前阶段：资源检索与计划制定
+收到用户任务后，**只做检索和计划**，不要执行任务。
+
+步骤：
+1. 用 file_read 读取 skills/dtool-butler/index/scripts.md，逐条检查是否有可复用的脚本（dtool-butler 节优先于模块通用节）
+2. 仅当 scripts.md 中无匹配脚本时，才用 file_read 读取 apis.md 查看可用接口
+3. 根据检索结果，制定执行计划并以标准格式输出：
+
+📋 执行计划：
+- 任务：<一句话描述>
+- 复用脚本：<脚本路径，如无则写"无">
+- 调用接口：<接口路径，如无则写"无">
+- 新建脚本：<是/否，若是则说明原因>
+
+**输出计划后立即停止，不要调用任何执行类工具（http_call/file_write/run_script 等）。**`
+
+	planResult := worker.RunFCLoop(c.db, fcModelId, planPrompt, fcHistory, msg.Text, 2)
+	if planResult.Content != `` {
+		if err := c.reply(msg, planResult.Content); err != nil {
+			gstool.FmtPrintlnLogTime(`[butler-core] 发送执行计划失败 %s`, err.Error())
+		} else {
+			gstool.FmtPrintlnLogTime(`[butler-core] 已发送执行计划`)
+		}
 	}
-	// 发送执行中提示（不阻塞主流程，失败仅记录日志）
-	if err := c.reply(msg, `正在执行中，请稍候...`); err != nil {
-		gstool.FmtPrintlnLogTime(`[butler-core] 发送执行中提示失败 %s`, err.Error())
+
+	// ========== 阶段二：执行任务 ==========
+	execPrompt := c.systemPrompt + fcSystemPromptSuffix + `
+
+---
+**当前阶段：执行任务**
+
+执行计划已单独发送给用户，现在**直接执行任务**：
+- 优先使用已检索到的脚本（无需重复读取 scripts.md）
+- 无脚本时调用 API 完成
+- 完成后输出结果汇总
+
+**不要重复输出"📋 执行计划"。**`
+
+	if err := c.reply(msg, `正在执行，请稍候...`); err != nil {
+		gstool.FmtPrintlnLogTime(`[butler-core] 发送执行提示失败 %s`, err.Error())
 	}
-	// 执行 FC 循环
-	result := worker.RunFCLoop(c.db, fcModelId, fcSystemPrompt, fcHistory, msg.Text, c.config.MaxLoop)
-	c.lastFilesWritten = result.FilesWritten // 记录本次产生的所有文件路径（供归档提交）
+
+	result := worker.RunFCLoop(c.db, fcModelId, execPrompt, fcHistory, msg.Text, c.config.MaxLoop)
+	c.lastFilesWritten = result.FilesWritten
 	if result.Content == `` {
 		return `我暂时无法回复，请稍后再试。`, result.ToolUsed
 	}
-	// 附加 LLM 用量统计 + 脚本清单（markdown 用双换行分段）
+	// 附加 LLM 用量统计 + 脚本清单
 	if result.LLMCalls > 0 {
 		usageInfo := "\n\n---\n\n" + fmt.Sprintf("📊 LLM 调用 %d 次 ｜ 输入 %d token ｜ 输出 %d token", result.LLMCalls, result.InputTokens, result.OutputTokens)
 		if result.CacheTokens > 0 {
@@ -479,42 +506,64 @@ const fcSystemPromptSuffix = `
 
 ## 工作目录说明
 
-- 所有技能脚本位于 skills/{skill_name}/scripts/ 目录下，例如 skills/dtool-git/scripts/git_api.py
+- 所有技能脚本位于 skills/{skill_name}/scripts/ 目录下
 - API 索引文档：apis.md 列出了 dtool 所有可用的 HTTP 接口及其说明
-- 脚本工具索引：scripts.md 列出了已有的 Python 脚本工具
+- 脚本工具索引：skills/dtool-butler/index/scripts.md 列出了所有已有 Python 脚本工具
 - 项目根目录下的文件和目录可以直接使用相对路径访问
 
-## 工作流程（发现 → 执行 → 回答 → 进化）
+## 工作流程（检索 → 计划公示 → 执行 → 回答）
 
-收到用户任务后，按以下顺序处理：
+收到用户任务后，**严格**按以下顺序处理。**核心原则：脚本优先于 API，复用优先于新建。**
 
-### 1. 索引匹配
-如果 system prompt 中已包含索引命中提示（💡），直接读取对应脚本了解用法。
-如未命中，优先读取 apis.md 发现 dtool 提供的 HTTP 接口。
+### 1. 资源检索（必须执行，不可跳过）
 
-### 2. API 发现与调用
-如果 apis.md 中有相关接口，按以下步骤操作：
-- 先调用配置查询接口（如 /api/GitConfigList）获取资源列表
-- 从列表中匹配用户提到的资源（如仓库名 common3），提取其 ID
-- 再调用对应的操作接口（如 /api/GitRemoteBranchList）执行具体操作
-- http_call 调用示例：http_call("/api/GitConfigList", "{}")
+#### 1.1 读取已有索引命中
+如果 system prompt 中包含索引命中提示，先用 file_read 读取对应脚本了解用法。
 
-### 3. 结果汇总 ⚠️ 最重要
+#### 1.2 主动读取 scripts.md（强制执行）
+**无论第 1.1 步是否命中，都必须立即用 file_read 读取 skills/dtool-butler/index/scripts.md**，逐条检查：
+- 是否有自进化脚本（dtool-butler 节）比已命中的模块通用脚本更贴合当前任务
+- 是否有多个脚本可以组合使用
+- 脚本描述是否完全覆盖当前参数需求
+
+#### 1.3 读取 apis.md（仅兜底）
+仅当 scripts.md 中确认无可用脚本时，才用 file_read 读取 apis.md 查看可用的 HTTP 接口。
+
+> ⚠️ 跳过步骤 1.2（scripts.md 检索）直接查 apis.md 或创建新脚本是**严重违规**。
+
+### 2. 执行计划公示（必须回复给用户）
+资源检索完成后，**首先回复用户执行计划**，格式如下：
+
+📋 执行计划：
+- 任务：<一句话任务描述>
+- 复用脚本：<脚本路径列表，如无则写"无">
+- 调用接口：<接口路径列表，如无则写"无">
+- 新建脚本：<是/否，若是则简要说明原因>
+
+正在执行...
+
+> 计划回复后**立即开始执行**，无需等待用户确认。
+
+### 3. 执行
+- **已有脚本优先**：按照脚本的用法说明执行（脚本就是为解决此类问题而生的，不需要重新造轮子）
+- **API 兜底**：仅当无脚本可用时才调 API。调 API 前必须先用 file_read 读取对应 controller 源码确认参数名
+- **临时脚本**：仅当已有脚本和单次 API 调用都无法满足需求时才新建（如多次调用组装数据、复杂过滤逻辑）
+
+### 4. 结果汇总 ⚠️ 最重要
 **必须**将执行结果以友好、清晰的格式呈现给用户，这是你唯一的目标。
 无论中间经过多少工具调用，最终回复必须包含用户所问问题的具体答案。
 
-### 4. 自进化评估（完成任务后可选）
-在已经回答用户问题的基础上，如果本次操作模式具有复用价值且 scripts.md 中没有对应脚本，可简要新建脚本。
-**禁止**因为创建脚本而延迟或省略回答用户的问题。简单的一次性查询不需要创建脚本。
-
-**⚠️ SKILL.md 修改规则：**
-- **绝对禁止**修改或覆盖已有的 SKILL.md 文件（它们已被精心维护）
-- 新增脚本时，只需在 scripts.md 中追加一行简要说明，不要动 SKILL.md
-- 只有当创建一个全新的 skill 目录时，才需要新建 SKILL.md，且应保持简洁（仅功能索引列表）
+### 5. 自进化评估（完成任务后可选）
+在已回答用户问题的基础上，如果本次操作模式具有复用价值且 scripts.md 中无对应脚本，可简要新建脚本。
+**禁止**因为创建脚本而延迟或省略回答用户问题。简单的一次性查询不需要创建脚本。
 
 **⚠️ 脚本存放规则：**
-- **所有**新生成的脚本必须放在 skills/dtool-butler/scripts/ 目录下
-- **绝对禁止**往已有的 skill 目录（如 dtool-git/dtool-api/dtool-db 等）中新增脚本文件`
+- **所有**新生成脚本必须放在 skills/dtool-butler/scripts/ 目录下
+- **绝对禁止**往已有 skill 目录（dtool-git/dtool-api/dtool-db 等）中新增脚本文件
+
+**⚠️ SKILL.md 修改规则：**
+- **绝对禁止**修改或覆盖已有 SKILL.md 文件
+- 新增脚本时，只需在 scripts.md 中追加一行简要说明`
 
 // mergeUniqueStrings 合并两个字符串切片，去重后返回新切片。
 func mergeUniqueStrings(a, b []string) []string {
