@@ -106,7 +106,12 @@
             <el-table-column prop="id" label="#id" width="70"/>
             <el-table-column prop="name" label="管家名称" min-width="120"/>
             <el-table-column prop="role_name" label="关联角色" min-width="100"/>
-            <el-table-column prop="model_name" label="主模型" min-width="120"/>
+            <el-table-column label="主模型" min-width="140">
+              <template #default="scope">
+                <div>{{ scope.row.model_name || '-' }}</div>
+                <div style="font-size: 12px; color: #909399;">{{ scope.row.model_provider_name || '-' }}</div>
+              </template>
+            </el-table-column>
             <el-table-column prop="fc_model_name" label="FC模型" min-width="120"/>
             <el-table-column prop="agent_cli_name" label="Agent CLI" min-width="120"/>
             <el-table-column prop="bot_config_name" label="机器人配置" min-width="120"/>
@@ -220,8 +225,8 @@
     </el-dialog>
 
     <!-- 管家运行参数编辑弹窗 -->
-    <el-dialog v-model="state.dialogConfig" title="编辑管家运行参数" width="560">
-      <el-form label-width="120px">
+    <el-dialog v-model="state.dialogConfig" title="编辑管家运行参数" width="750">
+      <el-form label-width="150px">
         <el-form-item>
           <template #label>
             管家名称

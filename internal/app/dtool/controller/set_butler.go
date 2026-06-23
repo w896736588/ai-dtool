@@ -390,9 +390,17 @@ func SetButlerConfigList(c *gin.Context) {
 			}
 		}
 		if modelId > 0 {
-			modelOne, modelErr := common.DbMain.Client.QuickQuery(`tbl_ai_model`, `name`, map[string]any{`id`: modelId}).One()
+			modelOne, modelErr := common.DbMain.Client.QuickQuery(`tbl_ai_model`, `name, provider_id`, map[string]any{`id`: modelId}).One()
 			if modelErr == nil && modelOne[`name`] != `` {
 				all[i][`model_name`] = modelOne[`name`]
+				// 查询主模型所属服务商名称
+				providerId := cast.ToInt(modelOne[`provider_id`])
+				if providerId > 0 {
+					providerOne, pErr := common.DbMain.Client.QuickQuery(`tbl_ai_provider`, `name`, map[string]any{`id`: providerId}).One()
+					if pErr == nil && providerOne[`name`] != `` {
+						all[i][`model_provider_name`] = providerOne[`name`]
+					}
+				}
 			}
 		}
 		if fcModelId > 0 {
