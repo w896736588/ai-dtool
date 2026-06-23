@@ -12,11 +12,13 @@ import (
 	"time"
 
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gshttp"
 )
 
 const (
 	// aiChatRequestTimeout 统一限制 AI 普通与流式请求的最长等待时间为 5 分钟。 // aiChatRequestTimeout caps both standard and streaming AI requests at 5 minutes.
-	aiChatRequestTimeout = 5 * time.Minute
+	aiChatRequestTimeout        = 5 * time.Minute
+	aiChatRequestTimeoutSeconds = 300 // 5 分钟对应 gshttp.Request() 的秒数参数
 )
 
 // AiChatUsage 记录单次 AI 请求的 token 使用量。
@@ -40,38 +42,29 @@ func (h *CSqlite) AIChatByModel(modelID int, systemPrompt, userPrompt string) (s
 		},
 	}
 	bodyBytes, _ := json.Marshal(bodyMap)
-	request, err := http.NewRequest(http.MethodPost, requestURL, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return ``, nil, err
+	headers := map[string]string{
+		`Authorization`: `Bearer ` + apiKey,
+		`Content-Type`:  `application/json`,
 	}
-	request.Header.Set(`Authorization`, `Bearer `+apiKey)
-	request.Header.Set(`Content-Type`, `application/json`)
-	client := &http.Client{Timeout: aiChatRequestTimeout}
 	startTime := time.Now()
-	response, err := client.Do(request)
+	responseBytes, err := gshttp.PostJson(requestURL).
+		BodyStr(string(bodyBytes)).
+		Headers(headers).
+		Request(aiChatRequestTimeoutSeconds).
+		Result()
 	costTimeMs := time.Since(startTime).Milliseconds()
 	if err != nil {
 		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, 0, ``, err.Error(), costTimeMs)
 		return ``, nil, err
 	}
-	defer response.Body.Close()
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, ``, err.Error(), costTimeMs)
-		return ``, nil, err
-	}
-	if response.StatusCode >= 300 {
-		errMsg := `AI 请求失败: ` + string(responseBody)
-		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, string(responseBody), errMsg, costTimeMs)
-		return ``, nil, errors.New(errMsg)
-	}
-	content := p_common.ExtractOpenAiMessage(string(responseBody))
+	responseBody := string(responseBytes)
+	content := p_common.ExtractOpenAiMessage(responseBody)
 	if strings.TrimSpace(content) == `` {
-		content = string(responseBody)
+		content = responseBody
 	}
 	// 解析 token 使用量
-	inputTokens, outputTokens, _ := h.extractTokenUsage(string(responseBody))
-	h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, string(responseBody), ``, costTimeMs, inputTokens, outputTokens)
+	inputTokens, outputTokens, _ := h.extractTokenUsage(responseBody)
+	h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, 200, responseBody, ``, costTimeMs, inputTokens, outputTokens)
 	return strings.TrimSpace(content), modelInfo, nil
 }
 
@@ -89,37 +82,28 @@ func (h *CSqlite) AIChatByModelWithUsage(modelID int, systemPrompt, userPrompt s
 		},
 	}
 	bodyBytes, _ := json.Marshal(bodyMap)
-	request, err := http.NewRequest(http.MethodPost, requestURL, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return ``, nil, nil, 0, err
+	headers := map[string]string{
+		`Authorization`: `Bearer ` + apiKey,
+		`Content-Type`:  `application/json`,
 	}
-	request.Header.Set(`Authorization`, `Bearer `+apiKey)
-	request.Header.Set(`Content-Type`, `application/json`)
-	client := &http.Client{Timeout: aiChatRequestTimeout}
 	startTime := time.Now()
-	response, err := client.Do(request)
+	responseBytes, err := gshttp.PostJson(requestURL).
+		BodyStr(string(bodyBytes)).
+		Headers(headers).
+		Request(aiChatRequestTimeoutSeconds).
+		Result()
 	costTimeMs := time.Since(startTime).Milliseconds()
 	if err != nil {
 		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, 0, ``, err.Error(), costTimeMs)
 		return ``, nil, nil, costTimeMs, err
 	}
-	defer response.Body.Close()
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, ``, err.Error(), costTimeMs)
-		return ``, nil, nil, costTimeMs, err
-	}
-	if response.StatusCode >= 300 {
-		errMsg := `AI 请求失败: ` + string(responseBody)
-		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, string(responseBody), errMsg, costTimeMs)
-		return ``, nil, nil, costTimeMs, errors.New(errMsg)
-	}
-	content := p_common.ExtractOpenAiMessage(string(responseBody))
+	responseBody := string(responseBytes)
+	content := p_common.ExtractOpenAiMessage(responseBody)
 	if strings.TrimSpace(content) == `` {
-		content = string(responseBody)
+		content = responseBody
 	}
-	inputTokens, outputTokens, cacheReadInputTokens := h.extractTokenUsage(string(responseBody))
-	h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, string(responseBody), ``, costTimeMs, inputTokens, outputTokens)
+	inputTokens, outputTokens, cacheReadInputTokens := h.extractTokenUsage(responseBody)
+	h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, 200, responseBody, ``, costTimeMs, inputTokens, outputTokens)
 	usage := &AiChatUsage{
 		InputTokens:          inputTokens,
 		OutputTokens:         outputTokens,
@@ -277,34 +261,25 @@ func (h *CSqlite) AIChatByModelWithTools(modelID int, messages []map[string]any,
 		bodyMap[`tools`] = tools
 	}
 	bodyBytes, _ := json.Marshal(bodyMap)
-	request, err := http.NewRequest(http.MethodPost, requestURL, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return ``, nil, nil, nil, err
+	headers := map[string]string{
+		`Authorization`: `Bearer ` + apiKey,
+		`Content-Type`:  `application/json`,
 	}
-	request.Header.Set(`Authorization`, `Bearer `+apiKey)
-	request.Header.Set(`Content-Type`, `application/json`)
-	client := &http.Client{Timeout: aiChatRequestTimeout}
 	startTime := time.Now()
-	response, err := client.Do(request)
+	responseBytes, err := gshttp.PostJson(requestURL).
+		BodyStr(string(bodyBytes)).
+		Headers(headers).
+		Request(aiChatRequestTimeoutSeconds).
+		Result()
 	costTimeMs := time.Since(startTime).Milliseconds()
 	if err != nil {
 		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, 0, ``, err.Error(), costTimeMs)
 		return ``, nil, nil, nil, err
 	}
-	defer response.Body.Close()
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, ``, err.Error(), costTimeMs)
-		return ``, nil, nil, nil, err
-	}
-	if response.StatusCode >= 300 {
-		errMsg := `AI 请求失败: ` + string(responseBody)
-		h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, string(responseBody), errMsg, costTimeMs)
-		return ``, nil, nil, nil, errors.New(errMsg)
-	}
-	content, toolCalls := h.extractContentAndToolCalls(string(responseBody))
-	inputTokens, outputTokens, cacheReadInputTokens := h.extractTokenUsage(string(responseBody))
-	h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, response.StatusCode, string(responseBody), ``, costTimeMs, inputTokens, outputTokens)
+	responseBody := string(responseBytes)
+	content, toolCalls := h.extractContentAndToolCalls(responseBody)
+	inputTokens, outputTokens, cacheReadInputTokens := h.extractTokenUsage(responseBody)
+	h.logAIRequest(modelInfo, requestURL, http.MethodPost, bodyMap, nil, 200, responseBody, ``, costTimeMs, inputTokens, outputTokens)
 	usage := &AiChatUsage{
 		InputTokens:          inputTokens,
 		OutputTokens:         outputTokens,

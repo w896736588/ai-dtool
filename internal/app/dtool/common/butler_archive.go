@@ -13,6 +13,19 @@ import (
 	"github.com/spf13/cast"
 )
 
+// FindPendingArchiveBySession 根据会话 ID 查找已有的 pending 状态归档记录。
+// 返回归档记录 ID，不存在时返回 0。
+func (c *CSqlite) FindPendingArchiveBySession(sessionId string) (int, error) {
+	row, err := c.Client.QueryBySql(
+		`SELECT id FROM tbl_butler_archive WHERE session_id = ? AND status = 'pending' ORDER BY id DESC LIMIT 1`,
+		sessionId,
+	).One()
+	if err != nil || len(row) == 0 {
+		return 0, err
+	}
+	return cast.ToInt(row[`id`]), nil
+}
+
 // CreateArchiveRecord 主管家任务完成后提交归档记录。
 func (c *CSqlite) CreateArchiveRecord(configId, taskId int, sessionId string, files []string, conversation string) (int, error) {
 	// 读取各文件的内容拼入对话记录
@@ -63,6 +76,19 @@ func (c *CSqlite) ListPendingArchives(limit int) ([]map[string]any, error) {
 	).All()
 }
 
+// UpdateArchiveContent 更新归档记录的文件列表和对话内容（用于同一会话后续轮次合并归档）。
+// 仅当记录状态为 pending 时执行更新，避免覆盖正在处理或已完成的记录。
+func (c *CSqlite) UpdateArchiveContent(id int, files []string, conversation string, taskId int) error {
+	filesJSON, _ := json.Marshal(files)
+	_, err := c.Client.QuickUpdate(`tbl_butler_archive`, map[string]any{`id`: id}, map[string]any{
+		`files`:        string(filesJSON),
+		`conversation`: conversation,
+		`task_id`:      taskId,
+		`updated_at`:   time.Now().Unix(),
+	}).Exec()
+	return err
+}
+
 // UpdateArchiveStatus 更新归档记录的状态、日志和结果。
 func (c *CSqlite) UpdateArchiveStatus(id int, status, logContent, result, resultFile, resultIndex string) error {
 	updateData := map[string]any{
@@ -90,19 +116,25 @@ func WriteArchiveScript(rootPath, scriptName, content string) (string, error) {
 	return filePath, nil
 }
 
-// AppendArchiveIndex 向 scripts.md 追加一条归档脚本索引条目。
-func AppendArchiveIndex(rootPath, skillName, scriptName, description string) error {
+// AppendArchiveIndex 向 scripts.md 追加一条归档脚本索引条目（一行格式）。
+// description 为 AI 产出的完整索引行，格式: `- skills/dtool-butler/scripts/xxx.py — 功能说明`
+func AppendArchiveIndex(rootPath string, description string) error {
 	indexPath := filepath.Join(rootPath, `skills`, `dtool-butler`, `index`, `scripts.md`)
 	// 读取现有内容
 	existing, err := os.ReadFile(indexPath)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
+	// 去除 description 中的换行和多余空白，确保是单行
+	desc := strings.TrimSpace(description)
+	// 去掉可能的前缀换行
+	desc = strings.TrimLeft(desc, "\n\r")
 	var sb strings.Builder
 	sb.Write(existing)
 	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
 		sb.WriteString("\n")
 	}
-	sb.WriteString(fmt.Sprintf("\n## [%s] %s\n\n- 脚本: %s\n- 来源: 归档管家自进化\n", skillName, description, scriptName))
+	sb.WriteString(desc)
+	sb.WriteString("\n")
 	return os.WriteFile(indexPath, []byte(sb.String()), 0644)
 }

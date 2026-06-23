@@ -1,14 +1,23 @@
 package worker
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/w896736588/go-tool/gshttp"
+)
+
+const (
+	// toolHttpTimeoutSeconds HTTP 调用超时秒数，防止 http_call 工具永久阻塞 consumeLoop。
+	toolHttpTimeoutSeconds = 30
+	// toolScriptTimeoutSeconds 脚本执行超时秒数，防止 run_script 工具永久阻塞 consumeLoop。
+	toolScriptTimeoutSeconds = 60
 )
 
 // skillsRoot 技能目录绝对路径，由外部在启动时设置，供路径解析使用。
@@ -27,10 +36,40 @@ func SetDtoolBaseURL(baseURL string) {
 	dtoolBaseURL = baseURL
 }
 
+// argsToStringMap 将 JSON 字节解析为 map[string]string，
+// 兼容值为数字等非字符串类型的情况——自动转为字符串。
+func argsToStringMap(argumentsJSON string) (map[string]string, error) {
+	raw := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(argumentsJSON), &raw); err != nil {
+		return nil, err
+	}
+	args := make(map[string]string, len(raw))
+	for k, v := range raw {
+		switch val := v.(type) {
+		case string:
+			args[k] = val
+		case float64:
+			// JSON 数字解析为 float64，整数场景去掉小数点
+			if val == float64(int64(val)) {
+				args[k] = fmt.Sprintf("%d", int64(val))
+			} else {
+				args[k] = fmt.Sprintf("%f", val)
+			}
+		case bool:
+			args[k] = fmt.Sprintf("%t", val)
+		case nil:
+			args[k] = ""
+		default:
+			args[k] = fmt.Sprintf("%v", val)
+		}
+	}
+	return args, nil
+}
+
 // ExecuteTool 执行指定的工具调用，返回执行结果文本。
 func ExecuteTool(name string, argumentsJSON string) string {
-	args := make(map[string]string)
-	if err := json.Unmarshal([]byte(argumentsJSON), &args); err != nil {
+	args, err := argsToStringMap(argumentsJSON)
+	if err != nil {
 		return fmt.Sprintf(`参数解析失败：%s`, err.Error())
 	}
 	switch name {
@@ -160,6 +199,7 @@ func execFileDelete(path string) string {
 
 // execRunScript 执行本地 Python 脚本并返回 stdout+stderr。
 // 脚本路径会自动在 skillsRoot 下查找。
+// 支持通过 timeoutStr 参数自定义超时秒数，未指定时使用默认 60s。
 func execRunScript(path, argsStr, timeoutStr string) string {
 	if path == `` {
 		return `错误：脚本路径不能为空`
@@ -173,15 +213,32 @@ func execRunScript(path, argsStr, timeoutStr string) string {
 	if _, err := os.Stat(resolved); err != nil {
 		return fmt.Sprintf(`脚本不存在：%s`, resolved)
 	}
+	// 解析超时：优先使用传入参数，否则用默认值
+	timeout := toolScriptTimeoutSeconds
+	if timeoutStr != `` {
+		if parsed, parseErr := fmt.Sscanf(timeoutStr, "%d", &timeout); parseErr != nil || parsed != 1 || timeout <= 0 {
+			timeout = toolScriptTimeoutSeconds
+		}
+	}
 	// 构建命令参数
 	cmdArgs := []string{resolved}
 	if argsStr != `` {
 		cmdArgs = append(cmdArgs, strings.Fields(argsStr)...)
 	}
-	cmd := exec.Command(`python`, cmdArgs...)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, `python`, cmdArgs...)
+	// 设置 UTF-8 环境变量，解决 Windows 上 Python 管道输出 GBK 编码导致中文乱码的问题
+	cmd.Env = append(os.Environ(),
+		`PYTHONIOENCODING=utf-8`,
+		`PYTHONUTF8=1`,
+	)
 	output, err := cmd.CombinedOutput()
 	result := string(output)
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Sprintf(`脚本执行超时（%d 秒）：%s`, timeout, truncateForLog(result, 2000))
+		}
 		return fmt.Sprintf(`脚本执行失败：%s\n输出：%s`, err.Error(), truncateForLog(result, 2000))
 	}
 	if len(result) > 3000 {
@@ -207,7 +264,7 @@ func execAskUser(question, options, reason string) string {
 }
 
 // execHttpCall 调用 dtool 的 HTTP API 接口。
-// 自动拼接 dtooolBaseURL 与传入的 path，发起 POST 请求并返回响应文本。
+// 自动拼接 dtoolBaseURL 与传入的 path，通过 gshttp 发起 POST 请求（带超时保护）并返回响应文本。
 func execHttpCall(path, body string) string {
 	if path == `` {
 		return `错误：API 路径不能为空`
@@ -221,27 +278,17 @@ func execHttpCall(path, body string) string {
 	}
 	fullURL := strings.TrimRight(dtoolBaseURL, `/`) + path
 
-	req, err := http.NewRequest(http.MethodPost, fullURL, strings.NewReader(body))
-	if err != nil {
-		return fmt.Sprintf(`创建 HTTP 请求失败：%s`, err.Error())
-	}
-	req.Header.Set(`Content-Type`, `application/json`)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	respBytes, err := gshttp.PostJson(fullURL).
+		BodyStr(body).
+		Request(toolHttpTimeoutSeconds).
+		Result()
 	if err != nil {
 		return fmt.Sprintf(`HTTP 请求失败：%s`, err.Error())
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Sprintf(`读取响应失败：%s`, err.Error())
-	}
+	result := string(respBytes)
 	// 截断过长响应
-	result := string(respBody)
 	if len(result) > 3000 {
 		result = result[:3000] + `\n...(响应已截断)`
 	}
-	return fmt.Sprintf(`HTTP %d %s → %s`, resp.StatusCode, fullURL, result)
+	return fmt.Sprintf(`HTTP 200 %s → %s`, fullURL, result)
 }

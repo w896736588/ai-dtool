@@ -33,8 +33,10 @@ type Core struct {
 	skillsRoot      string          // skills 目录绝对路径
 	greetedSessions map[string]bool // 已发送过打招呼语的会话 ID，确保每次启动后每会话仅发送一次
 	// 归档提交回调，由业务层注入。主管家任务完成后将文件+对话异步提交到归档管家。
-	archiveSubmit    func(configId, taskId int, sessionId string, files []string, conversation string)
-	lastFilesWritten []string // 最近一次 FC 循环产生的文件路径
+	// 返回新创建或更新后的归档记录 ID。
+	archiveSubmit       func(configId, taskId int, sessionId string, files []string, conversation string) int
+	lastFilesWritten    []string            // 最近一次 FC 循环产生的文件路径
+	sessionFilesWritten map[string][]string // 会话级累积文件路径（key=conversationId）
 }
 
 // NewCore 创建管家核心。msgChan 为机器人网关投递的消息通道。
@@ -69,25 +71,27 @@ func NewCore(
 	// 设置 worker 包的 dtool API 基地址，供 http_call 工具使用
 	worker.SetDtoolBaseURL(env.DtoolBaseURL)
 	return &Core{
-		db:              db,
-		config:          config,
-		env:             env,
-		role:            role,
-		systemPrompt:    systemPrompt,
-		gatewayProvider: gatewayProvider,
-		history:         NewHistory(db, config.BotConfigId),
-		sessions:        NewSessionManager(timeout),
-		msgChan:         msgChan,
-		replier:         chatbot.NewChatbotReplier(),
-		stopCh:          make(chan struct{}),
-		indexPath:       indexPath,
-		skillsRoot:      skillsRoot,
-		greetedSessions: make(map[string]bool),
+		db:                  db,
+		config:              config,
+		env:                 env,
+		role:                role,
+		systemPrompt:        systemPrompt,
+		gatewayProvider:     gatewayProvider,
+		history:             NewHistory(db, config.BotConfigId),
+		sessions:            NewSessionManager(timeout),
+		msgChan:             msgChan,
+		replier:             chatbot.NewChatbotReplier(),
+		stopCh:              make(chan struct{}),
+		indexPath:           indexPath,
+		skillsRoot:          skillsRoot,
+		greetedSessions:     make(map[string]bool),
+		sessionFilesWritten: make(map[string][]string),
 	}
 }
 
 // SetArchiveSubmit 注入归档提交回调（由业务层调用）。仅主管家生效。
-func (c *Core) SetArchiveSubmit(fn func(configId, taskId int, sessionId string, files []string, conversation string)) {
+// 回调返回归档记录 ID（新建或更新后）。
+func (c *Core) SetArchiveSubmit(fn func(configId, taskId int, sessionId string, files []string, conversation string) int) {
 	c.archiveSubmit = fn
 }
 
@@ -256,14 +260,20 @@ func (c *Core) handleMessage(msg bot.IncomingMessage) {
 	if err := c.history.TrimBySession(msg.ConversationId, c.config.MaxHistoryStore); err != nil {
 		gstool.FmtPrintlnLogTime(`[butler-core] 历史自动 trim 失败 %s`, err.Error())
 	}
-	// 有工具调用 → 创建任务记录 → 提交归档
+	// 有工具调用 → 创建任务记录 → 提交/更新会话级归档
 	if len(toolsUsed) > 0 {
 		taskId := c.saveTaskRecord(msg.ConversationId, msg.Text, aiReply, toolsUsed)
 		// 主管家任务完成后 → 异步提交归档（将对话+文件交给归档管家评估自进化）
 		if c.config.ButlerType == define.ButlerTypeMain && c.archiveSubmit != nil {
+			// 累积本次 FC 循环产生的文件到会话级别（去重合并）
+			c.sessionFilesWritten[msg.ConversationId] = mergeUniqueStrings(c.sessionFilesWritten[msg.ConversationId], c.lastFilesWritten)
+			// 获取会话完整对话历史
 			conversation := c.getSessionConversation(msg.ConversationId)
-			go c.archiveSubmit(c.config.Id, taskId, msg.ConversationId, c.lastFilesWritten, conversation)
-			gstool.FmtPrintlnLogTime(`[butler-core] 已提交归档 task_id=%d files=%d`, taskId, len(c.lastFilesWritten))
+			// 同一会话后续轮次会更新已有归档记录，而非创建新记录
+			go func(sessionId, conv string, accumulatedFiles []string) {
+				archiveId := c.archiveSubmit(c.config.Id, taskId, sessionId, accumulatedFiles, conv)
+				gstool.FmtPrintlnLogTime(`[butler-core] 已提交归档 task_id=%d session=%s archive_id=%d files=%d`, taskId, sessionId, archiveId, len(accumulatedFiles))
+			}(msg.ConversationId, conversation, c.sessionFilesWritten[msg.ConversationId])
 		}
 	}
 }
@@ -505,6 +515,25 @@ const fcSystemPromptSuffix = `
 **⚠️ 脚本存放规则：**
 - **所有**新生成的脚本必须放在 skills/dtool-butler/scripts/ 目录下
 - **绝对禁止**往已有的 skill 目录（如 dtool-git/dtool-api/dtool-db 等）中新增脚本文件`
+
+// mergeUniqueStrings 合并两个字符串切片，去重后返回新切片。
+func mergeUniqueStrings(a, b []string) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	result := make([]string, 0, len(a)+len(b))
+	for _, s := range a {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	for _, s := range b {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	return result
+}
 
 // reply 通过消息携带的 SessionWebhook 以 markdown 格式回复。
 // SessionWebhook 为空时，通过消息来源机器人的 Gateway 使用 Open API 单聊发送回退。
