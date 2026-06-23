@@ -703,22 +703,30 @@ func taskWorkflowMemoryDBOrResponse(c *gin.Context) (common.MemoryFragmentStore,
 func buildTaskWorkflowResponse(c *gin.Context, workflowInfo map[string]any) (map[string]any, error) {
 	memoryDB := taskWorkflowMemoryDBIfConfigured()
 	if err := taskWorkflowNormalizeFragmentRefs(workflowInfo, memoryDB); err != nil {
+		gstool.FmtPrintlnLogTime("[buildTaskWorkflowResponse] taskWorkflowNormalizeFragmentRefs 失败 memoryDB=%v err=%v，步骤文档片段将被跳过", memoryDB != nil, err)
 		return nil, err
 	}
 	homeTaskInfo, err := common.DbMain.HomeTaskRow(cast.ToInt(workflowInfo[`home_task_id`]))
 	if err != nil {
+		gstool.FmtPrintlnLogTime("[buildTaskWorkflowResponse] HomeTaskRow 失败 homeTaskID=%d err=%v", cast.ToInt(workflowInfo[`home_task_id`]), err)
 		return nil, err
 	}
 	// 获取关联的模板和步骤信息（尽早获取，便于预生成步骤文档片段）。
 	homeTaskID := cast.ToInt(workflowInfo[`home_task_id`])
-	template, templateSteps, _ := common.DbMain.HomeTaskWorkflowTemplateSteps(homeTaskID)
+	template, templateSteps, templateErr := common.DbMain.HomeTaskWorkflowTemplateSteps(homeTaskID)
+	if templateErr != nil {
+		gstool.FmtPrintlnLogTime("[buildTaskWorkflowResponse] HomeTaskWorkflowTemplateSteps 失败 homeTaskID=%d err=%v", homeTaskID, templateErr)
+	}
 
 	workflowID := cast.ToInt(workflowInfo[`id`])
 	// 预生成模板步骤中配置的知识片段文档，确保所有占位符在提示词替换前可用。
 	// 内置文档（plain_text_requirement/design_plan_requirement/api_doc）已废弃，
 	// 统一由步骤文档（step_document）通过 ensureTaskWorkflowStepFragments 创建。
 	if workflowID > 0 && len(templateSteps) > 0 {
+		gstool.FmtPrintlnLogTime("[buildTaskWorkflowResponse] 进入 ensureTaskWorkflowStepFragments workflowID=%d templateSteps=%d", workflowID, len(templateSteps))
 		ensureTaskWorkflowStepFragments(c, workflowInfo, homeTaskInfo, templateSteps)
+	} else {
+		gstool.FmtPrintlnLogTime("[buildTaskWorkflowResponse] 跳过 ensureTaskWorkflowStepFragments workflowID=%d templateSteps=%d", workflowID, len(templateSteps))
 	}
 	// 知识片段创建完成后，逐个初始化缺失的提示词。
 	// 优先从模板步骤的 prompt_content 获取，回退到旧全局配置。
@@ -2446,17 +2454,21 @@ func taskWorkflowBuildDesignPlanFragmentRelativePath(workflowInfo map[string]any
 // 注意：此函数需要先创建所有片段并保存引用，再统一替换提示词占位符，避免顺序问题导致替换不到。
 func ensureTaskWorkflowStepFragments(c *gin.Context, workflowInfo map[string]any, homeTaskInfo map[string]any, templateSteps []map[string]any) {
 	if component.MemoryRuntime == nil {
+		gstool.FmtPrintlnLogTime("[ensureTaskWorkflowStepFragments] MemoryRuntime 为 nil，跳过创建步骤文档片段")
 		return
 	}
 	if err := component.MemoryRuntime.EnsureConfigured(); err != nil {
+		gstool.FmtPrintlnLogTime("[ensureTaskWorkflowStepFragments] 记忆库未配置: %v，跳过创建步骤文档片段", err)
 		return
 	}
 	memoryDB := component.MemoryRuntime.DB()
 	if memoryDB == nil {
+		gstool.FmtPrintlnLogTime("[ensureTaskWorkflowStepFragments] memoryDB 为 nil，跳过创建步骤文档片段")
 		return
 	}
 	workflowID := cast.ToInt(workflowInfo[`id`])
 	if workflowID <= 0 {
+		gstool.FmtPrintlnLogTime("[ensureTaskWorkflowStepFragments] workflowID=%d 无效，跳过", workflowID)
 		return
 	}
 	folderName := taskWorkflowWorkflowFragmentFolderName(workflowInfo)
@@ -2504,11 +2516,13 @@ func ensureTaskWorkflowStepFragments(c *gin.Context, workflowInfo map[string]any
 			tags := []string{doc.Name}
 			fragmentInfo, err := memoryDB.MemoryFragmentSave(0, title, content, tags, folderName)
 			if err != nil {
+				gstool.FmtPrintlnLogTime("[ensureTaskWorkflowStepFragments] workflowID=%d 创建片段失败 docID=%s docName=%s err=%v", workflowID, doc.ID, doc.Name, err)
 				continue
 			}
 			component.MemoryRuntime.ScheduleSync()
 			fragmentFileID := strings.TrimSpace(cast.ToString(fragmentInfo[`file_id`]))
 			if fragmentFileID == `` {
+				gstool.FmtPrintlnLogTime("[ensureTaskWorkflowStepFragments] workflowID=%d MemoryFragmentSave 返回空 file_id docID=%s docName=%s", workflowID, doc.ID, doc.Name)
 				continue
 			}
 			_ = common.DbMain.TaskWorkflowDocumentUpsert(

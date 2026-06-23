@@ -767,50 +767,52 @@
                     <el-icon class="is-loading"><Loading /></el-icon>
                     <span>加载中...</span>
                   </div>
-                  <!-- 编辑模式：检查文档是否已加载，而非内容是否非空 -->
-                  <div v-else-if="isActiveDocLoaded() && docEditMode" class="task-workflow-doc-editor">
-                      <UnifiedMdEditor
-                        :model-value="getActiveDocContent()"
-                        @update:model-value="val => setActiveDocContent(val)"
-                        preview-theme="github"
-                        :preview="true"
-                        :toolbars="promptEditorToolbars"
-                        height="100%"
-                      />
-                  </div>
-                  <!-- 查看模式：检查文档是否已加载，而非内容是否非空 -->
-                  <div v-else-if="isActiveDocLoaded()" class="preview-body" :class="{ 'preview-body--with-outline': docTocItems.length > 0 }">
-                      <div ref="docPreviewBody" class="preview-renderer" @scroll="handleDocPreviewScroll">
-                        <MdPreview
-                          :model-value="getActiveDocContent()"
-                          preview-theme="github"
-                          :auto-fold-threshold="999999"
-                          :on-get-catalog="onDocCatalog"
-                        />
-                      </div>
-                      <aside v-if="docTocItems.length > 0" class="preview-outline">
-                        <div class="preview-outline-card">
-                          <div class="preview-outline-title">目录</div>
-                          <button
-                            v-for="item in docTocItems"
-                            :key="item.id"
-                            type="button"
-                            class="preview-outline-item"
-                            :class="[
-                              { active: docActiveHeading === item.id },
-                              { 'preview-outline-item--child': item.level > 1 },
-                              { 'preview-outline-item--grandchild': item.level > 2 },
-                            ]"
-                            @click="scrollToDocHeading(item.id)"
-                          >
-                            {{ item.text }}
-                          </button>
-                        </div>
-                      </aside>
-                  </div>
-                  <div v-else class="step-tab-panel__empty">
+                  <div v-else-if="!isActiveDocLoaded()" class="step-tab-panel__empty">
                     <el-empty description="暂无文档内容" :image-size="60" />
                   </div>
+                  <template v-else>
+                    <!-- 编辑模式：v-show 保持 DOM 存活，避免 md-editor mount/unmount 崩溃 -->
+                    <div v-show="docEditMode" class="task-workflow-doc-editor">
+                        <UnifiedMdEditor
+                          :model-value="getActiveDocContent()"
+                          @update:model-value="val => setActiveDocContent(val)"
+                          preview-theme="github"
+                          :preview="true"
+                          :toolbars="promptEditorToolbars"
+                          height="100%"
+                        />
+                    </div>
+                    <!-- 查看模式 -->
+                    <div v-show="!docEditMode" class="preview-body" :class="{ 'preview-body--with-outline': docTocItems.length > 0 }">
+                        <div ref="docPreviewBody" class="preview-renderer" @scroll="handleDocPreviewScroll">
+                          <MdPreview
+                            :model-value="getActiveDocContent()"
+                            preview-theme="github"
+                            :auto-fold-threshold="999999"
+                            :on-get-catalog="onDocCatalog"
+                          />
+                        </div>
+                        <aside v-if="docTocItems.length > 0" class="preview-outline">
+                          <div class="preview-outline-card">
+                            <div class="preview-outline-title">目录</div>
+                            <button
+                              v-for="item in docTocItems"
+                              :key="item.id"
+                              type="button"
+                              class="preview-outline-item"
+                              :class="[
+                                { active: docActiveHeading === item.id },
+                                { 'preview-outline-item--child': item.level > 1 },
+                                { 'preview-outline-item--grandchild': item.level > 2 },
+                              ]"
+                              @click="scrollToDocHeading(item.id)"
+                            >
+                              {{ item.text }}
+                            </button>
+                          </div>
+                        </aside>
+                    </div>
+                  </template>
                 </div>
               </div>
             </div>
@@ -3383,7 +3385,7 @@ export default {
     isActiveDocLoaded() {
       const docKey = this.stepActiveTab
       const doc = this.stepDocContents[docKey]
-      return doc && doc.content !== undefined && !doc.loading
+      return doc && doc.content !== undefined && !doc.loading && !!doc.fileId
     },
     // 获取当前激活文档Tab的 file_id
     getActiveDocFileId() {
