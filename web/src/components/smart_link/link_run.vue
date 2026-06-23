@@ -452,11 +452,16 @@ export default {
           }
           this.openPageNum += runList[i].page_num
         }
-        // 为每个链接分配运行数
+        // 为每个链接分配运行数（兼容包含用户名的 LinkIdLabel）
         for (let i in this.smartList) {
           let item = this.smartList[i]
-          let runName = "link_id_" + item.id + "_label_" + item.label
-          item.runNum = this.smartLinkRunList[runName] || 0
+          let runNamePrefix = "link_id_" + item.id + "_label_" + item.label
+          item.runNum = 0
+          for (let runName in this.smartLinkRunList) {
+            if (runName.startsWith(runNamePrefix)) {
+              item.runNum += this.smartLinkRunList[runName]
+            }
+          }
         }
       })
     },

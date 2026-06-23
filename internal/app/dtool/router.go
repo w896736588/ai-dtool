@@ -124,7 +124,7 @@ func baseRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/GetLocalIP`, controller.GetLocalIP)                           //局域网IP
 	tGin.GinPost(`/api/Upload`, controller.Upload)                                   //上传文件
 	tGin.GinPost(`/api/MemoryFragmentShareInfo`, controller.MemoryFragmentShareInfo) //知识片段分享只读详情
-	tGin.GinGet(`/share/:token`, controller.MemoryFragmentSharePage)                 //知识片段分享纯HTML页面
+	tGin.GinGet(`/share/:id/:token`, controller.MemoryFragmentSharePage)             //知识片段分享纯HTML页面
 	tGin.GinGet(`/api/download/:name`, controller.DownloadWebFile)                   //下载 web/download 目录文件
 	tGin.GinGet(`/web/download/:name`, controller.DownloadWebFile)                   //兼容 web/download 直链下载
 	tGin.GinGet(`/memory/images/:name`, controller.MemoryFragmentImageServe)         //记忆库图片静态服务

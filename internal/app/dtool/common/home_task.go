@@ -427,55 +427,41 @@ func (h *CSqlite) HomeTaskFragmentReferences(fragmentIDs []string) (map[string][
 		}
 	}
 
-	// 查 tbl_task_workflow 中所有 fragment_id 字段，兼容“folder/file_id”和旧的纯 file_id。
-	workflowRows, err := h.Client.QueryBySql(
-		`SELECT tw.id, tw.home_task_id, ht.name,
-			tw.fragment_folder_name,
-			tw.requirement_fragment_id, tw.dev_plan_fragment_id,
-			tw.plain_text_requirement_fragment_id, tw.design_plan_requirement_fragment_id,
-			tw.api_doc_fragment_id, tw.design_fragment_id
-		 FROM tbl_task_workflow tw
+	// 查 tbl_task_workflow_document 中所有文档的片段引用。
+	docRows, err := h.Client.QueryBySql(
+		`SELECT twd.workflow_id, tw.home_task_id, ht.name, twd.file_id
+		 FROM tbl_task_workflow_document twd
+		 JOIN tbl_task_workflow tw ON tw.id = twd.workflow_id
 		 LEFT JOIN tbl_home_task ht ON ht.id = tw.home_task_id
-		 WHERE tw.requirement_fragment_id <> ''
-		    OR tw.dev_plan_fragment_id <> ''
-		    OR tw.plain_text_requirement_fragment_id <> ''
-		    OR tw.design_plan_requirement_fragment_id <> ''
-		    OR tw.api_doc_fragment_id <> ''
-		    OR tw.design_fragment_id <> ''`,
+		 WHERE twd.file_id != ''`,
 	).All()
 	if err != nil {
 		return nil, err
 	}
-	fragColumns := TaskWorkflowFragmentColumns()
-	for _, row := range workflowRows {
+	for _, row := range docRows {
 		taskID := cast.ToInt(row[`home_task_id`])
 		taskName := cast.ToString(row[`name`])
-		if taskID <= 0 || taskName == `` {
+		fileID := strings.TrimSpace(cast.ToString(row[`file_id`]))
+		if taskID <= 0 || taskName == `` || fileID == `` {
 			continue
 		}
-		for _, col := range fragColumns {
-			ref := TaskWorkflowParseFragmentRef(cast.ToString(row[col]), cast.ToString(row[`fragment_folder_name`]))
-			if ref.FileID == `` {
-				continue
+		if _, ok := targetIDMap[fileID]; !ok {
+			continue
+		}
+		// 去重：同一任务对同一片段只记录一次。
+		exists := false
+		for _, item := range result[fileID] {
+			if item.Type == fragmentRefTypeWorkflow && item.ID == taskID {
+				exists = true
+				break
 			}
-			if _, ok := targetIDMap[ref.FileID]; !ok {
-				continue
-			}
-			// 去重：同一任务对同一片段只记录一次。
-			exists := false
-			for _, item := range result[ref.FileID] {
-				if item.Type == fragmentRefTypeWorkflow && item.ID == taskID {
-					exists = true
-					break
-				}
-			}
-			if !exists {
-				result[ref.FileID] = append(result[ref.FileID], fragmentReference{
-					Type: fragmentRefTypeWorkflow,
-					ID:   taskID,
-					Name: taskName,
-				})
-			}
+		}
+		if !exists {
+			result[fileID] = append(result[fileID], fragmentReference{
+				Type: fragmentRefTypeWorkflow,
+				ID:   taskID,
+				Name: taskName,
+			})
 		}
 	}
 
@@ -583,19 +569,16 @@ func (h *CSqlite) HomeTaskContainsFragmentID(homeTaskID int, fragmentID string) 
 		}
 	}
 
-	// 2. 检查 tbl_task_workflow 中所有 fragment_id 列。
-	workflowCols := TaskWorkflowFragmentColumns()
-	workflow, wfErr := h.Client.QuickQuery(`tbl_task_workflow`, strings.Join(workflowCols, `,`)+`, fragment_folder_name`, map[string]any{
+	// 2. 检查 tbl_task_workflow_document 中是否有该片段。
+	wf, wfErr := h.Client.QuickQuery(`tbl_task_workflow`, `id`, map[string]any{
 		`home_task_id`: homeTaskID,
 	}).One()
-	if wfErr != nil || workflow == nil {
-		return false, nil
-	}
-	folderName := cast.ToString(workflow[`fragment_folder_name`])
-	for _, col := range workflowCols {
-		ref := TaskWorkflowParseFragmentRef(cast.ToString(workflow[col]), folderName)
-		if ref.FileID != `` && ref.FileID == fragmentID {
-			return true, nil
+	if wfErr == nil && wf != nil {
+		workflowID := cast.ToInt(wf[`id`])
+		if workflowID > 0 {
+			if contains, containsErr := h.TaskWorkflowContainsFragmentID(workflowID, fragmentID); containsErr == nil && contains {
+				return true, nil
+			}
 		}
 	}
 

@@ -70,8 +70,9 @@ func (h *ContextPageList) getSmartLinkLastStore() SmartLinkLastStore {
 }
 
 func (h *ContextPageList) EventContextClose(contextP *ContextPage) {
+	contextP.RunParams.StreamFunc(`注册浏览器关闭回调`, fmt.Sprintf(`实例：%s,%s, dataIndex=%d, dataPath=%s`, contextP.LinkId, contextP.LinkIdLabel, contextP.UserDataIndex, contextP.UserDataPath))
 	go (*contextP.Context).OnClose(func(context playwright.BrowserContext) {
-		contextP.RunParams.StreamFunc(`浏览器实例关闭`, fmt.Sprintf(`%s,%s`, contextP.LinkId, contextP.LinkIdLabel))
+		contextP.RunParams.StreamFunc(`浏览器实例关闭`, fmt.Sprintf(`实例：%s,%s, dataIndex=%d, dataPath=%s`, contextP.LinkId, contextP.LinkIdLabel, contextP.UserDataIndex, contextP.UserDataPath))
 		h.CleanContextList(false)
 	})
 }
@@ -133,6 +134,7 @@ func (h *ContextPageList) CloseContextPages(context *playwright.BrowserContext) 
 }
 
 // RemoveContextPage 移除context_page
+// 通过 LinkIdLabel 精确匹配要移除的实例，避免误关闭同一 smart link 下不同 label 的浏览器。
 func (h *ContextPageList) RemoveContextPage(rmContextPage *ContextPage) {
 	ContextLock.Lock()
 	defer ContextLock.Unlock()
@@ -143,7 +145,7 @@ func (h *ContextPageList) RemoveContextPage(rmContextPage *ContextPage) {
 	}()
 	newList := make([]*ContextPage, 0)
 	for _, context := range *getList() {
-		if context.LinkId == rmContextPage.LinkId {
+		if context.LinkIdLabel == rmContextPage.LinkIdLabel {
 			_ = (*context.Context).Close()
 		} else {
 			newList = append(newList, context)
@@ -170,7 +172,7 @@ func (h *ContextPageList) FindAIContextByRunParams(runParams *PlaywrightRunParam
 		if context.OpenType != runParams.OpenType {
 			return nil
 		}
-		// 这里沿用 smart-link 的“同一链接类型”判断，避免 AI 会话复用到别的配置实例上。
+		// 这里沿用 smart-link 的"同一链接类型"判断，避免 AI 会话复用到别的配置实例上。
 		if !h.IsSameLink(context.LinkIdLabel, runParams.LinkIdLabel) {
 			return nil
 		}
@@ -198,6 +200,8 @@ func (h *ContextPageList) findContextPageByPageKey(pageKey string) (*ContextPage
 }
 
 // CleanContextPagesFixDataId 固定目录的，先关掉其他页面
+// 仅清理与当前运行参数完全相同的实例（同一 smart link + 同一 label）的旧页面，
+// 不会影响不同 label/账号的浏览器实例。
 func (h *ContextPageList) CleanContextPagesFixDataId(runParams *PlaywrightRunParams) {
 	runParams.StreamFunc(`获取数据目录`, `当前为固定目录，开始清理旧页面`)
 	h.EachContextList(func(context *ContextPage) bool {
@@ -206,7 +210,9 @@ func (h *ContextPageList) CleanContextPagesFixDataId(runParams *PlaywrightRunPar
 			runParams.StreamFunc(`获取数据目录`, context.LinkIdLabel+`,`+context.LinkId+` 打开方式不一致，不进行清理`)
 			return false
 		}
-		if context.LinkId == runParams.LinkId && context.RunParams.Label == runParams.Label {
+		// 使用 LinkIdLabel 进行精确匹配，LinkIdLabel = link_id_X_label_Y，
+		// 不同 label（如 cs24092401 vs cs）的实例不会被误清理
+		if context.LinkIdLabel == runParams.LinkIdLabel {
 			runParams.StreamFunc(`获取数据目录`, context.LinkIdLabel+`,`+context.LinkId+` 查找到当前实例，开始清理旧页面`)
 			context.CloseContextPages()
 		}
@@ -388,71 +394,47 @@ func (h *ContextPageList) GetContextSaveUserData(runParams *PlaywrightRunParams)
 	} else {
 		runParams.StreamFunc(`获取浏览器实例`, `使用有头模式打开`)
 	}
+
 	var context playwright.BrowserContext
 	var contextErr error
+	// 统一使用相同的 LaunchPersistentContextOptions 构建逻辑，避免 Chromium 进程冲突
+	launchOpts := playwright.BrowserTypeLaunchPersistentContextOptions{
+		Headless:          &Headless,
+		Channel:           playwright.String(runParams.Channel),
+		NoViewport:        playwright.Bool(true),
+		JavaScriptEnabled: playwright.Bool(true),
+		AcceptDownloads:   playwright.Bool(true),
+		Locale:            playwright.String(`zh-CN`),
+		Timeout:           &runParams.GetPageTimeout,
+		IgnoreHttpsErrors: playwright.Bool(true),
+		Args: append([]string{
+			`--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36`,
+		}, runParams.ExtraBrowserArgs...),
+		IgnoreDefaultArgs: []string{
+			`--enable-automation`,
+			`--disable-infobars`,
+			`--disable-features=IsolateOrigins`,
+			`--disable-popup-blocking`,
+			`--allow-running-insecure-content`,
+			`--disable-blink-features=AutomationControlled`,
+		},
+	}
 	//浏览器自带验证
 	if runParams.BrowserAuthUsername != `` && runParams.BrowserAuthPassword != `` {
 		runParams.StreamFunc(`获取浏览器实例`, fmt.Sprintf(`打开contxt，使用浏览器自带验证 用户名%s,超时时间 %f`, runParams.BrowserAuthUsername, runParams.GetPageTimeout))
-		context, contextErr = component.PlaywrightClient.Pw.Chromium.LaunchPersistentContext(userDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
-			//DownloadsPath:     &h.downloadPath,
-			Headless:          &Headless,
-			Channel:           playwright.String(runParams.Channel), // 使用完整版 Chrome 而非 Chromium
-			NoViewport:        playwright.Bool(true),
-			JavaScriptEnabled: playwright.Bool(true),
-			AcceptDownloads:   playwright.Bool(true),
-			Locale:            playwright.String(`zh-CN`),
-			Timeout:           &runParams.GetPageTimeout,
-			IgnoreHttpsErrors: playwright.Bool(true),
-			HttpCredentials: &playwright.HttpCredentials{
-				Username: runParams.BrowserAuthUsername,
-				Password: runParams.BrowserAuthPassword,
-			},
-			Args: append([]string{
-				`--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36`, //隐藏无头
-			}, runParams.ExtraBrowserArgs...),
-			IgnoreDefaultArgs: []string{
-				`--enable-automation`,
-				`--disable-infobars`,                            //禁用“正在使用自动化软件”提示信息栏。
-				`--disable-features=IsolateOrigins`,             //禁用隔离来源功能，允许跨域资源共享。
-				`--disable-popup-blocking`,                      //禁用弹出窗口阻止功能。
-				`--allow-running-insecure-content`,              //允许加载不安全的内容（如 HTTP 资源）。
-				`--disable-blink-features=AutomationControlled`, //禁止传递浏览器自动化标识
-			},
-		})
-		if contextErr != nil {
-			runParams.StreamFunc(`获取浏览器实例`, fmt.Sprintf(`启动报错 %s`, contextErr.Error()))
-			return nil, false, contextErr
+		launchOpts.HttpCredentials = &playwright.HttpCredentials{
+			Username: runParams.BrowserAuthUsername,
+			Password: runParams.BrowserAuthPassword,
 		}
 	} else {
-		runParams.StreamFunc(`获取浏览器实例`, fmt.Sprintf(`启动超时时间：%f`, runParams.GetPageTimeout))
-		context, contextErr = component.PlaywrightClient.Pw.Chromium.LaunchPersistentContext(userDataPath, playwright.BrowserTypeLaunchPersistentContextOptions{
-			//DownloadsPath:     &h.downloadPath,
-			Headless: &Headless,
-			//Channel:           playwright.String(runParams.Channel),//增加这个会导致问题 关闭后不能正常启动下一个
-			NoViewport:        playwright.Bool(true),
-			JavaScriptEnabled: playwright.Bool(true),
-			AcceptDownloads:   playwright.Bool(true),
-			IgnoreHttpsErrors: playwright.Bool(true),
-			Locale:            playwright.String(`zh-CN`),
-			Timeout:           &runParams.GetPageTimeout,
-			Args: append([]string{
-				`--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36`, //隐藏无头
-			}, runParams.ExtraBrowserArgs...),
-			IgnoreDefaultArgs: []string{
-				`--enable-automation`,
-				`--disable-infobars`,                            //禁用“正在使用自动化软件”提示信息栏。
-				`--disable-features=IsolateOrigins`,             //禁用隔离来源功能，允许跨域资源共享。
-				`--disable-popup-blocking`,                      //禁用弹出窗口阻止功能。
-				`--allow-running-insecure-content`,              //允许加载不安全的内容（如 HTTP 资源）。
-				`--disable-blink-features=AutomationControlled`, //禁止传递浏览器自动化标识
-			},
-		})
-		if contextErr != nil {
-			runParams.StreamFunc(`获取浏览器实例`, fmt.Sprintf(`启动报错 %s`, contextErr.Error()))
-			return nil, false, contextErr
-		}
-		runParams.StreamFunc(`获取浏览器实例`, `启动完成`)
+		runParams.StreamFunc(`获取浏览器实例`, fmt.Sprintf(`启动超时时间：%f, Channel=%s, dataPath=%s`, runParams.GetPageTimeout, runParams.Channel, userDataPath))
 	}
+	context, contextErr = component.PlaywrightClient.Pw.Chromium.LaunchPersistentContext(userDataPath, launchOpts)
+	if contextErr != nil {
+		runParams.StreamFunc(`获取浏览器实例`, fmt.Sprintf(`启动报错 %s`, contextErr.Error()))
+		return nil, false, contextErr
+	}
+	runParams.StreamFunc(`获取浏览器实例`, `启动完成, dataPath=`+userDataPath)
 	//context关闭回调
 	closeEvent := func() {
 		//runParams.StreamFunc(`浏览器实例关闭事件回调`, `关闭 `+runParams.LinkIdLabel+`,`+runParams.LinkId)

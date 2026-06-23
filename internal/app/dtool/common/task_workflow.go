@@ -2,7 +2,6 @@ package common
 
 import (
 	"dev_tool/internal/app/dtool/memory"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -49,15 +48,6 @@ const (
 	// AgentChatSourceTypeAgentCli 表示记录来自 AgentCli 独立执行。 // Source type used when the chat is created from standalone AgentCli execution.
 	AgentChatSourceTypeAgentCli = `agent_cli`
 )
-
-var taskWorkflowFragmentColumns = []string{
-	`requirement_fragment_id`,
-	`dev_plan_fragment_id`,
-	`plain_text_requirement_fragment_id`,
-	`design_plan_requirement_fragment_id`,
-	`api_doc_fragment_id`,
-	`design_fragment_id`,
-}
 
 // TaskWorkflowFragmentRef 描述工作流中一个知识片段引用。
 type TaskWorkflowFragmentRef struct {
@@ -139,11 +129,6 @@ func (h *CSqlite) TaskWorkflowContainsFragmentID(workflowID int, fragmentID stri
 	return len(docRecords) > 0, nil
 }
 
-// TaskWorkflowFragmentColumns 返回所有 workflow 片段引用列名。
-func TaskWorkflowFragmentColumns() []string {
-	return append([]string(nil), taskWorkflowFragmentColumns...)
-}
-
 // TaskWorkflowCreateOrGetByHomeTaskID 查询或创建任务工作流主记录。
 func (h *CSqlite) TaskWorkflowCreateOrGetByHomeTaskID(homeTaskID int) (map[string]any, error) {
 	if homeTaskID <= 0 {
@@ -182,9 +167,6 @@ func (h *CSqlite) TaskWorkflowCreateOrGetByHomeTaskID(homeTaskID int) (map[strin
 		`requirement_fetch_finished_at`: 0,
 		`requirement_fetch_error`:       ``,
 		`requirement_source_url`:        requirementSourceURL,
-		`dev_plan_fragment_id`:          ``,
-		`latest_plan_run_id`:            0,
-		`latest_test_run_id`:            0,
 		`base_branch`:                   ``,
 		`feature_branch`:                ``,
 		`last_error`:                    ``,
@@ -214,68 +196,26 @@ func (h *CSqlite) TaskWorkflowInfo(id int) (map[string]any, error) {
 	return info, nil
 }
 
-// TaskWorkflowBindDevPlanFragment 绑定开发执行片段引用。
+// TaskWorkflowBindDevPlanFragment 绑定开发执行片段引用（写入文档表）。
 func (h *CSqlite) TaskWorkflowBindDevPlanFragment(workflowID int, fragmentRef string) error {
 	if workflowID <= 0 {
 		return errors.New(`工作流id不能为空`)
 	}
 	fragmentRef = strings.TrimSpace(fragmentRef)
-	if TaskWorkflowParseFragmentRef(fragmentRef, memory.DefaultFolderName).FileID == `` {
+	ref := TaskWorkflowParseFragmentRef(fragmentRef, memory.DefaultFolderName)
+	if ref.FileID == `` {
 		return errors.New(`开发执行片段id不能为空`)
 	}
 	if _, err := h.TaskWorkflowInfo(workflowID); err != nil {
 		return err
 	}
-	_, err := h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
-		`id`: workflowID,
-	}, map[string]any{
-		`dev_plan_fragment_id`: fragmentRef,
-		`status`:               `dev_plan_ready`,
-		`update_time`:          time.Now().Unix(),
+	// 更新状态
+	_, _ = h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{`id`: workflowID}, map[string]any{
+		`status`:      `dev_plan_ready`,
+		`update_time`: time.Now().Unix(),
 	}).Exec()
-	return err
-}
-
-// TaskWorkflowBindPlainTextReqFragment 绑定纯文本需求片段引用。
-func (h *CSqlite) TaskWorkflowBindPlainTextReqFragment(workflowID int, fragmentRef string) error {
-	if workflowID <= 0 {
-		return errors.New(`工作流id不能为空`)
-	}
-	fragmentRef = strings.TrimSpace(fragmentRef)
-	if TaskWorkflowParseFragmentRef(fragmentRef, memory.DefaultFolderName).FileID == `` {
-		return errors.New(`纯文本需求片段id不能为空`)
-	}
-	if _, err := h.TaskWorkflowInfo(workflowID); err != nil {
-		return err
-	}
-	_, err := h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
-		`id`: workflowID,
-	}, map[string]any{
-		`plain_text_requirement_fragment_id`: fragmentRef,
-		`update_time`:                        time.Now().Unix(),
-	}).Exec()
-	return err
-}
-
-// TaskWorkflowBindDesignPlanReqFragment 绑定需求设计方案片段引用。
-func (h *CSqlite) TaskWorkflowBindDesignPlanReqFragment(workflowID int, fragmentRef string) error {
-	if workflowID <= 0 {
-		return errors.New(`工作流id不能为空`)
-	}
-	fragmentRef = strings.TrimSpace(fragmentRef)
-	if TaskWorkflowParseFragmentRef(fragmentRef, memory.DefaultFolderName).FileID == `` {
-		return errors.New(`需求设计方案片段id不能为空`)
-	}
-	if _, err := h.TaskWorkflowInfo(workflowID); err != nil {
-		return err
-	}
-	_, err := h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
-		`id`: workflowID,
-	}, map[string]any{
-		`design_plan_requirement_fragment_id`: fragmentRef,
-		`update_time`:                         time.Now().Unix(),
-	}).Exec()
-	return err
+	// 写入文档表
+	return h.TaskWorkflowDocumentUpsert(workflowID, ``, TaskWorkflowDocumentTypeName(TaskWorkflowDocTypeDevPlan), TaskWorkflowDocTypeDevPlan, 0, 0, ref.FileID, ref.FolderName, ``)
 }
 
 // TaskWorkflowCreateRun 创建一条工作流测试/计划运行记录。
@@ -317,13 +257,9 @@ func (h *CSqlite) TaskWorkflowCreateRun(workflowID int, runType, triggerSource, 
 		`current_stage`: runType,
 		`update_time`:   now,
 	}
-	if runType == `test_plan_generate` {
-		updateData[`latest_plan_run_id`] = cast.ToInt(newID)
-	}
 	if runType == `api_test_execute` {
 		updateData[`status`] = `test_run_ready`
 	}
-	updateData[`latest_test_run_id`] = cast.ToInt(newID)
 	_, err = h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
 		`id`: workflowID,
 	}, updateData).Exec()
@@ -375,101 +311,6 @@ func (h *CSqlite) TaskWorkflowRunList(workflowID int) ([]map[string]any, error) 
 		return nil, errors.New(`工作流id不能为空`)
 	}
 	return h.Client.QueryBySql(`select * from tbl_task_test_run where workflow_id = ? order by id desc`, workflowID).All()
-}
-
-// TaskWorkflowUpdatePrompts 更新工作流的提示词。
-// 同时写入新字段 step_prompts JSON 和旧 prompt_xxx 字段（向后兼容）。
-// 保留 step_prompts 中已有的自定义步骤键（如 custom_xxx），仅覆盖标准键。
-func (h *CSqlite) TaskWorkflowUpdatePrompts(workflowID int, promptRequirement, promptApiDev, promptApiTest, promptDesign, promptPlainTextRequirement, promptDesignPlanRequirement, promptBrowserTest, promptCodeReview string) error {
-	if workflowID <= 0 {
-		return errors.New(`工作流id不能为空`)
-	}
-	info, err := h.TaskWorkflowInfo(workflowID)
-	if err != nil {
-		return err
-	}
-	now := time.Now().Unix()
-	// 先读取已有的 step_prompts，保留自定义步骤键不被覆盖
-	promptsMap := make(map[string]string)
-	existingStepPrompts := strings.TrimSpace(cast.ToString(info[`step_prompts`]))
-	if existingStepPrompts != `` {
-		_ = gstool.JsonDecode(existingStepPrompts, &promptsMap)
-	}
-	// 覆盖标准键
-	promptsMap[`requirement`] = promptRequirement
-	promptsMap[`api-dev`] = promptApiDev
-	promptsMap[`api-test-fix`] = promptApiTest
-	promptsMap[`design`] = promptDesign
-	promptsMap[`plain_text_requirement`] = promptPlainTextRequirement
-	promptsMap[`design_plan_requirement`] = promptDesignPlanRequirement
-	promptsMap[`browser-test`] = promptBrowserTest
-	promptsMap[`code-review`] = promptCodeReview
-	stepPromptsJSON := ``
-	if jsonBytes, jsonErr := marshalJSON(promptsMap); jsonErr == nil {
-		stepPromptsJSON = string(jsonBytes)
-	}
-	_, err = h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
-		`id`: workflowID,
-	}, map[string]any{
-		`prompt_requirement`:             promptRequirement,
-		`prompt_api_dev`:                 promptApiDev,
-		`prompt_api_test`:                promptApiTest,
-		`prompt_design`:                  promptDesign,
-		`prompt_plain_text_requirement`:  promptPlainTextRequirement,
-		`prompt_design_plan_requirement`: promptDesignPlanRequirement,
-		`prompt_browser_test`:            promptBrowserTest,
-		`prompt_code_review`:             promptCodeReview,
-		`step_prompts`:                   stepPromptsJSON,
-		`update_time`:                    now,
-	}).Exec()
-	return err
-}
-
-// TaskWorkflowStepFragmentRefsRead 读取工作流实例的 step_fragment_refs JSON。
-func (h *CSqlite) TaskWorkflowStepFragmentRefsRead(workflowID int) map[string][]map[string]string {
-	result := make(map[string][]map[string]string)
-	if workflowID <= 0 {
-		return result
-	}
-	info, err := h.TaskWorkflowInfo(workflowID)
-	if err != nil {
-		return result
-	}
-	raw := strings.TrimSpace(cast.ToString(info[`step_fragment_refs`]))
-	if raw == `` {
-		return result
-	}
-	var parsed map[string][]map[string]string
-	if err := gstool.JsonDecode(raw, &parsed); err != nil {
-		return result
-	}
-	for stepKey, refs := range parsed {
-		if len(refs) > 0 {
-			result[stepKey] = refs
-		}
-	}
-	return result
-}
-
-// TaskWorkflowStepFragmentRefsSave 保存工作流实例的 step_fragment_refs JSON。
-func (h *CSqlite) TaskWorkflowStepFragmentRefsSave(workflowID int, refs map[string][]map[string]string) error {
-	if workflowID <= 0 {
-		return errors.New(`工作流id不能为空`)
-	}
-	if _, err := h.TaskWorkflowInfo(workflowID); err != nil {
-		return err
-	}
-	jsonBytes, err := json.Marshal(refs)
-	if err != nil {
-		return err
-	}
-	_, err = h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
-		`id`: workflowID,
-	}, map[string]any{
-		`step_fragment_refs`: string(jsonBytes),
-		`update_time`:        time.Now().Unix(),
-	}).Exec()
-	return err
 }
 
 // TaskWorkflowMarkRequirementFetchRunning 标记需求抓取节点开始执行。
@@ -692,27 +533,6 @@ GROUP BY from_id, prompt_type`, strings.Join(placeholders, `,`))
 	return list, nil
 }
 
-// TaskWorkflowBindApiDocFragment 绑定接口文档片段引用。
-func (h *CSqlite) TaskWorkflowBindApiDocFragment(workflowID int, fragmentRef string) error {
-	if workflowID <= 0 {
-		return errors.New(`工作流id不能为空`)
-	}
-	fragmentRef = strings.TrimSpace(fragmentRef)
-	if TaskWorkflowParseFragmentRef(fragmentRef, memory.DefaultFolderName).FileID == `` {
-		return errors.New(`接口文档片段id不能为空`)
-	}
-	if _, err := h.TaskWorkflowInfo(workflowID); err != nil {
-		return err
-	}
-	_, err := h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
-		`id`: workflowID,
-	}, map[string]any{
-		`api_doc_fragment_id`: fragmentRef,
-		`update_time`:         time.Now().Unix(),
-	}).Exec()
-	return err
-}
-
 // TaskWorkflowUpdateFragmentFolderName 更新工作流默认知识片段文件夹。
 func (h *CSqlite) TaskWorkflowUpdateFragmentFolderName(workflowID int, folderName string) error {
 	if workflowID <= 0 {
@@ -730,46 +550,29 @@ func (h *CSqlite) TaskWorkflowUpdateFragmentFolderName(workflowID int, folderNam
 	return err
 }
 
-// TaskWorkflowRefreshFragmentRefsByFileID 根据片段 file_id 统一刷新 workflow 中的片段引用格式。
+// TaskWorkflowRefreshFragmentRefsByFileID 根据片段 file_id 统一刷新工作流文档表中的文件夹名称。
 func (h *CSqlite) TaskWorkflowRefreshFragmentRefsByFileID(fileID, newFolderName string) error {
 	fileID = strings.TrimSpace(fileID)
 	if fileID == `` {
 		return nil
 	}
 	newFolderName = TaskWorkflowNormalizeFolderName(newFolderName)
-	rows, err := h.Client.QueryBySql(`SELECT * FROM tbl_task_workflow WHERE 
-		requirement_fragment_id <> '' OR dev_plan_fragment_id <> '' OR
-		plain_text_requirement_fragment_id <> '' OR design_plan_requirement_fragment_id <> '' OR
-		api_doc_fragment_id <> '' OR design_fragment_id <> ''`).All()
+	// 刷新文档表中的记录
+	docRows, err := h.Client.QuickQuery(taskWorkflowDocumentTable, `*`, map[string]any{
+		`file_id`: fileID,
+	}).All()
 	if err != nil {
 		return err
 	}
-	for _, row := range rows {
-		workflowID := cast.ToInt(row[`id`])
-		if workflowID <= 0 {
+	for _, doc := range docRows {
+		docID := cast.ToInt(doc[`id`])
+		if docID <= 0 {
 			continue
 		}
-		fallbackFolderName := TaskWorkflowFragmentFolderName(row)
-		updateData := map[string]any{}
-		for _, column := range taskWorkflowFragmentColumns {
-			ref := TaskWorkflowParseFragmentRef(cast.ToString(row[column]), fallbackFolderName)
-			if ref.FileID == `` || ref.FileID != fileID {
-				continue
-			}
-			nextRef := TaskWorkflowBuildFragmentRef(newFolderName, fileID)
-			if nextRef != ref.Raw {
-				updateData[column] = nextRef
-			}
-		}
-		if len(updateData) == 0 {
-			continue
-		}
-		updateData[`update_time`] = time.Now().Unix()
-		if _, err = h.Client.QuickUpdate(`tbl_task_workflow`, map[string]any{
-			`id`: workflowID,
-		}, updateData).Exec(); err != nil {
-			return err
-		}
+		_, _ = h.Client.QuickUpdate(taskWorkflowDocumentTable, map[string]any{`id`: docID}, map[string]any{
+			`folder_name`: newFolderName,
+			`update_time`: time.Now().Unix(),
+		}).Exec()
 	}
 	return nil
 }
@@ -1146,15 +949,6 @@ func (h *CSqlite) HomeTaskWorkflowTemplateSteps(homeTaskID int) (map[string]any,
 	return template, steps, nil
 }
 
-// marshalJSON 序列化为 JSON 字节数组。
-func marshalJSON(v any) ([]byte, error) {
-	encoded := gstool.JsonEncode(v)
-	if encoded == `` || encoded == `null` {
-		return []byte(`{}`), nil
-	}
-	return []byte(encoded), nil
-}
-
 // ===================== 工作流文档独立表操作 =====================
 
 const (
@@ -1169,21 +963,6 @@ const (
 	TaskWorkflowDocTypeDesign                = `design`
 	TaskWorkflowDocTypeStepDocument          = `step_document`
 )
-
-// taskWorkflowFragmentColumnDocType 旧 fragment 列名到文档类型的映射。
-var taskWorkflowFragmentColumnDocType = map[string]string{
-	`requirement_fragment_id`:             TaskWorkflowDocTypeRequirement,
-	`dev_plan_fragment_id`:                TaskWorkflowDocTypeDevPlan,
-	`plain_text_requirement_fragment_id`:  TaskWorkflowDocTypePlainTextRequirement,
-	`design_plan_requirement_fragment_id`: TaskWorkflowDocTypeDesignPlanRequirement,
-	`api_doc_fragment_id`:                 TaskWorkflowDocTypeApiDoc,
-	`design_fragment_id`:                  TaskWorkflowDocTypeDesign,
-}
-
-// TaskWorkflowFragmentColumnDocType 返回旧列名对应的文档类型。
-func TaskWorkflowFragmentColumnDocType(column string) string {
-	return taskWorkflowFragmentColumnDocType[column]
-}
 
 // taskWorkflowDocTypeName 文档类型到可读名称的映射。
 var taskWorkflowDocTypeName = map[string]string{
@@ -1205,7 +984,8 @@ func TaskWorkflowDocumentTypeName(docType string) string {
 }
 
 // TaskWorkflowDocumentUpsert 创建或更新工作流文档记录。
-// 按 (workflow_id, document_type, template_step_id) 联合唯一键 upsert。
+// 按 (workflow_id, document_type, template_step_id, document_id) 联合唯一键 upsert，
+// document_id 用于区分同一步骤下的多个文档，避免互相覆盖。
 func (h *CSqlite) TaskWorkflowDocumentUpsert(workflowID int, docID, docName, docType string, templateID, templateStepID int, fileID, folderName, placeholder string) error {
 	if workflowID <= 0 {
 		return errors.New(`工作流id不能为空`)
@@ -1220,6 +1000,7 @@ func (h *CSqlite) TaskWorkflowDocumentUpsert(workflowID int, docID, docName, doc
 		`workflow_id`:      workflowID,
 		`document_type`:    docType,
 		`template_step_id`: templateStepID,
+		`document_id`:      docID,
 	}).One()
 	if err != nil {
 		return err

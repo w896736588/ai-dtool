@@ -387,13 +387,7 @@
               <span v-else-if="getNodeStatus(node.key) === 'pending'" class="status-icon status-icon--pending"></span>
               <span v-else class="status-icon status-icon--running"><span class="spinner-ring"></span></span>
             </span>
-            <el-tooltip
-              v-if="showDocumentMigrationWarning && nodeHasStepDocuments(node.key)"
-              content="步骤文档尚未生成，请点击「重置提示词」以生成"
-              placement="top"
-            >
-              <el-icon style="color: #F56C6C; margin-left: 4px; font-size: 14px;"><WarningFilled /></el-icon>
-            </el-tooltip>
+
           </span>
         </button>
       </section>
@@ -644,7 +638,7 @@
                                 compact
                                 class="toolbar-icon-button"
                                 @click="copyText(getActiveDocContent(), '内容已复制')"
-                                :disabled="!getActiveDocContent()"
+                                :disabled="!isActiveDocLoaded()"
                               >
                                 <el-icon><CopyDocument /></el-icon>
                               </GitActionButton>
@@ -665,7 +659,7 @@
                                 compact
                                 class="toolbar-icon-button"
                                 @click="saveActiveDoc"
-                                :disabled="!getActiveDocContent()"
+                                :disabled="!isActiveDocLoaded()"
                               >
                                 <el-icon><Check /></el-icon>
                               </GitActionButton>
@@ -700,7 +694,7 @@
                                 class="toolbar-icon-button"
                                 :class="{ 'mode-button-active': docSearchBarVisible }"
                                 @click="toggleDocSearchBar"
-                                :disabled="!getActiveDocContent()"
+                                :disabled="!isActiveDocLoaded()"
                               >
                                 <el-icon><Search /></el-icon>
                               </GitActionButton>
@@ -773,50 +767,52 @@
                     <el-icon class="is-loading"><Loading /></el-icon>
                     <span>加载中...</span>
                   </div>
-                  <!-- 编辑模式 -->
-                  <div v-else-if="getActiveDocContent() && docEditMode" class="task-workflow-doc-editor">
-                      <UnifiedMdEditor
-                        :model-value="getActiveDocContent()"
-                        @update:model-value="val => setActiveDocContent(val)"
-                        preview-theme="github"
-                        :preview="true"
-                        :toolbars="promptEditorToolbars"
-                        height="100%"
-                      />
-                  </div>
-                  <!-- 查看模式 -->
-                  <div v-else-if="getActiveDocContent()" class="preview-body" :class="{ 'preview-body--with-outline': docTocItems.length > 0 }">
-                      <div ref="docPreviewBody" class="preview-renderer" @scroll="handleDocPreviewScroll">
-                        <MdPreview
-                          :model-value="getActiveDocContent()"
-                          preview-theme="github"
-                          :auto-fold-threshold="999999"
-                          :on-get-catalog="onDocCatalog"
-                        />
-                      </div>
-                      <aside v-if="docTocItems.length > 0" class="preview-outline">
-                        <div class="preview-outline-card">
-                          <div class="preview-outline-title">目录</div>
-                          <button
-                            v-for="item in docTocItems"
-                            :key="item.id"
-                            type="button"
-                            class="preview-outline-item"
-                            :class="[
-                              { active: docActiveHeading === item.id },
-                              { 'preview-outline-item--child': item.level > 1 },
-                              { 'preview-outline-item--grandchild': item.level > 2 },
-                            ]"
-                            @click="scrollToDocHeading(item.id)"
-                          >
-                            {{ item.text }}
-                          </button>
-                        </div>
-                      </aside>
-                  </div>
-                  <div v-else class="step-tab-panel__empty">
+                  <div v-else-if="!isActiveDocLoaded()" class="step-tab-panel__empty">
                     <el-empty description="暂无文档内容" :image-size="60" />
                   </div>
+                  <template v-else>
+                    <!-- 编辑模式：v-show 保持 DOM 存活，避免 md-editor mount/unmount 崩溃 -->
+                    <div v-show="docEditMode" class="task-workflow-doc-editor">
+                        <UnifiedMdEditor
+                          :model-value="getActiveDocContent()"
+                          @update:model-value="val => setActiveDocContent(val)"
+                          preview-theme="github"
+                          :preview="true"
+                          :toolbars="promptEditorToolbars"
+                          height="100%"
+                        />
+                    </div>
+                    <!-- 查看模式 -->
+                    <div v-show="!docEditMode" class="preview-body" :class="{ 'preview-body--with-outline': docTocItems.length > 0 }">
+                        <div ref="docPreviewBody" class="preview-renderer" @scroll="handleDocPreviewScroll">
+                          <MdPreview
+                            :model-value="getActiveDocContent()"
+                            preview-theme="github"
+                            :auto-fold-threshold="999999"
+                            :on-get-catalog="onDocCatalog"
+                          />
+                        </div>
+                        <aside v-if="docTocItems.length > 0" class="preview-outline">
+                          <div class="preview-outline-card">
+                            <div class="preview-outline-title">目录</div>
+                            <button
+                              v-for="item in docTocItems"
+                              :key="item.id"
+                              type="button"
+                              class="preview-outline-item"
+                              :class="[
+                                { active: docActiveHeading === item.id },
+                                { 'preview-outline-item--child': item.level > 1 },
+                                { 'preview-outline-item--grandchild': item.level > 2 },
+                              ]"
+                              @click="scrollToDocHeading(item.id)"
+                            >
+                              {{ item.text }}
+                            </button>
+                          </div>
+                        </aside>
+                    </div>
+                  </template>
                 </div>
               </div>
             </div>
@@ -1387,8 +1383,7 @@ export default {
       fileChangesDetailInitialFiles: [],
       // 工作流文档独立表相关
       workflowDocuments: [],
-      hasWorkflowDocuments: false,
-      _cachedTemplateSteps: [], // 缓存原始模板步骤数据（含 step_documents），供红色感叹号判断
+      _cachedTemplateSteps: [], // 缓存原始模板步骤数据（含 step_documents）
       // 步骤左侧Tab相关
       stepActiveTab: '__prompt__', // 当前激活的左侧Tab，'__prompt__' 为提示词，其他为文档id/name
       promptEditMode: true, // 提示词是否为编辑模式（false为查看模式）
@@ -1494,19 +1489,6 @@ export default {
     },
     branchMismatchMismatchedCount() {
       return this.branchMismatchDetailList.filter(item => item && !item.matched).length
-    },
-    // 判断是否需要显示文档迁移红色感叹号（新表无文档记录但模板步骤有文档配置）
-    showDocumentMigrationWarning() {
-      if (this.hasWorkflowDocuments) return false
-      if (!this._cachedTemplateSteps || this._cachedTemplateSteps.length === 0) return false
-      return this._cachedTemplateSteps.some(step => {
-        if (!step.step_documents) return false
-        try {
-          const docs = typeof step.step_documents === 'string'
-            ? JSON.parse(step.step_documents) : step.step_documents
-          return Array.isArray(docs) && docs.length > 0
-        } catch { return false }
-      })
     },
     // 模板步骤原始数据映射（按 step_key 索引）
     templateStepsMap() {
@@ -1635,6 +1617,11 @@ export default {
         this.savePrompts(promptTypeFromEditor)
         return
       }
+      // 如果在文档编辑模式（编辑自定义文档），Ctrl+S 应保存文档而非提示词
+      if (this.docEditMode && this.stepActiveTab !== '__prompt__') {
+        this.saveActiveDoc()
+        return
+      }
       const nodeToPrompt = {}
       // 当前步骤即 promptType
       let promptType = this.activeNode
@@ -1721,7 +1708,6 @@ export default {
       this.parseNodeStatuses()
       // 捕获工作流文档独立表数据
       this.workflowDocuments = data.documents || []
-      this.hasWorkflowDocuments = data.has_workflow_documents || false
       if (this.workflowId !== previousWorkflowId) {
         this.unregisterWorkflowUnreadSse()
         this.ensureWorkflowUnreadSse()
@@ -1803,8 +1789,10 @@ export default {
           this.requirementShareUrl = ''
           return
         }
+        // 提取干净 ID：fragmentId 可能是文件路径格式 "fragments/xxx-uuid"，取末段
+        const cleanId = fragmentId.includes('/') ? fragmentId.replace(/^.*\//, '') : fragmentId
         const apiHost = String(baseUtils.GetApiHost() || window.location.origin).trim()
-        this.requirementShareUrl = new URL(`/share/${encodeURIComponent(token)}`, apiHost).toString()
+        this.requirementShareUrl = new URL(`/share/${encodeURIComponent(cleanId)}/${encodeURIComponent(token)}`, apiHost).toString()
         this.replaceRequirementShareUrlPlaceholder()
       })
     },
@@ -2052,7 +2040,6 @@ export default {
         if (response.Data?.workflow) {
           this.workflow = response.Data.workflow
           this.workflowDocuments = response.Data.documents || []
-          this.hasWorkflowDocuments = response.Data.has_workflow_documents || false
         }
       })
     },
@@ -3296,16 +3283,6 @@ export default {
       this.activeNode = key
       this.saveActiveNodeCache()
     },
-    // 判断某个步骤节点是否配置了 step_documents（用于红色感叹号显示）
-    nodeHasStepDocuments(nodeKey) {
-      const stepData = this.templateStepsMap[nodeKey]
-      if (!stepData || !stepData.step_documents) return false
-      try {
-        const docs = typeof stepData.step_documents === 'string'
-          ? JSON.parse(stepData.step_documents) : stepData.step_documents
-        return Array.isArray(docs) && docs.length > 0
-      } catch { return false }
-    },
     // 判断当前步骤是否包含 is_api_doc 文档（用于展示重置接口文档按钮）
     activeStepHasApiDoc() {
       const stepData = this.templateStepsMap[this.activeNode]
@@ -3402,6 +3379,13 @@ export default {
     getActiveDocLoading() {
       const docKey = this.stepActiveTab
       return this.stepDocContents[docKey]?.loading || false
+    },
+    // 判断当前激活文档Tab是否已加载完成（content 字段已定义，不再处于 loading 状态）
+    // 与 getActiveDocContent() 不同：内容为空字符串时仍返回 true，避免空内容文档无法编辑
+    isActiveDocLoaded() {
+      const docKey = this.stepActiveTab
+      const doc = this.stepDocContents[docKey]
+      return doc && doc.content !== undefined && !doc.loading && !!doc.fileId
     },
     // 获取当前激活文档Tab的 file_id
     getActiveDocFileId() {
@@ -3607,10 +3591,7 @@ export default {
     // 保存当前激活文档内容为知识片段
     saveActiveDoc() {
       const content = this.getActiveDocContent()
-      if (!content) {
-        this.$helperNotify.error('没有可保存的内容')
-        return
-      }
+      // 允许保存空内容（用户可能需要清空文档）
       const fileId = this.getActiveDocFileId()
       if (!fileId) {
         this.$helperNotify.error('未找到对应的知识片段标识')

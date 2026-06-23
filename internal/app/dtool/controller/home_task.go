@@ -238,7 +238,19 @@ func HomeTaskSave(c *gin.Context) {
 		// 重新读取 workflowInfo 以同步 fragment_folder_name 变更。
 		updatedWorkflowInfo, infoErr := common.DbMain.TaskWorkflowInfo(cast.ToInt(workflowInfo[`id`]))
 		if infoErr == nil {
-			_, _ = buildTaskWorkflowResponse(c, updatedWorkflowInfo)
+			gstool.FmtPrintlnLogTime("[HomeTaskSave] 开始调用 buildTaskWorkflowResponse workflowID=%d", cast.ToInt(updatedWorkflowInfo[`id`]))
+			respData, respErr := buildTaskWorkflowResponse(c, updatedWorkflowInfo)
+			if respErr != nil {
+				gstool.FmtPrintlnLogTime("[HomeTaskSave] buildTaskWorkflowResponse 失败 workflowID=%d err=%v", cast.ToInt(updatedWorkflowInfo[`id`]), respErr)
+			} else {
+				docCount := 0
+				if docs, ok := respData[`documents`]; ok {
+					docCount = len(cast.ToSlice(docs))
+				}
+				gstool.FmtPrintlnLogTime("[HomeTaskSave] buildTaskWorkflowResponse 完成 workflowID=%d documents=%d", cast.ToInt(updatedWorkflowInfo[`id`]), docCount)
+			}
+		} else {
+			gstool.FmtPrintlnLogTime("[HomeTaskSave] TaskWorkflowInfo 失败 workflowID=%d err=%v", cast.ToInt(workflowInfo[`id`]), infoErr)
 		}
 	}
 	enrichHomeTaskListWithMemoryFragment([]map[string]any{info})

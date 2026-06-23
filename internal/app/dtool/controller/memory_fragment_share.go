@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -97,8 +98,16 @@ func MemoryFragmentShareInfo(c *gin.Context) {
 }
 
 // MemoryFragmentSharePage 纯 HTML 分享页面，服务端渲染 markdown 为 HTML 后返回完整页面，方便 AI 直接读取。
+// URL 格式：/share/:id/:token，其中 id 为知识片段 ID，token 为分享凭证。
+// fragmentID 可能是 DB 整型 ID 或文件路径末段（如 "116" 或 "6f351897-xxx"），
+// 通过 path.Base 统一提取末段后与 share 记录中的 FragmentID 末段做匹配校验。
 func MemoryFragmentSharePage(c *gin.Context) {
+	fragmentID := strings.TrimSpace(c.Param(`id`))
 	token := strings.TrimSpace(c.Param(`token`))
+	if fragmentID == `` {
+		c.HTML(http.StatusBadRequest, ``, templateHTML(`分享链接缺少片段 ID`))
+		return
+	}
 	if token == `` {
 		c.HTML(http.StatusBadRequest, ``, templateHTML(`分享链接缺少 token`))
 		return
@@ -115,6 +124,12 @@ func MemoryFragmentSharePage(c *gin.Context) {
 	}
 	if !ok {
 		c.HTML(http.StatusNotFound, ``, templateHTML(`分享链接不存在或已过期`))
+		return
+	}
+	// 校验 URL 中的 fragmentID 与 token 对应的片段一致，防止跨片段分享链接滥用。
+	// 使用 path.Base 提取末段比较，兼容 fragmentID 含路径前缀的情况（如 "fragments/xxx-uuid"）。
+	if path.Base(share.FragmentID) != path.Base(fragmentID) {
+		c.HTML(http.StatusNotFound, ``, templateHTML(`分享链接与片段不匹配`))
 		return
 	}
 	info, err := component.MemoryRuntime.DB().MemoryFragmentInfo(share.FragmentID)

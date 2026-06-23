@@ -68,7 +68,12 @@ func GetRunParams(id int, label, userName, password string, openType int, openNu
 // getRunParamsFromNewTable 从新表 smart_link 构建运行参数
 func getRunParamsFromNewTable(id int, label, userName, password string, openType int, openNum int, replaceList map[string]string, item map[string]any, runParams *PlaywrightRunParams) (*PlaywrightRunParams, error) {
 	runParams.Link = cast.ToString(item[`link`])
-	runParams.LinkIdLabel = `link_id_` + cast.ToString(id) + `_label_` + label
+	// LinkIdLabel 包含用户名，确保不同账号使用不同数据目录，避免浏览器实例互相干扰
+	if userName != `` {
+		runParams.LinkIdLabel = `link_id_` + cast.ToString(id) + `_label_` + label + `_user_` + userName
+	} else {
+		runParams.LinkIdLabel = `link_id_` + cast.ToString(id) + `_label_` + label
+	}
 	runParams.OpenNum = 0
 	runParams.Cookie = cast.ToString(item[`cookie`])
 	headerMap := make(map[string]string)
@@ -149,7 +154,12 @@ func getRunParamsFromOldTable(id int, label, userName, password string, openType
 	for _, link := range linkList {
 		if cast.ToString(link[`label`]) == label {
 			runParams.Link = cast.ToString(link[`link`])
-			runParams.LinkIdLabel = `link_id_` + cast.ToString(runParams.Id) + `_label_` + label
+			// LinkIdLabel 包含用户名，确保不同账号使用不同数据目录
+			if userName != `` {
+				runParams.LinkIdLabel = `link_id_` + cast.ToString(runParams.Id) + `_label_` + label + `_user_` + userName
+			} else {
+				runParams.LinkIdLabel = `link_id_` + cast.ToString(runParams.Id) + `_label_` + label
+			}
 			runParams.OpenNum = 0
 			runParams.Cookie = cast.ToString(link[`cookie`])
 			headerMap := make(map[string]string)

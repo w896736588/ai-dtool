@@ -394,8 +394,6 @@ const PROMPT_PLACEHOLDERS = [
   { label: '步骤ID', value: '{步骤ID}', tip: '替换为当前步骤的 step_key，用于更新步骤执行状态' },
   { label: '需求文档地址', value: '{需求文档地址}', tip: '替换为需求知识片段的分享链接' },
   { label: '需求文档地址ID', value: '{需求文档地址ID}', tip: '替换为需求知识片段的 file_id' },
-  { label: '需求文档纯文本地址', value: '{需求文档纯文本地址}', tip: '替换为纯文本需求片段的分享链接' },
-  { label: '需求文档纯文本地址ID', value: '{需求文档纯文本地址ID}', tip: '替换为纯文本需求片段的 file_id' },
   { label: '接口开发API地址', value: '{接口开发API地址}', tip: '替换为当前服务的 API 基地址（scheme://host）' },
   { label: '接口开发API的token', value: '{接口开发API的token}', tip: '替换为请求的 Authorization token' },
   { label: '开发项目配置', value: '{开发项目配置}', tip: '替换为开发项目配置的 Markdown 列表' },
