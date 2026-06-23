@@ -273,12 +273,13 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	sse.Send(p_common.TMarkDownClient.BlockQuote(`运行,开始----------------我是分隔君`) + "\n")
 	for i := 0; i < openNum; i++ {
 		go func() {
-			//生成一个唯一ID
-			//runUniqueId := p_common.TBaseClient.GetUnique(`playwright_run_`)
+			//生成一个唯一ID，用于 SSE 输出标识
+			runUniqueId := p_common.TBaseClient.GetUnique(`run_`)
 			streamFunc := func(name, msg string) {
-				//输出到前端
+				//输出到后端日志
 				gstool.FmtPrintlnLogTime(name + ` ` + msg)
-				//sse.Send(p_common.TMarkDownClient.Bold(label+`,`+runUniqueId) + ` ` + name + ` ` + msg + "\n")
+				//输出到前端 SSE
+				sse.Send(p_common.TMarkDownClient.Bold(`[`+runUniqueId+`]`) + ` ` + name + ` ` + msg + "\n")
 			}
 			streamFunc(`构建run_params`, `开始`)
 			runParams, runParamsErr := plw.GetRunParams(id, label, userName, password, openType, openNum, replaceList)
@@ -287,7 +288,7 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 				return
 			}
 			runParams.StreamFunc = streamFunc
-			streamFunc(`构建run_params`, `成功，准备打开的链接：`+runParams.Link+`,链接类型：`+runParams.LinkIdLabel)
+			streamFunc(`构建run_params`, `成功，准备打开的链接：`+runParams.Link+`,链接类型：`+runParams.LinkIdLabel+`,用户目录映射键：`+runParams.DirectoryMappingKey)
 			streamFunc(`打开浏览器实例`, `开始`)
 			p := plw.NewPlaywright(runParams, component.PlaywrightClient.Log)
 			openErr := p.Open(common.GetCall(), nil)
