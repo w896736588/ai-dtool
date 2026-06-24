@@ -1685,6 +1685,7 @@ export default {
       })
     },
     applyWorkflowPayload(data) {
+      console.log('[DEBUG applyWorkflowPayload] 被调用, data.documents=', data.documents, 'type=', typeof data.documents, 'isArray=', Array.isArray(data.documents), 'length=', data.documents?.length, '调用栈:', new Error().stack)
       this.workflow = data.workflow || {}
       this.homeTask = data.home_task || this.homeTask || {}
       const previousWorkflowId = Number(this.workflowId || 0)
@@ -1709,7 +1710,10 @@ export default {
       // 捕获工作流文档独立表数据
       // 仅在响应中包含文档数据时才更新，避免并发请求返回空数组覆盖已加载的正确数据
       if (data.documents && Array.isArray(data.documents) && data.documents.length > 0) {
+        console.log('[DEBUG applyWorkflowPayload] 设置 workflowDocuments, documents count=', data.documents.length)
         this.workflowDocuments = data.documents
+      } else {
+        console.log('[DEBUG applyWorkflowPayload] 跳过设置 workflowDocuments (data.documents 为空)')
       }
       if (this.workflowId !== previousWorkflowId) {
         this.unregisterWorkflowUnreadSse()
