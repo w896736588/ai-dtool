@@ -20,69 +20,7 @@ func ToolDefinitions() []map[string]any {
 				},
 			},
 		},
-		{
-			`type`: `function`,
-			`function`: map[string]any{
-				`name`:        ToolFileWrite,
-				`description`: `将内容写入文件。如果文件不存在则创建（包括父目录），如果已存在则覆盖。`,
-				`parameters`: map[string]any{
-					`type`: `object`,
-					`properties`: map[string]any{
-						`path`: map[string]any{
-							`type`:        `string`,
-							`description`: `要写入的文件路径`,
-						},
-						`content`: map[string]any{
-							`type`:        `string`,
-							`description`: `要写入的文件内容`,
-						},
-					},
-					`required`: []string{`path`, `content`},
-				},
-			},
-		},
-		{
-			`type`: `function`,
-			`function`: map[string]any{
-				`name`:        ToolFileModify,
-				`description`: `修改文件内容，通过查找并替换指定文本。如果不指定 replacement，则删除匹配的文本。`,
-				`parameters`: map[string]any{
-					`type`: `object`,
-					`properties`: map[string]any{
-						`path`: map[string]any{
-							`type`:        `string`,
-							`description`: `要修改的文件路径`,
-						},
-						`search`: map[string]any{
-							`type`:        `string`,
-							`description`: `要查找的文本`,
-						},
-						`replacement`: map[string]any{
-							`type`:        `string`,
-							`description`: `替换后的文本（为空则删除匹配文本）`,
-						},
-					},
-					`required`: []string{`path`, `search`},
-				},
-			},
-		},
-		{
-			`type`: `function`,
-			`function`: map[string]any{
-				`name`:        ToolFileDelete,
-				`description`: `删除文件。`,
-				`parameters`: map[string]any{
-					`type`: `object`,
-					`properties`: map[string]any{
-						`path`: map[string]any{
-							`type`:        `string`,
-							`description`: `要删除的文件路径`,
-						},
-					},
-					`required`: []string{`path`},
-				},
-			},
-		},
+
 		{
 			`type`: `function`,
 			`function`: map[string]any{
@@ -108,13 +46,13 @@ func ToolDefinitions() []map[string]any {
 			`type`: `function`,
 			`function`: map[string]any{
 				`name`:        ToolRunScript,
-				`description`: `执行本地 Python 脚本，返回 stdout 和 stderr 输出。脚本路径基于 skills/ 目录。优先使用已有脚本完成用户任务。`,
+				`description`: `【严格限制】仅用于执行 skills/ 目录下的预置脚本。绝对禁止用它执行新建脚本——所有查询和操作一律使用 http_call 调 API。仅当步骤文件明确指示调用某个预置脚本时才可使用此工具。`,
 				`parameters`: map[string]any{
 					`type`: `object`,
 					`properties`: map[string]any{
 						`path`: map[string]any{
 							`type`:        `string`,
-							`description`: `脚本路径，如 skills/dtool-git/scripts/git_api.py`,
+							`description`: `预置脚本路径（仅限 skills/ 下已有脚本），如 skills/dtool-git/scripts/git_api.py`,
 						},
 						`args`: map[string]any{
 							`type`:        `string`,

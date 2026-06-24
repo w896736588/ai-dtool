@@ -83,14 +83,21 @@ type ButlerConfigItem struct {
 	Status               int    `json:"status"`
 }
 
+// 消息角色常量（FC 中间消息专用）
+const (
+	ButlerRoleTool = `tool` // FC 循环中 tool 结果消息的角色
+)
+
 // ButlerHistoryMessage 历史消息记录，对应 tbl_butler_message。
 type ButlerHistoryMessage struct {
-	Id        int
-	SessionId string
-	Role      string
-	Content   string
-	Topic     string
-	CreatedAt int64
+	Id         int
+	SessionId  string
+	Role       string
+	Content    string
+	Topic      string
+	ToolCalls  string // assistant 消息的 tool_calls JSON（仅 FC 中间消息有值）
+	ToolCallId string // tool 结果消息的调用 ID（仅 FC tool 消息有值）
+	CreatedAt  int64
 }
 
 // ButlerEnv 管家运行时环境，从 dtool config.ini 读取数据库与记忆库路径。

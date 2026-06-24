@@ -8,7 +8,6 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -33,11 +32,9 @@ type Core struct {
 	indexPath       string          // 索引文档目录路径
 	skillsRoot      string          // skills 目录绝对路径
 	greetedSessions map[string]bool // 已发送过打招呼语的会话 ID，确保每次启动后每会话仅发送一次
-	// 归档提交回调，由业务层注入。主管家任务完成后将文件+对话异步提交到归档管家。
+	// 归档提交回调，由业务层注入。主管家任务完成后将对话异步提交到归档管家。
 	// 返回新创建或更新后的归档记录 ID。
-	archiveSubmit       func(configId, taskId int, sessionId string, files []string, conversation string) int
-	lastFilesWritten    []string            // 最近一次 FC 循环产生的文件路径
-	sessionFilesWritten map[string][]string // 会话级累积文件路径（key=conversationId）
+	archiveSubmit func(configId, taskId int, sessionId string, files []string, conversation string) int
 }
 
 // NewCore 创建管家核心。msgChan 为机器人网关投递的消息通道。
@@ -72,21 +69,20 @@ func NewCore(
 	// 设置 worker 包的 dtool API 基地址，供 http_call 工具使用
 	worker.SetDtoolBaseURL(env.DtoolBaseURL)
 	return &Core{
-		db:                  db,
-		config:              config,
-		env:                 env,
-		role:                role,
-		systemPrompt:        systemPrompt,
-		gatewayProvider:     gatewayProvider,
-		history:             NewHistory(db, config.BotConfigId),
-		sessions:            NewSessionManager(timeout),
-		msgChan:             msgChan,
-		replier:             chatbot.NewChatbotReplier(),
-		stopCh:              make(chan struct{}),
-		indexPath:           indexPath,
-		skillsRoot:          skillsRoot,
-		greetedSessions:     make(map[string]bool),
-		sessionFilesWritten: make(map[string][]string),
+		db:              db,
+		config:          config,
+		env:             env,
+		role:            role,
+		systemPrompt:    systemPrompt,
+		gatewayProvider: gatewayProvider,
+		history:         NewHistory(db, config.BotConfigId),
+		sessions:        NewSessionManager(timeout),
+		msgChan:         msgChan,
+		replier:         chatbot.NewChatbotReplier(),
+		stopCh:          make(chan struct{}),
+		indexPath:       indexPath,
+		skillsRoot:      skillsRoot,
+		greetedSessions: make(map[string]bool),
 	}
 }
 
@@ -238,6 +234,10 @@ func (c *Core) handleMessage(msg bot.IncomingMessage) {
 		return
 	}
 	// 3. FC 循环回复（支持 Function Calling 工具调用）
+	// 先发送执行中提示，让用户在等待期间有交互反馈
+	if err := c.reply(msg, `正在执行中....`); err != nil {
+		gstool.FmtPrintlnLogTime(`[butler-core] 执行中提示发送失败 %s`, err.Error())
+	}
 	aiReply, toolsUsed := c.fcReply(msg)
 	if err := c.reply(msg, aiReply); err != nil {
 		gstool.FmtPrintlnLogTime(`[butler-core] AI 回复失败 %s`, err.Error())
@@ -264,17 +264,15 @@ func (c *Core) handleMessage(msg bot.IncomingMessage) {
 	// 有工具调用 → 创建任务记录 → 提交/更新会话级归档
 	if len(toolsUsed) > 0 {
 		taskId := c.saveTaskRecord(msg.ConversationId, msg.Text, aiReply, toolsUsed)
-		// 主管家任务完成后 → 异步提交归档（将对话+文件交给归档管家评估自进化）
+		// 主管家任务完成后 → 异步提交归档（将对话交给归档管家评估自进化）
 		if c.config.ButlerType == define.ButlerTypeMain && c.archiveSubmit != nil {
-			// 累积本次 FC 循环产生的文件到会话级别（去重合并）
-			c.sessionFilesWritten[msg.ConversationId] = mergeUniqueStrings(c.sessionFilesWritten[msg.ConversationId], c.lastFilesWritten)
 			// 获取会话完整对话历史
 			conversation := c.getSessionConversation(msg.ConversationId)
 			// 同一会话后续轮次会更新已有归档记录，而非创建新记录
-			go func(sessionId, conv string, accumulatedFiles []string) {
-				archiveId := c.archiveSubmit(c.config.Id, taskId, sessionId, accumulatedFiles, conv)
-				gstool.FmtPrintlnLogTime(`[butler-core] 已提交归档 task_id=%d session=%s archive_id=%d files=%d`, taskId, sessionId, archiveId, len(accumulatedFiles))
-			}(msg.ConversationId, conversation, c.sessionFilesWritten[msg.ConversationId])
+			go func(sessionId, conv string) {
+				archiveId := c.archiveSubmit(c.config.Id, taskId, sessionId, nil, conv)
+				gstool.FmtPrintlnLogTime(`[butler-core] 已提交归档 task_id=%d session=%s archive_id=%d`, taskId, sessionId, archiveId)
+			}(msg.ConversationId, conversation)
 		}
 	}
 }
@@ -337,74 +335,34 @@ func (c *Core) fcReply(msg bot.IncomingMessage) (string, []string) {
 	return c.fcLoopReply(msg, fcModelId)
 }
 
-// fcLoopReply 执行 FC 循环生成回复。
-// 分为两个阶段：①规划（检索资源→制定计划→单独发送）②执行（按计划执行→返回结果）。
+// fcLoopReply 执行单次 FC 循环生成回复（检索→执行→结果汇总 合一）。
+// 循环结束后将中间消息（assistant 含 tool_calls + tool 结果）持久化到历史，
+// 以便后续对话轮次还原完整上下文，避免 AI"失忆"重新查询。
 func (c *Core) fcLoopReply(msg bot.IncomingMessage, fcModelId int) (string, []string) {
-	// 加载历史消息（最近 MaxHistoryStore 条）
+	// 加载历史消息（最近 MaxHistoryStore 条），包含 FC 中间消息
 	historyMessages, err := c.history.ListBySession(msg.ConversationId, c.config.MaxHistoryStore)
 	if err != nil {
 		gstool.FmtPrintlnLogTime(`[butler-core] 加载历史失败 %s，使用无历史对话`, err.Error())
 		historyMessages = nil
 	}
-	fcHistory := historyToFcMessages(historyMessages)
+	fcHistory := historyToFcMessagesAny(historyMessages)
 
-	// ========== 阶段一：资源检索 + 制定执行计划（单独发送给用户） ==========
-	planPrompt := c.systemPrompt + planPhasePrompt
-	planResult := worker.RunFCLoop(c.db, fcModelId, planPrompt, fcHistory, msg.Text, 5)
-	if !planResult.Success {
-		// 计划阶段失败（超时或错误），发送错误信息并提前返回
-		errorMsg := planResult.Content
+	// 单次 FC 循环：检索资源 → 执行任务 → 结果汇总
+	systemPrompt := c.systemPrompt + fcSystemPromptSuffix
+	result := worker.RunFCLoop(c.db, fcModelId, systemPrompt, fcHistory, msg.Text, c.config.MaxLoop)
+
+	// 持久化 FC 中间消息（在最终回复保存之前写入，确保历史时间线正确）
+	if len(result.FCMessages) > 0 {
+		c.persistFCMessages(msg.ConversationId, result.FCMessages, msg.BotConfigId)
+	}
+
+	if !result.Success {
+		errorMsg := result.Content
 		if errorMsg == `` {
-			errorMsg = `计划阶段执行失败，请稍后重试。`
+			errorMsg = `任务执行失败，请稍后重试。`
 		}
-		if err := c.reply(msg, errorMsg); err != nil {
-			gstool.FmtPrintlnLogTime(`[butler-core] 发送计划失败消息失败 %s`, err.Error())
-		}
-		return ``, nil
+		return errorMsg, result.ToolUsed
 	}
-	if planResult.Content != `` {
-		if err := c.reply(msg, planResult.Content); err != nil {
-			gstool.FmtPrintlnLogTime(`[butler-core] 发送执行计划失败 %s`, err.Error())
-		} else {
-			gstool.FmtPrintlnLogTime(`[butler-core] 已发送执行计划`)
-		}
-	}
-
-	// 读取计划阶段检索到的步骤文件内容，注入执行阶段
-	stepFileContent := c.buildStepFileContext(planResult.StepFilesRead)
-
-	// ========== 阶段二：执行任务 ==========
-	execPrompt := c.systemPrompt + fcSystemPromptSuffix + `
-
----
-**当前阶段：执行任务**
-
-执行计划已单独发送给用户，现在**直接执行任务**：
-- 如果有已检索到的步骤文件（见下方"已检索步骤文件内容"），严格按照步骤文件中的接口和参数顺序执行，不要跳过任何步骤
-- 严格使用 http_call 调用 API，禁止编写 Python 脚本（run_script）
-- 无步骤文件时调用 API 完成
-- 完成后输出结果汇总
-
-**不要重复输出"📋 执行计划"。**`
-
-	// 如果计划阶段检索到了步骤文件，将其内容注入到 user message 中
-	execUserMessage := msg.Text
-	if stepFileContent != `` {
-		execUserMessage = fmt.Sprintf(`%s
-
----
-**已检索步骤文件内容（必须严格遵循）：**
-%s
----
-请严格按照上述步骤文件的指令执行任务。使用 http_call 调用 API，不要编写脚本。`, msg.Text, stepFileContent)
-	}
-
-	if err := c.reply(msg, `正在执行，请稍候...`); err != nil {
-		gstool.FmtPrintlnLogTime(`[butler-core] 发送执行提示失败 %s`, err.Error())
-	}
-
-	result := worker.RunFCLoop(c.db, fcModelId, execPrompt, fcHistory, execUserMessage, c.config.MaxLoop)
-	c.lastFilesWritten = result.FilesWritten
 	if result.Content == `` {
 		return `我暂时无法回复，请稍后再试。`, result.ToolUsed
 	}
@@ -417,32 +375,9 @@ func (c *Core) fcLoopReply(msg bot.IncomingMessage, fcModelId int) (string, []st
 		if len(result.StepsRun) > 0 {
 			usageInfo += "\n\n" + fmt.Sprintf("📜 复用步骤：%s", strings.Join(result.StepsRun, `, `))
 		}
-		if len(result.StepsCreated) > 0 {
-			usageInfo += "\n\n" + fmt.Sprintf("📝 新建步骤：%s", strings.Join(result.StepsCreated, `, `))
-		}
 		return result.Content + usageInfo, result.ToolUsed
 	}
 	return result.Content, result.ToolUsed
-}
-
-// buildStepFileContext 读取计划阶段检索到的步骤文件内容，拼接后返回。
-// 每个步骤文件内容用分隔线包裹，便于执行阶段 AI 识别和遵循。
-func (c *Core) buildStepFileContext(stepFiles []string) string {
-	if len(stepFiles) == 0 {
-		return ``
-	}
-	var sb strings.Builder
-	for _, f := range stepFiles {
-		data, err := osReadFile(f)
-		if err != nil {
-			gstool.FmtPrintlnLogTime(`[butler-core] 读取步骤文件失败 %s: %s`, f, err.Error())
-			continue
-		}
-		sb.WriteString(fmt.Sprintf("### 文件: %s\n\n", f))
-		sb.WriteString(string(data))
-		sb.WriteString("\n\n---\n\n")
-	}
-	return sb.String()
 }
 
 // agentCliReply 使用 Agent CLI 执行复杂任务并返回结果。
@@ -467,18 +402,63 @@ func (c *Core) agentCliReply(msg bot.IncomingMessage) (string, []string) {
 	return result.Content, toolsUsed
 }
 
-// historyToFcMessages 将历史消息列表转换为 FC 循环的 []map[string]string 格式。
-func historyToFcMessages(messages []define.ButlerHistoryMessage) []map[string]string {
-	result := make([]map[string]string, 0, len(messages))
+// historyToFcMessagesAny 将历史消息列表转换为 FC 循环所需的 []map[string]any 格式。
+// 支持 FC 中间消息还原：assistant 消息的 tool_calls 和 tool 结果消息的 tool_call_id。
+// 不含 system prompt（由 RunFCLoop 的 buildFCMessages 在构建时添加）。
+func historyToFcMessagesAny(messages []define.ButlerHistoryMessage) []map[string]any {
+	result := make([]map[string]any, 0, len(messages))
 	for _, msg := range messages {
-		if msg.Role == define.ButlerRoleUser || msg.Role == define.ButlerRoleAssistant {
-			result = append(result, map[string]string{
+		switch msg.Role {
+		case define.ButlerRoleUser:
+			result = append(result, map[string]any{
 				`role`:    msg.Role,
 				`content`: msg.Content,
+			})
+		case define.ButlerRoleAssistant:
+			if msg.ToolCalls != `` {
+				// FC 中间 assistant 消息（含 tool_calls）
+				toolCalls := parseToolCallsJSON(msg.ToolCalls)
+				result = append(result, map[string]any{
+					`role`:       msg.Role,
+					`content`:    msg.Content,
+					`tool_calls`: toolCalls,
+				})
+			} else {
+				// 普通 assistant 消息
+				result = append(result, map[string]any{
+					`role`:    msg.Role,
+					`content`: msg.Content,
+				})
+			}
+		case define.ButlerRoleTool:
+			// FC 中间 tool 结果消息
+			result = append(result, map[string]any{
+				`role`:         msg.Role,
+				`tool_call_id`: msg.ToolCallId,
+				`content`:      msg.Content,
 			})
 		}
 	}
 	return result
+}
+
+// persistFCMessages 将 FC 循环产生的中间消息批量持久化到历史数据库。
+// 消息按原始顺序插入：先 assistant（含 tool_calls），再 tool 结果，逐组交替。
+// 持久化后，后续对话轮次加载历史时能还原完整的工具调用上下文。
+func (c *Core) persistFCMessages(sessionId string, fcMessages []worker.FCIntermediateMessage, botConfigId int) {
+	for _, msg := range fcMessages {
+		switch msg.Role {
+		case define.ButlerRoleAssistant:
+			if err := c.history.AppendFCAssistant(sessionId, msg.Content, msg.ToolCalls, botConfigId); err != nil {
+				gstool.FmtPrintlnLogTime(`[butler-core] 持久化 FC assistant 消息失败 %s`, err.Error())
+			}
+		case define.ButlerRoleTool:
+			if err := c.history.AppendFCTool(sessionId, msg.ToolCallId, msg.Content, botConfigId); err != nil {
+				gstool.FmtPrintlnLogTime(`[butler-core] 持久化 FC tool 消息失败 %s`, err.Error())
+			}
+		}
+	}
+	gstool.FmtPrintlnLogTime(`[butler-core] 已持久化 %d 条 FC 中间消息 session=%s`, len(fcMessages), sessionId)
 }
 
 // saveTaskRecord 创建管家任务记录到 tbl_butler_task（状态为 done）。
@@ -525,38 +505,44 @@ func (c *Core) getSessionConversation(sessionId string) string {
 	return sb.String()
 }
 
-// planPhasePrompt 计划阶段的 system prompt 补充，指导 AI 进行资源检索和计划制定。
-const planPhasePrompt = "\n## 当前阶段：资源检索与计划制定\n" +
-	"收到用户任务后，只做检索和计划，不要执行任务。\n\n" +
-	"步骤：\n" +
-	"1. 用 file_read 读取 skills/dtool-butler/index/step.md，逐条检查是否有可复用的步骤文件\n" +
-	"2. 如果有匹配的步骤文件，用 file_read 读取步骤文件了解其完整内容（接口、参数、流程）\n" +
-	"3. 仅当 step.md 中无匹配步骤文件时，才用 file_read 读取 apis.md 查看可用接口\n" +
-	"4. 如有匹配步骤文件，可调用一次 http_call 做轻量验证（如查询列表确认目标存在）\n" +
-	"5. 根据检索结果，制定一份详细的执行计划并以标准格式输出：\n\n" +
-	"执行计划：\n" +
-	"- 任务：<一句话描述>\n" +
-	"- 复用步骤：<步骤文件路径，如无则写无>\n" +
-	"- 调用接口：<列出每个接口及其参数>\n" +
-	"- 预期流程：<步骤顺序简述，如: 1.获取仓库列表 -> 2.匹配目标仓库 -> 3.查询分支>\n" +
-	"- 是否需要多步骤组合：<是/否，若是简要说明>\n\n" +
-	"限制规则：\n" +
-	"- 允许: file_read（索引/步骤文件/API文档）、http_call（仅用于计划阶段轻量验证，如列表查询）\n" +
-	"- 禁止: run_script、file_write、file_modify、file_delete（这些是执行阶段的工具）\n" +
-	"- 输出计划后立即停止，不要把计划阶段变成执行阶段。\n"
-
 // fcSystemPromptSuffix FC 循环的 system prompt 补充说明，指导 AI 使用工具。
 const fcSystemPromptSuffix = `
 
 ## 可用工具
 
-- file_read: 读取文件内容
-- file_write: 创建或覆盖写入文件（自动创建父目录）
-- file_modify: 修改文件中的指定文本（查找并替换）
-- file_delete: 删除文件
+- file_read: 读取文件内容（步骤文件、API 索引等）
 - http_call: 调用 dtool 的 HTTP API 接口（POST 方法，基地址自动拼接）
-- run_script: 执行本地 Python 脚本（仅在无步骤文件且无 HTTP API 可用时作为最后手段）
+- run_script: 执行 skills/ 目录下的预置 Python 脚本（仅限预置脚本，禁止新建）
 - ask_user: 向用户提问确认（仅当缺少必要信息时使用）
+
+> **注意**：执行阶段没有文件编辑工具（file_write/file_modify/file_delete），AI 只能读取文件和调用 API。
+> 文件创建和修改由归档管家在任务完成后独立处理。
+
+## 系统功能模块（常用词映射）
+
+dtool 是一个开发者工具平台，以下列出用户常用的功能关键词及其对应的系统模块和核心 API。
+当用户消息中出现这些关键词时，你应该直接理解为对应的系统功能，不要当作未知概念追问。
+
+| 用户常用词 | 系统模块 | 说明 | 核心查询 API |
+|-----------|---------|------|------------|
+| Link / 智能链接 / 打开链接 | SmartLink | 浏览器自动化，可打开网页、执行登录、截图等操作 | /api/SmartLinkList, /api/SmartLinkRun, /api/SmartLinkItemList |
+| Git / 分支 / 切换分支 | Git | Git 仓库管理，查看分支、切换分支、拉取代码 | /api/GitConfigList, /api/GitGroupBranchList, /api/GitChangeBranch, /api/GitPull |
+| 变量 / Variable | Variable | 变量系统，可存储和执行预定义的操作序列（含登录、跳转等） | /api/VariableList, /api/VariableRun |
+| 账号 / Account | Account | 账号管理，存储常用账号密码供智能链接登录使用 | /api/Set/AccountList, /api/Set/AccountGroupList |
+| 首页任务 / HomeTask | HomeTask | 首页任务管理，项目进度追踪 | /api/HomeTaskList, /api/HomeTaskInfo |
+| Docker / 容器 | Docker | Docker 容器与服务管理 | /api/DockerComposeList, /api/DockerComposeStatus, /api/DockerComposeRestart |
+| MySQL / 数据库查询 | MySQL | MySQL 数据库查询与管理 | /api/MysqlTables, /api/MysqlQuery |
+| Redis / 缓存 | Redis | Redis 缓存管理 | /api/RedisAvailableList, /api/RedisKeys, /api/RedisSearch |
+| Shell / 终端 / 远程命令 | ShellOut | 远程 SSH Shell 执行 | /api/shellOut, /api/ShellOutRuleSetList |
+| Supervisor / 进程管理 | Supervisor | Supervisor 进程管理 | /api/SupervisorStatusList, /api/SupervisorRestart |
+| API / 接口测试 | Api | HTTP 接口测试工具 | /api/Apis, /api/ApiRun |
+| 记忆库 / 知识片段 | MemoryFragment | 知识片段存储与搜索 | /api/MemoryFragmentList, /api/MemoryFragmentSearch |
+| MCP / 工具绑定 | Mcp | MCP 工具配置管理 | /api/McpBindingList, /api/McpAgentTargetList |
+
+> **重要**：当用户说"打开 link xxx"、"用 xxx 账号"时，应理解为：
+> 1. 先用 /api/SmartLinkList 或 /api/SmartLinkItemList 查询对应的智能链接
+> 2. 再用 /api/SmartLinkRun 执行该链接（可用 /api/Set/AccountList 查找账号）
+> 不要追问"请提供链接地址"这类问题，因为用户说的是系统内的智能链接名称，不是 URL。
 
 ## 工作目录说明
 
@@ -565,7 +551,7 @@ const fcSystemPromptSuffix = `
 - 步骤文件索引：skills/dtool-butler/index/step.md 列出了所有已有可复用步骤文件
 - 项目根目录下的文件和目录可以直接使用相对路径访问
 
-## 工作流程（检索 → 计划公示 → 执行 → 回答）
+## 工作流程（检索 → 执行 → 回答）
 
 收到用户任务后，**严格**按以下顺序处理。**核心原则：步骤文件优先于 API，复用优先于新建。**
 
@@ -585,62 +571,33 @@ const fcSystemPromptSuffix = `
 
 > ⚠️ 跳过步骤 1.2（step.md 检索）直接查 apis.md 是**严重违规**。
 
-### 2. 执行计划公示（必须回复给用户）
-资源检索完成后，**首先回复用户执行计划**，格式如下：
+### 2. 执行
 
-📋 执行计划：
-- 任务：<一句话任务描述>
-- 复用步骤：<步骤文件路径列表，如无则写"无">
-- 调用接口：<接口路径列表，如无则写"无">
-- 是否需要多步骤组合：<是/否，若是简要说明>
-
-正在执行...
-
-> 计划回复后**立即开始执行**，无需等待用户确认。
-
-### 3. 执行
-
-#### 3.1 步骤文件优先（最高优先级）
-如果 user message 中提供了"已检索步骤文件内容"，**必须逐字遵循步骤文件中的指令**：
+#### 2.1 步骤文件优先（最高优先级）
+**必须逐字遵循步骤文件中的指令**：
 - 按步骤文件指定的**接口顺序**依次调用 http_call
 - 使用步骤文件指定的**参数格式**和**请求体**
 - 禁止跳过任何步骤
-- 禁止自行编写 Python 脚本替代 http_call
 - 收到 API 响应后，按步骤文件指示处理响应字段
 
-#### 3.2 API 兜底
+#### 2.2 API 兜底
 仅当无步骤文件可用时才调 API。调 API 前必须先用 file_read 读取对应 controller 源码确认参数名。
 
-#### 3.3 脚本最后手段
-仅当 http_call 无法满足需求（如需要复杂数据处理、多次 API 结果聚合）且无步骤文件覆盖时，才允许编写并执行 Python 脚本。
+#### 2.3 脚本最后手段（极其严格）
+**绝大多数情况下禁止使用 run_script**。http_call 已能覆盖几乎所有查询和操作场景。
+仅当满足以下全部条件时才允许编写 Python 脚本：
+- http_call 确实无法满足（如需要复杂数据聚合、多次结果交叉计算）
+- 无步骤文件覆盖
+- 且必须先用 http_call 获取原始数据，再用脚本做后处理
 
-### 4. 结果汇总 ⚠️ 最重要
+**绝对禁止的场景**：
+- 禁止用脚本代替 http_call 做数据查询（如查列表、查详情）——直接用 http_call 调对应 API
+- 禁止用脚本代替 http_call 做数据检索/筛选——先 http_call 获取全量数据，在回复中直接分析
+- 禁止为"找不到合适 API"而写脚本——应先读 apis.md 或步骤文件确认可用接口
+
+### 3. 结果汇总 ⚠️ 最重要
 **必须**将执行结果以友好、清晰的格式呈现给用户，这是你唯一的目标。
 无论中间经过多少工具调用，最终回复必须包含用户所问问题的具体答案。`
-
-// osReadFile 读取文件内容的便捷封装。
-func osReadFile(path string) ([]byte, error) {
-	return os.ReadFile(path)
-}
-
-// mergeUniqueStrings 合并两个字符串切片，去重后返回新切片。
-func mergeUniqueStrings(a, b []string) []string {
-	seen := make(map[string]bool, len(a)+len(b))
-	result := make([]string, 0, len(a)+len(b))
-	for _, s := range a {
-		if !seen[s] {
-			seen[s] = true
-			result = append(result, s)
-		}
-	}
-	for _, s := range b {
-		if !seen[s] {
-			seen[s] = true
-			result = append(result, s)
-		}
-	}
-	return result
-}
 
 // reply 通过消息携带的 SessionWebhook 以 markdown 格式回复。
 // SessionWebhook 为空时，通过消息来源机器人的 Gateway 使用 Open API 单聊发送回退。

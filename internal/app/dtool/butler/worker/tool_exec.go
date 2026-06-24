@@ -76,11 +76,11 @@ func ExecuteTool(name string, argumentsJSON string) string {
 	case ToolFileRead:
 		return execFileRead(args[`path`])
 	case ToolFileWrite:
-		return execFileWrite(args[`path`], args[`content`])
+		return `【禁止】file_write 工具在执行阶段不可用，文件创建由归档管家独立处理`
 	case ToolFileModify:
-		return execFileModify(args[`path`], args[`search`], args[`replacement`])
+		return `【禁止】file_modify 工具在执行阶段不可用，文件修改由归档管家独立处理`
 	case ToolFileDelete:
-		return execFileDelete(args[`path`])
+		return `【禁止】file_delete 工具在执行阶段不可用，文件删除由归档管家独立处理`
 	case ToolHttpCall:
 		return execHttpCall(args[`path`], args[`body`])
 	case ToolRunScript:

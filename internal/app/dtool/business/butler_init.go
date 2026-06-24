@@ -531,6 +531,14 @@ func (r *ButlerRuntime) processArchiveItem(config *define.ButlerConfigItem, item
 
 	conversation := cast.ToString(item[`conversation`])
 
+	// 预检查：读取 step.md 累计已有步骤条目，注入评估 prompt，让 AI 在评估阶段就知道已有步骤
+	stepIndexPath := filepath.Join(r.butlerEnv.RootPath, `skills`, `dtool-butler`, `index`, `step.md`)
+	existingStepIndex, _ := os.ReadFile(stepIndexPath)
+	existingStepsContext := ``
+	if len(existingStepIndex) > 0 {
+		existingStepsContext = fmt.Sprintf("\n\n## 已有步骤文件索引（去重检查依据）\n%s", string(existingStepIndex))
+	}
+
 	// 步骤1：AI 评估是否值得自进化
 	evalModelId := config.FcModelId
 	if evalModelId <= 0 {
@@ -549,18 +557,19 @@ func (r *ButlerRuntime) processArchiveItem(config *define.ButlerConfigItem, item
 	}
 
 	evalPrompt := fmt.Sprintf(`## 对话与文件内容
-%s
+%s%s
 
 请判断：
 1. 这次任务的操作模式是否具有通用复用价值？（例如：查询配置、操作数据库、调用API等）
 2. 是否适合抽象为通用 .md 步骤文件，描述完整的 http_call 调用流程和参数格式？
+3. **去重检查**：已有步骤文件索引中是否已存在功能相同或覆盖本次任务的步骤文件？如果已存在，结论必须为 NO。
 
 输出格式（严格按此格式）：
 评估结论：[YES/NO]
-理由：[简要说明]
+理由：[简要说明，如果因去重而 NO，说明已有的步骤文件名]
 步骤文件名建议：[如果YES，建议的步骤文件名，如 query_repo_branch.md]
 步骤文件描述：[如果YES，一行任务说明]`,
-		conversation)
+		conversation, existingStepsContext)
 
 	logBuilder.WriteString(fmt.Sprintf("AI评估中 模型=%d prompt长度=%d\n", evalModelId, len(evalPrompt)))
 	gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d AI评估中...`, archiveId)

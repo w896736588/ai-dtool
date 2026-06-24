@@ -3,6 +3,7 @@ package butler
 import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
+	"encoding/json"
 	"time"
 
 	"github.com/spf13/cast"
@@ -81,6 +82,7 @@ func (h *History) TrimBySession(sessionId string, maxLimit int) error {
 }
 
 // ListBySession 返回指定会话的历史消息（按 id 升序），最多 limit 条。
+// 包含 FC 中间消息的 tool_calls 和 tool_call_id 字段。
 func (h *History) ListBySession(sessionId string, limit int) ([]define.ButlerHistoryMessage, error) {
 	if limit <= 0 {
 		limit = 100
@@ -95,15 +97,51 @@ func (h *History) ListBySession(sessionId string, limit int) ([]define.ButlerHis
 	result := make([]define.ButlerHistoryMessage, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, define.ButlerHistoryMessage{
-			Id:        cast.ToInt(row[`id`]),
-			SessionId: cast.ToString(row[`session_id`]),
-			Role:      cast.ToString(row[`role`]),
-			Content:   cast.ToString(row[`content`]),
-			Topic:     cast.ToString(row[`topic`]),
-			CreatedAt: cast.ToInt64(row[`created_at`]),
+			Id:         cast.ToInt(row[`id`]),
+			SessionId:  cast.ToString(row[`session_id`]),
+			Role:       cast.ToString(row[`role`]),
+			Content:    cast.ToString(row[`content`]),
+			Topic:      cast.ToString(row[`topic`]),
+			ToolCalls:  cast.ToString(row[`tool_calls`]),
+			ToolCallId: cast.ToString(row[`tool_call_id`]),
+			CreatedAt:  cast.ToInt64(row[`created_at`]),
 		})
 	}
 	return result, nil
+}
+
+// AppendFCAssistant 追加一条 FC 循环中间 assistant 消息（含 tool_calls），插入到指定参照消息之前。
+// refMsgId 为参照消息 ID，新消息将排在该消息之前（通过更新参照消息的 created_at 实现）。
+// 如果 refMsgId <= 0，则直接追加到末尾。
+func (h *History) AppendFCAssistant(sessionId, content, toolCalls string, botConfigId int) error {
+	_, err := h.db.Client.QuickCreate(`tbl_butler_message`, map[string]any{
+		`session_id`:    sessionId,
+		`role`:          define.ButlerRoleAssistant,
+		`content`:       content,
+		`token_count`:   0,
+		`topic`:         ``,
+		`tool_calls`:    toolCalls,
+		`tool_call_id`:  ``,
+		`bot_config_id`: botConfigId,
+		`created_at`:    time.Now().Unix(),
+	}).Exec()
+	return err
+}
+
+// AppendFCTool 追加一条 FC 循环中间 tool 结果消息，紧跟在对应的 assistant 消息之后。
+func (h *History) AppendFCTool(sessionId, toolCallId, content string, botConfigId int) error {
+	_, err := h.db.Client.QuickCreate(`tbl_butler_message`, map[string]any{
+		`session_id`:    sessionId,
+		`role`:          define.ButlerRoleTool,
+		`content`:       content,
+		`token_count`:   0,
+		`topic`:         ``,
+		`tool_calls`:    ``,
+		`tool_call_id`:  toolCallId,
+		`bot_config_id`: botConfigId,
+		`created_at`:    time.Now().Unix(),
+	}).Exec()
+	return err
 }
 
 // GetRecentTopic 获取指定会话最近一条消息的主题关键词。
@@ -132,24 +170,62 @@ func (h *History) UpdateTopicBySession(sessionId, topic string) error {
 	return err
 }
 
-// ToAiMessages 将历史消息列表转换为 AI chat 的 messages 格式。
+// ToAiMessages 将历史消息列表转换为 AI chat 的 messages 格式（[]map[string]any）。
 // systemPrompt 作为第一条 system 消息，历史消息按时间顺序追加。
-func ToAiMessages(systemPrompt string, historyMessages []define.ButlerHistoryMessage) []map[string]string {
-	messages := make([]map[string]string, 0, len(historyMessages)+1)
+// 支持 FC 中间消息还原：assistant 消息的 tool_calls 和 tool 结果消息的 tool_call_id。
+func ToAiMessages(systemPrompt string, historyMessages []define.ButlerHistoryMessage) []map[string]any {
+	messages := make([]map[string]any, 0, len(historyMessages)+1)
 	// 第一条：system prompt
-	messages = append(messages, map[string]string{
+	messages = append(messages, map[string]any{
 		`role`:    define.ButlerRoleSystem,
 		`content`: systemPrompt,
 	})
 	// 历史消息
 	for _, msg := range historyMessages {
-		// 只取 user 和 assistant 角色（过滤掉 system 消息，避免与 systemPrompt 冲突）
-		if msg.Role == define.ButlerRoleUser || msg.Role == define.ButlerRoleAssistant {
-			messages = append(messages, map[string]string{
+		switch msg.Role {
+		case define.ButlerRoleUser:
+			// 普通用户消息
+			messages = append(messages, map[string]any{
 				`role`:    msg.Role,
 				`content`: msg.Content,
+			})
+		case define.ButlerRoleAssistant:
+			if msg.ToolCalls != `` {
+				// FC 中间 assistant 消息（含 tool_calls）
+				toolCalls := parseToolCallsJSON(msg.ToolCalls)
+				messages = append(messages, map[string]any{
+					`role`:       msg.Role,
+					`content`:    msg.Content,
+					`tool_calls`: toolCalls,
+				})
+			} else {
+				// 普通 assistant 消息
+				messages = append(messages, map[string]any{
+					`role`:    msg.Role,
+					`content`: msg.Content,
+				})
+			}
+		case define.ButlerRoleTool:
+			// FC 中间 tool 结果消息
+			messages = append(messages, map[string]any{
+				`role`:         msg.Role,
+				`tool_call_id`: msg.ToolCallId,
+				`content`:      msg.Content,
 			})
 		}
 	}
 	return messages
+}
+
+// parseToolCallsJSON 将 JSON 字符串解析为 tool_calls 数组（[]any）。
+// 解析失败时返回空切片，避免 AI 调用异常。
+func parseToolCallsJSON(toolCallsJSON string) []any {
+	if toolCallsJSON == `` {
+		return nil
+	}
+	var result []any
+	if err := json.Unmarshal([]byte(toolCallsJSON), &result); err != nil {
+		return nil
+	}
+	return result
 }

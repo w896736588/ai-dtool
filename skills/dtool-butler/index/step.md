@@ -4,5 +4,6 @@
 
 ## [dtool-butler] 
 
-- 步骤: skills/dtool-butler/step/query_repo_branch.md
+- skills/dtool-butler/step/query_repo_branch.md - 查询远程工作空间Git分支
 
+- skills/dtool-butler/step/query_smartlink_by_tag.md — 按名称打开智能链接（查询→执行→可选登录，完整流程）
