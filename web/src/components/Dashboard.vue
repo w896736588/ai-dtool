@@ -1601,8 +1601,16 @@ export default {
               const targetFound = findCommandByToken(dynamicList, targetToken)
               // 仅在"已确认目标"的场景进入下一层：
               // 1) 有尾随空格；2) 目标后还有其他 token（例如继续输入参数）
-              // 注意：仅精确命中但未按空格/Tab，不视为已确认，避免 common 被提前选中。
-              const targetIsConfirmed = hasTrailingSpace || (parts.length > i + 2)
+              // 3) 终端目标（无子级）且最后一个 token 精确命中，且不存在更长的同名候选项
+              //    （避免用户正在输入 common 筛选 common6 时被偶然匹配的 common 提前确认）
+              const targetIsTerminal = !!(targetFound && !targetFound.dynamicChildren && !targetFound.nextDynamicChildren)
+              const normalizedTargetToken = normalizeCommandPart(targetToken).toLowerCase()
+              const hasLongerMatches = targetFound && dynamicList.some(cmd => {
+                if (cmd === targetFound) return false
+                const keywords = getCommandKeywords(cmd)
+                return keywords.some(kw => kw.startsWith(normalizedTargetToken) && kw !== normalizedTargetToken)
+              })
+              const targetIsConfirmed = hasTrailingSpace || (parts.length > i + 2) || (parts.length === i + 2 && targetIsTerminal && !hasLongerMatches)
               if (targetFound && targetIsConfirmed) {
                 commandStack.value.push(targetFound)
                 i += 1
@@ -1667,6 +1675,7 @@ export default {
                     }
                   } else {
                     currentChildren.value = []
+                    showCommands.value = false
                   }
                 }
                 if (found.needInput) {
@@ -2836,11 +2845,9 @@ export default {
       }
       if (!canExecuteCommand.value) return
 
-      if (isCommandModeByText(inputText.value)) {
-        parseInput()
-      }
-
-      // 如果有命令栈，执行最后一个命令
+      // 如果有命令栈，执行最后一个命令（注意：此处不重新调用 parseInput()，
+      // 因为 commandStack 已由 handleInput/selectCommand 精确构建，重新解析会丢失
+      // selectCommand 中按 id 精确匹配的目标信息，导致同名链接选错）
       if (commandStack.value.length > 0) {
         const actionCmd = commandStack.value.find(item => item.action)
         if (actionCmd) {
