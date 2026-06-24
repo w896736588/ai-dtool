@@ -3321,7 +3321,7 @@ export default {
         return Array.isArray(docs) ? docs : []
       } catch { return [] }
     },
-    // 切换到文档Tab，并加载文档内容
+    // 切换到文档Tab，并每次重新加载文档内容
     switchToDocTab(doc) {
       const docKey = doc.id || doc.name
       this.stepActiveTab = docKey
@@ -3330,25 +3330,19 @@ export default {
       if (this.docUnreadFlags[docKey]) {
         this.docUnreadFlags = { ...this.docUnreadFlags, [docKey]: false }
       }
-      this.loadDocContentIfNeeded(doc)
+      this.loadDocContent(doc)
     },
-    // 按需加载文档的知识片段内容
-    loadDocContentIfNeeded(doc) {
+    // 强制重新加载文档的知识片段内容（每次切换Tab都会调用API）
+    loadDocContent(doc) {
       const docKey = doc.id || doc.name
-      if (this.stepDocContents[docKey] && this.stepDocContents[docKey].content !== undefined) {
-        return // 已加载
-      }
-      // 查找文档对应的 file_id
       const fileId = this.findDocFileId(doc)
-      if (!this.stepDocContents[docKey]) {
-        this.stepDocContents[docKey] = { content: '', loading: true, fileId: fileId || '' }
-      }
+      this.stepDocContents[docKey] = { content: '', loading: true, fileId: fileId || '' }
       if (!fileId) {
         this.stepDocContents[docKey].loading = false
         this.stepDocContents[docKey].content = ''
+        this.stepDocContents = { ...this.stepDocContents }
         return
       }
-      this.stepDocContents[docKey].loading = true
       this.stepDocContents = { ...this.stepDocContents }
       MemoryFragmentApi.MemoryFragmentInfo(fileId, (response) => {
         if (response && response.ErrCode === 0 && response.Data) {
