@@ -508,7 +508,7 @@ func (r *ButlerRuntime) loadArchivePrompt() string {
 	return r.archivePromptCache
 }
 
-// processArchiveItem 处理单条归档记录：AI 评估 → 生成通用脚本 → 写入文件。
+// processArchiveItem 处理单条归档记录：AI 评估 → 生成通用步骤文件 → 写入文件。
 func (r *ButlerRuntime) processArchiveItem(config *define.ButlerConfigItem, item map[string]any) {
 	archiveId := cast.ToInt(item[`id`])
 	gstool.FmtPrintlnLogTime(`[butler-archive] ▶ 开始处理归档 id=%d`, archiveId)
@@ -553,13 +553,13 @@ func (r *ButlerRuntime) processArchiveItem(config *define.ButlerConfigItem, item
 
 请判断：
 1. 这次任务的操作模式是否具有通用复用价值？（例如：查询配置、操作数据库、调用API等）
-2. 是否适合抽象为通用 Python 脚本？
+2. 是否适合抽象为通用 .md 步骤文件，描述完整的 http_call 调用流程和参数格式？
 
 输出格式（严格按此格式）：
 评估结论：[YES/NO]
 理由：[简要说明]
-脚本名建议：[如果YES，建议的脚本文件名，如 query_git_branches.py]
-脚本描述：[如果YES，一行功能说明]`,
+步骤文件名建议：[如果YES，建议的步骤文件名，如 query_repo_branch.md]
+步骤文件描述：[如果YES，一行任务说明]`,
 		conversation)
 
 	logBuilder.WriteString(fmt.Sprintf("AI评估中 模型=%d prompt长度=%d\n", evalModelId, len(evalPrompt)))
@@ -583,62 +583,62 @@ func (r *ButlerRuntime) processArchiveItem(config *define.ButlerConfigItem, item
 		return
 	}
 
-	// 步骤2：生成通用脚本
-	logBuilder.WriteString("评估结论：需要自进化，开始生成脚本\n")
-	gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 评估结论YES→生成脚本`, archiveId)
+	// 步骤2：生成通用步骤文件
+	logBuilder.WriteString("评估结论：需要自进化，开始生成步骤文件\n")
+	gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 评估结论YES→生成步骤文件`, archiveId)
 	genPrompt := fmt.Sprintf(`## 评估结论
 %s
 
 ## 对话与执行详情
 %s
 
-请输出两部分（用 ===SCRIPT=== 和 ===INDEX=== 分隔）：
-===SCRIPT===
-[完整的 Python 脚本代码，文件头含注释说明用途和参数]
+请输出两部分（用 ===STEP=== 和 ===INDEX=== 分隔）：
+===STEP===
+[完整的 .md 步骤文件内容，描述任务的 http_call 接口调用流程、参数格式和响应处理]
 ===INDEX===
-- skills/dtool-butler/scripts/{script_name}.py — {一行功能描述}`,
+- skills/dtool-butler/step/{step_name}.md — {一行任务说明}`,
 		result, conversation)
 
 	gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 发起第二次AI调用 模型=%d prompt长度=%d`, archiveId, evalModelId, len(genPrompt))
 	genResult, _, genErr := r.db.AIChatByModel(evalModelId, sysPrompt, genPrompt)
 	if genErr != nil {
-		logBuilder.WriteString(fmt.Sprintf("脚本生成失败 %s\n", genErr.Error()))
-		gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 脚本生成AI调用失败 %s`, archiveId, genErr.Error())
-		_ = r.db.UpdateArchiveStatus(archiveId, define.ArchiveStatusIgnored, logBuilder.String(), fmt.Sprintf(`脚本生成失败: %s`, genErr.Error()), ``, ``)
+		logBuilder.WriteString(fmt.Sprintf("步骤文件生成失败 %s\n", genErr.Error()))
+		gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 步骤文件生成AI调用失败 %s`, archiveId, genErr.Error())
+		_ = r.db.UpdateArchiveStatus(archiveId, define.ArchiveStatusIgnored, logBuilder.String(), fmt.Sprintf(`步骤文件生成失败: %s`, genErr.Error()), ``, ``)
 		return
 	}
-	gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 脚本生成AI调用完成 结果长度=%d`, archiveId, len(genResult))
+	gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 步骤文件生成AI调用完成 结果长度=%d`, archiveId, len(genResult))
 
-	// 解析脚本和索引
-	scriptContent, indexEntry, scriptName := r.parseArchiveGenResult(genResult)
-	gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 解析完成 scriptContent长度=%d indexEntry长度=%d scriptName=%s`, archiveId, len(scriptContent), len(indexEntry), scriptName)
-	if scriptContent == `` {
-		logBuilder.WriteString(fmt.Sprintf("AI 未生成有效脚本内容\n原始结果(%d字节): %s\n", len(genResult), truncateForNotify(genResult, 500)))
-		gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 未生成有效脚本内容→ignored 原始结果预览=%s`, archiveId, truncateForNotify(genResult, 200))
+	// 解析步骤文件和索引
+	stepContent, indexEntry, stepName := r.parseArchiveGenResult(genResult)
+	gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 解析完成 stepContent长度=%d indexEntry长度=%d stepName=%s`, archiveId, len(stepContent), len(indexEntry), stepName)
+	if stepContent == `` {
+		logBuilder.WriteString(fmt.Sprintf("AI 未生成有效步骤内容\n原始结果(%d字节): %s\n", len(genResult), truncateForNotify(genResult, 500)))
+		gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 未生成有效步骤内容→ignored 原始结果预览=%s`, archiveId, truncateForNotify(genResult, 200))
 		_ = r.db.UpdateArchiveStatus(archiveId, define.ArchiveStatusIgnored, logBuilder.String(), genResult, ``, ``)
 		return
 	}
 
-	// 检查脚本文件是否已存在（避免重复归档）
-	scriptsDir := filepath.Join(r.butlerEnv.RootPath, `skills`, `dtool-butler`, `scripts`)
-	existingScriptPath := filepath.Join(scriptsDir, scriptName)
-	if _, statErr := os.Stat(existingScriptPath); statErr == nil {
-		logBuilder.WriteString(fmt.Sprintf("脚本 %s 已存在，跳过归档以避免重复\n", scriptName))
-		gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 脚本 %s 已存在→跳过归档`, archiveId, scriptName)
+	// 检查步骤文件是否已存在（避免重复归档）
+	stepsDir := filepath.Join(r.butlerEnv.RootPath, `skills`, `dtool-butler`, `step`)
+	existingStepPath := filepath.Join(stepsDir, stepName)
+	if _, statErr := os.Stat(existingStepPath); statErr == nil {
+		logBuilder.WriteString(fmt.Sprintf("步骤 %s 已存在，跳过归档以避免重复\n", stepName))
+		gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 步骤 %s 已存在→跳过归档`, archiveId, stepName)
 		_ = r.db.UpdateArchiveStatus(archiveId, define.ArchiveStatusIgnored, logBuilder.String(),
-			fmt.Sprintf(`脚本 %s 已存在，跳过归档以避免重复`, scriptName), ``, ``)
+			fmt.Sprintf(`步骤 %s 已存在，跳过归档以避免重复`, stepName), ``, ``)
 		return
 	}
 
-	// 写入脚本文件
-	scriptFile, writeErr := common.WriteArchiveScript(r.butlerEnv.RootPath, scriptName, scriptContent)
+	// 写入步骤文件
+	stepFile, writeErr := common.WriteArchiveStep(r.butlerEnv.RootPath, stepName, stepContent)
 	if writeErr != nil {
-		logBuilder.WriteString(fmt.Sprintf("写脚本文件失败 %s\n", writeErr.Error()))
-		gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 写脚本文件失败 script=%s err=%s`, archiveId, scriptName, writeErr.Error())
+		logBuilder.WriteString(fmt.Sprintf("写步骤文件失败 %s\n", writeErr.Error()))
+		gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 写步骤文件失败 step=%s err=%s`, archiveId, stepName, writeErr.Error())
 		_ = r.db.UpdateArchiveStatus(archiveId, define.ArchiveStatusIgnored, logBuilder.String(), fmt.Sprintf(`写文件失败: %s`, writeErr.Error()), ``, ``)
 		return
 	}
-	logBuilder.WriteString(fmt.Sprintf("脚本已写入 %s\n", scriptFile))
+	logBuilder.WriteString(fmt.Sprintf("步骤文件已写入 %s\n", stepFile))
 
 	// 追加索引
 	if indexEntry != `` {
@@ -646,51 +646,51 @@ func (r *ButlerRuntime) processArchiveItem(config *define.ButlerConfigItem, item
 			logBuilder.WriteString(fmt.Sprintf("追加索引失败 %s\n", idxErr.Error()))
 			gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 追加索引失败 %s`, archiveId, idxErr.Error())
 		} else {
-			logBuilder.WriteString("索引已追加 scripts.md\n")
+			logBuilder.WriteString("索引已追加 step.md\n")
 		}
 	} else {
-		gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 未生成索引条目，跳过 scripts.md`, archiveId)
+		gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 未生成索引条目，跳过 step.md`, archiveId)
 	}
 
 	logBuilder.WriteString("自进化完成\n")
-	gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 自进化完成 script=%s indexEntry=%s`, archiveId, scriptFile, truncateForNotify(indexEntry, 100))
-	_ = r.db.UpdateArchiveStatus(archiveId, define.ArchiveStatusDone, logBuilder.String(), result, scriptFile, indexEntry)
-	r.notifyArchiveEvent(config, archiveId, cast.ToString(item[`session_id`]), scriptFile, define.ArchiveStatusDone, scriptName)
+	gstool.FmtPrintlnLogTime(`[butler-archive] 归档 id=%d 自进化完成 step=%s indexEntry=%s`, archiveId, stepFile, truncateForNotify(indexEntry, 100))
+	_ = r.db.UpdateArchiveStatus(archiveId, define.ArchiveStatusDone, logBuilder.String(), result, stepFile, indexEntry)
+	r.notifyArchiveEvent(config, archiveId, cast.ToString(item[`session_id`]), stepFile, define.ArchiveStatusDone, stepName)
 }
 
-// parseArchiveGenResult 解析 AI 生成的脚本内容和索引条目。
-// 返回: 脚本内容, 索引描述, 脚本文件名（仅文件名不含路径，如 query_git_branches.py）
-func (r *ButlerRuntime) parseArchiveGenResult(genResult string) (scriptContent, indexEntry, scriptName string) {
-	parts := strings.SplitN(genResult, `===SCRIPT===`, 2)
+// parseArchiveGenResult 解析 AI 生成的步骤内容和索引条目。
+// 返回: 步骤内容, 索引描述, 步骤文件名（仅文件名不含路径，如 query_repo_branch.md）
+func (r *ButlerRuntime) parseArchiveGenResult(genResult string) (stepContent, indexEntry, stepName string) {
+	parts := strings.SplitN(genResult, `===STEP===`, 2)
 	if len(parts) < 2 {
 		return ``, ``, ``
 	}
 	remaining := parts[1]
-	scriptParts := strings.SplitN(remaining, `===INDEX===`, 2)
-	scriptContent = strings.TrimSpace(scriptParts[0])
-	if len(scriptParts) > 1 {
-		indexEntry = strings.TrimSpace(scriptParts[1])
+	stepParts := strings.SplitN(remaining, `===INDEX===`, 2)
+	stepContent = strings.TrimSpace(stepParts[0])
+	if len(stepParts) > 1 {
+		indexEntry = strings.TrimSpace(stepParts[1])
 	}
 
-	// 从索引条目中提取纯文件名。索引格式: "- skills/dtool-butler/scripts/xxx.py — 描述"
-	// 先找 .py 位置，向前找最后一个 / 取文件名；没有 / 则回退到找空格
-	if idx := strings.Index(indexEntry, `.py`); idx > 0 {
+	// 从索引条目中提取纯文件名。索引格式: "- skills/dtool-butler/step/xxx.md — 描述"
+	// 先找 .md 位置，向前找最后一个 / 取文件名；没有 / 则回退到找空格
+	if idx := strings.Index(indexEntry, `.md`); idx > 0 {
 		if slashIdx := strings.LastIndex(indexEntry[:idx], `/`); slashIdx >= 0 {
-			// 路径格式: skills/.../xxx.py → 提取 xxx.py
-			scriptName = strings.TrimSpace(indexEntry[slashIdx+1:idx] + `.py`)
+			// 路径格式: skills/.../xxx.md → 提取 xxx.md
+			stepName = strings.TrimSpace(indexEntry[slashIdx+1:idx] + `.md`)
 		} else {
-			// 纯文件名格式: "xxx.py" 或 "- xxx.py"，找最后一个空格或横线
+			// 纯文件名格式: "xxx.md" 或 "- xxx.md"，找最后一个空格或横线
 			start := strings.LastIndex(indexEntry[:idx], ` `)
 			if start < 0 {
 				start = strings.LastIndex(indexEntry[:idx], `-`)
 			}
 			if start >= 0 {
-				scriptName = strings.TrimSpace(indexEntry[start:idx] + `.py`)
+				stepName = strings.TrimSpace(indexEntry[start:idx] + `.md`)
 			}
 		}
 	}
-	if scriptName == `` {
-		scriptName = fmt.Sprintf(`archive_%d.py`, time.Now().Unix())
+	if stepName == `` {
+		stepName = fmt.Sprintf(`archive_%d.md`, time.Now().Unix())
 	}
 	return
 }

@@ -76,7 +76,7 @@ func execInit(cmdCtx *CommandContext) CommandResult {
 		return CommandResult{Handled: true, Text: fmt.Sprintf(`索引初始化失败：%s`, err.Error())}
 	}
 	lineCount := strings.Count(content, "\n") + 1
-	return CommandResult{Handled: true, Text: fmt.Sprintf(`索引初始化完成，已生成 scripts.md（%d 行）、capabilities.md、apis.md。`, lineCount)}
+	return CommandResult{Handled: true, Text: fmt.Sprintf(`索引初始化完成，已生成 step.md（%d 行）、capabilities.md、apis.md。`, lineCount)}
 }
 
 // execStatus 执行 /status 命令：查询管家与当前会话状态。

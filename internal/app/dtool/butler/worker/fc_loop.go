@@ -12,16 +12,17 @@ import (
 
 // FCLoopResult FC 循环执行结果。
 type FCLoopResult struct {
-	Content        string   // 最终 AI 回复文本
-	Success        bool     // 任务是否成功完成
-	ToolUsed       []string // 使用过的工具名称列表
-	ScriptsRun     []string // 执行过的脚本路径（去重）
-	ScriptsCreated []string // 新建/覆盖的脚本路径（去重）
-	FilesWritten   []string // 所有通过 file_write 写入的文件路径（去重，供归档提交）
-	LLMCalls       int      // LLM 累计调用次数
-	InputTokens    int      // 累计输入 token 数
-	OutputTokens   int      // 累计输出 token 数
-	CacheTokens    int      // 累计缓存命中 token 数
+	Content       string   // 最终 AI 回复文本
+	Success       bool     // 任务是否成功完成
+	ToolUsed      []string // 使用过的工具名称列表
+	StepsRun      []string // 执行过的步骤文件路径（去重）
+	StepsCreated  []string // 新建/覆盖的步骤文件路径（去重）
+	FilesWritten  []string // 所有通过 file_write 写入的文件路径（去重，供归档提交）
+	StepFilesRead []string // 计划/检索阶段通过 file_read 读取的步骤 .md 文件路径（去重）
+	LLMCalls      int      // LLM 累计调用次数
+	InputTokens   int      // 累计输入 token 数
+	OutputTokens  int      // 累计输出 token 数
+	CacheTokens   int      // 累计缓存命中 token 数
 }
 
 // RunFCLoop 执行 Function Calling 循环。
@@ -36,12 +37,14 @@ func RunFCLoop(db *common.CSqlite, modelId int, systemPrompt string, historyMess
 	// 获取工具定义
 	tools := ToolDefinitions()
 	toolsUsed := make([]string, 0)
-	scriptsRun := make([]string, 0)
-	scriptsCreated := make([]string, 0)
+	stepsRun := make([]string, 0)
+	stepsCreated := make([]string, 0)
 	filesWritten := make([]string, 0)
-	scriptsRunSet := make(map[string]bool)
-	scriptsCreatedSet := make(map[string]bool)
+	stepFilesRead := make([]string, 0)
+	stepsRunSet := make(map[string]bool)
+	stepsCreatedSet := make(map[string]bool)
 	filesWrittenSet := make(map[string]bool)
+	stepFilesReadSet := make(map[string]bool)
 	var totalCalls, totalInput, totalOutput, totalCache int
 
 	for i := 0; i < maxLoop; i++ {
@@ -55,12 +58,12 @@ func RunFCLoop(db *common.CSqlite, modelId int, systemPrompt string, historyMess
 		}
 		if err != nil {
 			gstool.FmtPrintlnLogTime(`[butler-fc] AI 请求失败 %s`, err.Error())
-			return &FCLoopResult{Content: fmt.Sprintf(`任务执行失败：%s`, err.Error()), Success: false, ToolUsed: toolsUsed, ScriptsRun: scriptsRun, ScriptsCreated: scriptsCreated, FilesWritten: filesWritten, LLMCalls: totalCalls, InputTokens: totalInput, OutputTokens: totalOutput, CacheTokens: totalCache}
+			return &FCLoopResult{Content: fmt.Sprintf(`任务执行失败：%s`, err.Error()), Success: false, ToolUsed: toolsUsed, StepsRun: stepsRun, StepsCreated: stepsCreated, FilesWritten: filesWritten, StepFilesRead: stepFilesRead, LLMCalls: totalCalls, InputTokens: totalInput, OutputTokens: totalOutput, CacheTokens: totalCache}
 		}
 
 		// 没有工具调用 → AI 已给出最终回复
 		if len(toolCalls) == 0 {
-			return &FCLoopResult{Content: content, Success: true, ToolUsed: toolsUsed, ScriptsRun: scriptsRun, ScriptsCreated: scriptsCreated, FilesWritten: filesWritten, LLMCalls: totalCalls, InputTokens: totalInput, OutputTokens: totalOutput, CacheTokens: totalCache}
+			return &FCLoopResult{Content: content, Success: true, ToolUsed: toolsUsed, StepsRun: stepsRun, StepsCreated: stepsCreated, FilesWritten: filesWritten, StepFilesRead: stepFilesRead, LLMCalls: totalCalls, InputTokens: totalInput, OutputTokens: totalOutput, CacheTokens: totalCache}
 		}
 
 		// 记录 assistant 消息（含 tool_calls）
@@ -82,20 +85,25 @@ func RunFCLoop(db *common.CSqlite, modelId int, systemPrompt string, historyMess
 			fnName := cast.ToString(fnMap[`name`])
 			fnArgs := cast.ToString(fnMap[`arguments`])
 
-			// 提取脚本路径用于结果追踪
-			scriptPath := extractPathFromArgs(fnArgs)
-			if fnName == ToolRunScript && scriptPath != `` && !scriptsRunSet[scriptPath] {
-				scriptsRunSet[scriptPath] = true
-				scriptsRun = append(scriptsRun, scriptPath)
+			// 提取路径用于结果追踪
+			stepPath := extractPathFromArgs(fnArgs)
+			if fnName == ToolRunScript && stepPath != `` && !stepsRunSet[stepPath] {
+				stepsRunSet[stepPath] = true
+				stepsRun = append(stepsRun, stepPath)
+			}
+			// 追踪 file_read 读取的步骤文件（供计划→执行阶段上下文传递）
+			if fnName == ToolFileRead && stepPath != `` && strings.Contains(stepPath, `/step/`) && strings.HasSuffix(stepPath, `.md`) && !stepFilesReadSet[stepPath] {
+				stepFilesReadSet[stepPath] = true
+				stepFilesRead = append(stepFilesRead, stepPath)
 			}
 			// 追踪所有 file_write 产生的文件（供归档提交）
-			if fnName == ToolFileWrite && scriptPath != `` && !filesWrittenSet[scriptPath] {
-				filesWrittenSet[scriptPath] = true
-				filesWritten = append(filesWritten, scriptPath)
+			if fnName == ToolFileWrite && stepPath != `` && !filesWrittenSet[stepPath] {
+				filesWrittenSet[stepPath] = true
+				filesWritten = append(filesWritten, stepPath)
 			}
-			if fnName == ToolFileWrite && scriptPath != `` && strings.HasSuffix(scriptPath, `.py`) && !scriptsCreatedSet[scriptPath] {
-				scriptsCreatedSet[scriptPath] = true
-				scriptsCreated = append(scriptsCreated, scriptPath)
+			if fnName == ToolFileWrite && stepPath != `` && strings.HasSuffix(stepPath, `.md`) && !stepsCreatedSet[stepPath] {
+				stepsCreatedSet[stepPath] = true
+				stepsCreated = append(stepsCreated, stepPath)
 			}
 
 			gstool.FmtPrintlnLogTime(`[butler-fc] 执行工具 %s(%s)`, fnName, truncateForLog(fnArgs, 100))
@@ -114,7 +122,7 @@ func RunFCLoop(db *common.CSqlite, modelId int, systemPrompt string, historyMess
 
 	// 超过最大迭代次数
 	gstool.FmtPrintlnLogTime(`[butler-fc] FC 循环超过最大迭代次数 %d`, maxLoop)
-	return &FCLoopResult{Content: fmt.Sprintf(`任务执行超时：已达到最大工具调用次数 %d`, maxLoop), Success: false, ToolUsed: toolsUsed, ScriptsRun: scriptsRun, ScriptsCreated: scriptsCreated, FilesWritten: filesWritten, LLMCalls: totalCalls, InputTokens: totalInput, OutputTokens: totalOutput, CacheTokens: totalCache}
+	return &FCLoopResult{Content: fmt.Sprintf(`任务执行超时：已达到最大工具调用次数 %d`, maxLoop), Success: false, ToolUsed: toolsUsed, StepsRun: stepsRun, StepsCreated: stepsCreated, FilesWritten: filesWritten, StepFilesRead: stepFilesRead, LLMCalls: totalCalls, InputTokens: totalInput, OutputTokens: totalOutput, CacheTokens: totalCache}
 }
 
 // buildFCMessages 构建 FC 循环的初始 messages 列表。

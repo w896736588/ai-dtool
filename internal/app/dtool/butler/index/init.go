@@ -15,36 +15,36 @@ type SkillInfo struct {
 	Name        string   // skill 名称（目录名）
 	Description string   // SKILL.md 中的 description
 	Functions   []string // 功能索引列表
-	Scripts     []string // scripts/ 下的脚本文件名
+	Steps       []string // step/ 下的步骤文件名
 }
 
-// GenerateScriptsIndex 扫描 skills/ 目录，生成 scripts.md 索引内容。
+// GenerateStepIndex 扫描 skills/ 目录，生成 step.md 索引内容。
 // skillsRoot 为 skills 目录的绝对路径（项目根目录下的 skills/）。
-func GenerateScriptsIndex(skillsRoot string) (string, error) {
+func GenerateStepIndex(skillsRoot string) (string, error) {
 	skills, err := scanSkills(skillsRoot)
 	if err != nil {
 		return ``, fmt.Errorf(`扫描 skills 目录失败: %w`, err)
 	}
 	if len(skills) == 0 {
-		return `# 脚本工具索引\n\n暂无可用脚本工具。`, nil
+		return `# 步骤文件索引\n\n暂无可用步骤文件。`, nil
 	}
-	return buildScriptsMarkdown(skills), nil
+	return buildStepMarkdown(skills), nil
 }
 
-// InitIndex 执行索引初始化：扫描 skills/ → 生成 scripts.md + capabilities.md + apis.md。
-// 返回生成的 scripts.md 内容和错误。
+// InitIndex 执行索引初始化：扫描 skills/ → 生成 step.md + capabilities.md + apis.md。
+// 返回生成的 step.md 内容和错误。
 func InitIndex(skillsRoot, indexPath string) (string, error) {
 	// 确保目录存在
 	if err := EnsureIndexDir(indexPath); err != nil {
 		return ``, fmt.Errorf(`创建索引目录失败: %w`, err)
 	}
-	// 1. 扫描并生成 scripts.md
-	scriptsContent, err := GenerateScriptsIndex(skillsRoot)
+	// 1. 扫描并生成 step.md
+	stepContent, err := GenerateStepIndex(skillsRoot)
 	if err != nil {
 		return ``, err
 	}
-	if err := WriteIndexFile(indexPath, ScriptsFileName, scriptsContent); err != nil {
-		return ``, fmt.Errorf(`写入 scripts.md 失败: %w`, err)
+	if err := WriteIndexFile(indexPath, StepFileName, stepContent); err != nil {
+		return ``, fmt.Errorf(`写入 step.md 失败: %w`, err)
 	}
 	// 2. 生成 capabilities.md（管家总能力清单）
 	capabilitiesContent := GenerateCapabilitiesIndex()
@@ -56,7 +56,7 @@ func InitIndex(skillsRoot, indexPath string) (string, error) {
 	if err := WriteIndexFile(indexPath, ApisFileName, apisContent); err != nil {
 		return ``, fmt.Errorf(`写入 apis.md 失败: %w`, err)
 	}
-	return scriptsContent, nil
+	return stepContent, nil
 }
 
 // scanSkills 扫描 skills/ 下所有子目录，提取 skill 信息。
@@ -98,19 +98,19 @@ func scanSkillDir(skillDir string) *SkillInfo {
 	} else {
 		parseSkillMD(content, info)
 	}
-	// 扫描 scripts/ 目录
-	scriptsDir := filepath.Join(skillDir, `scripts`)
-	entries, err := os.ReadDir(scriptsDir)
+	// 扫描 step/ 目录
+	stepsDir := filepath.Join(skillDir, `step`)
+	entries, err := os.ReadDir(stepsDir)
 	if err == nil {
 		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), `.py`) {
-				info.Scripts = append(info.Scripts, entry.Name())
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), `.md`) {
+				info.Steps = append(info.Steps, entry.Name())
 			}
 		}
-		sort.Strings(info.Scripts)
+		sort.Strings(info.Steps)
 	}
-	// 无脚本也无描述的 skill 跳过
-	if info.Description == `` && len(info.Scripts) == 0 && len(info.Functions) == 0 {
+	// 仅包含有步骤文件的 skill，step.md 索引只列出有操作步骤的模块
+	if len(info.Steps) == 0 {
 		return nil
 	}
 	return info
@@ -155,25 +155,29 @@ func parseSkillMD(content string, info *SkillInfo) {
 	}
 }
 
-// buildScriptsMarkdown 根据扫描到的 skill 信息构建 scripts.md 内容。
-func buildScriptsMarkdown(skills []SkillInfo) string {
+// buildStepMarkdown 根据扫描到的 skill 信息构建 step.md 内容。
+func buildStepMarkdown(skills []SkillInfo) string {
 	var sb strings.Builder
-	sb.WriteString(`# 脚本工具索引`)
+	sb.WriteString(`# 步骤文件索引`)
+	totalSteps := 0
+	for _, s := range skills {
+		totalSteps += len(s.Steps)
+	}
 	sb.WriteString("\n\n")
-	sb.WriteString(fmt.Sprintf(`共 %d 个脚本工具。`, len(skills)))
+	sb.WriteString(fmt.Sprintf(`共 %d 个步骤文件。`, totalSteps))
 	sb.WriteString("\n\n")
 
 	for _, skill := range skills {
 		sb.WriteString(fmt.Sprintf(`## [%s] %s`, skill.Name, skill.Description))
 		sb.WriteString("\n\n")
-		// 脚本列表
-		if len(skill.Scripts) > 0 {
-			sb.WriteString(`- 脚本: `)
-			scriptPaths := make([]string, len(skill.Scripts))
-			for i, s := range skill.Scripts {
-				scriptPaths[i] = fmt.Sprintf(`skills/%s/scripts/%s`, skill.Name, s)
+		// 步骤文件列表
+		if len(skill.Steps) > 0 {
+			sb.WriteString(`- 步骤: `)
+			stepPaths := make([]string, len(skill.Steps))
+			for i, s := range skill.Steps {
+				stepPaths[i] = fmt.Sprintf(`skills/%s/step/%s`, skill.Name, s)
 			}
-			sb.WriteString(strings.Join(scriptPaths, `, `))
+			sb.WriteString(strings.Join(stepPaths, `, `))
 			sb.WriteString("\n")
 		}
 		// 功能索引

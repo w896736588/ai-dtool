@@ -92,8 +92,8 @@ func ExecuteTool(name string, argumentsJSON string) string {
 	}
 }
 
-// resolvePath 解析文件路径：如果是相对路径且直接读取失败，依次在 skills/dtool-butler/index/、skills/dtool-butler/scripts/ 和 skillsRoot 下查找。
-// 优先级：直接路径 > skills/dtool-butler/index/ (索引文件) > skills/dtool-butler/scripts/ (自进化脚本) > skills/*/scripts/ (内置脚本)
+// resolvePath 解析文件路径：如果是相对路径且直接读取失败，依次在 skills/dtool-butler/index/、skills/dtool-butler/step/ 和 skillsRoot 下查找。
+// 优先级：直接路径 > skills/dtool-butler/index/ (索引文件) > skills/dtool-butler/step/ (自进化步骤文件) > skills/*/step/ (内置步骤文件)
 func resolvePath(path string) (string, error) {
 	if path == `` {
 		return ``, fmt.Errorf(`文件路径不能为空`)
@@ -107,13 +107,13 @@ func resolvePath(path string) (string, error) {
 		return path, nil
 	}
 	if skillsRoot != `` {
-		// 1. 优先在 skills/dtool-butler/index/ 下查找（索引文件：apis.md, scripts.md 等）
+		// 1. 优先在 skills/dtool-butler/index/ 下查找（索引文件：apis.md, step.md 等）
 		indexCandidate := filepath.Join(skillsRoot, `dtool-butler`, `index`, path)
 		if _, err := os.Stat(indexCandidate); err == nil {
 			return indexCandidate, nil
 		}
-		// 2. 在 skills/dtool-butler/scripts/ 下查找（自进化生成的脚本）
-		evolvedCandidate := filepath.Join(skillsRoot, `dtool-butler`, `scripts`, path)
+		// 2. 在 skills/dtool-butler/step/ 下查找（自进化生成的步骤文件）
+		evolvedCandidate := filepath.Join(skillsRoot, `dtool-butler`, `step`, path)
 		if _, err := os.Stat(evolvedCandidate); err == nil {
 			return evolvedCandidate, nil
 		}

@@ -1,6 +1,6 @@
 # dtool HTTP 接口索引
 
-共 394 个已注册接口。所有接口均为 POST 方法，需携带 Token 鉴权。
+共 395 个已注册接口。所有接口均为 POST 方法，需携带 Token 鉴权。
 此索引由 `/init` 自动根据当前代码生成，始终与代码同步。
 
 ## 其他
@@ -23,13 +23,12 @@
 | /api/GitCurrentBranch | GitCurrentBranchById |
 | /api/GitPull | Git 拉取 |
 | /api/GitPullBranchOrigin | GitPullBranchOrigin |
+| /api/GitPendingCommitPush | Git 推送 |
 | /api/GitQueryCurrentBranch | GitCurrentBranch |
 | /api/GitQueryStatus | Query状态 |
-| /api/GitQuickCreateBranch | GitQuickCreateBranch |
 | /api/GitSetSafeLog | GitSetSafeLog |
 | /api/GitSaveCredentials | GitSaveCredentials |
 | /api/GitRemoteBranchList | Git 列表 |
-| /api/GitGroupBranchList | Git 列表 |
 | /api/GitUploadFile | GitUploadFile |
 
 ## GitLab
@@ -38,39 +37,39 @@
 |----------|------|
 | /api/GitLab | func1 |
 
-## 记忆片段
-
-| 接口路径 | 说明 |
-|----------|------|
-| /api/MemoryFragmentDownloadZip | MemoryFragmentDownloadZip |
-| /api/MemoryFragmentFolderCreate | 记忆片段 创建 |
-| /api/MemoryFragmentFolderList | 记忆片段 列表 |
-| /api/MemoryFragmentFolderUpdate | 记忆片段 更新 |
-| /api/MemoryFragmentHardDelete | 记忆片段 删除 |
-| /api/MemoryFragmentTagList | 记忆库 列表 |
-| /api/MemoryFragmentImageUpload | 记忆片段 上传 |
-| /api/MemoryFragmentUploadZip | MemoryFragmentUploadZip |
-| /api/MemoryFragmentUpdateZip | MemoryFragmentUpdateZip |
-| /api/MemoryFragmentRestore | 记忆片段 恢复 |
-| /api/MemoryFragmentReferences | MemoryFragmentReferences |
-| /api/MemoryFragmentList | 记忆片段 列表 |
-| /api/MemoryFragmentDelete | 记忆片段 删除 |
-
 ## 记忆库
 
 | 接口路径 | 说明 |
 |----------|------|
-| /api/MemoryFragmentAiSearch | func1 |
+| /api/MemoryFragmentDownloadZip | MemoryFragmentDownloadZip |
 | /api/MemoryFragmentSave | 记忆片段 保存 |
 | /api/MemoryFragmentSaveById | MemoryFragmentSaveById |
-| /api/MemoryFragmentShareInfo | 记忆库 详情 |
-| /api/MemoryFragmentShareCreate | 记忆库 创建 |
-| /api/MemoryFragmentStatus | 记忆片段 状态 |
+| /api/MemoryFragmentShareInfo | 记忆片段 详情 |
 | /api/MemoryFragmentSearch | 记忆片段 搜索 |
-| /api/MemoryFragmentFolderChange | 记忆库 变更 |
+| /api/MemoryFragmentFolderChange | 记忆片段 变更 |
+| /api/MemoryFragmentFolderList | 记忆片段 列表 |
 | /api/MemoryFragmentHistoryList | 记忆片段 列表 |
 | /api/MemoryFragmentTrashList | 记忆片段 列表 |
+| /api/MemoryFragmentTagList | 记忆片段 列表 |
 | /api/MemoryFragmentInfo | 记忆片段 详情 |
+| /api/MemoryFragmentImageUpload | 记忆库 上传 |
+| /api/MemoryFragmentRestore | 记忆片段 恢复 |
+| /api/MemoryFragmentReferences | MemoryFragmentReferences |
+| /api/MemoryFragmentDelete | 记忆片段 删除 |
+
+## 记忆片段
+
+| 接口路径 | 说明 |
+|----------|------|
+| /api/MemoryFragmentAiSearch | func1 |
+| /api/MemoryFragmentShareCreate | 记忆片段 创建 |
+| /api/MemoryFragmentStatus | 记忆片段 状态 |
+| /api/MemoryFragmentFolderCreate | 记忆片段 创建 |
+| /api/MemoryFragmentFolderUpdate | 记忆片段 更新 |
+| /api/MemoryFragmentHardDelete | 记忆片段 删除 |
+| /api/MemoryFragmentUploadZip | MemoryFragmentUploadZip |
+| /api/MemoryFragmentUpdateZip | MemoryFragmentUpdateZip |
+| /api/MemoryFragmentList | 记忆片段 列表 |
 | /api/MemoryFragmentCreate | 记忆片段 创建 |
 | /api/MemoryFragmentOrganize | 记忆片段 整理 |
 | /api/MemoryFragmentBatchInfoByPaths | MemoryFragmentBatchInfoByPaths |
@@ -88,30 +87,35 @@
 | /js/*filepath | func1 |
 | /css/*filepath | func1 |
 
-## GitLab 配置
-
-| 接口路径 | 说明 |
-|----------|------|
-| /api/Set/GitLabTokenCreate | Git 新增 |
-| /api/Set/GitLabTokenDelete | Git 删除 |
-| /api/Set/GitLabTokenList | Git 列表 |
-
 ## Git 配置
 
 | 接口路径 | 说明 |
 |----------|------|
+| /api/Set/GitLabTokenCreate | Git 新增 |
+| /api/Set/GitLabTokenList | Git 列表 |
 | /api/Set/GitList | Git 列表 |
-| /api/Set/GitGroupList | Git分组 列表 |
 | /api/Set/GitAdd | Git 新增 |
 | /api/Set/GitDelete | Git 删除 |
-| /api/Set/GitQuickList | Git快捷 列表 |
+
+## GitLab 配置
+
+| 接口路径 | 说明 |
+|----------|------|
+| /api/Set/GitLabTokenDelete | Git 删除 |
 
 ## Git分组 配置
 
 | 接口路径 | 说明 |
 |----------|------|
+| /api/Set/GitGroupList | Git分组 列表 |
 | /api/Set/GitGroupAdd | Git分组 新增 |
 | /api/Set/GitGroupDelete | Git分组 删除 |
+
+## Git快捷 配置
+
+| 接口路径 | 说明 |
+|----------|------|
+| /api/Set/GitQuickList | Git快捷 列表 |
 
 ## 全局配置 配置
 
@@ -157,39 +161,34 @@
 | 接口路径 | 说明 |
 |----------|------|
 | /api/Set/AccountGroupList | 账号分组 列表 |
+| /api/Set/AccountGroupAdd | 账号分组 新增 |
+| /api/Set/AccountGroupDelete | 账号分组 删除 |
 | /api/Set/AccountList | 账号 列表 |
 | /api/Set/AccountAdd | 账号 新增 |
 | /api/Set/AccountDelete | 账号 删除 |
-
-## 账号分组 配置
-
-| 接口路径 | 说明 |
-|----------|------|
-| /api/Set/AccountGroupAdd | 账号分组 新增 |
-| /api/Set/AccountGroupDelete | 账号分组 删除 |
 
 ## 管家机器人 配置
 
 | 接口路径 | 说明 |
 |----------|------|
 | /api/Set/ButlerBotConfigList | 管家机器人 列表 |
+| /api/Set/ButlerBotConfigAdd | 管家机器人 新增 |
 | /api/Set/ButlerBotConfigDelete | 管家机器人 删除 |
 
 ## 管家 配置
 
 | 接口路径 | 说明 |
 |----------|------|
-| /api/Set/ButlerBotConfigAdd | 管家机器人 新增 |
 | /api/Set/ButlerBotConfigTest | 管家机器人 测试 |
 | /api/Set/ButlerRoleList | 管家角色 列表 |
-| /api/Set/ButlerRoleAdd | 管家角色 新增 |
-| /api/Set/ButlerConfigAdd | 管家参数 新增 |
+| /api/Set/ButlerTaskList | 管家 列表 |
 | /api/Set/ButlerMessageList | 管家消息 列表 |
 
 ## 管家角色 配置
 
 | 接口路径 | 说明 |
 |----------|------|
+| /api/Set/ButlerRoleAdd | 管家角色 新增 |
 | /api/Set/ButlerRoleDelete | 管家角色 删除 |
 
 ## 管家参数 配置
@@ -197,6 +196,7 @@
 | 接口路径 | 说明 |
 |----------|------|
 | /api/Set/ButlerConfigList | 管家参数 列表 |
+| /api/Set/ButlerConfigAdd | 管家参数 新增 |
 | /api/Set/ButlerConfigDelete | 管家参数 删除 |
 
 ## 管家API 配置
@@ -222,17 +222,17 @@
 | /api/Set/SupervisorAdd | Supervisor 新增 |
 | /api/Set/SupervisorDelete | Supervisor 删除 |
 
-## 智能链接 配置
-
-| 接口路径 | 说明 |
-|----------|------|
-| /api/Set/SmartLinkGroupList | 智能链接分组 列表 |
-| /api/Set/SmartLinkGroupAdd | 智能链接分组 新增 |
-
 ## 智能链接分组 配置
 
 | 接口路径 | 说明 |
 |----------|------|
+| /api/Set/SmartLinkGroupList | 智能链接分组 列表 |
+
+## 智能链接 配置
+
+| 接口路径 | 说明 |
+|----------|------|
+| /api/Set/SmartLinkGroupAdd | 智能链接分组 新增 |
 | /api/Set/SmartLinkGroupDelete | 智能链接分组 删除 |
 
 ## MySQL 配置
@@ -243,11 +243,16 @@
 | /api/Set/MysqlAdd | MySQL 新增 |
 | /api/Set/MysqlDelete | MySQL 删除 |
 
-## 记忆库配置 配置
+## 记忆库 配置
 
 | 接口路径 | 说明 |
 |----------|------|
 | /api/Set/MemoryConfigGet | SetMemoryConfigGet |
+
+## 记忆库配置 配置
+
+| 接口路径 | 说明 |
+|----------|------|
 | /api/Set/MemoryConfigSave | 记忆库配置 保存 |
 
 ## 主库 配置
@@ -309,12 +314,17 @@
 | /api/Set/LocalBranchBatchCheck | 本地分支 检查 |
 | /api/Set/LocalBranchMismatchDetail | 本地分支 详情 |
 
-## 变量 配置
+## 变量分组 配置
 
 | 接口路径 | 说明 |
 |----------|------|
 | /api/Set/VariableGroupList | 变量分组 列表 |
 | /api/Set/VariableGroupAdd | 变量分组 新增 |
+
+## 变量 配置
+
+| 接口路径 | 说明 |
+|----------|------|
 | /api/Set/VariableGroupDelete | 变量分组 删除 |
 
 ## Docker 配置
@@ -337,7 +347,7 @@
 |----------|------|
 | /api/Set/HomeTaskConfigSave | 首页任务配置 保存 |
 
-## Prompt 配置
+## Prompt变更 配置
 
 | 接口路径 | 说明 |
 |----------|------|
@@ -354,33 +364,38 @@
 | 接口路径 | 说明 |
 |----------|------|
 | /api/SmartLinkItemList | 智能链接项 列表 |
-| /api/SmartLinkItemAdd | 智能链接项 新增 |
-| /api/SmartLinkItemDelete | 智能链接项 删除 |
 
 ## 智能链接
 
 | 接口路径 | 说明 |
 |----------|------|
+| /api/SmartLinkItemAdd | 智能链接项 新增 |
+| /api/SmartLinkItemDelete | 智能链接项 删除 |
 | /api/SmartLinkItemInfo | 智能链接项 详情 |
 | /api/SmartLinkInfo | 智能链接 详情 |
 | /api/SmartLinkRun | SmartLinkRunPlaywright |
 | /api/SmartLinkRunList | 智能链接 列表 |
 | /api/SmartLinkRecycle | 智能链接 回收 |
-| /api/SmartLinkChromeVersion | 智能链接 版本 |
 | /api/SmartLinkChromeDownload | SmartLinkUpWebkit |
 | /api/SmartLinkDel | 智能链接 删除 |
-| /api/SmartLinkDownloadPath | SmartLinkDownloadPath |
 | /api/SmartLinkList | 智能链接 列表 |
 | /api/SmartLinkLocatorAutoExtract | SmartLinkLocatorAutoExtract |
 | /api/SmartLinkAdd | 智能链接 新增 |
 | /api/SmartLinkMigrateOldData | SmartLinkMigrateOldData |
+| /api/SmartLinkOpenDataDir | SmartLinkOpenDataDir |
 | /api/smart-link/scrape-to-markdown | SmartLinkScrapeToMarkdown |
 
-## 智能链接打开
+## 智能链接Chrome
 
 | 接口路径 | 说明 |
 |----------|------|
-| /api/SmartLinkOpenDataDir | SmartLinkOpenDataDir |
+| /api/SmartLinkChromeVersion | 智能链接 版本 |
+
+## 智能链接下载
+
+| 接口路径 | 说明 |
+|----------|------|
+| /api/SmartLinkDownloadPath | SmartLinkDownloadPath |
 
 ## 智能流程
 
@@ -456,37 +471,32 @@
 | 接口路径 | 说明 |
 |----------|------|
 | /api/McpBindingList | MCP绑定 列表 |
+| /api/McpBindingAdd | MCP绑定 新增 |
 | /api/McpBindingRemove | MCP绑定 移除 |
 | /api/McpBindingInstruction | MCP绑定 说明 |
-| /api/McpChromeDevtoolsConfigList | MCP工具 列表 |
 | /api/McpChromeDevtoolsConfigSave | MCP工具 保存 |
-| /api/McpAgentTargetList | MCP目标 列表 |
+| /api/McpChromeDevtoolsConfigDelete | MCP工具 删除 |
+| /api/McpConfigPreview | MCP配置 预览 |
 | /api/McpAgentTargetDelete | MCP目标 删除 |
-| /api/McpTypeList | MCP类型 列表 |
-
-## MCP绑定
-
-| 接口路径 | 说明 |
-|----------|------|
-| /api/McpBindingAdd | MCP绑定 新增 |
 
 ## MCP工具
 
 | 接口路径 | 说明 |
 |----------|------|
-| /api/McpChromeDevtoolsConfigDelete | MCP工具 删除 |
-
-## MCP配置
-
-| 接口路径 | 说明 |
-|----------|------|
-| /api/McpConfigPreview | MCP配置 预览 |
+| /api/McpChromeDevtoolsConfigList | MCP工具 列表 |
 
 ## MCP目标
 
 | 接口路径 | 说明 |
 |----------|------|
+| /api/McpAgentTargetList | MCP目标 列表 |
 | /api/McpAgentTargetSave | MCP目标 保存 |
+
+## MCP类型
+
+| 接口路径 | 说明 |
+|----------|------|
+| /api/McpTypeList | MCP类型 列表 |
 
 ## Markdown
 
@@ -548,14 +558,22 @@
 | /api/task/workflow/batch-node-status | 任务工作流 状态 |
 | /api/task/workflow/open-in-editor | TaskWorkflowOpenInEditor |
 
-## AgentCLI
+## AgentCLI分组
 
 | 接口路径 | 说明 |
 |----------|------|
 | /api/AgentCliGroupList | AgentCLI分组 列表 |
+| /api/AgentCliGroupDelete | AgentCLI分组 删除 |
 | /api/AgentCliGroupRelSave | AgentCLI 保存 |
+
+## AgentCLI
+
+| 接口路径 | 说明 |
+|----------|------|
+| /api/AgentCliGroupSave | AgentCLI分组 保存 |
 | /api/AgentCliPromptTemplateList | AgentCLI模板 列表 |
 | /api/AgentCliPromptTemplateSave | AgentCLI模板 保存 |
+| /api/AgentCliPromptTemplateDelete | AgentCLI模板 删除 |
 | /api/AgentCliWriteMcpServers | AgentCliWriteMcpServers |
 | /api/AgentCliWriteDeepSeek | AgentCliWriteDeepSeek |
 | /api/AgentCliList | AgentCLI 列表 |
@@ -563,19 +581,6 @@
 | /api/AgentCliDelete | AgentCLI 删除 |
 | /api/AgentCliReadSettings | AgentCliReadSettings |
 | /api/AgentCliToggleEnabled | AgentCliToggleEnabled |
-
-## AgentCLI分组
-
-| 接口路径 | 说明 |
-|----------|------|
-| /api/AgentCliGroupSave | AgentCLI分组 保存 |
-| /api/AgentCliGroupDelete | AgentCLI分组 删除 |
-
-## AgentCLI模板
-
-| 接口路径 | 说明 |
-|----------|------|
-| /api/AgentCliPromptTemplateDelete | AgentCLI模板 删除 |
 
 ## API
 
@@ -611,7 +616,18 @@
 | 接口路径 | 说明 |
 |----------|------|
 | /api/GitPendingStatus | Git待提交 状态 |
-| /api/GitPendingCommitPush | Git待提交 推送 |
+
+## Git快捷
+
+| 接口路径 | 说明 |
+|----------|------|
+| /api/GitQuickCreateBranch | GitQuickCreateBranch |
+
+## Git分组
+
+| 接口路径 | 说明 |
+|----------|------|
+| /api/GitGroupBranchList | Git分组 列表 |
 
 ## GetLocalIP
 
@@ -632,10 +648,15 @@
 | /api/DockerComposeConfigShow | DockerComposeConfigShow |
 | /api/DockerContainerStop | Docker容器 停止 |
 | /api/DockerContainerRemove | Docker容器 移除 |
-| /api/DockerContainerLogTruncate | Docker 清空 |
 | /api/DockerImageList | Docker镜像 列表 |
 | /api/DockerImageContainers | DockerImageContainers |
-| /api/DockerServiceLogs | Docker服务 日志 |
+| /api/DockerServiceRestart | Docker服务 重启 |
+
+## Docker容器
+
+| 接口路径 | 说明 |
+|----------|------|
+| /api/DockerContainerLogTruncate | Docker 清空 |
 
 ## Docker镜像
 
@@ -647,7 +668,7 @@
 
 | 接口路径 | 说明 |
 |----------|------|
-| /api/DockerServiceRestart | Docker服务 重启 |
+| /api/DockerServiceLogs | Docker服务 日志 |
 
 ## DeleteCollection
 
@@ -667,39 +688,29 @@
 |----------|------|
 | /api/DeleteDir | ApiDeleteDir |
 
-## 首页任务
+## 首页页面数据
 
 | 接口路径 | 说明 |
 |----------|------|
 | /api/HomeTaskPageDataLoad | HomeTaskPageDataLoad |
-| /api/HomeTaskSave | 首页任务 保存 |
-| /api/HomeTaskStatusQuickUpdate | 首页任务 更新 |
-| /api/HomeTaskDelete | 首页任务 删除 |
-| /api/HomeTaskList | 首页任务 列表 |
-| /api/HomeTaskLastDevConfigByGitId | HomeTaskLastDevConfigByGitId |
-| /api/HomeTaskCount | HomeTaskCount |
-| /api/HomeTaskInfo | 首页任务 详情 |
-| /api/HomeTaskArchiveToggle | 首页任务 切换 |
-| /api/HomeTaskZcodeSessionIdAppend | HomeTaskZcodeSessionIdAppend |
 
-## 首页页面数据
+## 首页任务
 
 | 接口路径 | 说明 |
 |----------|------|
 | /api/HomeTaskPageDataDirCheck | CheckAndPushLocalDirs |
 | /api/HomeTaskPageDataBranchCheck | CheckAndPushBranch状态 |
-
-## 首页日报
-
-| 接口路径 | 说明 |
-|----------|------|
+| /api/HomeTaskSave | 首页任务 保存 |
+| /api/HomeTaskStatusQuickUpdate | 首页任务 更新 |
+| /api/HomeTaskDelete | 首页任务 删除 |
 | /api/HomeTaskDailyReportGenerate | 首页日报 生成 |
-
-## 首页分支名
-
-| 接口路径 | 说明 |
-|----------|------|
+| /api/HomeTaskList | 首页任务 列表 |
+| /api/HomeTaskLastDevConfigByGitId | HomeTaskLastDevConfigByGitId |
+| /api/HomeTaskCount | HomeTaskCount |
+| /api/HomeTaskInfo | 首页任务 详情 |
+| /api/HomeTaskArchiveToggle | 首页任务 切换 |
 | /api/HomeTaskBranchNameGenerate | 首页分支名 生成 |
+| /api/HomeTaskZcodeSessionIdAppend | HomeTaskZcodeSessionIdAppend |
 
 ## 首页清理
 
@@ -795,15 +806,15 @@
 | /api/ToolManagedProcessStatus | 工具 状态 |
 | /api/ToolManagedProcessStart | 托管进程 启动 |
 | /api/ToolManagedProcessStop | 工具 停止 |
-| /api/ToolManagedProcessRestart | 工具 重启 |
-| /api/ToolManagedProcessLogTail | 托管进程 尾行 |
+| /api/ToolManagedProcessEnsureRunning | 托管进程 保活 |
 | /api/ToolPortProcessList | 端口进程 列表 |
 
 ## 托管进程
 
 | 接口路径 | 说明 |
 |----------|------|
-| /api/ToolManagedProcessEnsureRunning | 托管进程 保活 |
+| /api/ToolManagedProcessRestart | 托管进程 重启 |
+| /api/ToolManagedProcessLogTail | 托管进程 尾行 |
 
 ## 端口进程
 
@@ -900,17 +911,11 @@
 | /api/workflow/template/import | 工作流模板 导入 |
 | /api/workflow/skill/list | 工作流技能 列表 |
 
-## 变量命令
-
-| 接口路径 | 说明 |
-|----------|------|
-| /api/VariableCmdAdd | 变量命令 新增 |
-
 ## 变量
 
 | 接口路径 | 说明 |
 |----------|------|
-| /api/VariableCmdDel | 变量命令 删除 |
+| /api/VariableCmdAdd | 变量命令 新增 |
 | /api/VariableSet | 变量命令 设置 |
 | /api/VariableSetLogin | 变量 登录 |
 | /api/VariableList | 变量 列表 |
@@ -918,6 +923,12 @@
 | /api/VariableDel | 变量 删除 |
 | /api/VariableInfo | 变量 详情 |
 | /api/VariableRun | 变量命令 执行 |
+
+## 变量命令
+
+| 接口路径 | 说明 |
+|----------|------|
+| /api/VariableCmdDel | 变量命令 删除 |
 
 ## 登录
 
@@ -932,11 +943,6 @@
 |----------|------|
 | /api/BaseRegisterService | BaseRegisterService |
 | /api/BaseCheckUnikeyExist | BaseCheckUnikeyExist |
-
-## SSH
-
-| 接口路径 | 说明 |
-|----------|------|
 | /api/BaseSshList | SSH 列表 |
 
 ## Agent

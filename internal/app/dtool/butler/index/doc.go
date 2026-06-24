@@ -12,7 +12,7 @@ import (
 // 索引文件名常量
 const (
 	CapabilitiesFileName = `capabilities.md` // 总能力清单
-	ScriptsFileName      = `scripts.md`      // 脚本工具索引
+	StepFileName         = `step.md`         // 步骤文件索引
 	ApisFileName         = `apis.md`         // dtool HTTP 接口索引
 )
 
@@ -22,7 +22,7 @@ func ResolveIndexPath(config *define.ButlerConfigItem, env *define.ButlerEnv) st
 	if config.IndexDocPath != `` {
 		return config.IndexDocPath
 	}
-	// 默认放在 skills/dtool-butler/index/，与脚本同目录，不混入知识片段
+	// 默认放在 skills/dtool-butler/index/，与步骤文件同目录，不混入知识片段
 	return filepath.Join(GetSkillsRoot(), `dtool-butler`, `index`)
 }
 
@@ -66,9 +66,9 @@ func IndexExists(indexPath, fileName string) bool {
 	return info.Size() > 0
 }
 
-// CountScriptSkills 统计 scripts.md 中 skill 条目数（以 "## [" 开头的行数）。
-func CountScriptSkills(indexPath string) int {
-	content := ReadIndexFile(indexPath, ScriptsFileName)
+// CountStepSkills 统计 step.md 中 skill 条目数（以 "## [" 开头的行数）。
+func CountStepSkills(indexPath string) int {
+	content := ReadIndexFile(indexPath, StepFileName)
 	if content == `` {
 		return 0
 	}

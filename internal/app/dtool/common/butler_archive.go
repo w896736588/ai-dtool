@@ -103,24 +103,24 @@ func (c *CSqlite) UpdateArchiveStatus(id int, status, logContent, result, result
 	return err
 }
 
-// WriteArchiveScript 将归档管家生成的脚本内容写入 skills/dtool-butler/scripts/ 目录。
-func WriteArchiveScript(rootPath, scriptName, content string) (string, error) {
-	scriptsDir := filepath.Join(rootPath, `skills`, `dtool-butler`, `scripts`)
-	if err := os.MkdirAll(scriptsDir, 0755); err != nil {
+// WriteArchiveStep 将归档管家生成的步骤文件内容写入 skills/dtool-butler/step/ 目录。
+func WriteArchiveStep(rootPath, stepName, content string) (string, error) {
+	stepDir := filepath.Join(rootPath, `skills`, `dtool-butler`, `step`)
+	if err := os.MkdirAll(stepDir, 0755); err != nil {
 		return ``, err
 	}
-	filePath := filepath.Join(scriptsDir, scriptName)
+	filePath := filepath.Join(stepDir, stepName)
 	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
 		return ``, err
 	}
 	return filePath, nil
 }
 
-// AppendArchiveIndex 向 scripts.md 追加一条归档脚本索引条目（一行格式）。
-// description 为 AI 产出的完整索引行，格式: `- skills/dtool-butler/scripts/xxx.py — 功能说明`
-// 追加前会检查 scripts.md 中是否已存在同名脚本条目，若已存在则跳过追加，避免重复索引。
+// AppendArchiveIndex 向 step.md 追加一条归档步骤索引条目（一行格式）。
+// description 为 AI 产出的完整索引行，格式: `- skills/dtool-butler/step/xxx.md — 任务说明`
+// 追加前会检查 step.md 中是否已存在同名步骤条目，若已存在则跳过追加，避免重复索引。
 func AppendArchiveIndex(rootPath string, description string) error {
-	indexPath := filepath.Join(rootPath, `skills`, `dtool-butler`, `index`, `scripts.md`)
+	indexPath := filepath.Join(rootPath, `skills`, `dtool-butler`, `index`, `step.md`)
 	// 读取现有内容
 	existing, err := os.ReadFile(indexPath)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -131,11 +131,11 @@ func AppendArchiveIndex(rootPath string, description string) error {
 	// 去掉可能的前缀换行
 	desc = strings.TrimLeft(desc, "\n\r")
 
-	// 从索引行中提取脚本文件名（如 "query_git_branch.py"）
-	// 格式: `- skills/dtool-butler/scripts/xxx.py — ...`
-	scriptName := extractScriptNameFromIndex(desc)
-	if scriptName != `` && strings.Contains(string(existing), scriptName) {
-		return fmt.Errorf(`scripts.md 中已存在脚本 %s 的索引条目，跳过追加以避免重复`, scriptName)
+	// 从索引行中提取步骤文件名（如 "query_repo_branch.md"）
+	// 格式: `- skills/dtool-butler/step/xxx.md — ...`
+	stepName := extractStepNameFromIndex(desc)
+	if stepName != `` && strings.Contains(string(existing), stepName) {
+		return fmt.Errorf(`step.md 中已存在步骤 %s 的索引条目，跳过追加以避免重复`, stepName)
 	}
 
 	var sb strings.Builder
@@ -148,24 +148,24 @@ func AppendArchiveIndex(rootPath string, description string) error {
 	return os.WriteFile(indexPath, []byte(sb.String()), 0644)
 }
 
-// extractScriptNameFromIndex 从索引描述行中提取脚本文件名。
-// 输入: `- skills/dtool-butler/scripts/query_git_branch.py — 功能说明`
-// 输出: `query_git_branch.py`
-func extractScriptNameFromIndex(desc string) string {
-	// 找到 "scripts/" 后的 .py 文件名
-	idx := strings.Index(desc, `scripts/`)
+// extractStepNameFromIndex 从索引描述行中提取步骤文件名。
+// 输入: `- skills/dtool-butler/step/query_repo_branch.md — 任务说明`
+// 输出: `query_repo_branch.md`
+func extractStepNameFromIndex(desc string) string {
+	// 找到 "step/" 后的 .md 文件名
+	idx := strings.Index(desc, `step/`)
 	if idx == -1 {
 		return ``
 	}
-	rest := desc[idx+len(`scripts/`):]
+	rest := desc[idx+len(`step/`):]
 	// 截取到空格、—、中文标点之前
 	end := strings.IndexAny(rest, ` —-，。`)
 	if end == -1 {
 		end = len(rest)
 	}
 	name := strings.TrimSpace(rest[:end])
-	// 确保是 .py 文件
-	if !strings.HasSuffix(name, `.py`) {
+	// 确保是 .md 文件
+	if !strings.HasSuffix(name, `.md`) {
 		return ``
 	}
 	return name

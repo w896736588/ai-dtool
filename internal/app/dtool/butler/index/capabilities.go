@@ -14,7 +14,7 @@ func GenerateCapabilitiesIndex() string {
 	sb.WriteString("## 内置命令\n\n")
 	sb.WriteString("| 命令 | 说明 |\n|------|------|\n")
 	sb.WriteString("| /clean | 清除当前会话历史 |\n")
-	sb.WriteString("| /init | 初始化索引文档（scripts.md、capabilities.md、apis.md） |\n")
+	sb.WriteString("| /init | 初始化索引文档（step.md、capabilities.md、apis.md） |\n")
 	sb.WriteString("| /status | 查询管家与当前会话状态 |\n")
 	sb.WriteString("| /help | 显示帮助信息 |\n\n")
 
@@ -27,11 +27,11 @@ func GenerateCapabilitiesIndex() string {
 	sb.WriteString("| http_call | 调用 dtool 的 HTTP API 接口（自动拼接基地址） |\n\n")
 
 	sb.WriteString("## 索引与自进化\n\n")
-	sb.WriteString("- scripts.md：扫描 skills/ 目录，生成脚本工具索引\n")
+	sb.WriteString("- step.md：管家自进化积累的可复用操作步骤索引（一行一个步骤文件 + 任务说明）\n")
 	sb.WriteString("- capabilities.md：管家总能力清单（本文件）\n")
 	sb.WriteString("- apis.md：dtool HTTP 接口索引\n")
-	sb.WriteString("- 检索：任务执行前 AI 判断索引中是否有可复用脚本\n")
-	sb.WriteString("- 自进化：新脚本创建后自动追加到 scripts.md\n\n")
+	sb.WriteString("- 检索：任务执行前先查 step.md 是否有可复用的步骤文件\n")
+	sb.WriteString("- 自进化：任务完成后归档管家分析工具调用过程，总结为 .md 步骤文件，追加到 step.md\n\n")
 
 	sb.WriteString("## 会话管理\n\n")
 	sb.WriteString("- 激活态：收到消息后激活，定时器重置\n")

@@ -7,7 +7,7 @@ dtool-butler 管家的核心能力如下：
 | 命令 | 说明 |
 |------|------|
 | /clean | 清除当前会话历史 |
-| /init | 初始化索引文档（scripts.md、capabilities.md、apis.md） |
+| /init | 初始化索引文档（step.md、capabilities.md、apis.md） |
 | /status | 查询管家与当前会话状态 |
 | /help | 显示帮助信息 |
 
@@ -23,11 +23,11 @@ dtool-butler 管家的核心能力如下：
 
 ## 索引与自进化
 
-- scripts.md：扫描 skills/ 目录，生成脚本工具索引
+- step.md：管家自进化积累的可复用操作步骤索引（一行一个步骤文件 + 任务说明）
 - capabilities.md：管家总能力清单（本文件）
 - apis.md：dtool HTTP 接口索引
-- 检索：任务执行前 AI 判断索引中是否有可复用脚本
-- 自进化：新脚本创建后自动追加到 scripts.md
+- 检索：任务执行前先查 step.md 是否有可复用的步骤文件
+- 自进化：任务完成后归档管家分析工具调用过程，总结为 .md 步骤文件，追加到 step.md
 
 ## 会话管理
 

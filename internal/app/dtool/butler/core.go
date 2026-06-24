@@ -8,6 +8,7 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -116,8 +117,8 @@ func (c *Core) autoInitIndex() {
 		gstool.FmtPrintlnLogTime(`[butler-core] 索引路径未配置，跳过自动初始化`)
 		return
 	}
-	if index.IndexExists(c.indexPath, index.ScriptsFileName) {
-		gstool.FmtPrintlnLogTime(`[butler-core] scripts.md 已存在，跳过自动初始化`)
+	if index.IndexExists(c.indexPath, index.StepFileName) {
+		gstool.FmtPrintlnLogTime(`[butler-core] step.md 已存在，跳过自动初始化`)
 		return
 	}
 	content, err := index.InitIndex(c.skillsRoot, c.indexPath)
@@ -126,7 +127,7 @@ func (c *Core) autoInitIndex() {
 		return
 	}
 	lineCount := strings.Count(content, "\n") + 1
-	gstool.FmtPrintlnLogTime(`[butler-core] 自动初始化索引完成，scripts.md 共 %d 行`, lineCount)
+	gstool.FmtPrintlnLogTime(`[butler-core] 自动初始化索引完成，step.md 共 %d 行`, lineCount)
 }
 
 // Stop 停止管家主循环。
@@ -348,24 +349,19 @@ func (c *Core) fcLoopReply(msg bot.IncomingMessage, fcModelId int) (string, []st
 	fcHistory := historyToFcMessages(historyMessages)
 
 	// ========== 阶段一：资源检索 + 制定执行计划（单独发送给用户） ==========
-	planPrompt := c.systemPrompt + `
-## 当前阶段：资源检索与计划制定
-收到用户任务后，**只做检索和计划**，不要执行任务。
-
-步骤：
-1. 用 file_read 读取 skills/dtool-butler/index/scripts.md，逐条检查是否有可复用的脚本（dtool-butler 节优先于模块通用节）
-2. 仅当 scripts.md 中无匹配脚本时，才用 file_read 读取 apis.md 查看可用接口
-3. 根据检索结果，制定执行计划并以标准格式输出：
-
-📋 执行计划：
-- 任务：<一句话描述>
-- 复用脚本：<脚本路径，如无则写"无">
-- 调用接口：<接口路径，如无则写"无">
-- 新建脚本：<是/否，若是则说明原因>
-
-**输出计划后立即停止，不要调用任何执行类工具（http_call/file_write/run_script 等）。**`
-
-	planResult := worker.RunFCLoop(c.db, fcModelId, planPrompt, fcHistory, msg.Text, 2)
+	planPrompt := c.systemPrompt + planPhasePrompt
+	planResult := worker.RunFCLoop(c.db, fcModelId, planPrompt, fcHistory, msg.Text, 5)
+	if !planResult.Success {
+		// 计划阶段失败（超时或错误），发送错误信息并提前返回
+		errorMsg := planResult.Content
+		if errorMsg == `` {
+			errorMsg = `计划阶段执行失败，请稍后重试。`
+		}
+		if err := c.reply(msg, errorMsg); err != nil {
+			gstool.FmtPrintlnLogTime(`[butler-core] 发送计划失败消息失败 %s`, err.Error())
+		}
+		return ``, nil
+	}
 	if planResult.Content != `` {
 		if err := c.reply(msg, planResult.Content); err != nil {
 			gstool.FmtPrintlnLogTime(`[butler-core] 发送执行计划失败 %s`, err.Error())
@@ -374,6 +370,9 @@ func (c *Core) fcLoopReply(msg bot.IncomingMessage, fcModelId int) (string, []st
 		}
 	}
 
+	// 读取计划阶段检索到的步骤文件内容，注入执行阶段
+	stepFileContent := c.buildStepFileContext(planResult.StepFilesRead)
+
 	// ========== 阶段二：执行任务 ==========
 	execPrompt := c.systemPrompt + fcSystemPromptSuffix + `
 
@@ -381,17 +380,30 @@ func (c *Core) fcLoopReply(msg bot.IncomingMessage, fcModelId int) (string, []st
 **当前阶段：执行任务**
 
 执行计划已单独发送给用户，现在**直接执行任务**：
-- 优先使用已检索到的脚本（无需重复读取 scripts.md）
-- 无脚本时调用 API 完成
+- 如果有已检索到的步骤文件（见下方"已检索步骤文件内容"），严格按照步骤文件中的接口和参数顺序执行，不要跳过任何步骤
+- 严格使用 http_call 调用 API，禁止编写 Python 脚本（run_script）
+- 无步骤文件时调用 API 完成
 - 完成后输出结果汇总
 
 **不要重复输出"📋 执行计划"。**`
+
+	// 如果计划阶段检索到了步骤文件，将其内容注入到 user message 中
+	execUserMessage := msg.Text
+	if stepFileContent != `` {
+		execUserMessage = fmt.Sprintf(`%s
+
+---
+**已检索步骤文件内容（必须严格遵循）：**
+%s
+---
+请严格按照上述步骤文件的指令执行任务。使用 http_call 调用 API，不要编写脚本。`, msg.Text, stepFileContent)
+	}
 
 	if err := c.reply(msg, `正在执行，请稍候...`); err != nil {
 		gstool.FmtPrintlnLogTime(`[butler-core] 发送执行提示失败 %s`, err.Error())
 	}
 
-	result := worker.RunFCLoop(c.db, fcModelId, execPrompt, fcHistory, msg.Text, c.config.MaxLoop)
+	result := worker.RunFCLoop(c.db, fcModelId, execPrompt, fcHistory, execUserMessage, c.config.MaxLoop)
 	c.lastFilesWritten = result.FilesWritten
 	if result.Content == `` {
 		return `我暂时无法回复，请稍后再试。`, result.ToolUsed
@@ -402,15 +414,35 @@ func (c *Core) fcLoopReply(msg bot.IncomingMessage, fcModelId int) (string, []st
 		if result.CacheTokens > 0 {
 			usageInfo += fmt.Sprintf(" ｜ 缓存命中 %d token", result.CacheTokens)
 		}
-		if len(result.ScriptsRun) > 0 {
-			usageInfo += "\n\n" + fmt.Sprintf("📜 执行脚本：%s", strings.Join(result.ScriptsRun, `, `))
+		if len(result.StepsRun) > 0 {
+			usageInfo += "\n\n" + fmt.Sprintf("📜 复用步骤：%s", strings.Join(result.StepsRun, `, `))
 		}
-		if len(result.ScriptsCreated) > 0 {
-			usageInfo += "\n\n" + fmt.Sprintf("📝 新建脚本：%s", strings.Join(result.ScriptsCreated, `, `))
+		if len(result.StepsCreated) > 0 {
+			usageInfo += "\n\n" + fmt.Sprintf("📝 新建步骤：%s", strings.Join(result.StepsCreated, `, `))
 		}
 		return result.Content + usageInfo, result.ToolUsed
 	}
 	return result.Content, result.ToolUsed
+}
+
+// buildStepFileContext 读取计划阶段检索到的步骤文件内容，拼接后返回。
+// 每个步骤文件内容用分隔线包裹，便于执行阶段 AI 识别和遵循。
+func (c *Core) buildStepFileContext(stepFiles []string) string {
+	if len(stepFiles) == 0 {
+		return ``
+	}
+	var sb strings.Builder
+	for _, f := range stepFiles {
+		data, err := osReadFile(f)
+		if err != nil {
+			gstool.FmtPrintlnLogTime(`[butler-core] 读取步骤文件失败 %s: %s`, f, err.Error())
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("### 文件: %s\n\n", f))
+		sb.WriteString(string(data))
+		sb.WriteString("\n\n---\n\n")
+	}
+	return sb.String()
 }
 
 // agentCliReply 使用 Agent CLI 执行复杂任务并返回结果。
@@ -493,6 +525,26 @@ func (c *Core) getSessionConversation(sessionId string) string {
 	return sb.String()
 }
 
+// planPhasePrompt 计划阶段的 system prompt 补充，指导 AI 进行资源检索和计划制定。
+const planPhasePrompt = "\n## 当前阶段：资源检索与计划制定\n" +
+	"收到用户任务后，只做检索和计划，不要执行任务。\n\n" +
+	"步骤：\n" +
+	"1. 用 file_read 读取 skills/dtool-butler/index/step.md，逐条检查是否有可复用的步骤文件\n" +
+	"2. 如果有匹配的步骤文件，用 file_read 读取步骤文件了解其完整内容（接口、参数、流程）\n" +
+	"3. 仅当 step.md 中无匹配步骤文件时，才用 file_read 读取 apis.md 查看可用接口\n" +
+	"4. 如有匹配步骤文件，可调用一次 http_call 做轻量验证（如查询列表确认目标存在）\n" +
+	"5. 根据检索结果，制定一份详细的执行计划并以标准格式输出：\n\n" +
+	"执行计划：\n" +
+	"- 任务：<一句话描述>\n" +
+	"- 复用步骤：<步骤文件路径，如无则写无>\n" +
+	"- 调用接口：<列出每个接口及其参数>\n" +
+	"- 预期流程：<步骤顺序简述，如: 1.获取仓库列表 -> 2.匹配目标仓库 -> 3.查询分支>\n" +
+	"- 是否需要多步骤组合：<是/否，若是简要说明>\n\n" +
+	"限制规则：\n" +
+	"- 允许: file_read（索引/步骤文件/API文档）、http_call（仅用于计划阶段轻量验证，如列表查询）\n" +
+	"- 禁止: run_script、file_write、file_modify、file_delete（这些是执行阶段的工具）\n" +
+	"- 输出计划后立即停止，不要把计划阶段变成执行阶段。\n"
+
 // fcSystemPromptSuffix FC 循环的 system prompt 补充说明，指导 AI 使用工具。
 const fcSystemPromptSuffix = `
 
@@ -503,67 +555,73 @@ const fcSystemPromptSuffix = `
 - file_modify: 修改文件中的指定文本（查找并替换）
 - file_delete: 删除文件
 - http_call: 调用 dtool 的 HTTP API 接口（POST 方法，基地址自动拼接）
+- run_script: 执行本地 Python 脚本（仅在无步骤文件且无 HTTP API 可用时作为最后手段）
+- ask_user: 向用户提问确认（仅当缺少必要信息时使用）
 
 ## 工作目录说明
 
-- 所有技能脚本位于 skills/{skill_name}/scripts/ 目录下
+- 步骤文件存放于 skills/{skill_name}/step/ 目录下，每个 .md 描述一类任务的完整接口调用流程
 - API 索引文档：apis.md 列出了 dtool 所有可用的 HTTP 接口及其说明
-- 脚本工具索引：skills/dtool-butler/index/scripts.md 列出了所有已有 Python 脚本工具
+- 步骤文件索引：skills/dtool-butler/index/step.md 列出了所有已有可复用步骤文件
 - 项目根目录下的文件和目录可以直接使用相对路径访问
 
 ## 工作流程（检索 → 计划公示 → 执行 → 回答）
 
-收到用户任务后，**严格**按以下顺序处理。**核心原则：脚本优先于 API，复用优先于新建。**
+收到用户任务后，**严格**按以下顺序处理。**核心原则：步骤文件优先于 API，复用优先于新建。**
 
 ### 1. 资源检索（必须执行，不可跳过）
 
 #### 1.1 读取已有索引命中
-如果 system prompt 中包含索引命中提示，先用 file_read 读取对应脚本了解用法。
+如果 system prompt 中包含索引命中提示，先用 file_read 读取对应步骤文件了解用法。
 
-#### 1.2 主动读取 scripts.md（强制执行）
-**无论第 1.1 步是否命中，都必须立即用 file_read 读取 skills/dtool-butler/index/scripts.md**，逐条检查：
-- 是否有自进化脚本（dtool-butler 节）比已命中的模块通用脚本更贴合当前任务
-- 是否有多个脚本可以组合使用
-- 脚本描述是否完全覆盖当前参数需求
+#### 1.2 主动读取 step.md（强制执行）
+**无论第 1.1 步是否命中，都必须立即用 file_read 读取 skills/dtool-butler/index/step.md**，逐条检查：
+- 是否有自进化步骤文件（dtool-butler 节）比已命中的模块通用步骤更贴合当前任务
+- 是否有多个步骤文件可以组合使用
+- 步骤文件描述是否完全覆盖当前参数需求
 
 #### 1.3 读取 apis.md（仅兜底）
-仅当 scripts.md 中确认无可用脚本时，才用 file_read 读取 apis.md 查看可用的 HTTP 接口。
+仅当 step.md 中确认无可用步骤文件时，才用 file_read 读取 apis.md 查看可用的 HTTP 接口。
 
-> ⚠️ 跳过步骤 1.2（scripts.md 检索）直接查 apis.md 或创建新脚本是**严重违规**。
+> ⚠️ 跳过步骤 1.2（step.md 检索）直接查 apis.md 是**严重违规**。
 
 ### 2. 执行计划公示（必须回复给用户）
 资源检索完成后，**首先回复用户执行计划**，格式如下：
 
 📋 执行计划：
 - 任务：<一句话任务描述>
-- 复用脚本：<脚本路径列表，如无则写"无">
+- 复用步骤：<步骤文件路径列表，如无则写"无">
 - 调用接口：<接口路径列表，如无则写"无">
-- 新建脚本：<是/否，若是则简要说明原因>
+- 是否需要多步骤组合：<是/否，若是简要说明>
 
 正在执行...
 
 > 计划回复后**立即开始执行**，无需等待用户确认。
 
 ### 3. 执行
-- **已有脚本优先**：按照脚本的用法说明执行（脚本就是为解决此类问题而生的，不需要重新造轮子）
-- **API 兜底**：仅当无脚本可用时才调 API。调 API 前必须先用 file_read 读取对应 controller 源码确认参数名
-- **临时脚本**：仅当已有脚本和单次 API 调用都无法满足需求时才新建（如多次调用组装数据、复杂过滤逻辑）
+
+#### 3.1 步骤文件优先（最高优先级）
+如果 user message 中提供了"已检索步骤文件内容"，**必须逐字遵循步骤文件中的指令**：
+- 按步骤文件指定的**接口顺序**依次调用 http_call
+- 使用步骤文件指定的**参数格式**和**请求体**
+- 禁止跳过任何步骤
+- 禁止自行编写 Python 脚本替代 http_call
+- 收到 API 响应后，按步骤文件指示处理响应字段
+
+#### 3.2 API 兜底
+仅当无步骤文件可用时才调 API。调 API 前必须先用 file_read 读取对应 controller 源码确认参数名。
+
+#### 3.3 脚本最后手段
+仅当 http_call 无法满足需求（如需要复杂数据处理、多次 API 结果聚合）且无步骤文件覆盖时，才允许编写并执行 Python 脚本。
 
 ### 4. 结果汇总 ⚠️ 最重要
 **必须**将执行结果以友好、清晰的格式呈现给用户，这是你唯一的目标。
-无论中间经过多少工具调用，最终回复必须包含用户所问问题的具体答案。
+无论中间经过多少工具调用，最终回复必须包含用户所问问题的具体答案。`
 
-### 5. 自进化评估（完成任务后可选）
-在已回答用户问题的基础上，如果本次操作模式具有复用价值且 scripts.md 中无对应脚本，可简要新建脚本。
-**禁止**因为创建脚本而延迟或省略回答用户问题。简单的一次性查询不需要创建脚本。
-
-**⚠️ 脚本存放规则：**
-- **所有**新生成脚本必须放在 skills/dtool-butler/scripts/ 目录下
-- **绝对禁止**往已有 skill 目录（dtool-git/dtool-api/dtool-db 等）中新增脚本文件
-
-**⚠️ SKILL.md 修改规则：**
-- **绝对禁止**修改或覆盖已有 SKILL.md 文件
-- 新增脚本时，只需在 scripts.md 中追加一行简要说明`
+// osReadFile 读取文件内容的便捷封装。
+func osReadFile(path string) ([]byte, error) {
+	return os.ReadFile(path)
+}
 
 // mergeUniqueStrings 合并两个字符串切片，去重后返回新切片。
 func mergeUniqueStrings(a, b []string) []string {
