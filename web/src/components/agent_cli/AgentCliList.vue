@@ -1283,6 +1283,7 @@ export default {
     },
     onAgentChatRowClick(row) {
       if (this.agentChatDetailId === row.id) return
+      const oldChatDetailId = this.chatDetailId
       this.agentChatDetailId = row.id
       this.chatDetailId = row.id
       this.chatDetailStatus = row.status
@@ -1309,7 +1310,7 @@ export default {
           }
         })
       }
-      if (this.chatDetailId !== row.id) {
+      if (oldChatDetailId !== row.id) {
         this.chatDetailSSELines = []
         this.chatDetailMessages = []
         this._thinkingStreamStartTime = 0
