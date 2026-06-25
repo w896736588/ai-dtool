@@ -3467,7 +3467,10 @@ export default {
           }
           return
         }
-        const shareUrl = new URL(`/#/MemoryFragmentShare?t=${encodeURIComponent(response.Data.token)}`, window.location.origin).toString()
+        // 提取干净 ID：fileId 可能是文件路径格式 "fragments/xxx-uuid"，取末段
+        const cleanId = fileId.includes('/') ? fileId.replace(/^.*\//, '') : fileId
+        const apiHost = String(baseUtils.GetApiHost() || window.location.origin).trim()
+        const shareUrl = new URL(`/share/${encodeURIComponent(cleanId)}/${encodeURIComponent(response.Data.token)}`, apiHost).toString()
         try {
           await navigator.clipboard.writeText(shareUrl)
           this.$helperNotify.success('分享链接已复制到剪贴板（24小时有效）')
