@@ -66,6 +66,13 @@ func AgentCliChatSseOpen(urlValues url.Values, stopC chan int, c *gin.Context) (
 	if clientID == `` {
 		return nil, fmt.Errorf(`client_id 不能为空`)
 	}
+	// 先关闭同 clientID 的旧连接，确保每 clientID 只有一条活跃连接
+	if old, ok := agentCliSseConns.LoadAndDelete(clientID); ok {
+		if oldSse, ok2 := old.(*gsgin.Sse); ok2 && oldSse != nil {
+			gstool.FmtPrintlnLogTime(`[agent-cli-sse] 替换旧连接 clientID=%s old_connID=%s`, clientID, oldSse.ClientId)
+			oldSse.UnRegister()
+		}
+	}
 	connID := fmt.Sprintf("agent_cli_sse_%s_%d", clientID, time.Now().UnixNano())
 	sse := gsgin.SseRegister(connID, stopC, c)
 	agentCliSseConns.Store(clientID, sse)
@@ -81,10 +88,12 @@ func AgentCliChatSseClose(sse *gsgin.Sse) {
 	agentCliSseConns.Range(func(key, value any) bool {
 		if value == sse {
 			agentCliSseConns.Delete(key)
+			gstool.FmtPrintlnLogTime(`[agent-cli-sse] 连接关闭 connID=%s clientID=%s`, sse.ClientId, key)
 			return false
 		}
 		return true
 	})
+	sse.UnRegister()
 }
 
 // TaskWorkflowChatSseOpen 是 /sse/task_workflow 的 SSE 连接建立函数。
@@ -92,6 +101,13 @@ func TaskWorkflowChatSseOpen(urlValues url.Values, stopC chan int, c *gin.Contex
 	clientID := strings.TrimSpace(urlValues.Get(`client_id`))
 	if clientID == `` {
 		return nil, fmt.Errorf(`client_id 不能为空`)
+	}
+	// 先关闭同 clientID 的旧连接，确保每 clientID 只有一条活跃连接
+	if old, ok := taskWorkflowSseConns.LoadAndDelete(clientID); ok {
+		if oldSse, ok2 := old.(*gsgin.Sse); ok2 && oldSse != nil {
+			gstool.FmtPrintlnLogTime(`[task-workflow-sse] 替换旧连接 clientID=%s old_connID=%s`, clientID, oldSse.ClientId)
+			oldSse.UnRegister()
+		}
 	}
 	connID := fmt.Sprintf("task_workflow_sse_%s_%d", clientID, time.Now().UnixNano())
 	sse := gsgin.SseRegister(connID, stopC, c)
@@ -108,10 +124,12 @@ func TaskWorkflowChatSseClose(sse *gsgin.Sse) {
 	taskWorkflowSseConns.Range(func(key, value any) bool {
 		if value == sse {
 			taskWorkflowSseConns.Delete(key)
+			gstool.FmtPrintlnLogTime(`[task-workflow-sse] 连接关闭 connID=%s clientID=%s`, sse.ClientId, key)
 			return false
 		}
 		return true
 	})
+	sse.UnRegister()
 }
 
 // broadcastChatLineToBusinessSse 将对话输出行广播到对应业务的 SSE 连接。
@@ -327,10 +345,6 @@ func TaskWorkflowUIAssistGenerate(c *gin.Context) {
 		gsgin.GinResponseError(c, `smart_link_id不能为空`, nil)
 		return
 	}
-	if strings.TrimSpace(request.Label) == `` {
-		gsgin.GinResponseError(c, `label不能为空`, nil)
-		return
-	}
 	if strings.TrimSpace(request.JumpURL) == `` {
 		gsgin.GinResponseError(c, `jump_url不能为空`, nil)
 		return
@@ -343,7 +357,13 @@ func TaskWorkflowUIAssistGenerate(c *gin.Context) {
 	if !ok {
 		return
 	}
-	resultFile, err := dispatchScrapeTaskAndAwait(request.SmartLinkID, request.Label, request.JumpURL, request.CssSelector, request.WaitSeconds)
+	// 从新表 smart_link 查询 label
+	label, labelErr := querySmartLinkLabel(request.SmartLinkID)
+	if labelErr != nil {
+		gsgin.GinResponseError(c, labelErr.Error(), nil)
+		return
+	}
+	resultFile, err := dispatchScrapeTaskAndAwait(request.SmartLinkID, label, request.JumpURL, request.CssSelector, request.WaitSeconds)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -363,7 +383,7 @@ func TaskWorkflowUIAssistGenerate(c *gin.Context) {
 	structuredSummary := taskWorkflowBuildUIAssistStructuredSummary(processedMarkdown, apiCandidates)
 	uiAssistReport := map[string]any{
 		`smart_link_id`:      request.SmartLinkID,
-		`label`:              request.Label,
+		`label`:              label,
 		`jump_url`:           request.JumpURL,
 		`css_selector`:       request.CssSelector,
 		`wait_seconds`:       request.WaitSeconds,
@@ -1703,8 +1723,6 @@ func taskWorkflowBuildBasePlaceholderMap(c *gin.Context, homeTaskInfo map[string
 		`{开发项目配置}`:        taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo),
 		`{开发配置}`:          taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo),
 		`{自定义网页}`:         taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo, `smart_link`),
-		`{网页标签}`:          taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo, `smart_link_label`),
-		`{账号}`:            taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo, `smart_link_account`),
 	}
 	// 内置文档 ID 占位符：{xxx地址} -> {xxx地址ID}，映射为对应片段的 file_id
 	result[`{需求文档地址ID}`] = common.TaskWorkflowParseFragmentRef(cast.ToString(workflowInfo[`requirement_fragment_id`]), taskWorkflowWorkflowFragmentFolderName(workflowInfo)).FileID
@@ -2063,12 +2081,6 @@ func taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo map[string]any) string {
 		if cfg.SmartLinkID > 0 {
 			sb.WriteString(fmt.Sprintf("- **自定义网页**: %s（ID: %d）\n", smartLinkName, cfg.SmartLinkID))
 		}
-		if cfg.SmartLinkLabel != "" {
-			sb.WriteString(fmt.Sprintf("- **网页标签**: %s\n", cfg.SmartLinkLabel))
-		}
-		if cfg.SmartLinkAccount != "" {
-			sb.WriteString(fmt.Sprintf("- **账号**: %s\n", cfg.SmartLinkAccount))
-		}
 	}
 	return sb.String()
 }
@@ -2088,10 +2100,6 @@ func taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo map[string]any, field
 				name := taskWorkflowQuerySmartLinkLabel(cfg.SmartLinkID)
 				val = fmt.Sprintf("%s（ID: %d）", name, cfg.SmartLinkID)
 			}
-		case `smart_link_label`:
-			val = cfg.SmartLinkLabel
-		case `smart_link_account`:
-			val = cfg.SmartLinkAccount
 		}
 		if val != "" {
 			if sb.Len() > 0 {

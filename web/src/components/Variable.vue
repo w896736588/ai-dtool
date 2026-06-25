@@ -183,7 +183,7 @@
         <el-form-item v-if="variable_cmd.type === `15`" label="选择大模型">
           <el-select v-model="variable_cmd.smart_link_id" placeholder="选择链接" @change="changeVariableCmdSmartLink">
             <template v-for="(value,key) in smartLinkList" :key="key">
-              <el-option :label="value.name" :value="value.id"/>
+              <el-option :label="value.label" :value="value.id"/>
             </template>
           </el-select>
         </el-form-item>
@@ -494,7 +494,7 @@ export default {
     let _that = this
     _that.GetConfigList(true)
     _that.LoadLlmModelList()
-    smartLink.SmartLinkList(function (response) {
+    smartLink.SmartLinkItemList(function (response) {
       _that.smartLinkList = response.Data.smart_link_list
       _that.changeVariableCmdSmartLink()
     })
@@ -849,7 +849,7 @@ export default {
     changeVariableCmdType: function (variable_cmd) {
       let _that = this
       if (variable_cmd.type === '15') { //重新加载链接
-        smartLink.SmartLinkList(function (response) {
+        smartLink.SmartLinkItemList(function (response) {
           _that.smartLinkList = response.Data.smart_link_list
         })
       }
@@ -878,9 +878,10 @@ export default {
     },
     changeVariableCmdSmartLink: function () {
       let _that = this
+      _that.smartLinkLabelList = []
       for (let i in _that.smartLinkList) {
         if (_that.smartLinkList[i].id === _that.variable_cmd.smart_link_id) {
-          _that.smartLinkLabelList = JSON.parse(_that.smartLinkList[i].links)
+          _that.smartLinkLabelList = [_that.smartLinkList[i]]
         }
       }
     },

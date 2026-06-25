@@ -14,18 +14,6 @@ function SetSmartLinkGroupDelete(editSmartLinkGroupConfig , callBack){
     base.BasePost('/api/Set/SmartLinkGroupDelete', editSmartLinkGroupConfig, callBack)
 }
 
-function SmartLinkList(callBack){
-    base.BasePost('/api/SmartLinkList', {}, callBack)
-}
-
-function SmartLinkAdd(smart_link_config , callBack){
-    base.BasePost('/api/SmartLinkAdd', smart_link_config , callBack)
-}
-
-function SmartLinkDelete(smart_link_config , callBack){
-    base.BasePost('/api/SmartLinkDel', smart_link_config , callBack)
-}
-
 function SmartLinkRecycle(sseDistributeId , callBack){
     base.BasePost('/api/SmartLinkRecycle', {sse_distribute_id : sseDistributeId} , callBack)
 }
@@ -83,9 +71,6 @@ export default {
     SetSmartLinkGroupList,
     SetSmartLinkGroupAdd,
     SetSmartLinkGroupDelete,
-    SmartLinkList,
-    SmartLinkAdd,
-    SmartLinkDelete,
     SmartLinkRun,
     SmartLinkRunList,
     SmartLinkChromeVersion,

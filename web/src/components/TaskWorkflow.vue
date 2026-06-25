@@ -440,43 +440,6 @@
 
         <!-- 通用步骤渲染（左侧Tab: 提示词 + 文档） -->
         <template v-else>
-            <div class="task-workflow-card__header">
-              <div class="task-workflow-card__title">
-                <div class="task-workflow-node-status-inline">
-                  <span class="task-workflow-node-status-inline__label">当前步骤状态</span>
-                  <button
-                    class="task-workflow-node-status-inline__btn"
-                    :class="'task-workflow-node-status-inline__btn--' + getNodeStatus(activeNode)"
-                    :disabled="nodeStatusSaving"
-                    @click="cycleNodeStatus(activeNode)"
-                  >{{ getNodeStatusLabel(activeNode) }}</button>
-                </div>
-              </div>
-              <div class="task-workflow-card__switch">
-                <GitActionButton compact variant="success" @click="openPromptExecDialog(activeNode, getStepPrompt(activeNode))">
-                  <template #icon><el-icon><VideoPlay /></el-icon></template>
-                  执行
-                </GitActionButton>
-                <ChatHistoryButton
-                  compact
-                  variant="info"
-                  :running="getPromptChatCounts(activeNode).running > 0"
-                  :running-count="getPromptChatCounts(activeNode).running"
-                  :interrupted-count="getPromptChatCounts(activeNode).interrupted"
-                  :total-count="getPromptChatCounts(activeNode).total"
-                  :unread="hasUnreadInPromptType(activeNode)"
-                  @click="openPromptChatHistory(activeNode)"
-                >
-                  执行历史
-                </ChatHistoryButton>
-                <GitActionButton compact variant="warning" :loading="promptRestoring === activeNode" @click="restorePrompts(activeNode)" :disabled="stepActiveTab !== '__prompt__'">
-                  还原为默认提示词
-                </GitActionButton>
-                <GitActionButton v-if="activeStepHasApiDoc()" compact variant="warning" :loading="apiDocResetting" @click="resetApiDoc">
-                  重置接口文档
-                </GitActionButton>
-              </div>
-            </div>
             <!-- 左侧Tab + 右侧内容 -->
             <div class="step-tab-layout">
               <div class="step-tab-sidebar">
@@ -495,6 +458,39 @@
                   :title="doc.name"
                   @click="switchToDocTab(doc)"
                 ><span class="step-tab-btn__dot" v-if="docUnreadFlags[doc.id || doc.name]"></span>{{ doc.name }}</button>
+                <div class="step-tab-sidebar__actions">
+                  <div class="step-tab-sidebar__actions-title">步骤操作</div>
+                  <div class="task-workflow-node-status-inline">
+                    <button
+                      class="task-workflow-node-status-inline__btn"
+                      :class="'task-workflow-node-status-inline__btn--' + getNodeStatus(activeNode)"
+                      :disabled="nodeStatusSaving"
+                      @click="cycleNodeStatus(activeNode)"
+                    >{{ getNodeStatusLabel(activeNode) }}</button>
+                  </div>
+                  <GitActionButton compact variant="success" @click="openPromptExecDialog(activeNode, getStepPrompt(activeNode))">
+                    <template #icon><el-icon><VideoPlay /></el-icon></template>
+                    执行
+                  </GitActionButton>
+                  <ChatHistoryButton
+                    compact
+                    variant="info"
+                    :running="getPromptChatCounts(activeNode).running > 0"
+                    :running-count="getPromptChatCounts(activeNode).running"
+                    :interrupted-count="getPromptChatCounts(activeNode).interrupted"
+                    :total-count="getPromptChatCounts(activeNode).total"
+                    :unread="hasUnreadInPromptType(activeNode)"
+                    @click="openPromptChatHistory(activeNode)"
+                  >
+                    执行历史
+                  </ChatHistoryButton>
+                  <GitActionButton compact variant="warning" :loading="promptRestoring === activeNode" @click="restorePrompts(activeNode)" :disabled="stepActiveTab !== '__prompt__'">
+                    还原为默认提示词
+                  </GitActionButton>
+                  <GitActionButton v-if="activeStepHasApiDoc()" compact variant="warning" :loading="apiDocResetting" @click="resetApiDoc">
+                    重置接口文档
+                  </GitActionButton>
+                </div>
               </div>
               <div class="step-tab-content">
                 <!-- 提示词 Tab -->
@@ -3176,7 +3172,7 @@ export default {
           this.taskConfigDockerList = Array.isArray(response.Data?.list) ? response.Data.list : []
         }
       })
-      smartLinkSetApi.SmartLinkList((response) => {
+      smartLinkSetApi.SmartLinkItemList((response) => {
         if (response && response.ErrCode === 0) {
           this.taskConfigSmartLinkList = Array.isArray(response.Data?.smart_link_list) ? response.Data.smart_link_list : []
         }
@@ -5044,6 +5040,43 @@ export default {
   border-right: 1px solid #e8e8e0;
   flex-shrink: 0;
   overflow-y: auto;
+}
+.step-tab-sidebar__actions {
+  margin-top: auto;
+  padding: 8px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.step-tab-sidebar__actions :deep(.git-action-button),
+.step-tab-sidebar__actions :deep(.el-button),
+.step-tab-sidebar__actions :deep(.pl-button),
+.step-tab-sidebar__actions .task-workflow-node-status-inline,
+.step-tab-sidebar__actions .task-workflow-node-status-inline__btn {
+  display: flex !important;
+  width: 100%;
+  justify-content: center !important;
+  text-align: center !important;
+}
+.step-tab-sidebar__actions :deep(.el-button + .el-button),
+.step-tab-sidebar__actions :deep(.git-action-button + .git-action-button),
+.step-tab-sidebar__actions :deep(.pl-button + .pl-button) {
+  margin-left: 0;
+}
+.step-tab-sidebar__actions :deep(.el-button .el-button__icon) {
+  margin-right: 4px;
+}
+.step-tab-sidebar__actions :deep(.el-button span) {
+  width: auto;
+}
+.step-tab-sidebar__actions-title {
+  font-size: 11px;
+  color: #999;
+  text-align: center;
+  margin-bottom: 2px;
 }
 
 .step-tab-btn {

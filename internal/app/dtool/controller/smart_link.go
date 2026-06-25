@@ -84,35 +84,6 @@ func SmartLinkOpenDataDir(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, `打开成功`, ``)
 }
 
-// SmartLinkList 获取列表
-func SmartLinkList(c *gin.Context) {
-	variableGroupList, _ := common.DbMain.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
-		`type`: define.GroupTypeSmartLink,
-	}).All()
-	smartLinkList, _ := common.DbMain.Client.QueryBySql(`select * from tbl_smart_link where status = ? order by weight asc`, define.SmartLinkStatusNormal).All()
-	//查找配置的账号组
-	for smartLinkKey, smartLink := range smartLinkList {
-		links := cast.ToString(smartLink[`links`])
-		if links != `` {
-			linkList := make([]map[string]any, 0)
-			_ = gstool.JsonDecode(links, &linkList)
-			//循环每个链接及其配置
-			for linkKey, link := range linkList {
-				userList := getAccountListByName(link)
-				linkList[linkKey][`userList`] = userList
-			}
-			smartLinkList[smartLinkKey][`links`] = gstool.JsonEncode(linkList)
-			smartLinkList[smartLinkKey][`open_type`] = cast.ToInt(smartLink[`open_type`])
-			smartLinkList[smartLinkKey][`combine_type`] = cast.ToString(smartLink[`combine_type`])
-			smartLinkList[smartLinkKey][`channel`] = cast.ToString(smartLink[`channel`])
-		}
-	}
-	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`group_list`:      variableGroupList,
-		`smart_link_list`: smartLinkList,
-	})
-}
-
 func getAccountListByName(link map[string]any) []map[string]string {
 	userList := make([]map[string]string, 0)
 
@@ -151,60 +122,6 @@ func getAccountListByName(link map[string]any) []map[string]string {
 	return userList
 }
 
-// SmartLinkInfo 获取单个详情
-func SmartLinkInfo(c *gin.Context) {
-	dataMap := make(map[string]any)
-	_ = gsgin.GinPostBody(c, &dataMap)
-	smartLinkId := dataMap[`id`]
-	if cast.ToInt(smartLinkId) == 0 {
-		gsgin.GinResponseError(c, `id不能为空`, nil)
-		return
-	}
-	smartLinkInfo, _ := common.DbMain.Client.QuickQuery(`tbl_smart_link`, `*`, map[string]any{
-		`id`:     smartLinkId,
-		`status`: define.SmartLinkStatusNormal,
-	}).One()
-	smartLinkProcessList, _ := common.DbMain.Client.QuickQuery(`tbl_smart_link_process`, `*`, map[string]any{
-		`smart_link_id`: smartLinkId,
-		`status`:        define.SmartLinkStatusNormal,
-	}).Order(`weight asc`).All()
-	gsgin.GinResponseSuccess(c, ``, map[string]any{
-		`smart_link_info`:         smartLinkInfo,
-		`smart_link_process_list`: smartLinkProcessList,
-	})
-}
-
-// SmartLinkAdd 新增
-func SmartLinkAdd(c *gin.Context) {
-	dataMap := make(map[string]any)
-	_ = gsgin.GinPostBody(c, &dataMap)
-	var id any
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `filter_uris`, `smart_link_group_id`, `links`, `is_error_continue`, `open_num`, `open_type`, `weight`, `combine_type`, `download_finds`, `auto_close_second`, `channel`, `show_cookies`, `process_id`})
-	updateData[`combine_type`] = define.CombineTypeFix
-	if cast.ToInt(dataMap[`id`]) == 0 {
-		updateData[`create_time`] = time.Now().Unix()
-		updateData[`update_time`] = time.Now().Unix()
-		newId, createErr := common.DbMain.Client.QuickCreate(`tbl_smart_link`, updateData).Exec()
-		if createErr != nil {
-			gsgin.GinResponseError(c, `创建失败 `+createErr.Error(), nil)
-			return
-		}
-		id = newId
-	} else {
-		updateData[`update_time`] = time.Now().Unix()
-		_, _ = common.DbMain.Client.QuickUpdate(`tbl_smart_link`,
-			map[string]any{
-				`id`: dataMap[`id`],
-			}, updateData).Exec()
-		id = dataMap[`id`]
-	}
-	variable, _ := common.DbMain.Client.QuickQuery(`tbl_smart_link`, `*`, map[string]any{
-		`id`:     id,
-		`status`: define.SmartLinkStatusNormal,
-	}).One()
-	gsgin.GinResponseSuccess(c, ``, variable)
-}
-
 func validateProcess(processVal map[string]any) error {
 	//类型
 	processType := cast.ToString(processVal[`type`])
@@ -230,31 +147,19 @@ func validateProcess(processVal map[string]any) error {
 	return nil
 }
 
-// SmartLinkDelete 删除
-func SmartLinkDelete(c *gin.Context) {
-	dataMap := make(map[string]any)
-	_ = gsgin.GinPostBody(c, &dataMap)
-	if cast.ToInt(dataMap[`id`]) == 0 {
-		gsgin.GinResponseError(c, `id不能为空`, nil)
-		return
-	} else {
-		_, _ = common.DbMain.Client.QuickUpdate(`tbl_smart_link`, map[string]any{
-			`id`: cast.ToInt(dataMap[`id`]),
-		}, map[string]interface{}{
-			`status`: define.SmartLinkStatusDelete,
-		}).Exec()
-	}
-	gsgin.GinResponseSuccess(c, ``, nil)
-}
-
 // SmartLinkRunPlaywright 执行 playwright
 func SmartLinkRunPlaywright(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	id := cast.ToInt(dataMap[`id`])
-	label := cast.ToString(dataMap[`label`])
-	if id == 0 || label == `` {
-		gsgin.GinResponseError(c, `id和label不能为空`, nil)
+	if id == 0 {
+		gsgin.GinResponseError(c, `id不能为空`, nil)
+		return
+	}
+	// 从新表 smart_link 查询 label
+	label, labelErr := querySmartLinkLabel(id)
+	if labelErr != nil {
+		gsgin.GinResponseError(c, labelErr.Error(), nil)
 		return
 	}
 	sse := &p_sse.SseShell{

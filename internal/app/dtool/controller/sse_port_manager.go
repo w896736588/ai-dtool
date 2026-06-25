@@ -194,12 +194,15 @@ func SseConnectionDetails(c *gin.Context) {
 //   - task_workflow: 格式 "task_workflow_sse_<clientID>_<timestamp>"
 func classifySseConnID(connID string) (connType string, displayClientID string) {
 	if strings.HasPrefix(connID, `agent_cli_sse_`) {
-		return `agent_cli`, extractBusinessClientID(connID, `agent_cli_sse_`)
+		return `Agent 客户端`, extractBusinessClientID(connID, `agent_cli_sse_`)
 	}
 	if strings.HasPrefix(connID, `task_workflow_sse_`) {
-		return `task_workflow`, extractBusinessClientID(connID, `task_workflow_sse_`)
+		return `Task Workflow`, extractBusinessClientID(connID, `task_workflow_sse_`)
 	}
-	return `general`, connID
+	if strings.HasPrefix(connID, `fullpage_sse_`) {
+		return `Fullpage`, extractBusinessClientID(connID, `fullpage_sse_`)
+	}
+	return `通用 SSE`, connID
 }
 
 // extractBusinessClientID 从业务 SSE 的 connID 中提取原始 clientID
