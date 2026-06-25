@@ -2939,7 +2939,8 @@ export default {
         api_test: '接口测试修复',
         issue_fix: '问题修改',
       }
-      this.promptChatHistoryTitle = titleMap[promptType] || promptType
+      const node = this.workflowNodes.find(n => n.key === promptType)
+      this.promptChatHistoryTitle = titleMap[promptType] || (node ? node.label : promptType)
       this.promptChatHistoryPromptType = promptType
       this.promptChatHistoryVisible = true
       this.promptChatHistoryLoading = true
