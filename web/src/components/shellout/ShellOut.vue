@@ -1006,7 +1006,7 @@ export default {
           return
         }
         base.SetSsePort(availablePort)
-        let sseHost = base.GetSseApiHost()
+        let sseHost = base.GetSseApiHost(availablePort)
 
         _that.fullpageClientId = 'fullpage_' + base.GenerateId('sse_client_id')
         let url = sseHost + '/sse/fullpage?client_id=' + encodeURIComponent(_that.fullpageClientId) + '&token=' + encodeURIComponent(base.GetSafeToken())

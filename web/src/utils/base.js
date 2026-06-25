@@ -167,18 +167,15 @@ function GetAbsoluteApiHost() {
 
 // 获取 SSE API 地址
 function GetSseApiHost(port) {
+    const ssePort = port || runtimeSsePort
+    if (!ssePort) {
+        return ''
+    }
     if (isDev()) {
-        const ssePort = port || runtimeSsePort
-        if (!ssePort) {
-            return ''
-        }
         return 'http://localhost:' + ssePort
     }
-    // 生产环境：指定端口时用 location.hostname 拼接，否则用相对路径
-    if (port) {
-        return window.location.protocol + '//' + window.location.hostname + ':' + port
-    }
-    return ''
+    // 生产环境：用 location.hostname 拼接 SSE 端口
+    return window.location.protocol + '//' + window.location.hostname + ':' + ssePort
 }
 
 //上面是mainCard 这个返回mainCard距离底部还剩余的高度px
