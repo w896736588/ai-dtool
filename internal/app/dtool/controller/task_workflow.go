@@ -1655,16 +1655,6 @@ func TaskWorkflowPromptsRestore(c *gin.Context) {
 		return
 	}
 
-	// 重置提示词时清空旧文档记录，并重新生成步骤文档写入新表
-	_ = common.DbMain.TaskWorkflowDocumentDeleteByWorkflow(request.WorkflowID)
-	if templateErr == nil && len(templateSteps) > 0 {
-		// 重新获取最新的工作流信息
-		refreshedInfo, refreshErr := common.DbMain.TaskWorkflowInfo(request.WorkflowID)
-		if refreshErr == nil {
-			ensureTaskWorkflowStepFragments(c, refreshedInfo, homeTaskInfo, templateSteps)
-		}
-	}
-
 	// 清空所有提示词类型对应的执行历史
 	allPromptTypes := []string{`requirement`, `design`, `api_dev`, `code_review`, `browser_test`, `api_test`}
 	// 使用模板时，附加模板步骤的 step_key（如 custom_3、issue_fix 等）

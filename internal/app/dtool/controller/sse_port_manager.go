@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/w896736588/go-tool/gsgin"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // 每个 SSE 端口允许的最大连接数
@@ -86,6 +87,11 @@ func SseAvailablePort(c *gin.Context) {
 		})
 	}
 	ssePortConnMutex.Unlock()
+
+	// 调试日志：输出当前所有活跃SSE客户端
+	activeClients := gsgin.SseStatus()
+	gstool.FmtPrintlnLogTime(`[SSE-Available] 所有活跃SSE客户端=%v 端口连接=%v`, activeClients, items)
+
 	gsgin.GinResponseSuccess(c, `获取成功`, map[string]any{
 		`sse_ports`: items,
 	})
@@ -94,25 +100,54 @@ func SseAvailablePort(c *gin.Context) {
 // BuildSseOpenFunc 返回通用 SSE 连接的 openFunc，包含每端口连接数限制
 func BuildSseOpenFunc(ssePort string) func(url.Values, chan int, *gin.Context) (*gsgin.Sse, error) {
 	return func(urlValues url.Values, stopC chan int, c *gin.Context) (*gsgin.Sse, error) {
+		currentCount := ssePortConnCount(ssePort)
+		gstool.FmtPrintlnLogTime(`[SSE-Open] 开始建立SSE连接 port=%s current_count=%d max=%d`, ssePort, currentCount, MaxSseConnectionsPerPort)
+
 		if !ssePortIsAvailable(ssePort) {
+			gstool.FmtPrintlnLogTime(`[SSE-Open] 端口连接数已满 port=%s count=%d`, ssePort, currentCount)
 			return nil, errors.New(fmt.Sprintf(`SSE端口 %s 连接数已满（上限 %d）`, ssePort, MaxSseConnectionsPerPort))
 		}
+		gstool.FmtPrintlnLogTime(`[SSE-Open] 端口连接数检查通过 port=%s`, ssePort)
+
 		clientId := urlValues.Get(`client_id`)
+		gstool.FmtPrintlnLogTime(`[SSE-Open] 获取client_id=%s port=%s`, clientId, ssePort)
+
 		sseC := gsgin.SseGetByClientId(clientId)
 		if sseC != nil {
+			gstool.FmtPrintlnLogTime(`[SSE-Open] client_id已存在，拒绝重复连接 client_id=%s port=%s`, clientId, ssePort)
 			return nil, errors.New(`已存在链接`)
 		}
+		gstool.FmtPrintlnLogTime(`[SSE-Open] client_id检查通过，无重复 client_id=%s port=%s`, clientId, ssePort)
+
 		sse := gsgin.SseRegister(clientId, stopC, c)
+		gstool.FmtPrintlnLogTime(`[SSE-Open] SseRegister完成 client_id=%s port=%s`, clientId, ssePort)
+
 		// 记录该端口连接数+1
 		ssePortIncrement(clientId, ssePort)
+		gstool.FmtPrintlnLogTime(`[SSE-Open] 端口计数+1 port=%s new_count=%d`, ssePort, ssePortConnCount(ssePort))
+
 		// 发送连接建立事件
-		_ = sse.SendToChan(define.SseConnect)
+		sendErr := sse.SendToChan(define.SseConnect)
+		gstool.FmtPrintlnLogTime(`[SSE-Open] 发送CONNECT事件 client_id=%s port=%s err=%v`, clientId, ssePort, sendErr)
+
 		BindShellConnectionsSSE(sse, stopC, 5*time.Second)
+		gstool.FmtPrintlnLogTime(`[SSE-Open] BindShellConnectionsSSE完成 client_id=%s`, clientId)
+
 		BindAsyncTasksSSE(sse, stopC, 5*time.Second)
+		gstool.FmtPrintlnLogTime(`[SSE-Open] BindAsyncTasksSSE完成 client_id=%s`, clientId)
+
 		BindMemoryFragmentStatusSSE(sse, stopC, 10*time.Second)
+		gstool.FmtPrintlnLogTime(`[SSE-Open] BindMemoryFragmentStatusSSE完成 client_id=%s`, clientId)
+
 		BindGitPendingStatusSSE(sse, stopC, 5*time.Second)
+		gstool.FmtPrintlnLogTime(`[SSE-Open] BindGitPendingStatusSSE完成 client_id=%s`, clientId)
+
 		BindWorkflowUnreadSnapshotSSE(sse, stopC, 3*time.Second)
+		gstool.FmtPrintlnLogTime(`[SSE-Open] BindWorkflowUnreadSnapshotSSE完成 client_id=%s`, clientId)
+
 		BindConnectionCountSSE(sse, stopC, 5*time.Second)
+		gstool.FmtPrintlnLogTime(`[SSE-Open] BindConnectionCountSSE完成 client_id=%s 所有Bind完成`, clientId)
+
 		return sse, nil
 	}
 }
@@ -121,9 +156,11 @@ func BuildSseOpenFunc(ssePort string) func(url.Values, chan int, *gin.Context) (
 func BuildSseCloseFunc() func(sse *gsgin.Sse) {
 	return func(sse *gsgin.Sse) {
 		if sse != nil {
+			gstool.FmtPrintlnLogTime(`[SSE-Close] SSE连接关闭 client_id=%s`, sse.ClientId)
 			ssePortDecrement(sse.ClientId)
 		}
 		sse.UnRegister()
+		gstool.FmtPrintlnLogTime(`[SSE-Close] UnRegister完成`)
 	}
 }
 

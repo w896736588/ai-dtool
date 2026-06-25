@@ -687,6 +687,17 @@
                                 <el-icon><Link /></el-icon>
                               </GitActionButton>
                             </el-tooltip>
+                            <el-tooltip content="全屏编辑" placement="top">
+                              <GitActionButton
+                                variant="info"
+                                compact
+                                class="toolbar-icon-button"
+                                @click="openActiveDocFullscreen"
+                                :disabled="!getActiveDocFileId()"
+                              >
+                                <el-icon><FullScreen /></el-icon>
+                              </GitActionButton>
+                            </el-tooltip>
                             <el-tooltip content="搜索" placement="top">
                               <GitActionButton
                                 variant="info"
@@ -1137,7 +1148,7 @@
 </template>
 
 <script>
-import { HomeFilled, View, Edit, Check, CopyDocument, MoreFilled, RefreshLeft, Link, Download, Search, Share } from '@element-plus/icons-vue'
+import { HomeFilled, View, Edit, Check, CopyDocument, MoreFilled, RefreshLeft, Link, Download, Search, Share, FullScreen } from '@element-plus/icons-vue'
 import GitActionButton from '@/components/base/GitActionButton.vue'
 import ChatHistoryButton from '@/components/shared/ChatHistoryButton.vue'
 import ChatHistoryDialog from '@/components/shared/ChatHistoryDialog.vue'
@@ -1685,6 +1696,7 @@ export default {
       })
     },
     applyWorkflowPayload(data) {
+      console.log('[DEBUG applyWorkflowPayload] 被调用, data.documents=', data.documents, 'type=', typeof data.documents, 'isArray=', Array.isArray(data.documents), 'length=', data.documents?.length, '调用栈:', new Error().stack)
       this.workflow = data.workflow || {}
       this.homeTask = data.home_task || this.homeTask || {}
       const previousWorkflowId = Number(this.workflowId || 0)
@@ -1707,7 +1719,13 @@ export default {
       }
       this.parseNodeStatuses()
       // 捕获工作流文档独立表数据
-      this.workflowDocuments = data.documents || []
+      // 仅在响应中包含文档数据时才更新，避免并发请求返回空数组覆盖已加载的正确数据
+      if (data.documents && Array.isArray(data.documents) && data.documents.length > 0) {
+        console.log('[DEBUG applyWorkflowPayload] 设置 workflowDocuments, documents count=', data.documents.length)
+        this.workflowDocuments = data.documents
+      } else {
+        console.log('[DEBUG applyWorkflowPayload] 跳过设置 workflowDocuments (data.documents 为空)')
+      }
       if (this.workflowId !== previousWorkflowId) {
         this.unregisterWorkflowUnreadSse()
         this.ensureWorkflowUnreadSse()
@@ -2921,7 +2939,8 @@ export default {
         api_test: '接口测试修复',
         issue_fix: '问题修改',
       }
-      this.promptChatHistoryTitle = titleMap[promptType] || promptType
+      const node = this.workflowNodes.find(n => n.key === promptType)
+      this.promptChatHistoryTitle = titleMap[promptType] || (node ? node.label : promptType)
       this.promptChatHistoryPromptType = promptType
       this.promptChatHistoryVisible = true
       this.promptChatHistoryLoading = true
@@ -3303,7 +3322,7 @@ export default {
         return Array.isArray(docs) ? docs : []
       } catch { return [] }
     },
-    // 切换到文档Tab，并加载文档内容
+    // 切换到文档Tab，并每次重新加载文档内容
     switchToDocTab(doc) {
       const docKey = doc.id || doc.name
       this.stepActiveTab = docKey
@@ -3312,25 +3331,19 @@ export default {
       if (this.docUnreadFlags[docKey]) {
         this.docUnreadFlags = { ...this.docUnreadFlags, [docKey]: false }
       }
-      this.loadDocContentIfNeeded(doc)
+      this.loadDocContent(doc)
     },
-    // 按需加载文档的知识片段内容
-    loadDocContentIfNeeded(doc) {
+    // 强制重新加载文档的知识片段内容（每次切换Tab都会调用API）
+    loadDocContent(doc) {
       const docKey = doc.id || doc.name
-      if (this.stepDocContents[docKey] && this.stepDocContents[docKey].content !== undefined) {
-        return // 已加载
-      }
-      // 查找文档对应的 file_id
       const fileId = this.findDocFileId(doc)
-      if (!this.stepDocContents[docKey]) {
-        this.stepDocContents[docKey] = { content: '', loading: true, fileId: fileId || '' }
-      }
+      this.stepDocContents[docKey] = { content: '', loading: true, fileId: fileId || '' }
       if (!fileId) {
         this.stepDocContents[docKey].loading = false
         this.stepDocContents[docKey].content = ''
+        this.stepDocContents = { ...this.stepDocContents }
         return
       }
-      this.stepDocContents[docKey].loading = true
       this.stepDocContents = { ...this.stepDocContents }
       MemoryFragmentApi.MemoryFragmentInfo(fileId, (response) => {
         if (response && response.ErrCode === 0 && response.Data) {
@@ -3398,6 +3411,19 @@ export default {
       if (!fileId) return
       this.openFragmentInDialog(fileId, this.getActiveDocName())
     },
+    // 全屏编辑当前文档（在新窗口中打开独立编辑页面）
+    openActiveDocFullscreen() {
+      const fileId = this.getActiveDocFileId()
+      if (!fileId) {
+        this.$helperNotify.warning('请先保存文档后再全屏编辑')
+        return
+      }
+      const url = this.$router.resolve({
+        name: 'memory-fragment-fullscreen',
+        query: { fragment_id: fileId },
+      }).href
+      window.open(url, '_blank')
+    },
     // 切换到文档查看模式
     switchDocToViewMode() {
       this.clearDocSearch()
@@ -3442,7 +3468,10 @@ export default {
           }
           return
         }
-        const shareUrl = new URL(`/#/MemoryFragmentShare?t=${encodeURIComponent(response.Data.token)}`, window.location.origin).toString()
+        // 提取干净 ID：fileId 可能是文件路径格式 "fragments/xxx-uuid"，取末段
+        const cleanId = fileId.includes('/') ? fileId.replace(/^.*\//, '') : fileId
+        const apiHost = String(baseUtils.GetApiHost() || window.location.origin).trim()
+        const shareUrl = new URL(`/share/${encodeURIComponent(cleanId)}/${encodeURIComponent(response.Data.token)}`, apiHost).toString()
         try {
           await navigator.clipboard.writeText(shareUrl)
           this.$helperNotify.success('分享链接已复制到剪贴板（24小时有效）')

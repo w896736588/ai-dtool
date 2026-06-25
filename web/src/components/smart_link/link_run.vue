@@ -33,6 +33,9 @@
         <GitActionButton @click="showCreateDialog">
           <el-icon><Plus /></el-icon>创建
         </GitActionButton>
+        <GitActionButton variant="info" @click="showGroupManage">
+          <el-icon><Management /></el-icon>分组管理
+        </GitActionButton>
         <GitActionButton @click="install">
           <el-icon><Tools /></el-icon>安装核心
         </GitActionButton>
@@ -53,8 +56,9 @@
     <div class="link-run-content">
       <div v-for="group in groupedSmartList" :key="group.groupId" class="link-run-card">
         <div class="link-group-header">
-          <span class="link-group-name">{{ group.groupName }}</span>
+          <span class="link-group-name" @click="clickGroupName(group)">{{ group.groupName }}</span>
           <span class="link-group-count">{{ group.items.length }} 个链接</span>
+          <el-button size="small" type="primary" link :loading="copyingGroups[group.groupId]" :disabled="copyingGroups[group.groupId]" @click="copyGroup(group)">复制</el-button>
         </div>
         <div class="link-run-links-row">
           <div v-for="link in group.items" :key="link.id" class="link-grid-item">
@@ -187,6 +191,52 @@
   <SettingsDialog v-model="accountSettingsVisible" title="账号设置" width="82%" @closed="refreshLinkAfterAccountSettingsClose">
     <AccountSettingPage @changed="handleAccountSettingsChanged" />
   </SettingsDialog>
+
+  <!-- 分组管理弹窗 / Group management dialog -->
+  <el-dialog v-model="dialogGroupManage" title="分组管理" width="600px">
+    <div style="margin-bottom: 10px;">
+      <el-button type="primary" size="small" @click="addGroup">添加分组</el-button>
+    </div>
+    <el-table :data="allGroups" size="small">
+      <el-table-column prop="id" label="#ID" width="60" />
+      <el-table-column prop="name" label="组名" min-width="200" />
+      <el-table-column label="操作" width="120">
+        <template #default="scope">
+          <el-button type="primary" link size="small" @click="editGroup(scope.row)">编辑</el-button>
+          <el-popconfirm title="确定删除该分组吗?" @confirm="deleteGroup(scope.row)">
+            <template #reference>
+              <el-button type="danger" link size="small">删除</el-button>
+            </template>
+          </el-popconfirm>
+        </template>
+      </el-table-column>
+    </el-table>
+    <!-- 分组添加/编辑子弹窗 -->
+    <el-dialog v-model="dialogEditGroup" :title="editGroupConfig.id ? '编辑分组' : '添加分组'" width="400px" append-to-body>
+      <el-form label-width="60px">
+        <el-form-item label="组名">
+          <el-input v-model="editGroupConfig.name" autocomplete="off" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogEditGroup = false">取消</el-button>
+        <el-button type="primary" @click="saveGroup">保存</el-button>
+      </template>
+    </el-dialog>
+  </el-dialog>
+
+  <!-- 编辑分组名弹窗（点击分组名触发）/ Edit group name dialog -->
+  <el-dialog v-model="dialogEditGroupName" title="编辑分组" width="400px">
+    <el-form label-width="60px">
+      <el-form-item label="组名">
+        <el-input v-model="editingGroupName" autocomplete="off" @keyup.enter="saveGroupName" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="dialogEditGroupName = false">取消</el-button>
+      <el-button type="primary" @click="saveGroupName">保存</el-button>
+    </template>
+  </el-dialog>
 </template>
 <style scoped src="@/css/components/smart_link/link_run.css"></style>
 <script>
@@ -202,7 +252,7 @@ import GitActionButton from "@/components/base/GitActionButton.vue";
 import SettingsDialog from '@/components/base/SettingsDialog.vue'
 import AccountSettingPage from '@/components/set/account.vue'
 import accountSet from '@/utils/base/account_set'
-import { Plus, Tools, Refresh, Download, QuestionFilled, Delete, User, FolderOpened, Edit } from '@element-plus/icons-vue'
+import { Plus, Tools, Refresh, Download, QuestionFilled, Delete, User, FolderOpened, Edit, Management } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 export default {
@@ -218,6 +268,7 @@ export default {
     User,
     FolderOpened,
     Edit,
+    Management,
     LinkConfigEditor,
     GitActionButton,
     SettingsDialog,
@@ -278,6 +329,16 @@ export default {
       },
       accountSettingsVisible: false,
       migrating: false,
+      copyingGroups: {},
+      // 分组管理 / Group management
+      dialogGroupManage: false,
+      allGroups: [],
+      dialogEditGroup: false,
+      editGroupConfig: {},
+      // 编辑分组名（点击分组名触发）/ Edit group name
+      dialogEditGroupName: false,
+      editingGroupName: '',
+      editingGroupId: 0,
     }
   },
   computed: {
@@ -505,6 +566,90 @@ export default {
         }
       })
     },
+    // copyGroup 复制整个分组及其下的所有链接到新分组 / Copy group with all links to a new group
+    copyGroup: function (group) {
+      const _that = this
+      const newName = group.groupName + ' - 副本'
+      // 标记 loading 防止重复点击
+      _that.copyingGroups[group.groupId] = true
+      // Step 1: 创建新分组 / Create new group
+      smart_link_set.SetSmartLinkGroupAdd({ name: newName }, function (addGroupResponse) {
+        if (addGroupResponse.ErrCode !== 0) {
+          ElMessage.error('创建分组副本失败')
+          _that.copyingGroups[group.groupId] = false
+          return
+        }
+        // Step 2: 刷新分组列表获取新分组 ID / Refresh group list to get new group ID
+        smart_link_set.SetSmartLinkGroupList(function (listResponse) {
+          if (listResponse.ErrCode !== 0) {
+            ElMessage.error('获取分组列表失败')
+            _that.copyingGroups[group.groupId] = false
+            return
+          }
+          const groups = listResponse.Data || []
+          const newGroup = groups.find(function (g) { return g.name === newName })
+          if (!newGroup) {
+            ElMessage.error('未找到新建的分组')
+            _that.copyingGroups[group.groupId] = false
+            return
+          }
+          const newGroupId = newGroup.id
+          const items = group.items || []
+          if (items.length === 0) {
+            // 没有链接直接刷新列表
+            _that.GetConfigList()
+            _that.copyingGroups[group.groupId] = false
+            ElMessage.success('分组已复制（无链接）')
+            return
+          }
+          // Step 3: 逐个复制链接 / Copy each link
+          var copied = 0
+          var failed = 0
+          var total = items.length
+          function checkDone() {
+            copied++
+            if (copied + failed === total) {
+              _that.GetConfigList()
+              _that.copyingGroups[group.groupId] = false
+              if (failed > 0) {
+                ElMessage.warning('复制完成：成功 ' + (total - failed) + ' 个，失败 ' + failed + ' 个')
+              } else {
+                ElMessage.success('成功复制 ' + total + ' 个链接到分组"' + newName + '"')
+              }
+            }
+          }
+          for (var i = 0; i < items.length; i++) {
+            var src = items[i]
+            var newItem = {
+              label: src.label || '',
+              link: src.link || '',
+              smart_link_group_id: newGroupId,
+              account_list: src.account_list || '',
+              browser_auth_username: src.browser_auth_username || '',
+              browser_auth_password: src.browser_auth_password || '',
+              cookie: src.cookie || '',
+              headers: src.headers || '',
+              open_num: src.open_num || 0,
+              open_type: src.open_type || '',
+              channel: src.channel || '',
+              process_id: src.process_id || 0,
+              download_finds: src.download_finds || '',
+              auto_close_second: src.auto_close_second || 0,
+              weight: src.weight || 0,
+              show_cookies: src.show_cookies || '',
+              filter_uris: src.filter_uris || '',
+              combine_type: src.combine_type || 4,
+            }
+            smart_link_set.SmartLinkItemAdd(newItem, function (addResponse) {
+              if (addResponse.ErrCode !== 0) {
+                failed++
+              }
+              checkDone()
+            })
+          }
+        })
+      })
+    },
     showCreateDialog: function () {
       this.smartLinkConfig = JSON.parse(JSON.stringify(this.defaultSmartLinkConfig))
       this.accountGroupName = ''
@@ -576,6 +721,89 @@ export default {
         }
       })
     },
+    // showGroupManage 打开分组管理弹窗 / Open group management dialog
+    showGroupManage: function () {
+      this.dialogGroupManage = true
+      this.loadGroupList()
+    },
+    // loadGroupList 加载所有分组 / Load all groups
+    loadGroupList: function () {
+      const _that = this
+      smart_link_set.SetSmartLinkGroupList(function (response) {
+        if (response.ErrCode === 0) {
+          _that.allGroups = response.Data || []
+        } else {
+          ElMessage.error('获取分组列表失败')
+        }
+      })
+    },
+    // addGroup 打开添加分组弹窗 / Open add group dialog
+    addGroup: function () {
+      this.editGroupConfig = { name: '' }
+      this.dialogEditGroup = true
+    },
+    // editGroup 打开编辑分组弹窗 / Open edit group dialog
+    editGroup: function (row) {
+      this.editGroupConfig = { id: row.id, name: row.name }
+      this.dialogEditGroup = true
+    },
+    // saveGroup 保存分组（添加或编辑）/ Save group (add or edit)
+    saveGroup: function () {
+      const _that = this
+      var config = {
+        name: this.editGroupConfig.name || '',
+      }
+      if (this.editGroupConfig.id) {
+        config.id = this.editGroupConfig.id
+      }
+      smart_link_set.SetSmartLinkGroupAdd(config, function (response) {
+        if (response.ErrCode === 0) {
+          _that.dialogEditGroup = false
+          _that.loadGroupList()
+          _that.GetConfigList()
+        } else {
+          ElMessage.error('保存分组失败')
+        }
+      })
+    },
+    // deleteGroup 删除分组 / Delete group
+    deleteGroup: function (row) {
+      const _that = this
+      smart_link_set.SetSmartLinkGroupDelete(row, function (response) {
+        if (response.ErrCode === 0) {
+          _that.loadGroupList()
+          _that.GetConfigList()
+        } else {
+          ElMessage.error('删除失败')
+        }
+      })
+    },
+    // clickGroupName 点击分组名，打开编辑弹窗 / Click group name to edit
+    clickGroupName: function (group) {
+      this.editingGroupId = group.groupId
+      this.editingGroupName = group.groupName
+      this.dialogEditGroupName = true
+    },
+    // saveGroupName 保存分组名修改 / Save group name change
+    saveGroupName: function () {
+      const _that = this
+      if (!this.editingGroupName || !this.editingGroupName.trim()) {
+        ElMessage.warning('组名不能为空')
+        return
+      }
+      smart_link_set.SetSmartLinkGroupAdd(
+        { id: this.editingGroupId, name: this.editingGroupName.trim() },
+        function (response) {
+          if (response.ErrCode === 0) {
+            _that.dialogEditGroupName = false
+            _that.GetConfigList()
+            ElMessage.success('分组名已更新')
+          } else {
+            ElMessage.error('修改失败')
+          }
+        }
+      )
+    },
     refreshRuntimeConfigState: function () {},
   },
 }
@@ -594,7 +822,7 @@ export default {
 .link-run-card { padding: 10px 10px 8px; margin-bottom: 10px; background: #fff; border: 1px solid #e6e8de; border-radius: 10px; }
 /* 分组头 */
 .link-group-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
-.link-group-name { font-size: 15px; font-weight: bold; cursor: pointer; text-decoration: underline; color: #333; }
+.link-group-name { font-size: 18px; font-weight: bold; cursor: pointer; text-decoration: underline; color: #333; }
 .link-group-count { font-size: 11px; color: #999; }
 /* 链接行 - 弹性布局，根据内容自动调整宽度 */
 .link-run-links-row {
@@ -606,9 +834,9 @@ export default {
 /* 网格链接项 - 宽度由内容决定 */
 .link-grid-item {
   padding: 8px 10px;
-  border: 1px solid #e8ece0;
+  border: 1px solid #d6e6cf;
   border-radius: 6px;
-  background: #fafbf7;
+  background: #f4f9ef;
   display: inline-flex;
   flex-direction: column;
   gap: 6px;

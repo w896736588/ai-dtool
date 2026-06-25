@@ -38,7 +38,11 @@ func SafeAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. 检查是否是白名单接口
 		path := c.Request.URL.Path
+		isSsePath := strings.HasPrefix(path, "/sse")
 		if SafeAuthWhiteList[path] {
+			if isSsePath {
+				gstool.FmtPrintlnLogTime(`[SSE-Auth] 白名单放行 path=%s`, path)
+			}
 			c.Next()
 			return
 		}
@@ -48,24 +52,42 @@ func SafeAuthMiddleware() gin.HandlerFunc {
 
 		// 3. 如果未启用密码保护，直接放行
 		if !tokenManager.IsEnabled() {
+			if isSsePath {
+				gstool.FmtPrintlnLogTime(`[SSE-Auth] 未启用密码保护，直接放行 path=%s`, path)
+			}
 			c.Next()
 			return
 		}
 
 		// 4. 从请求头获取 Token，如果没有则从 URL 查询参数获取（兼容 SSE）
 		token := c.GetHeader("Token")
+		tokenSource := "header"
 		if token == "" {
 			// 尝试从 Cookie 获取（兼容某些场景）
 			token, _ = c.Cookie("safe_token")
+			if token != "" {
+				tokenSource = "cookie"
+			}
 		}
 		if token == "" {
 			// 尝试从 URL 查询参数获取（SSE 场景）
 			token = c.Query("token")
+			if token != "" {
+				tokenSource = "query"
+			}
+		}
+
+		if isSsePath {
+			clientId := c.Query("client_id")
+			gstool.FmtPrintlnLogTime(`[SSE-Auth] path=%s client_id=%s token_source=%s token_len=%d password_enabled=%v`, path, clientId, tokenSource, len(token), true)
 		}
 
 		// 5. 解析并验证 Token
 		claims, errCode, err := tokenManager.ParseToken(token)
 		if err != nil {
+			if isSsePath {
+				gstool.FmtPrintlnLogTime(`[SSE-Auth] Token解析失败 path=%s errCode=%d err=%s`, path, errCode, err.Error())
+			}
 			respondAuthError(c, errCode, err.Error())
 			c.Abort()
 			return
@@ -73,6 +95,10 @@ func SafeAuthMiddleware() gin.HandlerFunc {
 
 		// 6. 将认证信息存入 Context，便于后续使用
 		c.Set(SafeAuthContextKey, claims)
+
+		if isSsePath {
+			gstool.FmtPrintlnLogTime(`[SSE-Auth] Token验证通过 path=%s`, path)
+		}
 
 		c.Next()
 	}

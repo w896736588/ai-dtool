@@ -61,6 +61,7 @@ Write-Step "[2/4] 复制运行资源"
 Copy-Item $WebExe (Join-Path $TempPackageDir "dtool.exe") -Force
 Copy-Item (Join-Path $RootDir "go.mod") (Join-Path $TempPackageDir "go.mod") -Force
 New-Item -ItemType Directory -Force -Path (Join-Path $TempPackageDir "config/dtool") | Out-Null
+Copy-Item (Join-Path $RootDir "config/dtool/*.ini") (Join-Path $TempPackageDir "config/dtool") -Force
 New-Item -ItemType Directory -Force -Path (Join-Path $TempPackageDir "web") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $TempPackageDir "web/dist") | Out-Null
 Copy-Item (Join-Path $FrontendDistDir "*") (Join-Path $TempPackageDir "web/dist") -Recurse -Force
@@ -108,6 +109,8 @@ $ArchiveEntries = @(
 )
 Compress-Archive -Path $ArchiveEntries -DestinationPath $ZipFile -Force
 
+$CopySucceeded = $true
+$CopyErrorMessage = ""
 try {
     New-Item -ItemType Directory -Force -Path $PackageDir | Out-Null
 
@@ -137,8 +140,22 @@ try {
 
     Remove-IfExists $TempPackageDir
 } catch {
-    Write-Warning "无法更新输出目录 $PackageDir，已保留本次打包目录：$TempPackageDir。原因：$($_.Exception.Message)"
+    # 复制阶段失败（最常见：目标 dtool.exe 正在运行被占用）。
+    # 不能吞掉错误继续报成功，否则产物目录处于新旧文件混合的不一致状态。
+    $CopySucceeded = $false
+    $CopyErrorMessage = $_.Exception.Message
 }
 
 Write-Host ""
-Write-Host "[OK] Package created: $ZipFile"
+if ($CopySucceeded) {
+    Write-Host "[OK] Package created: $ZipFile" -ForegroundColor Green
+    Write-Host "[OK] Package directory: $PackageDir" -ForegroundColor Green
+} else {
+    Write-Host "[FAILED] 打包输出目录更新失败，本次打包未完成！" -ForegroundColor Red
+    Write-Host "  失败原因: $CopyErrorMessage" -ForegroundColor Red
+    Write-Host "  Zip 已生成: $ZipFile"
+    Write-Host "  临时打包目录已保留: $TempPackageDir" -ForegroundColor Yellow
+    Write-Host "  目标目录可能新旧文件混合、状态不一致: $PackageDir" -ForegroundColor Yellow
+    Write-Host "  请关闭可能占用该目录文件的程序（如上次打包的 dtool.exe）后重试。" -ForegroundColor Yellow
+    exit 1
+}

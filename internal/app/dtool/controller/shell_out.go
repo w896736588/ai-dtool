@@ -273,21 +273,47 @@ func ShellOutSetSeeId(c *gin.Context) {
 	command := cast.ToString(dataMap[`command`])
 	groupId := cast.ToInt(dataMap[`group_id`])
 	ruleSetID := cast.ToInt(dataMap[`rule_set_id`])
+	sseDistributeId := cast.ToString(dataMap[`sse_distribute_id`])
+	// 优先从 body 参数取 sse_client_id（兼容独立 SSE 场景），兼容 Header 中的 SseClientId
+	sseClientId := cast.ToString(dataMap[`sse_client_id`])
+	if sseClientId == `` {
+		sseClientId = c.GetHeader(`SseClientId`)
+	}
+
+	gstool.FmtPrintlnLogTime(`[ShellOutSetSeeId] 收到请求 sse_distribute_id=%s shell_client_id=%s SseClientId=%s command=%s group_id=%d`,
+		sseDistributeId, shellClientId, sseClientId, command, groupId)
+
 	if groupId == 0 {
 		gsgin.GinResponseError(c, `组id不能为空`, nil)
 		return
 	}
+
+	// 优先从 Fullpage 专用 SSE 中查找，找不到则回退到通用 SSE
+	sseConn := GetFullpageSseByClientID(sseClientId)
+	if sseConn != nil {
+		gstool.FmtPrintlnLogTime(`[ShellOutSetSeeId] 使用Fullpage专用SSE sse_distribute_id=%s clientID=%s`, sseDistributeId, sseClientId)
+	} else {
+		sseConn = gsgin.SseGetByClientId(sseClientId)
+		if sseConn != nil {
+			gstool.FmtPrintlnLogTime(`[ShellOutSetSeeId] 使用通用SSE sse_distribute_id=%s clientID=%s`, sseDistributeId, sseClientId)
+		} else {
+			gstool.FmtPrintlnLogTime(`[ShellOutSetSeeId] SSE连接不存在 sse_distribute_id=%s clientID=%s`, sseDistributeId, sseClientId)
+		}
+	}
+
 	sse := &p_sse.SseShell{
-		Sse:             gsgin.SseGetByClientId(c.GetHeader(`SseClientId`)),
-		SseDistributeId: cast.ToString(dataMap[`sse_distribute_id`]),
+		Sse:             sseConn,
+		SseDistributeId: sseDistributeId,
 	}
 	err = component.ShellOutClient.SetClientSseId(shellClientId, sshId, sse, command, groupId, ruleSetID, func(s string) []string {
 		return []string{p_common.TBaseClient.FilterTerminalChars(s)}
 	})
 	if err != nil {
+		gstool.FmtPrintlnLogTime(`[ShellOutSetSeeId] SetClientSseId失败 sse_distribute_id=%s err=%s`, sseDistributeId, err.Error())
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	gstool.FmtPrintlnLogTime(`[ShellOutSetSeeId] 绑定成功 sse_distribute_id=%s shell_client_id=%s`, sseDistributeId, shellClientId)
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 	return
 }

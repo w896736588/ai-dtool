@@ -79,6 +79,7 @@ func BindWorkflowUnreadSnapshotSSE(sse *gsgin.Sse, stopC chan int, interval time
 	if interval <= 0 {
 		interval = 3 * time.Second
 	}
+	gstool.FmtPrintlnLogTime(`[SSE-Data] BindWorkflowUnreadSnapshotSSE 绑定 client_id=%s interval=%v`, sse.ClientId, interval)
 	sendWorkflowUnreadSnapshot(sse)
 	go func() {
 		ticker := time.NewTicker(interval)
@@ -88,6 +89,7 @@ func BindWorkflowUnreadSnapshotSSE(sse *gsgin.Sse, stopC chan int, interval time
 			case <-ticker.C:
 				sendWorkflowUnreadSnapshot(sse)
 			case <-stopC:
+				gstool.FmtPrintlnLogTime(`[SSE-Data] WorkflowUnread goroutine退出 client_id=%s`, sse.ClientId)
 				return
 			}
 		}

@@ -92,6 +92,9 @@
       </pl-button>
       <!--            <el-tag style="margin: 5px;">链接：{{ getSshName(tab.ssh_id) }}</el-tag>-->
       <el-tag style="margin: 5px;">内容长度：{{ getContentLength(activeTabId) }}</el-tag>
+      <el-tag v-if="selectingTabIds[activeTabId] && rawBufferMap[activeTabId]" type="warning" size="small" effect="dark" style="margin: 5px;">
+        缓冲中({{ rawBufferMap[activeTabId].length }}字符)
+      </el-tag>
       <el-input
           v-model="searchContent"
           placeholder="输入搜索，多个之间用##分隔"
@@ -102,7 +105,8 @@
     </div>
     <!-- 输出区 -->
     <shellResult ref="shellRef" :divHeight="shellController.divHeight" :isRunning="shellController.isRunning"
-                 :shellShowResult="contentMapList[activeTabId]" :show-model="shellController.showModel"></shellResult>
+                 :shellShowResult="contentMapList[activeTabId]" :show-model="shellController.showModel"
+                 @selection-change="onShellSelectionChange"></shellResult>
 
     <!-- Error list dialog -->
     <el-dialog
@@ -406,6 +410,9 @@ export default {
       contentMapList: [], //输出内容
       throttleStringFunc: [],//节流回调
       tabConfigList: [],//配置
+      // 用户拖选文字时暂存增量日志，避免 v-html 更新打断选区
+      rawBufferMap: [],
+      selectingTabIds: {},
       groupList: [], //分组列表
       groupType: `6`,
       errorDialogContextVisible: false,
@@ -417,6 +424,9 @@ export default {
       searchNumber: 0,
       urlParams: {},
       isReceive : true, //是否接受
+      // Fullpage 独立 SSE 连接（不再使用通用的 /sse 混用）
+      fullpageSseConn: null,
+      fullpageClientId: '',
     }
   },
   mounted() {
@@ -446,6 +456,11 @@ export default {
   },
   deactivated() {
 
+  },
+  beforeUnmount() {
+    let _that = this
+    // 关闭 Fullpage 独立 SSE 连接
+    _that.closeFullpageSse()
   },
   methods: {
     // 获取当前 URL 参数
@@ -979,6 +994,103 @@ export default {
       })
       openFunc()
     },
+    // 创建独立的 Fullpage SSE 连接（专用于 /sse/fullpage，不与通用 SSE 混用）
+    createFullpageSseConnection: function (sse_distribute_id, tabId, openFunc) {
+      let _that = this
+      _that.closeFullpageSse()
+
+      // 先通过 API 获取可用 SSE 端口（通用 SSE 被排除后，runtimeSsePort 未设置）
+      sseDistribute.fetchAvailableSsePort().then(function(availablePort) {
+        if (!availablePort) {
+          console.error('[Fullpage-SSE] 无可用SSE端口')
+          return
+        }
+        base.SetSsePort(availablePort)
+        let sseHost = base.GetSseApiHost(availablePort)
+
+        _that.fullpageClientId = 'fullpage_' + base.GenerateId('sse_client_id')
+        let url = sseHost + '/sse/fullpage?client_id=' + encodeURIComponent(_that.fullpageClientId) + '&token=' + encodeURIComponent(base.GetSafeToken())
+        console.log('[Fullpage-SSE] 连接URL:', url)
+
+        let es = new EventSource(url)
+        _that.fullpageSseConn = es
+
+        es.onopen = function () {
+          console.log('[Fullpage-SSE] 连接已打开 client_id=' + _that.fullpageClientId)
+          openFunc()
+        }
+
+      es.onmessage = function (event) {
+        let objData = null
+        try {
+          objData = JSON.parse(event.data)
+        } catch (e) {
+          // 非JSON消息（如 [CONNECT]），忽略
+          return
+        }
+        if (!objData || !objData.sse_distribute_id) {
+          return
+        }
+        // 只处理当前 tab 的消息
+        let msg = objData.data
+        let msgType = objData.type
+
+        if (msgType === 'msg') {
+          if (!_that.isReceive) return
+          if (_that.throttleStringFunc[tabId]) {
+            _that.throttleStringFunc[tabId].update(msg)
+          }
+        } else if (msgType === 'error') {
+          if (type.IsObject(msg)) {
+            _that.errorMapList[tabId] = _that.errorMapList[tabId] || []
+            _that.errorMapList[tabId].unshift(msg)
+          }
+        } else if (msgType === 'filter') {
+          _that.filterMapList[tabId] = _that.filterMapList[tabId] || {}
+          _that.filterMapList[tabId][msg] = (_that.filterMapList[tabId][msg] || 0) + 1
+        } else if (msgType === 'error_list') {
+          if (type.IsArray(msg)) {
+            _that.errorMapList[tabId] = msg || []
+          }
+        } else if (msgType === 'filter_list') {
+          if (type.IsObject(msg)) {
+            _that.filterMapList[tabId] = msg || {}
+          }
+        }
+
+        // 限制长度
+        const maxLen = 100000
+        if (_that.contentMapList[tabId] && _that.contentMapList[tabId].length > maxLen) {
+          _that.contentMapList[tabId] = _that.contentMapList[tabId].slice(-maxLen)
+        }
+        // 仅在内容长度发生变化时才重新格式化，避免选区期间无意义的 DOM 重建
+        if (!_that._lastFormattedLen) _that._lastFormattedLen = {}
+        let curLen = (_that.contentMapList[tabId] || '').length
+        if (_that._lastFormattedLen[tabId] !== curLen) {
+          let txt = _that.contentMapList[tabId] || ''
+          txt = format.formatResult(txt, ['copy', 'color', 'replace'])
+          txt = format.formatResult(txt, ['length'])
+          _that.contentMapList[tabId] = txt
+          _that._lastFormattedLen[tabId] = txt.length
+        }
+        _that.updateErrorTotal()
+      }
+
+      es.onerror = function (err) {
+        console.error('[Fullpage-SSE] 连接错误', err)
+      }
+      })
+    },
+    // 关闭 Fullpage 独立 SSE 连接
+    closeFullpageSse: function () {
+      let _that = this
+      if (_that.fullpageSseConn) {
+        console.log('[Fullpage-SSE] 关闭连接 client_id=' + _that.fullpageClientId)
+        _that.fullpageSseConn.close()
+        _that.fullpageSseConn = null
+        _that.fullpageClientId = ''
+      }
+    },
     getSseDistributeIdByTabId: function (tabId) {
       let _that = this
       let tabConfig = _that.getTabConfigById(tabId)
@@ -1025,8 +1137,21 @@ export default {
     },
     registerReceiveMsg: function (tabId) {
       let _that = this
+      _that.rawBufferMap[tabId] = ''
       _that.throttleStringFunc[tabId] = new Throttle_string(50, text => {
-        _that.contentMapList[tabId] += text
+        // 检查用户是否在内容区有活动文本选区，若有则缓冲增量避免 DOM 更新打断选区
+        if (_that.$refs.shellRef && _that.$refs.shellRef.hasActiveSelection()) {
+          _that.rawBufferMap[tabId] += text
+          _that.selectingTabIds[tabId] = true
+          return
+        }
+        // 先刷新之前缓冲的内容
+        if (_that.rawBufferMap[tabId]) {
+          _that.contentMapList[tabId] = (_that.contentMapList[tabId] || '') + _that.rawBufferMap[tabId]
+          _that.rawBufferMap[tabId] = ''
+          _that.selectingTabIds[tabId] = false
+        }
+        _that.contentMapList[tabId] = (_that.contentMapList[tabId] || '') + text
       });
     },
     stopByTabId: function (tabId, back) {
@@ -1072,6 +1197,20 @@ export default {
     },
     up : function (){
       this.isReceive = !this.isReceive
+    },
+    // onShellSelectionChange - 当 result_div 检测到选区状态变化时回调
+    // 用户清除选区后，刷新缓冲区中的增量内容
+    onShellSelectionChange: function (isSelecting) {
+      let _that = this
+      if (isSelecting) return
+      // 选区已清除，刷新所有标签页的缓冲区
+      for (let tabId in _that.rawBufferMap) {
+        if (_that.rawBufferMap[tabId]) {
+          _that.contentMapList[tabId] = (_that.contentMapList[tabId] || '') + _that.rawBufferMap[tabId]
+          _that.rawBufferMap[tabId] = ''
+          _that.selectingTabIds[tabId] = false
+        }
+      }
     },
     cleanLog: function (tabId, back) {
       let _that = this
@@ -1175,7 +1314,7 @@ export default {
     },
     createSseByTabConfig: function (sse_distribute_id, tabConfig) {
       let _that = this
-      _that.sseCreateHandle(sse_distribute_id, tabConfig.id, function () {
+      _that.createFullpageSseConnection(sse_distribute_id, tabConfig.id, function () {
         shell.ShellOutSetSeeId({
           sse_distribute_id: sse_distribute_id,
           shell_client_id: tabConfig.shell_client_id,
@@ -1185,9 +1324,10 @@ export default {
           group_id: tabConfig.group_id,
           rule_set_id: tabConfig.rule_set_id,
           is_run: _that.urlParams.id ? 0 : 1,
+          sse_client_id: _that.fullpageClientId,
         }, function (res) {
           if (res.ErrCode !== 0) {
-            _that.$helperNotify.error('建立链接失败')
+            _that.$helperNotify.error('建立链接失败: ' + (res.ErrMsg || ''))
           }
         })
       })

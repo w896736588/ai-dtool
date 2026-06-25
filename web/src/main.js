@@ -176,7 +176,7 @@ window.ResizeObserver.prototype.disconnect = function () {
 import sse from '@/utils/base/sse_distribute'
 
 // 不需要 SSE 连接的独立页面路由（这些页面不依赖 SSE 推送，无需占用浏览器连接数）
-const SSE_EXCLUDED_ROUTES = ['/HomeTaskSetting', '/ApiDocument', '/TaskWorkflow']
+const SSE_EXCLUDED_ROUTES = ['/HomeTaskSetting', '/ApiDocument', '/TaskWorkflow', '/fullpage']
 
 function shouldInitSse() {
   const hash = window.location.hash

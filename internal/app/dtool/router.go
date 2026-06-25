@@ -591,6 +591,8 @@ func apiUse(tGin *p_gin.Gin) {
 		tGin.SseRoute(`/sse/agent_cli`, controller.AgentCliChatSseOpen, controller.AgentCliChatSseClose)
 		// TaskWorkflow 业务独立 SSE
 		tGin.SseRoute(`/sse/task_workflow`, controller.TaskWorkflowChatSseOpen, controller.TaskWorkflowChatSseClose)
+		// Fullpage 独立 SSE（专用于 shell_out 日志流，不与通用 /sse 混合）
+		tGin.SseRoute(`/sse/fullpage`, controller.FullpageSseOpen, controller.FullpageSseClose)
 	}
 }
 
