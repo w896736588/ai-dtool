@@ -1336,6 +1336,38 @@ export default {
         collectionNode.loading = false
       }
     },
+    // 批量加载多个集合的文件夹（一次请求），用于恢复展开状态等场景
+    async loadCollectionFoldersBatch(collectionNodes) {
+      const pending = (collectionNodes || []).filter((node) => node && !node.loading && !node.loaded)
+      if (pending.length === 0) {
+        return
+      }
+      pending.forEach((node) => { node.loading = true })
+      try {
+        const collectionIds = pending.map((node) => node.id)
+        const respData = await this.requestApi('CollectionFoldersBatchBasic', {
+          collection_ids: collectionIds,
+        })
+        const grouped = respData.data || {}
+        const sortCache = this.getTreeSortCache()
+        for (const collectionNode of pending) {
+          const folderList = grouped[String(collectionNode.id)] || []
+          collectionNode.children = folderList.map((folder) => this.normalizeFolderNode(folder, collectionNode.id))
+          if (this.filterFolderId > 0) {
+            collectionNode.children = collectionNode.children.filter((folder) => Number(folder.id) === this.filterFolderId)
+          }
+          collectionNode.child_count = collectionNode.children.length
+          collectionNode.isLeaf = collectionNode.child_count <= 0
+          collectionNode.loaded = true
+          this.sortListByIdOrder(collectionNode.children, sortCache.folders[String(collectionNode.id)] || [])
+          this.syncTreeNodeChildren(collectionNode.uniqueid, collectionNode.children)
+        }
+      } catch (error) {
+        this.$message.error(error.message || '批量加载集合文件夹失败')
+      } finally {
+        pending.forEach((node) => { node.loading = false })
+      }
+    },
     async loadFolderApis(folderNode, force = false) {
       if (!folderNode) {
         return []
@@ -1371,6 +1403,34 @@ export default {
       } catch (error) {
         this.$message.error(error.message || '加载集合文件夹失败')
         return []
+      }
+    },
+    // 批量加载多个文件夹的接口（一次请求），用于恢复展开状态等场景
+    async loadFolderApisBatch(folderNodes) {
+      const pending = (folderNodes || []).filter((node) => node && !node.loading && !node.loaded)
+      if (pending.length === 0) {
+        return
+      }
+      pending.forEach((node) => { node.loading = true })
+      try {
+        const folderIds = pending.map((node) => node.id)
+        const respData = await this.requestApi('FolderApisBatchBasic', {
+          folder_ids: folderIds,
+        })
+        const grouped = respData.data || {}
+        for (const folderNode of pending) {
+          const apiList = grouped[String(folderNode.id)] || []
+          folderNode.children = apiList.map((api) => this.normalizeApiNode(api, folderNode.id, folderNode.collection_id))
+          folderNode.child_count = folderNode.children.length
+          folderNode.isLeaf = folderNode.child_count <= 0
+          folderNode.loaded = true
+          this.applyFolderApiSort(folderNode.collection_id, folderNode.id)
+          this.syncTreeNodeChildren(folderNode.uniqueid, folderNode.children)
+        }
+      } catch (error) {
+        this.$message.error(error.message || '批量加载文件夹接口失败')
+      } finally {
+        pending.forEach((node) => { node.loading = false })
       }
     },
     async ensureFolderApisLoaded(folderNode) {
@@ -1663,16 +1723,26 @@ export default {
         return
       }
       const expandedKeys = Array.isArray(expandedState) ? expandedState : []
+      // 筛选出需要恢复展开的集合节点
+      const collectionsToExpand = []
       for (const collection of _that.treeData) {
         const collectionKey = _that.buildExpandStateKey(collection)
         if (collectionKey && expandedKeys.includes(collectionKey)) {
-          await _that.ensureCollectionFoldersLoaded(collection)
+          collectionsToExpand.push(collection)
+        }
+      }
+      // 一次批量请求加载所有集合的文件夹
+      if (collectionsToExpand.length > 0) {
+        await _that.loadCollectionFoldersBatch(collectionsToExpand)
+        for (const collection of collectionsToExpand) {
           const collectionNode = _that.$refs.collectionTreeRef.getNode(collection.uniqueid)
           if (collectionNode) {
             collectionNode.expand()
           }
         }
       }
+      // 收集所有需要恢复展开的文件夹节点
+      const foldersToExpand = []
       for (const collection of _that.treeData) {
         if (!Array.isArray(collection.children)) {
           continue
@@ -1680,11 +1750,17 @@ export default {
         for (const folder of collection.children) {
           const folderKey = _that.buildExpandStateKey(folder)
           if (folderKey && expandedKeys.includes(folderKey)) {
-            await _that.ensureFolderApisLoaded(folder)
-            const folderNode = _that.$refs.collectionTreeRef.getNode(folder.uniqueid)
-            if (folderNode) {
-              folderNode.expand()
-            }
+            foldersToExpand.push(folder)
+          }
+        }
+      }
+      // 一次批量请求加载所有文件夹的接口
+      if (foldersToExpand.length > 0) {
+        await _that.loadFolderApisBatch(foldersToExpand)
+        for (const folder of foldersToExpand) {
+          const folderNode = _that.$refs.collectionTreeRef.getNode(folder.uniqueid)
+          if (folderNode) {
+            folderNode.expand()
           }
         }
       }
