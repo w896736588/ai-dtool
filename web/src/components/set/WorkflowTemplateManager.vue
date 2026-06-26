@@ -399,7 +399,6 @@ const PROMPT_PLACEHOLDERS = [
   { label: '接口开发API的token', value: '{接口开发API的token}', tip: '替换为请求的 Authorization token' },
   { label: '开发项目配置', value: '{开发项目配置}', tip: '替换为开发项目配置的 Markdown 列表' },
   { label: '自定义网页', value: '{自定义网页}', tip: '替换为智能链接（smart_link）的名称和 ID' },
-  { label: '网页标签', value: '{网页标签}', tip: '替换为智能链接的标签（smart_link_label）' },
   { label: '账号', value: '{账号}', tip: '替换为智能链接的账号（smart_link_account）' },
   { label: '工作流程ID', value: '{工作流程ID}', tip: '替换为当前工作流程的 ID' },
   { label: '任务ID', value: '{任务ID}', tip: '替换为当前任务的 ID' },

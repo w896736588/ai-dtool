@@ -37,6 +37,10 @@
   max-width: 300px;
 }
 
+.api-id-tag {
+  flex-shrink: 0;
+}
+
 .api-title-section {
   display: flex;
   align-items: center;
