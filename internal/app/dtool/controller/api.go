@@ -441,6 +441,48 @@ order by d.id asc`, collectionId).All()
 	})
 }
 
+// ApiCollectionFoldersBatchBasic 批量按集合查询文件夹基础信息，一次请求返回多个集合的文件夹。
+func ApiCollectionFoldersBatchBasic(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	collectionIds := parseApiIDs(dataMap[`collection_ids`])
+	if len(collectionIds) == 0 {
+		gsgin.GinResponseError(c, `请选择集合`, nil)
+		return
+	}
+	placeholders := make([]string, 0, len(collectionIds))
+	args := make([]any, 0, len(collectionIds))
+	for _, id := range collectionIds {
+		placeholders = append(placeholders, `?`)
+		args = append(args, id)
+	}
+	sql := `
+select d.id,
+       d.collection_id,
+       d.name,
+       d.headers,
+       d.env_id,
+       d.create_time,
+       d.update_time,
+       count(a.id) as child_count
+from tbl_api_dir d
+left join tbl_api a on a.folder_id = d.id
+where d.collection_id in (` + strings.Join(placeholders, `,`) + `) and d.archived = 0
+group by d.id, d.collection_id, d.name, d.headers, d.env_id, d.create_time, d.update_time
+order by d.id asc`
+	list, _ := common.DbMain.Client.QueryBySql(sql, args...).All()
+	// 按 collection_id 分组
+	grouped := make(map[string][]map[string]any)
+	for _, item := range list {
+		collectionId := cast.ToInt(item[`collection_id`])
+		key := cast.ToString(collectionId)
+		grouped[key] = append(grouped[key], buildFolderBasicInfo(item))
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`data`: grouped,
+	})
+}
+
 // ApiFolderApisBasic 按文件夹查询接口基础信息。
 func ApiFolderApisBasic(c *gin.Context) {
 	dataMap := make(map[string]any)
@@ -457,6 +499,35 @@ func ApiFolderApisBasic(c *gin.Context) {
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`list`: result,
+	})
+}
+
+// ApiFolderApisBatchBasic 批量按文件夹查询接口基础信息，一次请求返回多个文件夹的接口。
+func ApiFolderApisBatchBasic(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	folderIds := parseApiIDs(dataMap[`folder_ids`])
+	if len(folderIds) == 0 {
+		gsgin.GinResponseError(c, `请选择文件夹`, nil)
+		return
+	}
+	placeholders := make([]string, 0, len(folderIds))
+	args := make([]any, 0, len(folderIds))
+	for _, id := range folderIds {
+		placeholders = append(placeholders, `?`)
+		args = append(args, id)
+	}
+	sql := `select id,folder_id,collection_id,name,method,url,desc,env_id,weight,create_time,update_time from tbl_api where folder_id in (` + strings.Join(placeholders, `,`) + `) order by weight,id asc`
+	list, _ := common.DbMain.Client.QueryBySql(sql, args...).All()
+	// 按 folder_id 分组
+	grouped := make(map[string][]map[string]any)
+	for _, item := range list {
+		folderId := cast.ToInt(item[`folder_id`])
+		key := cast.ToString(folderId)
+		grouped[key] = append(grouped[key], buildApiBasicInfo(item))
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`data`: grouped,
 	})
 }
 

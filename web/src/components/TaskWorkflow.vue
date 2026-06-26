@@ -1131,7 +1131,6 @@
               <el-descriptions-item label="分支名">{{ truncateWorkflowLabel(cfg.branch_name || '-') }}</el-descriptions-item>
               <el-descriptions-item label="规则入口">{{ cfg.rule_entry_file || '-' }}</el-descriptions-item>
               <el-descriptions-item label="自定义网页">{{ getTaskConfigName('smart_link', cfg.smart_link_id) }}</el-descriptions-item>
-              <el-descriptions-item label="网页标签">{{ cfg.smart_link_label || '-' }}</el-descriptions-item>
               <el-descriptions-item label="账号">{{ cfg.smart_link_account || '-' }}</el-descriptions-item>
             </el-descriptions>
           </div>
@@ -3209,7 +3208,7 @@ export default {
       }
       if (type === 'smart_link') {
         const item = this.taskConfigSmartLinkList.find(s => Number(s.id) === numId)
-        return item ? item.name : String(id)
+        return item ? item.label : String(id)
       }
       return String(id)
     },

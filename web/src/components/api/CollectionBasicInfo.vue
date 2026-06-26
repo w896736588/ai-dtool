@@ -7,6 +7,10 @@
         label-width="100px"
         label-position="left"
     >
+      <el-form-item label="集合ID">
+        <el-tag type="info" size="small">{{ collection.id }}</el-tag>
+      </el-form-item>
+
       <el-form-item label="集合名称" prop="name">
         <el-input
             v-model="form.name"

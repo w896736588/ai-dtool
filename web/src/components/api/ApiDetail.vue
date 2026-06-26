@@ -1,6 +1,7 @@
 ﻿<template>
   <div class="api-detail" tabindex="0" @keydown="handleKeyDown" @keyup="handleKeyUp">
     <div class="api-header">
+      <el-tag type="info" size="small" class="api-id-tag">ID: {{ apiForm.id }}</el-tag>
       <el-input v-model="apiForm.name" class="api-name-input" placeholder="输入接口名称" type="text" @blur="handleBlurSave"></el-input>
       <div class="api-title-section">
         <el-select v-model="apiForm.method" class="api-method-select">

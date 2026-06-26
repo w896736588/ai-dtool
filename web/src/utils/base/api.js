@@ -26,6 +26,11 @@ function CollectionFoldersBasic(data , callBack){
     base.BasePost('/api/CollectionFoldersBasic', data , callBack)
 }
 
+// 中文注释：批量按集合查询文件夹基础信息。
+function CollectionFoldersBatchBasic(data , callBack){
+    base.BasePost('/api/CollectionFoldersBatchBasic', data , callBack)
+}
+
 function CreateCollectionEnv(data , callBack){
     base.BasePost('/api/CreateCollectionEnv', data , callBack)
 }
@@ -49,6 +54,11 @@ function Apis(data , callBack){
 // 中文注释：按文件夹查询接口基础信息。
 function FolderApisBasic(data , callBack){
     base.BasePost('/api/FolderApisBasic', data , callBack)
+}
+
+// 中文注释：批量按文件夹查询接口基础信息。
+function FolderApisBatchBasic(data , callBack){
+    base.BasePost('/api/FolderApisBatchBasic', data , callBack)
 }
 
 // 中文注释：按若干接口ID查询接口明细。
@@ -124,10 +134,12 @@ export default {
     Collections,
     CollectionListBasic,
     CollectionFoldersBasic,
+    CollectionFoldersBatchBasic,
     CreateDir,
     CreateApi,
     Apis,
     FolderApisBasic,
+    FolderApisBatchBasic,
     ApisDetailByIds,
     ApiRun,
     CreateCollectionEnv,

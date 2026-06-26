@@ -695,7 +695,7 @@
                 </div>
                 <el-row :gutter="12">
                   <el-col :xs="24" :sm="12" :md="12">
-                    <el-form-item label="网页" label-width="72px">
+                    <el-form-item label="自定义网页" label-width="72px">
                       <el-select
                         v-model="cfg.smart_link_id"
                         clearable
@@ -705,32 +705,18 @@
                         :loading="homeTaskSmartLinkLoading"
                         @change="handleDevConfigSmartLinkChange(cfgIdx)"
                       >
-                        <el-option
-                              v-for="item in homeTaskSmartLinkList"
-                              :key="item.id"
-                              :label="item.name"
-                              :value="Number(item.id)"
-                        />
-                      </el-select>
-                    </el-form-item>
-                  </el-col>
-                  <el-col :xs="24" :sm="12" :md="12">
-                    <el-form-item label="网页标签" label-width="72px">
-                      <el-select
-                        v-model="cfg.smart_link_label"
-                        clearable
-                        filterable
-                        style="width: 100%"
-                        placeholder="选择标签（可选）"
-                        :disabled="!cfg.smart_link_id"
-                        @change="handleDevConfigSmartLinkLabelChange(cfgIdx)"
-                      >
-                        <el-option
-                              v-for="link in getDevConfigSmartLinkLabels(cfgIdx)"
-                              :key="link.label"
-                              :label="link.label"
-                              :value="link.label"
-                        />
+                        <el-option-group
+                          v-for="group in homeTaskSmartLinkGroupedOptions"
+                          :key="group.label"
+                          :label="group.label"
+                        >
+                          <el-option
+                            v-for="item in group.options"
+                            :key="item.value"
+                            :label="item.label"
+                            :value="item.value"
+                          />
+                        </el-option-group>
                       </el-select>
                     </el-form-item>
                   </el-col>
@@ -742,7 +728,7 @@
                         filterable
                         style="width: 100%"
                         placeholder="选择账号（可选）"
-                        :disabled="!cfg.smart_link_label"
+                        :disabled="!cfg.smart_link_id"
                       >
                         <el-option
                               v-for="acct in getDevConfigSmartLinkAccounts(cfgIdx)"
@@ -918,7 +904,7 @@ function createHomeTaskDefaultForm() {
     use_workflow: HOME_TASK_USE_WORKFLOW_YES,
     workflow_fragment_folder_name: HOME_TASK_DEFAULT_WORKFLOW_FRAGMENT_FOLDER,
     workflow_template_id: 0,
-    dev_configs: [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', mysql_id: '', local_dir: '', parent_branch: '', branch_name: '', rule_entry_file: '', _branchGenerating: false, smart_link_id: '', smart_link_label: '', smart_link_account: '' }],
+    dev_configs: [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', mysql_id: '', local_dir: '', parent_branch: '', branch_name: '', rule_entry_file: '', _branchGenerating: false, smart_link_id: '', smart_link_account: '' }],
   }
 }
 
@@ -983,6 +969,7 @@ export default {
       homeTaskDockerList: [],
       homeTaskDockerLoading: false,
       homeTaskSmartLinkList: [],
+      homeTaskSmartLinkGroupList: [],
       homeTaskSmartLinkLoading: false,
       homeTaskMemoryFolderList: [],
       homeTaskMemoryFolderLoading: false,
@@ -1035,6 +1022,24 @@ export default {
           groupOrder.push(groupName)
         }
         groupMap[groupName].push({ label: repo.name, value: Number(repo.id) })
+      }
+      return groupOrder.map(name => ({ label: name, options: groupMap[name] }))
+    },
+    homeTaskSmartLinkGroupedOptions() {
+      const groupMap = {}
+      const groupOrder = []
+      const groupNameById = {}
+      for (const g of this.homeTaskSmartLinkGroupList) {
+        groupNameById[Number(g.id)] = g.name || '未分组'
+      }
+      for (const item of this.homeTaskSmartLinkList) {
+        const gid = Number(item.smart_link_group_id || 0)
+        const groupName = groupNameById[gid] || '未分组'
+        if (!groupMap[groupName]) {
+          groupMap[groupName] = []
+          groupOrder.push(groupName)
+        }
+        groupMap[groupName].push({ label: item.label, value: Number(item.id) })
       }
       return groupOrder.map(name => ({ label: name, options: groupMap[name] }))
     },
@@ -1489,7 +1494,19 @@ export default {
         }
         const rawList = Array.isArray(response.Data?.smart_link_list) ? response.Data.smart_link_list : []
         this.homeTaskSmartLinkList = rawList
+        this.homeTaskSmartLinkGroupList = Array.isArray(response.Data?.group_list) ? response.Data.group_list : []
       })
+    },
+    getDevConfigSmartLinkAccounts(cfgIdx) {
+      const cfg = this.homeTaskForm.dev_configs[cfgIdx]
+      if (!cfg || !cfg.smart_link_id) return []
+      const smartLink = this.homeTaskSmartLinkList.find(s => Number(s.id) === Number(cfg.smart_link_id))
+      if (!smartLink) return []
+      return Array.isArray(smartLink.userList) ? smartLink.userList : []
+    },
+    handleDevConfigSmartLinkChange(cfgIdx) {
+      const cfg = this.homeTaskForm.dev_configs[cfgIdx]
+      cfg.smart_link_account = ''
     },
     loadHomeTaskMemoryFolderList() {
       this.homeTaskMemoryFolderLoading = true
@@ -1519,30 +1536,6 @@ export default {
         }
       })
     },
-    getDevConfigSmartLinkLabels(cfgIdx) {
-      const cfg = this.homeTaskForm.dev_configs[cfgIdx]
-      if (!cfg || !cfg.smart_link_id) return []
-      const smartLink = this.homeTaskSmartLinkList.find(s => Number(s.id) === Number(cfg.smart_link_id))
-      if (!smartLink) return []
-      return Array.isArray(smartLink.linkList) ? smartLink.linkList : []
-    },
-    getDevConfigSmartLinkAccounts(cfgIdx) {
-      const cfg = this.homeTaskForm.dev_configs[cfgIdx]
-      if (!cfg || !cfg.smart_link_label) return []
-      const labels = this.getDevConfigSmartLinkLabels(cfgIdx)
-      const link = labels.find(l => l.label === cfg.smart_link_label)
-      if (!link) return []
-      return Array.isArray(link.userList) ? link.userList : []
-    },
-    handleDevConfigSmartLinkChange(cfgIdx) {
-      const cfg = this.homeTaskForm.dev_configs[cfgIdx]
-      cfg.smart_link_label = ''
-      cfg.smart_link_account = ''
-    },
-    handleDevConfigSmartLinkLabelChange(cfgIdx) {
-      const cfg = this.homeTaskForm.dev_configs[cfgIdx]
-      cfg.smart_link_account = ''
-    },
     handleDevConfigGitChange(cfgIdx) {
       const cfg = this.homeTaskForm.dev_configs[cfgIdx]
       const gitId = Number(cfg.git_id || 0)
@@ -1566,7 +1559,6 @@ export default {
         cfg.parent_branch = String(lastCfg.parent_branch || '')
         cfg.rule_entry_file = String(lastCfg.rule_entry_file || '')
         cfg.smart_link_id = Number(lastCfg.smart_link_id || 0) || ''
-        cfg.smart_link_label = String(lastCfg.smart_link_label || '')
         cfg.smart_link_account = String(lastCfg.smart_link_account || '')
         // 如果有接口集合，加载对应的文件夹列表
         if (cfg.collection_id > 0) {
@@ -1611,7 +1603,7 @@ export default {
     },
 
     addDevConfig() {
-      this.homeTaskForm.dev_configs.push({ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '', parent_branch: '', branch_name: '', rule_entry_file: '', _branchGenerating: false, smart_link_id: '', smart_link_label: '', smart_link_account: '' })
+      this.homeTaskForm.dev_configs.push({ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '', parent_branch: '', branch_name: '', rule_entry_file: '', _branchGenerating: false, smart_link_id: '', smart_link_account: '' })
     },
     removeDevConfig(idx) {
       this.homeTaskForm.dev_configs.splice(idx, 1)
@@ -1693,7 +1685,6 @@ export default {
           branch_name: String(cfg.branch_name || ''),
           rule_entry_file: String(cfg.rule_entry_file || ''),
           smart_link_id: Number(cfg.smart_link_id || 0) || '',
-          smart_link_label: String(cfg.smart_link_label || ''),
           smart_link_account: String(cfg.smart_link_account || ''),
         }))
       } else {
@@ -1718,13 +1709,13 @@ export default {
             branch_name: '',
             rule_entry_file: '',
             smart_link_id: '',
-            smart_link_label: '',
+            smart_link_account: '',
             smart_link_account: '',
           })
         }
       }
       if (devConfigs.length === 0) {
-        devConfigs = [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '', parent_branch: '', branch_name: '', rule_entry_file: '', _branchGenerating: false, smart_link_id: '', smart_link_label: '', smart_link_account: '' }]
+        devConfigs = [{ git_id: '', collection_id: '', dir_id: '', docker_id: '', local_dir: '', parent_branch: '', branch_name: '', rule_entry_file: '', _branchGenerating: false, smart_link_id: '', smart_link_account: '' }]
       }
       this.homeTaskForm = {
         id: Number(task.id || 0),
@@ -1867,11 +1858,8 @@ export default {
         if (Number(cfg.smart_link_id || 0) > 0) {
           const sl = this.homeTaskSmartLinkList.find(s => Number(s.id) === Number(cfg.smart_link_id))
           if (sl) {
-            group.push({ type: 'smart_link', label: sl.name, id: Number(cfg.smart_link_id), tagType: 'info' })
+            group.push({ type: 'smart_link', label: sl.label, id: Number(cfg.smart_link_id), tagType: 'info' })
           }
-        }
-        if (String(cfg.smart_link_label || '').trim() !== '') {
-          group.push({ type: 'smart_link_label', label: String(cfg.smart_link_label).trim(), tagType: 'info' })
         }
         if (String(cfg.smart_link_account || '').trim() !== '') {
           group.push({ type: 'smart_link_account', label: String(cfg.smart_link_account).trim(), tagType: 'warning' })
@@ -1957,7 +1945,6 @@ export default {
           branch_name: String(cfg.branch_name || '').trim(),
           rule_entry_file: String(cfg.rule_entry_file || '').trim(),
           smart_link_id: Number(cfg.smart_link_id || 0),
-          smart_link_label: String(cfg.smart_link_label || '').trim(),
           smart_link_account: String(cfg.smart_link_account || '').trim(),
         }))
       const isEdit = this.homeTaskForm.id > 0

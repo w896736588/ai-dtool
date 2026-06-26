@@ -7,6 +7,10 @@
         label-position="left"
         class="info-form"
     >
+      <el-form-item label="文件夹ID">
+        <el-tag type="info" size="small">{{ folder.id }}</el-tag>
+      </el-form-item>
+
       <el-form-item label="文件夹名称">
         <el-input
             v-model="form.name"
