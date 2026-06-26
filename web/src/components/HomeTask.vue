@@ -96,9 +96,9 @@
 
       <!-- 右侧任务列表 -->
       <!-- 活跃中 / 按状态筛选 -->
-      <div v-loading="homeTaskLoadingActive" class="home-task-content">
+      <div v-if="!isArchivedMode" v-loading="homeTaskLoadingActive" class="home-task-content">
         <div v-if="filteredTaskList.length === 0" class="home-task-empty">
-          {{ selectedStatus === HOME_TASK_SELECTED_ACTIVE ? '当前没有未归档任务' : '当前没有"' + selectedStatus + '"状态的任务' }}
+          {{ selectedStatus === HOME_TASK_SELECTED_ACTIVE ? '当前没有未归档任务' : selectedStatus === HOME_TASK_SELECTED_ARCHIVED ? '当前没有已归档任务' : '当前没有"' + selectedStatus + '"状态的任务' }}
         </div>
         <div
           v-for="task in filteredTaskList"
@@ -1162,11 +1162,7 @@ export default {
       }
       // SmartLink 列表
       if (Array.isArray(data.smart_link_list)) {
-        this.homeTaskSmartLinkList = data.smart_link_list.map(item => {
-          let linkList = []
-          try { linkList = JSON.parse(item.links || '[]') } catch (e) { /* ignore */ }
-          return { ...item, linkList }
-        })
+        this.homeTaskSmartLinkList = data.smart_link_list
         this.homeTaskSmartLinkLoading = false
       }
       // 记忆库文件夹列表
@@ -1486,19 +1482,13 @@ export default {
     },
     loadHomeTaskSmartLinkList() {
       this.homeTaskSmartLinkLoading = true
-      smartLinkSetApi.SmartLinkList((response) => {
+      smartLinkSetApi.SmartLinkItemList((response) => {
         this.homeTaskSmartLinkLoading = false
         if (!(response && response.ErrCode === 0)) {
           return
         }
         const rawList = Array.isArray(response.Data?.smart_link_list) ? response.Data.smart_link_list : []
-        this.homeTaskSmartLinkList = rawList.map(item => {
-          let linkList = []
-          try {
-            linkList = JSON.parse(item.links || '[]')
-          } catch (e) { /* ignore */ }
-          return { ...item, linkList }
-        })
+        this.homeTaskSmartLinkList = rawList
       })
     },
     loadHomeTaskMemoryFolderList() {

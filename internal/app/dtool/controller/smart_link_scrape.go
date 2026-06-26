@@ -92,9 +92,6 @@ func parseSmartLinkScrapeRequest(req map[string]any) (SmartLinkScrapeRequest, er
 	if result.SmartLinkID <= 0 {
 		return result, errors.New("smart_link_id不能为空")
 	}
-	if result.Label == "" {
-		return result, errors.New("label不能为空")
-	}
 	if result.JumpURL == "" {
 		return result, errors.New("jump_url不能为空")
 	}
@@ -183,7 +180,7 @@ func buildAbsoluteDownloadURL(c *gin.Context, downloadPath string) string {
 
 // getFirstAccountFromSmartLink 根据 smartLinkID 查 smart_link 新表获取 account_list 配置，
 // 取关联账号组中的第一个账号返回。
-func getFirstAccountFromSmartLink(smartLinkID int, label string) (string, string) {
+func getFirstAccountFromSmartLink(smartLinkID int) (string, string) {
 	newItem, err := common.DbMain.Client.QueryBySql(`select * from smart_link where id = ? and status = ?`, smartLinkID, define.SmartLinkStatusNormal).One()
 	if err != nil || len(newItem) == 0 {
 		return "", ""
@@ -199,7 +196,7 @@ func getFirstAccountFromSmartLink(smartLinkID int, label string) (string, string
 // 当前仅支持 server 模式，直接在本机执行抓取。
 // 返回的结果中包含相对下载路径 DownloadURL（如 /api/download/xxx.zip）。
 func dispatchScrapeTaskAndAwait(smartLinkID int, label, jumpURL, cssSelector string, waitSeconds int) (*plw.ScrapeMarkdownResult, error) {
-	accountUserName, accountPassword := getFirstAccountFromSmartLink(smartLinkID, label)
+	accountUserName, accountPassword := getFirstAccountFromSmartLink(smartLinkID)
 	runParams, runParamsErr := plw.GetRunParams(smartLinkID, label, accountUserName, accountPassword, 0, 1, make(map[string]string))
 	if runParamsErr != nil {
 		return nil, fmt.Errorf("构建运行参数失败: %w", runParamsErr)
@@ -235,7 +232,14 @@ func SmartLinkScrapeToMarkdown(c *gin.Context) {
 	}
 	gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][03] 收到抓取请求 %s`, summarizeSmartLinkScrapeRequest(req))
 
-	result, dispatchErr := dispatchScrapeTaskAndAwait(req.SmartLinkID, req.Label, req.JumpURL, req.CssSelector, req.WaitSeconds)
+	// 从新表 smart_link 查询 label
+	label, labelErr := querySmartLinkLabel(req.SmartLinkID)
+	if labelErr != nil {
+		gsgin.GinResponseError(c, labelErr.Error(), nil)
+		return
+	}
+
+	result, dispatchErr := dispatchScrapeTaskAndAwait(req.SmartLinkID, label, req.JumpURL, req.CssSelector, req.WaitSeconds)
 	if dispatchErr != nil {
 		errMsg := dispatchErr.Error()
 		gstool.FmtPrintlnLogTime(`[SmartLinkScrapeToMarkdown][04] 派发抓取任务失败 err=%s`, errMsg)

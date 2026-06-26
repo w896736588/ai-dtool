@@ -1,5 +1,7 @@
 .git-action-button {
   /* Shared Git page button tokens for reuse across feature modules. */
+
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -28,6 +30,15 @@
   --git-button-hover-text-color: #3f6f3f;
   --git-button-hover-border-color: #bfd1bf;
   --git-button-hover-background-color: #eef4ea;
+}
+
+.git-action-button--success {
+  --git-button-text-color: #2d6a2d;
+  --git-button-border-color: #b8d9b8;
+  --git-button-background-color: #eaf5ea;
+  --git-button-hover-text-color: #1f4f1f;
+  --git-button-hover-border-color: #9cc49c;
+  --git-button-hover-background-color: #ddf0dd;
 }
 
 .git-action-button--info {

@@ -63,18 +63,21 @@
         <div class="link-run-links-row">
           <div v-for="link in group.items" :key="link.id" class="link-grid-item">
             <div class="link-grid-item__row link-grid-item__row--top">
-              <a class="link-grid-item__label" @click="showEditDialog(link)" :title="link.label">{{ link.label || '未命名' }}</a>
+              <a class="link-grid-item__label" @click="showEditDialog(link)" :title="link.label">#{{ link.id }} {{ link.label || '未命名' }}</a>
               <div class="link-grid-item__top-right">
                 <span v-if="link.runNum" class="link-grid-item__run-num">运行中: {{ link.runNum }}</span>
-                <el-icon size="14" class="link-grid-item__edit-icon" @click="showEditDialog(link)"><Edit/></el-icon>
-                <el-popconfirm cancel-button-text="取消" confirm-button-text="删除" title="确定删除吗?" @confirm="deleteSmartLinkItem(link)">
-                  <template #reference>
-                    <el-icon size="14" style="cursor: pointer; color: #999;"><Delete/></el-icon>
+                <el-dropdown trigger="click" size="small">
+                  <el-icon size="14" class="link-grid-item__more-icon"><MoreFilled/></el-icon>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item @click="showEditDialog(link)">编辑</el-dropdown-item>
+                      <el-dropdown-item @click="confirmDeleteLink(link)">删除</el-dropdown-item>
+                    </el-dropdown-menu>
                   </template>
-                </el-popconfirm>
+                </el-dropdown>
               </div>
             </div>
-            <div class="link-grid-item__row link-grid-item__row--bottom">
+            <div class="link-grid-item__row link-grid-item__row--bottom" :class="{ 'link-grid-item__row--no-account': !link.userList || link.userList.length === 0 }">
               <!-- 账号列表 -->
               <template v-if="link.userList && link.userList.length > 0">
                 <el-select v-model="link.chooseUserName" placeholder="选择账号" size="small" class="link-account-select">
@@ -84,7 +87,7 @@
 
               <!-- 执行操作 -->
               <div class="link-grid-item__exec">
-                <GitActionButton v-if="parseInt(link.open_type) === 1 && parseInt(link.open_num) === 0" compact size="small" @click="redirectLink(link)">
+                <GitActionButton v-if="parseInt(link.open_type) === 1 && parseInt(link.open_num) === 0" :compact="link.userList && link.userList.length > 0" :size="link.userList && link.userList.length > 0 ? 'small' : 'default'" @click="redirectLink(link)">
                   打开
                 </GitActionButton>
                 <template v-if="parseInt(link.open_type) === 2 || parseInt(link.open_type) === 3">
@@ -92,7 +95,7 @@
                     <el-option v-for="opt in openTypeList" :key="opt.value" :label="opt.label" :value="opt.value"/>
                   </el-select>
                   <el-input v-if="link.open_num > 0" v-model="link.open_num_new" size="small" placeholder="次" style="width: 38px"/>
-                  <GitActionButton compact size="small" @click="smartLinkRunItem(link)">执行</GitActionButton>
+                  <GitActionButton :compact="link.userList && link.userList.length > 0" :size="link.userList && link.userList.length > 0 ? 'small' : 'default'" :loading="!!runningItems[link.id]" @click="smartLinkRunItem(link)">执行</GitActionButton>
                 </template>
               </div>
             </div>
@@ -252,8 +255,8 @@ import GitActionButton from "@/components/base/GitActionButton.vue";
 import SettingsDialog from '@/components/base/SettingsDialog.vue'
 import AccountSettingPage from '@/components/set/account.vue'
 import accountSet from '@/utils/base/account_set'
-import { Plus, Tools, Refresh, Download, QuestionFilled, Delete, User, FolderOpened, Edit, Management } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { Plus, Tools, Refresh, Download, QuestionFilled, MoreFilled, User, FolderOpened, Management } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 export default {
   components: {
@@ -264,16 +267,16 @@ export default {
     Refresh,
     Download,
     QuestionFilled,
-    Delete,
+    MoreFilled,
     User,
     FolderOpened,
-    Edit,
     Management,
     LinkConfigEditor,
     GitActionButton,
     SettingsDialog,
     AccountSettingPage,
   },
+  emits: ['changeModelToEditProcess', 'changeModelToFlow'],
   data() {
     return {
       shellController: {
@@ -318,6 +321,7 @@ export default {
       name: 'Link',
       smartList: [],
       smartLinkRunList: {},
+      runningItems: {},
       tickerKey: 'link',
       versionInfo: {},
       openPageNum: 0,
@@ -483,7 +487,9 @@ export default {
         open_type: item.open_type_new || item.open_type,
         sse_distribute_id: _that.sse_distribute_id,
       }
+      _that.runningItems[item.id] = true
       smart_link_set.SmartLinkRun(runParams, (response) => {
+        _that.runningItems[item.id] = false
         if (response.ErrCode !== 0) {
           if (!_that.applyNodeInstallTip(response)) {
             ElMessage.error(response.ErrMsg || '执行失败')
@@ -556,6 +562,15 @@ export default {
       this.smartLinkConfig = JSON.parse(JSON.stringify(item))
       this.accountGroupName = this.parseAccountGroupName(item.account_list || '')
       this.dialogSmartLink = true
+    },
+    confirmDeleteLink: function (item) {
+      ElMessageBox.confirm('确定删除该链接吗？', '提示', {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }).then(() => {
+        this.deleteSmartLinkItem(item)
+      }).catch(() => {})
     },
     deleteSmartLinkItem: function (item) {
       smart_link_set.SmartLinkItemDelete({ id: item.id }, (response) => {
@@ -828,7 +843,7 @@ export default {
 .link-run-links-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 18px 8px;
   margin: 0;
 }
 /* 网格链接项 - 宽度由内容决定 */
@@ -845,10 +860,14 @@ export default {
 }
 .link-grid-item__row { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
 .link-grid-item__row--top { justify-content: space-between; }
+.link-grid-item__row--no-account .link-grid-item__exec {
+  width: 100%;
+  justify-content: center;
+}
 .link-grid-item__label { font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: underline; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
 .link-grid-item__top-right { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0; }
-.link-grid-item__edit-icon { cursor: pointer; color: #999; flex-shrink: 0; }
-.link-grid-item__edit-icon:hover { color: #409EFF; }
+.link-grid-item__more-icon { cursor: pointer; color: #999; flex-shrink: 0; }
+.link-grid-item__more-icon:hover { color: #409EFF; }
 .link-grid-item__run-num { font-size: 10px; color: green; white-space: nowrap; }
 .link-account-select { width: 140px; }
 .link-grid-item__exec { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; }

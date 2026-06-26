@@ -454,11 +454,6 @@ func variableRouter(tGin *p_gin.Gin) {
 func smartLink(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/ai/browser/session/open`, controller.AIBrowserSessionOpen)
 	tGin.GinPost(`/api/ai/browser/session/capture-headers`, controller.AIBrowserSessionCaptureHeaders)
-	// 老表 tbl_smart_link 接口（保留用于工作流配置等历史引用）
-	tGin.GinPost(`/api/SmartLinkList`, controller.SmartLinkList)
-	tGin.GinPost(`/api/SmartLinkAdd`, controller.SmartLinkAdd)
-	tGin.GinPost(`/api/SmartLinkDel`, controller.SmartLinkDelete)
-	tGin.GinPost(`/api/SmartLinkInfo`, controller.SmartLinkInfo)
 	// 新表 smart_link 接口
 	tGin.GinPost(`/api/SmartLinkItemList`, controller.SmartLinkItemList)
 	tGin.GinPost(`/api/SmartLinkItemAdd`, controller.SmartLinkItemAdd)

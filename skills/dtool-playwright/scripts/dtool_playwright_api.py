@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '../
 from api_common import BASE_URL, TOKEN, call_api
 
 
-def browser_profile_open(base_url: str, token: str, smart_link_id: int, label: str,
+def browser_profile_open(base_url: str, token: str, smart_link_id: int,
                          account: str = "", open_type: int = 0,
                          reuse_if_open: bool = True, enable_mcp: bool = False):
     # 同步全局配置，使 call_api 使用正确的地址和令牌
@@ -15,7 +15,6 @@ def browser_profile_open(base_url: str, token: str, smart_link_id: int, label: s
     api_common.TOKEN = token
     payload = {
         "smart_link_id": smart_link_id,
-        "label": label,
         "account": account,
         "open_type": open_type,
         "reuse_if_open": reuse_if_open,
@@ -112,7 +111,6 @@ if __name__ == "__main__":
             base_url=base_url,
             token=token,
             smart_link_id=12,
-            label="登录后首页",
             account="tester",
             enable_mcp=True,
         )

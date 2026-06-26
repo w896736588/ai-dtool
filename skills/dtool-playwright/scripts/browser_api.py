@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '../
 from api_common import call_api
 
 
-def browser_profile_capture_headers(smart_link_id, label, account="", open_type=0,
+def browser_profile_capture_headers(smart_link_id, account="", open_type=0,
                                     reuse_if_open=True, enable_mcp=False):
     """
     打开浏览器配置并在登录后抓取首个接口请求头
@@ -17,7 +17,6 @@ def browser_profile_capture_headers(smart_link_id, label, account="", open_type=
     """
     result = call_api("/api/ai/browser/session/capture-headers", {
         "smart_link_id": smart_link_id,
-        "label": label,
         "account": account,
         "open_type": open_type,
         "reuse_if_open": reuse_if_open,
@@ -38,4 +37,4 @@ def browser_profile_capture_headers(smart_link_id, label, account="", open_type=
 
 if __name__ == "__main__":
     print("=== dtool 浏览器 API 示例 ===\n")
-    # browser_profile_capture_headers(12, "登录后首页", account="tester")
+    # browser_profile_capture_headers(12, account="tester")

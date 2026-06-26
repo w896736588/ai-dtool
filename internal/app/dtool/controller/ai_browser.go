@@ -3,6 +3,7 @@ package controller
 import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
+	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/mcp"
 	"dev_tool/internal/app/dtool/plw"
 	"fmt"
@@ -20,7 +21,6 @@ import (
 
 type aiBrowserOpenRequest struct {
 	SmartLinkID int    `json:"smart_link_id"`
-	Label       string `json:"label"`
 	Account     string `json:"account"`
 	OpenType    int    `json:"open_type"`
 	ReuseIfOpen *bool  `json:"reuse_if_open"`
@@ -53,12 +53,18 @@ func AIBrowserSessionOpen(c *gin.Context) {
 		gsgin.GinResponseError(c, "请求参数错误", nil)
 		return
 	}
-	req.Label = strings.TrimSpace(req.Label)
-	if req.SmartLinkID == 0 || req.Label == "" {
-		gsgin.GinResponseError(c, "smart_link_id和label不能为空", nil)
+	if req.SmartLinkID == 0 {
+		gsgin.GinResponseError(c, "smart_link_id不能为空", nil)
 		return
 	}
 	if !ensureSmartLinkNodeInstalled(c, nil) {
+		return
+	}
+
+	// 从新表 smart_link 查询 label
+	label, err := querySmartLinkLabel(req.SmartLinkID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 
@@ -67,7 +73,7 @@ func AIBrowserSessionOpen(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	runParams, err := plw.GetRunParams(req.SmartLinkID, req.Label, accountInfo.UserName, accountInfo.Password, req.OpenType, 1, map[string]string{})
+	runParams, err := plw.GetRunParams(req.SmartLinkID, label, accountInfo.UserName, accountInfo.Password, req.OpenType, 1, map[string]string{})
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -193,12 +199,18 @@ func AIBrowserSessionCaptureHeaders(c *gin.Context) {
 		gsgin.GinResponseError(c, "请求参数错误", nil)
 		return
 	}
-	req.Label = strings.TrimSpace(req.Label)
-	if req.SmartLinkID == 0 || req.Label == "" {
-		gsgin.GinResponseError(c, "smart_link_id和label不能为空", nil)
+	if req.SmartLinkID == 0 {
+		gsgin.GinResponseError(c, "smart_link_id不能为空", nil)
 		return
 	}
 	if !ensureSmartLinkNodeInstalled(c, nil) {
+		return
+	}
+
+	// 从新表 smart_link 查询 label
+	label, err := querySmartLinkLabel(req.SmartLinkID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 
@@ -207,7 +219,7 @@ func AIBrowserSessionCaptureHeaders(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	runParams, err := plw.GetRunParams(req.SmartLinkID, req.Label, accountInfo.UserName, accountInfo.Password, req.OpenType, 1, map[string]string{})
+	runParams, err := plw.GetRunParams(req.SmartLinkID, label, accountInfo.UserName, accountInfo.Password, req.OpenType, 1, map[string]string{})
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -276,7 +288,7 @@ func buildAIBrowserProfileResponse(req aiBrowserOpenRequest, runParams *plw.Play
 		"user_data_index": contextPage.UserDataIndex,
 		"smart_link": map[string]any{
 			"id":    req.SmartLinkID,
-			"label": req.Label,
+			"label": runParams.Label,
 		},
 		"site": map[string]any{
 			"domain": runParams.Domain,
@@ -435,4 +447,19 @@ func hasStaticResourceExtension(rawURL string) bool {
 	default:
 		return false
 	}
+}
+
+// querySmartLinkLabel 根据 smart_link_id 查询新表 smart_link 的 label 字段。
+func querySmartLinkLabel(smartLinkID int) (string, error) {
+	info, err := common.DbMain.Client.QuickQuery("smart_link", "label", map[string]any{
+		"id":     smartLinkID,
+		"status": define.SmartLinkStatusNormal,
+	}).One()
+	if err != nil {
+		return "", fmt.Errorf("查询smart_link失败: %w", err)
+	}
+	if len(info) == 0 {
+		return "", fmt.Errorf("smart_link id=%d 不存在", smartLinkID)
+	}
+	return strings.TrimSpace(cast.ToString(info["label"])), nil
 }
