@@ -2079,7 +2079,11 @@ func taskWorkflowBuildDevConfigsMarkdown(homeTaskInfo map[string]any) string {
 		}
 		smartLinkName := taskWorkflowQuerySmartLinkLabel(cfg.SmartLinkID)
 		if cfg.SmartLinkID > 0 {
-			sb.WriteString(fmt.Sprintf("- **自定义网页**: %s（ID: %d）\n", smartLinkName, cfg.SmartLinkID))
+			if cfg.SmartLinkAccount != "" {
+				sb.WriteString(fmt.Sprintf("- **自定义网页**: %s（ID: %d, 账号: %s）\n", smartLinkName, cfg.SmartLinkID, cfg.SmartLinkAccount))
+			} else {
+				sb.WriteString(fmt.Sprintf("- **自定义网页**: %s（ID: %d）\n", smartLinkName, cfg.SmartLinkID))
+			}
 		}
 	}
 	return sb.String()
@@ -2098,7 +2102,11 @@ func taskWorkflowBuildDevConfigsFieldMarkdown(homeTaskInfo map[string]any, field
 		case `smart_link`:
 			if cfg.SmartLinkID > 0 {
 				name := taskWorkflowQuerySmartLinkLabel(cfg.SmartLinkID)
-				val = fmt.Sprintf("%s（ID: %d）", name, cfg.SmartLinkID)
+				if cfg.SmartLinkAccount != "" {
+					val = fmt.Sprintf("%s（ID: %d, 账号: %s）", name, cfg.SmartLinkID, cfg.SmartLinkAccount)
+				} else {
+					val = fmt.Sprintf("%s（ID: %d）", name, cfg.SmartLinkID)
+				}
 			}
 		}
 		if val != "" {
