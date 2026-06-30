@@ -36,6 +36,14 @@ function ShellOutCleanLog(data , callBack){
     base.BasePost('/api/shellOutCleanLog', data, callBack)
 }
 
+function ShellOutSetFilter(data , callBack){
+    base.BasePost('/api/shellOutSetFilter', data, callBack)
+}
+
+function ShellOutGetFilter(data , callBack){
+    base.BasePost('/api/shellOutGetFilter', data, callBack)
+}
+
 export default {
     ShellOutCleanErrors,
     ShellOuts,
@@ -45,4 +53,6 @@ export default {
     ShellOutSearchContent,
     ShellOutCleanLog,
     ShellOutRestart,
+    ShellOutSetFilter,
+    ShellOutGetFilter,
 }

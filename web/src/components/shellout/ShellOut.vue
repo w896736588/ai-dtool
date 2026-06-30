@@ -95,13 +95,28 @@
       <el-tag v-if="selectingTabIds[activeTabId] && rawBufferMap[activeTabId]" type="warning" size="small" effect="dark" style="margin: 5px;">
         缓冲中({{ rawBufferMap[activeTabId].length }}字符)
       </el-tag>
-      <el-input
+      <el-autocomplete
           v-model="searchContent"
           placeholder="输入搜索，多个之间用##分隔"
           size="small"
           style="width: auto; min-width: 200px;"
-      />
+          :fetch-suggestions="fetchSearchSuggestions"
+          @select="onSearchSelect"
+          @keyup.enter="searchByContent"
+      >
+        <template #default="{ item }">
+          <span>{{ item.value }}</span>
+        </template>
+      </el-autocomplete>
       <pl-button size="small" @click="searchByContent">搜索</pl-button>
+      <el-input
+          v-model="filterContent"
+          placeholder="SSE过滤，多个关键词用空格分隔（全部包含才推送）"
+          size="small"
+          style="width: auto; min-width: 260px;"
+          @keyup.enter="applyFilter"
+      />
+      <pl-button size="small" type="warning" :class="{'filter-active-btn': isFilterActive}" @click="applyFilter">{{ isFilterActive ? '过滤中' : '开始过滤' }}</pl-button>
     </div>
     <!-- 输出区 -->
     <shellResult ref="shellRef" :divHeight="shellController.divHeight" :isRunning="shellController.isRunning"
@@ -422,6 +437,9 @@ export default {
       searchContent: '',
       searchContents: [],
       searchNumber: 0,
+      searchHistory: [], // 搜索历史记录
+      filterContent: '', // SSE推送过滤关键词
+      isFilterActive: false, // 当前是否处于过滤状态
       urlParams: {},
       isReceive : true, //是否接受
       // Fullpage 独立 SSE 连接（不再使用通用的 /sse 混用）
@@ -442,13 +460,10 @@ export default {
     _that.getGroupList()
     _that.loadRuleSetList()
     _that.getFullPageParams()
+    _that.loadSearchHistory()
     //如果是单独展示的页面 里面返回的就是传参的
     _that.chooseGroupId = _that.getStoreGroupId()
     _that.activeTabId = _that.getStoreActiveTabId()
-    let storeContent = store.getStore('search_content_' + _that.activeTabId)
-    if(type.IsString(storeContent)){
-      _that.searchContent = storeContent
-    }
   },
   activated: function () {
     let _that = this
@@ -608,6 +623,7 @@ export default {
       let tabConfig = _that.getTabConfigById(_that.activeTabId)
       _that.searchDialogVisible = true
       store.setStore('search_content_' + _that.activeTabId , _that.searchContent)
+      _that.saveSearchHistory(_that.searchContent)
       shellOut.ShellOutSearchContent({
         'shell_client_id': tabConfig['shell_client_id'],
         'search_content': _that.searchContent,
@@ -618,6 +634,72 @@ export default {
           _that.searchNumber = res.Data.number
         } else {
           _that.$helperNotify.error('失败')
+        }
+      })
+    },
+    // 加载搜索历史记录
+    loadSearchHistory: function () {
+      let raw = store.getStore('shell_out_search_history')
+      if (raw) {
+        try {
+          this.searchHistory = JSON.parse(raw)
+        } catch (e) {
+          this.searchHistory = []
+        }
+      }
+    },
+    // 保存搜索记录到历史（去重，最多保留10条）
+    saveSearchHistory: function (content) {
+      content = (content || '').trim()
+      if (!content) return
+      // 去重：先移除已存在的相同记录
+      this.searchHistory = this.searchHistory.filter(function (item) {
+        return item !== content
+      })
+      // 添加到最前面
+      this.searchHistory.unshift(content)
+      // 最多保留10条
+      if (this.searchHistory.length > 10) {
+        this.searchHistory = this.searchHistory.slice(0, 10)
+      }
+      store.setStore('shell_out_search_history', JSON.stringify(this.searchHistory))
+    },
+    // el-autocomplete 获取建议列表
+    fetchSearchSuggestions: function (queryString, callback) {
+      let history = this.searchHistory
+      if (!queryString) {
+        callback(history.map(function (item) {
+          return { value: item }
+        }))
+      } else {
+        callback(history.filter(function (item) {
+          return item.toLowerCase().indexOf(queryString.toLowerCase()) >= 0
+        }).map(function (item) {
+          return { value: item }
+        }))
+      }
+    },
+    // 选中历史记录时触发搜索
+    onSearchSelect: function (item) {
+      this.searchContent = item.value
+      this.searchByContent()
+    },
+    // 应用 SSE 推送过滤：将关键词传入后端后刷新页面，使历史日志也逐行经过过滤回放
+    applyFilter: function () {
+      let _that = this
+      let tabConfig = _that.getTabConfigById(_that.activeTabId)
+      if (!tabConfig || !tabConfig['shell_client_id']) {
+        _that.$helperNotify.warning('当前没有活跃的终端会话')
+        return
+      }
+      shellOut.ShellOutSetFilter({
+        'shell_client_id': tabConfig['shell_client_id'],
+        'filter_content': _that.filterContent,
+      }, function (res) {
+        if (res.ErrCode === 0) {
+          window.location.reload()
+        } else {
+          _that.$helperNotify.error('设置过滤失败')
         }
       })
     },
@@ -1328,6 +1410,19 @@ export default {
         }, function (res) {
           if (res.ErrCode !== 0) {
             _that.$helperNotify.error('建立链接失败: ' + (res.ErrMsg || ''))
+          } else {
+            // 绑定成功后拉取当前过滤关键词，回填输入框
+            shellOut.ShellOutGetFilter({
+              'shell_client_id': tabConfig.shell_client_id,
+            }, function (filterRes) {
+              if (filterRes.ErrCode === 0 && filterRes.Data && filterRes.Data.keywords && filterRes.Data.keywords.length > 0) {
+                _that.filterContent = filterRes.Data.keywords.join(' ')
+                _that.isFilterActive = true
+              } else {
+                _that.filterContent = ''
+                _that.isFilterActive = false
+              }
+            })
           }
         })
       })
@@ -1378,4 +1473,22 @@ export default {
 </script>
 
 <style scoped lang="scss" src="@/css/components/shellout/ShellOut.scss"></style>
+
+<style>
+/* 过滤激活按钮动画：全局非 scoped，确保穿透 pl-button → el-button 组件层级 */
+.filter-active-btn {
+  animation: filter-pulse 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes filter-pulse {
+  from {
+    outline: 2px solid #e6a23c;
+    outline-offset: 1px;
+  }
+  to {
+    outline: 2px solid #f56c6c;
+    outline-offset: 1px;
+  }
+}
+</style>
 

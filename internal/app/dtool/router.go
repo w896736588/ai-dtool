@@ -437,6 +437,8 @@ func shellOut(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/shellOutSearchContent`, controller.ShellOutSearchContent)
 	tGin.GinPost(`/api/shellOutCleanLog`, controller.ShellOutCleanLog)
 	tGin.GinPost(`/api/shellOutReconnect`, controller.ShellOutReconnect)
+	tGin.GinPost(`/api/shellOutSetFilter`, controller.ShellOutSetFilter)
+	tGin.GinPost(`/api/shellOutGetFilter`, controller.ShellOutGetFilter)
 }
 
 func variableRouter(tGin *p_gin.Gin) {
