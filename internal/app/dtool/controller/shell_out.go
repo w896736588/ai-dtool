@@ -405,6 +405,52 @@ func ShellOutCleanLog(c *gin.Context) {
 	return
 }
 
+// ShellOutGetFilter 获取指定 shell 会话当前的 SSE 推送过滤关键词，用于刷新页面后回填。
+func ShellOutGetFilter(c *gin.Context) {
+	reqMap := make(map[string]interface{})
+	err := gsgin.GinPostBody(c, &reqMap)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	shellClientId := cast.ToString(reqMap[`shell_client_id`])
+	if shellClientId == `` {
+		gsgin.GinResponseError(c, `shell_client_id不能为空`, nil)
+		return
+	}
+	keywords := component.ShellOutClient.GetFilterKeywords(shellClientId)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`keywords`: keywords,
+	})
+	return
+}
+
+// ShellOutSetFilter 设置指定 shell 会话的 SSE 推送过滤关键词。
+// filter_content 按空格分割，消息需包含所有关键词才推送；空字符串表示取消过滤。
+func ShellOutSetFilter(c *gin.Context) {
+	reqMap := make(map[string]interface{})
+	err := gsgin.GinPostBody(c, &reqMap)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	shellClientId := cast.ToString(reqMap[`shell_client_id`])
+	if shellClientId == `` {
+		gsgin.GinResponseError(c, `shell_client_id不能为空`, nil)
+		return
+	}
+	filterContent := cast.ToString(reqMap[`filter_content`])
+	var keywords []string
+	if strings.TrimSpace(filterContent) != `` {
+		keywords = strings.Fields(filterContent)
+	}
+	component.ShellOutClient.SetFilterKeywords(shellClientId, keywords)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`keywords`: keywords,
+	})
+	return
+}
+
 func ShellOutReconnect(c *gin.Context) {
 	reqMap := make(map[string]interface{})
 	err := gsgin.GinPostBody(c, &reqMap)

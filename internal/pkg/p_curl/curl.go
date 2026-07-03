@@ -51,7 +51,7 @@ func (h *CurlRun) Run() (string, error) {
 		if h.ParseConfig.IsStream == 1 {
 			res, err = h.streamRun(cli)
 		} else {
-			res, err = cli.Request(200).Result()
+			res, err = cli.Request(200 * time.Second).Result()
 		}
 		if err == nil {
 			h.CurlEvents.NoticeCall(fmt.Sprintf(`%s 第%d次尝试，成功`, "\n"+gstool.TimeNowUnixToString(`Y-m-d H:i:s`), i) + "\n")
@@ -86,9 +86,9 @@ func (h *CurlRun) streamRun(cli *gshttp.Client) ([]byte, error) {
 		gstool.FmtPrintlnLogTime(`按照字符串进行分割`)
 	}
 	if fac != nil {
-		return cli.SetStreamFac(fac).Request(200).Result()
+		return cli.SetStreamFac(fac).Request(200 * time.Second).Result()
 	} else {
-		return cli.Request(200).Result()
+		return cli.Request(200 * time.Second).Result()
 	}
 }
 

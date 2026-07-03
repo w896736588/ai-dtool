@@ -42,7 +42,9 @@ type ShellOut struct {
 	ruleItems          []ShellOutRuleItem
 	breakTimer         *time.Ticker
 	lastReceiveTime    int64
-	pendingMsg         string // Buffer for incomplete log lines
+	pendingMsg         string       // Buffer for incomplete log lines
+	filterKeywords     []string     // SSE推送过滤关键词（空格分割，需全部包含才推送）
+	filterLock         sync.RWMutex // filterKeywords 的读写锁
 }
 
 // ErrorBlock 错误块
@@ -195,10 +197,13 @@ func (h *TShellOut) SetClientSseId(shellClientId, sshId string, sse *p_sse.SseSh
 		return nil
 	} else {
 		remainLen := len(shellOut.remainContents)
+		startIdx := 0
 		if remainLen > MaxSendLength {
-			h.SendMsg(shellOut, strings.Join(shellOut.remainContents[(remainLen-MaxSendLength):], ""))
-		} else {
-			h.SendMsg(shellOut, strings.Join(shellOut.remainContents, ""))
+			startIdx = remainLen - MaxSendLength
+		}
+		// 逐行推送，使 SSE 过滤关键词逐行生效：不满足过滤条件的行不会被推送
+		for i := startIdx; i < remainLen; i++ {
+			h.SendMsg(shellOut, shellOut.remainContents[i])
 		}
 		h.SendErrList(shellOut)
 		h.SendFilterList(shellOut)
@@ -238,6 +243,33 @@ func (h *TShellOut) CleanLog(shellClientId string) {
 	}
 	shellOut.remainContents = []string{}
 	shellOut.pendingMsg = ``
+}
+
+// SetFilterKeywords 设置指定 shell 会话的 SSE 推送过滤关键词。
+// keywords 为空切片时表示取消过滤，所有消息正常推送。
+func (h *TShellOut) SetFilterKeywords(shellClientId string, keywords []string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	shellOut := h.ShellOutMap[shellClientId]
+	if shellOut == nil {
+		return
+	}
+	shellOut.filterLock.Lock()
+	shellOut.filterKeywords = keywords
+	shellOut.filterLock.Unlock()
+}
+
+// GetFilterKeywords 获取指定 shell 会话当前的 SSE 推送过滤关键词。
+func (h *TShellOut) GetFilterKeywords(shellClientId string) []string {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	shellOut := h.ShellOutMap[shellClientId]
+	if shellOut == nil {
+		return nil
+	}
+	shellOut.filterLock.RLock()
+	defer shellOut.filterLock.RUnlock()
+	return shellOut.filterKeywords
 }
 
 func (h *TShellOut) SetReceiveMsg(shellOut *ShellOut, formatStream func(string) []string) {
@@ -325,6 +357,17 @@ func (h *TShellOut) SendMsg(shellOut *ShellOut, msg string) {
 	msg = strings.Replace(msg, `\n`, "\n", -1)
 	if shellOut == nil || shellOut.Sse == nil {
 		return
+	}
+	// 检查 SSE 推送过滤关键词：消息必须包含所有关键词才推送，空列表表示不过滤
+	shellOut.filterLock.RLock()
+	keywords := shellOut.filterKeywords
+	shellOut.filterLock.RUnlock()
+	if len(keywords) > 0 {
+		for _, kw := range keywords {
+			if !strings.Contains(msg, kw) {
+				return
+			}
+		}
 	}
 	shellOut.Sse.Send(msg)
 }

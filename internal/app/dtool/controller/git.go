@@ -172,9 +172,11 @@ func GitCleanupAndSwitchBranchByIdStream(urlValues url.Values, stopC chan int, c
 			}
 		}
 		if branchName != baseBranch {
-			checkCmd := exec.Command(`git`, `-C`, localDir, `show-ref`, `--verify`, `--quiet`, `refs/heads/`+branchName)
-			if err := checkCmd.Run(); err == nil {
-				if runErr := gitCleanupAndSwitchRunLocalStep(sse, localDir, `删除本地旧分支`, `branch`, `-D`, branchName); runErr != nil {
+			// 检查本地是否已有目标分支
+			localCheckCmd := exec.Command(`git`, `-C`, localDir, `show-ref`, `--verify`, `--quiet`, `refs/heads/`+branchName)
+			if localCheckCmd.Run() == nil {
+				// 本地已有目标分支：直接切换
+				if runErr := gitCleanupAndSwitchRunLocalStep(sse, localDir, `切换到目标分支`, `checkout`, branchName); runErr != nil {
 					sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
 						Type:    `done`,
 						Status:  `error`,
@@ -182,14 +184,30 @@ func GitCleanupAndSwitchBranchByIdStream(urlValues url.Values, stopC chan int, c
 					})
 					return
 				}
-			}
-			if runErr := gitCleanupAndSwitchRunLocalStep(sse, localDir, `创建并切换目标分支`, `checkout`, `-b`, branchName); runErr != nil {
-				sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
-					Type:    `done`,
-					Status:  `error`,
-					Message: runErr.Error(),
-				})
-				return
+			} else {
+				// 本地没有目标分支：检查远程是否有
+				remoteCheckCmd := exec.Command(`git`, `-C`, localDir, `show-ref`, `--verify`, `--quiet`, `refs/remotes/origin/`+branchName)
+				if remoteCheckCmd.Run() == nil {
+					// 远程有该分支：签出远程内容
+					if runErr := gitCleanupAndSwitchRunLocalStep(sse, localDir, `签出远程分支`, `checkout`, `--no-track`, `-b`, branchName, `origin/`+branchName); runErr != nil {
+						sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+							Type:    `done`,
+							Status:  `error`,
+							Message: runErr.Error(),
+						})
+						return
+					}
+				} else {
+					// 远程也没有：基于当前 HEAD（基线分支）创建全新本地分支
+					if runErr := gitCleanupAndSwitchRunLocalStep(sse, localDir, `创建本地目标分支`, `checkout`, `-b`, branchName); runErr != nil {
+						sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+							Type:    `done`,
+							Status:  `error`,
+							Message: runErr.Error(),
+						})
+						return
+					}
+				}
 			}
 		}
 		currentCmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, `--abbrev-ref`, `HEAD`)
@@ -227,7 +245,7 @@ func GitCleanupAndSwitchBranchByIdStreamClose(sse *gsgin.Sse) {
 
 // GitCurrentBranch 查询目录的git分支
 func GitCurrentBranch(c *gin.Context) {
-	reqMap, sshClient, sse, err := getGitComponent(c)
+	reqMap, sshClient, sse, cmdTimeout, err := getGitComponent(c)
 	if err != nil {
 		gstool.FmtPrintlnLogTime(`[GitCurrentBranch][01] 获取Git组件失败 err=%s`, err.Error())
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -241,7 +259,7 @@ func GitCurrentBranch(c *gin.Context) {
 	}
 	gstool.FmtPrintlnLogTime(`[GitCurrentBranch][03] 开始前置环境处理 code_path=%s ssh_id=%s sse_distribute_id=%s`, codePath, cast.ToString(reqMap[`ssh_id`]), cast.ToString(reqMap[`sse_distribute_id`]))
 	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
-	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gstool.FmtPrintlnLogTime(`[GitCurrentBranch][04] 前置环境处理失败 code_path=%s err=%s`, codePath, prepareErr.Error())
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
@@ -256,8 +274,8 @@ func GitCurrentBranch(c *gin.Context) {
 	command.Echo(`远程分支：`)
 	command.GitShowOriginBranch()
 	commandText := command.GetCommand().ToStr()
-	gstool.FmtPrintlnLogTime(`[GitCurrentBranch][06] 执行当前分支查询命令 timeout=%s command=%s`, (time.Second * 4).String(), commandText)
-	result, runErr := sshClient.RunCommandWait(commandText, time.Second*4)
+	gstool.FmtPrintlnLogTime(`[GitCurrentBranch][06] 执行当前分支查询命令 timeout=%s command=%s`, cmdTimeout.String(), commandText)
+	result, runErr := sshClient.RunCommandWait(commandText, cmdTimeout)
 	if runErr != nil {
 		gstool.FmtPrintlnLogTime(`[GitCurrentBranch][07] 当前分支查询失败 result_len=%d result=%q err=%s`, len(result), result, runErr.Error())
 		sendGitSse(sse, fmt.Sprintf("[ssh] 查询失败 %s", runErr.Error()))
@@ -270,7 +288,7 @@ func GitCurrentBranch(c *gin.Context) {
 
 // GitChangeBranch 切换分支
 func GitChangeBranch(c *gin.Context) {
-	reqMap, sshClient, sse, err := getGitComponent(c)
+	reqMap, sshClient, sse, cmdTimeout, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -286,7 +304,7 @@ func GitChangeBranch(c *gin.Context) {
 		return
 	}
 	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
-	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
@@ -325,7 +343,7 @@ func GitChangeBranch(c *gin.Context) {
 
 // GitChangeBranchRemote 切换远程分支
 func GitChangeBranchRemote(c *gin.Context) {
-	reqMap, sshClient, sse, err := getGitComponent(c)
+	reqMap, sshClient, sse, cmdTimeout, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -341,7 +359,7 @@ func GitChangeBranchRemote(c *gin.Context) {
 		return
 	}
 	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
-	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
@@ -376,7 +394,7 @@ func GitChangeBranchRemote(c *gin.Context) {
 
 // GitPullBranchOrigin 拉取当前分支最新代码
 func GitPullBranchOrigin(c *gin.Context) {
-	reqMap, sshClient, sse, err := getGitComponent(c)
+	reqMap, sshClient, sse, cmdTimeout, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -387,7 +405,7 @@ func GitPullBranchOrigin(c *gin.Context) {
 		return
 	}
 	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
-	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
@@ -418,7 +436,7 @@ func GitPullBranchOrigin(c *gin.Context) {
 
 // GitRemoteBranchList 查询指定仓库的全部远程分支
 func GitRemoteBranchList(c *gin.Context) {
-	reqMap, sshClient, sse, err := getGitComponent(c)
+	reqMap, sshClient, sse, cmdTimeout, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -430,7 +448,7 @@ func GitRemoteBranchList(c *gin.Context) {
 	}
 
 	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
-	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
@@ -453,7 +471,7 @@ func GitRemoteBranchList(c *gin.Context) {
 
 // GitQuickCreateBranch 快捷创建并推送业务分支
 func GitQuickCreateBranch(c *gin.Context) {
-	reqMap, sshClient, sse, err := getGitComponent(c)
+	reqMap, sshClient, sse, cmdTimeout, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -483,7 +501,7 @@ func GitQuickCreateBranch(c *gin.Context) {
 		return
 	}
 	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
-	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
@@ -538,7 +556,7 @@ func CleanBranchName(branchName string) string {
 
 // QueryStatus 查询分支状态
 func QueryStatus(c *gin.Context) {
-	reqMap, sshClient, sse, err := getGitComponent(c)
+	reqMap, sshClient, sse, cmdTimeout, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -549,7 +567,7 @@ func QueryStatus(c *gin.Context) {
 		return
 	}
 	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
-	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
@@ -567,7 +585,7 @@ func QueryStatus(c *gin.Context) {
 
 // GitCommitLog 查询提交日志
 func GitCommitLog(c *gin.Context) {
-	reqMap, sshClient, sse, err := getGitComponent(c)
+	reqMap, sshClient, sse, cmdTimeout, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -578,7 +596,7 @@ func GitCommitLog(c *gin.Context) {
 		return
 	}
 	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
-	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
@@ -919,7 +937,21 @@ const (
 	gitBranchUsageUsedDisplay = "有人使用"
 	// gitBranchUsageNoneDisplay 统一表示无人使用，或本地分支不存在。
 	gitBranchUsageNoneDisplay = "-"
+	// gitCmdTimeoutDefault 默认 Git 命令超时时间，与 p_shell.getCmdTimeout 默认值一致。
+	gitCmdTimeoutDefault = 3 * time.Second
 )
+
+// getGitCmdTimeout 从 SSH 配置读取 cmd_timeout，未配置则返回默认值。
+func getGitCmdTimeout(sshConfig map[string]any) time.Duration {
+	if sshConfig == nil {
+		return gitCmdTimeoutDefault
+	}
+	timeout := cast.ToInt(sshConfig["cmd_timeout"])
+	if timeout <= 0 {
+		return gitCmdTimeoutDefault
+	}
+	return time.Duration(timeout) * time.Second
+}
 
 // getGitOperationTimeout 根据Git操作类型返回对应的命令超时时间
 func getGitOperationTimeout(operation string) time.Duration {
@@ -1036,7 +1068,7 @@ func escapeMarkdownTableCell(value string) string {
 }
 
 func CreateMerge(c *gin.Context) {
-	reqMap, sshClient, sse, err := getGitComponent(c)
+	reqMap, sshClient, sse, cmdTimeout, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -1047,7 +1079,7 @@ func CreateMerge(c *gin.Context) {
 		return
 	}
 	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
-	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
@@ -1062,19 +1094,19 @@ func CreateMerge(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
-func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal, *p_sse.SseShell, error) {
+func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal, *p_sse.SseShell, time.Duration, error) {
 	sseClientId := c.GetHeader(`SseClientId`)
 	gstool.FmtPrintlnLogTime(`[getGitComponent][01] 开始解析Git请求 sse_client_id=%s`, sseClientId)
 	dataMap := make(map[string]interface{})
 	err := gsgin.GinPostBody(c, &dataMap)
 	if err != nil {
 		gstool.FmtPrintlnLogTime(`[getGitComponent][02] 解析body失败 err=%s`, err.Error())
-		return nil, nil, nil, err
+		return nil, nil, nil, 0, err
 	}
 	sshId := dataMap[`ssh_id`]
 	if cast.ToString(sshId) == `` {
 		gstool.FmtPrintlnLogTime(`[getGitComponent][03] 缺少ssh_id req=%#v`, dataMap)
-		return nil, nil, nil, errors.New(`缺少ssh_id参数`)
+		return nil, nil, nil, 0, errors.New(`缺少ssh_id参数`)
 	}
 	sseDistributeId := cast.ToString(dataMap[`sse_distribute_id`])
 	sshConfig, sshConfigErr := common.DbMain.GetSshConfig(sshId)
@@ -1093,7 +1125,7 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal
 	globalMap, err := common.DbMain.AllGlobalMap()
 	if err != nil {
 		gstool.FmtPrintlnLogTime(`[getGitComponent][07] 获取global map失败 err=%s`, err.Error())
-		return nil, nil, nil, err
+		return nil, nil, nil, 0, err
 	}
 	gstool.FmtPrintlnLogTime(`[getGitComponent][08] global map加载完成 count=%d`, len(globalMap))
 	//输出格式化 去除特殊符号
@@ -1150,15 +1182,15 @@ func getGitComponent(c *gin.Context) (map[string]interface{}, *gsssh.SshTerminal
 	sshClient, sshClientErr := component.ShellClient.GetClient(sshConfig, uniqueKey, sse, formatFunc, promptKeywords, promptFunc)
 	if sshClientErr != nil {
 		gstool.FmtPrintlnLogTime(`[getGitComponent][09] 获取SSH客户端失败 unique_key=%s err=%s`, uniqueKey, sshClientErr.Error())
-		return nil, nil, nil, sshClientErr
+		return nil, nil, nil, 0, sshClientErr
 	}
 	gstool.FmtPrintlnLogTime(`[getGitComponent][10] 获取SSH客户端成功 unique_key=%s`, uniqueKey)
-	return dataMap, sshClient, sse, nil
+	return dataMap, sshClient, sse, getGitCmdTimeout(sshConfig), nil
 }
 
 // GitSetSafeLog 设置项目安全
 func GitSetSafeLog(c *gin.Context) {
-	reqMap, sshClient, sse, err := getGitComponent(c)
+	reqMap, sshClient, sse, _, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -1181,7 +1213,7 @@ func GitSetSafeLog(c *gin.Context) {
 
 // GitSaveCredentials 设置项目git自动存储账号密码
 func GitSaveCredentials(c *gin.Context) {
-	reqMap, sshClient, sse, err := getGitComponent(c)
+	reqMap, sshClient, sse, _, err := getGitComponent(c)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -1213,7 +1245,7 @@ func GitSaveCredentials(c *gin.Context) {
 // prepareGitOperationEnv 统一执行 Git 的 SSH 前置环境处理。
 // 先设置 safe.directory，再确保 .git/config 存在 credential.store，避免操作进入交互认证。
 // prepareGitOperationEnv 设置safe.directory并确保credential store已配置（合并为单次SSH命令）
-func prepareGitOperationEnv(sshClient *gsssh.SshTerminal, codePath string) error {
+func prepareGitOperationEnv(sshClient *gsssh.SshTerminal, codePath string, cmdTimeout time.Duration) error {
 	if sshClient == nil {
 		return errors.New(`ssh client 为空`)
 	}
@@ -1226,7 +1258,7 @@ func prepareGitOperationEnv(sshClient *gsssh.SshTerminal, codePath string) error
 	cmd.Cd(codePath)
 	cmd.GitSetSafe(codePath)
 	cmd.SetCommand(`grep -qi '\[credential\]' .git/config 2>/dev/null && grep -qi 'helper.*=.*store' .git/config 2>/dev/null || printf '[credential]\nhelper = store\n' >> .git/config`)
-	_, err := sshClient.RunCommandWait(cmd.GetCommand().ToStr(), 6*time.Second)
+	_, err := sshClient.RunCommandWait(cmd.GetCommand().ToStr(), cmdTimeout)
 	return err
 }
 
@@ -1404,34 +1436,34 @@ func GitUploadFile(c *gin.Context) {
 }
 
 // getGitInfoByGitId 通过 git_id 查询 tbl_git 获取信息，创建 SshTerminal 连接
-func getGitInfoByGitId(gitId string) (map[string]any, *gsssh.SshTerminal, error) {
+func getGitInfoByGitId(gitId string) (map[string]any, *gsssh.SshTerminal, time.Duration, error) {
 	if gitId == `` {
-		return nil, nil, errors.New(`git_id不能为空`)
+		return nil, nil, 0, errors.New(`git_id不能为空`)
 	}
 	gitInfo, queryErr := common.DbMain.Client.QuickQuery(`tbl_git`, `*`, map[string]any{
 		`id`: gitId,
 	}).One()
 	if queryErr != nil || len(gitInfo) == 0 {
-		return nil, nil, fmt.Errorf(`未找到id为 "%s" 的Git配置`, gitId)
+		return nil, nil, 0, fmt.Errorf(`未找到id为 "%s" 的Git配置`, gitId)
 	}
 	codePath := cast.ToString(gitInfo[`code_path`])
 	if codePath == `` {
-		return nil, nil, errors.New(`Git项目未配置code_path`)
+		return nil, nil, 0, errors.New(`Git项目未配置code_path`)
 	}
 	sshId := gitInfo[`ssh_id`]
 	sshConfig, sshConfigErr := common.DbMain.GetSshConfig(sshId)
 	if sshConfigErr != nil {
-		return nil, nil, fmt.Errorf(`获取SSH配置失败: %s`, sshConfigErr.Error())
+		return nil, nil, 0, fmt.Errorf(`获取SSH配置失败: %s`, sshConfigErr.Error())
 	}
 	if len(sshConfig) == 0 {
-		return nil, nil, errors.New(`SSH配置为空`)
+		return nil, nil, 0, errors.New(`SSH配置为空`)
 	}
 	uniqueKey := p_common.TBaseClient.GetCombineKey(sshId, gitId)
 	sshClient, sshErr := component.ShellClient.GetClient(sshConfig, uniqueKey, nil, nil, nil, nil)
 	if sshErr != nil {
-		return nil, nil, fmt.Errorf(`创建SSH连接失败: %s`, sshErr.Error())
+		return nil, nil, 0, fmt.Errorf(`创建SSH连接失败: %s`, sshErr.Error())
 	}
-	return gitInfo, sshClient, nil
+	return gitInfo, sshClient, getGitCmdTimeout(sshConfig), nil
 }
 
 // GitCurrentBranchById 通过 git_id 查询当前分支
@@ -1442,7 +1474,7 @@ func GitCurrentBranchById(c *gin.Context) {
 		return
 	}
 	gitId := cast.ToString(reqMap[`git_id`])
-	gitInfo, sshClient, err := getGitInfoByGitId(gitId)
+	gitInfo, sshClient, cmdTimeout, err := getGitInfoByGitId(gitId)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -1450,7 +1482,7 @@ func GitCurrentBranchById(c *gin.Context) {
 	codePath := cast.ToString(gitInfo[`code_path`])
 	gstool.FmtPrintlnLogTime(`[GitCurrentBranchById] 开始查询远程分支 git_id=%s code_path=%s`, gitId, codePath)
 
-	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gstool.FmtPrintlnLogTime(`[GitCurrentBranchById] 前置环境处理失败 err=%s`, prepareErr.Error())
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
@@ -1462,7 +1494,7 @@ func GitCurrentBranchById(c *gin.Context) {
 	command.GitShowBranch()
 	command.Echo(`远程分支：`)
 	command.GitShowOriginBranch()
-	result, runErr := sshClient.RunCommandWait(command.GetCommand().ToStr(), time.Second*4)
+	result, runErr := sshClient.RunCommandWait(command.GetCommand().ToStr(), cmdTimeout)
 	if runErr != nil {
 		gstool.FmtPrintlnLogTime(`[GitCurrentBranchById] 查询失败 err=%s result=%q`, runErr.Error(), result)
 		gsgin.GinResponseError(c, runErr.Error(), nil)
@@ -1480,7 +1512,7 @@ func GitPull(c *gin.Context) {
 		return
 	}
 	gitId := cast.ToString(reqMap[`git_id`])
-	gitInfo, sshClient, err := getGitInfoByGitId(gitId)
+	gitInfo, sshClient, cmdTimeout, err := getGitInfoByGitId(gitId)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -1488,7 +1520,7 @@ func GitPull(c *gin.Context) {
 	codePath := cast.ToString(gitInfo[`code_path`])
 	gstool.FmtPrintlnLogTime(`[GitPull] 开始拉取代码 git_id=%s code_path=%s`, gitId, codePath)
 
-	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gstool.FmtPrintlnLogTime(`[GitPull] 前置环境处理失败 err=%s`, prepareErr.Error())
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
@@ -1528,7 +1560,7 @@ func GitChangeBranchById(c *gin.Context) {
 		gsgin.GinResponseError(c, `branch_name不能为空`, nil)
 		return
 	}
-	gitInfo, sshClient, err := getGitInfoByGitId(gitId)
+	gitInfo, sshClient, cmdTimeout, err := getGitInfoByGitId(gitId)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -1536,7 +1568,7 @@ func GitChangeBranchById(c *gin.Context) {
 	codePath := cast.ToString(gitInfo[`code_path`])
 	gstool.FmtPrintlnLogTime(`[GitChangeBranchById] 开始切换分支 git_id=%s code_path=%s branch=%s`, gitId, codePath, branchName)
 
-	if prepareErr := prepareGitOperationEnv(sshClient, codePath); prepareErr != nil {
+	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gstool.FmtPrintlnLogTime(`[GitChangeBranchById] 前置环境处理失败 err=%s`, prepareErr.Error())
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
