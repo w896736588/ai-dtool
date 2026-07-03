@@ -172,9 +172,11 @@ func GitCleanupAndSwitchBranchByIdStream(urlValues url.Values, stopC chan int, c
 			}
 		}
 		if branchName != baseBranch {
-			checkCmd := exec.Command(`git`, `-C`, localDir, `show-ref`, `--verify`, `--quiet`, `refs/heads/`+branchName)
-			if err := checkCmd.Run(); err == nil {
-				if runErr := gitCleanupAndSwitchRunLocalStep(sse, localDir, `删除本地旧分支`, `branch`, `-D`, branchName); runErr != nil {
+			// 检查本地是否已有目标分支
+			localCheckCmd := exec.Command(`git`, `-C`, localDir, `show-ref`, `--verify`, `--quiet`, `refs/heads/`+branchName)
+			if localCheckCmd.Run() == nil {
+				// 本地已有目标分支：直接切换
+				if runErr := gitCleanupAndSwitchRunLocalStep(sse, localDir, `切换到目标分支`, `checkout`, branchName); runErr != nil {
 					sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
 						Type:    `done`,
 						Status:  `error`,
@@ -182,14 +184,30 @@ func GitCleanupAndSwitchBranchByIdStream(urlValues url.Values, stopC chan int, c
 					})
 					return
 				}
-			}
-			if runErr := gitCleanupAndSwitchRunLocalStep(sse, localDir, `创建并切换目标分支`, `checkout`, `-b`, branchName); runErr != nil {
-				sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
-					Type:    `done`,
-					Status:  `error`,
-					Message: runErr.Error(),
-				})
-				return
+			} else {
+				// 本地没有目标分支：检查远程是否有
+				remoteCheckCmd := exec.Command(`git`, `-C`, localDir, `show-ref`, `--verify`, `--quiet`, `refs/remotes/origin/`+branchName)
+				if remoteCheckCmd.Run() == nil {
+					// 远程有该分支：签出远程内容
+					if runErr := gitCleanupAndSwitchRunLocalStep(sse, localDir, `签出远程分支`, `checkout`, `--no-track`, `-b`, branchName, `origin/`+branchName); runErr != nil {
+						sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+							Type:    `done`,
+							Status:  `error`,
+							Message: runErr.Error(),
+						})
+						return
+					}
+				} else {
+					// 远程也没有：基于当前 HEAD（基线分支）创建全新本地分支
+					if runErr := gitCleanupAndSwitchRunLocalStep(sse, localDir, `创建本地目标分支`, `checkout`, `-b`, branchName); runErr != nil {
+						sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+							Type:    `done`,
+							Status:  `error`,
+							Message: runErr.Error(),
+						})
+						return
+					}
+				}
 			}
 		}
 		currentCmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, `--abbrev-ref`, `HEAD`)

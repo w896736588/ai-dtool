@@ -35,6 +35,10 @@ function CreateCollectionEnv(data , callBack){
     base.BasePost('/api/CreateCollectionEnv', data , callBack)
 }
 
+function DeleteCollectionEnv(data , callBack){
+    base.BasePost('/api/DeleteCollectionEnv', data , callBack)
+}
+
 function CollectionEnvs(data , callBack){
     base.BasePost('/api/CollectionEnvs', data , callBack)
 }
@@ -72,6 +76,10 @@ function ApiRun(data , callBack){
 
 function CreateCollectionEnvItem(data , callBack){
     base.BasePost('/api/CreateCollectionEnvItem', data , callBack)
+}
+
+function DeleteCollectionEnvItem(data , callBack){
+    base.BasePost('/api/DeleteCollectionEnvItem', data , callBack)
 }
 
 function CollectionEnvItems(data , callBack){
@@ -143,8 +151,10 @@ export default {
     ApisDetailByIds,
     ApiRun,
     CreateCollectionEnv,
+    DeleteCollectionEnv,
     CollectionEnvs,
     CreateCollectionEnvItem,
+    DeleteCollectionEnvItem,
     CollectionEnvItems,
     DeleteCollection,
     DeleteApi,

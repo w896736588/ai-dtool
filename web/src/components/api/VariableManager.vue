@@ -184,6 +184,14 @@ export default {
 
     saveVariable(variable) {
       let _that = this
+      // 检测同环境下变量名是否重复
+      let dup = _that.variableList.find(item => {
+        return item.key.trim() === variable.key.trim() && parseInt(item.id) !== parseInt(variable.id)
+      })
+      if (dup) {
+        _that.$message.error(`变量名 "${variable.key.trim()}" 已存在`)
+        return
+      }
       Api.CreateCollectionEnvItem({
         collection_id: _that.env.collection_id,
         env_id : _that.env.id,
@@ -219,14 +227,30 @@ export default {
     },
 
     deleteVariable(variable, index) {
+      let _that = this
       this.$confirm(`确定要删除变量 "${variable.key}" 吗？`, '确认删除', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
       }).then(() => {
-        this.variableList.splice(index, 1)
-        this.emitUpdate()
-        this.$message.success('删除成功')
+        // 如果变量已有后端ID，调用后端删除接口
+        if (parseInt(variable.id) > 0) {
+          Api.DeleteCollectionEnvItem({
+            id: variable.id
+          }, function (res) {
+            if (res.ErrCode !== 0) {
+              _that.$message.error(res.ErrMsg)
+              return
+            }
+            _that.variableList.splice(index, 1)
+            _that.emitUpdate()
+            _that.$message.success('删除成功')
+          })
+        } else {
+          _that.variableList.splice(index, 1)
+          _that.emitUpdate()
+          _that.$message.success('删除成功')
+        }
       })
     },
 

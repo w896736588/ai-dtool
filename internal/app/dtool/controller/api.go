@@ -607,16 +607,66 @@ func ApiCollectionEnvItems(c *gin.Context) {
 	})
 }
 
+func ApiDeleteCollectionEnv(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	envId := cast.ToInt(dataMap[`id`])
+	if envId == 0 {
+		gsgin.GinResponseError(c, `请选择环境`, nil)
+		return
+	}
+	// 删除环境关联的所有变量项
+	_, _ = common.DbMain.Client.QuickDelete(`tbl_api_env_item`, map[string]any{
+		`env_id`: envId,
+	}).Exec()
+	// 删除环境
+	_, _ = common.DbMain.Client.QuickDelete(`tbl_api_env`, map[string]any{
+		`id`: envId,
+	}).Exec()
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+func ApiDeleteCollectionEnvItem(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	itemId := cast.ToInt(dataMap[`id`])
+	if itemId == 0 {
+		gsgin.GinResponseError(c, `请选择变量`, nil)
+		return
+	}
+	_, _ = common.DbMain.Client.QuickDelete(`tbl_api_env_item`, map[string]any{
+		`id`: itemId,
+	}).Exec()
+	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
 func ApiCreateCollectionEnvItem(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	var id any
-	if cast.ToInt(dataMap[`env_id`]) == 0 || cast.ToInt(dataMap[`collection_id`]) == 0 {
+	collectionId := cast.ToInt(dataMap[`collection_id`])
+	envId := cast.ToInt(dataMap[`env_id`])
+	key := cast.ToString(dataMap[`key`])
+	itemId := cast.ToInt(dataMap[`id`])
+	if envId == 0 || collectionId == 0 {
 		gsgin.GinResponseError(c, `请选择集合和环境`, nil)
 		return
 	}
+	if key == `` {
+		gsgin.GinResponseError(c, `变量名不能为空`, nil)
+		return
+	}
+	// 检测同环境下变量名是否重复
+	exist, _ := common.DbMain.Client.QueryBySql(
+		`select id from tbl_api_env_item where collection_id = ? and env_id = ? and key = ? and id != ?`,
+		collectionId, envId, key, itemId,
+	).All()
+	if len(exist) > 0 {
+		gsgin.GinResponseError(c, `变量名 "`+key+`" 已存在`, nil)
+		return
+	}
 	updateData := gstool.MapTakeKeys(&dataMap, []string{`collection_id`, `env_id`, `desc`, `key`, `value`})
-	if cast.ToInt(dataMap[`id`]) == 0 {
+	if itemId == 0 {
 		updateData[`create_time`] = time.Now().Unix()
 		updateData[`update_time`] = time.Now().Unix()
 		newId, createErr := common.DbMain.Client.QuickCreate(`tbl_api_env_item`, updateData).Exec()
@@ -629,9 +679,9 @@ func ApiCreateCollectionEnvItem(c *gin.Context) {
 		updateData[`update_time`] = time.Now().Unix()
 		_, _ = common.DbMain.Client.QuickUpdate(`tbl_api_env_item`,
 			map[string]any{
-				`id`: dataMap[`id`],
+				`id`: itemId,
 			}, updateData).Exec()
-		id = dataMap[`id`]
+		id = itemId
 	}
 	info, _ := common.DbMain.Client.QuickQuery(`tbl_api_env_item`, `*`, map[string]any{
 		`id`: id,

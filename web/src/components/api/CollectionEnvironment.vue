@@ -271,16 +271,28 @@ export default {
     },
 
     handleDeleteEnv(env) {
+      let _that = this
       this.$confirm(`确定要删除环境 "${env.name}" 吗？`, '确认删除', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
       }).then(() => {
-        const index = this.environmentList.findIndex(item => item.id === env.id)
-        if (index !== -1) {
-          this.environmentList.splice(index, 1)
-          this.$message.success('删除成功')
-        }
+        _that.loading = true
+        Api.DeleteCollectionEnv({
+          id: env.id,
+          collection_id: env.collection_id
+        }, function (res) {
+          _that.loading = false
+          if (res.ErrCode !== 0) {
+            _that.$message.error(res.ErrMsg)
+            return
+          }
+          const index = _that.environmentList.findIndex(item => item.id === env.id)
+          if (index !== -1) {
+            _that.environmentList.splice(index, 1)
+          }
+          _that.$message.success('删除成功')
+        })
       })
     },
 
