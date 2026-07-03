@@ -17,7 +17,7 @@ require (
 	github.com/spf13/cast v1.10.0
 	github.com/spf13/viper v1.21.0
 	github.com/tidwall/gjson v1.18.0
-	github.com/w896736588/go-tool v1.1.1
+	github.com/w896736588/go-tool v1.1.2
 	github.com/yuin/goldmark v1.8.2
 	golang.org/x/crypto v0.49.0
 	golang.org/x/net v0.52.0
