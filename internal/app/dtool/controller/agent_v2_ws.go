@@ -5,12 +5,14 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -158,9 +160,20 @@ func AgentV2WS(c *gin.Context) {
 		}()
 	}
 
+	// 打开事件持久化文件（追加模式，跨 WS 连接保留历史）
+	var eventsFile *os.File
+	if sessionDir != "" && sessionId > 0 {
+		os.MkdirAll(sessionDir, 0755)
+		eventsFilePath := filepath.Join(sessionDir, "dtool_events.jsonl")
+		eventsFile, _ = os.OpenFile(eventsFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	}
+
 	defer func() {
 		close(procCtx)
 		adapter.Stop()
+		if eventsFile != nil {
+			eventsFile.Close()
+		}
 	}()
 
 	if err := adapter.Start(c.Request.Context(), startCfg); err != nil {
@@ -223,6 +236,36 @@ func AgentV2WS(c *gin.Context) {
 			switch wsMsg.Type {
 			case "command":
 				if wsMsg.Command != nil {
+					// 持久化用户 prompt 事件 + 更新会话标题
+					cmdMap, ok := wsMsg.Command.(map[string]interface{})
+					if ok {
+						cmdType := cast.ToString(cmdMap["type"])
+						if cmdType == "prompt" {
+							userMsg := cast.ToString(cmdMap["message"])
+							if userMsg != "" {
+								// 持久化到 JSONL
+								if eventsFile != nil {
+									entry, _ := json.Marshal(map[string]interface{}{
+										"type":    "user_text",
+										"message": userMsg,
+									})
+									fmt.Fprintf(eventsFile, "%s\n", entry)
+								}
+								// 更新会话标题为最新用户提问（截断到 50 字符）
+								title := userMsg
+								if len(title) > 50 {
+									title = title[:50] + "..."
+								}
+								if sessionId > 0 {
+									now := time.Now().Unix()
+									common.DbMain.Client.ExecBySql(
+										`UPDATE tbl_agent_v2_session SET name = ?, updated_at = ? WHERE id = ?`,
+										title, now, sessionId,
+									).Exec()
+								}
+							}
+						}
+					}
 					cmdBytes, _ := json.Marshal(wsMsg.Command)
 					if err := adapter.SendCommand(cmdBytes); err != nil {
 						log.Printf("[agent-v2-ws] send command error: %v", err)
@@ -254,6 +297,11 @@ func AgentV2WS(c *gin.Context) {
 			if err := json.Unmarshal(evt.Raw, &rawEvt); err != nil {
 				log.Printf("[agent-v2-ws] parse event error: %v raw=%s", err, string(evt.Raw))
 				continue
+			}
+
+			// 持久化 Pi 事件到 JSONL 文件
+			if eventsFile != nil {
+				fmt.Fprintf(eventsFile, "%s\n", string(evt.Raw))
 			}
 
 			// 根据事件类型补充元数据

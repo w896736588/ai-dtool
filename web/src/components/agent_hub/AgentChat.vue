@@ -450,8 +450,10 @@ export default {
       Base.BasePost('/api/AgentV2SessionMessages', { session_id: sessionId }, (res) => {
         // 防止竞态：仅当请求的会话仍是当前选中会话时才设置消息
         if (this.currentSessionId !== sessionId) return
-        if (res.ErrCode === 0 && res.Data && res.Data.messages && res.Data.messages.length > 0) {
-          this.messages = res.Data.messages
+        if (res.ErrCode === 0 && res.Data && res.Data.messages) {
+          if (res.Data.messages.length > 0) {
+            this.messages = res.Data.messages
+          }
           this._historyLoaded = true
           this.scrollToBottom()
         }
@@ -677,6 +679,8 @@ export default {
           this.scrollToBottom()
           // 自动获取 token 统计
           this.requestTokenStats()
+          // 刷新会话列表以获取最新标题
+          this.loadSessions()
           break
         }
 
