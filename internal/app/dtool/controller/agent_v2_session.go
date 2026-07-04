@@ -60,22 +60,30 @@ func AgentV2SessionCreate(c *gin.Context) {
 		name = time.Now().Format("2006-01-02 15:04:05")
 	}
 
-	// 从 agent config 中获取 session_dir 配置
-	sessionDir := computeSessionDirFromAgent(req.AgentId, 0)
-
+	// 先插入会话（session_dir 留空，后续根据实际 sessionId 更新）
 	lastId, err := common.DbMain.Client.InsertBySql(
 		`INSERT INTO tbl_agent_v2_session (agent_id, workspace_id, name, session_dir, status, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, 'active', ?, ?)`,
-		req.AgentId, req.WorkspaceId, name, sessionDir, now, now,
+		 VALUES (?, ?, ?, '', 'active', ?, ?)`,
+		req.AgentId, req.WorkspaceId, name, now, now,
 	).Exec()
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 
-	// sessionDir 在 WS 连接时由 agent_v2_ws.go 根据实际 sessionId 更新
+	newId := cast.ToInt(lastId)
+
+	// 根据实际 sessionId 计算正确的 session_dir 并立即更新
+	sessionDir := computeSessionDirFromAgent(req.AgentId, newId)
+	if sessionDir != "" {
+		common.DbMain.Client.ExecBySql(
+			`UPDATE tbl_agent_v2_session SET session_dir = ? WHERE id = ?`,
+			sessionDir, newId,
+		).Exec()
+	}
+
 	gsgin.GinResponseSuccess(c, "", gin.H{
-		"id":          cast.ToInt(lastId),
+		"id":          newId,
 		"name":        name,
 		"session_dir": sessionDir,
 	})

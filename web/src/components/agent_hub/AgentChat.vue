@@ -200,14 +200,14 @@
       </div>
 
       <!-- 输入区域 -->
-      <footer class="chat-input" v-if="currentSession">
+      <footer class="chat-input" v-if="currentSession || pendingSession">
         <div class="chat-input__wrapper">
           <el-input
             v-model="inputText"
             type="textarea"
             :rows="2"
             placeholder="输入消息，Enter 发送，Shift+Enter 换行..."
-            :disabled="isStreaming || !wsConnected"
+            :disabled="isStreaming || (!!currentSessionId && !wsConnected)"
             @keydown.enter.exact.prevent="sendMessage"
             resize="none"
           />
@@ -281,6 +281,8 @@ export default {
       agentId: 0,
       agentName: '',
       agentConfig: null,
+
+      pendingSession: false, // 新建对话标记：为 true 时不创建 DB 记录，等用户发消息后再创建
 
       workspaces: [],
       currentWorkspaceId: 0,
@@ -384,32 +386,33 @@ export default {
     },
     createSession() {
       if (!this.currentWorkspaceId) return
-      Base.BasePost('/api/AgentV2SessionCreate', {
-        agent_id: this.agentId,
-        workspace_id: this.currentWorkspaceId,
-        name: new Date().toLocaleString()
-      }, (res) => {
-        const newId = (res.ErrCode === 0 && res.Data) ? res.Data.id : null
-        Base.BasePost('/api/AgentV2SessionList', { agent_id: this.agentId }, (listRes) => {
-          this.sessions = (listRes.ErrCode === 0 && listRes.Data) ? (listRes.Data.list || []) : []
-          if (newId) {
-            const s = this.sessions.find(s => s.id === newId)
-            if (s) this.selectSession(s)
-          }
-        })
-      })
+      // 仅打开空白聊天区，不创建 DB 记录、不连 WebSocket
+      // 等用户输入第一条消息时才真正创建会话
+      this.disconnectWS()
+      this.currentSessionId = 0
+      this.currentSession = null
+      this.pendingSession = true
+      this.messages = []
+      this._historyLoaded = false
+      this.streamingText = ''
+      this.streamingThinking = ''
+      this.pendingToolCalls = {}
+      this.tokenStats = null
+      this.compacting = false
     },
     selectSession(session) {
       if (this.currentSessionId === session.id) return
       this.disconnectWS()
       this.currentSessionId = session.id
       this.currentSession = session
+      this.pendingSession = false
       this.messages = []
       this.streamingText = ''
       this.streamingThinking = ''
       this.pendingToolCalls = {}
       this.tokenStats = null
       this.compacting = false
+      this._historyLoaded = false // 标记：HTTP API 是否已加载了历史消息
       this.loadSessionMessages()
       this.connectWS()
     },
@@ -443,9 +446,13 @@ export default {
       })
     },
     loadSessionMessages() {
-      Base.BasePost('/api/AgentV2SessionMessages', { session_id: this.currentSessionId }, (res) => {
+      const sessionId = this.currentSessionId
+      Base.BasePost('/api/AgentV2SessionMessages', { session_id: sessionId }, (res) => {
+        // 防止竞态：仅当请求的会话仍是当前选中会话时才设置消息
+        if (this.currentSessionId !== sessionId) return
         if (res.ErrCode === 0 && res.Data && res.Data.messages && res.Data.messages.length > 0) {
           this.messages = res.Data.messages
+          this._historyLoaded = true
           this.scrollToBottom()
         }
       })
@@ -476,14 +483,24 @@ export default {
     // ========== WebSocket ==========
     connectWS() {
       if (!this.currentSessionId) return
-      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const host = location.host
-      const token = localStorage.getItem('Unikey') || ''
+      const apiHost = Base.GetAbsoluteApiHost() // dev: http://localhost:17170, prod: current origin
+      const protocol = apiHost.startsWith('https') ? 'wss:' : 'ws:'
+      const host = apiHost.replace(/^https?:\/\//, '')
+      const token = Base.GetSafeToken() || ''
       const url = `${protocol}//${host}/api/AgentV2WS?agent_id=${this.agentId}&session_id=${this.currentSessionId}&token=${token}`
 
       this.ws = new WebSocket(url)
       this.ws.onopen = () => {
         this.wsConnected = true
+        // 懒创建模式：发送暂存的首条消息
+        if (this._pendingFirstMessage) {
+          const msg = this._pendingFirstMessage
+          this._pendingFirstMessage = ''
+          this.sendWS({
+            type: 'command',
+            command: { type: 'prompt', message: msg }
+          })
+        }
       }
       this.ws.onmessage = (event) => {
         try {
@@ -511,6 +528,9 @@ export default {
       this.isStreaming = false
     },
     handleWSMessage(data) {
+      // 忽略来自已断开/旧 WebSocket 的消息（连接被关闭后仍可能收到缓冲消息）
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+
       if (data.type === 'event' && data.event) {
         this.handlePiEvent(data.event)
       } else if (data.type === 'state') {
@@ -519,9 +539,11 @@ export default {
           this.selectedModel = data.state.model
         }
       } else if (data.type === 'history' && data.messages) {
-        // 加载历史消息
-        this.messages = data.messages
-        this.scrollToBottom()
+        // 如果 HTTP API 已加载历史消息，不覆盖（避免重复造成闪烁）
+        if (!this._historyLoaded) {
+          this.messages = data.messages
+          this.scrollToBottom()
+        }
       } else if (data.type === 'error') {
         this.$message.error(data.error)
       }
@@ -562,10 +584,28 @@ export default {
         }
 
         // ===== 消息生命周期 =====
-        case 'message_start':
-        case 'message_end':
+        case 'message_start': {
+          const msg = event.message
+          if (msg && msg.role === 'user') {
+            this.scrollToBottom()
+          }
+          break
+        }
+        case 'message_end': {
+          const msg = event.message
+          if (msg && msg.role === 'assistant') {
+            const text = this.extractPiContent(msg.content)
+            const errorMsg = msg.errorMessage || ''
+            this.messages.push({
+              role: 'assistant',
+              content: text || (errorMsg ? '**Error:** ' + errorMsg : ''),
+              thinking: this.streamingThinking
+            })
+            this.streamingThinking = ''
+          }
           this.scrollToBottom()
           break
+        }
 
         // ===== Turn 生命周期 =====
         case 'turn_start':
@@ -613,11 +653,11 @@ export default {
           this.streamingThinking = ''
           this.pendingToolCalls = {}
           this.compacting = false
-          // 当前输入作为用户消息加入列表
-          if (this.inputText) {
-            this.messages.push({ role: 'user', content: this.inputText })
+          // 将最后发送的消息展示为用户消息
+          if (this._lastUserMessage) {
+            this.messages.push({ role: 'user', content: this._lastUserMessage })
+            this._lastUserMessage = ''
           }
-          this.inputText = ''
           break
         }
         case 'agent_end': {
@@ -671,6 +711,10 @@ export default {
           }
           break
         }
+
+        default:
+          console.log('[AgentChat] unhandled pi event type:', evtType, event)
+          break
       }
     },
 
@@ -731,13 +775,54 @@ export default {
     // ========== 发送消息 ==========
     sendMessage() {
       const text = this.inputText.trim()
-      if (!text || this.isStreaming || !this.wsConnected) return
+      if (!text || this.isStreaming) return
+
+      // 保存最后发送的消息文本（agent_start 时用于展示用户消息）
+      this._lastUserMessage = text
+      this.inputText = ''
+
+      // 懒创建模式：先暂存消息，等会话创建+WS 连接成功后再发送
+      if (this.pendingSession && !this.currentSessionId) {
+        this._pendingFirstMessage = text
+        this.createRealSessionAndSend()
+        return
+      }
+
+      if (!this.wsConnected) return
 
       this.sendWS({
         type: 'command',
         command: { type: 'prompt', message: text }
       })
-      this.inputText = ''
+    },
+    createRealSessionAndSend() {
+      Base.BasePost('/api/AgentV2SessionCreate', {
+        agent_id: this.agentId,
+        workspace_id: this.currentWorkspaceId,
+        name: new Date().toLocaleString()
+      }, (res) => {
+        const newId = (res.ErrCode === 0 && res.Data) ? res.Data.id : null
+        if (!newId) {
+          this.$message.error('创建会话失败')
+          this.pendingSession = false
+          return
+        }
+        // 添加到会话列表
+        const newSession = {
+          id: newId,
+          agent_id: this.agentId,
+          workspace_id: this.currentWorkspaceId,
+          name: new Date().toLocaleString(),
+          updated_at: Math.floor(Date.now() / 1000)
+        }
+        this.sessions.unshift(newSession)
+        this.currentSessionId = newId
+        this.currentSession = newSession
+        this.pendingSession = false
+        this._historyLoaded = false
+        // 建立 WebSocket（onopen 中会发送 _pendingFirstMessage）
+        this.connectWS()
+      })
     },
     sendWS(data) {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -773,12 +858,55 @@ export default {
         return html
       }
       let content = msg.content || ''
-      if (msg.thinking) {
+
+      // 检测模型 API 错误，友好格式化（避免显示原始 JSON）
+      const apiError = this.parseApiError(content)
+      if (apiError) {
+        content = this.renderApiError(apiError)
+      } else if (msg.thinking) {
         content = '<details class="thinking-details"><summary>思考过程</summary>' + this.renderMarkdown(msg.thinking) + '</details>\n' + this.renderMarkdown(content)
       } else {
         content = this.renderMarkdown(content)
       }
       return content
+    },
+    // 解析模型 API 返回的错误（如 403 forbidden 等）
+    parseApiError(text) {
+      if (!text) return null
+      // 匹配 Pi Agent 错误输出格式: "Error: <status> <json>"
+      const m = text.match(/^Error:\s*(\d{3})\s*(\{[\s\S]*\})/)
+      if (!m) return null
+      try {
+        const body = JSON.parse(m[2])
+        const status = parseInt(m[1])
+        const detail = (body.error && body.error.message) || body.message || ''
+        return { status, detail }
+      } catch (e) {
+        // JSON 解析失败，返回基本错误信息
+        return null
+      }
+    },
+    // 渲染 API 错误为友好的 HTML
+    renderApiError(err) {
+      const statusLabel = {
+        400: '请求参数错误',
+        401: '认证失败',
+        403: '请求被拒绝',
+        404: '资源不存在',
+        429: '请求过于频繁',
+        500: '服务器内部错误',
+        502: '网关错误',
+        503: '服务暂不可用'
+      }
+      const label = statusLabel[err.status] || 'HTTP ' + err.status + ' 错误'
+
+      let html = '<div class="api-error">'
+      html += '<div class="api-error__header"><span class="api-error__icon">⚠</span>'
+      html += '<span class="api-error__code">' + label + ' (' + err.status + ')</span></div>'
+      html += '<div class="api-error__message">' + this.escapeHtml(err.detail || '') + '</div>'
+      html += '<div class="api-error__hint">请检查 API Key、模型配置或网络连接</div>'
+      html += '</div>'
+      return html
     },
     renderMarkdown(text) {
       if (!text) return ''
@@ -790,6 +918,13 @@ export default {
     },
     escapeHtml(text) {
       return text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    },
+    extractPiContent(content) {
+      if (!content || !Array.isArray(content)) return ''
+      return content
+        .filter(block => block.type === 'text')
+        .map(block => block.text || '')
+        .join('')
     },
     formatJSON(obj) {
       if (!obj) return ''
@@ -944,6 +1079,22 @@ export default {
 }
 
 .tool-calls { margin-top: 8px; }
+.api-error {
+  background: #fef0f0; border: 1px solid #fde2e2; border-radius: 10px;
+  padding: 14px 16px; margin-top: 4px;
+}
+.api-error__header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+}
+.api-error__icon { font-size: 18px; }
+.api-error__code { font-weight: 600; font-size: 14px; color: #f56c6c; }
+.api-error__message {
+  color: #909399; font-size: 13px; line-height: 1.6; margin-bottom: 8px;
+  white-space: pre-wrap; word-break: break-all;
+}
+.api-error__hint {
+  font-size: 12px; color: #c0c4cc; border-top: 1px solid #fde2e2; padding-top: 8px;
+}
 .tool-call {
   background: #f8f9fc; border: 1px solid #e4e7ed; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
 }

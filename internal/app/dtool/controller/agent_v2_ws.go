@@ -61,8 +61,8 @@ func computeSessionDir(agentCfgSessionDir string, agentId, sessionId int) string
 	if agentCfgSessionDir != "" {
 		return filepath.Join(agentCfgSessionDir, "s"+cast.ToString(sessionId))
 	}
-	// 默认目录：data/agent_sessions/{agent_id}/{session_id}
-	dir := filepath.Join("data", "agent_sessions", cast.ToString(agentId), cast.ToString(sessionId))
+	// 默认目录：data/agent_sessions/{agent_id}/s{session_id}（与 computeSessionDirFromAgent 保持一致）
+	dir := filepath.Join("data", "agent_sessions", cast.ToString(agentId), "s"+cast.ToString(sessionId))
 	os.MkdirAll(dir, 0755)
 	return dir
 }
@@ -252,11 +252,13 @@ func AgentV2WS(c *gin.Context) {
 
 			var rawEvt map[string]interface{}
 			if err := json.Unmarshal(evt.Raw, &rawEvt); err != nil {
+				log.Printf("[agent-v2-ws] parse event error: %v raw=%s", err, string(evt.Raw))
 				continue
 			}
 
 			// 根据事件类型补充元数据
 			evtType := cast.ToString(rawEvt["type"])
+			log.Printf("[agent-v2-ws] pi event → ws, type=%s raw=%s", evtType, string(evt.Raw))
 
 			// 对 response 类型事件，标记命令名方便前端过滤
 			if evtType == "response" {

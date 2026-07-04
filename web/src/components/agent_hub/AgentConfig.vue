@@ -23,15 +23,16 @@
             <el-select v-model="piConfig.provider" style="width:100%">
               <el-option label="Anthropic (Claude)" value="anthropic" />
               <el-option label="OpenAI (GPT-4o)" value="openai" />
+              <el-option label="DeepSeek" value="deepseek" />
               <el-option label="Google (Gemini)" value="google" />
             </el-select>
-            <div class="field-hint">LLM 服务提供商</div>
+            <div class="field-hint">LLM 服务提供商，选择 DeepSeek 直接使用官方接口无需填写模型 API 地址</div>
           </el-form-item>
           <el-form-item label="默认模型">
             <el-input v-model="piConfig.model" placeholder="claude-sonnet-4-20250514" />
             <div class="field-hint">启动 Pi 时使用的默认模型 ID</div>
           </el-form-item>
-          <el-form-item label="模型 API 地址">
+          <el-form-item label="模型 API 地址" v-show="piConfig.provider !== 'deepseek'">
             <el-input v-model="piConfig.model_addr" placeholder="留空使用默认地址，例如 https://api.example.com/v1" />
             <div class="field-hint">自定义 LLM API 端点，适用于代理或兼容接口（对应 --model-addr 参数）</div>
           </el-form-item>
@@ -259,6 +260,13 @@ export default {
       workspaceForm: { name: '', path: '' }
     }
   },
+  watch: {
+    'piConfig.provider'(val) {
+      if (val === 'deepseek') {
+        this.piConfig.model_addr = ''
+      }
+    }
+  },
   mounted() {
     this.agentId = parseInt(this.$route.query.agent_id) || 0
     if (!this.agentId) {
@@ -321,7 +329,7 @@ export default {
       const configObj = {
         provider: this.piConfig.provider,
         model: this.piConfig.model,
-        model_addr: this.piConfig.model_addr,
+        model_addr: this.piConfig.provider === 'deepseek' ? '' : this.piConfig.model_addr,
         api_key: this.piConfig.api_key,
         models: this.modelList,
         session_dir: this.piConfig.session_dir,

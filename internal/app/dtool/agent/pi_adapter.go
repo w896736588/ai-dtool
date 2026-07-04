@@ -1,10 +1,12 @@
 package agent
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os/exec"
 	"sync"
 )
@@ -56,7 +58,14 @@ func (a *PiAdapter) Start(ctx context.Context, config AgentStartConfig) error {
 	for k, v := range config.Env {
 		a.cmd.Env = append(a.cmd.Env, k+"="+v)
 	}
-	// 设置 API Key 环境变量（根据 provider 映射对应的 env var）
+	// 设置自定义 API 地址 → provider 对应的 _BASE_URL 环境变量
+	if config.ModelAddr != "" {
+		envKey := apiBaseURLEnvName(config.Provider)
+		if envKey != "" {
+			a.cmd.Env = append(a.cmd.Env, envKey+"="+config.ModelAddr)
+		}
+	}
+	// 设置 API Key 环境变量
 	if config.ApiKey != "" {
 		envKey := apiKeyEnvName(config.Provider)
 		if envKey != "" {
@@ -75,6 +84,12 @@ func (a *PiAdapter) Start(ctx context.Context, config AgentStartConfig) error {
 		return fmt.Errorf("create stdout pipe: %w", err)
 	}
 
+	// 捕获 stderr（必须在 Start 前调用）
+	stderr, err := a.cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("create stderr pipe: %w", err)
+	}
+
 	if err := a.cmd.Start(); err != nil {
 		return fmt.Errorf("start pi process: %w", err)
 	}
@@ -83,13 +98,28 @@ func (a *PiAdapter) Start(ctx context.Context, config AgentStartConfig) error {
 	a.done = make(chan struct{})
 	a.events = make(chan AgentEvent, 256)
 
-	go ReadJSONLLines(stdout, a.events, a.done)
+	// stderr → 日志
 	go func() {
-		a.cmd.Wait()
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			log.Printf("[pi-adapter] stderr: %s", scanner.Text())
+		}
+	}()
+
+	// 监控进程退出
+	go func() {
+		err := a.cmd.Wait()
 		a.mu.Lock()
 		a.running = false
 		a.mu.Unlock()
+		if err != nil {
+			log.Printf("[pi-adapter] pi process exited with error: %v", err)
+		} else {
+			log.Printf("[pi-adapter] pi process exited normally")
+		}
 	}()
+
+	go ReadJSONLLines(stdout, a.events, a.done)
 
 	return nil
 }
@@ -166,6 +196,24 @@ func apiKeyEnvName(provider string) string {
 		return "OPENAI_API_KEY"
 	case "google":
 		return "GOOGLE_API_KEY"
+	case "deepseek":
+		return "DEEPSEEK_API_KEY"
+	default:
+		return ""
+	}
+}
+
+// apiBaseURLEnvName 根据 provider 返回对应的 Base URL 环境变量名
+func apiBaseURLEnvName(provider string) string {
+	switch provider {
+	case "anthropic":
+		return "ANTHROPIC_BASE_URL"
+	case "openai":
+		return "OPENAI_BASE_URL"
+	case "google":
+		return "GOOGLE_BASE_URL"
+	case "deepseek":
+		return "DEEPSEEK_BASE_URL"
 	default:
 		return ""
 	}
