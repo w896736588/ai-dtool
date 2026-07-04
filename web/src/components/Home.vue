@@ -62,6 +62,10 @@
           <el-icon><Connection /></el-icon>
           <span>Api Manage</span>
         </el-menu-item>
+        <el-menu-item index="/AgentHub" class="menu-item-agent-hub">
+          <el-icon><Comment /></el-icon>
+          <span>Agent</span>
+        </el-menu-item>
         <el-menu-item index="/AgentCli" class="menu-item-agent-cli" :class="{ 'menu-item-agent-cli--alert': agentCliUnreadVisible }">
           <el-icon><Monitor /></el-icon>
           <span>Agent Cli</span>
@@ -537,7 +541,11 @@ export default {
   },
   watch: {
     '$route.path'(newPath) {
-      this.menuName = newPath || '/Dashboard'
+      if (newPath && (newPath.startsWith('/AgentChat') || newPath.startsWith('/AgentConfig'))) {
+        this.menuName = '/AgentHub'
+      } else {
+        this.menuName = newPath || '/Dashboard'
+      }
     },
   },
   created() {

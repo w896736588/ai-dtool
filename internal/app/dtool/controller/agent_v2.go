@@ -1,0 +1,324 @@
+package controller
+
+import (
+	"dev_tool/internal/app/dtool/agent"
+	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/define"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gsgin"
+)
+
+// ======================== Agent V2 CRUD ========================
+
+// AgentV2List 列出所有 Agent V2 配置
+func AgentV2List(c *gin.Context) {
+	rows, err := common.DbMain.Client.QueryBySql(
+		`SELECT * FROM tbl_agent_v2 ORDER BY id`,
+	).All()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	items := make([]define.AgentV2StatusItem, 0, len(rows))
+	for _, row := range rows {
+		item := define.AgentV2StatusItem{
+			AgentV2Item: define.AgentV2Item{
+				Id:        cast.ToInt(row["id"]),
+				Name:      cast.ToString(row["name"]),
+				Type:      cast.ToString(row["type"]),
+				Config:    cast.ToString(row["config"]),
+				Enabled:   cast.ToInt(row["enabled"]),
+				CreatedAt: cast.ToInt64(row["created_at"]),
+				UpdatedAt: cast.ToInt64(row["updated_at"]),
+			},
+		}
+
+		// 检测是否已安装
+		adapter := getAdapterForType(item.Type)
+		item.Installed = adapter.IsInstalled()
+		item.InstallHint = adapter.InstallHint()
+
+		// 统计会话数
+		sessionRows, _ := common.DbMain.Client.QueryBySql(
+			`SELECT COUNT(*) as cnt FROM tbl_agent_v2_session WHERE agent_id = ?`, item.Id,
+		).All()
+		if len(sessionRows) > 0 {
+			item.SessionCount = cast.ToInt(sessionRows[0]["cnt"])
+		}
+
+		items = append(items, item)
+	}
+
+	gsgin.GinResponseSuccess(c, "", gin.H{"list": items})
+}
+
+// AgentV2Save 新增/编辑 Agent V2 配置
+func AgentV2Save(c *gin.Context) {
+	var req define.AgentV2SaveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+
+	now := time.Now().Unix()
+	if req.Id > 0 {
+		_, err := common.DbMain.Client.ExecBySql(
+			`UPDATE tbl_agent_v2 SET name = ?, type = ?, config = ?, updated_at = ? WHERE id = ?`,
+			req.Name, req.Type, req.Config, now, req.Id,
+		).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+		gsgin.GinResponseSuccess(c, "", nil)
+	} else {
+		name := req.Name
+		if name == "" {
+			name = req.Type
+		}
+		lastId, err := common.DbMain.Client.InsertBySql(
+			`INSERT INTO tbl_agent_v2 (name, type, config, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			name, req.Type, req.Config, 0, now, now,
+		).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+		gsgin.GinResponseSuccess(c, "", gin.H{"id": lastId})
+	}
+}
+
+// AgentV2Delete 删除 Agent V2 配置
+func AgentV2Delete(c *gin.Context) {
+	var req struct {
+		Id int `json:"id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+
+	if req.Id <= 0 {
+		gsgin.GinResponseError(c, "id 不能为空", nil)
+		return
+	}
+
+	// 删除关联的工作空间、会话、Skills
+	common.DbMain.Client.ExecBySql(`DELETE FROM tbl_agent_v2_workspace WHERE agent_id = ?`, req.Id).Exec()
+	common.DbMain.Client.ExecBySql(`DELETE FROM tbl_agent_v2_session WHERE agent_id = ?`, req.Id).Exec()
+	common.DbMain.Client.ExecBySql(`DELETE FROM tbl_agent_v2_skill WHERE agent_id = ?`, req.Id).Exec()
+
+	_, err := common.DbMain.Client.ExecBySql(
+		`DELETE FROM tbl_agent_v2 WHERE id = ?`, req.Id,
+	).Exec()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// AgentV2CheckInstall 检测 Agent 是否已安装
+func AgentV2CheckInstall(c *gin.Context) {
+	var req struct {
+		Type string `json:"type"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+
+	adapter := getAdapterForType(req.Type)
+	gsgin.GinResponseSuccess(c, "", gin.H{
+		"installed":    adapter.IsInstalled(),
+		"install_hint": adapter.InstallHint(),
+	})
+}
+
+// ======================== 工作空间管理 ========================
+
+// AgentV2WorkspaceList 列出工作空间
+func AgentV2WorkspaceList(c *gin.Context) {
+	var req struct {
+		AgentId int `json:"agent_id"`
+	}
+	c.ShouldBindJSON(&req)
+
+	rows, err := common.DbMain.Client.QueryBySql(
+		`SELECT * FROM tbl_agent_v2_workspace WHERE agent_id = ? ORDER BY id`, req.AgentId,
+	).All()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	items := make([]define.AgentV2Workspace, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, define.AgentV2Workspace{
+			Id:        cast.ToInt(row["id"]),
+			AgentId:   cast.ToInt(row["agent_id"]),
+			Name:      cast.ToString(row["name"]),
+			Path:      cast.ToString(row["path"]),
+			CreatedAt: cast.ToInt64(row["created_at"]),
+		})
+	}
+
+	gsgin.GinResponseSuccess(c, "", gin.H{"list": items})
+}
+
+// AgentV2WorkspaceSave 新增/编辑工作空间
+func AgentV2WorkspaceSave(c *gin.Context) {
+	var req define.AgentV2WorkspaceSaveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+
+	now := time.Now().Unix()
+	if req.Id > 0 {
+		_, err := common.DbMain.Client.ExecBySql(
+			`UPDATE tbl_agent_v2_workspace SET name = ?, path = ? WHERE id = ?`,
+			req.Name, req.Path, req.Id,
+		).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+	} else {
+		_, err := common.DbMain.Client.InsertBySql(
+			`INSERT INTO tbl_agent_v2_workspace (agent_id, name, path, created_at) VALUES (?, ?, ?, ?)`,
+			req.AgentId, req.Name, req.Path, now,
+		).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+	}
+
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// AgentV2WorkspaceDelete 删除工作空间
+func AgentV2WorkspaceDelete(c *gin.Context) {
+	var req struct {
+		Id int `json:"id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+
+	_, err := common.DbMain.Client.ExecBySql(
+		`DELETE FROM tbl_agent_v2_workspace WHERE id = ?`, req.Id,
+	).Exec()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// ======================== Skills/Tools 管理 ========================
+
+// AgentV2SkillList 列出 Skills
+func AgentV2SkillList(c *gin.Context) {
+	var req struct {
+		AgentId int `json:"agent_id"`
+	}
+	c.ShouldBindJSON(&req)
+
+	rows, err := common.DbMain.Client.QueryBySql(
+		`SELECT * FROM tbl_agent_v2_skill WHERE agent_id = ? ORDER BY id`, req.AgentId,
+	).All()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	items := make([]define.AgentV2Skill, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, define.AgentV2Skill{
+			Id:        cast.ToInt(row["id"]),
+			AgentId:   cast.ToInt(row["agent_id"]),
+			Name:      cast.ToString(row["name"]),
+			SkillType: cast.ToString(row["skill_type"]),
+			Config:    cast.ToString(row["config"]),
+			Enabled:   cast.ToInt(row["enabled"]),
+			CreatedAt: cast.ToInt64(row["created_at"]),
+			UpdatedAt: cast.ToInt64(row["updated_at"]),
+		})
+	}
+
+	gsgin.GinResponseSuccess(c, "", gin.H{"list": items})
+}
+
+// AgentV2SkillSave 新增/编辑 Skill
+func AgentV2SkillSave(c *gin.Context) {
+	var req define.AgentV2SkillSaveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+
+	now := time.Now().Unix()
+	if req.Id > 0 {
+		_, err := common.DbMain.Client.ExecBySql(
+			`UPDATE tbl_agent_v2_skill SET name = ?, skill_type = ?, config = ?, enabled = ?, updated_at = ? WHERE id = ?`,
+			req.Name, req.SkillType, req.Config, req.Enabled, now, req.Id,
+		).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+	} else {
+		_, err := common.DbMain.Client.InsertBySql(
+			`INSERT INTO tbl_agent_v2_skill (agent_id, name, skill_type, config, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			req.AgentId, req.Name, req.SkillType, req.Config, req.Enabled, now, now,
+		).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+	}
+
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// AgentV2SkillDelete 删除 Skill
+func AgentV2SkillDelete(c *gin.Context) {
+	var req struct {
+		Id int `json:"id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+
+	_, err := common.DbMain.Client.ExecBySql(
+		`DELETE FROM tbl_agent_v2_skill WHERE id = ?`, req.Id,
+	).Exec()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// ======================== 辅助函数 ========================
+
+// getAdapterForType 根据类型获取适配器实例
+func getAdapterForType(agentType string) agent.AgentAdapter {
+	switch agentType {
+	case define.AgentV2TypePi:
+		return agent.NewPiAdapter()
+	default:
+		return agent.NewPiAdapter()
+	}
+}
