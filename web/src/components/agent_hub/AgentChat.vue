@@ -582,6 +582,9 @@ export default {
           const msg = event.message
           if (msg && msg.role === 'user') {
             this.scrollToBottom()
+          } else if (msg && msg.role === 'assistant') {
+            // 新 assistant 消息开始时清理上一轮 tool_execution 残留
+            this.pendingToolCalls = {}
           }
           break
         }
