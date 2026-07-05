@@ -399,6 +399,7 @@ export default {
       this.pendingToolCalls = {}
       this.tokenStats = null
       this.compacting = false
+      this._assistantPushedInTurn = false
     },
     selectSession(session) {
       if (this.currentSessionId === session.id) return
@@ -412,6 +413,7 @@ export default {
       this.pendingToolCalls = {}
       this.tokenStats = null
       this.compacting = false
+      this._assistantPushedInTurn = false
       this._historyLoaded = false // 标记：HTTP API 是否已加载了历史消息
       this.loadSessionMessages()
       this.connectWS()
@@ -568,19 +570,9 @@ export default {
           } else if (deltaType === 'text_start' || deltaType === 'text_end' ||
                      deltaType === 'thinking_start' || deltaType === 'thinking_end') {
             this.scrollToBottom()
-          } else if (deltaType === 'toolcall_delta') {
-            const tc = msgEvt.toolCall || {}
-            if (tc.id && !this.pendingToolCalls[tc.id]) {
-              this.pendingToolCalls[tc.id] = {
-                id: tc.id, name: tc.name || 'unknown',
-                status: 'running', input: '', output: ''
-              }
-            }
-            if (tc.id && tc.arguments) {
-              try { this.pendingToolCalls[tc.id].input = JSON.parse(tc.arguments) } catch(e) {
-                this.pendingToolCalls[tc.id].input = tc.arguments
-              }
-            }
+          } else if (deltaType === 'toolcall_start' || deltaType === 'toolcall_delta' || deltaType === 'toolcall_end') {
+            // 支持 Anthropic (msgEvt.toolCall) 和 DeepSeek/OpenAI (partial.content) 两种格式
+            this.handleToolCallInMessageUpdate(msgEvt)
           }
           break
         }
@@ -598,12 +590,20 @@ export default {
           if (msg && msg.role === 'assistant') {
             const text = this.extractPiContent(msg.content)
             const errorMsg = msg.errorMessage || ''
-            this.messages.push({
-              role: 'assistant',
-              content: text || (errorMsg ? '**Error:** ' + errorMsg : ''),
-              thinking: this.streamingThinking
-            })
-            this.streamingThinking = ''
+            // 仅在有实际内容时才 push（与后端 reconstructMessagesFromPiEvents 一致）
+            if (text || errorMsg || this.streamingThinking || Object.keys(this.pendingToolCalls).length > 0) {
+              const toolCalls = Object.values(this.pendingToolCalls)
+              this.messages.push({
+                role: 'assistant',
+                content: text || (errorMsg ? '**Error:** ' + errorMsg : ''),
+                thinking: this.streamingThinking,
+                toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+              })
+              this.streamingThinking = ''
+              this.streamingText = ''
+              this.pendingToolCalls = {}
+              this._assistantPushedInTurn = true
+            }
           }
           this.scrollToBottom()
           break
@@ -644,6 +644,8 @@ export default {
           if (tcId && this.pendingToolCalls[tcId]) {
             this.pendingToolCalls[tcId].status = 'done'
             this.pendingToolCalls[tcId].output = event.output || event.result || this.pendingToolCalls[tcId].output || ''
+            // 同步更新已推送消息中的 toolCalls（让最终消息也显示执行结果）
+            this.syncToolCallToMessages(tcId)
           }
           break
         }
@@ -655,6 +657,7 @@ export default {
           this.streamingThinking = ''
           this.pendingToolCalls = {}
           this.compacting = false
+          this._assistantPushedInTurn = false
           // 将最后发送的消息展示为用户消息
           if (this._lastUserMessage) {
             this.messages.push({ role: 'user', content: this._lastUserMessage })
@@ -664,8 +667,9 @@ export default {
         }
         case 'agent_end': {
           this.isStreaming = false
-          const toolCalls = Object.values(this.pendingToolCalls)
-          if (this.streamingText || toolCalls.length > 0) {
+          // 仅在 message_end 未推送时才兜底推送（与后端 needPushAssistant 逻辑一致）
+          if (!this._assistantPushedInTurn && (this.streamingText || Object.values(this.pendingToolCalls).length > 0)) {
+            const toolCalls = Object.values(this.pendingToolCalls)
             this.messages.push({
               role: 'assistant',
               content: this.streamingText,
@@ -676,6 +680,7 @@ export default {
           this.streamingText = ''
           this.streamingThinking = ''
           this.pendingToolCalls = {}
+          this._assistantPushedInTurn = false
           this.scrollToBottom()
           // 自动获取 token 统计
           this.requestTokenStats()
@@ -772,6 +777,67 @@ export default {
         // notify / setStatus / setWidget / setTitle / set_editor_text 无需响应
         if (method === 'notify') {
           this.$message.info(event.message || event.title || '')
+        }
+      }
+    },
+
+    // ========== 工具调用辅助方法 ==========
+    handleToolCallInMessageUpdate(msgEvt) {
+      // 格式1: Anthropic — msgEvt.toolCall 直接携带工具调用信息
+      const tcDirect = msgEvt.toolCall
+      if (tcDirect && tcDirect.id) {
+        if (!this.pendingToolCalls[tcDirect.id]) {
+          this.pendingToolCalls[tcDirect.id] = { id: tcDirect.id, name: tcDirect.name || 'unknown', status: 'running', input: '', output: '' }
+        }
+        if (tcDirect.arguments) {
+          try { this.pendingToolCalls[tcDirect.id].input = JSON.parse(tcDirect.arguments) } catch(e) {
+            this.pendingToolCalls[tcDirect.id].input = tcDirect.arguments
+          }
+        }
+      }
+      // 格式2: DeepSeek/OpenAI — partial.content 数组中的 toolCall 块
+      const partialContent = (msgEvt.partial && msgEvt.partial.content) || []
+      for (const block of partialContent) {
+        if (block.type === 'toolCall' && block.id) {
+          if (!this.pendingToolCalls[block.id]) {
+            this.pendingToolCalls[block.id] = { id: block.id, name: block.name || 'unknown', status: 'running', input: '', output: '' }
+          }
+          // arguments（完整参数对象或 JSON 字符串）
+          const args = block.arguments
+          if (args !== undefined && args !== null) {
+            if (typeof args === 'string' && args) {
+              try { this.pendingToolCalls[block.id].input = JSON.parse(args) } catch(e) { this.pendingToolCalls[block.id].input = args }
+            } else if (typeof args === 'object' && (Array.isArray(args) || Object.keys(args).length > 0)) {
+              this.pendingToolCalls[block.id].input = args
+            }
+          }
+          // partialArgs（流式参数字符串，可能是不完整 JSON）
+          if (block.partialArgs && (!args || (typeof args === 'object' && Object.keys(args).length === 0))) {
+            try { this.pendingToolCalls[block.id].input = JSON.parse(block.partialArgs) } catch(e) {
+              this.pendingToolCalls[block.id].input = block.partialArgs
+            }
+          }
+          // toolcall_end 时标记参数收集完毕
+          if (msgEvt.type === 'toolcall_end' && this.pendingToolCalls[block.id]) {
+            this.pendingToolCalls[block.id]._inputFinalized = true
+          }
+        }
+      }
+    },
+
+    syncToolCallToMessages(tcId) {
+      // 从后往前找到最近的包含此 toolCall 的助手消息，同步 status/output
+      const tc = this.pendingToolCalls[tcId]
+      if (!tc) return
+      for (let i = this.messages.length - 1; i >= 0; i--) {
+        const msg = this.messages[i]
+        if (msg.role === 'assistant' && msg.toolCalls) {
+          const msgTc = msg.toolCalls.find(t => t.id === tcId)
+          if (msgTc) {
+            msgTc.status = tc.status
+            msgTc.output = tc.output
+            break
+          }
         }
       }
     },
