@@ -670,10 +670,11 @@ func computeSessionStats(sessionDir string, modelsCtx map[string]int) map[string
 				continue
 			}
 
-			// 提取当前使用的模型名
+			// 提取当前使用的模型名和 provider
 			if modelName := cast.ToString(msg["model"]); modelName != "" {
 				currentModel = modelName
 			}
+			provider := cast.ToString(msg["provider"])
 
 			// 只处理 assistant 角色（包含真实 usage 数据）
 			if cast.ToString(msg["role"]) != "assistant" {
@@ -688,12 +689,20 @@ func computeSessionStats(sessionDir string, modelsCtx map[string]int) map[string
 			inputTokens := cast.ToFloat64(usage["input"])
 			outputTokens := cast.ToFloat64(usage["output"])
 			cacheRead := cast.ToFloat64(usage["cacheRead"])
+			cacheWrite := cast.ToFloat64(usage["cacheWrite"])
 
 			totalInputTokens += inputTokens
 			totalOutputTokens += outputTokens
 			totalCachedTokens += cacheRead
-			if inputTokens > 0 {
-				latestInputTokens = int(inputTokens)
+			// DeepSeek 的 usage.input 只计未缓存部分，需加上 cacheRead/cacheWrite 才是真实上下文用量
+			var contextUsed int
+			if strings.EqualFold(provider, "deepseek") {
+				contextUsed = int(inputTokens + cacheRead + cacheWrite)
+			} else {
+				contextUsed = int(inputTokens)
+			}
+			if contextUsed > 0 {
+				latestInputTokens = contextUsed
 			}
 
 			if costMap, ok := usage["cost"].(map[string]interface{}); ok {
