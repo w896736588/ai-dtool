@@ -156,7 +156,8 @@ func SetAiModelAdd(c *gin.Context) {
 		return
 	}
 	updateData[`uri`] = normalizeAiModelURI(cast.ToString(updateData[`uri`]))
-	if cast.ToString(updateData[`uri`]) == `` {
+	// 新建时 URI 必填，编辑时允许为空
+	if cast.ToInt(dataMap[`id`]) == 0 && cast.ToString(updateData[`uri`]) == `` {
 		gsgin.GinResponseError(c, `模型 URI 不能为空`, nil)
 		return
 	}

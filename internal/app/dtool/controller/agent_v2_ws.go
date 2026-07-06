@@ -83,10 +83,11 @@ func cleanupStaleSessions(maxAge time.Duration) {
 }
 
 // parsePiConfig 解析 Agent config JSON 中的 Pi 配置
-// 支持两种模式：
-// 1. 旧模式：provider + model + model_addr + api_key（字符串形式）
+// 支持三种模式（优先级从高到低）：
+// 1. 运行时覆盖：前端传入 runtimeModel（格式: provider_type/model），查全局表获取连接参数
 // 2. 新模式：provider_id + model_id（从全局 tbl_ai_provider / tbl_ai_model 查询）
-func parsePiConfig(configStr string) (provider, model, modelAddr, apiKey, sessionDir, extraArgs string) {
+// 3. 旧模式：provider + model + model_addr + api_key（字符串形式）
+func parsePiConfig(configStr string, runtimeModel string) (provider, model, modelAddr, apiKey, sessionDir, extraArgs string) {
 	if configStr == "" {
 		return "", "", "", "", "", ""
 	}
@@ -103,6 +104,41 @@ func parsePiConfig(configStr string) (provider, model, modelAddr, apiKey, sessio
 	}
 	if err := json.Unmarshal([]byte(configStr), &cfg); err != nil {
 		return "", "", "", "", "", ""
+	}
+
+	sessionDir = cfg.SessionDir
+	extraArgs = cfg.ExtraArgs
+
+	// 优先级 1：运行时模型覆盖（前端对话框选择的模型）
+	if runtimeModel != "" {
+		idx := strings.LastIndex(runtimeModel, "/")
+		if idx >= 0 {
+			pType := runtimeModel[:idx]
+			mName := runtimeModel[idx+1:]
+
+			providerRow, err := common.DbMain.Client.QueryBySql(
+				`SELECT id, base_url, api_key FROM tbl_ai_provider WHERE provider_type = ? AND status = 1`,
+				pType,
+			).One()
+			if err == nil && len(providerRow) > 0 {
+				providerId := cast.ToInt(providerRow["id"])
+				modelRow, err := common.DbMain.Client.QueryBySql(
+					`SELECT model, uri FROM tbl_ai_model WHERE model = ? AND provider_id = ? AND status = 1`,
+					mName, providerId,
+				).One()
+				if err == nil && len(modelRow) > 0 {
+					provider = pType
+					model = cast.ToString(modelRow["model"])
+					modelAddr = cast.ToString(providerRow["base_url"])
+					apiKey = cast.ToString(providerRow["api_key"])
+					if uri := cast.ToString(modelRow["uri"]); uri != "" {
+						modelAddr = strings.TrimRight(modelAddr, "/") + uri
+					}
+					return
+				}
+			}
+		}
+		log.Printf("[agent-v2/ws] parsePiConfig: runtime model '%s' not found, falling back to agent config", runtimeModel)
 	}
 
 	// 新模式：从全局表查询 provider + model 信息
@@ -139,7 +175,7 @@ func parsePiConfig(configStr string) (provider, model, modelAddr, apiKey, sessio
 		}
 	}
 
-	return cfg.Provider, cfg.Model, cfg.ModelAddr, cfg.ApiKey, cfg.SessionDir, cfg.ExtraArgs
+	return cfg.Provider, cfg.Model, cfg.ModelAddr, cfg.ApiKey, sessionDir, extraArgs
 }
 
 // computeSessionDir 计算会话持久化目录
@@ -202,9 +238,10 @@ func AgentV2WS(c *gin.Context) {
 		}
 	}
 
-	// 解析 Pi 配置
+	// 解析 Pi 配置（前端传入的 model 参数优先于 Agent 默认配置）
 	configStr := cast.ToString(agentRow["config"])
-	provider, model, modelAddr, apiKey, cfgSessionDir, extraArgs := parsePiConfig(configStr)
+	runtimeModel := c.Query("model")
+	provider, model, modelAddr, apiKey, cfgSessionDir, extraArgs := parsePiConfig(configStr, runtimeModel)
 	sessionDir := computeSessionDir(cfgSessionDir, agentId, sessionId)
 
 	// 解析额外参数

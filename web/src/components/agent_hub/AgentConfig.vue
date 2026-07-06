@@ -175,10 +175,11 @@
                         {{ fmtCtx(row.context_size) }}
                       </template>
                     </el-table-column>
-                    <el-table-column label="操作" width="140">
+                    <el-table-column label="操作" width="200">
                       <template #default="{ row }">
                         <el-button text size="small" @click="showEditModel(row)">编辑</el-button>
                         <el-button text size="small" type="danger" @click="deleteModel(row)">删除</el-button>
+                        <el-button text size="small" type="warning" :loading="testingModelId === row.id" @click="testModel(row)">测试</el-button>
                       </template>
                     </el-table-column>
                   </el-table>
@@ -348,7 +349,7 @@
           <div class="field-hint">留空则根据 Provider 类型自动推断</div>
         </el-form-item>
         <el-form-item label="完整地址">
-          <div class="url-preview">{{ buildUrl(getProviderBaseUrl(modelForm.provider_id), modelForm.uri || defaultUriForProvider(modelForm.provider_id)) || '-' }}</div>
+          <div class="url-preview">{{ buildUrl(getProviderBaseUrl(modelForm.provider_id), editingModelId ? modelForm.uri : (modelForm.uri || defaultUriForProvider(modelForm.provider_id))) || '-' }}</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -431,6 +432,7 @@ export default {
       showModelDlg: false,
       editingModelId: 0,
       modelForm: { provider_id: 0, name: '', model_type: 'llm', model: '', uri: '', context_size: 128000 },
+      testingModelId: 0,  // 正在测试的模型 ID
 
       skills: [],
       showSkillDialog: false,
@@ -608,7 +610,8 @@ export default {
         this.$message.warning('请填写模型标识')
         return
       }
-      const uri = this.modelForm.uri || this.defaultUriForProvider(this.modelForm.provider_id)
+      // 新建时 URI 为空才给默认值，编辑时原样保存
+      const uri = this.editingModelId ? this.modelForm.uri : (this.modelForm.uri || this.defaultUriForProvider(this.modelForm.provider_id))
       aiSet.AiModelAdd({
         id: this.editingModelId || undefined,
         provider_id: this.modelForm.provider_id,
@@ -635,11 +638,38 @@ export default {
         })
       }).catch(() => {})
     },
+    testModel(m) {
+      const provider = this.fullProviders.find(p => p.id === m.provider_id)
+      const providerName = provider ? provider.name : 'Unknown'
+      this.testingModelId = m.id
+      Base.BasePost('/api/AgentV2ModelTest', {
+        provider_id: m.provider_id,
+        model_id: m.id
+      }, (res) => {
+        this.testingModelId = 0
+        if (res.ErrCode === 0) {
+          const resp = res.Data.response || ''
+          this.$notify({
+            title: `测试通过 — ${providerName} / ${m.name || m.model}`,
+            message: resp,
+            type: 'success',
+            duration: 5000
+          })
+        } else {
+          this.$notify({
+            title: `测试失败 — ${providerName} / ${m.name || m.model}`,
+            message: res.ErrMsg || '未知错误',
+            type: 'error',
+            duration: 8000
+          })
+        }
+      })
+    },
     buildUrl(base, uri) {
       const cleanBase = (base || '').replace(/\/+$/, '')
-      const cleanUri = (uri || '').startsWith('/') ? uri : '/' + (uri || '')
-      if (!cleanBase) return cleanUri || ''
-      if (!cleanUri) return cleanBase
+      if (!cleanBase) return uri || ''
+      if (!uri) return cleanBase
+      const cleanUri = uri.startsWith('/') ? uri : '/' + uri
       return cleanBase + cleanUri
     },
     getProviderBaseUrl(pid) {

@@ -42,9 +42,6 @@ func (a *PiAdapter) Start(ctx context.Context, config AgentStartConfig) error {
 	if config.Model != "" {
 		args = append(args, "--model", config.Model)
 	}
-	if config.ModelAddr != "" {
-		args = append(args, "--model-addr", config.ModelAddr)
-	}
 	if config.SessionDir != "" {
 		args = append(args, "--session-dir", config.SessionDir)
 	}

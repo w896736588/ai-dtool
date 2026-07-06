@@ -663,6 +663,7 @@ func agentV2Router(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/AgentV2BuiltinToolList`, controller.AgentV2BuiltinToolList)
 	// 模型配置（复用 tbl_ai_provider + tbl_ai_model）
 	tGin.GinPost(`/api/AgentV2ProviderModels`, controller.AgentV2ProviderModels)
+	tGin.GinPost(`/api/AgentV2ModelTest`, controller.AgentV2ModelTest)
 	// WebSocket 实时通道
 	tGin.GinGet(`/api/AgentV2WS`, controller.AgentV2WS)
 }

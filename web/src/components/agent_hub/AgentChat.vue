@@ -626,7 +626,8 @@ export default {
       const protocol = apiHost.startsWith('https') ? 'wss:' : 'ws:'
       const host = apiHost.replace(/^https?:\/\//, '')
       const token = Base.GetSafeToken() || ''
-      const url = `${protocol}//${host}/api/AgentV2WS?agent_id=${this.agentId}&session_id=${this.currentSessionId}&token=${token}`
+      const modelParam = this.selectedModel ? `&model=${encodeURIComponent(this.selectedModel)}` : ''
+      const url = `${protocol}//${host}/api/AgentV2WS?agent_id=${this.agentId}&session_id=${this.currentSessionId}&token=${token}${modelParam}`
 
       this.ws = new WebSocket(url)
       this.ws.onopen = () => {
