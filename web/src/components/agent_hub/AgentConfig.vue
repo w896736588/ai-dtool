@@ -124,6 +124,8 @@
         <el-tab-pane label="Tools" name="tools">
           <div class="skills-toolbar">
             <el-button type="primary" size="small" @click="openSkillAdd('tool')">添加 Tool</el-button>
+            <el-divider direction="vertical" />
+            <el-button size="small" @click="openBuiltinDialog">内置工具</el-button>
             <span class="skills-hint">自定义工具需要编写 TypeScript 脚本，保存在 .pi/extensions/ 目录下</span>
           </div>
           <el-table :data="toolList" class="config-table" empty-text="暂无 Tools">
@@ -276,6 +278,40 @@
         <el-button type="primary" @click="saveWorkspace">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 内置工具对话框 -->
+    <el-dialog v-model="showBuiltinDialog" title="Dtool 内置 Tools" width="640px" :close-on-click-modal="false">
+      <el-table :data="builtinTools" max-height="400" empty-text="暂无内置工具，请在 internal/app/dtool/data/ 目录下添加">
+        <el-table-column prop="name" label="名称" width="120" />
+        <el-table-column label="来源" width="120">
+          <template #default="{ row }">
+            <el-tag size="small" type="info">data/{{ row.dir_name }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="description" label="描述" min-width="180">
+          <template #default="{ row }">
+            <span style="color:#909399;font-size:13px">{{ row.description }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="参数" width="70">
+          <template #default="{ row }">
+            <span style="color:#909399;font-size:12px">{{ (row.parameters || []).length }} 个</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }">
+            <el-button text size="small" type="primary" @click="installBuiltinTool(row)">安装</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div class="field-hint" style="margin-top: 12px;">
+        内置工具存放在 <code>internal/app/dtool/data/</code> 目录下，每个子目录对应一个工具。
+        <a href="https://pi-doc.com/docs/latest/extensions.html" target="_blank" style="color:#409eff">Pi Extensions 文档</a>
+      </div>
+      <template #footer>
+        <el-button @click="showBuiltinDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -309,7 +345,10 @@ export default {
 
       workspaces: [],
       showWorkspaceDialog: false,
-      workspaceForm: { name: '', path: '' }
+      workspaceForm: { name: '', path: '' },
+
+      builtinTools: [],
+      showBuiltinDialog: false
     }
   },
   computed: {
@@ -580,6 +619,39 @@ export default {
     deleteSkill(row) {
       this.$confirm('确定删除此 ' + (row.skill_type === 'tool' ? 'Tool' : 'Skill') + '？', '提示', { type: 'warning' }).then(() => {
         Base.BasePost('/api/AgentV2SkillDelete', { id: row.id }, () => { this.loadSkills() })
+      }).catch(() => {})
+    },
+
+    // 内置工具
+    openBuiltinDialog() {
+      this.showBuiltinDialog = true
+      this.loadBuiltinTools()
+    },
+    loadBuiltinTools() {
+      Base.BasePost('/api/AgentV2BuiltinToolList', {}, (res) => {
+        this.builtinTools = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
+      })
+    },
+    installBuiltinTool(tool) {
+      this.$confirm(`安装内置工具「${tool.name}」？安装后可在 Tools 列表中查看和编辑。`, '确认安装', { type: 'info' }).then(() => {
+        const configObj = {
+          description: tool.description,
+          tool_name: tool.tool_name,
+          tool_description: tool.tool_description,
+          parameters: tool.parameters || [],
+          script_content: tool.script_content || ''
+        }
+        Base.BasePost('/api/AgentV2SkillSave', {
+          agent_id: this.agentId,
+          name: tool.name,
+          skill_type: 'tool',
+          config: JSON.stringify(configObj),
+          enabled: 1
+        }, () => {
+          this.$message.success('工具已安装')
+          this.showBuiltinDialog = false
+          this.loadSkills()
+        })
       }).catch(() => {})
     },
 

@@ -4,6 +4,10 @@ import (
 	"dev_tool/internal/app/dtool/agent"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -309,6 +313,71 @@ func AgentV2SkillDelete(c *gin.Context) {
 	}
 
 	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// ======================== 内置工具列表 ========================
+
+// AgentV2BuiltinToolList 读取 data/ 目录下的内置工具
+func AgentV2BuiltinToolList(c *gin.Context) {
+	dataDir := "internal/app/dtool/data"
+
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		gsgin.GinResponseError(c, "读取内置工具目录失败: "+err.Error(), nil)
+		return
+	}
+
+	tools := make([]define.AgentV2BuiltinTool, 0)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		dirPath := filepath.Join(dataDir, entry.Name())
+		metaPath := filepath.Join(dirPath, "meta.json")
+		metaData, err := os.ReadFile(metaPath)
+		if err != nil {
+			continue // 跳过没有 meta.json 的目录
+		}
+
+		var meta struct {
+			Name            string                        `json:"name"`
+			ToolName        string                        `json:"tool_name"`
+			Description     string                        `json:"description"`
+			ToolDescription string                        `json:"tool_description"`
+			Parameters      []define.AgentV2ToolParameter `json:"parameters"`
+		}
+		if err := json.Unmarshal(metaData, &meta); err != nil {
+			continue
+		}
+
+		// 读取脚本文件（优先 index.ts，否则第一个 .ts 文件）
+		scriptContent := ""
+		tsFiles, _ := filepath.Glob(filepath.Join(dirPath, "*.ts"))
+		if len(tsFiles) > 0 {
+			for _, f := range tsFiles {
+				if filepath.Base(f) == "index.ts" || strings.HasSuffix(f, ".ts") {
+					data, err := os.ReadFile(f)
+					if err == nil {
+						scriptContent = string(data)
+						break
+					}
+				}
+			}
+		}
+
+		tools = append(tools, define.AgentV2BuiltinTool{
+			DirName:         entry.Name(),
+			Name:            meta.Name,
+			ToolName:        meta.ToolName,
+			Description:     meta.Description,
+			ToolDescription: meta.ToolDescription,
+			Parameters:      meta.Parameters,
+			ScriptContent:   scriptContent,
+		})
+	}
+
+	gsgin.GinResponseSuccess(c, "", gin.H{"list": tools})
 }
 
 // ======================== 辅助函数 ========================

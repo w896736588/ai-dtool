@@ -104,6 +104,25 @@ type AgentV2SkillSaveRequest struct {
 	Enabled   int    `json:"enabled"`
 }
 
+// AgentV2BuiltinTool 内置工具定义
+type AgentV2BuiltinTool struct {
+	DirName         string                 `json:"dir_name"`
+	Name            string                 `json:"name"`
+	ToolName        string                 `json:"tool_name"`
+	Description     string                 `json:"description"`
+	ToolDescription string                 `json:"tool_description"`
+	Parameters      []AgentV2ToolParameter `json:"parameters"`
+	ScriptContent   string                 `json:"script_content"`
+}
+
+// AgentV2ToolParameter 工具参数定义
+type AgentV2ToolParameter struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+	Required    bool   `json:"required"`
+}
+
 // AgentV2WSMessage WebSocket 通信消息
 type AgentV2WSMessage struct {
 	Type    string      `json:"type"`              // command / event / state / error

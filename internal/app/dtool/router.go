@@ -659,6 +659,8 @@ func agentV2Router(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/AgentV2SkillList`, controller.AgentV2SkillList)
 	tGin.GinPost(`/api/AgentV2SkillSave`, controller.AgentV2SkillSave)
 	tGin.GinPost(`/api/AgentV2SkillDelete`, controller.AgentV2SkillDelete)
+	// 内置工具
+	tGin.GinPost(`/api/AgentV2BuiltinToolList`, controller.AgentV2BuiltinToolList)
 	// WebSocket 实时通道
 	tGin.GinGet(`/api/AgentV2WS`, controller.AgentV2WS)
 }
