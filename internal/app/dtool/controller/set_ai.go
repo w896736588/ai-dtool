@@ -29,6 +29,12 @@ order by id desc`
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	// 脱敏 API Key（列表接口不应返回明文密钥）
+	for i := range list {
+		if apiKey, ok := list[i][`api_key`].(string); ok && apiKey != `` {
+			list[i][`api_key`] = maskApiKey(apiKey)
+		}
+	}
 	gsgin.GinResponseSuccess(c, ``, list)
 }
 
@@ -48,8 +54,8 @@ func SetAiProviderAdd(c *gin.Context) {
 	if requestFormat == `` {
 		requestFormat = `openai`
 	}
-	if requestFormat != `openai` && requestFormat != `anthropic` && requestFormat != `deepseek` {
-		gsgin.GinResponseError(c, `请求格式仅支持 openai、anthropic 或 deepseek`, nil)
+	if requestFormat != `openai` && requestFormat != `anthropic` && requestFormat != `deepseek` && requestFormat != `google` {
+		gsgin.GinResponseError(c, `请求格式仅支持 openai、anthropic、deepseek 或 google`, nil)
 		return
 	}
 	updateData[`base_url`] = normalizeAiProviderBaseURL(cast.ToString(updateData[`base_url`]))
@@ -140,7 +146,7 @@ where m.status = 1 and p.status = 1`
 func SetAiModelAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`provider_id`, `name`, `model`, `uri`, `model_type`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`provider_id`, `name`, `model`, `uri`, `model_type`, `context_size`})
 	if cast.ToInt(updateData[`provider_id`]) == 0 {
 		gsgin.GinResponseError(c, `请选择服务商`, nil)
 		return
@@ -341,6 +347,11 @@ func logTestRequestToDb(
 
 	// 异步写入日志
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("[set_ai] logTestRequestToDb panic: %v\n", r)
+			}
+		}()
 		if common.DbLog != nil && common.DbLog.Client != nil {
 			_, _ = common.DbLog.Client.QuickCreate(`tbl_ai_request_log`, logData).Exec()
 		}

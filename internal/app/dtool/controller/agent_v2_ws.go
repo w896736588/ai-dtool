@@ -19,6 +19,10 @@ import (
 	"github.com/spf13/cast"
 )
 
+func init() {
+	initSessionCleanup()
+}
+
 var wsUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
@@ -27,10 +31,11 @@ var wsUpgrader = websocket.Upgrader{
 
 // sessionProc 维护一个 Agent 会话的子进程实例
 type sessionProc struct {
-	mu      sync.Mutex
-	adapter agent.AgentAdapter
-	conn    *websocket.Conn
-	ctx     chan struct{}
+	mu        sync.Mutex
+	adapter   agent.AgentAdapter
+	conn      *websocket.Conn
+	ctx       chan struct{}
+	createdAt time.Time // 用于过期清理
 }
 
 // sessionRegistry 全局会话注册表
@@ -39,7 +44,48 @@ var (
 	sessionRegistryMu sync.Mutex
 )
 
+// initSessionCleanup 启动后台过期会话清理（默认 1 小时后清理无活跃连接的会话）
+func initSessionCleanup() {
+	go func() {
+		for {
+			time.Sleep(30 * time.Minute)
+			cleanupStaleSessions(1 * time.Hour)
+		}
+	}()
+}
+
+// cleanupStaleSessions 清理超过 maxAge 且无活跃连接的会话
+func cleanupStaleSessions(maxAge time.Duration) {
+	sessionRegistryMu.Lock()
+	defer sessionRegistryMu.Unlock()
+
+	now := time.Now()
+	for id, sp := range sessionRegistry {
+		sp.mu.Lock()
+		isRunning := sp.adapter.IsRunning()
+		connOpen := sp.conn != nil
+		sp.mu.Unlock()
+
+		if !isRunning && !connOpen && now.Sub(sp.createdAt) > maxAge {
+			log.Printf("[agent-v2/ws] cleanup stale session %d (idle since %s)", id, sp.createdAt.Format(time.RFC3339))
+			sp.mu.Lock()
+			if sp.ctx != nil {
+				select {
+				case <-sp.ctx:
+				default:
+					close(sp.ctx)
+				}
+			}
+			sp.mu.Unlock()
+			delete(sessionRegistry, id)
+		}
+	}
+}
+
 // parsePiConfig 解析 Agent config JSON 中的 Pi 配置
+// 支持两种模式：
+// 1. 旧模式：provider + model + model_addr + api_key（字符串形式）
+// 2. 新模式：provider_id + model_id（从全局 tbl_ai_provider / tbl_ai_model 查询）
 func parsePiConfig(configStr string) (provider, model, modelAddr, apiKey, sessionDir, extraArgs string) {
 	if configStr == "" {
 		return "", "", "", "", "", ""
@@ -51,10 +97,48 @@ func parsePiConfig(configStr string) (provider, model, modelAddr, apiKey, sessio
 		ApiKey     string `json:"api_key"`
 		SessionDir string `json:"session_dir"`
 		ExtraArgs  string `json:"extra_args"`
+		// 新模式：引用全局配置表
+		ProviderId int `json:"provider_id"`
+		ModelId    int `json:"model_id"`
 	}
 	if err := json.Unmarshal([]byte(configStr), &cfg); err != nil {
 		return "", "", "", "", "", ""
 	}
+
+	// 新模式：从全局表查询 provider + model 信息
+	if cfg.ProviderId > 0 && cfg.ModelId > 0 {
+		providerRow, err := common.DbMain.Client.QueryBySql(
+			`SELECT provider_type, base_url, api_key FROM tbl_ai_provider WHERE id = ? AND status = 1`,
+			cfg.ProviderId,
+		).One()
+		if err == nil && len(providerRow) > 0 {
+			cfg.Provider = cast.ToString(providerRow["provider_type"])
+			cfg.ModelAddr = cast.ToString(providerRow["base_url"])
+			// 仅当 agent 自身未配置 api_key 时使用 provider 的
+			if cfg.ApiKey == "" {
+				cfg.ApiKey = cast.ToString(providerRow["api_key"])
+			}
+		} else {
+			log.Printf("[agent-v2/ws] parsePiConfig: provider_id=%d not found or disabled", cfg.ProviderId)
+		}
+		modelRow, err := common.DbMain.Client.QueryBySql(
+			`SELECT model, uri FROM tbl_ai_model WHERE id = ? AND status = 1`,
+			cfg.ModelId,
+		).One()
+		if err == nil && len(modelRow) > 0 {
+			cfg.Model = cast.ToString(modelRow["model"])
+			// 拼接完整模型 API 地址
+			if cfg.ModelAddr != "" {
+				uri := cast.ToString(modelRow["uri"])
+				if uri != "" {
+					cfg.ModelAddr = strings.TrimRight(cfg.ModelAddr, "/") + uri
+				}
+			}
+		} else {
+			log.Printf("[agent-v2/ws] parsePiConfig: model_id=%d not found or disabled", cfg.ModelId)
+		}
+	}
+
 	return cfg.Provider, cfg.Model, cfg.ModelAddr, cfg.ApiKey, cfg.SessionDir, cfg.ExtraArgs
 }
 
@@ -100,7 +184,7 @@ func AgentV2WS(c *gin.Context) {
 	// 升级为 WebSocket
 	conn, err := wsUpgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Printf("[agent-v2-ws] upgrade error: %v", err)
+		log.Printf("[agent-v2/ws] upgrade error: %v", err)
 		return
 	}
 	defer conn.Close()
@@ -142,9 +226,10 @@ func AgentV2WS(c *gin.Context) {
 
 	procCtx := make(chan struct{})
 	sp := &sessionProc{
-		adapter: adapter,
-		conn:    conn,
-		ctx:     procCtx,
+		adapter:   adapter,
+		conn:      conn,
+		ctx:       procCtx,
+		createdAt: time.Now(),
 	}
 
 	// 注册会话（sessionId 必须 > 0，避免 0 键冲突）
@@ -181,7 +266,7 @@ func AgentV2WS(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[agent-v2-ws] Agent started, agent_id=%d session_id=%d provider=%s model=%s session_dir=%s",
+	log.Printf("[agent-v2/ws] Agent started, agent_id=%d session_id=%d provider=%s model=%s session_dir=%s",
 		agentId, sessionId, provider, model, sessionDir)
 
 	// 更新会话的 session_dir
@@ -210,133 +295,134 @@ func AgentV2WS(c *gin.Context) {
 	piDone := make(chan struct{})
 
 	// WebSocket → Pi stdin
-	go func() {
-		defer func() {
-			close(wsDone)
-		}()
-		for {
-			select {
-			case <-procCtx:
-				return
-			default:
-			}
-
-			_, msg, err := conn.ReadMessage()
-			if err != nil {
-				log.Printf("[agent-v2-ws] ws read error: %v", err)
-				return
-			}
-
-			var wsMsg define.AgentV2WSMessage
-			if err := json.Unmarshal(msg, &wsMsg); err != nil {
-				log.Printf("[agent-v2-ws] invalid ws message: %v", err)
-				continue
-			}
-
-			switch wsMsg.Type {
-			case "command":
-				if wsMsg.Command != nil {
-					// 持久化用户 prompt 事件 + 更新会话标题
-					cmdMap, ok := wsMsg.Command.(map[string]interface{})
-					if ok {
-						cmdType := cast.ToString(cmdMap["type"])
-						if cmdType == "prompt" {
-							userMsg := cast.ToString(cmdMap["message"])
-							if userMsg != "" {
-								// 持久化到 JSONL
-								if eventsFile != nil {
-									entry, _ := json.Marshal(map[string]interface{}{
-										"type":    "user_text",
-										"message": userMsg,
-									})
-									fmt.Fprintf(eventsFile, "%s\n", entry)
-								}
-								// 更新会话标题为最新用户提问（截断到 50 字符）
-								title := userMsg
-								if len(title) > 50 {
-									title = title[:50] + "..."
-								}
-								if sessionId > 0 {
-									now := time.Now().Unix()
-									common.DbMain.Client.ExecBySql(
-										`UPDATE tbl_agent_v2_session SET name = ?, updated_at = ? WHERE id = ?`,
-										title, now, sessionId,
-									).Exec()
-								}
-							}
-						}
-					}
-					cmdBytes, _ := json.Marshal(wsMsg.Command)
-					if err := adapter.SendCommand(cmdBytes); err != nil {
-						log.Printf("[agent-v2-ws] send command error: %v", err)
-						conn.WriteJSON(gin.H{"type": "error", "error": err.Error()})
-					}
-				}
-			case "get_state":
-				// 前端请求获取状态，后端转发到 Pi
-				cmdBytes, _ := json.Marshal(map[string]string{"type": "get_state"})
-				adapter.SendCommand(cmdBytes)
-			case "get_session_stats":
-				// 本地计算 token 统计（从 Pi events 提取真实 usage 数据），直接回写 WebSocket
-				modelsCtx := parseModelsCtx(configStr)
-				stats := computeSessionStats(sessionDir, modelsCtx)
-				conn.WriteJSON(gin.H{
-					"type": "event",
-					"event": gin.H{
-						"type":     "response",
-						"command":  "get_session_stats",
-						"_command": "get_session_stats",
-						"success":  true,
-						"data":     stats,
-					},
-				})
-			}
-		}
-	}()
+	go sp.readWSCommands(conn, sessionId, sessionDir, configStr, eventsFile, wsDone)
 
 	// Pi stdout → WebSocket
-	go func() {
-		defer close(piDone)
-		for evt := range adapter.Events() {
-			select {
-			case <-procCtx:
-				return
-			default:
-			}
-
-			var rawEvt map[string]interface{}
-			if err := json.Unmarshal(evt.Raw, &rawEvt); err != nil {
-				log.Printf("[agent-v2-ws] parse event error: %v raw=%s", err, string(evt.Raw))
-				continue
-			}
-
-			// 持久化 Pi 事件到 JSONL 文件
-			if eventsFile != nil {
-				fmt.Fprintf(eventsFile, "%s\n", string(evt.Raw))
-			}
-
-			// 根据事件类型补充元数据
-			evtType := cast.ToString(rawEvt["type"])
-			log.Printf("[agent-v2-ws] pi event → ws, type=%s raw=%s", evtType, string(evt.Raw))
-
-			// 对 response 类型事件，标记命令名方便前端过滤
-			if evtType == "response" {
-				rawEvt["_command"] = cast.ToString(rawEvt["command"])
-			}
-
-			if err := conn.WriteJSON(gin.H{
-				"type":  "event",
-				"event": rawEvt,
-			}); err != nil {
-				log.Printf("[agent-v2-ws] ws write error: %v", err)
-				return
-			}
-		}
-	}()
+	go sp.forwardPiEvents(conn, eventsFile, piDone)
 
 	// 等待任一端结束
 	select {
 	case <-wsDone:
 	case <-piDone:
+	}
+}
+
+// readWSCommands 从 WebSocket 读取前端消息，转发到 Agent stdin
+func (sp *sessionProc) readWSCommands(conn *websocket.Conn, sessionId int,
+	sessionDir, configStr string, eventsFile *os.File, wsDone chan struct{}) {
+
+	defer close(wsDone)
+	for {
+		select {
+		case <-sp.ctx:
+			return
+		default:
+		}
+
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			log.Printf("[agent-v2/ws] ws read error: %v", err)
+			return
+		}
+
+		var wsMsg define.AgentV2WSMessage
+		if err := json.Unmarshal(msg, &wsMsg); err != nil {
+			log.Printf("[agent-v2/ws] invalid ws message: %v", err)
+			continue
+		}
+
+		switch wsMsg.Type {
+		case "command":
+			if wsMsg.Command == nil {
+				continue
+			}
+			// 持久化用户 prompt 事件 + 更新会话标题
+			cmdMap, ok := wsMsg.Command.(map[string]interface{})
+			if ok && cast.ToString(cmdMap["type"]) == "prompt" {
+				userMsg := cast.ToString(cmdMap["message"])
+				if userMsg != "" {
+					// 持久化到 JSONL
+					if eventsFile != nil {
+						entry, _ := json.Marshal(map[string]interface{}{
+							"type":    "user_text",
+							"message": userMsg,
+						})
+						fmt.Fprintf(eventsFile, "%s\n", entry)
+					}
+					// 更新会话标题为最新用户提问（截断到 50 字符）
+					title := userMsg
+					if len(title) > 50 {
+						title = title[:50] + "..."
+					}
+					if sessionId > 0 {
+						now := time.Now().Unix()
+						common.DbMain.Client.ExecBySql(
+							`UPDATE tbl_agent_v2_session SET name = ?, updated_at = ? WHERE id = ?`,
+							title, now, sessionId,
+						).Exec()
+					}
+				}
+			}
+			cmdBytes, _ := json.Marshal(wsMsg.Command)
+			if err := sp.adapter.SendCommand(cmdBytes); err != nil {
+				log.Printf("[agent-v2/ws] send command error: %v", err)
+				conn.WriteJSON(gin.H{"type": "error", "error": err.Error()})
+			}
+		case "get_state":
+			cmdBytes, _ := json.Marshal(map[string]string{"type": "get_state"})
+			sp.adapter.SendCommand(cmdBytes)
+		case "get_session_stats":
+			modelsCtx := parseModelsCtx(configStr)
+			stats := computeSessionStats(sessionDir, modelsCtx)
+			conn.WriteJSON(gin.H{
+				"type": "event",
+				"event": gin.H{
+					"type":     "response",
+					"command":  "get_session_stats",
+					"_command": "get_session_stats",
+					"success":  true,
+					"data":     stats,
+				},
+			})
+		}
+	}
+}
+
+// forwardPiEvents 从 Agent stdout 读取事件，持久化并转发到 WebSocket
+func (sp *sessionProc) forwardPiEvents(conn *websocket.Conn, eventsFile *os.File, piDone chan struct{}) {
+	defer close(piDone)
+	for evt := range sp.adapter.Events() {
+		select {
+		case <-sp.ctx:
+			return
+		default:
+		}
+
+		var rawEvt map[string]interface{}
+		if err := json.Unmarshal(evt.Raw, &rawEvt); err != nil {
+			log.Printf("[agent-v2/ws] parse event error: %v raw=%s", err, string(evt.Raw))
+			continue
+		}
+
+		// 持久化 Pi 事件到 JSONL 文件
+		if eventsFile != nil {
+			fmt.Fprintf(eventsFile, "%s\n", string(evt.Raw))
+		}
+
+		evtType := cast.ToString(rawEvt["type"])
+		log.Printf("[agent-v2/ws] pi event → ws, type=%s raw=%s", evtType, string(evt.Raw))
+
+		// 对 response 类型事件，标记命令名方便前端过滤
+		if evtType == "response" {
+			rawEvt["_command"] = cast.ToString(rawEvt["command"])
+		}
+
+		if err := conn.WriteJSON(gin.H{
+			"type":  "event",
+			"event": rawEvt,
+		}); err != nil {
+			log.Printf("[agent-v2/ws] ws write error: %v", err)
+			return
+		}
 	}
 }

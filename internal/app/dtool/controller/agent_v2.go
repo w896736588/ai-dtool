@@ -5,6 +5,7 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,10 +48,12 @@ func AgentV2List(c *gin.Context) {
 		item.InstallHint = adapter.InstallHint()
 
 		// 统计会话数
-		sessionRows, _ := common.DbMain.Client.QueryBySql(
+		sessionRows, err := common.DbMain.Client.QueryBySql(
 			`SELECT COUNT(*) as cnt FROM tbl_agent_v2_session WHERE agent_id = ?`, item.Id,
 		).All()
-		if len(sessionRows) > 0 {
+		if err != nil {
+			log.Printf("[agent-v2] count sessions for agent %d error: %v", item.Id, err)
+		} else if len(sessionRows) > 0 {
 			item.SessionCount = cast.ToInt(sessionRows[0]["cnt"])
 		}
 
@@ -111,16 +114,43 @@ func AgentV2Delete(c *gin.Context) {
 		return
 	}
 
-	// 删除关联的工作空间、会话、Skills
-	common.DbMain.Client.ExecBySql(`DELETE FROM tbl_agent_v2_workspace WHERE agent_id = ?`, req.Id).Exec()
-	common.DbMain.Client.ExecBySql(`DELETE FROM tbl_agent_v2_session WHERE agent_id = ?`, req.Id).Exec()
-	common.DbMain.Client.ExecBySql(`DELETE FROM tbl_agent_v2_skill WHERE agent_id = ?`, req.Id).Exec()
+	// 事务包裹级联删除
+	if _, err := common.DbMain.Client.ExecBySql("BEGIN TRANSACTION").Exec(); err != nil {
+		gsgin.GinResponseError(c, "事务启动失败: "+err.Error(), nil)
+		return
+	}
+	rolledBack := false
+	defer func() {
+		if !rolledBack {
+			return
+		}
+		common.DbMain.Client.ExecBySql("ROLLBACK").Exec()
+	}()
+	rollback := func(msg string) {
+		log.Printf("[agent-v2] delete agent %d: %s", req.Id, msg)
+		rolledBack = true
+		gsgin.GinResponseError(c, msg, nil)
+	}
 
-	_, err := common.DbMain.Client.ExecBySql(
-		`DELETE FROM tbl_agent_v2 WHERE id = ?`, req.Id,
-	).Exec()
-	if err != nil {
-		gsgin.GinResponseError(c, err.Error(), nil)
+	if _, err := common.DbMain.Client.ExecBySql(`DELETE FROM tbl_agent_v2_workspace WHERE agent_id = ?`, req.Id).Exec(); err != nil {
+		rollback("删除关联工作空间失败: " + err.Error())
+		return
+	}
+	if _, err := common.DbMain.Client.ExecBySql(`DELETE FROM tbl_agent_v2_session WHERE agent_id = ?`, req.Id).Exec(); err != nil {
+		rollback("删除关联会话失败: " + err.Error())
+		return
+	}
+	if _, err := common.DbMain.Client.ExecBySql(`DELETE FROM tbl_agent_v2_skill WHERE agent_id = ?`, req.Id).Exec(); err != nil {
+		rollback("删除关联 Skill 失败: " + err.Error())
+		return
+	}
+	if _, err := common.DbMain.Client.ExecBySql(`DELETE FROM tbl_agent_v2 WHERE id = ?`, req.Id).Exec(); err != nil {
+		rollback("删除 Agent 失败: " + err.Error())
+		return
+	}
+
+	if _, err := common.DbMain.Client.ExecBySql("COMMIT").Exec(); err != nil {
+		rollback("提交事务失败: " + err.Error())
 		return
 	}
 
@@ -151,7 +181,10 @@ func AgentV2WorkspaceList(c *gin.Context) {
 	var req struct {
 		AgentId int `json:"agent_id"`
 	}
-	c.ShouldBindJSON(&req)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
 
 	rows, err := common.DbMain.Client.QueryBySql(
 		`SELECT * FROM tbl_agent_v2_workspace WHERE agent_id = ? ORDER BY id`, req.AgentId,
@@ -235,7 +268,10 @@ func AgentV2SkillList(c *gin.Context) {
 	var req struct {
 		AgentId int `json:"agent_id"`
 	}
-	c.ShouldBindJSON(&req)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
 
 	rows, err := common.DbMain.Client.QueryBySql(
 		`SELECT * FROM tbl_agent_v2_skill WHERE agent_id = ? ORDER BY id`, req.AgentId,
@@ -319,7 +355,7 @@ func AgentV2SkillDelete(c *gin.Context) {
 
 // AgentV2BuiltinToolList 读取 data/ 目录下的内置工具
 func AgentV2BuiltinToolList(c *gin.Context) {
-	dataDir := "internal/app/dtool/data"
+	dataDir := define.DefaultBuiltinToolsDir
 
 	entries, err := os.ReadDir(dataDir)
 	if err != nil {
@@ -380,6 +416,65 @@ func AgentV2BuiltinToolList(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, "", gin.H{"list": tools})
 }
 
+// ======================== 模型配置 ========================
+
+// AgentV2ProviderModels 获取所有 Provider 及其 LLM 模型（供 Agent 模块选择模型使用）
+func AgentV2ProviderModels(c *gin.Context) {
+	providers, err := common.DbMain.Client.QueryBySql(
+		`SELECT id, name, provider_type, base_url
+		 FROM tbl_ai_provider WHERE status = 1 ORDER BY id`,
+	).All()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+
+	type ModelItem struct {
+		Id          int    `json:"id"`
+		Name        string `json:"name"`
+		Model       string `json:"model"`
+		Uri         string `json:"uri"`
+		ContextSize int    `json:"context_size"`
+	}
+	type ProviderWithModels struct {
+		Id           int         `json:"id"`
+		Name         string      `json:"name"`
+		ProviderType string      `json:"provider_type"`
+		BaseUrl      string      `json:"base_url"`
+		Models       []ModelItem `json:"models"`
+	}
+
+	result := make([]ProviderWithModels, 0, len(providers))
+	for _, p := range providers {
+		pid := cast.ToInt(p["id"])
+		modelRows, _ := common.DbMain.Client.QueryBySql(
+			`SELECT id, name, model, uri, context_size FROM tbl_ai_model
+			 WHERE provider_id = ? AND model_type = 'llm' AND status = 1 ORDER BY id`,
+			pid,
+		).All()
+
+		models := make([]ModelItem, 0, len(modelRows))
+		for _, m := range modelRows {
+			models = append(models, ModelItem{
+				Id:          cast.ToInt(m["id"]),
+				Name:        cast.ToString(m["name"]),
+				Model:       cast.ToString(m["model"]),
+				Uri:         cast.ToString(m["uri"]),
+				ContextSize: cast.ToInt(m["context_size"]),
+			})
+		}
+		result = append(result, ProviderWithModels{
+			Id:           pid,
+			Name:         cast.ToString(p["name"]),
+			ProviderType: cast.ToString(p["provider_type"]),
+			BaseUrl:      cast.ToString(p["base_url"]),
+			Models:       models,
+		})
+	}
+
+	gsgin.GinResponseSuccess(c, "", gin.H{"providers": result})
+}
+
 // ======================== 辅助函数 ========================
 
 // getAdapterForType 根据类型获取适配器实例
@@ -387,7 +482,12 @@ func getAdapterForType(agentType string) agent.AgentAdapter {
 	switch agentType {
 	case define.AgentV2TypePi:
 		return agent.NewPiAdapter()
+	// TODO: Codex 和 Claude Code 适配器待实现
+	case define.AgentV2TypeCodex, define.AgentV2TypeClaudeCode:
+		log.Printf("[agent-v2] unsupported agent type: %s", agentType)
+		return agent.NewPiAdapter() // 临时回退
 	default:
+		log.Printf("[agent-v2] unknown agent type: %s, fallback to pi", agentType)
 		return agent.NewPiAdapter()
 	}
 }

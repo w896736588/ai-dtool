@@ -21,54 +21,16 @@
             </el-form-item>
             <el-divider content-position="left">LLM 配置</el-divider>
             <el-form-item label="Provider">
-              <el-select v-model="piConfig.provider" style="width:100%">
-                <el-option label="Anthropic (Claude)" value="anthropic" />
-                <el-option label="OpenAI (GPT-4o)" value="openai" />
-                <el-option label="DeepSeek" value="deepseek" />
-                <el-option label="Google (Gemini)" value="google" />
+              <el-select v-model="selectedProviderId" style="width:100%" placeholder="请选择 Provider" @change="onProviderChange">
+                <el-option v-for="p in providerList" :key="p.id" :label="p.name" :value="p.id" />
               </el-select>
-              <div class="field-hint">LLM 服务提供商，选择 DeepSeek 直接使用官方接口无需填写模型 API 地址</div>
+              <div class="field-hint">从全局配置中选择 LLM 服务提供商</div>
             </el-form-item>
             <el-form-item label="默认模型">
-              <el-input v-model="piConfig.model" placeholder="claude-sonnet-4-20250514" />
-              <div class="field-hint">启动 Pi 时使用的默认模型 ID</div>
-            </el-form-item>
-            <el-form-item label="模型 API 地址" v-show="piConfig.provider !== 'deepseek'">
-              <el-input v-model="piConfig.model_addr" placeholder="留空使用默认地址，例如 https://api.example.com/v1" />
-              <div class="field-hint">自定义 LLM API 端点，适用于代理或兼容接口（对应 --model-addr 参数）</div>
-            </el-form-item>
-            <el-form-item label="API Key">
-              <el-input v-model="piConfig.api_key" type="password" show-password placeholder="留空使用系统环境变量" />
-              <div class="field-hint">API 认证密钥，根据 Provider 自动映射为对应环境变量</div>
-            </el-form-item>
-            <el-form-item label="可选模型">
-              <div class="model-tag-list">
-                <el-tag
-                  v-for="(mc, idx) in modelConfigs"
-                  :key="idx"
-                  closable
-                  :disable-transitions="false"
-                  :class="{ 'model-tag--editing': editingModelIdx === idx }"
-                  @close="removeModel(idx)"
-                  @click="editModel(idx)"
-                  style="margin: 0 6px 6px 0; cursor: pointer;"
-                >
-                  {{ mc.id }}<span class="model-tag__ctx">({{ fmtCtx(mc.context_size) }})</span>
-                </el-tag>
-                <template v-if="showModelInput">
-                  <el-input ref="modelInputRef" v-model="modelInputValue" size="small" style="width:160px"
-                    :placeholder="editingModelIdx >= 0 ? '修改模型ID' : '模型ID'" @keyup.enter="addModel" />
-                  <el-input-number v-model="modelSizeValue" size="small" :min="1" :max="4194304" :step="1000"
-                    placeholder="上下文窗口" style="width:130px; margin-left:4px" @keyup.enter="addModel" />
-                  <el-button size="small" type="primary" @click="addModel">确认</el-button>
-                  <el-button v-if="editingModelIdx >= 0" size="small" @click="cancelEdit">取消</el-button>
-                </template>
-                <el-button v-else size="small" @click="showModelInput = true">+ 添加模型</el-button>
-              </div>
-              <div class="field-hint">
-                可在对话中切换的模型列表，添加时需输入模型 ID 和上下文窗口大小（单位 token）
-                <span v-if="modelConfigs.length > 0">，点击已有模型可编辑</span>
-              </div>
+              <el-select v-model="selectedModelId" style="width:100%" placeholder="请选择模型" :disabled="!selectedProviderId">
+                <el-option v-for="m in currentProviderModels" :key="m.id" :label="m.name + ' (' + m.model + ')'" :value="m.id" />
+              </el-select>
+              <div class="field-hint">启动 Agent 时使用的默认模型</div>
             </el-form-item>
             <el-divider content-position="left">高级选项</el-divider>
             <el-form-item label="会话存储目录">
@@ -173,6 +135,58 @@
               </template>
             </el-table-column>
           </el-table>
+        </el-tab-pane>
+
+        <!-- 模型配置 -->
+        <el-tab-pane label="模型配置" name="models">
+          <div class="model-config-tab">
+            <div class="model-config-header">
+              <el-button type="primary" size="small" @click="showAddProvider">新增 Provider</el-button>
+              <span class="skills-hint">管理所有 LLM 服务商及其模型</span>
+            </div>
+            <div class="provider-list">
+              <div v-for="p in fullProviders" :key="p.id" class="provider-card" :class="{ 'provider-card--expanded': isProviderExpanded(p.id) }">
+                <div class="provider-card__header" @click="toggleExpand(p.id)">
+                  <div class="provider-card__info">
+                    <span class="provider-card__name">{{ p.name }}</span>
+                    <el-tag size="small" effect="plain">{{ p.provider_type }}</el-tag>
+                    <span class="provider-card__url">{{ p.base_url }}</span>
+                  </div>
+                  <div class="provider-card__actions" @click.stop>
+                    <el-button text size="small" @click="showEditProvider(p)">编辑</el-button>
+                    <el-button text size="small" @click="showAddModel(p)">+ 添加模型</el-button>
+                    <el-button text size="small" type="danger" @click="deleteProvider(p)">删除</el-button>
+                    <el-icon class="provider-card__arrow" :class="{ 'provider-card__arrow--open': isProviderExpanded(p.id) }">
+                      <ArrowRight />
+                    </el-icon>
+                  </div>
+                </div>
+                <div v-if="isProviderExpanded(p.id)" class="provider-card__models">
+                  <el-table :data="getProviderModels(p.id)" class="config-table" empty-text="暂无模型">
+                    <el-table-column prop="name" label="展示名" min-width="130" />
+                    <el-table-column prop="model" label="模型标识" min-width="180" />
+                    <el-table-column label="类型" width="70">
+                      <template #default="{ row }">
+                        <el-tag size="small" effect="light">{{ row.model_type === 'embedding' ? '嵌入' : 'LLM' }}</el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="上下文窗口" width="110">
+                      <template #default="{ row }">
+                        {{ fmtCtx(row.context_size) }}
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="140">
+                      <template #default="{ row }">
+                        <el-button text size="small" @click="showEditModel(row)">编辑</el-button>
+                        <el-button text size="small" type="danger" @click="deleteModel(row)">删除</el-button>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </div>
+              </div>
+              <div v-if="fullProviders.length === 0" class="empty-hint">暂无 Provider，请点击上方按钮添加</div>
+            </div>
+          </div>
         </el-tab-pane>
       </el-tabs>
     </div>
@@ -279,6 +293,70 @@
       </template>
     </el-dialog>
 
+    <!-- Provider 编辑对话框 -->
+    <el-dialog v-model="showProviderDlg" :title="editingProviderId ? '编辑 Provider' : '新增 Provider'" width="480px" :close-on-click-modal="false">
+      <el-form label-width="100px">
+        <el-form-item label="名称">
+          <el-input v-model="providerForm.name" placeholder="例如：OpenAI" />
+        </el-form-item>
+        <el-form-item label="请求格式">
+          <el-select v-model="providerForm.request_format" style="width:100%">
+            <el-option label="openai" value="openai" />
+            <el-option label="anthropic" value="anthropic" />
+            <el-option label="deepseek" value="deepseek" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="基础域名">
+          <el-input v-model="providerForm.base_url" placeholder="例如：https://api.openai.com" />
+        </el-form-item>
+        <el-form-item label="API Key">
+          <el-input v-model="providerForm.api_key" type="password" show-password placeholder="API 认证密钥" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showProviderDlg = false">取消</el-button>
+        <el-button type="primary" @click="saveProvider">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Model 编辑对话框 -->
+    <el-dialog v-model="showModelDlg" :title="editingModelId ? '编辑模型' : '新增模型'" width="480px" :close-on-click-modal="false">
+      <el-form label-width="100px">
+        <el-form-item label="所属 Provider">
+          <el-select v-model="modelForm.provider_id" style="width:100%" :disabled="editingModelId > 0">
+            <el-option v-for="p in fullProviders" :key="p.id" :label="p.name" :value="p.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="展示名">
+          <el-input v-model="modelForm.name" placeholder="例如：GPT-4o" />
+        </el-form-item>
+        <el-form-item label="模型标识">
+          <el-input v-model="modelForm.model" placeholder="例如：gpt-4o" />
+        </el-form-item>
+        <el-form-item label="上下文窗口">
+          <el-input-number v-model="modelForm.context_size" :min="1000" :max="4194304" :step="1000" style="width:100%" />
+          <div class="field-hint">以 token 为单位的最大上下文窗口大小</div>
+        </el-form-item>
+        <el-form-item label="模型类型">
+          <el-select v-model="modelForm.model_type" style="width:100%">
+            <el-option label="LLM（大语言模型）" value="llm" />
+            <el-option label="嵌入模型" value="embedding" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="URI">
+          <el-input v-model="modelForm.uri" :placeholder="defaultUriForProvider(modelForm.provider_id)" />
+          <div class="field-hint">留空则根据 Provider 类型自动推断</div>
+        </el-form-item>
+        <el-form-item label="完整地址">
+          <div class="url-preview">{{ buildUrl(getProviderBaseUrl(modelForm.provider_id), modelForm.uri || defaultUriForProvider(modelForm.provider_id)) || '-' }}</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showModelDlg = false">取消</el-button>
+        <el-button type="primary" @click="saveModel">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 内置工具对话框 -->
     <el-dialog v-model="showBuiltinDialog" title="Dtool 内置 Tools" width="640px" :close-on-click-modal="false">
       <el-table :data="builtinTools" max-height="400" empty-text="暂无内置工具，请在 internal/app/dtool/data/ 目录下添加">
@@ -317,11 +395,12 @@
 
 <script>
 import Base from '@/utils/base.js'
-import { ArrowLeft } from '@element-plus/icons-vue'
+import aiSet from '@/utils/base/ai_set'
+import { ArrowLeft, ArrowRight, Plus } from '@element-plus/icons-vue'
 
 export default {
   name: 'AgentConfig',
-  components: { ArrowLeft },
+  components: { ArrowLeft, ArrowRight, Plus },
   data() {
     return {
       activeTab: 'basic',
@@ -331,12 +410,27 @@ export default {
       installHint: '',
 
       configForm: { name: '', type: '' },
-      piConfig: { provider: 'anthropic', model: '', model_addr: '', api_key: '', session_dir: '', extra_args: '' },
-      modelConfigs: [],
-      showModelInput: false,
-      modelInputValue: '',
-      modelSizeValue: 128000,
-      editingModelIdx: -1,
+      piConfig: { session_dir: '', extra_args: '' },
+
+      // Agent 配置用的 Provider/Model 列表
+      providerList: [],
+      allModels: [],
+      selectedProviderId: null,
+      selectedModelId: null,
+
+      // 模型配置 Tab 用的完整数据
+      fullProviders: [],
+      expandedProviderIds: {},  // { pid: true } 跟踪展开状态
+
+      // Provider 对话框
+      showProviderDlg: false,
+      editingProviderId: 0,
+      providerForm: { name: '', request_format: 'openai', base_url: '', api_key: '' },
+
+      // Model 对话框
+      showModelDlg: false,
+      editingModelId: 0,
+      modelForm: { provider_id: 0, name: '', model_type: 'llm', model: '', uri: '', context_size: 128000 },
 
       skills: [],
       showSkillDialog: false,
@@ -361,13 +455,10 @@ export default {
     dialogTitle() {
       if (this.editingSkillId) return '编辑 ' + (this.skillForm.skill_type === 'tool' ? 'Tool' : 'Skill')
       return '添加 ' + (this.skillForm.skill_type === 'tool' ? 'Tool' : 'Skill')
-    }
-  },
-  watch: {
-    'piConfig.provider'(val) {
-      if (val === 'deepseek') {
-        this.piConfig.model_addr = ''
-      }
+    },
+    currentProviderModels() {
+      if (!this.selectedProviderId) return []
+      return this.allModels.filter(m => parseInt(m.provider_id) === parseInt(this.selectedProviderId))
     }
   },
   mounted() {
@@ -388,6 +479,7 @@ export default {
       }
     },
     loadData() {
+      this.loadProviderModels()
       Base.BasePost('/api/AgentV2List', {}, (res) => {
         const agents = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
         const agent = agents.find(a => a.id === this.agentId)
@@ -399,22 +491,10 @@ export default {
           if (agent.config) {
             try {
               const cfg = JSON.parse(agent.config)
-              if (cfg.provider) this.piConfig.provider = cfg.provider
-              if (cfg.model) this.piConfig.model = cfg.model
-              if (cfg.model_addr) this.piConfig.model_addr = cfg.model_addr
-              if (cfg.api_key) this.piConfig.api_key = cfg.api_key
               if (cfg.session_dir) this.piConfig.session_dir = cfg.session_dir
               if (cfg.extra_args) this.piConfig.extra_args = cfg.extra_args
-              if (cfg.models && Array.isArray(cfg.models)) {
-                const modelsCtx = cfg.models_ctx || {}
-                this.modelConfigs = cfg.models.map(m => {
-                  if (typeof m === 'object' && m.id) {
-                    return { id: m.id, context_size: m.context_size || m.max_tokens || 128000 }
-                  }
-                  const ctxSize = modelsCtx[m] || 128000
-                  return { id: m, context_size: ctxSize }
-                })
-              }
+              if (cfg.provider_id) this.selectedProviderId = cfg.provider_id
+              if (cfg.model_id) this.selectedModelId = cfg.model_id
             } catch (e) {}
           }
         }
@@ -422,50 +502,149 @@ export default {
       this.loadSkills()
       this.loadWorkspaces()
     },
-
-    // 模型配置管理
-    addModel() {
-      const val = this.modelInputValue.trim()
-      if (val) {
-        if (this.editingModelIdx >= 0) {
-          const oldId = this.modelConfigs[this.editingModelIdx].id
-          if (val !== oldId && this.modelConfigs.some((mc, i) => i !== this.editingModelIdx && mc.id === val)) {
-            this.$message.warning('模型ID已存在')
-            return
+    loadProviderModels() {
+      Base.BasePost('/api/AgentV2ProviderModels', {}, (res) => {
+        if (res.ErrCode === 0 && res.Data && res.Data.providers) {
+          const providers = res.Data.providers
+          this.providerList = providers.map(p => ({ id: p.id, name: p.name, provider_type: p.provider_type }))
+          // 模型配置 Tab 用的完整数据
+          this.fullProviders = providers.map(p => ({ ...p }))
+          // 默认展开所有 Provider
+          for (const p of providers) {
+            this.expandedProviderIds[p.id] = true
           }
-          this.modelConfigs[this.editingModelIdx] = { id: val, context_size: this.modelSizeValue || 128000 }
-        } else {
-          if (this.modelConfigs.some(mc => mc.id === val)) {
-            this.$message.warning('模型ID已存在')
-            return
+          this.allModels = []
+          for (const p of providers) {
+            for (const m of (p.models || [])) {
+              m.provider_id = p.id
+              this.allModels.push(m)
+            }
           }
-          this.modelConfigs.push({ id: val, context_size: this.modelSizeValue || 128000 })
         }
-      }
-      this.modelInputValue = ''
-      this.modelSizeValue = 128000
-      this.showModelInput = false
-      this.editingModelIdx = -1
-    },
-    removeModel(idx) {
-      this.modelConfigs.splice(idx, 1)
-      if (this.editingModelIdx === idx) this.cancelEdit()
-    },
-    editModel(idx) {
-      const mc = this.modelConfigs[idx]
-      this.modelInputValue = mc.id
-      this.modelSizeValue = mc.context_size || 128000
-      this.editingModelIdx = idx
-      this.showModelInput = true
-      this.$nextTick(() => {
-        if (this.$refs.modelInputRef) this.$refs.modelInputRef.focus()
       })
     },
-    cancelEdit() {
-      this.modelInputValue = ''
-      this.modelSizeValue = 128000
-      this.showModelInput = false
-      this.editingModelIdx = -1
+    onProviderChange() {
+      this.selectedModelId = null
+    },
+
+    // ========== 模型配置 Tab：Provider 管理 ==========
+    getProviderModels(pid) {
+      return this.allModels.filter(m => parseInt(m.provider_id) === parseInt(pid))
+    },
+    isProviderExpanded(pid) {
+      return this.expandedProviderIds[pid] === true
+    },
+    toggleExpand(pid) {
+      if (this.expandedProviderIds[pid]) {
+        this.expandedProviderIds = { ...this.expandedProviderIds, [pid]: false }
+      } else {
+        this.expandedProviderIds = { ...this.expandedProviderIds, [pid]: true }
+      }
+    },
+    showAddProvider() {
+      this.editingProviderId = 0
+      this.providerForm = { name: '', request_format: 'openai', base_url: '', api_key: '' }
+      this.showProviderDlg = true
+    },
+    showEditProvider(p) {
+      this.editingProviderId = p.id
+      this.providerForm = { id: p.id, name: p.name, request_format: p.provider_type, base_url: p.base_url, api_key: p.api_key }
+      this.showProviderDlg = true
+    },
+    saveProvider() {
+      if (!this.providerForm.name || !this.providerForm.base_url) {
+        this.$message.warning('请填写名称和基础域名')
+        return
+      }
+      aiSet.AiProviderAdd({
+        id: this.editingProviderId || undefined,
+        name: this.providerForm.name,
+        request_format: this.providerForm.request_format,
+        base_url: this.providerForm.base_url,
+        api_key: this.providerForm.api_key
+      }, (res) => {
+        if (res.ErrCode === 0) {
+          this.showProviderDlg = false
+          this.loadProviderModels()
+          this.$message.success('保存成功')
+        }
+      })
+    },
+    deleteProvider(p) {
+      this.$confirm(`确定删除 Provider「${p.name}」？关联的模型也会被删除。`, '提示', { type: 'warning' }).then(() => {
+        aiSet.AiProviderDelete({ id: p.id }, (res) => {
+          if (res.ErrCode === 0) {
+            this.loadProviderModels()
+            this.$message.success('已删除')
+          }
+        })
+      }).catch(() => {})
+    },
+
+    // ========== 模型配置 Tab：Model 管理 ==========
+    defaultUriForProvider(pid) {
+      const p = this.fullProviders.find(p => parseInt(p.id) === parseInt(pid))
+      if (!p) return '/v1/chat/completions'
+      if (p.provider_type === 'anthropic') return '/v1/messages'
+      return '/v1/chat/completions'
+    },
+    showAddModel(p) {
+      this.expandedProviderIds[p.id] = true
+      this.editingModelId = 0
+      this.modelForm = { provider_id: p.id, name: '', model_type: 'llm', model: '', uri: '', context_size: 128000 }
+      this.showModelDlg = true
+    },
+    showEditModel(m) {
+      this.editingModelId = m.id
+      this.modelForm = {
+        id: m.id, provider_id: m.provider_id, name: m.name,
+        model_type: m.model_type || 'llm', model: m.model,
+        uri: m.uri || '', context_size: m.context_size || 128000
+      }
+      this.showModelDlg = true
+    },
+    saveModel() {
+      if (!this.modelForm.model) {
+        this.$message.warning('请填写模型标识')
+        return
+      }
+      const uri = this.modelForm.uri || this.defaultUriForProvider(this.modelForm.provider_id)
+      aiSet.AiModelAdd({
+        id: this.editingModelId || undefined,
+        provider_id: this.modelForm.provider_id,
+        name: this.modelForm.name || this.modelForm.model,
+        model_type: this.modelForm.model_type,
+        model: this.modelForm.model,
+        uri: uri,
+        context_size: this.modelForm.context_size || 128000
+      }, (res) => {
+        if (res.ErrCode === 0) {
+          this.showModelDlg = false
+          this.loadProviderModels()
+          this.$message.success('保存成功')
+        }
+      })
+    },
+    deleteModel(m) {
+      this.$confirm(`确定删除模型「${m.name || m.model}」？`, '提示', { type: 'warning' }).then(() => {
+        aiSet.AiModelDelete({ id: m.id }, (res) => {
+          if (res.ErrCode === 0) {
+            this.loadProviderModels()
+            this.$message.success('已删除')
+          }
+        })
+      }).catch(() => {})
+    },
+    buildUrl(base, uri) {
+      const cleanBase = (base || '').replace(/\/+$/, '')
+      const cleanUri = (uri || '').startsWith('/') ? uri : '/' + (uri || '')
+      if (!cleanBase) return cleanUri || ''
+      if (!cleanUri) return cleanBase
+      return cleanBase + cleanUri
+    },
+    getProviderBaseUrl(pid) {
+      const p = this.fullProviders.find(p => parseInt(p.id) === parseInt(pid))
+      return p ? p.base_url : ''
     },
     fmtCtx(size) {
       if (!size) return '—'
@@ -475,20 +654,9 @@ export default {
     },
 
     saveConfig() {
-      const models = this.modelConfigs.map(mc => mc.id)
-      const modelsCtx = {}
-      for (const mc of this.modelConfigs) {
-        if (mc.context_size && mc.context_size !== 128000) {
-          modelsCtx[mc.id] = mc.context_size
-        }
-      }
       const configObj = {
-        provider: this.piConfig.provider,
-        model: this.piConfig.model,
-        model_addr: this.piConfig.provider === 'deepseek' ? '' : this.piConfig.model_addr,
-        api_key: this.piConfig.api_key,
-        models: models,
-        models_ctx: Object.keys(modelsCtx).length > 0 ? modelsCtx : undefined,
+        provider_id: this.selectedProviderId || 0,
+        model_id: this.selectedModelId || 0,
         session_dir: this.piConfig.session_dir,
         extra_args: this.piConfig.extra_args
       }
@@ -772,21 +940,6 @@ export default {
   line-height: 1.4;
 }
 
-.model-tag-list {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.model-tag__ctx {
-  font-size: 11px;
-  color: #c0c4cc;
-  margin-left: 4px;
-}
-.model-tag--editing {
-  border-color: #409eff !important;
-  background: #ecf5ff !important;
-}
-
 .param-list { width: 100%; }
 .param-row {
   display: flex;
@@ -827,4 +980,94 @@ export default {
 .script-editor-wrapper :deep(.el-textarea__inner:focus) {
   box-shadow: none;
 }
+
+/* ===== 模型配置 Tab ===== */
+.model-config-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.provider-card {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.provider-card:hover { border-color: #c0c4cc; }
+.provider-card--expanded { border-color: #409eff; }
+
+.provider-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+.provider-card__header:hover { background: #fafafa; }
+
+.provider-card__info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.provider-card__name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.provider-card__url {
+  font-size: 12px;
+  color: #909399;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+.provider-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.provider-card__arrow {
+  margin-left: 6px;
+  font-size: 14px;
+  color: #c0c4cc;
+  transition: transform .2s;
+}
+.provider-card__arrow--open { transform: rotate(90deg); }
+
+.provider-card__models {
+  border-top: 1px solid #ebeef5;
+  padding: 12px 16px 16px;
+}
+
+.model-url {
+  font-size: 12px;
+  color: #909399;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+
+.url-preview {
+  font-size: 12px;
+  color: #909399;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  background: #f5f7fa;
+  padding: 8px 12px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.empty-hint { padding: 16px; text-align: center; color: #c0c4cc; font-size: 13px; }
 </style>

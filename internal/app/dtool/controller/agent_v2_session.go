@@ -4,8 +4,10 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,12 +19,13 @@ import (
 // AgentV2SessionList 列出会话
 func AgentV2SessionList(c *gin.Context) {
 	var req struct {
-		AgentId int `json:"agent_id"`
+		AgentId     int `json:"agent_id"`
+		WorkspaceId int `json:"workspace_id"`
 	}
 	c.ShouldBindJSON(&req)
 
 	rows, err := common.DbMain.Client.QueryBySql(
-		`SELECT * FROM tbl_agent_v2_session WHERE agent_id = ? ORDER BY updated_at DESC`, req.AgentId,
+		`SELECT * FROM tbl_agent_v2_session WHERE agent_id = ? AND workspace_id = ? ORDER BY updated_at DESC`, req.AgentId, req.WorkspaceId,
 	).All()
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -76,10 +79,12 @@ func AgentV2SessionCreate(c *gin.Context) {
 	// 根据实际 sessionId 计算正确的 session_dir 并立即更新
 	sessionDir := computeSessionDirFromAgent(req.AgentId, newId)
 	if sessionDir != "" {
-		common.DbMain.Client.ExecBySql(
+		if _, err := common.DbMain.Client.ExecBySql(
 			`UPDATE tbl_agent_v2_session SET session_dir = ? WHERE id = ?`,
 			sessionDir, newId,
-		).Exec()
+		).Exec(); err != nil {
+			log.Printf("[agent-v2] update session_dir error: %v", err)
+		}
 	}
 
 	gsgin.GinResponseSuccess(c, "", gin.H{
@@ -118,7 +123,6 @@ func computeSessionDirFromAgent(agentId, sessionId int) string {
 	if sessionId > 0 {
 		dir = filepath.Join(dir, "s"+cast.ToString(sessionId))
 	}
-	os.MkdirAll(dir, 0755)
 	return dir
 }
 
@@ -133,17 +137,22 @@ func AgentV2SessionDelete(c *gin.Context) {
 	}
 
 	// 先查 session_dir，删除持久化文件
-	row, _ := common.DbMain.Client.QueryBySql(
+	row, err := common.DbMain.Client.QueryBySql(
 		`SELECT session_dir FROM tbl_agent_v2_session WHERE id = ?`, req.Id,
 	).One()
+	if err != nil {
+		log.Printf("[agent-v2] query session_dir before delete session %d error: %v", req.Id, err)
+	}
 	if row != nil {
 		sessionDir := cast.ToString(row["session_dir"])
 		if sessionDir != "" {
-			os.RemoveAll(sessionDir)
+			if err := os.RemoveAll(sessionDir); err != nil {
+				log.Printf("[agent-v2] remove session dir %s error: %v", sessionDir, err)
+			}
 		}
 	}
 
-	_, err := common.DbMain.Client.ExecBySql(
+	_, err = common.DbMain.Client.ExecBySql(
 		`DELETE FROM tbl_agent_v2_session WHERE id = ?`, req.Id,
 	).Exec()
 	if err != nil {
@@ -217,6 +226,9 @@ func readSessionMessagesList(sessionDir string) []map[string]interface{} {
 	}
 
 	// 先收集所有 dtool_*.jsonl 事件行（按文件名排序保证顺序）
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
 	var allEvents []map[string]interface{}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "dtool_") || !strings.HasSuffix(entry.Name(), ".jsonl") {
@@ -314,7 +326,6 @@ func reconstructMessagesFromPiEvents(events []map[string]interface{}) []map[stri
 			})
 
 		case "agent_start":
-			// user_text 事件已提供用户消息，agent_start 不再重复添加
 			streamingText = ""
 			streamingThinking = ""
 			pendingToolCalls = nil
@@ -322,211 +333,244 @@ func reconstructMessagesFromPiEvents(events []map[string]interface{}) []map[stri
 			needPushAssistant = false
 
 		case "message_update":
-			msgEvt, _ := raw["assistantMessageEvent"].(map[string]interface{})
-			if msgEvt == nil {
-				continue
-			}
-			deltaType := cast.ToString(msgEvt["type"])
-			switch deltaType {
-			case "text_delta":
-				streamingText += cast.ToString(msgEvt["delta"])
-				needPushAssistant = true
-			case "thinking_delta":
-				streamingThinking += cast.ToString(msgEvt["delta"])
-				needPushAssistant = true
-			case "toolcall_start", "toolcall_delta", "toolcall_end":
-				// 格式1: Anthropic — msgEvt.toolCall 直接携带
-				tc, _ := msgEvt["toolCall"].(map[string]interface{})
-				if tc != nil {
-					tcId := cast.ToString(tc["id"])
-					if tcId == "" {
-						continue
-					}
-					if existing, ok := pendingToolCallMap[tcId]; ok {
-						if args := cast.ToString(tc["arguments"]); args != "" {
-							_, isStr := tc["arguments"].(string)
-							if isStr {
-								existing["input"] = args
-							} else {
-								existing["input"] = tc["arguments"]
-							}
-						}
-					} else {
-						ti := map[string]interface{}{
-							"id":     tcId,
-							"name":   cast.ToString(tc["name"]),
-							"status": "running",
-						}
-						if args := tc["arguments"]; args != nil {
-							if argsStr, ok := args.(string); ok && argsStr != "" {
-								ti["input"] = argsStr
-							} else {
-								ti["input"] = args
-							}
-						}
-						pendingToolCallMap[tcId] = ti
-						pendingToolCalls = append(pendingToolCalls, ti)
-					}
-				}
-				// 格式2: DeepSeek/OpenAI — partial.content 数组中的 toolCall 块
-				partial, _ := msgEvt["partial"].(map[string]interface{})
-				if partial != nil {
-					contentBlocks, _ := partial["content"].([]interface{})
-					for _, blockRaw := range contentBlocks {
-						block, _ := blockRaw.(map[string]interface{})
-						if block == nil || cast.ToString(block["type"]) != "toolCall" {
-							continue
-						}
-						blockId := cast.ToString(block["id"])
-						if blockId == "" {
-							continue
-						}
-						if existing, ok := pendingToolCallMap[blockId]; ok {
-							// 更新参数
-							args := block["arguments"]
-							if args != nil {
-								if argsStr, ok := args.(string); ok && argsStr != "" {
-									existing["input"] = argsStr
-								} else if argsObj, ok := args.(map[string]interface{}); ok && len(argsObj) > 0 {
-									existing["input"] = argsObj
-								}
-							}
-							// 流式参数 partialArgs
-							partialArgs := cast.ToString(block["partialArgs"])
-							if partialArgs != "" {
-								existing["input"] = partialArgs
-							}
-						} else {
-							ti := map[string]interface{}{
-								"id":     blockId,
-								"name":   cast.ToString(block["name"]),
-								"status": "running",
-							}
-							args := block["arguments"]
-							if args != nil {
-								if argsStr, ok := args.(string); ok && argsStr != "" {
-									ti["input"] = argsStr
-								} else if argsObj, ok := args.(map[string]interface{}); ok && len(argsObj) > 0 {
-									ti["input"] = argsObj
-								}
-							}
-							partialArgs := cast.ToString(block["partialArgs"])
-							if partialArgs != "" && ti["input"] == nil {
-								ti["input"] = partialArgs
-							}
-							pendingToolCallMap[blockId] = ti
-							pendingToolCalls = append(pendingToolCalls, ti)
-						}
-					}
-				}
-				needPushAssistant = true
-			}
+			needPushAssistant = handlePiMessageUpdate(raw, &streamingText, &streamingThinking,
+				&pendingToolCalls, pendingToolCallMap) || needPushAssistant
 
 		case "message_end":
-			msg, _ := raw["message"].(map[string]interface{})
-			if msg == nil {
-				continue
-			}
-			role := cast.ToString(msg["role"])
-			if role == "assistant" {
-				content := extractPiContentFromEvent(msg["content"])
-				errorMsg := cast.ToString(msg["errorMessage"])
-				// 如果有实际内容（含 pendingToolCalls），推送助手消息
-				if content != "" || errorMsg != "" || streamingThinking != "" || len(pendingToolCalls) > 0 {
-					msgObj := map[string]interface{}{
-						"role": "assistant",
-					}
-					if errorMsg != "" {
-						msgObj["content"] = "**Error:** " + errorMsg
-					} else {
-						msgObj["content"] = content
-					}
-					if streamingThinking != "" {
-						msgObj["thinking"] = streamingThinking
-						streamingThinking = ""
-					}
-					if len(pendingToolCalls) > 0 {
-						msgObj["toolCalls"] = pendingToolCalls
-					}
-					messages = append(messages, msgObj)
-					needPushAssistant = false
-					streamingText = ""
-					// 清理本轮 tool calls，避免泄漏到同一 turn 的下一个 assistant 消息
-					pendingToolCalls = nil
-					pendingToolCallMap = make(map[string]map[string]interface{})
-				}
-			}
+			streamingText, streamingThinking, pendingToolCalls, pendingToolCallMap, needPushAssistant =
+				handlePiMessageEnd(raw, &messages, streamingText, streamingThinking,
+					pendingToolCalls, pendingToolCallMap, needPushAssistant)
 
 		case "agent_end":
-			// 如果 message_end 未推送，用 streamingText + toolCalls 组装
-			if needPushAssistant && (streamingText != "" || len(pendingToolCalls) > 0) {
-				msgObj := map[string]interface{}{
-					"role":    "assistant",
-					"content": streamingText,
-				}
-				if streamingThinking != "" {
-					msgObj["thinking"] = streamingThinking
-				}
-				if len(pendingToolCalls) > 0 {
-					msgObj["toolCalls"] = pendingToolCalls
-				}
-				messages = append(messages, msgObj)
-			}
-			streamingText = ""
-			streamingThinking = ""
-			pendingToolCalls = nil
-			pendingToolCallMap = make(map[string]map[string]interface{})
-			needPushAssistant = false
+			streamingText, streamingThinking, pendingToolCalls, pendingToolCallMap, needPushAssistant =
+				handlePiAgentEnd(&messages, streamingText, streamingThinking,
+					pendingToolCalls, pendingToolCallMap, needPushAssistant)
 
 		case "tool_execution_start":
-			tcId := cast.ToString(raw["toolCallId"])
-			if tcId == "" {
-				tcId = cast.ToString(raw["id"])
-			}
-			if tc, ok := pendingToolCallMap[tcId]; ok {
-				tc["status"] = "running"
-			}
+			handlePiToolExecStart(raw, pendingToolCallMap)
 
 		case "tool_execution_update":
-			tcId := cast.ToString(raw["toolCallId"])
-			if tcId == "" {
-				tcId = cast.ToString(raw["id"])
-			}
-			if tc, ok := pendingToolCallMap[tcId]; ok {
-				if output, ok := raw["output"]; ok {
-					tc["output"] = cast.ToString(tc["output"]) + cast.ToString(output)
-				}
-			}
+			handlePiToolExecUpdate(raw, pendingToolCallMap)
 
 		case "tool_execution_end":
-			tcId := cast.ToString(raw["toolCallId"])
-			if tcId == "" {
-				tcId = cast.ToString(raw["id"])
-			}
-			var output interface{}
-			if o, ok := raw["output"]; ok {
-				output = o
-			} else if r, ok := raw["result"]; ok {
-				output = r
-			}
-			if tc, ok := pendingToolCallMap[tcId]; ok {
-				tc["status"] = "done"
-				if output != nil {
-					tc["output"] = output
-				}
-				syncToolCallToMessages(messages, tcId, tc)
-			} else {
-				// tool call 已随 message_end 推入消息列表，直接更新消息中的状态
-				updateTc := map[string]interface{}{"status": "done"}
-				if output != nil {
-					updateTc["output"] = output
-				}
-				syncToolCallToMessages(messages, tcId, updateTc)
-			}
+			handlePiToolExecEnd(raw, messages, pendingToolCallMap)
 		}
 	}
 
 	return messages
+}
+
+// handlePiMessageUpdate 处理 message_update 事件，更新流式文本/思考和工具调用
+func handlePiMessageUpdate(raw map[string]interface{}, streamingText, streamingThinking *string,
+	pendingToolCalls *[]map[string]interface{}, pendingToolCallMap map[string]map[string]interface{}) bool {
+
+	msgEvt, _ := raw["assistantMessageEvent"].(map[string]interface{})
+	if msgEvt == nil {
+		return false
+	}
+
+	deltaType := cast.ToString(msgEvt["type"])
+	switch deltaType {
+	case "text_delta":
+		*streamingText += cast.ToString(msgEvt["delta"])
+		return true
+	case "thinking_delta":
+		*streamingThinking += cast.ToString(msgEvt["delta"])
+		return true
+	case "toolcall_start", "toolcall_delta", "toolcall_end":
+		// 格式1: Anthropic — msgEvt.toolCall 直接携带
+		tc, _ := msgEvt["toolCall"].(map[string]interface{})
+		if tc != nil {
+			tcId := cast.ToString(tc["id"])
+			if tcId != "" {
+				if existing, ok := pendingToolCallMap[tcId]; ok {
+					if args := cast.ToString(tc["arguments"]); args != "" {
+						if _, isStr := tc["arguments"].(string); isStr {
+							existing["input"] = args
+						} else {
+							existing["input"] = tc["arguments"]
+						}
+					}
+				} else {
+					ti := map[string]interface{}{
+						"id":     tcId,
+						"name":   cast.ToString(tc["name"]),
+						"status": "running",
+					}
+					if args := tc["arguments"]; args != nil {
+						if argsStr, ok := args.(string); ok && argsStr != "" {
+							ti["input"] = argsStr
+						} else {
+							ti["input"] = args
+						}
+					}
+					pendingToolCallMap[tcId] = ti
+					*pendingToolCalls = append(*pendingToolCalls, ti)
+				}
+			}
+		}
+		// 格式2: DeepSeek/OpenAI — partial.content 数组中的 toolCall 块
+		partial, _ := msgEvt["partial"].(map[string]interface{})
+		if partial != nil {
+			contentBlocks, _ := partial["content"].([]interface{})
+			for _, blockRaw := range contentBlocks {
+				block, _ := blockRaw.(map[string]interface{})
+				if block == nil || cast.ToString(block["type"]) != "toolCall" {
+					continue
+				}
+				blockId := cast.ToString(block["id"])
+				if blockId == "" {
+					continue
+				}
+				if existing, ok := pendingToolCallMap[blockId]; ok {
+					args := block["arguments"]
+					if args != nil {
+						if argsStr, ok := args.(string); ok && argsStr != "" {
+							existing["input"] = argsStr
+						} else if argsObj, ok := args.(map[string]interface{}); ok && len(argsObj) > 0 {
+							existing["input"] = argsObj
+						}
+					}
+					if partialArgs := cast.ToString(block["partialArgs"]); partialArgs != "" {
+						existing["input"] = partialArgs
+					}
+				} else {
+					ti := map[string]interface{}{
+						"id":     blockId,
+						"name":   cast.ToString(block["name"]),
+						"status": "running",
+					}
+					args := block["arguments"]
+					if args != nil {
+						if argsStr, ok := args.(string); ok && argsStr != "" {
+							ti["input"] = argsStr
+						} else if argsObj, ok := args.(map[string]interface{}); ok && len(argsObj) > 0 {
+							ti["input"] = argsObj
+						}
+					}
+					if partialArgs := cast.ToString(block["partialArgs"]); partialArgs != "" && ti["input"] == nil {
+						ti["input"] = partialArgs
+					}
+					pendingToolCallMap[blockId] = ti
+					*pendingToolCalls = append(*pendingToolCalls, ti)
+				}
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// handlePiMessageEnd 处理 message_end 事件，将完成的助手消息推入消息列表
+func handlePiMessageEnd(raw map[string]interface{}, messages *[]map[string]interface{},
+	streamingText, streamingThinking string,
+	pendingToolCalls []map[string]interface{}, pendingToolCallMap map[string]map[string]interface{},
+	needPushAssistant bool,
+) (string, string, []map[string]interface{}, map[string]map[string]interface{}, bool) {
+
+	msg, _ := raw["message"].(map[string]interface{})
+	if msg == nil {
+		return streamingText, streamingThinking, pendingToolCalls, pendingToolCallMap, needPushAssistant
+	}
+	if cast.ToString(msg["role"]) != "assistant" {
+		return streamingText, streamingThinking, pendingToolCalls, pendingToolCallMap, needPushAssistant
+	}
+
+	content := extractPiContentFromEvent(msg["content"])
+	errorMsg := cast.ToString(msg["errorMessage"])
+	if content != "" || errorMsg != "" || streamingThinking != "" || len(pendingToolCalls) > 0 {
+		msgObj := map[string]interface{}{"role": "assistant"}
+		if errorMsg != "" {
+			msgObj["content"] = "**Error:** " + errorMsg
+		} else {
+			msgObj["content"] = content
+		}
+		if streamingThinking != "" {
+			msgObj["thinking"] = streamingThinking
+		}
+		if len(pendingToolCalls) > 0 {
+			msgObj["toolCalls"] = pendingToolCalls
+		}
+		*messages = append(*messages, msgObj)
+		return "", "", nil, make(map[string]map[string]interface{}), false
+	}
+	return streamingText, streamingThinking, pendingToolCalls, pendingToolCallMap, needPushAssistant
+}
+
+// handlePiAgentEnd 处理 agent_end 事件，兜底推送未完成的助手消息
+func handlePiAgentEnd(messages *[]map[string]interface{},
+	streamingText, streamingThinking string,
+	pendingToolCalls []map[string]interface{}, pendingToolCallMap map[string]map[string]interface{},
+	needPushAssistant bool,
+) (string, string, []map[string]interface{}, map[string]map[string]interface{}, bool) {
+
+	if needPushAssistant && (streamingText != "" || len(pendingToolCalls) > 0) {
+		msgObj := map[string]interface{}{
+			"role":    "assistant",
+			"content": streamingText,
+		}
+		if streamingThinking != "" {
+			msgObj["thinking"] = streamingThinking
+		}
+		if len(pendingToolCalls) > 0 {
+			msgObj["toolCalls"] = pendingToolCalls
+		}
+		*messages = append(*messages, msgObj)
+	}
+	return "", "", nil, make(map[string]map[string]interface{}), false
+}
+
+// handlePiToolExecStart 处理 tool_execution_start 事件
+func handlePiToolExecStart(raw map[string]interface{}, pendingToolCallMap map[string]map[string]interface{}) {
+	tcId := cast.ToString(raw["toolCallId"])
+	if tcId == "" {
+		tcId = cast.ToString(raw["id"])
+	}
+	if tc, ok := pendingToolCallMap[tcId]; ok {
+		tc["status"] = "running"
+	}
+}
+
+// handlePiToolExecUpdate 处理 tool_execution_update 事件
+func handlePiToolExecUpdate(raw map[string]interface{}, pendingToolCallMap map[string]map[string]interface{}) {
+	tcId := cast.ToString(raw["toolCallId"])
+	if tcId == "" {
+		tcId = cast.ToString(raw["id"])
+	}
+	if tc, ok := pendingToolCallMap[tcId]; ok {
+		if output, ok := raw["output"]; ok {
+			tc["output"] = cast.ToString(tc["output"]) + cast.ToString(output)
+		}
+	}
+}
+
+// handlePiToolExecEnd 处理 tool_execution_end 事件
+func handlePiToolExecEnd(raw map[string]interface{}, messages []map[string]interface{},
+	pendingToolCallMap map[string]map[string]interface{}) {
+
+	tcId := cast.ToString(raw["toolCallId"])
+	if tcId == "" {
+		tcId = cast.ToString(raw["id"])
+	}
+	var output interface{}
+	if o, ok := raw["output"]; ok {
+		output = o
+	} else if r, ok := raw["result"]; ok {
+		output = r
+	}
+	if tc, ok := pendingToolCallMap[tcId]; ok {
+		tc["status"] = "done"
+		if output != nil {
+			tc["output"] = output
+		}
+		syncToolCallToMessages(messages, tcId, tc)
+	} else {
+		updateTc := map[string]interface{}{"status": "done"}
+		if output != nil {
+			updateTc["output"] = output
+		}
+		syncToolCallToMessages(messages, tcId, updateTc)
+	}
 }
 
 // extractPiContentFromEvent 从 Pi content 数组提取文本
@@ -570,7 +614,8 @@ func syncToolCallToMessages(messages []map[string]interface{}, tcId string, tc m
 	}
 }
 
-// 常见模型的默认上下文窗口大小
+// 常见模型的默认上下文窗口大小（兜底）
+// 优先使用 tbl_ai_model 表中的 context_size（由 parseModelsCtx 提供）
 var defaultModelContextSizes = map[string]int{
 	"claude-sonnet-4-20250514": 200000,
 	"claude-haiku-4-20250514":  200000,
@@ -598,18 +643,40 @@ func lookupContextTotal(model string, modelsCtx map[string]int) int {
 }
 
 // parseModelsCtx 从 Agent config JSON 中解析模型上下文大小映射
-// config.models_ctx: {"model_id": 128000, ...}
+// 优先读 config.models_ctx（旧格式），否则从 tbl_ai_model 表查询
 func parseModelsCtx(configStr string) map[string]int {
-	if configStr == "" {
+	result := make(map[string]int)
+
+	// 先尝试从 config JSON 中解析（旧格式兼容）
+	if configStr != "" {
+		var cfg struct {
+			ModelsCtx map[string]int `json:"models_ctx"`
+		}
+		if err := json.Unmarshal([]byte(configStr), &cfg); err == nil && len(cfg.ModelsCtx) > 0 {
+			return cfg.ModelsCtx
+		}
+	}
+
+	// 从 DB 查询所有 LLM 模型的 context_size
+	if common.DbMain != nil && common.DbMain.Client != nil {
+		rows, err := common.DbMain.Client.QueryBySql(
+			`SELECT model, context_size FROM tbl_ai_model WHERE model_type = 'llm' AND status = 1`,
+		).All()
+		if err == nil {
+			for _, row := range rows {
+				model := cast.ToString(row["model"])
+				ctx := cast.ToInt(row["context_size"])
+				if model != "" && ctx > 0 {
+					result[model] = ctx
+				}
+			}
+		}
+	}
+
+	if len(result) == 0 {
 		return nil
 	}
-	var cfg struct {
-		ModelsCtx map[string]int `json:"models_ctx"`
-	}
-	if err := json.Unmarshal([]byte(configStr), &cfg); err != nil {
-		return nil
-	}
-	return cfg.ModelsCtx
+	return result
 }
 
 // computeSessionStats 从会话事件文件中提取真实 token 用量

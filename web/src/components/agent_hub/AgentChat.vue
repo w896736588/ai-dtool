@@ -129,7 +129,7 @@
                 class="tool-call"
                 :class="'tool-call--' + tc.status"
               >
-                <!-- read/bash 紧凑一行 -->
+                <!-- read/bash/edit 紧凑一行 -->
                 <template v-if="isReadOrBashTool(tc)">
                   <div class="tool-call__compact-row" @click="toggleToolCallCollapse(tc)">
                     <span class="tool-call__compact-label">{{ tc.name }}</span>
@@ -167,10 +167,21 @@
             <span class="avatar avatar--assistant">π</span>
           </div>
           <div class="chat-message__body">
+            <!-- 思考过程 -->
+            <div v-if="streamingThinking" class="thinking-block">
+              <div class="thinking-block__header" @click="showThinking = !showThinking">
+                <el-icon><Loading /></el-icon>
+                <span>思考中...</span>
+                <el-icon class="thinking-block__arrow" :class="{ 'thinking-block__arrow--open': showThinking }">
+                  <ArrowDown />
+                </el-icon>
+              </div>
+              <div v-if="showThinking" class="thinking-block__content">{{ streamingThinking }}</div>
+            </div>
             <!-- 流式工具调用 -->
             <div v-if="hasRunningTools" class="tool-calls">
               <div v-for="tc in runningToolCalls" :key="tc.id" class="tool-call" :class="'tool-call--' + tc.status">
-                <!-- read/bash 紧凑一行 -->
+                <!-- read/bash/edit 紧凑一行 -->
                 <template v-if="isReadOrBashTool(tc)">
                   <div class="tool-call__compact-row" @click="toggleToolCallCollapse(tc)">
                     <span class="tool-call__compact-label">{{ tc.name }}</span>
@@ -199,16 +210,6 @@
                 </template>
               </div>
             </div>
-            <div v-if="streamingThinking" class="thinking-block">
-              <div class="thinking-block__header" @click="showThinking = !showThinking">
-                <el-icon><Loading /></el-icon>
-                <span>思考中...</span>
-                <el-icon class="thinking-block__arrow" :class="{ 'thinking-block__arrow--open': showThinking }">
-                  <ArrowDown />
-                </el-icon>
-              </div>
-              <div v-if="showThinking" class="thinking-block__content">{{ streamingThinking }}</div>
-            </div>
             <div class="chat-message__content" v-html="renderMarkdown(streamingText)"></div>
             <span class="cursor-blink">▊</span>
           </div>
@@ -234,21 +235,27 @@
           />
           <div class="chat-input__toolbar">
             <div class="chat-input__toolbar-left">
-              <!-- 模型选择 -->
+              <!-- 模型选择（按 Provider 分组） -->
               <el-select
-                v-if="agentConfig"
+                v-if="providerModels.length > 0"
                 v-model="selectedModel"
                 size="small"
-                style="width: 160px"
-                placeholder="模型"
+                style="width: 200px"
+                placeholder="选择模型"
                 @change="setModel"
               >
-                <el-option
-                  v-for="m in modelOptions"
-                  :key="m"
-                  :label="m"
-                  :value="m"
-                />
+                <el-option-group
+                  v-for="group in providerModels"
+                  :key="group.provider_id"
+                  :label="group.provider_name"
+                >
+                  <el-option
+                    v-for="m in group.models"
+                    :key="m.id"
+                    :label="m.name + ' (' + m.model + ')'"
+                    :value="group.provider_type + '/' + m.model"
+                  />
+                </el-option-group>
               </el-select>
 
               <!-- Skills 选择 -->
@@ -339,6 +346,7 @@
 <script>
 import Base from '@/utils/base.js'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import {
   ArrowLeft,
   ArrowDown,
@@ -389,10 +397,8 @@ export default {
       showThinking: true,
 
       selectedModel: '',
-      modelOptions: [
-        'claude-sonnet-4-20250514', 'claude-haiku-4-20250514',
-        'claude-opus-4-20250514', 'gpt-4o', 'gpt-4o-mini'
-      ],
+      // 按 Provider 分组的模型列表 [{provider_id, provider_name, provider_type, models: [{id, name, model}]}]
+      providerModels: [],
 
       ws: null,
       wsConnected: false,
@@ -479,7 +485,7 @@ export default {
 
     // ========== 会话管理 ==========
     async loadSessions() {
-      Base.BasePost('/api/AgentV2SessionList', { agent_id: this.agentId }, (res) => {
+      Base.BasePost('/api/AgentV2SessionList', { agent_id: this.agentId, workspace_id: this.currentWorkspaceId }, (res) => {
         this.sessions = (res.ErrCode === 0 && res.Data) ? (res.Data.list || []) : []
       })
     },
@@ -571,13 +577,43 @@ export default {
           if (agent.config) {
             try {
               this.agentConfig = JSON.parse(agent.config)
-              if (this.agentConfig.model) {
-                this.selectedModel = this.agentConfig.model
-              }
-              if (this.agentConfig.models && this.agentConfig.models.length > 0) {
-                this.modelOptions = this.agentConfig.models
-              }
             } catch(e) {}
+          }
+        }
+        // Agent 信息加载完成后加载模型列表（确保 agentConfig 已就绪）
+        this.loadProviderModels()
+      })
+    },
+    loadProviderModels() {
+      Base.BasePost('/api/AgentV2ProviderModels', {}, (res) => {
+        if (res.ErrCode === 0 && res.Data && res.Data.providers) {
+          this.providerModels = res.Data.providers
+            .filter(p => (p.models || []).length > 0)
+            .map(p => ({
+              provider_id: p.id,
+              provider_name: p.name,
+              provider_type: p.provider_type,
+              models: p.models || []
+            }))
+          // 设置默认选中模型
+          if (this.providerModels.length > 0 && !this.selectedModel) {
+            const cfg = this.agentConfig || {}
+            if (cfg.provider_id && cfg.model_id) {
+              for (const g of this.providerModels) {
+                if (g.provider_id === cfg.provider_id) {
+                  const m = g.models.find(m => m.id === cfg.model_id)
+                  if (m) {
+                    this.selectedModel = g.provider_type + '/' + m.model
+                    break
+                  }
+                }
+              }
+            }
+            if (!this.selectedModel) {
+              const first = this.providerModels[0]
+              const firstModel = first.models[0]
+              this.selectedModel = first.provider_type + '/' + firstModel.model
+            }
           }
         }
       })
@@ -639,9 +675,10 @@ export default {
       if (data.type === 'event' && data.event) {
         this.handlePiEvent(data.event)
       } else if (data.type === 'state') {
-        // 更新模型信息
-        if (data.state?.model) {
-          this.selectedModel = data.state.model
+        // 更新模型信息（状态中 model 是纯模型 ID，provider 是 provider 类型）
+        if (data.state?.model && data.state?.provider) {
+          const lookupVal = data.state.provider + '/' + data.state.model
+          this.selectedModel = lookupVal
         }
       } else if (data.type === 'history' && data.messages) {
         // 如果 HTTP API 已加载历史消息，不覆盖（避免重复造成闪烁）
@@ -1034,9 +1071,10 @@ export default {
     },
     setModel() {
       if (!this.selectedModel) return
-      const parts = this.selectedModel.split('/')
-      const modelId = parts.length > 1 ? parts[1] : parts[0]
-      const provider = this.agentConfig?.provider || 'anthropic'
+      // 格式: provider_type/model (如 openai/gpt-4o)
+      const idx = this.selectedModel.lastIndexOf('/')
+      const provider = idx >= 0 ? this.selectedModel.substring(0, idx) : 'anthropic'
+      const modelId = idx >= 0 ? this.selectedModel.substring(idx + 1) : this.selectedModel
       this.sendWS({
         type: 'command',
         command: { type: 'set_model', provider: provider, modelId: modelId }
@@ -1111,13 +1149,20 @@ export default {
     renderMarkdown(text) {
       if (!text) return ''
       try {
-        return marked.parse(text, { breaks: true })
+        const raw = marked.parse(text, { breaks: true })
+        return DOMPurify.sanitize(raw)
       } catch (e) {
         return this.escapeHtml(text)
       }
     },
     escapeHtml(text) {
-      return text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      if (!text) return ''
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
     },
     extractPiContent(content) {
       if (!content || !Array.isArray(content)) return ''
@@ -1134,9 +1179,10 @@ export default {
       const map = { running: '执行中', done: '完成', pending: '等待' }
       return map[status] || status
     },
-    // read/bash 紧凑展示辅助方法
+    // read/bash/edit 紧凑展示辅助方法
     isReadOrBashTool(tc) {
-      return tc.name === 'read' || tc.name === 'bash' || tc.name === 'read_file'
+      return tc.name === 'read' || tc.name === 'read_file' || tc.name === 'bash'
+        || tc.name === 'edit' || tc.name === 'write' || tc.name === 'write_file'
     },
     getCompactText(tc) {
       if (!tc.input) return ''
@@ -1145,7 +1191,7 @@ export default {
         try { obj = JSON.parse(obj) } catch(e) { return obj }
       }
       if (typeof obj !== 'object' || obj === null) return String(obj)
-      if (tc.name === 'read' || tc.name === 'read_file') {
+      if (tc.name === 'read' || tc.name === 'read_file' || tc.name === 'edit' || tc.name === 'write' || tc.name === 'write_file') {
         return obj.path || obj.file_path || JSON.stringify(obj)
       }
       if (tc.name === 'bash') {

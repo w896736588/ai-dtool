@@ -10,6 +10,10 @@ const (
 // DefaultPiSessionDir Pi Agent 会话 JSONL 默认存储目录
 const DefaultPiSessionDir = "logs/pi_agent_sessions"
 
+// DefaultBuiltinToolsDir 内置工具目录（相对于程序工作目录，通常为项目根目录）
+// 注意：此路径依赖工作目录，若以不同 CWD 启动可能失效，后续考虑改为基于可执行文件路径或配置文件动态解析
+const DefaultBuiltinToolsDir = "internal/app/dtool/data"
+
 // AgentV2Item Agent 配置项
 type AgentV2Item struct {
 	Id        int    `json:"id"`

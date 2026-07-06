@@ -102,7 +102,7 @@ func (a *PiAdapter) Start(ctx context.Context, config AgentStartConfig) error {
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
-			log.Printf("[pi-adapter] stderr: %s", scanner.Text())
+			log.Printf("[agent-v2/pi] stderr: %s", scanner.Text())
 		}
 	}()
 
@@ -113,9 +113,9 @@ func (a *PiAdapter) Start(ctx context.Context, config AgentStartConfig) error {
 		a.running = false
 		a.mu.Unlock()
 		if err != nil {
-			log.Printf("[pi-adapter] pi process exited with error: %v", err)
+			log.Printf("[agent-v2/pi] pi process exited with error: %v", err)
 		} else {
-			log.Printf("[pi-adapter] pi process exited normally")
+			log.Printf("[agent-v2/pi] pi process exited normally")
 		}
 	}()
 
