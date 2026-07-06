@@ -130,40 +130,44 @@ export default {
 </script>
 
 <style scoped>
-.agent-hub { padding: 24px; max-width: 1200px; margin: 0 auto; }
+.agent-hub { padding: 24px; }
 .agent-hub__header { margin-bottom: 32px; }
 .agent-hub__header h2 { margin: 0 0 8px; font-size: 24px; color: #303133; }
 .agent-hub__subtitle { color: #909399; margin: 0; }
-.agent-hub__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+.agent-hub__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px; }
 
 .agent-card {
   background: #fff; border-radius: 12px; padding: 24px;
   border: 1px solid #e4e7ed; transition: all .2s;
-  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px;
+  display: flex; flex-direction: row; align-items: center; text-align: left; gap: 16px;
   position: relative;
 }
 .agent-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.08); border-color: #c0c4cc; }
 .agent-card--not-installed { opacity: 0.6; }
 .agent-card--add {
-  border: 2px dashed #dcdfe6; cursor: pointer; justify-content: center; min-height: 200px;
+  border: 2px dashed #dcdfe6; cursor: pointer;
+  flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  min-height: 160px;
 }
 .agent-card--add:hover { border-color: #409eff; background: #ecf5ff; }
 .agent-card__add-icon { font-size: 40px; color: #c0c4cc; }
 .agent-card--add:hover .agent-card__add-icon { color: #409eff; }
 .agent-card--add p { color: #909399; margin: 0; }
 
+.agent-card__icon { flex-shrink: 0; }
 .agent-icon {
-  width: 64px; height: 64px; border-radius: 16px; display: flex; align-items: center; justify-content: center;
-  font-size: 28px; font-weight: bold; color: #fff;
+  width: 56px; height: 56px; border-radius: 14px; display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: bold; color: #fff;
 }
 .agent-icon--pi { background: linear-gradient(135deg, #667eea, #764ba2); }
 .agent-icon--codex { background: linear-gradient(135deg, #10a37f, #1a7f64); }
 .agent-icon--claude { background: linear-gradient(135deg, #d97706, #b45309); }
 
-.agent-card__body h3 { margin: 0; font-size: 16px; color: #303133; }
-.agent-card__type { color: #909399; font-size: 13px; margin: 4px 0; text-transform: uppercase; }
-.agent-card__sessions { color: #c0c4cc; font-size: 12px; margin: 0; }
-.agent-card__actions { display: flex; gap: 8px; margin-top: 4px; }
+.agent-card__body { flex: 1; min-width: 0; }
+.agent-card__body h3 { margin: 0 0 4px; font-size: 16px; color: #303133; }
+.agent-card__type { color: #909399; font-size: 13px; margin: 0 0 4px; text-transform: uppercase; }
+.agent-card__sessions { color: #c0c4cc; font-size: 12px; margin: 0 0 8px; }
+.agent-card__actions { display: flex; gap: 8px; }
 .agent-card__footer { position: absolute; top: 8px; right: 12px; }
 .form-hint { font-size: 12px; color: #909399; padding-left: 60px; }
 </style>
