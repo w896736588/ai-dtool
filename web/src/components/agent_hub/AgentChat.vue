@@ -144,15 +144,33 @@
                 class="tool-call"
                 :class="'tool-call--' + tc.status"
               >
-                <div class="tool-call__header">
-                  <el-icon><Tools /></el-icon>
-                  <span class="tool-call__name">{{ tc.name }}</span>
-                  <el-tag :type="tc.status === 'done' ? 'success' : tc.status === 'running' ? 'warning' : 'info'" size="small">
-                    {{ statusLabel(tc.status) }}
-                  </el-tag>
-                </div>
-                <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
-                <pre class="tool-call__output" v-if="tc.output">{{ tc.output }}</pre>
+                <!-- read/bash 紧凑一行 -->
+                <template v-if="isReadOrBashTool(tc)">
+                  <div class="tool-call__compact-row" @click="toggleToolCallCollapse(tc)">
+                    <span class="tool-call__compact-label">{{ tc.name }}</span>
+                    <span class="tool-call__compact-text" :title="getCompactText(tc)">{{ getCompactText(tc) }}</span>
+                    <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}</span>
+                    <el-icon class="tool-call__compact-arrow" :class="{ 'tool-call__compact-arrow--open': !isToolCallCollapsed(tc) }">
+                      <ArrowRight />
+                    </el-icon>
+                  </div>
+                  <div v-if="!isToolCallCollapsed(tc)" class="tool-call__details">
+                    <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
+                    <pre class="tool-call__output" v-if="tc.output">{{ tc.output }}</pre>
+                  </div>
+                </template>
+                <!-- 其他工具完整展示 -->
+                <template v-else>
+                  <div class="tool-call__header">
+                    <el-icon><Tools /></el-icon>
+                    <span class="tool-call__name">{{ tc.name }}</span>
+                    <el-tag :type="tc.status === 'done' ? 'success' : tc.status === 'running' ? 'warning' : 'info'" size="small">
+                      {{ statusLabel(tc.status) }}
+                    </el-tag>
+                  </div>
+                  <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
+                  <pre class="tool-call__output" v-if="tc.output">{{ tc.output }}</pre>
+                </template>
               </div>
             </div>
           </div>
@@ -167,15 +185,33 @@
             <!-- 流式工具调用 -->
             <div v-if="hasRunningTools" class="tool-calls">
               <div v-for="tc in runningToolCalls" :key="tc.id" class="tool-call" :class="'tool-call--' + tc.status">
-                <div class="tool-call__header">
-                  <el-icon><Loading /></el-icon>
-                  <span class="tool-call__name">{{ tc.name }}</span>
-                  <el-tag :type="tc.status === 'done' ? 'success' : 'warning'" size="small">
-                    {{ statusLabel(tc.status) }}
-                  </el-tag>
-                </div>
-                <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
-                <pre class="tool-call__output" v-if="tc.output">{{ tc.output }}</pre>
+                <!-- read/bash 紧凑一行 -->
+                <template v-if="isReadOrBashTool(tc)">
+                  <div class="tool-call__compact-row" @click="toggleToolCallCollapse(tc)">
+                    <span class="tool-call__compact-label">{{ tc.name }}</span>
+                    <span class="tool-call__compact-text" :title="getCompactText(tc)">{{ getCompactText(tc) }}</span>
+                    <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}</span>
+                    <el-icon class="tool-call__compact-arrow" :class="{ 'tool-call__compact-arrow--open': !isToolCallCollapsed(tc) }">
+                      <ArrowRight />
+                    </el-icon>
+                  </div>
+                  <div v-if="!isToolCallCollapsed(tc)" class="tool-call__details">
+                    <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
+                    <pre class="tool-call__output" v-if="tc.output">{{ tc.output }}</pre>
+                  </div>
+                </template>
+                <!-- 其他工具完整展示 -->
+                <template v-else>
+                  <div class="tool-call__header">
+                    <el-icon><Loading /></el-icon>
+                    <span class="tool-call__name">{{ tc.name }}</span>
+                    <el-tag :type="tc.status === 'done' ? 'success' : 'warning'" size="small">
+                      {{ statusLabel(tc.status) }}
+                    </el-tag>
+                  </div>
+                  <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
+                  <pre class="tool-call__output" v-if="tc.output">{{ tc.output }}</pre>
+                </template>
               </div>
             </div>
             <div v-if="streamingThinking" class="thinking-block">
@@ -258,6 +294,7 @@ import { marked } from 'marked'
 import {
   ArrowLeft,
   ArrowDown,
+  ArrowRight,
   Folder,
   ChatDotRound,
   Close,
@@ -270,6 +307,7 @@ export default {
   components: {
     ArrowLeft,
     ArrowDown,
+    ArrowRight,
     Folder,
     ChatDotRound,
     Close,
@@ -625,7 +663,7 @@ export default {
           if (tcId && !this.pendingToolCalls[tcId]) {
             this.pendingToolCalls[tcId] = {
               id: tcId, name: event.toolName || event.name || 'unknown',
-              status: 'running', input: '', output: ''
+              status: 'running', input: '', output: '', _collapsed: true
             }
           }
           if (tcId && this.pendingToolCalls[tcId]) {
@@ -790,7 +828,7 @@ export default {
       const tcDirect = msgEvt.toolCall
       if (tcDirect && tcDirect.id) {
         if (!this.pendingToolCalls[tcDirect.id]) {
-          this.pendingToolCalls[tcDirect.id] = { id: tcDirect.id, name: tcDirect.name || 'unknown', status: 'running', input: '', output: '' }
+          this.pendingToolCalls[tcDirect.id] = { id: tcDirect.id, name: tcDirect.name || 'unknown', status: 'running', input: '', output: '', _collapsed: true }
         }
         if (tcDirect.arguments) {
           try { this.pendingToolCalls[tcDirect.id].input = JSON.parse(tcDirect.arguments) } catch(e) {
@@ -803,7 +841,7 @@ export default {
       for (const block of partialContent) {
         if (block.type === 'toolCall' && block.id) {
           if (!this.pendingToolCalls[block.id]) {
-            this.pendingToolCalls[block.id] = { id: block.id, name: block.name || 'unknown', status: 'running', input: '', output: '' }
+            this.pendingToolCalls[block.id] = { id: block.id, name: block.name || 'unknown', status: 'running', input: '', output: '', _collapsed: true }
           }
           // arguments（完整参数对象或 JSON 字符串）
           const args = block.arguments
@@ -1007,6 +1045,31 @@ export default {
       const map = { running: '执行中', done: '完成', pending: '等待' }
       return map[status] || status
     },
+    // read/bash 紧凑展示辅助方法
+    isReadOrBashTool(tc) {
+      return tc.name === 'read' || tc.name === 'bash' || tc.name === 'read_file'
+    },
+    getCompactText(tc) {
+      if (!tc.input) return ''
+      let obj = tc.input
+      if (typeof obj === 'string') {
+        try { obj = JSON.parse(obj) } catch(e) { return obj }
+      }
+      if (typeof obj !== 'object' || obj === null) return String(obj)
+      if (tc.name === 'read' || tc.name === 'read_file') {
+        return obj.path || obj.file_path || JSON.stringify(obj)
+      }
+      if (tc.name === 'bash') {
+        return obj.command || JSON.stringify(obj)
+      }
+      return JSON.stringify(obj)
+    },
+    isToolCallCollapsed(tc) {
+      return tc._collapsed !== false // 默认收起
+    },
+    toggleToolCallCollapse(tc) {
+      tc._collapsed = this.isToolCallCollapsed(tc) ? false : true
+    },
     scrollToBottom() {
       this.$nextTick(() => {
         const el = this.$refs.messagesContainer
@@ -1117,8 +1180,8 @@ export default {
 }
 .chat-empty__hint { font-size: 13px; margin-top: 4px; }
 
-.chat-message { display: flex; gap: 12px; margin-bottom: 24px; max-width: 85%; }
-.chat-message--assistant { max-width: 90%; }
+.chat-message { display: flex; gap: 12px; margin-bottom: 24px; max-width: 90%; }
+.chat-message--assistant { max-width: 100%; }
 .chat-message--user { margin-left: auto; flex-direction: row-reverse; }
 
 .avatar {
@@ -1183,6 +1246,30 @@ export default {
 }
 .tool-call__output { color: #67c23a; margin-top: 6px; }
 
+.tool-call__compact-row {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 2px 0; font-size: 13px;
+}
+.tool-call__compact-row:hover { background: rgba(0,0,0,.02); border-radius: 4px; }
+.tool-call__compact-label {
+  font-weight: 600; flex-shrink: 0; color: #409eff;
+  min-width: 32px; font-size: 12px; text-transform: uppercase; letter-spacing: .3px;
+}
+.tool-call__compact-text {
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #606266; font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px; line-height: 1.5;
+}
+.tool-call__compact-status {
+  flex-shrink: 0; font-size: 11px; color: #909399;
+}
+.tool-call__compact-arrow {
+  flex-shrink: 0; font-size: 14px; color: #c0c4cc;
+  transition: transform .2s ease;
+}
+.tool-call__compact-arrow--open { transform: rotate(90deg); }
+.tool-call__details { margin-top: 8px; border-top: 1px dashed #e4e7ed; padding-top: 8px; }
+
 .compaction-notice {
   text-align: center; padding: 8px; color: #e6a23c; font-size: 13px;
 }
@@ -1191,7 +1278,7 @@ export default {
 @keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: 0 } }
 
 .chat-input { padding: 16px 24px; background: #fff; border-top: 1px solid #e4e7ed; }
-.chat-input__wrapper { max-width: 900px; margin: 0 auto; }
+.chat-input__wrapper { width: 100%; }
 .chat-input__actions {
   display: flex; justify-content: space-between; align-items: center; margin-top: 8px;
 }
@@ -1213,7 +1300,6 @@ export default {
 :deep(.chat-message--user .chat-message__content code) {
   background: rgba(255,255,255,.2); color: #fff;
 }
-:deep(.thinking-details) { margin-bottom: 8px; }
 :deep(.thinking-details summary) { color: #b88230; cursor: pointer; font-size: 13px; }
-:deep(.thinking-details[open] summary) { margin-bottom: 8px; }
+:deep(.thinking-details[open] summary + *) { margin-top: 8px; }
 </style>
