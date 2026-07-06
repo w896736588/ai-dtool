@@ -69,7 +69,7 @@
           <el-divider content-position="left">高级选项</el-divider>
           <el-form-item label="会话存储目录">
             <el-input v-model="piConfig.session_dir" placeholder="留空使用默认目录" />
-            <div class="field-hint">Pi 会话 JSONL 文件的存储路径，留空则默认 data/agent_sessions/</div>
+            <div class="field-hint">Pi 会话 JSONL 文件的存储路径，留空则默认 logs/pi_agent_sessions</div>
           </el-form-item>
           <el-form-item label="额外启动参数">
             <el-input v-model="piConfig.extra_args" placeholder="例如：--no-session" />

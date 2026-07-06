@@ -114,7 +114,7 @@ func computeSessionDirFromAgent(agentId, sessionId int) string {
 	}
 
 	// 默认目录
-	dir := filepath.Join("data", "agent_sessions", cast.ToString(agentId))
+	dir := filepath.Join(define.DefaultPiSessionDir, cast.ToString(agentId))
 	if sessionId > 0 {
 		dir = filepath.Join(dir, "s"+cast.ToString(sessionId))
 	}

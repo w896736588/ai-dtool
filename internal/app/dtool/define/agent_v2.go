@@ -7,6 +7,9 @@ const (
 	AgentV2TypeClaudeCode = "claude-code"
 )
 
+// DefaultPiSessionDir Pi Agent 会话 JSONL 默认存储目录
+const DefaultPiSessionDir = "logs/pi_agent_sessions"
+
 // AgentV2Item Agent 配置项
 type AgentV2Item struct {
 	Id        int    `json:"id"`

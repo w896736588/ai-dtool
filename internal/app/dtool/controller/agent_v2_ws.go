@@ -63,8 +63,8 @@ func computeSessionDir(agentCfgSessionDir string, agentId, sessionId int) string
 	if agentCfgSessionDir != "" {
 		return filepath.Join(agentCfgSessionDir, "s"+cast.ToString(sessionId))
 	}
-	// 默认目录：data/agent_sessions/{agent_id}/s{session_id}（与 computeSessionDirFromAgent 保持一致）
-	dir := filepath.Join("data", "agent_sessions", cast.ToString(agentId), "s"+cast.ToString(sessionId))
+	// 默认目录：{DefaultPiSessionDir}/{agent_id}/s{session_id}
+	dir := filepath.Join(define.DefaultPiSessionDir, cast.ToString(agentId), "s"+cast.ToString(sessionId))
 	os.MkdirAll(dir, 0755)
 	return dir
 }
