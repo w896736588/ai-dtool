@@ -84,18 +84,16 @@ func cleanupStaleSessions(maxAge time.Duration) {
 
 // parsePiConfig 解析 Agent config JSON 中的 Pi 配置
 // 支持三种模式（优先级从高到低）：
-// 1. 运行时覆盖：前端传入 runtimeModel（格式: provider_type/model），查全局表获取连接参数
+// 1. 运行时覆盖：前端传入 runtimeModel（格式: provider_name/model），查全局表获取连接参数
 // 2. 新模式：provider_id + model_id（从全局 tbl_ai_provider / tbl_ai_model 查询）
-// 3. 旧模式：provider + model + model_addr + api_key（字符串形式）
-func parsePiConfig(configStr string, runtimeModel string) (provider, model, modelAddr, apiKey, sessionDir, extraArgs string) {
+// 3. 旧模式：provider + model（字符串形式，provider 值为 provider name）
+func parsePiConfig(configStr string, runtimeModel string) (providerName, model, sessionDir, extraArgs string) {
 	if configStr == "" {
-		return "", "", "", "", "", ""
+		return "", "", "", ""
 	}
 	var cfg struct {
 		Provider   string `json:"provider"`
 		Model      string `json:"model"`
-		ModelAddr  string `json:"model_addr"`
-		ApiKey     string `json:"api_key"`
 		SessionDir string `json:"session_dir"`
 		ExtraArgs  string `json:"extra_args"`
 		// 新模式：引用全局配置表
@@ -103,37 +101,33 @@ func parsePiConfig(configStr string, runtimeModel string) (provider, model, mode
 		ModelId    int `json:"model_id"`
 	}
 	if err := json.Unmarshal([]byte(configStr), &cfg); err != nil {
-		return "", "", "", "", "", ""
+		return "", "", "", ""
 	}
 
 	sessionDir = cfg.SessionDir
 	extraArgs = cfg.ExtraArgs
 
 	// 优先级 1：运行时模型覆盖（前端对话框选择的模型）
+	// runtimeModel 格式: provider_name/model（如 pixel-frog/gpt-5.4）
 	if runtimeModel != "" {
 		idx := strings.LastIndex(runtimeModel, "/")
 		if idx >= 0 {
-			pType := runtimeModel[:idx]
+			pName := runtimeModel[:idx]
 			mName := runtimeModel[idx+1:]
 
 			providerRow, err := common.DbMain.Client.QueryBySql(
-				`SELECT id, base_url, api_key FROM tbl_ai_provider WHERE provider_type = ? AND status = 1`,
-				pType,
+				`SELECT id FROM tbl_ai_provider WHERE name = ? AND status = 1`,
+				pName,
 			).One()
 			if err == nil && len(providerRow) > 0 {
 				providerId := cast.ToInt(providerRow["id"])
 				modelRow, err := common.DbMain.Client.QueryBySql(
-					`SELECT model, uri FROM tbl_ai_model WHERE model = ? AND provider_id = ? AND status = 1`,
+					`SELECT model FROM tbl_ai_model WHERE model = ? AND provider_id = ? AND status = 1`,
 					mName, providerId,
 				).One()
 				if err == nil && len(modelRow) > 0 {
-					provider = pType
+					providerName = pName
 					model = cast.ToString(modelRow["model"])
-					modelAddr = cast.ToString(providerRow["base_url"])
-					apiKey = cast.ToString(providerRow["api_key"])
-					if uri := cast.ToString(modelRow["uri"]); uri != "" {
-						modelAddr = strings.TrimRight(modelAddr, "/") + uri
-					}
 					return
 				}
 			}
@@ -142,40 +136,29 @@ func parsePiConfig(configStr string, runtimeModel string) (provider, model, mode
 	}
 
 	// 新模式：从全局表查询 provider + model 信息
+	// 返回 provider name（唯一标识），不再返回 provider_type 和 modelAddr/apiKey
 	if cfg.ProviderId > 0 && cfg.ModelId > 0 {
 		providerRow, err := common.DbMain.Client.QueryBySql(
-			`SELECT provider_type, base_url, api_key FROM tbl_ai_provider WHERE id = ? AND status = 1`,
+			`SELECT name FROM tbl_ai_provider WHERE id = ? AND status = 1`,
 			cfg.ProviderId,
 		).One()
 		if err == nil && len(providerRow) > 0 {
-			cfg.Provider = cast.ToString(providerRow["provider_type"])
-			cfg.ModelAddr = cast.ToString(providerRow["base_url"])
-			// 仅当 agent 自身未配置 api_key 时使用 provider 的
-			if cfg.ApiKey == "" {
-				cfg.ApiKey = cast.ToString(providerRow["api_key"])
-			}
+			cfg.Provider = cast.ToString(providerRow["name"])
 		} else {
 			log.Printf("[agent-v2/ws] parsePiConfig: provider_id=%d not found or disabled", cfg.ProviderId)
 		}
 		modelRow, err := common.DbMain.Client.QueryBySql(
-			`SELECT model, uri FROM tbl_ai_model WHERE id = ? AND status = 1`,
+			`SELECT model FROM tbl_ai_model WHERE id = ? AND status = 1`,
 			cfg.ModelId,
 		).One()
 		if err == nil && len(modelRow) > 0 {
 			cfg.Model = cast.ToString(modelRow["model"])
-			// 拼接完整模型 API 地址
-			if cfg.ModelAddr != "" {
-				uri := cast.ToString(modelRow["uri"])
-				if uri != "" {
-					cfg.ModelAddr = strings.TrimRight(cfg.ModelAddr, "/") + uri
-				}
-			}
 		} else {
 			log.Printf("[agent-v2/ws] parsePiConfig: model_id=%d not found or disabled", cfg.ModelId)
 		}
 	}
 
-	return cfg.Provider, cfg.Model, cfg.ModelAddr, cfg.ApiKey, sessionDir, extraArgs
+	return cfg.Provider, cfg.Model, sessionDir, extraArgs
 }
 
 // computeSessionDir 计算会话持久化目录
@@ -239,10 +222,16 @@ func AgentV2WS(c *gin.Context) {
 	}
 
 	// 解析 Pi 配置（前端传入的 model 参数优先于 Agent 默认配置）
+	// runtimeModel 格式: provider_name/model（如 pixel-frog/gpt-5.4）
 	configStr := cast.ToString(agentRow["config"])
 	runtimeModel := c.Query("model")
-	provider, model, modelAddr, apiKey, cfgSessionDir, extraArgs := parsePiConfig(configStr, runtimeModel)
+	providerName, model, cfgSessionDir, extraArgs := parsePiConfig(configStr, runtimeModel)
 	sessionDir := computeSessionDir(cfgSessionDir, agentId, sessionId)
+
+	// 同步 models.json（确保 Pi 能找到对应 provider 配置）
+	if err := syncPiModelsConfig(); err != nil {
+		log.Printf("[agent-v2/ws] syncPiModelsConfig error: %v", err)
+	}
 
 	// 解析额外参数
 	var extraArgsList []string
@@ -251,13 +240,12 @@ func AgentV2WS(c *gin.Context) {
 	}
 
 	// 启动 Agent 子进程
+	// --provider 使用 provider name，models.json 包含 baseUrl/apiKey/api 全部信息
 	startCfg := agent.AgentStartConfig{
 		WorkDir:    workDir,
 		SessionDir: sessionDir,
-		Provider:   provider,
+		Provider:   providerName,
 		Model:      model,
-		ModelAddr:  modelAddr,
-		ApiKey:     apiKey,
 		ExtraArgs:  extraArgsList,
 	}
 
@@ -304,7 +292,7 @@ func AgentV2WS(c *gin.Context) {
 	}
 
 	log.Printf("[agent-v2/ws] Agent started, agent_id=%d session_id=%d provider=%s model=%s session_dir=%s",
-		agentId, sessionId, provider, model, sessionDir)
+		agentId, sessionId, providerName, model, sessionDir)
 
 	// 更新会话的 session_dir
 	if sessionId > 0 {
@@ -318,7 +306,7 @@ func AgentV2WS(c *gin.Context) {
 	historyMessages := readSessionMessagesList(sessionDir)
 	conn.WriteJSON(gin.H{
 		"type":  "state",
-		"state": gin.H{"status": "ready", "agent_id": agentId, "session_id": sessionId, "session_dir": sessionDir, "model": model, "provider": provider},
+		"state": gin.H{"status": "ready", "agent_id": agentId, "session_id": sessionId, "session_dir": sessionDir, "model": model, "provider": providerName},
 	})
 	if len(historyMessages) > 0 {
 		conn.WriteJSON(gin.H{

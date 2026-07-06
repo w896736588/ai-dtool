@@ -242,6 +242,7 @@
                 size="small"
                 style="width: 200px"
                 placeholder="选择模型"
+                :disabled="isStreaming"
                 @change="setModel"
               >
                 <el-option-group
@@ -253,7 +254,7 @@
                     v-for="m in group.models"
                     :key="m.id"
                     :label="m.name + ' (' + m.model + ')'"
-                    :value="group.provider_type + '/' + m.model"
+                    :value="group.provider_name + '/' + m.model"
                   />
                 </el-option-group>
               </el-select>
@@ -304,8 +305,16 @@
             <div class="chat-input__toolbar-right">
               <span class="chat-input__hint">{{ inputHint }}</span>
               <el-button
+                v-if="isStreaming"
+                type="danger"
+                @click="abortAgent"
+              >
+                终止
+              </el-button>
+              <el-button
+                v-else
                 type="primary"
-                :disabled="!inputText.trim() || isStreaming || !wsConnected"
+                :disabled="!inputText.trim() || !wsConnected"
                 @click="sendMessage"
               >
                 发送
@@ -603,7 +612,7 @@ export default {
                 if (g.provider_id === cfg.provider_id) {
                   const m = g.models.find(m => m.id === cfg.model_id)
                   if (m) {
-                    this.selectedModel = g.provider_type + '/' + m.model
+                    this.selectedModel = g.provider_name + '/' + m.model
                     break
                   }
                 }
@@ -612,7 +621,7 @@ export default {
             if (!this.selectedModel) {
               const first = this.providerModels[0]
               const firstModel = first.models[0]
-              this.selectedModel = first.provider_type + '/' + firstModel.model
+              this.selectedModel = first.provider_name + '/' + firstModel.model
             }
           }
         }
@@ -1072,14 +1081,20 @@ export default {
     },
     setModel() {
       if (!this.selectedModel) return
-      // 格式: provider_type/model (如 openai/gpt-4o)
-      const idx = this.selectedModel.lastIndexOf('/')
-      const provider = idx >= 0 ? this.selectedModel.substring(0, idx) : 'anthropic'
-      const modelId = idx >= 0 ? this.selectedModel.substring(idx + 1) : this.selectedModel
-      this.sendWS({
-        type: 'command',
-        command: { type: 'set_model', provider: provider, modelId: modelId }
-      })
+      // 运行中不允许切换（下拉框已 disabled，此处兜底）
+      if (this.isStreaming) return
+      // 切换模型：断开 WS 并重连，后端重启 Pi 进程以新模型启动（100%生效）
+      // 仅在已有活跃会话时重连；否则只更新 selectedModel，下次连接时自动使用
+      if (this.currentSessionId && this.wsConnected) {
+        this.disconnectWS()
+        this.streamingText = ''
+        this.streamingThinking = ''
+        this.pendingToolCalls = {}
+        this.compacting = false
+        this._assistantPushedInTurn = false
+        this._historyLoaded = true // 已加载的历史不覆盖
+        this.connectWS()
+      }
     },
     requestTokenStats() {
       this.sendWS({ type: 'get_session_stats' })

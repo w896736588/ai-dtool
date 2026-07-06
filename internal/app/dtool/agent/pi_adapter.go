@@ -19,6 +19,7 @@ type PiAdapter struct {
 	running bool
 	events  chan AgentEvent
 	done    chan struct{}
+	exitErr error
 }
 
 func NewPiAdapter() *PiAdapter {
@@ -55,20 +56,8 @@ func (a *PiAdapter) Start(ctx context.Context, config AgentStartConfig) error {
 	for k, v := range config.Env {
 		a.cmd.Env = append(a.cmd.Env, k+"="+v)
 	}
-	// 设置自定义 API 地址 → provider 对应的 _BASE_URL 环境变量
-	if config.ModelAddr != "" {
-		envKey := apiBaseURLEnvName(config.Provider)
-		if envKey != "" {
-			a.cmd.Env = append(a.cmd.Env, envKey+"="+config.ModelAddr)
-		}
-	}
-	// 设置 API Key 环境变量
-	if config.ApiKey != "" {
-		envKey := apiKeyEnvName(config.Provider)
-		if envKey != "" {
-			a.cmd.Env = append(a.cmd.Env, envKey+"="+config.ApiKey)
-		}
-	}
+	// models.json 包含 baseUrl/apiKey/api 全部信息，不再通过环境变量覆盖
+	// 环境变量会覆盖 models.json 导致冲突（如 baseUrl 双拼接）
 
 	var err error
 	a.stdin, err = a.cmd.StdinPipe()
@@ -108,6 +97,7 @@ func (a *PiAdapter) Start(ctx context.Context, config AgentStartConfig) error {
 		err := a.cmd.Wait()
 		a.mu.Lock()
 		a.running = false
+		a.exitErr = err
 		a.mu.Unlock()
 		if err != nil {
 			log.Printf("[agent-v2/pi] pi process exited with error: %v", err)
@@ -175,6 +165,13 @@ func (a *PiAdapter) IsRunning() bool {
 	return a.running
 }
 
+// ExitError 返回进程退出错误（仅在进程已退出后有效）
+func (a *PiAdapter) ExitError() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.exitErr
+}
+
 func (a *PiAdapter) IsInstalled() bool {
 	_, err := exec.LookPath("pi")
 	return err == nil
@@ -182,36 +179,4 @@ func (a *PiAdapter) IsInstalled() bool {
 
 func (a *PiAdapter) InstallHint() string {
 	return "Pi 未安装，请执行: npm install -g --ignore-scripts @earendil-works/pi-coding-agent"
-}
-
-// apiKeyEnvName 根据 provider 返回对应的 API Key 环境变量名
-func apiKeyEnvName(provider string) string {
-	switch provider {
-	case "anthropic":
-		return "ANTHROPIC_API_KEY"
-	case "openai":
-		return "OPENAI_API_KEY"
-	case "google":
-		return "GOOGLE_API_KEY"
-	case "deepseek":
-		return "DEEPSEEK_API_KEY"
-	default:
-		return ""
-	}
-}
-
-// apiBaseURLEnvName 根据 provider 返回对应的 Base URL 环境变量名
-func apiBaseURLEnvName(provider string) string {
-	switch provider {
-	case "anthropic":
-		return "ANTHROPIC_BASE_URL"
-	case "openai":
-		return "OPENAI_BASE_URL"
-	case "google":
-		return "GOOGLE_BASE_URL"
-	case "deepseek":
-		return "DEEPSEEK_BASE_URL"
-	default:
-		return ""
-	}
 }

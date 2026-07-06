@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -54,8 +55,8 @@ func SetAiProviderAdd(c *gin.Context) {
 	if requestFormat == `` {
 		requestFormat = `openai`
 	}
-	if requestFormat != `openai` && requestFormat != `anthropic` && requestFormat != `deepseek` && requestFormat != `google` {
-		gsgin.GinResponseError(c, `请求格式仅支持 openai、anthropic、deepseek 或 google`, nil)
+	if requestFormat != `openai` && requestFormat != `anthropic` && requestFormat != `deepseek` && requestFormat != `google` && requestFormat != `openai-responses` {
+		gsgin.GinResponseError(c, `请求格式仅支持 openai、openai-responses、anthropic、deepseek 或 google`, nil)
 		return
 	}
 	updateData[`base_url`] = normalizeAiProviderBaseURL(cast.ToString(updateData[`base_url`]))
@@ -82,6 +83,10 @@ func SetAiProviderAdd(c *gin.Context) {
 			gsgin.GinResponseError(c, err.Error(), nil)
 			return
 		}
+	}
+	// Provider 变更后同步 Pi models.json
+	if err := syncPiModelsConfig(); err != nil {
+		log.Printf("[set-ai] syncPiModelsConfig after provider update: %v", err)
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
@@ -111,6 +116,10 @@ func SetAiProviderDelete(c *gin.Context) {
 		`status`:      0,
 		`update_time`: time.Now().Unix(),
 	}).Exec()
+	// Provider 删除后同步 Pi models.json
+	if err := syncPiModelsConfig(); err != nil {
+		log.Printf("[set-ai] syncPiModelsConfig after provider delete: %v", err)
+	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -192,6 +201,10 @@ func SetAiModelAdd(c *gin.Context) {
 			return
 		}
 	}
+	// Model 变更后同步 Pi models.json
+	if err := syncPiModelsConfig(); err != nil {
+		log.Printf("[set-ai] syncPiModelsConfig after model update: %v", err)
+	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -212,6 +225,10 @@ func SetAiModelDelete(c *gin.Context) {
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
+	}
+	// Model 删除后同步 Pi models.json
+	if err := syncPiModelsConfig(); err != nil {
+		log.Printf("[set-ai] syncPiModelsConfig after model delete: %v", err)
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }

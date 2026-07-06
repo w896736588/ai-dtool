@@ -165,9 +165,11 @@
         <el-form-item label="请求格式">
           <el-select v-model="state.editProvider.request_format" style="width: 100%;">
             <el-option label="请选择" value=""/>
-            <el-option label="openai" value="openai"/>
-            <el-option label="anthropic (Claude Code)" value="anthropic"/>
-            <el-option label="deepseek (图片解析)" value="deepseek"/>
+            <el-option label="OpenAI Chat Completions" value="openai"/>
+            <el-option label="OpenAI Responses" value="openai-responses"/>
+            <el-option label="Anthropic Messages" value="anthropic"/>
+            <el-option label="DeepSeek (OpenAI兼容)" value="deepseek"/>
+            <el-option label="Google Generative AI" value="google"/>
           </el-select>
         </el-form-item>
         <el-form-item label="基础域名">

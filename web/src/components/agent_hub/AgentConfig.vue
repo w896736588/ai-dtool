@@ -302,10 +302,13 @@
         </el-form-item>
         <el-form-item label="请求格式">
           <el-select v-model="providerForm.request_format" style="width:100%">
-            <el-option label="openai" value="openai" />
-            <el-option label="anthropic" value="anthropic" />
-            <el-option label="deepseek" value="deepseek" />
+            <el-option label="OpenAI Chat Completions" value="openai" />
+            <el-option label="OpenAI Responses" value="openai-responses" />
+            <el-option label="Anthropic Messages" value="anthropic" />
+            <el-option label="DeepSeek (OpenAI兼容)" value="deepseek" />
+            <el-option label="Google Generative AI" value="google" />
           </el-select>
+          <div class="field-hint">选择 API 的请求格式，决定 Pi 调用时的 endpoint 路径</div>
         </el-form-item>
         <el-form-item label="基础域名">
           <el-input v-model="providerForm.base_url" placeholder="例如：https://api.openai.com" />
@@ -587,8 +590,13 @@ export default {
     defaultUriForProvider(pid) {
       const p = this.fullProviders.find(p => parseInt(p.id) === parseInt(pid))
       if (!p) return '/v1/chat/completions'
-      if (p.provider_type === 'anthropic') return '/v1/messages'
-      return '/v1/chat/completions'
+      const fmt = p.provider_type || p.request_format || 'openai'
+      switch (fmt) {
+        case 'anthropic': return '/v1/messages'
+        case 'openai-responses': return '/v1/responses'
+        case 'google': return '/v1beta/models'
+        default: return '/v1/chat/completions'
+      }
     },
     showAddModel(p) {
       this.expandedProviderIds[p.id] = true
