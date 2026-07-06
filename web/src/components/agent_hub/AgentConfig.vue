@@ -193,7 +193,7 @@
     </div>
 
     <!-- Skill/Tool 编辑对话框 -->
-    <el-dialog v-model="showSkillDialog" :title="dialogTitle" width="620px" :close-on-click-modal="false">
+    <el-dialog v-model="showSkillDialog" :title="dialogTitle" width="620px" :close-on-click-modal="true">
       <el-form :model="skillForm" label-width="100px">
         <el-form-item label="名称" required>
           <el-input v-model="skillForm.name" placeholder="唯一标识名称" />
@@ -278,7 +278,7 @@
     </el-dialog>
 
     <!-- 工作空间对话框 -->
-    <el-dialog v-model="showWorkspaceDialog" title="添加工作空间" width="480px" :close-on-click-modal="false">
+    <el-dialog v-model="showWorkspaceDialog" title="添加工作空间" width="480px" :close-on-click-modal="true">
       <el-form label-width="60px">
         <el-form-item label="名称">
           <el-input v-model="workspaceForm.name" placeholder="例如：my-project" />
@@ -295,7 +295,7 @@
     </el-dialog>
 
     <!-- Provider 编辑对话框 -->
-    <el-dialog v-model="showProviderDlg" :title="editingProviderId ? '编辑 Provider' : '新增 Provider'" width="480px" :close-on-click-modal="false">
+    <el-dialog v-model="showProviderDlg" :title="editingProviderId ? '编辑 Provider' : '新增 Provider'" width="480px" :close-on-click-modal="true">
       <el-form label-width="100px">
         <el-form-item label="名称">
           <el-input v-model="providerForm.name" placeholder="例如：OpenAI" />
@@ -321,7 +321,7 @@
     </el-dialog>
 
     <!-- Model 编辑对话框 -->
-    <el-dialog v-model="showModelDlg" :title="editingModelId ? '编辑模型' : '新增模型'" width="480px" :close-on-click-modal="false">
+    <el-dialog v-model="showModelDlg" :title="editingModelId ? '编辑模型' : '新增模型'" width="480px" :close-on-click-modal="true">
       <el-form label-width="100px">
         <el-form-item label="所属 Provider">
           <el-select v-model="modelForm.provider_id" style="width:100%" :disabled="editingModelId > 0">
@@ -359,7 +359,7 @@
     </el-dialog>
 
     <!-- 内置工具对话框 -->
-    <el-dialog v-model="showBuiltinDialog" title="Dtool 内置 Tools" width="640px" :close-on-click-modal="false">
+    <el-dialog v-model="showBuiltinDialog" title="Dtool 内置 Tools" width="640px" :close-on-click-modal="true">
       <el-table :data="builtinTools" max-height="400" empty-text="暂无内置工具，请在 internal/app/dtool/data/ 目录下添加">
         <el-table-column prop="name" label="名称" width="120" />
         <el-table-column label="来源" width="120">
