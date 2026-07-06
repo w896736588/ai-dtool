@@ -569,3 +569,147 @@ func syncToolCallToMessages(messages []map[string]interface{}, tcId string, tc m
 		}
 	}
 }
+
+// 常见模型的默认上下文窗口大小
+var defaultModelContextSizes = map[string]int{
+	"claude-sonnet-4-20250514": 200000,
+	"claude-haiku-4-20250514":  200000,
+	"claude-opus-4-20250514":   200000,
+	"gpt-4o":                   128000,
+	"gpt-4o-mini":              128000,
+	"deepseek-v4-flash":        128000,
+	"deepseek-v3":              128000,
+	"gemini-2.5-pro":           1048576,
+	"gemini-2.0-flash":         1048576,
+}
+
+// lookupContextTotal 根据模型名查找上下文窗口大小
+// 优先级：传入的 modelsCtx > 默认表 > 128000
+func lookupContextTotal(model string, modelsCtx map[string]int) int {
+	if modelsCtx != nil {
+		if ctx, ok := modelsCtx[model]; ok && ctx > 0 {
+			return ctx
+		}
+	}
+	if ctx, ok := defaultModelContextSizes[model]; ok {
+		return ctx
+	}
+	return 128000
+}
+
+// parseModelsCtx 从 Agent config JSON 中解析模型上下文大小映射
+// config.models_ctx: {"model_id": 128000, ...}
+func parseModelsCtx(configStr string) map[string]int {
+	if configStr == "" {
+		return nil
+	}
+	var cfg struct {
+		ModelsCtx map[string]int `json:"models_ctx"`
+	}
+	if err := json.Unmarshal([]byte(configStr), &cfg); err != nil {
+		return nil
+	}
+	return cfg.ModelsCtx
+}
+
+// computeSessionStats 从会话事件文件中提取真实 token 用量
+// 不再用字符数估算，而是从 Pi events 的 usage 数据获取
+// 返回前端 tokenStats 所需的字段：input_tokens, output_tokens, cached_input_tokens, context_used, context_total, total_cost
+func computeSessionStats(sessionDir string, modelsCtx map[string]int) map[string]interface{} {
+	stats := map[string]interface{}{
+		"input_tokens":        0,
+		"output_tokens":       0,
+		"cached_input_tokens": 0,
+		"context_used":        0,
+		"context_total":       128000,
+		"total_cost":          0,
+	}
+	if sessionDir == "" {
+		return stats
+	}
+
+	entries, err := os.ReadDir(sessionDir)
+	if err != nil {
+		return stats
+	}
+
+	var totalInputTokens, totalOutputTokens, totalCachedTokens float64
+	var totalCost float64
+	var latestInputTokens int
+	currentModel := ""
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "dtool_") || !strings.HasSuffix(entry.Name(), ".jsonl") {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(sessionDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+
+			var raw map[string]interface{}
+			if err := json.Unmarshal([]byte(line), &raw); err != nil {
+				continue
+			}
+
+			// 只处理 message_end 事件
+			if cast.ToString(raw["type"]) != "message_end" {
+				continue
+			}
+
+			msg, ok := raw["message"].(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			// 提取当前使用的模型名
+			if modelName := cast.ToString(msg["model"]); modelName != "" {
+				currentModel = modelName
+			}
+
+			// 只处理 assistant 角色（包含真实 usage 数据）
+			if cast.ToString(msg["role"]) != "assistant" {
+				continue
+			}
+
+			usage, ok := msg["usage"].(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			inputTokens := cast.ToFloat64(usage["input"])
+			outputTokens := cast.ToFloat64(usage["output"])
+			cacheRead := cast.ToFloat64(usage["cacheRead"])
+
+			totalInputTokens += inputTokens
+			totalOutputTokens += outputTokens
+			totalCachedTokens += cacheRead
+			if inputTokens > 0 {
+				latestInputTokens = int(inputTokens)
+			}
+
+			if costMap, ok := usage["cost"].(map[string]interface{}); ok {
+				totalCost += cast.ToFloat64(costMap["total"])
+			}
+		}
+	}
+
+	// 确定 context_total
+	contextTotal := lookupContextTotal(currentModel, modelsCtx)
+
+	stats["input_tokens"] = int(totalInputTokens)
+	stats["output_tokens"] = int(totalOutputTokens)
+	stats["cached_input_tokens"] = int(totalCachedTokens)
+	stats["context_used"] = latestInputTokens
+	stats["context_total"] = contextTotal
+	stats["total_cost"] = totalCost
+	return stats
+}

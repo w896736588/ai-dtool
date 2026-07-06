@@ -83,7 +83,7 @@
           <span v-else>选择一个对话或创建新对话</span>
         </div>
         <div class="chat-header__actions">
-          <!-- Token 用量统计 -->
+          <!-- Token 用量统计（会话级） -->
           <div v-if="tokenStats" class="token-stats">
             <span class="token-stats__item">输入: {{ fmtNum(tokenStats.input_tokens) }}</span>
             <span class="token-stats__item">输出: {{ fmtNum(tokenStats.output_tokens) }}</span>
@@ -96,21 +96,6 @@
             plain
             @click="abortAgent"
           >停止</el-button>
-          <el-select
-            v-if="agentConfig"
-            v-model="selectedModel"
-            size="small"
-            style="width: 220px"
-            placeholder="模型"
-            @change="setModel"
-          >
-            <el-option
-              v-for="m in modelOptions"
-              :key="m"
-              :label="m"
-              :value="m"
-            />
-          </el-select>
         </div>
       </header>
 
@@ -247,15 +232,78 @@
             @keydown.enter.exact.prevent="sendMessage"
             resize="none"
           />
-          <div class="chat-input__actions">
-            <span class="chat-input__hint">{{ inputHint }}</span>
-            <el-button
-              type="primary"
-              :disabled="!inputText.trim() || isStreaming || !wsConnected"
-              @click="sendMessage"
-            >
-              发送
-            </el-button>
+          <div class="chat-input__toolbar">
+            <div class="chat-input__toolbar-left">
+              <!-- 模型选择 -->
+              <el-select
+                v-if="agentConfig"
+                v-model="selectedModel"
+                size="small"
+                style="width: 160px"
+                placeholder="模型"
+                @change="setModel"
+              >
+                <el-option
+                  v-for="m in modelOptions"
+                  :key="m"
+                  :label="m"
+                  :value="m"
+                />
+              </el-select>
+
+              <!-- Skills 选择 -->
+              <el-popover
+                placement="top-start"
+                trigger="click"
+                :width="260"
+                popper-class="skills-popover"
+              >
+                <template #reference>
+                  <el-button size="small" class="chat-input__toolbar-btn">
+                    Skills
+                    <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                  </el-button>
+                </template>
+                <div class="skills-popover__list">
+                  <div
+                    v-for="sk in skills"
+                    :key="sk.id"
+                    class="skills-popover__item"
+                    :class="{ 'skills-popover__item--active': selectedSkillIds.includes(sk.id) }"
+                    @click="toggleSkill(sk)"
+                  >
+                    <el-checkbox :model-value="selectedSkillIds.includes(sk.id)" size="small" />
+                    <span class="skills-popover__item-name">{{ sk.name }}</span>
+                    <el-tag v-if="sk.skill_type" size="small" type="info" effect="plain">{{ sk.skill_type }}</el-tag>
+                  </div>
+                  <div v-if="skills.length === 0" class="skills-popover__empty">暂无 Skills</div>
+                </div>
+              </el-popover>
+
+              <!-- 上下文使用率 -->
+              <span class="chat-input__stat-item">
+                上下文: <strong>{{ contextUsage }}</strong>
+              </span>
+
+              <!-- Token 统计 -->
+              <span class="chat-input__stat-item">
+                输入: <strong>{{ tStat('input_tokens') }}</strong>
+                <span class="chat-input__stat-divider">/</span>
+                缓存: <strong>{{ tStat('cached_input_tokens') }}</strong>
+                <span class="chat-input__stat-divider">/</span>
+                输出: <strong>{{ tStat('output_tokens') }}</strong>
+              </span>
+            </div>
+            <div class="chat-input__toolbar-right">
+              <span class="chat-input__hint">{{ inputHint }}</span>
+              <el-button
+                type="primary"
+                :disabled="!inputText.trim() || isStreaming || !wsConnected"
+                @click="sendMessage"
+              >
+                发送
+              </el-button>
+            </div>
           </div>
         </div>
       </footer>
@@ -352,7 +400,11 @@ export default {
       pendingToolCalls: {},
       tokenStats: null,
       compacting: false,
-      turnCount: 0
+      turnCount: 0,
+
+      // Skills 数据
+      skills: [],
+      selectedSkillIds: []
     }
   },
   computed: {
@@ -367,6 +419,14 @@ export default {
       if (this.isStreaming) return 'Pi 正在思考...'
       if (this.compacting) return '正在压缩上下文...'
       return 'Enter 发送'
+    },
+    contextUsage() {
+      if (!this.tokenStats) return '--'
+      const used = this.tokenStats.context_used || this.tokenStats.input_tokens || 0
+      const total = this.tokenStats.context_total || this.tokenStats.max_input_tokens || 0
+      if (total <= 0) return '--'
+      const pct = Math.round((used / total) * 100)
+      return pct + '%' + ' (' + this.fmtNum(used) + '/' + this.fmtNum(total) + ')'
     }
   },
   mounted() {
@@ -377,6 +437,7 @@ export default {
     }
     this.loadAgentInfo()
     this.loadWorkspaces()
+    this.loadSkills()
   },
   beforeUnmount() {
     this.disconnectWS()
@@ -534,6 +595,8 @@ export default {
       this.ws = new WebSocket(url)
       this.ws.onopen = () => {
         this.wsConnected = true
+        // 连接成功立即请求会话统计（上下文使用率、Token 等）
+        this.requestTokenStats()
         // 懒创建模式：发送暂存的首条消息
         if (this._pendingFirstMessage) {
           const msg = this._pendingFirstMessage
@@ -880,6 +943,32 @@ export default {
             break
           }
         }
+      }
+    },
+
+    // ========== Skills & Token 统计 ==========
+    tStat(key) {
+      if (!this.tokenStats) return '--'
+      return this.fmtNum(this.tokenStats[key] || 0)
+    },
+    loadSkills() {
+      Base.BasePost('/api/AgentV2SkillList', { agent_id: this.agentId }, (res) => {
+        if (res.ErrCode === 0 && res.Data && res.Data.list) {
+          this.skills = res.Data.list
+        }
+      })
+    },
+    toggleSkill(sk) {
+      const idx = this.selectedSkillIds.indexOf(sk.id)
+      if (idx >= 0) {
+        this.selectedSkillIds.splice(idx, 1)
+      } else {
+        this.selectedSkillIds.push(sk.id)
+        // 将 skill 名称追加到输入框
+        if (this.inputText && !this.inputText.endsWith(' ')) {
+          this.inputText += ' '
+        }
+        this.inputText += 'use skill "' + sk.name + '"'
       }
     },
 
@@ -1277,12 +1366,46 @@ export default {
 .cursor-blink { animation: blink 1s infinite; color: #667eea; }
 @keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: 0 } }
 
-.chat-input { padding: 16px 24px; background: #fff; border-top: 1px solid #e4e7ed; }
+.chat-input { padding: 12px 24px 10px; background: #fff; border-top: 1px solid #e4e7ed; }
 .chat-input__wrapper { width: 100%; }
-.chat-input__actions {
-  display: flex; justify-content: space-between; align-items: center; margin-top: 8px;
+.chat-input__hint { font-size: 12px; color: #c0c4cc; margin-right: 8px; }
+
+/* 底部工具栏 */
+.chat-input__toolbar {
+  display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 8px;
 }
-.chat-input__hint { font-size: 12px; color: #c0c4cc; }
+.chat-input__toolbar-left {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;
+}
+.chat-input__toolbar-right {
+  display: flex; align-items: center; flex-shrink: 0;
+}
+.chat-input__toolbar-btn {
+  font-size: 12px; color: #606266; padding: 4px 10px;
+}
+.chat-input__toolbar-btn:hover { color: #409eff; }
+.chat-input__stat-item {
+  font-size: 11px; color: #909399; white-space: nowrap; user-select: none;
+}
+.chat-input__stat-item strong {
+  color: #606266; font-weight: 500;
+}
+.chat-input__stat-divider {
+  margin: 0 1px; color: #dcdfe6;
+}
+
+/* Skills 弹窗 */
+.skills-popover { padding: 4px 0; }
+.skills-popover__list { max-height: 240px; overflow-y: auto; }
+.skills-popover__item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; cursor: pointer; border-radius: 4px;
+  font-size: 13px; transition: background .15s;
+}
+.skills-popover__item:hover { background: #f5f7fa; }
+.skills-popover__item--active { background: #ecf5ff; }
+.skills-popover__item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skills-popover__empty { padding: 16px; text-align: center; color: #c0c4cc; font-size: 13px; }
 
 :deep(.tool-result) { font-size: 13px; }
 :deep(.tool-result pre) {

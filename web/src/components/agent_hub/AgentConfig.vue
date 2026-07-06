@@ -43,28 +43,49 @@
           <el-form-item label="可选模型">
             <div class="model-tag-list">
               <el-tag
-                v-for="(m, idx) in modelList"
+                v-for="(mc, idx) in modelConfigs"
                 :key="idx"
                 closable
                 :disable-transitions="false"
+                :class="{ 'model-tag--editing': editingModelIdx === idx }"
                 @close="removeModel(idx)"
-                style="margin: 0 6px 6px 0;"
+                @click="editModel(idx)"
+                style="margin: 0 6px 6px 0; cursor: pointer;"
               >
-                {{ m }}
+                {{ mc.id }}<span class="model-tag__ctx">({{ fmtCtx(mc.context_size) }})</span>
               </el-tag>
-              <el-input
-                v-if="showModelInput"
-                ref="modelInputRef"
-                v-model="modelInputValue"
-                size="small"
-                style="width:200px"
-                placeholder="输入模型ID，回车确认"
-                @keyup.enter="addModel"
-                @blur="addModel"
-              />
+              <template v-if="showModelInput">
+                <el-input
+                  ref="modelInputRef"
+                  v-model="modelInputValue"
+                  size="small"
+                  style="width:160px"
+                  :placeholder="editingModelIdx >= 0 ? '修改模型ID' : '模型ID'"
+                  @keyup.enter="addModel"
+                />
+                <el-input-number
+                  v-model="modelSizeValue"
+                  size="small"
+                  :min="1"
+                  :max="4194304"
+                  :step="1000"
+                  placeholder="上下文窗口"
+                  style="width:130px; margin-left:4px"
+                  @keyup.enter="addModel"
+                />
+                <el-button size="small" type="primary" @click="addModel">确认</el-button>
+                <el-button
+                  v-if="editingModelIdx >= 0"
+                  size="small"
+                  @click="cancelEdit"
+                >取消</el-button>
+              </template>
               <el-button v-else size="small" @click="showModelInput = true">+ 添加模型</el-button>
             </div>
-            <div class="field-hint">可在对话中切换的模型列表</div>
+            <div class="field-hint">
+              可在对话中切换的模型列表，添加时需输入模型 ID 和上下文窗口大小（单位 token）
+              <span v-if="modelConfigs.length > 0">，点击已有模型可编辑</span>
+            </div>
           </el-form-item>
           <el-divider content-position="left">高级选项</el-divider>
           <el-form-item label="会话存储目录">
@@ -246,9 +267,11 @@ export default {
 
       configForm: { name: '', type: '' },
       piConfig: { provider: 'anthropic', model: '', model_addr: '', api_key: '', session_dir: '', extra_args: '' },
-      modelList: [],
+      modelConfigs: [],
       showModelInput: false,
       modelInputValue: '',
+      modelSizeValue: 128000,
+      editingModelIdx: -1,
 
       skills: [],
       showSkillDialog: false,
@@ -302,7 +325,17 @@ export default {
               if (cfg.session_dir) this.piConfig.session_dir = cfg.session_dir
               if (cfg.extra_args) this.piConfig.extra_args = cfg.extra_args
               if (cfg.models && Array.isArray(cfg.models)) {
-                this.modelList = cfg.models
+                // 新格式：models_ctx 映射
+                const modelsCtx = cfg.models_ctx || {}
+                this.modelConfigs = cfg.models.map(m => {
+                  if (typeof m === 'object' && m.id) {
+                    // 已经是对象格式
+                    return { id: m.id, context_size: m.context_size || m.max_tokens || 128000 }
+                  }
+                  // 字符串格式，查 models_ctx 或默认值
+                  const ctxSize = modelsCtx[m] || 128000
+                  return { id: m, context_size: ctxSize }
+                })
               }
             } catch (e) {}
           }
@@ -312,26 +345,76 @@ export default {
       this.loadWorkspaces()
     },
 
-    // 模型标签管理
+    // 模型配置管理
     addModel() {
       const val = this.modelInputValue.trim()
-      if (val && !this.modelList.includes(val)) {
-        this.modelList.push(val)
+      if (val) {
+        if (this.editingModelIdx >= 0) {
+          // 编辑模式：更新已有模型
+          const oldId = this.modelConfigs[this.editingModelIdx].id
+          // 如果改了 ID，且新 ID 与其他项冲突则跳过
+          if (val !== oldId && this.modelConfigs.some((mc, i) => i !== this.editingModelIdx && mc.id === val)) {
+            this.$message.warning('模型ID已存在')
+            return
+          }
+          this.modelConfigs[this.editingModelIdx] = { id: val, context_size: this.modelSizeValue || 128000 }
+        } else {
+          // 新增模式
+          if (this.modelConfigs.some(mc => mc.id === val)) {
+            this.$message.warning('模型ID已存在')
+            return
+          }
+          this.modelConfigs.push({ id: val, context_size: this.modelSizeValue || 128000 })
+        }
       }
       this.modelInputValue = ''
+      this.modelSizeValue = 128000
       this.showModelInput = false
+      this.editingModelIdx = -1
     },
     removeModel(idx) {
-      this.modelList.splice(idx, 1)
+      this.modelConfigs.splice(idx, 1)
+      if (this.editingModelIdx === idx) this.cancelEdit()
+    },
+    editModel(idx) {
+      const mc = this.modelConfigs[idx]
+      this.modelInputValue = mc.id
+      this.modelSizeValue = mc.context_size || 128000
+      this.editingModelIdx = idx
+      this.showModelInput = true
+      this.$nextTick(() => {
+        if (this.$refs.modelInputRef) this.$refs.modelInputRef.focus()
+      })
+    },
+    cancelEdit() {
+      this.modelInputValue = ''
+      this.modelSizeValue = 128000
+      this.showModelInput = false
+      this.editingModelIdx = -1
+    },
+    fmtCtx(size) {
+      if (!size) return '—'
+      if (size >= 1000000) return (size / 1000000).toFixed(1) + 'M'
+      if (size >= 1000) return (size / 1000).toFixed(0) + 'K'
+      return String(size)
     },
 
     saveConfig() {
+      // 从 modelConfigs 生成 models 数组和 models_ctx 映射
+      const models = this.modelConfigs.map(mc => mc.id)
+      const modelsCtx = {}
+      for (const mc of this.modelConfigs) {
+        if (mc.context_size && mc.context_size !== 128000) {
+          modelsCtx[mc.id] = mc.context_size
+        }
+      }
       const configObj = {
         provider: this.piConfig.provider,
         model: this.piConfig.model,
         model_addr: this.piConfig.provider === 'deepseek' ? '' : this.piConfig.model_addr,
         api_key: this.piConfig.api_key,
-        models: this.modelList,
+        models: models,
+        models_ctx: Object.keys(modelsCtx).length > 0 ? modelsCtx : undefined,
         session_dir: this.piConfig.session_dir,
         extra_args: this.piConfig.extra_args
       }
@@ -487,6 +570,8 @@ export default {
 .skills-hint { font-size: 12px; color: #909399; }
 .field-hint { font-size: 11px; color: #c0c4cc; margin-top: 4px; line-height: 1.4; }
 .model-tag-list { display: flex; flex-wrap: wrap; align-items: center; }
+.model-tag__ctx { font-size: 11px; color: #c0c4cc; margin-left: 4px; }
+.model-tag--editing { border-color: #409eff !important; background: #ecf5ff !important; }
 .param-list { width: 100%; }
 .param-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
 </style>

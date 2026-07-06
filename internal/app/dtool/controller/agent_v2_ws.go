@@ -277,8 +277,19 @@ func AgentV2WS(c *gin.Context) {
 				cmdBytes, _ := json.Marshal(map[string]string{"type": "get_state"})
 				adapter.SendCommand(cmdBytes)
 			case "get_session_stats":
-				cmdBytes, _ := json.Marshal(map[string]string{"type": "get_session_stats"})
-				adapter.SendCommand(cmdBytes)
+				// 本地计算 token 统计（从 Pi events 提取真实 usage 数据），直接回写 WebSocket
+				modelsCtx := parseModelsCtx(configStr)
+				stats := computeSessionStats(sessionDir, modelsCtx)
+				conn.WriteJSON(gin.H{
+					"type": "event",
+					"event": gin.H{
+						"type":     "response",
+						"command":  "get_session_stats",
+						"_command": "get_session_stats",
+						"success":  true,
+						"data":     stats,
+					},
+				})
 			}
 		}
 	}()
