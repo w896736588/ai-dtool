@@ -40,6 +40,7 @@ func AgentV2SessionList(c *gin.Context) {
 			WorkspaceId: cast.ToInt(row["workspace_id"]),
 			Name:        cast.ToString(row["name"]),
 			SessionDir:  cast.ToString(row["session_dir"]),
+			ModelName:   cast.ToString(row["model_name"]),
 			Status:      cast.ToString(row["status"]),
 			CreatedAt:   cast.ToInt64(row["created_at"]),
 			UpdatedAt:   cast.ToInt64(row["updated_at"]),
@@ -629,11 +630,23 @@ var defaultModelContextSizes = map[string]int{
 }
 
 // lookupContextTotal 根据模型名查找上下文窗口大小
-// 优先级：传入的 modelsCtx > 默认表 > 128000
+// 优先级：传入的 modelsCtx > DB 查询 > 默认表 > 128000
 func lookupContextTotal(model string, modelsCtx map[string]int) int {
 	if modelsCtx != nil {
 		if ctx, ok := modelsCtx[model]; ok && ctx > 0 {
 			return ctx
+		}
+	}
+	// 直接从 DB 查询（兜底，支持 modelsCtx 未覆盖的模型）
+	if model != "" && common.DbMain != nil && common.DbMain.Client != nil {
+		row, err := common.DbMain.Client.QueryBySql(
+			`SELECT context_size FROM tbl_ai_model WHERE model = ? AND model_type = 'llm' AND status = 1 LIMIT 1`,
+			model,
+		).One()
+		if err == nil && len(row) > 0 {
+			if ctx := cast.ToInt(row["context_size"]); ctx > 0 {
+				return ctx
+			}
 		}
 	}
 	if ctx, ok := defaultModelContextSizes[model]; ok {

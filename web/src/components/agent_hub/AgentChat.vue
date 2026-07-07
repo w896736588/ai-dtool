@@ -102,9 +102,15 @@
       <!-- 消息列表 -->
       <div class="chat-messages" ref="messagesContainer">
         <div v-if="messages.length === 0 && !isStreaming" class="chat-empty">
+          <div v-if="historyLoading" class="chat-empty__loading">
+            <span class="agent-status-spinner agent-status-spinner--large"></span>
+            <p>加载历史对话...</p>
+          </div>
+          <template v-else>
           <div class="chat-empty__icon">π</div>
           <p>开始与 Pi Agent 对话</p>
           <p class="chat-empty__hint">Pi 可以读取、编辑和运行代码，帮助你完成开发任务</p>
+          </template>
         </div>
 
         <div
@@ -441,6 +447,10 @@ export default {
       thinkingElapsedSeconds: 0,
       runtimeNow: Date.now(),
       _runtimeTicker: null,
+      _statsPollTimer: null,
+
+      // 加载状态
+      historyLoading: false,
 
       // Skills 数据
       skills: [],
@@ -482,6 +492,7 @@ export default {
   beforeUnmount() {
     this.disconnectWS()
     this.stopRuntimeTicker()
+    this.stopStatsPolling()
   },
   methods: {
     goBack() {
@@ -556,6 +567,11 @@ export default {
       this.compacting = false
       this._assistantPushedInTurn = false
       this._historyLoaded = false // 标记：HTTP API 是否已加载了历史消息
+      this.historyLoading = true
+      // 恢复该会话最后使用的模型
+      if (session.model_name && this.providerModels.length > 0) {
+        this.restoreSessionModel(session.model_name)
+      }
       this.loadSessionMessages()
       this.connectWS()
     },
@@ -593,6 +609,7 @@ export default {
       Base.BasePost('/api/AgentV2SessionMessages', { session_id: sessionId }, (res) => {
         // 防止竞态：仅当请求的会话仍是当前选中会话时才设置消息
         if (this.currentSessionId !== sessionId) return
+        this.historyLoading = false
         if (res.ErrCode === 0 && res.Data && res.Data.messages) {
           if (res.Data.messages.length > 0) {
             this.messages = res.Data.messages
@@ -705,6 +722,7 @@ export default {
       this.wsConnected = false
       this.isStreaming = false
       this.stopThinkingTimer()
+      this.stopStatsPolling()
     },
     handleWSMessage(data) {
       // 忽略来自已断开/旧 WebSocket 的消息（连接被关闭后仍可能收到缓冲消息）
@@ -789,6 +807,8 @@ export default {
             }
           }
           this.scrollToBottom()
+          // 每次消息结束刷新上下文统计
+          this.requestTokenStats()
           break
         }
 
@@ -849,6 +869,7 @@ export default {
           this.compacting = false
           this.stopThinkingTimer()
           this.startRuntimeTicker()
+          this.startStatsPolling()
           this._assistantPushedInTurn = false
           // 将最后发送的消息展示为用户消息
           if (this._lastUserMessage) {
@@ -860,6 +881,7 @@ export default {
         case 'agent_end': {
           this.isStreaming = false
           this.stopThinkingTimer()
+          this.stopStatsPolling()
           // 仅在 message_end 未推送时才兜底推送（与后端 needPushAssistant 逻辑一致）
           if (!this._assistantPushedInTurn && (this.streamingText || Object.values(this.pendingToolCalls).length > 0)) {
             const toolCalls = Object.values(this.pendingToolCalls)
@@ -887,9 +909,11 @@ export default {
         // ===== 压缩 =====
         case 'compaction_start':
           this.compacting = true
+          this.requestTokenStats()
           break
         case 'compaction_end':
           this.compacting = false
+          this.requestTokenStats()
           break
 
         // ===== 队列更新 =====
@@ -1108,6 +1132,30 @@ export default {
       const seconds = totalSeconds % 60
       if (minutes > 0) return `${minutes}m${seconds}s`
       return `${seconds}s`
+    },
+    // 恢复会话上次使用的模型
+    restoreSessionModel(modelName) {
+      if (!modelName) return
+      for (const group of this.providerModels) {
+        const m = group.models.find(m => m.model === modelName)
+        if (m) {
+          this.selectedModel = group.provider_name + '/' + m.model
+          return
+        }
+      }
+    },
+    // 定时刷新上下文统计（流式执行中每 5 秒更新）
+    startStatsPolling() {
+      if (this._statsPollTimer) return
+      this._statsPollTimer = setInterval(() => {
+        this.requestTokenStats()
+      }, 5000)
+    },
+    stopStatsPolling() {
+      if (this._statsPollTimer) {
+        clearInterval(this._statsPollTimer)
+        this._statsPollTimer = null
+      }
     },
     isMessageThinkingCollapsed(msg) {
       return msg._thinkingCollapsed !== false
@@ -1485,6 +1533,12 @@ export default {
   border-radius: 50%;
   animation: agent-spin 0.8s linear infinite;
   flex-shrink: 0;
+}
+.agent-status-spinner--large {
+  width: 24px;
+  height: 24px;
+  border-width: 2.5px;
+  margin-bottom: 12px;
 }
 .agent-status-check {
   display: inline-flex;

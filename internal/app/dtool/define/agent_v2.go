@@ -73,6 +73,7 @@ type AgentV2Session struct {
 	WorkspaceId int    `json:"workspace_id"`
 	Name        string `json:"name"`
 	SessionDir  string `json:"session_dir"`
+	ModelName   string `json:"model_name"`
 	Status      string `json:"status"`
 	CreatedAt   int64  `json:"created_at"`
 	UpdatedAt   int64  `json:"updated_at"`

@@ -320,7 +320,7 @@ func AgentV2WS(c *gin.Context) {
 	piDone := make(chan struct{})
 
 	// WebSocket → Pi stdin
-	go sp.readWSCommands(conn, sessionId, sessionDir, configStr, eventsFile, wsDone)
+	go sp.readWSCommands(conn, sessionId, sessionDir, configStr, model, eventsFile, wsDone)
 
 	// Pi stdout → WebSocket
 	go sp.forwardPiEvents(conn, eventsFile, piDone)
@@ -334,7 +334,7 @@ func AgentV2WS(c *gin.Context) {
 
 // readWSCommands 从 WebSocket 读取前端消息，转发到 Agent stdin
 func (sp *sessionProc) readWSCommands(conn *websocket.Conn, sessionId int,
-	sessionDir, configStr string, eventsFile *os.File, wsDone chan struct{}) {
+	sessionDir, configStr, currentModel string, eventsFile *os.File, wsDone chan struct{}) {
 
 	defer close(wsDone)
 	for {
@@ -374,7 +374,7 @@ func (sp *sessionProc) readWSCommands(conn *websocket.Conn, sessionId int,
 						})
 						fmt.Fprintf(eventsFile, "%s\n", entry)
 					}
-					// 更新会话标题为最新用户提问（截断到 50 字符）
+					// 更新会话标题为最新用户提问（截断到 50 字符）+ 保存当前模型
 					title := userMsg
 					if len(title) > 50 {
 						title = title[:50] + "..."
@@ -382,8 +382,8 @@ func (sp *sessionProc) readWSCommands(conn *websocket.Conn, sessionId int,
 					if sessionId > 0 {
 						now := time.Now().Unix()
 						common.DbMain.Client.ExecBySql(
-							`UPDATE tbl_agent_v2_session SET name = ?, updated_at = ? WHERE id = ?`,
-							title, now, sessionId,
+							`UPDATE tbl_agent_v2_session SET name = ?, updated_at = ?, model_name = ? WHERE id = ?`,
+							title, now, currentModel, sessionId,
 						).Exec()
 					}
 				}
