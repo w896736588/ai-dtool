@@ -1255,6 +1255,15 @@ export default {
       }
       this.$refs.collectionTreeRef.updateKeyChildren(nodeKey, Array.isArray(children) ? children : [])
     },
+    getTreeNodeByData(data) {
+      if (!this.$refs.collectionTreeRef || !data) {
+        return null
+      }
+      return this.$refs.collectionTreeRef.getNode(data.uniqueid || data)
+    },
+    findArchiveNode() {
+      return this.treeData.find((node) => node.type === 'archive') || null
+    },
     formatTimestamp(timestamp) {
       const value = Number(timestamp || 0)
       if (value <= 0) {
@@ -2744,21 +2753,59 @@ export default {
       }
     },
     // 刷新归档节点
-    async refreshArchiveNode() {
-      const archiveNode = this.treeData.find((node) => node.type === 'archive')
+    async refreshArchiveNode(options = {}) {
+      const archiveNode = this.findArchiveNode()
       if (!archiveNode) {
         return
       }
+      const treeNode = this.getTreeNodeByData(archiveNode)
+      const wasExpanded = options.keepExpanded === true || !!(treeNode && treeNode.expanded)
       archiveNode.loaded = false
-      archiveNode.children = []
-      this.syncTreeNodeChildren(archiveNode.uniqueid, [])
-      const treeRef = this.$refs.collectionTreeRef
-      if (treeRef) {
-        const treeNode = treeRef.getNode(archiveNode)
-        if (treeNode && treeNode.expanded) {
-          await this.loadArchiveFolders(archiveNode)
+      await this.loadArchiveFolders(archiveNode)
+      if (wasExpanded) {
+        await this.$nextTick()
+        const updatedTreeNode = this.getTreeNodeByData(archiveNode)
+        if (updatedTreeNode && !updatedTreeNode.expanded) {
+          updatedTreeNode.expand()
         }
       }
+    },
+    removeArchivedFolderNode(folderId) {
+      const archiveNode = this.findArchiveNode()
+      if (!archiveNode) {
+        return
+      }
+      const targetId = parseInt(folderId)
+      const treeNode = this.getTreeNodeByData(archiveNode)
+      const treeRef = this.$refs.collectionTreeRef
+      const treeChildren = treeNode && Array.isArray(treeNode.childNodes)
+        ? treeNode.childNodes.map((node) => node && node.data).filter(Boolean)
+        : []
+
+      if (treeChildren.length > 0) {
+        const targetNode = treeNode.childNodes.find((node) =>
+          node && node.data && parseInt(node.data.id) === targetId
+        )
+        if (targetNode && treeRef && typeof treeRef.remove === 'function') {
+          treeRef.remove(targetNode.data)
+          archiveNode.children = treeNode.childNodes
+            .map((node) => node && node.data)
+            .filter((item) => item && parseInt(item.id) !== targetId)
+        } else {
+          archiveNode.children = treeChildren.filter((item) => parseInt(item.id) !== targetId)
+          this.syncTreeNodeChildren(archiveNode.uniqueid, archiveNode.children)
+        }
+      } else if (Array.isArray(archiveNode.children) && archiveNode.children.length > 0) {
+        archiveNode.children = archiveNode.children.filter((item) => parseInt(item.id) !== targetId)
+        this.syncTreeNodeChildren(archiveNode.uniqueid, archiveNode.children)
+      } else {
+        archiveNode.child_count = Math.max(Number(archiveNode.child_count || 1) - 1, 0)
+        archiveNode.isLeaf = archiveNode.child_count <= 0
+        return
+      }
+      archiveNode.child_count = archiveNode.children.length
+      archiveNode.isLeaf = archiveNode.child_count <= 0
+      archiveNode.loaded = true
     },
     // 恢复归档文件夹
     handleRestoreFolder(folder) {
@@ -2784,7 +2831,7 @@ export default {
         Api.PermanentDeleteDir({ id: folder.id }, function (res) {
           if (res.ErrCode === 0) {
             _that.closeWorkspaceTabsByFolder(folder.id)
-            _that.refreshArchiveNode()
+            _that.removeArchivedFolderNode(folder.id)
             _that.$message.success('已永久删除')
           } else {
             _that.$message.error(res.ErrMsg)

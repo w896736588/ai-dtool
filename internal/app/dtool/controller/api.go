@@ -1474,14 +1474,36 @@ func ApiPermanentDeleteDir(c *gin.Context) {
 		gsgin.GinResponseError(c, `请选择文件夹`, nil)
 		return
 	}
+	folderInfo, err := common.DbMain.Client.QueryBySql(
+		`SELECT id FROM tbl_api_dir WHERE id = ? AND archived = 1`, folderId,
+	).One()
+	if err != nil {
+		gsgin.GinResponseError(c, `查询失败 `+err.Error(), nil)
+		return
+	}
+	if len(folderInfo) == 0 {
+		gsgin.GinResponseError(c, `归档文件夹不存在或已被删除`, nil)
+		return
+	}
 	// 删除该文件夹下的所有接口
-	_, _ = common.DbMain.Client.QueryBySql(
+	if _, err = common.DbMain.Client.ExecBySql(
 		`DELETE FROM tbl_api WHERE folder_id = ?`, folderId,
-	).Exec()
+	).Exec(); err != nil {
+		gsgin.GinResponseError(c, `删除接口失败 `+err.Error(), nil)
+		return
+	}
 	// 删除文件夹
-	_, _ = common.DbMain.Client.QueryBySql(
+	rowsAffected, err := common.DbMain.Client.ExecBySql(
 		`DELETE FROM tbl_api_dir WHERE id = ? AND archived = 1`, folderId,
 	).Exec()
+	if err != nil {
+		gsgin.GinResponseError(c, `删除失败 `+err.Error(), nil)
+		return
+	}
+	if rowsAffected == 0 {
+		gsgin.GinResponseError(c, `归档文件夹不存在或已被删除`, nil)
+		return
+	}
 	go BroadcastApiChange(c.GetHeader("SseClientId"), `folder_permanent_deleted`, map[string]any{
 		`folder_id`: folderId,
 	})
