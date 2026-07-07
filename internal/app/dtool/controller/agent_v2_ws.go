@@ -32,6 +32,7 @@ var wsUpgrader = websocket.Upgrader{
 // sessionProc 维护一个 Agent 会话的子进程实例
 type sessionProc struct {
 	mu        sync.Mutex
+	wsWriteMu sync.Mutex // 保护 conn.WriteJSON 的并发写
 	adapter   agent.AgentAdapter
 	conn      *websocket.Conn
 	ctx       chan struct{}
@@ -278,12 +279,43 @@ func AgentV2WS(c *gin.Context) {
 		eventsFile, _ = os.OpenFile(eventsFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	}
 
+	// 独立事件写入 channel：两个生产者（readWSCommands / forwardPiEvents）→ 一个消费者（writer goroutine）
+	// 解决并发写入同一 *os.File 导致数据交错/丢失的问题
+	eventWriteCh := make(chan string, 256)
+	writerDone := make(chan struct{})
+
+	// goroutine 完成信号（初始 nil，仅在启动 goroutine 后赋值，用于 defer 判断是否需要等待）
+	var wsDone, piDone chan struct{}
+
+	// writer goroutine 独占 eventsFile，串行写入 + Sync 确保落盘
+	go func() {
+		defer close(writerDone)
+		defer func() {
+			if eventsFile != nil {
+				eventsFile.Sync()
+				eventsFile.Close()
+			}
+		}()
+		for line := range eventWriteCh {
+			if eventsFile != nil {
+				fmt.Fprintf(eventsFile, "%s\n", line)
+			}
+		}
+	}()
+
+	// 关闭顺序：通知生产者 → 等待退出 → 关闭 writer channel → 等待刷盘
 	defer func() {
 		close(procCtx)
+		conn.SetReadDeadline(time.Now()) // 强制解除 ReadMessage 阻塞
 		adapter.Stop()
-		if eventsFile != nil {
-			eventsFile.Close()
+		if wsDone != nil {
+			<-wsDone
 		}
+		if piDone != nil {
+			<-piDone
+		}
+		close(eventWriteCh)
+		<-writerDone
 	}()
 
 	if err := adapter.Start(c.Request.Context(), startCfg); err != nil {
@@ -316,14 +348,14 @@ func AgentV2WS(c *gin.Context) {
 	}
 
 	// 启动两个 goroutine：读取 WebSocket（前端→后端），读取 Pi stdout（Pi→前端）
-	wsDone := make(chan struct{})
-	piDone := make(chan struct{})
+	wsDone = make(chan struct{})
+	piDone = make(chan struct{})
 
 	// WebSocket → Pi stdin
-	go sp.readWSCommands(conn, sessionId, sessionDir, configStr, model, eventsFile, wsDone)
+	go sp.readWSCommands(conn, sessionId, sessionDir, configStr, model, eventWriteCh, wsDone)
 
 	// Pi stdout → WebSocket
-	go sp.forwardPiEvents(conn, eventsFile, piDone)
+	go sp.forwardPiEvents(conn, eventWriteCh, piDone)
 
 	// 等待任一端结束
 	select {
@@ -334,7 +366,7 @@ func AgentV2WS(c *gin.Context) {
 
 // readWSCommands 从 WebSocket 读取前端消息，转发到 Agent stdin
 func (sp *sessionProc) readWSCommands(conn *websocket.Conn, sessionId int,
-	sessionDir, configStr, currentModel string, eventsFile *os.File, wsDone chan struct{}) {
+	sessionDir, configStr, currentModel string, eventWriteCh chan<- string, wsDone chan struct{}) {
 
 	defer close(wsDone)
 	for {
@@ -366,13 +398,17 @@ func (sp *sessionProc) readWSCommands(conn *websocket.Conn, sessionId int,
 			if ok && cast.ToString(cmdMap["type"]) == "prompt" {
 				userMsg := cast.ToString(cmdMap["message"])
 				if userMsg != "" {
-					// 持久化到 JSONL
-					if eventsFile != nil {
+					// 通过 channel 发送给 writer goroutine 串行写入 JSONL
+					if eventWriteCh != nil {
 						entry, _ := json.Marshal(map[string]interface{}{
 							"type":    "user_text",
 							"message": userMsg,
 						})
-						fmt.Fprintf(eventsFile, "%s\n", entry)
+						select {
+						case eventWriteCh <- string(entry):
+						case <-sp.ctx:
+							return
+						}
 					}
 					// 更新会话标题为最新用户提问（截断到 50 字符）+ 保存当前模型
 					title := userMsg
@@ -391,7 +427,9 @@ func (sp *sessionProc) readWSCommands(conn *websocket.Conn, sessionId int,
 			cmdBytes, _ := json.Marshal(wsMsg.Command)
 			if err := sp.adapter.SendCommand(cmdBytes); err != nil {
 				log.Printf("[agent-v2/ws] send command error: %v", err)
+				sp.wsWriteMu.Lock()
 				conn.WriteJSON(gin.H{"type": "error", "error": err.Error()})
+				sp.wsWriteMu.Unlock()
 			}
 		case "get_state":
 			cmdBytes, _ := json.Marshal(map[string]string{"type": "get_state"})
@@ -399,6 +437,7 @@ func (sp *sessionProc) readWSCommands(conn *websocket.Conn, sessionId int,
 		case "get_session_stats":
 			modelsCtx := parseModelsCtx(configStr)
 			stats := computeSessionStats(sessionDir, modelsCtx)
+			sp.wsWriteMu.Lock()
 			conn.WriteJSON(gin.H{
 				"type": "event",
 				"event": gin.H{
@@ -409,12 +448,13 @@ func (sp *sessionProc) readWSCommands(conn *websocket.Conn, sessionId int,
 					"data":     stats,
 				},
 			})
+			sp.wsWriteMu.Unlock()
 		}
 	}
 }
 
 // forwardPiEvents 从 Agent stdout 读取事件，持久化并转发到 WebSocket
-func (sp *sessionProc) forwardPiEvents(conn *websocket.Conn, eventsFile *os.File, piDone chan struct{}) {
+func (sp *sessionProc) forwardPiEvents(conn *websocket.Conn, eventWriteCh chan<- string, piDone chan struct{}) {
 	defer close(piDone)
 	for evt := range sp.adapter.Events() {
 		select {
@@ -429,9 +469,13 @@ func (sp *sessionProc) forwardPiEvents(conn *websocket.Conn, eventsFile *os.File
 			continue
 		}
 
-		// 持久化 Pi 事件到 JSONL 文件
-		if eventsFile != nil {
-			fmt.Fprintf(eventsFile, "%s\n", string(evt.Raw))
+		// 通过 channel 发送给 writer goroutine 串行写入 JSONL
+		if eventWriteCh != nil {
+			select {
+			case eventWriteCh <- string(evt.Raw):
+			case <-sp.ctx:
+				return
+			}
 		}
 
 		evtType := cast.ToString(rawEvt["type"])
@@ -442,10 +486,13 @@ func (sp *sessionProc) forwardPiEvents(conn *websocket.Conn, eventsFile *os.File
 			rawEvt["_command"] = cast.ToString(rawEvt["command"])
 		}
 
-		if err := conn.WriteJSON(gin.H{
+		sp.wsWriteMu.Lock()
+		err := conn.WriteJSON(gin.H{
 			"type":  "event",
 			"event": rawEvt,
-		}); err != nil {
+		})
+		sp.wsWriteMu.Unlock()
+		if err != nil {
 			log.Printf("[agent-v2/ws] ws write error: %v", err)
 			return
 		}
