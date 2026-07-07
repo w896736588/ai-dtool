@@ -118,93 +118,111 @@
       </header>
 
       <!-- 消息列表 -->
-      <div class="chat-messages" ref="messagesContainer">
-        <div v-if="messages.length === 0 && !isStreaming" class="chat-empty">
-          <div v-if="historyLoading" class="chat-empty__loading">
-            <span class="agent-status-spinner agent-status-spinner--large"></span>
-            <p>加载历史对话...</p>
-          </div>
-          <template v-else>
-          <div class="chat-empty__icon">π</div>
-          <p>开始与 Pi Agent 对话</p>
-          <p class="chat-empty__hint">Pi 可以读取、编辑和运行代码，帮助你完成开发任务</p>
-          </template>
-        </div>
-
+      <div class="chat-messages-wrap">
         <div
-          v-for="(msg, idx) in messages"
-          :key="idx"
-          class="chat-message"
-          :class="'chat-message--' + msg.role"
+          class="chat-messages"
+          ref="messagesContainer"
+          @scroll="handleMessagesScroll"
+          @wheel.passive="handleMessagesWheel"
         >
-          <div class="chat-message__avatar">
-            <span v-if="msg.role === 'user'" class="avatar avatar--user">U</span>
-            <span v-else-if="msg.role === 'tool'" class="avatar avatar--tool">🔧</span>
-            <span v-else class="avatar avatar--assistant">π</span>
-          </div>
-          <div class="chat-message__body">
-            <div v-if="msg.role === 'assistant' && msg.thinking" class="thinking-block">
-              <div class="thinking-block__header" @click="toggleMessageThinking(msg)">
-                <span v-if="msg._live && thinkingStartAt" class="agent-status-spinner"></span>
-                <span v-else class="agent-status-check">✓</span>
-                <span>思考过程<template v-if="msg._live && thinkingStartAt">（{{ getStreamingThinkingDurationText() }}）</template></span>
-                <el-icon class="thinking-block__arrow" :class="{ 'thinking-block__arrow--open': !isMessageThinkingCollapsed(msg) }">
-                  <ArrowDown />
-                </el-icon>
-              </div>
-              <div v-if="!isMessageThinkingCollapsed(msg)" class="thinking-block__content">{{ msg.thinking }}</div>
+          <div v-if="messages.length === 0 && !isStreaming" class="chat-empty">
+            <div v-if="historyLoading" class="chat-empty__loading">
+              <span class="agent-status-spinner agent-status-spinner--large"></span>
+              <p>加载历史对话...</p>
             </div>
+            <template v-else>
+            <div class="chat-empty__icon">π</div>
+            <p>开始与 Pi Agent 对话</p>
+            <p class="chat-empty__hint">Pi 可以读取、编辑和运行代码，帮助你完成开发任务</p>
+            </template>
+          </div>
 
-            <div v-if="msg.role === 'tool' || msg.content" class="chat-message__content" v-html="renderContent(msg)"></div>
+          <div
+            v-for="(msg, idx) in messages"
+            :key="idx"
+            class="chat-message"
+            :class="'chat-message--' + msg.role"
+          >
+            <div class="chat-message__avatar">
+              <span v-if="msg.role === 'user'" class="avatar avatar--user">U</span>
+              <span v-else-if="msg.role === 'tool'" class="avatar avatar--tool">🔧</span>
+              <span v-else class="avatar avatar--assistant">π</span>
+            </div>
+            <div class="chat-message__body">
+              <div v-if="msg.role === 'assistant' && msg.thinking" class="thinking-block">
+                <div class="thinking-block__header" @click="toggleMessageThinking(msg)">
+                  <span v-if="msg._live && thinkingStartAt" class="agent-status-spinner"></span>
+                  <span v-else class="agent-status-check">✓</span>
+                  <span>思考过程<template v-if="msg._live && thinkingStartAt">（{{ getStreamingThinkingDurationText() }}）</template></span>
+                  <el-icon class="thinking-block__arrow" :class="{ 'thinking-block__arrow--open': !isMessageThinkingCollapsed(msg) }">
+                    <ArrowDown />
+                  </el-icon>
+                </div>
+                <div v-if="!isMessageThinkingCollapsed(msg)" class="thinking-block__content">{{ msg.thinking }}</div>
+              </div>
 
-            <!-- 工具调用展示 -->
-            <div v-if="msg.toolCalls && msg.toolCalls.length" class="tool-calls">
-              <div
-                v-for="tc in msg.toolCalls"
-                :key="tc.id"
-                class="tool-call"
-                :class="['tool-call--' + tc.status, { 'tool-call--expanded': !isToolCallCollapsed(tc) }]"
-              >
-                <!-- read/bash/edit 紧凑一行 -->
-                <template v-if="isReadOrBashTool(tc)">
-                  <div class="tool-call__compact-row" @click="toggleToolCallCollapse(tc)">
-                    <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
-                    <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
-                    <span class="tool-call__compact-label">{{ tc.name }}</span>
-                    <span class="tool-call__compact-text" :title="getCompactText(tc)">{{ getCompactText(tc) }}</span>
-                    <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template></span>
-                    <el-icon class="tool-call__compact-arrow" :class="{ 'tool-call__compact-arrow--open': !isToolCallCollapsed(tc) }">
-                      <ArrowRight />
-                    </el-icon>
-                  </div>
-                  <div v-if="!isToolCallCollapsed(tc)" class="tool-call__details">
+              <div v-if="msg.role === 'tool' || msg.content" class="chat-message__content" v-html="renderContent(msg)"></div>
+
+              <!-- 工具调用展示 -->
+              <div v-if="msg.toolCalls && msg.toolCalls.length" class="tool-calls">
+                <div
+                  v-for="tc in msg.toolCalls"
+                  :key="tc.id"
+                  class="tool-call"
+                  :class="['tool-call--' + tc.status, { 'tool-call--expanded': !isToolCallCollapsed(tc) }]"
+                >
+                  <!-- read/bash/edit 紧凑一行 -->
+                  <template v-if="isReadOrBashTool(tc)">
+                    <div class="tool-call__compact-row" @click="toggleToolCallCollapse(tc)">
+                      <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
+                      <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
+                      <span class="tool-call__compact-label">{{ tc.name }}</span>
+                      <span class="tool-call__compact-text" :title="getCompactText(tc)">{{ getCompactText(tc) }}</span>
+                      <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template></span>
+                      <el-icon class="tool-call__compact-arrow" :class="{ 'tool-call__compact-arrow--open': !isToolCallCollapsed(tc) }">
+                        <ArrowRight />
+                      </el-icon>
+                    </div>
+                    <div v-if="!isToolCallCollapsed(tc)" class="tool-call__details">
+                      <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
+                      <pre class="tool-call__output" v-if="tc.output">{{ formatToolOutput(tc.output) }}</pre>
+                    </div>
+                  </template>
+                  <!-- 其他工具完整展示 -->
+                  <template v-else>
+                    <div class="tool-call__header">
+                      <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
+                      <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
+                      <el-icon><Tools /></el-icon>
+                      <span class="tool-call__name">{{ tc.name }}</span>
+                      <el-tag :type="tc.status === 'done' ? 'success' : tc.status === 'running' ? 'warning' : 'info'" size="small">
+                        {{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template>
+                      </el-tag>
+                    </div>
                     <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
                     <pre class="tool-call__output" v-if="tc.output">{{ formatToolOutput(tc.output) }}</pre>
-                  </div>
-                </template>
-                <!-- 其他工具完整展示 -->
-                <template v-else>
-                  <div class="tool-call__header">
-                    <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
-                    <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
-                    <el-icon><Tools /></el-icon>
-                    <span class="tool-call__name">{{ tc.name }}</span>
-                    <el-tag :type="tc.status === 'done' ? 'success' : tc.status === 'running' ? 'warning' : 'info'" size="small">
-                      {{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template>
-                    </el-tag>
-                  </div>
-                  <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
-                  <pre class="tool-call__output" v-if="tc.output">{{ formatToolOutput(tc.output) }}</pre>
-                </template>
+                  </template>
+                </div>
               </div>
             </div>
           </div>
+
+          <!-- 压缩通知 -->
+          <div v-if="compacting" class="compaction-notice">
+            <el-icon><Loading /></el-icon> 正在压缩上下文...
+          </div>
         </div>
 
-        <!-- 压缩通知 -->
-        <div v-if="compacting" class="compaction-notice">
-          <el-icon><Loading /></el-icon> 正在压缩上下文...
-        </div>
+        <el-button
+          v-show="showScrollToBottom"
+          class="chat-scroll-bottom"
+          circle
+          title="滚动到底部"
+          aria-label="滚动到底部"
+          @click="scrollToBottomAndResume"
+        >
+          <el-icon><ArrowDown /></el-icon>
+        </el-button>
       </div>
 
       <!-- 输入区域 -->
@@ -390,6 +408,9 @@ export default {
       isStreaming: false,
       streamingText: '',
       streamingThinking: '',
+      autoScrollEnabled: true,
+      showScrollToBottom: false,
+      programmaticScrollActive: false,
 
       selectedModel: '',
       // 按 Provider 分组的模型列表 [{provider_id, provider_name, provider_type, models: [{id, name, model}]}]
@@ -587,6 +608,7 @@ export default {
       this.compacting = false
       this._assistantPushedInTurn = false
       this.isStreaming = false
+      this.resetMessageAutoScroll()
     },
     selectSession(session) {
       if (this.currentSessionId === session.id) return
@@ -605,6 +627,7 @@ export default {
       this.compacting = false
       this._assistantPushedInTurn = false
       this.isStreaming = false
+      this.resetMessageAutoScroll()
       this.stopThinkingTimer()
       this.stopStatsPolling()
       this._historyLoaded = false // 标记：HTTP API 是否已加载了历史消息
@@ -645,6 +668,7 @@ export default {
           this.compacting = false
           this.stopThinkingTimer()
           this.stopStatsPolling()
+          this.resetMessageAutoScroll()
         }
         // 调用后端删除
         Base.BasePost('/api/AgentV2SessionDelete', { id: session.id }, () => {
@@ -679,7 +703,7 @@ export default {
             this.messages = res.Data.messages
           }
           this._historyLoaded = true
-          this.scrollToBottom()
+          this.scrollToBottom({ force: true })
         }
       })
     },
@@ -786,7 +810,7 @@ export default {
       if (this.isStreaming) {
         this.startStatsPolling()
       }
-      this.scrollToBottom()
+      this.scrollToBottom({ force: true })
     },
     replayBufferedSessionMessages(bufferedMessages) {
       for (const data of bufferedMessages || []) {
@@ -1127,7 +1151,7 @@ export default {
         // 如果 HTTP API 已加载历史消息，不覆盖（避免重复造成闪烁）
         if (!this._historyLoaded || this.messages.length === 0) {
           this.messages = data.messages
-          this.scrollToBottom()
+          this.scrollToBottom({ force: true })
         }
       } else if (data.type === 'error') {
         this.$message.error(data.error)
@@ -1164,6 +1188,7 @@ export default {
           } else if (deltaType === 'toolcall_start' || deltaType === 'toolcall_delta' || deltaType === 'toolcall_end') {
             // 支持 Anthropic (msgEvt.toolCall) 和 DeepSeek/OpenAI (partial.content) 两种格式
             this.handleToolCallInMessageUpdate(msgEvt)
+            this.scrollToBottom()
           }
           break
         }
@@ -1219,6 +1244,7 @@ export default {
             }
             this.startRuntimeTicker()
             if (!target.inMessage) this.syncLiveAssistantMessage()
+            this.scrollToBottom()
           }
           break
         }
@@ -1228,6 +1254,7 @@ export default {
           if (target) {
             this.applyToolExecutionOutput(target.tc, event, false)
             if (!target.inMessage) this.syncLiveAssistantMessage()
+            this.scrollToBottom()
           }
           break
         }
@@ -1240,6 +1267,7 @@ export default {
             this.applyToolExecutionOutput(target.tc, event, true)
             if (!target.inMessage) this.syncLiveAssistantMessage()
             this.stopRuntimeTickerIfIdle()
+            this.scrollToBottom()
           }
           break
         }
@@ -1891,11 +1919,62 @@ export default {
     toggleToolCallCollapse(tc) {
       tc._collapsed = this.isToolCallCollapsed(tc) ? false : true
     },
-    scrollToBottom() {
+    isMessagesNearBottom(el) {
+      if (!el) return true
+      return el.scrollHeight - el.scrollTop - el.clientHeight <= 24
+    },
+    resetMessageAutoScroll() {
+      this.autoScrollEnabled = true
+      this.showScrollToBottom = false
+      this.programmaticScrollActive = false
+    },
+    updateMessageAutoScrollState(forceFollow = false) {
+      const el = this.$refs.messagesContainer
+      if (!el) return
+      const nearBottom = this.isMessagesNearBottom(el)
+      if (forceFollow || nearBottom) {
+        this.autoScrollEnabled = true
+        this.showScrollToBottom = false
+      } else {
+        this.autoScrollEnabled = false
+        this.showScrollToBottom = true
+      }
+    },
+    handleMessagesWheel(event) {
+      if (event.deltaY < 0) {
+        this.autoScrollEnabled = false
+        this.showScrollToBottom = true
+      }
+    },
+    handleMessagesScroll() {
+      if (this.programmaticScrollActive) {
+        this.updateMessageAutoScrollState(true)
+        return
+      }
+      this.updateMessageAutoScrollState()
+    },
+    scrollToBottom(options = {}) {
+      const force = Boolean(options.force)
+      if (!force && !this.autoScrollEnabled) {
+        this.showScrollToBottom = true
+        return
+      }
       this.$nextTick(() => {
         const el = this.$refs.messagesContainer
-        if (el) el.scrollTop = el.scrollHeight
+        if (!el) return
+        this.programmaticScrollActive = true
+        el.scrollTop = el.scrollHeight
+        this.autoScrollEnabled = true
+        this.showScrollToBottom = false
+        window.setTimeout(() => {
+          this.programmaticScrollActive = false
+          this.updateMessageAutoScrollState(true)
+        }, 0)
       })
+    },
+    scrollToBottomAndResume() {
+      this.autoScrollEnabled = true
+      this.scrollToBottom({ force: true })
     },
     formatTime(ts) {
       if (!ts) return ''
@@ -2022,7 +2101,33 @@ export default {
 .token-stats { display: flex; gap: 12px; font-size: 11px; color: #909399; }
 .token-stats__item { white-space: nowrap; }
 
-.chat-messages { flex: 1; overflow-y: auto; padding: 16px; }
+.chat-messages-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.chat-messages {
+  height: 100%;
+  overflow-y: auto;
+  padding: 16px;
+}
+.chat-scroll-bottom {
+  position: absolute;
+  right: 24px;
+  bottom: 20px;
+  width: 36px;
+  height: 36px;
+  color: #606266;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  z-index: 5;
+}
+.chat-scroll-bottom:hover {
+  color: #409eff;
+  border-color: #409eff;
+  background: #f5f9ff;
+}
 .chat-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   height: 100%; color: #c0c4cc;
