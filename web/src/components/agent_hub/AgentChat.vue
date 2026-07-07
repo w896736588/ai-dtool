@@ -128,7 +128,7 @@
             <div v-if="msg.role === 'assistant' && msg.thinking" class="thinking-block">
               <div class="thinking-block__header" @click="toggleMessageThinking(msg)">
                 <span class="agent-status-check">✓</span>
-                <span>思考过程（{{ getThinkingDurationText(msg) }}）</span>
+                <span>思考过程</span>
                 <el-icon class="thinking-block__arrow" :class="{ 'thinking-block__arrow--open': !isMessageThinkingCollapsed(msg) }">
                   <ArrowDown />
                 </el-icon>
@@ -153,7 +153,7 @@
                     <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
                     <span class="tool-call__compact-label">{{ tc.name }}</span>
                     <span class="tool-call__compact-text" :title="getCompactText(tc)">{{ getCompactText(tc) }}</span>
-                    <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}（{{ getToolDurationText(tc) }}）</span>
+                    <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template></span>
                     <el-icon class="tool-call__compact-arrow" :class="{ 'tool-call__compact-arrow--open': !isToolCallCollapsed(tc) }">
                       <ArrowRight />
                     </el-icon>
@@ -171,7 +171,7 @@
                     <el-icon><Tools /></el-icon>
                     <span class="tool-call__name">{{ tc.name }}</span>
                     <el-tag :type="tc.status === 'done' ? 'success' : tc.status === 'running' ? 'warning' : 'info'" size="small">
-                      {{ statusLabel(tc.status) }}（{{ getToolDurationText(tc) }}）
+                      {{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template>
                     </el-tag>
                   </div>
                   <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
@@ -209,7 +209,7 @@
                     <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
                     <span class="tool-call__compact-label">{{ tc.name }}</span>
                     <span class="tool-call__compact-text" :title="getCompactText(tc)">{{ getCompactText(tc) }}</span>
-                    <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}（{{ getToolDurationText(tc) }}）</span>
+                    <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template></span>
                     <el-icon class="tool-call__compact-arrow" :class="{ 'tool-call__compact-arrow--open': !isToolCallCollapsed(tc) }">
                       <ArrowRight />
                     </el-icon>
@@ -227,7 +227,7 @@
                     <el-icon><Tools /></el-icon>
                     <span class="tool-call__name">{{ tc.name }}</span>
                     <el-tag :type="tc.status === 'done' ? 'success' : 'warning'" size="small">
-                      {{ statusLabel(tc.status) }}（{{ getToolDurationText(tc) }}）
+                      {{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template>
                     </el-tag>
                   </div>
                   <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>

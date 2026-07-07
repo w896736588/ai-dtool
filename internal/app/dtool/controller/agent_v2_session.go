@@ -715,7 +715,7 @@ func computeSessionStats(sessionDir string, modelsCtx map[string]int) map[string
 
 	var totalInputTokens, totalOutputTokens, totalCachedTokens float64
 	var totalCost float64
-	var latestInputTokens int
+	var contextPeak int
 	currentModel := ""
 
 	for _, entry := range entries {
@@ -781,8 +781,8 @@ func computeSessionStats(sessionDir string, modelsCtx map[string]int) map[string
 			} else {
 				contextUsed = int(inputTokens)
 			}
-			if contextUsed > 0 {
-				latestInputTokens = contextUsed
+			if contextUsed > contextPeak {
+				contextPeak = contextUsed
 			}
 
 			if costMap, ok := usage["cost"].(map[string]interface{}); ok {
@@ -797,7 +797,7 @@ func computeSessionStats(sessionDir string, modelsCtx map[string]int) map[string
 	stats["input_tokens"] = int(totalInputTokens)
 	stats["output_tokens"] = int(totalOutputTokens)
 	stats["cached_input_tokens"] = int(totalCachedTokens)
-	stats["context_used"] = latestInputTokens
+	stats["context_used"] = contextPeak
 	stats["context_total"] = contextTotal
 	stats["total_cost"] = totalCost
 	return stats

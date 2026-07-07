@@ -235,8 +235,9 @@ func applyProviderCompat(providerType string) map[string]any {
 	switch strings.ToLower(providerType) {
 	case "deepseek":
 		return map[string]any{
-			"thinkingFormat":          "deepseek",
-			"supportsReasoningEffort": true,
+			"thinkingFormat":           "deepseek",
+			"supportsReasoningEffort":  true,
+			"supportsUsageInStreaming": true,
 		}
 	default:
 		return nil
