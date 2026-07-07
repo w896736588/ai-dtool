@@ -144,7 +144,7 @@
                 v-for="tc in msg.toolCalls"
                 :key="tc.id"
                 class="tool-call"
-                :class="'tool-call--' + tc.status"
+                :class="['tool-call--' + tc.status, { 'tool-call--expanded': !isToolCallCollapsed(tc) }]"
               >
                 <!-- read/bash/edit 紧凑一行 -->
                 <template v-if="isReadOrBashTool(tc)">
@@ -201,7 +201,7 @@
             </div>
             <!-- 流式工具调用 -->
             <div v-if="hasRunningTools" class="tool-calls">
-              <div v-for="tc in runningToolCalls" :key="tc.id" class="tool-call" :class="'tool-call--' + tc.status">
+              <div v-for="tc in runningToolCalls" :key="tc.id" class="tool-call" :class="['tool-call--' + tc.status, { 'tool-call--expanded': !isToolCallCollapsed(tc) }]">
                 <!-- read/bash/edit 紧凑一行 -->
                 <template v-if="isReadOrBashTool(tc)">
                   <div class="tool-call__compact-row" @click="toggleToolCallCollapse(tc)">
@@ -764,7 +764,11 @@ export default {
             this.scrollToBottom()
           } else if (deltaType === 'text_start' || deltaType === 'text_end' ||
                      deltaType === 'thinking_start' || deltaType === 'thinking_end') {
-            if (deltaType === 'thinking_start' && !this.thinkingStartAt) this.startThinkingTimer()
+            if (deltaType === 'thinking_start') {
+              if (!this.thinkingStartAt) this.startThinkingTimer()
+              // 占位零宽空格，确保 thinking 块在 toolcall_start 之前立即可见，避免顺序错位
+              if (!this.streamingThinking) this.streamingThinking = '\u200B'
+            }
             if (deltaType === 'thinking_end') this.stopThinkingTimer()
             this.scrollToBottom()
           } else if (deltaType === 'toolcall_start' || deltaType === 'toolcall_delta' || deltaType === 'toolcall_end') {
@@ -790,13 +794,15 @@ export default {
           if (msg && msg.role === 'assistant') {
             const text = this.extractPiContent(msg.content)
             const errorMsg = msg.errorMessage || ''
+            // 清理零宽空格占位符，避免空的 thinking 块被当作有效内容
+            const thinkingContent = this.streamingThinking.replace(/\u200B/g, '')
             // 仅在有实际内容时才 push（与后端 reconstructMessagesFromPiEvents 一致）
-            if (text || errorMsg || this.streamingThinking || Object.keys(this.pendingToolCalls).length > 0) {
+            if (text || errorMsg || thinkingContent || Object.keys(this.pendingToolCalls).length > 0) {
               const toolCalls = Object.values(this.pendingToolCalls)
               this.messages.push({
                 role: 'assistant',
                 content: text || (errorMsg ? '**Error:** ' + errorMsg : ''),
-                thinking: this.streamingThinking,
+                thinking: thinkingContent,
                 thinkingDurationMs: this.getCurrentThinkingDurationMs(true),
                 toolCalls: toolCalls.length > 0 ? toolCalls.map(item => ({ ...item })) : undefined
               })
@@ -883,12 +889,13 @@ export default {
           this.stopThinkingTimer()
           this.stopStatsPolling()
           // 仅在 message_end 未推送时才兜底推送（与后端 needPushAssistant 逻辑一致）
-          if (!this._assistantPushedInTurn && (this.streamingText || Object.values(this.pendingToolCalls).length > 0)) {
+          const thinkingContent = this.streamingThinking.replace(/\u200B/g, '')
+          if (!this._assistantPushedInTurn && (this.streamingText || thinkingContent || Object.values(this.pendingToolCalls).length > 0)) {
             const toolCalls = Object.values(this.pendingToolCalls)
             this.messages.push({
               role: 'assistant',
               content: this.streamingText,
-              thinking: this.streamingThinking,
+              thinking: thinkingContent,
               thinkingDurationMs: this.getCurrentThinkingDurationMs(true),
               toolCalls: toolCalls.length > 0 ? toolCalls.map(item => ({ ...item })) : undefined
             })
@@ -1484,7 +1491,7 @@ export default {
 .token-stats { display: flex; gap: 12px; font-size: 11px; color: #909399; }
 .token-stats__item { white-space: nowrap; }
 
-.chat-messages { flex: 1; overflow-y: auto; padding: 24px; }
+.chat-messages { flex: 1; overflow-y: auto; padding: 16px; }
 .chat-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   height: 100%; color: #c0c4cc;
@@ -1497,14 +1504,14 @@ export default {
 }
 .chat-empty__hint { font-size: 13px; margin-top: 4px; }
 
-.chat-message { display: flex; gap: 12px; margin-bottom: 24px; max-width: 90%; }
+.chat-message { display: flex; gap: 8px; margin-bottom: 16px; max-width: 90%; }
 .chat-message--assistant { max-width: 100%; }
 .chat-message--user { margin-left: auto; flex-direction: row-reverse; }
 
 .avatar {
-  width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+  width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  font-weight: bold; font-size: 14px; color: #fff;
+  font-weight: bold; font-size: 12px; color: #fff;
 }
 .avatar--user { background: #409eff; }
 .avatar--assistant { background: linear-gradient(135deg, #667eea, #764ba2); }
@@ -1512,17 +1519,17 @@ export default {
 
 .chat-message__body { min-width: 0; }
 .chat-message__content {
-  background: #fff; border-radius: 12px; padding: 12px 16px;
-  border: 1px solid #ebeef5; line-height: 1.6; font-size: 14px;
+  background: #fff; border-radius: 10px; padding: 8px 12px;
+  border: 1px solid #ebeef5; line-height: 1.5; font-size: 14px;
 }
 .chat-message--user .chat-message__content {
   background: #409eff; color: #fff; border-color: #409eff;
 }
 
-.thinking-block { margin-bottom: 8px; }
+.thinking-block { margin-bottom: 4px; }
 .thinking-block__header {
-  display: flex; align-items: center; gap: 6px; padding: 6px 12px;
-  background: #fef7e0; border-radius: 8px; cursor: pointer; font-size: 13px; color: #b88230;
+  display: flex; align-items: center; gap: 6px; padding: 4px 10px;
+  background: #fef7e0; border-radius: 6px; cursor: pointer; font-size: 13px; color: #b88230;
 }
 .agent-status-spinner {
   display: inline-block;
@@ -1555,11 +1562,11 @@ export default {
 .thinking-block__arrow { transition: transform .2s; }
 .thinking-block__arrow--open { transform: rotate(180deg); }
 .thinking-block__content {
-  background: #fffef8; border: 1px solid #faecd8; border-radius: 8px;
-  padding: 12px; margin-top: 4px; font-size: 13px; color: #8c6d3a; white-space: pre-wrap; max-height: 200px; overflow-y: auto;
+  background: #fffef8; border: 1px solid #faecd8; border-radius: 6px;
+  padding: 8px; margin-top: 2px; font-size: 13px; color: #8c6d3a; white-space: pre-wrap; max-height: 200px; overflow-y: auto;
 }
 
-.tool-calls { margin-top: 8px; }
+.tool-calls { margin-top: 4px; }
 .api-error {
   background: #fef0f0; border: 1px solid #fde2e2; border-radius: 10px;
   padding: 14px 16px; margin-top: 4px;
@@ -1577,12 +1584,13 @@ export default {
   font-size: 12px; color: #c0c4cc; border-top: 1px solid #fde2e2; padding-top: 8px;
 }
 .tool-call {
-  background: #f8f9fc; border: 1px solid #e4e7ed; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+  background: #f8f9fc; border: 1px solid transparent; border-radius: 8px; padding: 6px 10px; margin-bottom: 2px;
+  transition: border-color .2s ease;
 }
-.tool-call--running { border-color: #e6a23c; background: #fef7e0; }
-.tool-call--done { border-color: #67c23a; }
+.tool-call--expanded.tool-call--running { border-color: #e6a23c; background: #fef7e0; }
+.tool-call--expanded.tool-call--done { border-color: #67c23a; }
 .tool-call__header {
-  display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 13px;
+  display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 13px;
 }
 .tool-call__name { font-weight: 500; }
 .tool-call__input, .tool-call__output {
