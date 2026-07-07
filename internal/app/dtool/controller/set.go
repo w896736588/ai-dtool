@@ -1701,14 +1701,18 @@ func SetHomeTaskConfigSave(c *gin.Context) {
 	}
 	homeTaskDailyReportModelID := cast.ToInt(dataMap[`home_task_daily_report_model_id`])
 	if homeTaskDailyReportModelID > 0 {
-		modelInfo, err := common.DbMain.AiModelInfo(homeTaskDailyReportModelID)
-		if err != nil {
-			gsgin.GinResponseError(c, `AI 模型不存在`, nil)
-			return
-		}
-		if strings.ToLower(cast.ToString(modelInfo[`model_type`])) != `llm` {
-			gsgin.GinResponseError(c, `工作日报仅支持选择 LLM 模型`, nil)
-			return
+		// 仅当日报模型 ID 发生变化时才校验，避免保存其他配置时因已删除的旧模型 ID 被拦截
+		storedModelIDText, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigDailyReportModelID)
+		if homeTaskDailyReportModelID != cast.ToInt(storedModelIDText) {
+			modelInfo, err := common.DbMain.AiModelInfo(homeTaskDailyReportModelID)
+			if err != nil {
+				gsgin.GinResponseError(c, `AI 模型不存在`, nil)
+				return
+			}
+			if strings.ToLower(cast.ToString(modelInfo[`model_type`])) != `llm` {
+				gsgin.GinResponseError(c, `工作日报仅支持选择 LLM 模型`, nil)
+				return
+			}
 		}
 	}
 	saveHomeTaskPromptWithLog(define.HomeTaskConfigDailyReportPrompt, `工作日报提示词`, homeTaskDailyReportPrompt, `首页任务工作日报 AI 提示词`)
@@ -1781,8 +1785,23 @@ func SetHomeTaskConfigSave(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	homeTaskBranchNameModelID := cast.ToString(cast.ToInt(dataMap[`home_task_branch_name_model_id`]))
-	if err := common.DbMain.HomeTaskConfigSave(`分支名生成模型`, define.HomeTaskConfigBranchNameModelID, homeTaskBranchNameModelID, `分支名生成所用模型 id`); err != nil {
+	homeTaskBranchNameModelID := cast.ToInt(dataMap[`home_task_branch_name_model_id`])
+	if homeTaskBranchNameModelID > 0 {
+		// 仅当分支名模型 ID 发生变化时才校验
+		storedBranchModelIDText, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigBranchNameModelID)
+		if homeTaskBranchNameModelID != cast.ToInt(storedBranchModelIDText) {
+			modelInfo, err := common.DbMain.AiModelInfo(homeTaskBranchNameModelID)
+			if err != nil {
+				gsgin.GinResponseError(c, `AI 模型不存在`, nil)
+				return
+			}
+			if strings.ToLower(cast.ToString(modelInfo[`model_type`])) != `llm` {
+				gsgin.GinResponseError(c, `分支名生成仅支持 LLM 模型`, nil)
+				return
+			}
+		}
+	}
+	if err := common.DbMain.HomeTaskConfigSave(`分支名生成模型`, define.HomeTaskConfigBranchNameModelID, cast.ToString(homeTaskBranchNameModelID), `分支名生成所用模型 id`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}

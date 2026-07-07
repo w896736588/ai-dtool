@@ -108,7 +108,6 @@ export default {
           break
         case 'AI':
           this.$refs.ai_provider && this.$refs.ai_provider.LoadProviderList()
-          this.$refs.ai_provider && this.$refs.ai_provider.LoadModelList()
           break
         case 'Config':
           this.$refs.memory && this.$refs.memory.loadConfig && this.$refs.memory.loadConfig()
