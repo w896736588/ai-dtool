@@ -13,13 +13,14 @@ import (
 
 // PiAdapter Pi Agent 的 RPC 模式适配器
 type PiAdapter struct {
-	mu      sync.Mutex
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
-	running bool
-	events  chan AgentEvent
-	done    chan struct{}
-	exitErr error
+	mu       sync.Mutex
+	cmd      *exec.Cmd
+	stdin    io.WriteCloser
+	running  bool
+	events   chan AgentEvent
+	done     chan struct{}
+	doneOnce sync.Once
+	exitErr  error
 }
 
 func NewPiAdapter() *PiAdapter {
@@ -85,6 +86,7 @@ func (a *PiAdapter) Start(ctx context.Context, config AgentStartConfig) error {
 
 	a.running = true
 	a.done = make(chan struct{})
+	a.doneOnce = sync.Once{}
 	a.events = make(chan AgentEvent, 256)
 
 	// stderr → 日志
@@ -98,6 +100,7 @@ func (a *PiAdapter) Start(ctx context.Context, config AgentStartConfig) error {
 	// 监控进程退出
 	go func() {
 		err := a.cmd.Wait()
+		a.closeDone()
 		a.mu.Lock()
 		a.running = false
 		a.exitErr = err
@@ -114,11 +117,23 @@ func (a *PiAdapter) Start(ctx context.Context, config AgentStartConfig) error {
 	return nil
 }
 
+func (a *PiAdapter) closeDone() {
+	a.mu.Lock()
+	done := a.done
+	a.mu.Unlock()
+	if done == nil {
+		return
+	}
+	a.doneOnce.Do(func() {
+		close(done)
+	})
+}
+
 func (a *PiAdapter) Stop() error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 
 	if !a.running {
+		a.mu.Unlock()
 		return nil
 	}
 
@@ -129,13 +144,19 @@ func (a *PiAdapter) Stop() error {
 		a.stdin.Write(abortCmd)
 	}
 
-	if a.done != nil {
-		close(a.done)
-	}
+	done := a.done
+	doneOnce := &a.doneOnce
 	if a.cmd != nil && a.cmd.Process != nil {
 		a.cmd.Process.Kill()
 	}
 	a.running = false
+	a.mu.Unlock()
+
+	if done != nil {
+		doneOnce.Do(func() {
+			close(done)
+		})
+	}
 	return nil
 }
 

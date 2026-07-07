@@ -27,7 +27,7 @@ const (
 	// homeTaskDailyReportMemoryTag 定义写入记忆时的固定标签。
 	homeTaskDailyReportMemoryTag = "工作日报"
 	// homeTaskDailyReportModelRequiredError 表示日报模型尚未配置。
-	homeTaskDailyReportModelRequiredError = "请先在记忆设置中配置工作日报模型"
+	homeTaskDailyReportModelRequiredError = "请先在知识片段设置中配置工作日报模型"
 	// homeTaskDailyReportModelUnavailableError 表示已配置的日报模型不可用。
 	homeTaskDailyReportModelUnavailableError = "当前工作日报模型不可用"
 	// homeTaskDailyReportModelTypeError 表示日报模型类型不符合预期。

@@ -10,7 +10,7 @@
       </div>
 
       <!-- 工作空间选择 -->
-      <div class="chat-sidebar__section">
+      <div class="chat-sidebar__section chat-sidebar__section--workspaces">
         <div class="chat-sidebar__section-title">
           <span>工作空间</span>
           <el-button text size="small" @click="showWorkspaceDialog = true">+</el-button>
@@ -35,26 +35,40 @@
       <div class="chat-sidebar__section chat-sidebar__section--grow">
         <div class="chat-sidebar__section-title">
           <span>对话列表</span>
-          <el-button text size="small" @click="createSession" :disabled="!currentWorkspaceId">+</el-button>
+          <el-button text size="small" @click="showWorkspaceDialog = true">工作空间 +</el-button>
         </div>
         <div class="session-list">
           <div
-            v-for="session in sessions"
-            :key="session.id"
+            v-for="session in groupedSessions"
+            :key="session._key || session.id"
             class="session-item"
-            :class="{ 'session-item--active': session.id === currentSessionId }"
-            @click="selectSession(session)"
-            @contextmenu.prevent="showSessionMenu($event, session)"
+            :class="{
+              'session-item--active': !session._isWorkspaceHeader && session.id === currentSessionId,
+              'workspace-group-header': session._isWorkspaceHeader,
+              'workspace-group-header--active': session._isWorkspaceHeader && Number(session.workspace_id) === Number(currentWorkspaceId),
+              'workspace-group-header--collapsed': session._isWorkspaceHeader && session._isCollapsed
+            }"
+            @click="session._isWorkspaceHeader ? toggleWorkspaceGroup(session) : selectSession(session)"
+            @contextmenu.prevent="session._isWorkspaceHeader ? null : showSessionMenu($event, session)"
           >
-            <span v-if="sessionRunningMap[session.id]" class="agent-status-spinner session-item__spinner"></span>
+            <template v-if="session._isWorkspaceHeader">
+              <el-icon class="workspace-group-header__arrow">
+                <ArrowRight v-if="session._isCollapsed" />
+                <ArrowDown v-else />
+              </el-icon>
+              <el-icon class="workspace-group-header__folder"><Folder /></el-icon>
+            </template>
+            <span v-else-if="sessionRunningMap[session.id]" class="agent-status-spinner session-item__spinner"></span>
             <el-icon v-else><ChatDotRound /></el-icon>
             <div class="session-item__info">
               <span class="session-item__name">{{ session.name }}</span>
-              <span class="session-item__time">{{ formatTime(session.updated_at) }}</span>
+              <span class="session-item__time">{{ session._isWorkspaceHeader ? session.path : formatTime(session.updated_at) }}</span>
             </div>
-            <el-button text size="small" class="session-item__del" @click.stop="deleteSession(session)">
+            <span v-if="session._isWorkspaceHeader" class="workspace-group-header__count">{{ session.count }} 个对话</span>
+            <el-button v-if="!session._isWorkspaceHeader" text size="small" class="session-item__del" @click.stop="deleteSession(session)">
               <el-icon><Close /></el-icon>
             </el-button>
+            <el-button v-else text size="small" class="session-item__del session-item__add" @click.stop="createSession(session.workspace)">+</el-button>
           </div>
           <div v-if="sessions.length === 0" class="empty-hint">
             {{ currentWorkspaceId ? '暂无对话，点击 + 创建' : '请先选择工作空间' }}
@@ -165,7 +179,7 @@
                   </div>
                   <div v-if="!isToolCallCollapsed(tc)" class="tool-call__details">
                     <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
-                    <pre class="tool-call__output" v-if="tc.output">{{ tc.output }}</pre>
+                    <pre class="tool-call__output" v-if="tc.output">{{ formatToolOutput(tc.output) }}</pre>
                   </div>
                 </template>
                 <!-- 其他工具完整展示 -->
@@ -180,7 +194,7 @@
                     </el-tag>
                   </div>
                   <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
-                  <pre class="tool-call__output" v-if="tc.output">{{ tc.output }}</pre>
+                  <pre class="tool-call__output" v-if="tc.output">{{ formatToolOutput(tc.output) }}</pre>
                 </template>
               </div>
             </div>
@@ -201,7 +215,7 @@
             type="textarea"
             :rows="2"
             placeholder="输入消息，Enter 发送，Shift+Enter 换行..."
-            :disabled="isStreaming || (!!currentSessionId && !wsConnected)"
+            :disabled="isStreaming || (sessionRunningMap[currentSessionId] && !wsConnected)"
             @keydown.enter.exact.prevent="sendMessage"
             resize="none"
           />
@@ -286,7 +300,7 @@
               <el-button
                 v-else
                 type="primary"
-                :disabled="!inputText.trim() || !wsConnected"
+                :disabled="!inputText.trim() || (sessionRunningMap[currentSessionId] && !wsConnected)"
                 @click="sendMessage"
               >
                 发送
@@ -361,6 +375,7 @@ export default {
 
       workspaces: [],
       currentWorkspaceId: 0,
+      collapsedWorkspaceMap: {},
       showWorkspaceDialog: false,
       workspaceForm: { name: '', path: '' },
 
@@ -427,6 +442,9 @@ export default {
     // 各会话的运行状态（用于侧边栏指示器）
     sessionRunningMap() {
       const map = {}
+      this.sessions.forEach(session => {
+        if (session && session.status === 'running') map[session.id] = true
+      })
       // 当前前台会话
       if (this.currentSessionId && this.isStreaming) {
         map[this.currentSessionId] = true
@@ -439,6 +457,49 @@ export default {
     },
     runningSessionCount() {
       return Object.keys(this.sessionRunningMap).length
+    },
+    groupedSessions() {
+      const rows = []
+      const byWorkspace = new Map()
+      this.sessions.forEach(session => {
+        const workspaceId = Number(session.workspace_id || 0)
+        if (!byWorkspace.has(workspaceId)) byWorkspace.set(workspaceId, [])
+        byWorkspace.get(workspaceId).push(session)
+      })
+      this.workspaces.forEach(ws => {
+        const workspaceId = Number(ws.id)
+        const collapsed = !!this.collapsedWorkspaceMap[workspaceId]
+        const workspaceSessions = byWorkspace.get(workspaceId) || []
+        rows.push({
+          _isWorkspaceHeader: true,
+          _key: 'workspace-' + ws.id,
+          id: 0,
+          workspace: ws,
+          workspace_id: ws.id,
+          name: ws.name,
+          path: ws.path,
+          count: workspaceSessions.length,
+          _isCollapsed: collapsed
+        })
+        if (!collapsed) rows.push(...workspaceSessions)
+      })
+      byWorkspace.forEach((items, workspaceId) => {
+        if (this.workspaces.some(ws => Number(ws.id) === Number(workspaceId))) return
+        const collapsed = !!this.collapsedWorkspaceMap[workspaceId]
+        rows.push({
+          _isWorkspaceHeader: true,
+          _key: 'workspace-' + workspaceId,
+          id: 0,
+          workspace: { id: workspaceId, name: '未归属工作空间', path: '' },
+          workspace_id: workspaceId,
+          name: '未归属工作空间',
+          path: '',
+          count: items.length,
+          _isCollapsed: collapsed
+        })
+        if (!collapsed) rows.push(...items)
+      })
+      return rows
     }
   },
   mounted() {
@@ -469,14 +530,23 @@ export default {
     async loadWorkspaces() {
       Base.BasePost('/api/AgentV2WorkspaceList', { agent_id: this.agentId }, (res) => {
         this.workspaces = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
-        if (this.workspaces.length === 1) {
-          this.selectWorkspace(this.workspaces[0])
+        if (!this.currentWorkspaceId && this.workspaces.length > 0) {
+          this.currentWorkspaceId = this.workspaces[0].id
         }
+        this.loadSessions()
       })
     },
     selectWorkspace(ws) {
       this.currentWorkspaceId = ws.id
-      this.loadSessions()
+    },
+    toggleWorkspaceGroup(session) {
+      if (!session || !session.workspace) return
+      this.currentWorkspaceId = session.workspace.id
+      const workspaceId = Number(session.workspace_id || session.workspace.id || 0)
+      this.collapsedWorkspaceMap = {
+        ...this.collapsedWorkspaceMap,
+        [workspaceId]: !this.collapsedWorkspaceMap[workspaceId]
+      }
     },
     saveWorkspace() {
       if (!this.workspaceForm.name || !this.workspaceForm.path) return
@@ -493,11 +563,13 @@ export default {
 
     // ========== 会话管理 ==========
     async loadSessions() {
-      Base.BasePost('/api/AgentV2SessionList', { agent_id: this.agentId, workspace_id: this.currentWorkspaceId }, (res) => {
+      Base.BasePost('/api/AgentV2SessionList', { agent_id: this.agentId }, (res) => {
         this.sessions = (res.ErrCode === 0 && res.Data) ? (res.Data.list || []) : []
+        this.attachRunningSessions()
       })
     },
-    createSession() {
+    createSession(workspace) {
+      if (workspace && workspace.id) this.currentWorkspaceId = workspace.id
       if (!this.currentWorkspaceId) return
       // 仅打开空白聊天区，不创建 DB 记录、不连 WebSocket
       // 等用户输入第一条消息时才真正创建会话
@@ -546,11 +618,12 @@ export default {
       const restored = this.restoreSessionState(session.id)
       if (restored) {
         this.historyLoading = false
+        if (this.messages.length === 0) this.loadSessionMessages()
       } else {
         // 需要新建 WS 连接
         this.historyLoading = true
         this.loadSessionMessages()
-        this.connectWS()
+        if (session.status === 'running') this.connectWS(true)
       }
     },
     deleteSession(session) {
@@ -720,6 +793,83 @@ export default {
         this.handleWSMessage(data)
       }
     },
+    attachRunningSessions() {
+      this.sessions
+        .filter(session => session && session.status === 'running')
+        .forEach(session => {
+          if (this.currentSessionId === session.id && this.ws && this.ws.readyState !== WebSocket.CLOSED) return
+          const existing = this.sessionStates[session.id]
+          if (existing && existing.ws && (existing.ws.readyState === WebSocket.OPEN || existing.ws.readyState === WebSocket.CONNECTING)) return
+          this.connectBackgroundSessionWS(session)
+        })
+    },
+    connectBackgroundSessionWS(session) {
+      if (!session || !session.id) return
+      const apiHost = Base.GetAbsoluteApiHost()
+      const protocol = apiHost.startsWith('https') ? 'wss:' : 'ws:'
+      const host = apiHost.replace(/^https?:\/\//, '')
+      const token = Base.GetSafeToken() || ''
+      const url = `${protocol}//${host}/api/AgentV2WS?agent_id=${this.agentId}&session_id=${session.id}&token=${token}&attach_only=1`
+      const ws = new WebSocket(url)
+      ws._sessionId = session.id
+      const state = this.sessionStates[session.id] || {}
+      state.ws = ws
+      state.wsConnected = false
+      state.selectedModel = session.model_name || this.selectedModel
+      state._isRunning = true
+      state._bufferedMessages = state._bufferedMessages || []
+      this.sessionStates[session.id] = state
+
+      ws.onopen = () => {
+        state.wsConnected = true
+        state._isRunning = true
+      }
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          state._bufferedMessages.push(data)
+          if (data.type === 'state' && data.state && data.state.running === false) {
+            state._isRunning = false
+            this.markSessionStatus(session.id, 'active')
+            try { ws.close() } catch (e) { /* ignore */ }
+            delete this.sessionStates[session.id]
+            return
+          }
+          if (data.type === 'event' && data.event) {
+            const evtType = data.event.type
+            if (evtType === 'agent_start') state._isRunning = true
+            if (evtType === 'agent_end') {
+              state._isRunning = false
+              this.markSessionStatus(session.id, 'active')
+              try { ws.close() } catch (e) { /* ignore */ }
+              delete this.sessionStates[session.id]
+              this.loadSessions()
+            }
+            if (evtType === 'extension_ui_request') {
+              this.promoteBackgroundSession(session.id, '后台会话需要交互，已切回前台')
+            }
+          }
+        } catch (e) { /* ignore parse errors in background */ }
+      }
+      ws.onclose = () => {
+        state.wsConnected = false
+      }
+      ws.onerror = () => {
+        state.wsConnected = false
+      }
+    },
+    markSessionStatus(sessionId, status) {
+      const session = this.sessions.find(item => item.id === sessionId)
+      if (session) session.status = status
+    },
+    getWorkspaceName(workspaceId) {
+      const workspace = this.workspaces.find(item => Number(item.id) === Number(workspaceId))
+      return workspace ? workspace.name : ''
+    },
+    getWorkspacePath(workspaceId) {
+      const workspace = this.workspaces.find(item => Number(item.id) === Number(workspaceId))
+      return workspace ? workspace.path : ''
+    },
 
     // ========== 多会话并发状态管理 ==========
     // 保存当前前台会话状态，并将 WS 切换为后台监听模式
@@ -765,7 +915,6 @@ export default {
       }
       this.ws.onclose = () => {
         existing.wsConnected = false
-        existing._isRunning = false
       }
       this.ws.onerror = () => {
         existing.wsConnected = false
@@ -796,9 +945,26 @@ export default {
       ss._bufferedMessages = []
 
       // 恢复 WS 原始回调
-      if (ss._onmessage) ss.ws.onmessage = ss._onmessage
-      if (ss._onclose) ss.ws.onclose = ss._onclose
-      if (ss._onerror) ss.ws.onerror = ss._onerror
+      ss.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          this.handleWSMessage(data)
+        } catch (e) {
+          console.error('WS message parse error:', e)
+        }
+      }
+      ss.ws.onopen = () => {
+        this.wsConnected = true
+        this.requestTokenStats()
+      }
+      ss.ws.onclose = () => {
+        this.wsConnected = false
+        this.isStreaming = false
+      }
+      ss.ws.onerror = (e) => {
+        console.error('WS error:', e)
+        this.wsConnected = false
+      }
 
       this.ws = ss.ws
       this.wsConnected = ss.ws.readyState === WebSocket.OPEN
@@ -865,14 +1031,20 @@ export default {
     },
 
     // ========== WebSocket ==========
-    connectWS() {
+    connectWS(attachOnly = false) {
       if (!this.currentSessionId) return
+      const existing = this.sessionStates[this.currentSessionId]
+      if (existing && existing.ws && (existing.ws.readyState === WebSocket.OPEN || existing.ws.readyState === WebSocket.CONNECTING)) {
+        this.restoreSessionState(this.currentSessionId)
+        return
+      }
       const apiHost = Base.GetAbsoluteApiHost() // dev: http://localhost:17170, prod: current origin
       const protocol = apiHost.startsWith('https') ? 'wss:' : 'ws:'
       const host = apiHost.replace(/^https?:\/\//, '')
       const token = Base.GetSafeToken() || ''
       const modelParam = this.selectedModel ? `&model=${encodeURIComponent(this.selectedModel)}` : ''
-      const url = `${protocol}//${host}/api/AgentV2WS?agent_id=${this.agentId}&session_id=${this.currentSessionId}&token=${token}${modelParam}`
+      const attachParam = attachOnly ? '&attach_only=1' : ''
+      const url = `${protocol}//${host}/api/AgentV2WS?agent_id=${this.agentId}&session_id=${this.currentSessionId}&token=${token}${modelParam}${attachParam}`
 
       const sessionId = this.currentSessionId // 闭包捕获
       this.ws = new WebSocket(url)
@@ -885,6 +1057,7 @@ export default {
         if (this._pendingFirstMessage) {
           const msg = this._pendingFirstMessage
           this._pendingFirstMessage = ''
+          this.markSessionStatus(sessionId, 'running')
           this.sendWS({
             type: 'command',
             command: { type: 'prompt', message: msg }
@@ -894,14 +1067,20 @@ export default {
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
-          this.handleWSMessage(data)
-        } catch (e) {
-          console.error('WS message parse error:', e)
+            this.handleWSMessage(data)
+            if (attachOnly && data.type === 'state' && data.state && data.state.running === false) {
+              this.markSessionStatus(sessionId, 'active')
+              this.isStreaming = false
+              this.stopThinkingTimer()
+              this.stopStatsPolling()
+              this.stopRuntimeTickerIfIdle()
+            }
+          } catch (e) {
+            console.error('WS message parse error:', e)
         }
       }
       this.ws.onclose = () => {
         this.wsConnected = false
-        this.isStreaming = false
       }
       this.ws.onerror = (e) => {
         console.error('WS error:', e)
@@ -934,9 +1113,19 @@ export default {
           const lookupVal = data.state.provider + '/' + data.state.model
           this.selectedModel = lookupVal
         }
+        if (data.state && data.state.running === false) {
+          const sid = Number(data.state.session_id || this.currentSessionId)
+          this.markSessionStatus(sid, 'active')
+          if (sid === this.currentSessionId) {
+            this.isStreaming = false
+            this.stopThinkingTimer()
+            this.stopStatsPolling()
+            this.stopRuntimeTickerIfIdle()
+          }
+        }
       } else if (data.type === 'history' && data.messages) {
         // 如果 HTTP API 已加载历史消息，不覆盖（避免重复造成闪烁）
-        if (!this._historyLoaded) {
+        if (!this._historyLoaded || this.messages.length === 0) {
           this.messages = data.messages
           this.scrollToBottom()
         }
@@ -1022,42 +1211,34 @@ export default {
         // ===== 工具执行 =====
         case 'tool_execution_start': {
           const tcId = event.toolCallId || event.id
-          if (tcId && !this.pendingToolCalls[tcId]) {
-            this.pendingToolCalls[tcId] = {
-              id: tcId, name: event.toolName || event.name || 'unknown',
-              status: 'running', input: '', output: '', _collapsed: true,
-              startedAt: Date.now(), durationMs: 0
-            }
-          }
-          if (tcId && this.pendingToolCalls[tcId]) {
-            this.pendingToolCalls[tcId].status = 'running'
-            if (!this.pendingToolCalls[tcId].startedAt) {
-              this.pendingToolCalls[tcId].startedAt = Date.now()
+          const target = this.ensureToolExecutionTarget(tcId, event)
+          if (target) {
+            target.tc.status = 'running'
+            if (!target.tc.startedAt) {
+              target.tc.startedAt = Date.now()
             }
             this.startRuntimeTicker()
-            this.syncLiveAssistantMessage()
+            if (!target.inMessage) this.syncLiveAssistantMessage()
           }
           break
         }
         case 'tool_execution_update': {
           const tcId = event.toolCallId || event.id
-          if (tcId && this.pendingToolCalls[tcId]) {
-            if (event.output) {
-              this.pendingToolCalls[tcId].output = (this.pendingToolCalls[tcId].output || '') + event.output
-            }
-            this.syncLiveAssistantMessage()
+          const target = this.ensureToolExecutionTarget(tcId, event)
+          if (target) {
+            this.applyToolExecutionOutput(target.tc, event, false)
+            if (!target.inMessage) this.syncLiveAssistantMessage()
           }
           break
         }
         case 'tool_execution_end': {
           const tcId = event.toolCallId || event.id
-          if (tcId && this.pendingToolCalls[tcId]) {
-            this.pendingToolCalls[tcId].status = 'done'
-            this.pendingToolCalls[tcId].durationMs = this.pendingToolCalls[tcId].startedAt ? (Date.now() - this.pendingToolCalls[tcId].startedAt) : 0
-            this.pendingToolCalls[tcId].output = event.output || event.result || this.pendingToolCalls[tcId].output || ''
-            // 同步更新已推送消息中的 toolCalls（让最终消息也显示执行结果）
-            this.syncToolCallToMessages(tcId)
-            this.syncLiveAssistantMessage()
+          const target = this.ensureToolExecutionTarget(tcId, event)
+          if (target) {
+            target.tc.status = 'done'
+            target.tc.durationMs = target.tc.startedAt ? (Date.now() - target.tc.startedAt) : 0
+            this.applyToolExecutionOutput(target.tc, event, true)
+            if (!target.inMessage) this.syncLiveAssistantMessage()
             this.stopRuntimeTickerIfIdle()
           }
           break
@@ -1083,6 +1264,7 @@ export default {
           break
         }
         case 'agent_end': {
+          this.markSessionStatus(this.currentSessionId, 'active')
           this.isStreaming = false
           this.stopThinkingTimer()
           this.stopStatsPolling()
@@ -1231,9 +1413,10 @@ export default {
             }
           }
           // partialArgs（流式参数字符串，可能是不完整 JSON）
-          if (block.partialArgs && (!args || (typeof args === 'object' && Object.keys(args).length === 0))) {
-            try { this.pendingToolCalls[block.id].input = JSON.parse(block.partialArgs) } catch(e) {
-              this.pendingToolCalls[block.id].input = block.partialArgs
+          const partialArgs = block.partialArgs || block.partialJson
+          if (partialArgs && (!args || (typeof args === 'object' && Object.keys(args).length === 0))) {
+            try { this.pendingToolCalls[block.id].input = JSON.parse(partialArgs) } catch(e) {
+              this.pendingToolCalls[block.id].input = partialArgs
             }
           }
           // toolcall_end 时标记参数收集完毕
@@ -1245,21 +1428,71 @@ export default {
       this.syncLiveAssistantMessage()
     },
 
-    syncToolCallToMessages(tcId) {
-      // 从后往前找到最近的包含此 toolCall 的助手消息，同步 status/output
-      const tc = this.pendingToolCalls[tcId]
-      if (!tc) return
+    findToolCallInMessages(tcId) {
+      if (!tcId) return null
       for (let i = this.messages.length - 1; i >= 0; i--) {
         const msg = this.messages[i]
-        if (msg.role === 'assistant' && msg.toolCalls) {
+        if (msg.role === 'assistant' && Array.isArray(msg.toolCalls)) {
           const msgTc = msg.toolCalls.find(t => t.id === tcId)
-          if (msgTc) {
-            msgTc.status = tc.status
-            msgTc.output = tc.output
-            break
-          }
+          if (msgTc) return msgTc
         }
       }
+      return null
+    },
+    ensureToolExecutionTarget(tcId, event = {}) {
+      if (!tcId) return null
+      if (this.pendingToolCalls[tcId]) {
+        const tc = this.pendingToolCalls[tcId]
+        if (!tc.name || tc.name === 'unknown') tc.name = event.toolName || event.name || 'unknown'
+        if (!tc.input && (event.args || event.input)) tc.input = event.args || event.input
+        return { tc, inMessage: false }
+      }
+
+      const messageTc = this.findToolCallInMessages(tcId)
+      if (messageTc) {
+        if (!messageTc.name || messageTc.name === 'unknown') messageTc.name = event.toolName || event.name || 'unknown'
+        if (!messageTc.input && (event.args || event.input)) messageTc.input = event.args || event.input
+        return { tc: messageTc, inMessage: true }
+      }
+
+      if (!this.pendingToolCalls[tcId]) {
+        this.pendingToolCalls[tcId] = {
+          id: tcId,
+          name: event.toolName || event.name || 'unknown',
+          status: 'running',
+          input: event.args || event.input || '',
+          output: '',
+          _collapsed: true,
+          startedAt: Date.now(),
+          durationMs: 0
+        }
+      }
+      return { tc: this.pendingToolCalls[tcId], inMessage: false }
+    },
+    applyToolExecutionOutput(tc, event, final) {
+      if (!tc) return
+      const hasOwn = Object.prototype.hasOwnProperty
+      if (hasOwn.call(event, 'output')) {
+        const output = this.formatToolOutput(event.output)
+        tc.output = final ? (output || tc.output || '') : ((tc.output || '') + output)
+        return
+      }
+      if (hasOwn.call(event, 'result')) {
+        const output = this.formatToolOutput(event.result)
+        tc.output = output || tc.output || ''
+        return
+      }
+      if (hasOwn.call(event, 'partialResult')) {
+        const output = this.formatToolOutput(event.partialResult)
+        tc.output = output || tc.output || ''
+      }
+    },
+    syncToolCallToMessages(tcId) {
+      const tc = this.pendingToolCalls[tcId]
+      const msgTc = this.findToolCallInMessages(tcId)
+      if (!tc || !msgTc) return
+      msgTc.status = tc.status
+      msgTc.output = tc.output
     },
     ensureLiveAssistantMessage() {
       const lastMsg = this.messages[this.messages.length - 1]
@@ -1446,8 +1679,13 @@ export default {
         return
       }
 
-      if (!this.wsConnected) return
+      if (!this.wsConnected) {
+        this._pendingFirstMessage = text
+        this.connectWS()
+        return
+      }
 
+      this.markSessionStatus(this.currentSessionId, 'running')
       this.sendWS({
         type: 'command',
         command: { type: 'prompt', message: text }
@@ -1470,7 +1708,10 @@ export default {
           id: newId,
           agent_id: this.agentId,
           workspace_id: this.currentWorkspaceId,
+          workspace_name: this.getWorkspaceName(this.currentWorkspaceId),
+          workspace_path: this.getWorkspacePath(this.currentWorkspaceId),
           name: new Date().toLocaleString(),
+          status: 'running',
           updated_at: Math.floor(Date.now() / 1000)
         }
         this.sessions.unshift(newSession)
@@ -1600,6 +1841,26 @@ export default {
       if (!obj) return ''
       return typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2)
     },
+    formatToolOutput(output) {
+      if (output === undefined || output === null) return ''
+      if (typeof output === 'string') return output
+      const content = output.content
+      if (Array.isArray(content)) {
+        const text = content.map(block => {
+          if (!block) return ''
+          if (typeof block === 'string') return block
+          if (block.type === 'text') return block.text || ''
+          if (block.text) return block.text
+          return ''
+        }).join('')
+        return text
+      }
+      try {
+        return JSON.stringify(output, null, 2)
+      } catch (e) {
+        return String(output)
+      }
+    },
     statusLabel(status) {
       const map = { running: '执行中', done: '完成', pending: '等待' }
       return map[status] || status
@@ -1670,9 +1931,11 @@ export default {
 .chat-sidebar__section {
   padding: 12px 0; border-bottom: 1px solid #ebeef5;
 }
+.chat-sidebar__section--workspaces { display: none; }
 .chat-sidebar__section--grow { flex: 1; overflow-y: auto; }
 .chat-sidebar__section-title {
   display: flex; justify-content: space-between; align-items: center;
+  gap: 8px;
   padding: 0 16px 8px; font-size: 12px; color: #909399; text-transform: uppercase; letter-spacing: .5px;
 }
 .chat-sidebar__footer {
@@ -1697,6 +1960,32 @@ export default {
 }
 .session-item:hover { background: #f5f7fa; }
 .session-item--active { background: #ecf5ff; }
+.workspace-group-header {
+  margin: 10px 0 4px;
+  padding: 9px 10px;
+  background: #f3f7ff;
+  border: 1px solid #d9e8ff;
+  border-left: 4px solid #409eff;
+  border-radius: 6px;
+  color: #1f2d3d;
+  font-weight: 700;
+}
+.workspace-group-header:hover { background: #eaf3ff; border-color: #bcd9ff; }
+.workspace-group-header--active { background: #e8f3ff; color: #1f5f99; }
+.workspace-group-header--collapsed { margin-bottom: 8px; }
+.workspace-group-header__arrow,
+.workspace-group-header__folder { flex-shrink: 0; color: #409eff; }
+.workspace-group-header__count {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #5f7897;
+  background: #fff;
+  border: 1px solid #d9e8ff;
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+.workspace-group-header .session-item__time { color: #5f7897; font-weight: 400; }
+.session-item__add { opacity: 1; font-weight: 700; }
 .session-item__info { flex: 1; min-width: 0; }
 .session-item__name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-item__time { font-size: 11px; color: #c0c4cc; }

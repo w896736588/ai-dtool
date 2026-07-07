@@ -654,7 +654,7 @@ func memoryArrangeConfig() (int, string, error) {
 	}
 	modelID := cast.ToInt(modelIDText)
 	if modelID <= 0 {
-		return 0, ``, gstool.Error(`请先在记忆设置中配置 AI 整理模型`)
+		return 0, ``, gstool.Error(`请先在知识片段设置中配置 AI 整理模型`)
 	}
 	modelInfo, err := common.DbMain.AiModelInfo(modelID)
 	if err != nil {

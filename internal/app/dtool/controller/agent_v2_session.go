@@ -24,9 +24,18 @@ func AgentV2SessionList(c *gin.Context) {
 	}
 	c.ShouldBindJSON(&req)
 
-	rows, err := common.DbMain.Client.QueryBySql(
-		`SELECT * FROM tbl_agent_v2_session WHERE agent_id = ? AND workspace_id = ? ORDER BY updated_at DESC`, req.AgentId, req.WorkspaceId,
-	).All()
+	sql := `SELECT s.*, w.name AS workspace_name, w.path AS workspace_path
+		FROM tbl_agent_v2_session s
+		LEFT JOIN tbl_agent_v2_workspace w ON s.workspace_id = w.id
+		WHERE s.agent_id = ?`
+	args := []interface{}{req.AgentId}
+	if req.WorkspaceId > 0 {
+		sql += ` AND s.workspace_id = ?`
+		args = append(args, req.WorkspaceId)
+	}
+	sql += ` ORDER BY w.id ASC, s.updated_at DESC`
+
+	rows, err := common.DbMain.Client.QueryBySql(sql, args...).All()
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -35,19 +44,35 @@ func AgentV2SessionList(c *gin.Context) {
 	items := make([]define.AgentV2Session, 0, len(rows))
 	for _, row := range rows {
 		items = append(items, define.AgentV2Session{
-			Id:          cast.ToInt(row["id"]),
-			AgentId:     cast.ToInt(row["agent_id"]),
-			WorkspaceId: cast.ToInt(row["workspace_id"]),
-			Name:        cast.ToString(row["name"]),
-			SessionDir:  cast.ToString(row["session_dir"]),
-			ModelName:   cast.ToString(row["model_name"]),
-			Status:      cast.ToString(row["status"]),
-			CreatedAt:   cast.ToInt64(row["created_at"]),
-			UpdatedAt:   cast.ToInt64(row["updated_at"]),
+			Id:            cast.ToInt(row["id"]),
+			AgentId:       cast.ToInt(row["agent_id"]),
+			WorkspaceId:   cast.ToInt(row["workspace_id"]),
+			WorkspaceName: cast.ToString(row["workspace_name"]),
+			WorkspacePath: cast.ToString(row["workspace_path"]),
+			Name:          cast.ToString(row["name"]),
+			SessionDir:    cast.ToString(row["session_dir"]),
+			ModelName:     cast.ToString(row["model_name"]),
+			Status:        cast.ToString(row["status"]),
+			CreatedAt:     cast.ToInt64(row["created_at"]),
+			UpdatedAt:     cast.ToInt64(row["updated_at"]),
 		})
 	}
 
 	gsgin.GinResponseSuccess(c, "", gin.H{"list": items})
+}
+
+// AgentV2SessionRecoverRunning marks sessions left running by a previous server
+// process as active. Browser refreshes can reconnect to in-memory processes, but
+// a server restart cannot preserve those Pi child processes.
+func AgentV2SessionRecoverRunning() {
+	if common.DbMain == nil || common.DbMain.Client == nil {
+		return
+	}
+	if _, err := common.DbMain.Client.ExecBySql(
+		`UPDATE tbl_agent_v2_session SET status = 'active' WHERE status = 'running'`,
+	).Exec(); err != nil {
+		log.Printf("[agent-v2] recover running sessions error: %v", err)
+	}
 }
 
 // AgentV2SessionCreate 创建会话
@@ -138,6 +163,7 @@ func AgentV2SessionDelete(c *gin.Context) {
 	}
 
 	// 先查 session_dir，删除持久化文件
+	stopAgentV2SessionProc(req.Id)
 	row, err := common.DbMain.Client.QueryBySql(
 		`SELECT session_dir FROM tbl_agent_v2_session WHERE id = ?`, req.Id,
 	).One()
@@ -358,6 +384,9 @@ func reconstructMessagesFromPiEvents(events []map[string]interface{}) []map[stri
 		}
 	}
 
+	streamingText, streamingThinking, pendingToolCalls, pendingToolCallMap, needPushAssistant =
+		handlePiAgentEnd(&messages, streamingText, streamingThinking,
+			pendingToolCalls, pendingToolCallMap, needPushAssistant)
 	return messages
 }
 
@@ -473,7 +502,18 @@ func handlePiMessageEnd(raw map[string]interface{}, messages *[]map[string]inter
 	if msg == nil {
 		return streamingText, streamingThinking, pendingToolCalls, pendingToolCallMap, needPushAssistant
 	}
-	if cast.ToString(msg["role"]) != "assistant" {
+	role := cast.ToString(msg["role"])
+	if role == "user" {
+		content := extractPiContentFromEvent(msg["content"])
+		if content != "" && !hasRecentSameUserMessage(*messages, content) {
+			*messages = append(*messages, map[string]interface{}{
+				"role":    "user",
+				"content": content,
+			})
+		}
+		return streamingText, streamingThinking, pendingToolCalls, pendingToolCallMap, needPushAssistant
+	}
+	if role != "assistant" {
 		return streamingText, streamingThinking, pendingToolCalls, pendingToolCallMap, needPushAssistant
 	}
 
@@ -505,7 +545,7 @@ func handlePiAgentEnd(messages *[]map[string]interface{},
 	needPushAssistant bool,
 ) (string, string, []map[string]interface{}, map[string]map[string]interface{}, bool) {
 
-	if needPushAssistant && (streamingText != "" || len(pendingToolCalls) > 0) {
+	if needPushAssistant && (streamingText != "" || streamingThinking != "" || len(pendingToolCalls) > 0) {
 		msgObj := map[string]interface{}{
 			"role":    "assistant",
 			"content": streamingText,
@@ -519,6 +559,15 @@ func handlePiAgentEnd(messages *[]map[string]interface{},
 		*messages = append(*messages, msgObj)
 	}
 	return "", "", nil, make(map[string]map[string]interface{}), false
+}
+
+func hasRecentSameUserMessage(messages []map[string]interface{}, content string) bool {
+	for i := len(messages) - 1; i >= 0 && i >= len(messages)-3; i-- {
+		if cast.ToString(messages[i]["role"]) == "user" && cast.ToString(messages[i]["content"]) == content {
+			return true
+		}
+	}
+	return false
 }
 
 // handlePiToolExecStart 处理 tool_execution_start 事件

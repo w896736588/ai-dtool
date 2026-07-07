@@ -493,6 +493,7 @@ func InitComponent() {
 	// 恢复上次进程残留的 running 状态
 	if common.DbMain != nil {
 		common.DbMain.TaskWorkflowChatRecoverInterrupted()
+		controller.AgentV2SessionRecoverRunning()
 		go controller.InitBrowserPortPool()
 	}
 	for _, tGin := range component.TGins {
