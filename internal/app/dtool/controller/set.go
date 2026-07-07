@@ -7,6 +7,7 @@ import (
 	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -958,6 +959,11 @@ func SetMemoryConfigGet(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	shareBaseURL, err := memoryConfigValue(define.MemoryConfigShareBaseURL)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`db_dir`:                    mainDBConfig.Dir,
 		`db_name`:                   mainDBConfig.DBName,
@@ -969,6 +975,7 @@ func SetMemoryConfigGet(c *gin.Context) {
 		`memory_arrange_prompt`:     arrangePrompt,
 		`memory_arrange_model_id`:   cast.ToInt(arrangeModelID),
 		`memory_ai_search_model_id`: cast.ToInt(aiSearchModelID),
+		`memory_share_base_url`:     shareBaseURL,
 		`safe_password`:             component.ConfigViper.GetString(`safe.password`),
 		`main_db_storage`:           mainDBStorage,
 		`client_version`:            component.EnvClient.SmartLinkConfig.ClientVersion,
@@ -982,6 +989,11 @@ func SetMemoryConfigSave(c *gin.Context) {
 	memoryArrangePrompt := strings.TrimSpace(cast.ToString(dataMap[`memory_arrange_prompt`]))
 	if memoryArrangePrompt == `` {
 		memoryArrangePrompt = defaultMemoryArrangePrompt()
+	}
+	shareBaseURL := strings.TrimSpace(cast.ToString(dataMap[`memory_share_base_url`]))
+	if err := validateMemoryShareBaseURL(shareBaseURL); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
 	}
 	memoryArrangeModelID := cast.ToInt(dataMap[`memory_arrange_model_id`])
 	if memoryArrangeModelID > 0 {
@@ -1020,7 +1032,25 @@ func SetMemoryConfigSave(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	if err := common.DbMain.MemoryConfigSave(`分享地址`, define.MemoryConfigShareBaseURL, shareBaseURL, `知识片段分享链接基础地址`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
 	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+func validateMemoryShareBaseURL(raw string) error {
+	if raw == `` {
+		return nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == `` || parsed.Host == `` {
+		return fmt.Errorf(`分享地址必须是完整的 http/https 地址`)
+	}
+	if parsed.Scheme != `http` && parsed.Scheme != `https` {
+		return fmt.Errorf(`分享地址仅支持 http/https`)
+	}
+	return nil
 }
 
 // SetRuntimeConfigSave 保存可编辑的 ini 配置并重新加载运行时配置。 // Save editable ini config values and reload runtime config.

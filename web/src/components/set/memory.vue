@@ -145,6 +145,14 @@
       </template>
 
       <el-form v-else label-width="120px" class="memory-config-form">
+        <el-divider content-position="left">分享</el-divider>
+        <el-form-item label="分享地址">
+          <el-input
+            v-model="form.memory_share_base_url"
+            clearable
+            placeholder="如：https://example.com，留空按当前访问地址生成"
+          />
+        </el-form-item>
         <el-divider content-position="left">AI 整理</el-divider>
         <el-form-item label="整理模型">
           <el-select v-model="form.memory_arrange_model_id" clearable filterable style="width: 100%;">
@@ -171,7 +179,7 @@
           </el-select>
         </el-form-item>
         <el-form-item>
-          <GitActionButton type="primary" @click="saveAiConfig">保存 AI 配置</GitActionButton>
+          <GitActionButton type="primary" @click="saveAiConfig">保存配置</GitActionButton>
         </el-form-item>
       </el-form>
     </div>
@@ -259,16 +267,17 @@ export default {
         memory_arrange_model_id: null,
         memory_arrange_prompt: DEFAULT_MEMORY_ARRANGE_PROMPT,
         memory_ai_search_model_id: null,
+        memory_share_base_url: '',
         safe_password: '',
       },
     }
   },
   computed: {
     pageTitle() {
-      return this.showRuntimeConfig ? '配置文件' : '知识片段 AI 设置'
+      return this.showRuntimeConfig ? '配置文件' : '知识片段设置'
     },
     pageDesc() {
-      return this.showRuntimeConfig ? '这里可以查看并编辑当前运行配置。' : '这里维护知识片段相关的 AI 参数。'
+      return this.showRuntimeConfig ? '这里可以查看并编辑当前运行配置。' : '这里维护知识片段相关配置。'
     },
     runtimeConfigAlertType() {
       return this.form.db_configured && this.form.memory_db_configured ? 'info' : 'warning'
@@ -300,6 +309,9 @@ export default {
       const model = item.name || item.model || `模型#${item.id}`
       return `${provider} / ${model}`
     },
+    normalizeShareBaseUrl(value) {
+      return String(value || '').trim().replace(/\/+$/, '')
+    },
     loadAiModelList() {
       if (this.showRuntimeConfig) return
       AiSetApi.AiModelList({ model_type: 'llm' }, (response) => {
@@ -320,6 +332,7 @@ export default {
         this.form.memory_arrange_model_id = response.Data.memory_arrange_model_id || null
         this.form.memory_arrange_prompt = response.Data.memory_arrange_prompt || DEFAULT_MEMORY_ARRANGE_PROMPT
         this.form.memory_ai_search_model_id = response.Data.memory_ai_search_model_id || null
+        this.form.memory_share_base_url = response.Data.memory_share_base_url || ''
         this.form.safe_password = response.Data.safe_password || ''
         this.mainDbStorage = response.Data.main_db_storage || null
         this.broadcastMainDbStorageAlert()
@@ -405,15 +418,17 @@ export default {
         memory_arrange_model_id: this.form.memory_arrange_model_id,
         memory_arrange_prompt: this.form.memory_arrange_prompt,
         memory_ai_search_model_id: this.form.memory_ai_search_model_id,
+        memory_share_base_url: this.normalizeShareBaseUrl(this.form.memory_share_base_url),
       }
       set.MemoryConfigSave(payload, (response) => {
         if (response.__loginRequired) return
         if (response.ErrCode === 0) {
-          this.$helperNotify.success('AI 配置已保存')
+          this.form.memory_share_base_url = payload.memory_share_base_url
+          this.$helperNotify.success('配置已保存')
           this.$emit('changed')
           return
         }
-        this.$helperNotify.error(response.ErrMsg || 'AI 配置保存失败')
+        this.$helperNotify.error(response.ErrMsg || '配置保存失败')
       })
     },
   },

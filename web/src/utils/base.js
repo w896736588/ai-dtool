@@ -165,6 +165,16 @@ function GetAbsoluteApiHost() {
     return window.location.origin
 }
 
+function BuildMemoryFragmentShareUrl(fragmentId, token, serverUrl) {
+    const configuredUrl = String(serverUrl || '').trim()
+    if (configuredUrl) {
+        return configuredUrl
+    }
+    const cleanId = String(fragmentId || '').includes('/') ? String(fragmentId || '').replace(/^.*\//, '') : String(fragmentId || '')
+    const apiHost = String(GetApiHost() || window.location.origin).trim()
+    return new URL(`/share/${encodeURIComponent(cleanId)}/${encodeURIComponent(token)}`, apiHost).toString()
+}
+
 // 获取 SSE API 地址
 function GetSseApiHost(port) {
     const ssePort = port || runtimeSsePort
@@ -283,6 +293,7 @@ export default {
     BasePostForm,
     GetApiHost,
     GetAbsoluteApiHost,
+    BuildMemoryFragmentShareUrl,
     GetSseApiHost,
     GetServerConfig,
     GetSafeToken,

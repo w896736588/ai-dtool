@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
+	"dev_tool/internal/app/dtool/define"
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
@@ -58,7 +62,7 @@ func MemoryFragmentShareCreate(c *gin.Context) {
 		return
 	}
 	component.MemoryRuntime.ScheduleSync()
-	gsgin.GinResponseSuccess(c, ``, memoryFragmentShareResponse(share))
+	gsgin.GinResponseSuccess(c, ``, memoryFragmentShareResponseWithURL(share, memoryFragmentRequestBaseURL(c)))
 }
 
 // MemoryFragmentShareInfo 通过分享 token 读取知识片段详情，只返回查看页所需数据。
@@ -170,6 +174,69 @@ func memoryFragmentShareResponse(share memoryFragmentShare) map[string]any {
 		`expire_at`:      share.ExpireAt.Unix(),
 		`expire_at_desc`: gstool.TimeUnixToString(share.ExpireAt, `Y-m-d H:i:s`),
 	}
+}
+
+func memoryFragmentShareResponseWithURL(share memoryFragmentShare, fallbackBaseURL string) map[string]any {
+	response := memoryFragmentShareResponse(share)
+	response[`url`] = memoryFragmentBuildShareURL(share.FragmentID, share.Token, fallbackBaseURL)
+	return response
+}
+
+func memoryFragmentBuildShareURL(fragmentID, token, fallbackBaseURL string) string {
+	fragmentID = strings.TrimSpace(fragmentID)
+	token = strings.TrimSpace(token)
+	if fragmentID == `` || token == `` {
+		return ``
+	}
+	baseURL := memoryFragmentConfiguredShareBaseURL()
+	if baseURL == `` {
+		baseURL = strings.TrimSpace(fallbackBaseURL)
+	}
+	if baseURL == `` {
+		return ``
+	}
+	shareURL, err := url.Parse(baseURL)
+	if err != nil || shareURL.Scheme == `` || shareURL.Host == `` {
+		return ``
+	}
+	cleanID := filepath.Base(fragmentID)
+	basePath := strings.TrimRight(shareURL.Path, `/`)
+	shareURL.Path = basePath + `/share/` + url.PathEscape(cleanID) + `/` + url.PathEscape(token)
+	shareURL.RawQuery = ``
+	shareURL.Fragment = ``
+	return shareURL.String()
+}
+
+func memoryFragmentConfiguredShareBaseURL() string {
+	if common.DbMain == nil {
+		return ``
+	}
+	value, err := common.DbMain.MemoryConfigValue(define.MemoryConfigShareBaseURL)
+	if err != nil {
+		return ``
+	}
+	return strings.TrimSpace(value)
+}
+
+func memoryFragmentRequestBaseURL(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ``
+	}
+	scheme := `http`
+	if c.Request.TLS != nil {
+		scheme = `https`
+	}
+	if forwarded := strings.TrimSpace(c.GetHeader(`X-Forwarded-Proto`)); forwarded != `` {
+		scheme = strings.Split(forwarded, `,`)[0]
+	}
+	host := strings.TrimSpace(c.Request.Host)
+	if forwardedHost := strings.TrimSpace(c.GetHeader(`X-Forwarded-Host`)); forwardedHost != `` {
+		host = strings.Split(forwardedHost, `,`)[0]
+	}
+	if host == `` {
+		return ``
+	}
+	return strings.TrimSpace(scheme) + `://` + strings.TrimSpace(host)
 }
 
 func templateHTML(msg string) string {
