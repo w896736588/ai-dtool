@@ -183,7 +183,8 @@ func HomeTaskSave(c *gin.Context) {
 	}
 
 	// 自动创建文件夹：遍历 dev_configs 中每个 dir_id=0 且 collection_id>0 的条目。
-	devConfigsJSON = autoCreateHomeTaskDevConfigDirs(request.Name, devConfigsJSON)
+	// 创建前先从已有 DB 记录恢复被前端误清的 dir_id，避免覆盖原有关联。
+	devConfigsJSON = autoCreateHomeTaskDevConfigDirs(request.Name, devConfigsJSON, request.ID)
 	_ = json.Unmarshal([]byte(devConfigsJSON), &devConfigs)
 
 	apiDevEnabled := request.ApiDevEnabled
@@ -556,11 +557,18 @@ func resolveHomeTaskDevConfigsJSON(req *_struct.HomeTaskSaveRequest) string {
 }
 
 // autoCreateHomeTaskDevConfigDirs 为 dev_configs 中每个 dir_id=0 且 collection_id>0 的条目自动创建文件夹。
-func autoCreateHomeTaskDevConfigDirs(taskName string, configsJSON string) string {
+// 创建前会检查已有 DB 记录，恢复被前端误清的 dir_id，避免覆盖原有文件夹关联。
+func autoCreateHomeTaskDevConfigDirs(taskName string, configsJSON string, taskID int) string {
 	var configs []_struct.DevConfig
 	if err := json.Unmarshal([]byte(configsJSON), &configs); err != nil {
 		return configsJSON
 	}
+
+	// 如果是编辑已有任务，先还原被前端意外清空的 dir_id。
+	if taskID > 0 {
+		configs = restoreHomeTaskMissingDirIDs(taskID, configs)
+	}
+
 	changed := false
 	for i, cfg := range configs {
 		if cfg.CollectionID > 0 && cfg.DirID <= 0 {
@@ -573,7 +581,8 @@ func autoCreateHomeTaskDevConfigDirs(taskName string, configsJSON string) string
 		}
 	}
 	if !changed {
-		return configsJSON
+		bytes, _ := json.Marshal(configs)
+		return string(bytes)
 	}
 	bytes, _ := json.Marshal(configs)
 	return string(bytes)
@@ -679,4 +688,46 @@ func HomeTaskUnusedLocalDirs(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`dirs`: dirs,
 	})
+}
+
+// restoreHomeTaskMissingDirIDs 还原被前端意外清空的 dir_id。
+// 当 incoming dev_configs 中 dir_id=0 但已有记录存在同名 collection_id 的有效 dir_id 时，
+// 从 DB 中恢复，避免前端误清后触发自动建文件夹覆盖原有关联。
+func restoreHomeTaskMissingDirIDs(taskID int, incoming []_struct.DevConfig) []_struct.DevConfig {
+	existingTask, err := common.DbMain.HomeTaskRow(taskID)
+	if err != nil || existingTask == nil {
+		return incoming
+	}
+	existingStr := strings.TrimSpace(cast.ToString(existingTask[`dev_configs`]))
+	if existingStr == `` || existingStr == `[]` {
+		return incoming
+	}
+	var existing []_struct.DevConfig
+	if err := json.Unmarshal([]byte(existingStr), &existing); err != nil || len(existing) == 0 {
+		return incoming
+	}
+	// 构建已有记录中 {collection_id → dir_id} 的映射。
+	existingDirMap := make(map[int]int)
+	for _, cfg := range existing {
+		if cfg.CollectionID > 0 && cfg.DirID > 0 {
+			existingDirMap[cfg.CollectionID] = cfg.DirID
+		}
+	}
+	if len(existingDirMap) == 0 {
+		return incoming
+	}
+	// 对 incoming 中 dir_id=0 但 collection_id 有映射的条目，恢复原有的 dir_id。
+	changed := false
+	for i, cfg := range incoming {
+		if cfg.CollectionID > 0 && cfg.DirID <= 0 {
+			if oldDirID, ok := existingDirMap[cfg.CollectionID]; ok {
+				incoming[i].DirID = oldDirID
+				changed = true
+			}
+		}
+	}
+	if !changed {
+		return incoming
+	}
+	return incoming
 }
