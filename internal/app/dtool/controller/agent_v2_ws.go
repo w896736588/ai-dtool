@@ -173,6 +173,13 @@ func computeSessionDir(agentCfgSessionDir string, agentId, sessionId int) string
 	return dir
 }
 
+func computePiSessionID(agentId, sessionId int) string {
+	if sessionId <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("agent-%d-session-%d", agentId, sessionId)
+}
+
 // AgentV2WS 处理 Agent V2 WebSocket 连接
 func AgentV2WS(c *gin.Context) {
 	agentId := cast.ToInt(c.Query("agent_id"))
@@ -245,6 +252,7 @@ func AgentV2WS(c *gin.Context) {
 	startCfg := agent.AgentStartConfig{
 		WorkDir:    workDir,
 		SessionDir: sessionDir,
+		SessionID:  computePiSessionID(agentId, sessionId),
 		Provider:   providerName,
 		Model:      model,
 		ExtraArgs:  extraArgsList,

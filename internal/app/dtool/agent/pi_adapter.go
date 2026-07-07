@@ -46,6 +46,9 @@ func (a *PiAdapter) Start(ctx context.Context, config AgentStartConfig) error {
 	if config.SessionDir != "" {
 		args = append(args, "--session-dir", config.SessionDir)
 	}
+	if config.SessionID != "" {
+		args = append(args, "--session-id", config.SessionID)
+	}
 	args = append(args, config.ExtraArgs...)
 
 	a.cmd = exec.CommandContext(ctx, "pi", args...)

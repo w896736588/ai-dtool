@@ -46,7 +46,8 @@
             @click="selectSession(session)"
             @contextmenu.prevent="showSessionMenu($event, session)"
           >
-            <el-icon><ChatDotRound /></el-icon>
+            <span v-if="sessionRunningMap[session.id]" class="agent-status-spinner session-item__spinner"></span>
+            <el-icon v-else><ChatDotRound /></el-icon>
             <div class="session-item__info">
               <span class="session-item__name">{{ session.name }}</span>
               <span class="session-item__time">{{ formatTime(session.updated_at) }}</span>
@@ -68,6 +69,9 @@
           <span>{{ agentName }}</span>
           <span class="agent-info__status" :class="{ 'agent-info__status--connected': wsConnected }">
             {{ wsConnected ? '已连接' : '未连接' }}
+          </span>
+          <span v-if="runningSessionCount > 0" class="agent-info__running-count">
+            {{ runningSessionCount }} 运行中
           </span>
         </div>
         <el-button text size="small" @click="openConfig">配置</el-button>
@@ -127,8 +131,9 @@
           <div class="chat-message__body">
             <div v-if="msg.role === 'assistant' && msg.thinking" class="thinking-block">
               <div class="thinking-block__header" @click="toggleMessageThinking(msg)">
-                <span class="agent-status-check">✓</span>
-                <span>思考过程</span>
+                <span v-if="msg._live && thinkingStartAt" class="agent-status-spinner"></span>
+                <span v-else class="agent-status-check">✓</span>
+                <span>思考过程<template v-if="msg._live && thinkingStartAt">（{{ getStreamingThinkingDurationText() }}）</template></span>
                 <el-icon class="thinking-block__arrow" :class="{ 'thinking-block__arrow--open': !isMessageThinkingCollapsed(msg) }">
                   <ArrowDown />
                 </el-icon>
@@ -179,64 +184,6 @@
                 </template>
               </div>
             </div>
-          </div>
-        </div>
-
-        <!-- 流式输出中的消息 -->
-        <div v-if="streamingText || streamingThinking || hasRunningTools" class="chat-message chat-message--assistant">
-          <div class="chat-message__avatar">
-            <span class="avatar avatar--assistant">π</span>
-          </div>
-          <div class="chat-message__body">
-            <!-- 思考过程 -->
-            <div v-if="streamingThinking" class="thinking-block">
-              <div class="thinking-block__header" @click="showThinking = !showThinking">
-                <span class="agent-status-spinner"></span>
-                <span>思考过程（{{ getStreamingThinkingDurationText() }}）</span>
-                <el-icon class="thinking-block__arrow" :class="{ 'thinking-block__arrow--open': showThinking }">
-                  <ArrowDown />
-                </el-icon>
-              </div>
-              <div v-if="showThinking" class="thinking-block__content">{{ streamingThinking }}</div>
-            </div>
-            <!-- 流式工具调用 -->
-            <div v-if="hasRunningTools" class="tool-calls">
-              <div v-for="tc in runningToolCalls" :key="tc.id" class="tool-call" :class="['tool-call--' + tc.status, { 'tool-call--expanded': !isToolCallCollapsed(tc) }]">
-                <!-- read/bash/edit 紧凑一行 -->
-                <template v-if="isReadOrBashTool(tc)">
-                  <div class="tool-call__compact-row" @click="toggleToolCallCollapse(tc)">
-                    <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
-                    <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
-                    <span class="tool-call__compact-label">{{ tc.name }}</span>
-                    <span class="tool-call__compact-text" :title="getCompactText(tc)">{{ getCompactText(tc) }}</span>
-                    <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template></span>
-                    <el-icon class="tool-call__compact-arrow" :class="{ 'tool-call__compact-arrow--open': !isToolCallCollapsed(tc) }">
-                      <ArrowRight />
-                    </el-icon>
-                  </div>
-                  <div v-if="!isToolCallCollapsed(tc)" class="tool-call__details">
-                    <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
-                    <pre class="tool-call__output" v-if="tc.output">{{ tc.output }}</pre>
-                  </div>
-                </template>
-                <!-- 其他工具完整展示 -->
-                <template v-else>
-                  <div class="tool-call__header">
-                    <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
-                    <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
-                    <el-icon><Tools /></el-icon>
-                    <span class="tool-call__name">{{ tc.name }}</span>
-                    <el-tag :type="tc.status === 'done' ? 'success' : 'warning'" size="small">
-                      {{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template>
-                    </el-tag>
-                  </div>
-                  <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
-                  <pre class="tool-call__output" v-if="tc.output">{{ tc.output }}</pre>
-                </template>
-              </div>
-            </div>
-            <div v-if="streamingText" class="chat-message__content" v-html="renderMarkdown(streamingText)"></div>
-            <span class="cursor-blink">▊</span>
           </div>
         </div>
 
@@ -428,7 +375,6 @@ export default {
       isStreaming: false,
       streamingText: '',
       streamingThinking: '',
-      showThinking: true,
 
       selectedModel: '',
       // 按 Provider 分组的模型列表 [{provider_id, provider_name, provider_type, models: [{id, name, model}]}]
@@ -454,15 +400,15 @@ export default {
 
       // Skills 数据
       skills: [],
-      selectedSkillIds: []
+      selectedSkillIds: [],
+
+      // 多会话并发：存储后台会话的状态与未回放的 WS 事件
+      sessionStates: {}
     }
   },
   computed: {
     hasRunningTools() {
       return Object.values(this.pendingToolCalls).some(tc => tc.status !== 'done')
-    },
-    runningToolCalls() {
-      return Object.values(this.pendingToolCalls)
     },
     inputHint() {
       if (!this.wsConnected) return '未连接'
@@ -477,6 +423,22 @@ export default {
       if (total <= 0) return '--'
       const pct = Math.round((used / total) * 100)
       return pct + '%' + ' (' + this.fmtNum(used) + '/' + this.fmtNum(total) + ')'
+    },
+    // 各会话的运行状态（用于侧边栏指示器）
+    sessionRunningMap() {
+      const map = {}
+      // 当前前台会话
+      if (this.currentSessionId && this.isStreaming) {
+        map[this.currentSessionId] = true
+      }
+      // 后台会话
+      Object.entries(this.sessionStates).forEach(([sid, ss]) => {
+        if (ss._isRunning) map[Number(sid)] = true
+      })
+      return map
+    },
+    runningSessionCount() {
+      return Object.keys(this.sessionRunningMap).length
     }
   },
   mounted() {
@@ -490,14 +452,13 @@ export default {
     this.loadSkills()
   },
   beforeUnmount() {
-    this.disconnectWS()
+    this.disconnectAllWS()
     this.stopRuntimeTicker()
     this.stopStatsPolling()
   },
   methods: {
     goBack() {
-      this.disconnectWS()
-      this.stopRuntimeTicker()
+      this.disconnectAllWS()
       this.$router.push('/AgentHub')
     },
     openConfig() {
@@ -540,7 +501,8 @@ export default {
       if (!this.currentWorkspaceId) return
       // 仅打开空白聊天区，不创建 DB 记录、不连 WebSocket
       // 等用户输入第一条消息时才真正创建会话
-      this.disconnectWS()
+      // 保存当前会话状态（不关闭后台 WS，保持并发执行）
+      this.saveCurrentSession()
       this.currentSessionId = 0
       this.currentSession = null
       this.pendingSession = true
@@ -552,10 +514,14 @@ export default {
       this.tokenStats = null
       this.compacting = false
       this._assistantPushedInTurn = false
+      this.isStreaming = false
     },
     selectSession(session) {
       if (this.currentSessionId === session.id) return
-      this.disconnectWS()
+
+      // 保存当前会话的前台状态（不关闭 WS，保持并发执行）
+      this.saveCurrentSession()
+
       this.currentSessionId = session.id
       this.currentSession = session
       this.pendingSession = false
@@ -566,24 +532,49 @@ export default {
       this.tokenStats = null
       this.compacting = false
       this._assistantPushedInTurn = false
+      this.isStreaming = false
+      this.stopThinkingTimer()
+      this.stopStatsPolling()
       this._historyLoaded = false // 标记：HTTP API 是否已加载了历史消息
-      this.historyLoading = true
+
       // 恢复该会话最后使用的模型
       if (session.model_name && this.providerModels.length > 0) {
         this.restoreSessionModel(session.model_name)
       }
-      this.loadSessionMessages()
-      this.connectWS()
+
+      // 尝试从后台状态恢复（WS 仍活跃则恢复连接）
+      const restored = this.restoreSessionState(session.id)
+      if (restored) {
+        this.historyLoading = false
+      } else {
+        // 需要新建 WS 连接
+        this.historyLoading = true
+        this.loadSessionMessages()
+        this.connectWS()
+      }
     },
     deleteSession(session) {
       this.$confirm('确定删除此对话？', '提示', { type: 'warning' }).then(() => {
+        // 先断开该会话的 WS（无论前台还是后台）
+        this.disconnectSessionWS(session.id)
+        if (this.currentSessionId === session.id) {
+          // 删除的是当前前台会话
+          this.ws = null
+          this.wsConnected = false
+          this.currentSessionId = 0
+          this.currentSession = null
+          this.messages = []
+          this.isStreaming = false
+          this.streamingText = ''
+          this.streamingThinking = ''
+          this.pendingToolCalls = {}
+          this.tokenStats = null
+          this.compacting = false
+          this.stopThinkingTimer()
+          this.stopStatsPolling()
+        }
+        // 调用后端删除
         Base.BasePost('/api/AgentV2SessionDelete', { id: session.id }, () => {
-          if (this.currentSessionId === session.id) {
-            this.disconnectWS()
-            this.currentSessionId = 0
-            this.currentSession = null
-            this.messages = []
-          }
           this.loadSessions()
         })
       }).catch(() => {})
@@ -630,7 +621,9 @@ export default {
           if (agent.config) {
             try {
               this.agentConfig = JSON.parse(agent.config)
-            } catch(e) {}
+            } catch (e) {
+              // agent.config 可能为空或非 JSON，保持默认配置即可
+            }
           }
         }
         // Agent 信息加载完成后加载模型列表（确保 agentConfig 已就绪）
@@ -671,6 +664,205 @@ export default {
         }
       })
     },
+    cloneSessionData(value, fallback) {
+      if (value === undefined || value === null) return fallback
+      try {
+        return JSON.parse(JSON.stringify(value))
+      } catch (e) {
+        // 会话快照仅用于 UI 恢复，克隆失败时回退到安全默认值
+        return fallback
+      }
+    },
+    captureSessionRuntimeState(target) {
+      target.messages = this.cloneSessionData(this.messages, [])
+      target.streamingText = this.streamingText
+      target.streamingThinking = this.streamingThinking
+      target.pendingToolCalls = this.cloneSessionData(this.pendingToolCalls, {})
+      target.tokenStats = this.cloneSessionData(this.tokenStats, null)
+      target.compacting = this.compacting
+      target._assistantPushedInTurn = this._assistantPushedInTurn
+      target._historyLoaded = this._historyLoaded
+      target._lastUserMessage = this._lastUserMessage || ''
+      target.thinkingStartAt = this.thinkingStartAt
+      target.thinkingElapsedSeconds = this.thinkingElapsedSeconds
+      target.runtimeNow = this.runtimeNow
+      return target
+    },
+    applySessionRuntimeState(snapshot) {
+      this.messages = this.cloneSessionData(snapshot.messages, [])
+      this.streamingText = snapshot.streamingText || ''
+      this.streamingThinking = snapshot.streamingThinking || ''
+      this.pendingToolCalls = this.cloneSessionData(snapshot.pendingToolCalls, {})
+      this.tokenStats = this.cloneSessionData(snapshot.tokenStats, null)
+      this.compacting = Boolean(snapshot.compacting)
+      this._assistantPushedInTurn = Boolean(snapshot._assistantPushedInTurn)
+      this._historyLoaded = Boolean(snapshot._historyLoaded)
+      this._lastUserMessage = snapshot._lastUserMessage || ''
+      this.thinkingStartAt = Number(snapshot.thinkingStartAt || 0)
+      this.runtimeNow = Date.now()
+      this.thinkingElapsedSeconds = this.thinkingStartAt
+        ? Math.max(0, Math.floor((this.runtimeNow - this.thinkingStartAt) / 1000))
+        : 0
+
+      this.syncLiveAssistantMessage()
+
+      const hasRunningTool = Object.values(this.pendingToolCalls).some(tc => this.isToolRunning(tc))
+      if (this.thinkingStartAt || hasRunningTool || this.isStreaming) {
+        this.startRuntimeTicker()
+      }
+      if (this.isStreaming) {
+        this.startStatsPolling()
+      }
+      this.scrollToBottom()
+    },
+    replayBufferedSessionMessages(bufferedMessages) {
+      for (const data of bufferedMessages || []) {
+        this.handleWSMessage(data)
+      }
+    },
+
+    // ========== 多会话并发状态管理 ==========
+    // 保存当前前台会话状态，并将 WS 切换为后台监听模式
+    saveCurrentSession() {
+      const sid = this.currentSessionId
+      if (!sid || !this.ws) return
+
+      const existing = this.sessionStates[sid] || {}
+      existing.ws = this.ws
+      existing.wsConnected = this.ws.readyState === WebSocket.OPEN
+      existing.selectedModel = this.selectedModel
+      existing._isRunning = this.isStreaming // 保持当前运行状态，避免切换后转圈消失
+      existing._bufferedMessages = existing._bufferedMessages || []
+      this.captureSessionRuntimeState(existing)
+
+      // 保存原始 WS 回调
+      existing._onmessage = this.ws.onmessage
+      existing._onclose = this.ws.onclose
+      existing._onerror = this.ws.onerror
+
+      // 替换为后台处理器（仅追踪运行状态，不修改前台属性）
+      this.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          existing._bufferedMessages.push(data)
+          if (data.type === 'event' && data.event) {
+            const evtType = data.event.type
+            if (evtType === 'agent_start') existing._isRunning = true
+            if (evtType === 'agent_end') existing._isRunning = false
+
+            if (evtType === 'extension_ui_request') {
+              this.promoteBackgroundSession(sid, '后台会话需要交互，已切回前台')
+              return
+            }
+
+            if (evtType === 'extension_error') {
+              this.$message.warning(this.getBackgroundSessionLabel(sid) + '扩展错误: ' + (data.event.error || data.event.message || '未知错误'))
+            }
+          } else if (data.type === 'error') {
+            this.$message.error(this.getBackgroundSessionLabel(sid) + (data.error || '后台会话发生错误'))
+          }
+        } catch (e) { /* ignore parse errors in background */ }
+      }
+      this.ws.onclose = () => {
+        existing.wsConnected = false
+        existing._isRunning = false
+      }
+      this.ws.onerror = () => {
+        existing.wsConnected = false
+      }
+
+      this.sessionStates[sid] = existing
+
+      // 分离前台引用（不关闭 WS）
+      this.ws = null
+      this.wsConnected = false
+      if (this._runtimeTicker) { clearInterval(this._runtimeTicker); this._runtimeTicker = null }
+      if (this._statsPollTimer) { clearInterval(this._statsPollTimer); this._statsPollTimer = null }
+    },
+
+    // 恢复指定会话到前台
+    // 返回 true 表示从已保存状态恢复，false 表示需要新建 WS 连接
+    restoreSessionState(sessionId) {
+      const ss = this.sessionStates[sessionId]
+      if (!ss || !ss.ws) return false
+
+      // 若会话已停止（Pi 进程已退出），清理旧连接并返回 false，触发 connectWS() 新建连接
+      if (!ss._isRunning || ss.ws.readyState === WebSocket.CLOSED || ss.ws.readyState === WebSocket.CLOSING) {
+        this.disconnectSessionWS(sessionId)
+        return false
+      }
+
+      const bufferedMessages = Array.isArray(ss._bufferedMessages) ? ss._bufferedMessages.slice() : []
+      ss._bufferedMessages = []
+
+      // 恢复 WS 原始回调
+      if (ss._onmessage) ss.ws.onmessage = ss._onmessage
+      if (ss._onclose) ss.ws.onclose = ss._onclose
+      if (ss._onerror) ss.ws.onerror = ss._onerror
+
+      this.ws = ss.ws
+      this.wsConnected = ss.ws.readyState === WebSocket.OPEN
+      if (ss.selectedModel) this.selectedModel = ss.selectedModel
+
+      // 若后台会话仍在执行中，恢复 isStreaming 状态
+      this.isStreaming = Boolean(ss._isRunning)
+      this.applySessionRuntimeState(ss)
+
+      // 清除已恢复的 sessionStates，避免重复引用
+      delete this.sessionStates[sessionId]
+      this.replayBufferedSessionMessages(bufferedMessages)
+
+      return true
+    },
+    getBackgroundSessionLabel(sessionId) {
+      const session = this.sessions.find(item => item.id === sessionId)
+      return session ? ('[' + session.name + '] ') : ''
+    },
+    promoteBackgroundSession(sessionId, tip) {
+      if (this.currentSessionId === sessionId) return
+      const session = this.sessions.find(item => item.id === sessionId)
+      if (!session) {
+        this.$message.warning(tip)
+        return
+      }
+      this.$message.warning(tip)
+      this.selectSession(session)
+    },
+
+    // 断开指定会话的 WS（不触发 onclose 中的前台状态修改）
+    disconnectSessionWS(sessionId) {
+      if (this.ws && this.currentSessionId === sessionId) {
+        this.disconnectWS()
+        return
+      }
+      const ss = this.sessionStates[sessionId]
+      if (ss && ss.ws) {
+        ss.ws.onclose = null
+        ss.ws.onerror = null
+        ss.ws.onmessage = null
+        try { ss.ws.close() } catch (e) { /* ignore */ }
+      }
+      delete this.sessionStates[sessionId]
+    },
+
+    // 断开所有会话的 WS（组件销毁时调用）
+    disconnectAllWS() {
+      // 断开前台 WS
+      if (this.ws) {
+        this.ws.onclose = null
+        this.ws.onerror = null
+        try { this.ws.close() } catch (e) { /* ignore */ }
+        this.ws = null
+      }
+      // 断开所有后台 WS
+      Object.keys(this.sessionStates).forEach(sid => {
+        this.disconnectSessionWS(Number(sid))
+      })
+      this.wsConnected = false
+      this.isStreaming = false
+      this.stopThinkingTimer()
+      this.stopStatsPolling()
+    },
 
     // ========== WebSocket ==========
     connectWS() {
@@ -682,7 +874,9 @@ export default {
       const modelParam = this.selectedModel ? `&model=${encodeURIComponent(this.selectedModel)}` : ''
       const url = `${protocol}//${host}/api/AgentV2WS?agent_id=${this.agentId}&session_id=${this.currentSessionId}&token=${token}${modelParam}`
 
+      const sessionId = this.currentSessionId // 闭包捕获
       this.ws = new WebSocket(url)
+      this.ws._sessionId = sessionId
       this.ws.onopen = () => {
         this.wsConnected = true
         // 连接成功立即请求会话统计（上下文使用率、Token 等）
@@ -716,6 +910,8 @@ export default {
     },
     disconnectWS() {
       if (this.ws) {
+        this.ws.onclose = null
+        this.ws.onerror = null
         this.ws.close()
         this.ws = null
       }
@@ -725,6 +921,8 @@ export default {
       this.stopStatsPolling()
     },
     handleWSMessage(data) {
+      // 防御性检查：忽略来自非当前会话的消息
+      if (this.ws && this.ws._sessionId && this.ws._sessionId !== this.currentSessionId) return
       // 忽略来自已断开/旧 WebSocket 的消息（连接被关闭后仍可能收到缓冲消息）
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
@@ -757,10 +955,12 @@ export default {
 
           if (deltaType === 'text_delta') {
             this.streamingText += (msgEvt.delta || '')
+            this.syncLiveAssistantMessage()
             this.scrollToBottom()
           } else if (deltaType === 'thinking_delta') {
             if (!this.thinkingStartAt) this.startThinkingTimer()
             this.streamingThinking += (msgEvt.delta || '')
+            this.syncLiveAssistantMessage()
             this.scrollToBottom()
           } else if (deltaType === 'text_start' || deltaType === 'text_end' ||
                      deltaType === 'thinking_start' || deltaType === 'thinking_end') {
@@ -770,6 +970,7 @@ export default {
               if (!this.streamingThinking) this.streamingThinking = '\u200B'
             }
             if (deltaType === 'thinking_end') this.stopThinkingTimer()
+            this.syncLiveAssistantMessage()
             this.scrollToBottom()
           } else if (deltaType === 'toolcall_start' || deltaType === 'toolcall_delta' || deltaType === 'toolcall_end') {
             // 支持 Anthropic (msgEvt.toolCall) 和 DeepSeek/OpenAI (partial.content) 两种格式
@@ -798,14 +999,7 @@ export default {
             const thinkingContent = this.streamingThinking.replace(/\u200B/g, '')
             // 仅在有实际内容时才 push（与后端 reconstructMessagesFromPiEvents 一致）
             if (text || errorMsg || thinkingContent || Object.keys(this.pendingToolCalls).length > 0) {
-              const toolCalls = Object.values(this.pendingToolCalls)
-              this.messages.push({
-                role: 'assistant',
-                content: text || (errorMsg ? '**Error:** ' + errorMsg : ''),
-                thinking: thinkingContent,
-                thinkingDurationMs: this.getCurrentThinkingDurationMs(true),
-                toolCalls: toolCalls.length > 0 ? toolCalls.map(item => ({ ...item })) : undefined
-              })
+              this.finalizeLiveAssistantMessage(text || (errorMsg ? '**Error:** ' + errorMsg : ''), thinkingContent)
               this.streamingThinking = ''
               this.streamingText = ''
               this.pendingToolCalls = {}
@@ -841,6 +1035,7 @@ export default {
               this.pendingToolCalls[tcId].startedAt = Date.now()
             }
             this.startRuntimeTicker()
+            this.syncLiveAssistantMessage()
           }
           break
         }
@@ -850,6 +1045,7 @@ export default {
             if (event.output) {
               this.pendingToolCalls[tcId].output = (this.pendingToolCalls[tcId].output || '') + event.output
             }
+            this.syncLiveAssistantMessage()
           }
           break
         }
@@ -861,6 +1057,7 @@ export default {
             this.pendingToolCalls[tcId].output = event.output || event.result || this.pendingToolCalls[tcId].output || ''
             // 同步更新已推送消息中的 toolCalls（让最终消息也显示执行结果）
             this.syncToolCallToMessages(tcId)
+            this.syncLiveAssistantMessage()
             this.stopRuntimeTickerIfIdle()
           }
           break
@@ -882,6 +1079,7 @@ export default {
             this.messages.push({ role: 'user', content: this._lastUserMessage })
             this._lastUserMessage = ''
           }
+          this.ensureLiveAssistantMessage()
           break
         }
         case 'agent_end': {
@@ -891,14 +1089,9 @@ export default {
           // 仅在 message_end 未推送时才兜底推送（与后端 needPushAssistant 逻辑一致）
           const thinkingContent = this.streamingThinking.replace(/\u200B/g, '')
           if (!this._assistantPushedInTurn && (this.streamingText || thinkingContent || Object.values(this.pendingToolCalls).length > 0)) {
-            const toolCalls = Object.values(this.pendingToolCalls)
-            this.messages.push({
-              role: 'assistant',
-              content: this.streamingText,
-              thinking: thinkingContent,
-              thinkingDurationMs: this.getCurrentThinkingDurationMs(true),
-              toolCalls: toolCalls.length > 0 ? toolCalls.map(item => ({ ...item })) : undefined
-            })
+            this.finalizeLiveAssistantMessage(this.streamingText, thinkingContent)
+          } else {
+            this.removeLiveAssistantMessage()
           }
           this.streamingText = ''
           this.streamingThinking = ''
@@ -1049,6 +1242,7 @@ export default {
           }
         }
       }
+      this.syncLiveAssistantMessage()
     },
 
     syncToolCallToMessages(tcId) {
@@ -1066,6 +1260,48 @@ export default {
           }
         }
       }
+    },
+    ensureLiveAssistantMessage() {
+      const lastMsg = this.messages[this.messages.length - 1]
+      if (lastMsg && lastMsg.role === 'assistant' && lastMsg._live) return lastMsg
+      const liveMsg = {
+        role: 'assistant',
+        content: '',
+        thinking: '',
+        thinkingDurationMs: 0,
+        toolCalls: undefined,
+        _live: true,
+        _thinkingCollapsed: false
+      }
+      this.messages.push(liveMsg)
+      return liveMsg
+    },
+    removeLiveAssistantMessage() {
+      const lastIdx = this.messages.length - 1
+      if (lastIdx < 0) return
+      const lastMsg = this.messages[lastIdx]
+      if (lastMsg && lastMsg.role === 'assistant' && lastMsg._live) {
+        this.messages.splice(lastIdx, 1)
+      }
+    },
+    syncLiveAssistantMessage() {
+      if (!this.isStreaming && !this.streamingText && !this.streamingThinking && Object.keys(this.pendingToolCalls).length === 0) return
+      const liveMsg = this.ensureLiveAssistantMessage()
+      const thinkingContent = this.streamingThinking.replace(/\u200B/g, '')
+      liveMsg.content = this.streamingText
+      liveMsg.thinking = thinkingContent
+      liveMsg.thinkingDurationMs = this.getCurrentThinkingDurationMs(false)
+      const toolCalls = Object.values(this.pendingToolCalls).map(item => ({ ...item }))
+      liveMsg.toolCalls = toolCalls.length > 0 ? toolCalls : undefined
+    },
+    finalizeLiveAssistantMessage(content, thinkingContent) {
+      const liveMsg = this.ensureLiveAssistantMessage()
+      liveMsg.content = content
+      liveMsg.thinking = thinkingContent
+      liveMsg.thinkingDurationMs = this.getCurrentThinkingDurationMs(true)
+      const toolCalls = Object.values(this.pendingToolCalls).map(item => ({ ...item }))
+      liveMsg.toolCalls = toolCalls.length > 0 ? toolCalls : undefined
+      delete liveMsg._live
     },
     toggleMessageThinking(msg) {
       msg._thinkingCollapsed = !this.isMessageThinkingCollapsed(msg)
@@ -1466,6 +1702,9 @@ export default {
 .session-item__time { font-size: 11px; color: #c0c4cc; }
 .session-item__del { opacity: 0; }
 .session-item:hover .session-item__del { opacity: 1; }
+.session-item__spinner {
+  width: 14px; height: 14px; flex-shrink: 0;
+}
 
 .empty-hint { padding: 16px; text-align: center; color: #c0c4cc; font-size: 13px; }
 
@@ -1479,6 +1718,9 @@ export default {
   font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #f0f0f0; color: #909399;
 }
 .agent-info__status--connected { background: #e8f5e9; color: #67c23a; }
+.agent-info__running-count {
+  font-size: 11px; color: #e6a23c; padding: 2px 6px; border-radius: 4px; background: #fef7e0;
+}
 
 .chat-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .chat-header {

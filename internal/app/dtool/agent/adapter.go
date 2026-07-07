@@ -33,6 +33,7 @@ type AgentAdapter interface {
 type AgentStartConfig struct {
 	WorkDir    string            // 工作目录
 	SessionDir string            // 会话持久化目录
+	SessionID  string            // Agent 原生会话 ID（用于 resume）
 	Provider   string            // LLM Provider（如 anthropic, openai）
 	Model      string            // 模型 ID
 	ModelAddr  string            // 自定义模型 API 地址（如 https://api.example.com/v1）
