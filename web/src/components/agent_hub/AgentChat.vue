@@ -121,8 +121,8 @@
           <div class="chat-message__body">
             <div v-if="msg.role === 'assistant' && msg.thinking" class="thinking-block">
               <div class="thinking-block__header" @click="toggleMessageThinking(msg)">
-                <el-icon><ArrowDown /></el-icon>
-                <span>思考过程</span>
+                <span class="agent-status-check">✓</span>
+                <span>思考过程（{{ getThinkingDurationText(msg) }}）</span>
                 <el-icon class="thinking-block__arrow" :class="{ 'thinking-block__arrow--open': !isMessageThinkingCollapsed(msg) }">
                   <ArrowDown />
                 </el-icon>
@@ -143,9 +143,11 @@
                 <!-- read/bash/edit 紧凑一行 -->
                 <template v-if="isReadOrBashTool(tc)">
                   <div class="tool-call__compact-row" @click="toggleToolCallCollapse(tc)">
+                    <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
+                    <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
                     <span class="tool-call__compact-label">{{ tc.name }}</span>
                     <span class="tool-call__compact-text" :title="getCompactText(tc)">{{ getCompactText(tc) }}</span>
-                    <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}</span>
+                    <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}（{{ getToolDurationText(tc) }}）</span>
                     <el-icon class="tool-call__compact-arrow" :class="{ 'tool-call__compact-arrow--open': !isToolCallCollapsed(tc) }">
                       <ArrowRight />
                     </el-icon>
@@ -158,10 +160,12 @@
                 <!-- 其他工具完整展示 -->
                 <template v-else>
                   <div class="tool-call__header">
+                    <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
+                    <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
                     <el-icon><Tools /></el-icon>
                     <span class="tool-call__name">{{ tc.name }}</span>
                     <el-tag :type="tc.status === 'done' ? 'success' : tc.status === 'running' ? 'warning' : 'info'" size="small">
-                      {{ statusLabel(tc.status) }}
+                      {{ statusLabel(tc.status) }}（{{ getToolDurationText(tc) }}）
                     </el-tag>
                   </div>
                   <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
@@ -181,8 +185,8 @@
             <!-- 思考过程 -->
             <div v-if="streamingThinking" class="thinking-block">
               <div class="thinking-block__header" @click="showThinking = !showThinking">
-                <el-icon><Loading /></el-icon>
-                <span>思考中...</span>
+                <span class="agent-status-spinner"></span>
+                <span>思考过程（{{ getStreamingThinkingDurationText() }}）</span>
                 <el-icon class="thinking-block__arrow" :class="{ 'thinking-block__arrow--open': showThinking }">
                   <ArrowDown />
                 </el-icon>
@@ -195,9 +199,11 @@
                 <!-- read/bash/edit 紧凑一行 -->
                 <template v-if="isReadOrBashTool(tc)">
                   <div class="tool-call__compact-row" @click="toggleToolCallCollapse(tc)">
+                    <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
+                    <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
                     <span class="tool-call__compact-label">{{ tc.name }}</span>
                     <span class="tool-call__compact-text" :title="getCompactText(tc)">{{ getCompactText(tc) }}</span>
-                    <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}</span>
+                    <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}（{{ getToolDurationText(tc) }}）</span>
                     <el-icon class="tool-call__compact-arrow" :class="{ 'tool-call__compact-arrow--open': !isToolCallCollapsed(tc) }">
                       <ArrowRight />
                     </el-icon>
@@ -210,10 +216,12 @@
                 <!-- 其他工具完整展示 -->
                 <template v-else>
                   <div class="tool-call__header">
-                    <el-icon><Loading /></el-icon>
+                    <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
+                    <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
+                    <el-icon><Tools /></el-icon>
                     <span class="tool-call__name">{{ tc.name }}</span>
                     <el-tag :type="tc.status === 'done' ? 'success' : 'warning'" size="small">
-                      {{ statusLabel(tc.status) }}
+                      {{ statusLabel(tc.status) }}（{{ getToolDurationText(tc) }}）
                     </el-tag>
                   </div>
                   <pre class="tool-call__input" v-if="tc.input">{{ formatJSON(tc.input) }}</pre>
@@ -428,6 +436,12 @@ export default {
       compacting: false,
       turnCount: 0,
 
+      // 运行时计时器
+      thinkingStartAt: 0,
+      thinkingElapsedSeconds: 0,
+      runtimeNow: Date.now(),
+      _runtimeTicker: null,
+
       // Skills 数据
       skills: [],
       selectedSkillIds: []
@@ -467,10 +481,12 @@ export default {
   },
   beforeUnmount() {
     this.disconnectWS()
+    this.stopRuntimeTicker()
   },
   methods: {
     goBack() {
       this.disconnectWS()
+      this.stopRuntimeTicker()
       this.$router.push('/AgentHub')
     },
     openConfig() {
@@ -688,6 +704,7 @@ export default {
       }
       this.wsConnected = false
       this.isStreaming = false
+      this.stopThinkingTimer()
     },
     handleWSMessage(data) {
       // 忽略来自已断开/旧 WebSocket 的消息（连接被关闭后仍可能收到缓冲消息）
@@ -724,10 +741,13 @@ export default {
             this.streamingText += (msgEvt.delta || '')
             this.scrollToBottom()
           } else if (deltaType === 'thinking_delta') {
+            if (!this.thinkingStartAt) this.startThinkingTimer()
             this.streamingThinking += (msgEvt.delta || '')
             this.scrollToBottom()
           } else if (deltaType === 'text_start' || deltaType === 'text_end' ||
                      deltaType === 'thinking_start' || deltaType === 'thinking_end') {
+            if (deltaType === 'thinking_start' && !this.thinkingStartAt) this.startThinkingTimer()
+            if (deltaType === 'thinking_end') this.stopThinkingTimer()
             this.scrollToBottom()
           } else if (deltaType === 'toolcall_start' || deltaType === 'toolcall_delta' || deltaType === 'toolcall_end') {
             // 支持 Anthropic (msgEvt.toolCall) 和 DeepSeek/OpenAI (partial.content) 两种格式
@@ -759,7 +779,8 @@ export default {
                 role: 'assistant',
                 content: text || (errorMsg ? '**Error:** ' + errorMsg : ''),
                 thinking: this.streamingThinking,
-                toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+                thinkingDurationMs: this.getCurrentThinkingDurationMs(true),
+                toolCalls: toolCalls.length > 0 ? toolCalls.map(item => ({ ...item })) : undefined
               })
               this.streamingThinking = ''
               this.streamingText = ''
@@ -784,11 +805,16 @@ export default {
           if (tcId && !this.pendingToolCalls[tcId]) {
             this.pendingToolCalls[tcId] = {
               id: tcId, name: event.toolName || event.name || 'unknown',
-              status: 'running', input: '', output: '', _collapsed: true
+              status: 'running', input: '', output: '', _collapsed: true,
+              startedAt: Date.now(), durationMs: 0
             }
           }
           if (tcId && this.pendingToolCalls[tcId]) {
             this.pendingToolCalls[tcId].status = 'running'
+            if (!this.pendingToolCalls[tcId].startedAt) {
+              this.pendingToolCalls[tcId].startedAt = Date.now()
+            }
+            this.startRuntimeTicker()
           }
           break
         }
@@ -805,9 +831,11 @@ export default {
           const tcId = event.toolCallId || event.id
           if (tcId && this.pendingToolCalls[tcId]) {
             this.pendingToolCalls[tcId].status = 'done'
+            this.pendingToolCalls[tcId].durationMs = this.pendingToolCalls[tcId].startedAt ? (Date.now() - this.pendingToolCalls[tcId].startedAt) : 0
             this.pendingToolCalls[tcId].output = event.output || event.result || this.pendingToolCalls[tcId].output || ''
             // 同步更新已推送消息中的 toolCalls（让最终消息也显示执行结果）
             this.syncToolCallToMessages(tcId)
+            this.stopRuntimeTickerIfIdle()
           }
           break
         }
@@ -819,6 +847,8 @@ export default {
           this.streamingThinking = ''
           this.pendingToolCalls = {}
           this.compacting = false
+          this.stopThinkingTimer()
+          this.startRuntimeTicker()
           this._assistantPushedInTurn = false
           // 将最后发送的消息展示为用户消息
           if (this._lastUserMessage) {
@@ -829,6 +859,7 @@ export default {
         }
         case 'agent_end': {
           this.isStreaming = false
+          this.stopThinkingTimer()
           // 仅在 message_end 未推送时才兜底推送（与后端 needPushAssistant 逻辑一致）
           if (!this._assistantPushedInTurn && (this.streamingText || Object.values(this.pendingToolCalls).length > 0)) {
             const toolCalls = Object.values(this.pendingToolCalls)
@@ -836,13 +867,15 @@ export default {
               role: 'assistant',
               content: this.streamingText,
               thinking: this.streamingThinking,
-              toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+              thinkingDurationMs: this.getCurrentThinkingDurationMs(true),
+              toolCalls: toolCalls.length > 0 ? toolCalls.map(item => ({ ...item })) : undefined
             })
           }
           this.streamingText = ''
           this.streamingThinking = ''
           this.pendingToolCalls = {}
           this._assistantPushedInTurn = false
+          this.stopRuntimeTickerIfIdle()
           this.scrollToBottom()
           // 自动获取 token 统计
           this.requestTokenStats()
@@ -949,7 +982,7 @@ export default {
       const tcDirect = msgEvt.toolCall
       if (tcDirect && tcDirect.id) {
         if (!this.pendingToolCalls[tcDirect.id]) {
-          this.pendingToolCalls[tcDirect.id] = { id: tcDirect.id, name: tcDirect.name || 'unknown', status: 'running', input: '', output: '', _collapsed: true }
+          this.pendingToolCalls[tcDirect.id] = { id: tcDirect.id, name: tcDirect.name || 'unknown', status: 'running', input: '', output: '', _collapsed: true, startedAt: Date.now(), durationMs: 0 }
         }
         if (tcDirect.arguments) {
           try { this.pendingToolCalls[tcDirect.id].input = JSON.parse(tcDirect.arguments) } catch(e) {
@@ -962,7 +995,7 @@ export default {
       for (const block of partialContent) {
         if (block.type === 'toolCall' && block.id) {
           if (!this.pendingToolCalls[block.id]) {
-            this.pendingToolCalls[block.id] = { id: block.id, name: block.name || 'unknown', status: 'running', input: '', output: '', _collapsed: true }
+            this.pendingToolCalls[block.id] = { id: block.id, name: block.name || 'unknown', status: 'running', input: '', output: '', _collapsed: true, startedAt: Date.now(), durationMs: 0 }
           }
           // arguments（完整参数对象或 JSON 字符串）
           const args = block.arguments
@@ -1005,6 +1038,76 @@ export default {
     },
     toggleMessageThinking(msg) {
       msg._thinkingCollapsed = !this.isMessageThinkingCollapsed(msg)
+    },
+    startThinkingTimer() {
+      if (!this.thinkingStartAt) {
+        this.thinkingStartAt = Date.now()
+        this.thinkingElapsedSeconds = 0
+      }
+      this.startRuntimeTicker()
+    },
+    stopThinkingTimer() {
+      this.thinkingStartAt = 0
+      this.thinkingElapsedSeconds = 0
+      this.stopRuntimeTickerIfIdle()
+    },
+    startRuntimeTicker() {
+      if (this._runtimeTicker) return
+      this.runtimeNow = Date.now()
+      this._runtimeTicker = setInterval(() => {
+        this.runtimeNow = Date.now()
+        if (this.thinkingStartAt) {
+          this.thinkingElapsedSeconds = Math.max(0, Math.floor((this.runtimeNow - this.thinkingStartAt) / 1000))
+        }
+      }, 200)
+    },
+    stopRuntimeTicker() {
+      if (this._runtimeTicker) {
+        clearInterval(this._runtimeTicker)
+        this._runtimeTicker = null
+      }
+    },
+    stopRuntimeTickerIfIdle() {
+      const hasRunningTool = Object.values(this.pendingToolCalls).some(tc => this.isToolRunning(tc))
+      if (!this.thinkingStartAt && !hasRunningTool && !this.isStreaming) {
+        this.stopRuntimeTicker()
+      }
+    },
+    isThinkingRunning(msg) {
+      return Boolean(msg && Number(msg.thinkingDurationMs || 0) <= 0)
+    },
+    getCurrentThinkingDurationMs(finalize = false) {
+      if (!this.thinkingStartAt) return 0
+      const now = finalize ? Date.now() : this.runtimeNow
+      return Math.max(0, now - this.thinkingStartAt)
+    },
+    getThinkingDurationText(msg) {
+      const durationMs = Number(msg?.thinkingDurationMs || 0)
+      return this.formatDuration(durationMs)
+    },
+    getStreamingThinkingDurationText() {
+      return this.formatDuration(this.getCurrentThinkingDurationMs(false))
+    },
+    isToolRunning(tc) {
+      return tc && tc.status === 'running'
+    },
+    isToolDone(tc) {
+      return tc && tc.status === 'done'
+    },
+    getToolDurationText(tc) {
+      if (!tc) return '0s'
+      const durationMs = Number(tc.durationMs || 0) > 0
+        ? Number(tc.durationMs || 0)
+        : (tc.startedAt ? Math.max(0, this.runtimeNow - tc.startedAt) : 0)
+      return this.formatDuration(durationMs)
+    },
+    formatDuration(durationMs) {
+      const ms = Number(durationMs || 0)
+      const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+      const minutes = Math.floor(totalSeconds / 60)
+      const seconds = totalSeconds % 60
+      if (minutes > 0) return `${minutes}m${seconds}s`
+      return `${seconds}s`
     },
     isMessageThinkingCollapsed(msg) {
       return msg._thinkingCollapsed !== false
@@ -1373,6 +1476,28 @@ export default {
   display: flex; align-items: center; gap: 6px; padding: 6px 12px;
   background: #fef7e0; border-radius: 8px; cursor: pointer; font-size: 13px; color: #b88230;
 }
+.agent-status-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid #409eff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: agent-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+.agent-status-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: #67c23a;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
 .thinking-block__arrow { transition: transform .2s; }
 .thinking-block__arrow--open { transform: rotate(180deg); }
 .thinking-block__content {
@@ -1442,6 +1567,7 @@ export default {
 
 .cursor-blink { animation: blink 1s infinite; color: #667eea; }
 @keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: 0 } }
+@keyframes agent-spin { to { transform: rotate(360deg); } }
 
 .chat-input { padding: 12px 24px 10px; background: #fff; border-top: 1px solid #e4e7ed; }
 .chat-input__wrapper { width: 100%; }
