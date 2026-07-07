@@ -119,7 +119,18 @@
             <span v-else class="avatar avatar--assistant">π</span>
           </div>
           <div class="chat-message__body">
-            <div class="chat-message__content" v-html="renderContent(msg)"></div>
+            <div v-if="msg.role === 'assistant' && msg.thinking" class="thinking-block">
+              <div class="thinking-block__header" @click="toggleMessageThinking(msg)">
+                <el-icon><ArrowDown /></el-icon>
+                <span>思考过程</span>
+                <el-icon class="thinking-block__arrow" :class="{ 'thinking-block__arrow--open': !isMessageThinkingCollapsed(msg) }">
+                  <ArrowDown />
+                </el-icon>
+              </div>
+              <div v-if="!isMessageThinkingCollapsed(msg)" class="thinking-block__content">{{ msg.thinking }}</div>
+            </div>
+
+            <div v-if="msg.role === 'tool' || msg.content" class="chat-message__content" v-html="renderContent(msg)"></div>
 
             <!-- 工具调用展示 -->
             <div v-if="msg.toolCalls && msg.toolCalls.length" class="tool-calls">
@@ -210,7 +221,7 @@
                 </template>
               </div>
             </div>
-            <div class="chat-message__content" v-html="renderMarkdown(streamingText)"></div>
+            <div v-if="streamingText" class="chat-message__content" v-html="renderMarkdown(streamingText)"></div>
             <span class="cursor-blink">▊</span>
           </div>
         </div>
@@ -992,6 +1003,12 @@ export default {
         }
       }
     },
+    toggleMessageThinking(msg) {
+      msg._thinkingCollapsed = !this.isMessageThinkingCollapsed(msg)
+    },
+    isMessageThinkingCollapsed(msg) {
+      return msg._thinkingCollapsed !== false
+    },
 
     // ========== Skills & Token 统计 ==========
     tStat(key) {
@@ -1117,8 +1134,6 @@ export default {
       const apiError = this.parseApiError(content)
       if (apiError) {
         content = this.renderApiError(apiError)
-      } else if (msg.thinking) {
-        content = '<details class="thinking-details"><summary>思考过程</summary>' + this.renderMarkdown(msg.thinking) + '</details>\n' + this.renderMarkdown(content)
       } else {
         content = this.renderMarkdown(content)
       }
@@ -1485,6 +1500,4 @@ export default {
 :deep(.chat-message--user .chat-message__content code) {
   background: rgba(255,255,255,.2); color: #fff;
 }
-:deep(.thinking-details summary) { color: #b88230; cursor: pointer; font-size: 13px; }
-:deep(.thinking-details[open] summary + *) { margin-top: 8px; }
 </style>
