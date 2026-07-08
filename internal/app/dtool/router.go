@@ -533,6 +533,8 @@ func api(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/FolderDetail`, controller.ApiFolderDetail)
 	tGin.GinPost(`/api/ApiMove`, controller.ApiMoveApi)
 	tGin.GinPost(`/api/ArchiveFolderList`, controller.ApiArchiveFolderList)
+	tGin.GinPost(`/api/ApiBatchDeleteTree`, controller.ApiBatchDeleteTree)
+	tGin.GinPost(`/api/ApiBatchDelete`, controller.ApiBatchDelete)
 	tGin.GinPost(`/api/CleanupCandidateFolders`, controller.ApiCleanupCandidateFolders)
 	tGin.GinPost(`/api/CleanupArchiveFolders`, controller.ApiCleanupArchiveFolders)
 	tGin.GinPost(`/api/RestoreFolder`, controller.ApiRestoreFolder)
