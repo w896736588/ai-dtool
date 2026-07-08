@@ -139,3 +139,46 @@ type AgentV2WSMessage struct {
 	State   interface{} `json:"state,omitempty"`   // 会话状态
 	Error   string      `json:"error,omitempty"`   // 错误信息
 }
+
+// AgentV2EnvToolItem 环境工具定义（不可安装的系统级 CLI 工具，如 RTK）
+type AgentV2EnvToolItem struct {
+	Key             string `json:"key"`               // 唯一标识，如 "rtk"
+	Name            string `json:"name"`              // 显示名称
+	Description     string `json:"description"`       // 功能描述
+	Icon            string `json:"icon"`              // emoji 图标
+	Homepage        string `json:"homepage"`          // 项目主页
+	InstallCmdHint  string `json:"install_cmd_hint"`  // 安装命令提示
+	ActivateCmdHint string `json:"activate_cmd_hint"` // 激活命令提示（hook init）
+	DetectBin       string `json:"detect_bin"`        // 检测的二进制名
+}
+
+// AgentV2InstalledTool 已安装到 .pi/extensions/ 的扩展
+type AgentV2InstalledTool struct {
+	Name     string `json:"name"`      // 文件名（不含 .ts）
+	FilePath string `json:"file_path"` // 完整路径
+}
+
+// AgentV2EnvToolStatus 环境工具状态（含运行时检测结果）
+type AgentV2EnvToolStatus struct {
+	AgentV2EnvToolItem
+	Installed          bool   `json:"installed"`           // 二进制是否在 PATH 中
+	Version            string `json:"version"`             // 已安装版本号
+	Activated          bool   `json:"activated"`           // hook 是否已激活
+	Status             string `json:"status"`              // not_installed / installed / activated
+	ExtensionInstalled bool   `json:"extension_installed"` // .ts 文件是否在 .pi/extensions/ 中
+	ExtensionFilePath  string `json:"extension_file_path"` // .ts 文件完整路径
+}
+
+// AgentV2EnvToolActionRequest 环境工具操作请求
+type AgentV2EnvToolActionRequest struct {
+	AgentId int    `json:"agent_id"`
+	Key     string `json:"key"`
+	Action  string `json:"action"` // install / activate / deactivate
+}
+
+// AgentV2EnvToolActionResponse 环境工具操作响应
+type AgentV2EnvToolActionResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Output  string `json:"output"`
+}

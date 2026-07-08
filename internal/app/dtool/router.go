@@ -663,6 +663,12 @@ func agentV2Router(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/AgentV2SkillDelete`, controller.AgentV2SkillDelete)
 	// 内置工具
 	tGin.GinPost(`/api/AgentV2BuiltinToolList`, controller.AgentV2BuiltinToolList)
+	// 环境工具（系统级 CLI 工具，如 RTK）
+	tGin.GinPost(`/api/AgentV2EnvToolList`, controller.AgentV2EnvToolList)
+	tGin.GinPost(`/api/AgentV2EnvToolAction`, controller.AgentV2EnvToolAction)
+	// 已安装扩展扫描（.pi/extensions/ 目录）
+	tGin.GinPost(`/api/AgentV2InstalledToolList`, controller.AgentV2InstalledToolList)
+	tGin.GinPost(`/api/AgentV2InstalledToolRemove`, controller.AgentV2InstalledToolRemove)
 	// 模型配置（复用 tbl_ai_provider + tbl_ai_model）
 	tGin.GinPost(`/api/AgentV2ProviderModels`, controller.AgentV2ProviderModels)
 	tGin.GinPost(`/api/AgentV2ModelTest`, controller.AgentV2ModelTest)

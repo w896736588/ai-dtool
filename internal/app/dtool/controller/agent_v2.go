@@ -416,6 +416,108 @@ func AgentV2BuiltinToolList(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, "", gin.H{"list": tools})
 }
 
+// ======================== 已安装扩展扫描（.pi/extensions/） ========================
+
+// AgentV2InstalledToolList 扫描 .pi/extensions/ 目录下的已安装扩展
+func AgentV2InstalledToolList(c *gin.Context) {
+	tools := agent.ScanInstalledTools()
+	gsgin.GinResponseSuccess(c, "", gin.H{"list": tools})
+}
+
+// AgentV2InstalledToolRemove 删除 .pi/extensions/ 下的扩展文件
+func AgentV2InstalledToolRemove(c *gin.Context) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Name == "" {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+
+	if err := agent.RemoveInstalledTool(req.Name); err != nil {
+		gsgin.GinResponseError(c, "删除失败: "+err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// ======================== 环境工具管理 ========================
+
+// AgentV2EnvToolList 列出所有环境工具及其安装状态
+func AgentV2EnvToolList(c *gin.Context) {
+	tools := make([]define.AgentV2EnvToolStatus, 0, len(agent.BuiltinEnvToolDefs))
+	for _, def := range agent.BuiltinEnvToolDefs {
+		st := agent.DetectEnvToolStatus(def)
+		tools = append(tools, st)
+	}
+	gsgin.GinResponseSuccess(c, "", gin.H{"list": tools})
+}
+
+// AgentV2EnvToolAction 执行环境工具操作（安装/激活/停用/移除）
+func AgentV2EnvToolAction(c *gin.Context) {
+	var req define.AgentV2EnvToolActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.Key == "" || req.Action == "" {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+
+	// 查找工具定义
+	var def *define.AgentV2EnvToolItem
+	for i := range agent.BuiltinEnvToolDefs {
+		if agent.BuiltinEnvToolDefs[i].Key == req.Key {
+			def = &agent.BuiltinEnvToolDefs[i]
+			break
+		}
+	}
+	if def == nil {
+		gsgin.GinResponseError(c, "未知的环境工具: "+req.Key, nil)
+		return
+	}
+
+	switch req.Action {
+	case "install":
+		gsgin.GinResponseSuccess(c, "", gin.H{
+			"action":  "install",
+			"command": def.InstallCmdHint,
+			"message": "请在终端执行以下命令完成安装，然后刷新页面检测状态",
+			"success": false,
+		})
+	case "activate":
+		cmd := def.ActivateCmdHint
+		if cmd == "" {
+			gsgin.GinResponseError(c, "该工具无需激活", nil)
+			return
+		}
+		gsgin.GinResponseSuccess(c, "", gin.H{
+			"action":  "activate",
+			"command": cmd,
+			"message": "请在终端执行以下命令激活，完成后刷新页面检测状态",
+			"success": false,
+		})
+	case "deactivate":
+		cmd := agent.GetUninstallCmd(req.Key)
+		if cmd == "" {
+			gsgin.GinResponseError(c, "该工具不支持停用操作", nil)
+			return
+		}
+		gsgin.GinResponseSuccess(c, "", gin.H{
+			"action":  "deactivate",
+			"command": cmd,
+			"message": "请在终端执行以下命令停用 hook",
+			"success": false,
+		})
+	case "remove":
+		// 直接从 .pi/extensions/ 删除文件
+		if err := agent.RemoveInstalledTool(req.Key); err != nil {
+			gsgin.GinResponseError(c, "移除失败: "+err.Error(), nil)
+			return
+		}
+		gsgin.GinResponseSuccess(c, "", nil)
+	default:
+		gsgin.GinResponseError(c, "不支持的操作: "+req.Action, nil)
+	}
+}
+
 // ======================== 模型配置 ========================
 
 // AgentV2ProviderModels 获取所有 Provider 及其 LLM 模型（供 Agent 模块选择模型使用）
