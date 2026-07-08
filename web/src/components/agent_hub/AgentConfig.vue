@@ -19,6 +19,19 @@
             <el-form-item label="Agent 类型">
               <el-tag>{{ typeLabel(configForm.type) }}</el-tag>
             </el-form-item>
+            <el-divider content-position="left">LLM 配置</el-divider>
+            <el-form-item label="Provider">
+              <el-select v-model="selectedProviderId" style="width:100%" placeholder="请选择 Provider" @change="onProviderChange">
+                <el-option v-for="p in providerList" :key="p.id" :label="p.name" :value="p.id" />
+              </el-select>
+              <div class="field-hint">从全局配置中选择 LLM 服务提供商</div>
+            </el-form-item>
+            <el-form-item label="默认模型">
+              <el-select v-model="selectedModelId" style="width:100%" placeholder="请选择模型" :disabled="!selectedProviderId">
+                <el-option v-for="m in currentProviderModels" :key="m.id" :label="m.name + ' (' + m.model + ')'" :value="m.id" />
+              </el-select>
+              <div class="field-hint">启动 Agent 时使用的默认模型</div>
+            </el-form-item>
             <el-divider content-position="left">高级选项</el-divider>
             <el-form-item label="会话存储目录">
               <el-input v-model="piConfig.session_dir" placeholder="留空使用默认目录" />
@@ -137,6 +150,59 @@
           </el-table>
         </el-tab-pane>
 
+        <!-- 模型配置 -->
+        <el-tab-pane label="模型配置" name="models">
+          <div class="model-config-tab">
+            <div class="model-config-header">
+              <el-button type="primary" size="small" @click="showAddProvider">新增 Provider</el-button>
+              <span class="skills-hint">管理所有 LLM 服务商及其模型</span>
+            </div>
+            <div class="provider-list">
+              <div v-for="p in fullProviders" :key="p.id" class="provider-card" :class="{ 'provider-card--expanded': isProviderExpanded(p.id) }">
+                <div class="provider-card__header" @click="toggleExpand(p.id)">
+                  <div class="provider-card__info">
+                    <span class="provider-card__name">{{ p.name }}</span>
+                    <el-tag size="small" effect="plain">{{ p.provider_type }}</el-tag>
+                    <span class="provider-card__url">{{ p.base_url }}</span>
+                  </div>
+                  <div class="provider-card__actions" @click.stop>
+                    <el-button text size="small" @click="showEditProvider(p)">编辑</el-button>
+                    <el-button text size="small" @click="showAddModel(p)">+ 添加模型</el-button>
+                    <el-button text size="small" type="danger" @click="deleteProvider(p)">删除</el-button>
+                    <el-icon class="provider-card__arrow" :class="{ 'provider-card__arrow--open': isProviderExpanded(p.id) }">
+                      <ArrowRight />
+                    </el-icon>
+                  </div>
+                </div>
+                <div v-if="isProviderExpanded(p.id)" class="provider-card__models">
+                  <el-table :data="getProviderModels(p.id)" class="config-table" empty-text="暂无模型">
+                    <el-table-column prop="name" label="展示名" min-width="130" />
+                    <el-table-column prop="model" label="模型标识" min-width="180" />
+                    <el-table-column label="类型" width="70">
+                      <template #default="{ row }">
+                        <el-tag size="small" effect="light">{{ row.model_type === 'embedding' ? '嵌入' : 'LLM' }}</el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="上下文窗口" width="110">
+                      <template #default="{ row }">
+                        {{ fmtCtx(row.context_size) }}
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="200">
+                      <template #default="{ row }">
+                        <el-button text size="small" @click="showEditModel(row)">编辑</el-button>
+                        <el-button text size="small" type="danger" @click="deleteModel(row)">删除</el-button>
+                        <el-button text size="small" type="warning" :loading="testingModelId === row.id" @click="testModel(row)">测试</el-button>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </div>
+              </div>
+              <div v-if="fullProviders.length === 0" class="empty-hint">暂无 Provider，请点击上方按钮添加</div>
+            </div>
+          </div>
+        </el-tab-pane>
+
         <!-- 推荐扩展 -->
         <el-tab-pane label="推荐扩展" name="envtools">
           <div class="envtools-toolbar">
@@ -155,9 +221,15 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="120">
+            <el-table-column label="状态" width="140">
               <template #default="{ row }">
-                <el-tag :type="envToolStatusType(row)" size="small">{{ envToolStatusLabel(row) }}</el-tag>
+                <template v-if="row.key === 'headroom' && headroomStatus.running">
+                  <el-tag type="success" size="small">运行中</el-tag>
+                  <span v-if="headroomStatus.pid" style="font-size:11px;color:#909399;margin-left:4px">PID:{{ headroomStatus.pid }}</span>
+                </template>
+                <template v-else>
+                  <el-tag :type="envToolStatusType(row)" size="small">{{ envToolStatusLabel(row) }}</el-tag>
+                </template>
               </template>
             </el-table-column>
             <el-table-column label="版本" width="100">
@@ -165,20 +237,46 @@
                 <span style="font-size:12px;color:#909399">{{ row.version || '-' }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="200">
+            <el-table-column label="操作" min-width="260">
               <template #default="{ row }">
-                <el-button v-if="!row.installed" text size="small" type="primary" @click="showEnvToolInstall(row)">
-                  查看安装指引
-                </el-button>
-                <el-button v-if="row.installed && !row.extension_installed" text size="small" type="warning" @click="envToolAction(row, 'activate')">
-                  安装扩展
-                </el-button>
-                <el-button v-if="row.extension_installed" text size="small" type="danger" @click="envToolRemove(row)">
-                  移除
-                </el-button>
-                <el-button text size="small" @click="openEnvToolHomepage(row)">
-                  主页 ↗
-                </el-button>
+                <!-- Headroom 专属操作 -->
+                <template v-if="row.key === 'headroom'">
+                  <el-button v-if="!row.installed" text size="small" type="primary" @click="showEnvToolInstall(row)">
+                    查看安装指引
+                  </el-button>
+                  <template v-if="row.installed">
+                    <el-button text size="small" type="primary" @click="showHeadroomConfig(row)">
+                      配置
+                    </el-button>
+                    <el-button v-if="!headroomStatus.running" text size="small" type="success" @click="headroomProcess('start')">
+                      启动
+                    </el-button>
+                    <el-button v-if="headroomStatus.running" text size="small" type="warning" @click="headroomProcess('stop')">
+                      停止
+                    </el-button>
+                    <el-button v-if="headroomStatus.running" text size="small" @click="headroomProcess('restart')">
+                      重启
+                    </el-button>
+                  </template>
+                  <el-button text size="small" @click="openEnvToolHomepage(row)">
+                    主页 ↗
+                  </el-button>
+                </template>
+                <!-- 其他工具通用操作 -->
+                <template v-else>
+                  <el-button v-if="!row.installed" text size="small" type="primary" @click="showEnvToolInstall(row)">
+                    查看安装指引
+                  </el-button>
+                  <el-button v-if="row.installed && !row.extension_installed" text size="small" type="warning" @click="envToolAction(row, 'activate')">
+                    安装扩展
+                  </el-button>
+                  <el-button v-if="row.extension_installed" text size="small" type="danger" @click="envToolRemove(row)">
+                    移除
+                  </el-button>
+                  <el-button text size="small" @click="openEnvToolHomepage(row)">
+                    主页 ↗
+                  </el-button>
+                </template>
               </template>
             </el-table-column>
           </el-table>
@@ -289,6 +387,73 @@
       </template>
     </el-dialog>
 
+    <!-- Provider 编辑对话框 -->
+    <el-dialog v-model="showProviderDlg" :title="editingProviderId ? '编辑 Provider' : '新增 Provider'" width="480px" :close-on-click-modal="true">
+      <el-form label-width="100px">
+        <el-form-item label="名称">
+          <el-input v-model="providerForm.name" placeholder="例如：OpenAI" />
+        </el-form-item>
+        <el-form-item label="请求格式">
+          <el-select v-model="providerForm.request_format" style="width:100%">
+            <el-option label="OpenAI Chat Completions" value="openai" />
+            <el-option label="OpenAI Responses" value="openai-responses" />
+            <el-option label="Anthropic Messages" value="anthropic" />
+            <el-option label="DeepSeek (OpenAI兼容)" value="deepseek" />
+            <el-option label="Google Generative AI" value="google" />
+          </el-select>
+          <div class="field-hint">选择 API 的请求格式，决定 Pi 调用时的 endpoint 路径</div>
+        </el-form-item>
+        <el-form-item label="基础域名">
+          <el-input v-model="providerForm.base_url" placeholder="例如：https://api.openai.com" />
+        </el-form-item>
+        <el-form-item label="API Key">
+          <el-input v-model="providerForm.api_key" type="password" show-password placeholder="API 认证密钥" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showProviderDlg = false">取消</el-button>
+        <el-button type="primary" @click="saveProvider">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Model 编辑对话框 -->
+    <el-dialog v-model="showModelDlg" :title="editingModelId ? '编辑模型' : '新增模型'" width="480px" :close-on-click-modal="true">
+      <el-form label-width="100px">
+        <el-form-item label="所属 Provider">
+          <el-select v-model="modelForm.provider_id" style="width:100%" :disabled="editingModelId > 0">
+            <el-option v-for="p in fullProviders" :key="p.id" :label="p.name" :value="p.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="展示名">
+          <el-input v-model="modelForm.name" placeholder="例如：GPT-4o" />
+        </el-form-item>
+        <el-form-item label="模型标识">
+          <el-input v-model="modelForm.model" placeholder="例如：gpt-4o" />
+        </el-form-item>
+        <el-form-item label="上下文窗口">
+          <el-input-number v-model="modelForm.context_size" :min="1000" :max="4194304" :step="1000" style="width:100%" />
+          <div class="field-hint">以 token 为单位的最大上下文窗口大小</div>
+        </el-form-item>
+        <el-form-item label="模型类型">
+          <el-select v-model="modelForm.model_type" style="width:100%">
+            <el-option label="LLM（大语言模型）" value="llm" />
+            <el-option label="嵌入模型" value="embedding" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="URI">
+          <el-input v-model="modelForm.uri" :placeholder="defaultUriForProvider(modelForm.provider_id)" />
+          <div class="field-hint">留空则根据 Provider 类型自动推断</div>
+        </el-form-item>
+        <el-form-item label="完整地址">
+          <div class="url-preview">{{ buildUrl(getProviderBaseUrl(modelForm.provider_id), editingModelId ? modelForm.uri : (modelForm.uri || defaultUriForProvider(modelForm.provider_id))) || '-' }}</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showModelDlg = false">取消</el-button>
+        <el-button type="primary" @click="saveModel">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 内置工具对话框 -->
     <el-dialog v-model="showBuiltinDialog" title="Dtool 内置 Tools" width="640px" :close-on-click-modal="true">
       <el-table :data="builtinTools" max-height="400" empty-text="暂无内置工具，请在 internal/app/dtool/data/ 目录下添加">
@@ -320,6 +485,39 @@
       </div>
       <template #footer>
         <el-button @click="showBuiltinDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Headroom 配置对话框 -->
+    <el-dialog v-model="showHeadroomConfigDialog" title="Headroom 代理配置" width="640px" :close-on-click-modal="true">
+      <el-form :model="headroomConfig" label-width="140px">
+        <el-form-item label="代理端口">
+          <el-input-number v-model="headroomConfig.port" :min="1" :max="65535" style="width:160px" />
+          <div class="field-hint">代理服务监听端口，Agent 将请求发给 localhost:此端口</div>
+        </el-form-item>
+        <el-divider content-position="left">大模型服务商上游地址（留空使用默认值）</el-divider>
+        <el-form-item label="Anthropic">
+          <el-input v-model="headroomConfig.anthropic_api_url" placeholder="默认: https://api.anthropic.com" />
+        </el-form-item>
+        <el-form-item label="OpenAI">
+          <el-input v-model="headroomConfig.openai_api_url" placeholder="默认: https://api.openai.com" />
+        </el-form-item>
+        <el-form-item label="Gemini">
+          <el-input v-model="headroomConfig.gemini_api_url" placeholder="默认: https://generativelanguage.googleapis.com" />
+        </el-form-item>
+        <el-form-item label="Cloud Code">
+          <el-input v-model="headroomConfig.cloudcode_api_url" placeholder="默认: https://cloudcode-pa.googleapis.com" />
+        </el-form-item>
+        <el-form-item label="Vertex AI">
+          <el-input v-model="headroomConfig.vertex_api_url" placeholder="默认: https://us-central1-aiplatform.googleapis.com" />
+        </el-form-item>
+      </el-form>
+      <div class="field-hint" style="margin-top:8px">
+        启动代理后，设置环境变量 <code>ANTHROPIC_BASE_URL=http://localhost:{端口}</code> 或 <code>OPENAI_BASE_URL=http://localhost:{端口}/v1</code> 即可让 Agent 经 Headroom 压缩上下文。
+      </div>
+      <template #footer>
+        <el-button @click="showHeadroomConfigDialog = false">取消</el-button>
+        <el-button type="primary" @click="saveHeadroomConfig">保存配置</el-button>
       </template>
     </el-dialog>
 
@@ -362,6 +560,7 @@
 
 <script>
 import Base from '@/utils/base.js'
+import aiSet from '@/utils/base/ai_set'
 import { ArrowLeft, ArrowRight, Plus } from '@element-plus/icons-vue'
 
 export default {
@@ -378,6 +577,27 @@ export default {
       configForm: { name: '', type: '' },
       piConfig: { session_dir: '', extra_args: '' },
 
+      // Agent 配置用的 Provider/Model 列表
+      providerList: [],
+      allModels: [],
+      selectedProviderId: null,
+      selectedModelId: null,
+
+      // 模型配置 Tab 用的完整数据
+      fullProviders: [],
+      expandedProviderIds: {},  // { pid: true } 跟踪展开状态
+
+      // Provider 对话框
+      showProviderDlg: false,
+      editingProviderId: 0,
+      providerForm: { name: '', request_format: 'openai', base_url: '', api_key: '' },
+
+      // Model 对话框
+      showModelDlg: false,
+      editingModelId: 0,
+      modelForm: { provider_id: 0, name: '', model_type: 'llm', model: '', uri: '', context_size: 128000 },
+      testingModelId: 0,  // 正在测试的模型 ID
+
       skills: [],
       showSkillDialog: false,
       editingSkillId: null,
@@ -393,6 +613,24 @@ export default {
       envTools: [],
       showEnvToolDialog: false,
       envToolDialogData: {},
+
+      // Headroom 配置
+      showHeadroomConfigDialog: false,
+      headroomConfig: {
+        port: 8787,
+        anthropic_api_url: '',
+        openai_api_url: '',
+        gemini_api_url: '',
+        cloudcode_api_url: '',
+        vertex_api_url: ''
+      },
+      headroomStatus: {
+        installed: false,
+        version: '',
+        running: false,
+        pid: 0,
+        started_at: 0
+      },
 
       installedTools: []
     }
@@ -418,6 +656,10 @@ export default {
       if (this.editingSkillId) return '编辑 ' + (this.skillForm.skill_type === 'tool' ? 'Tool' : 'Skill')
       return '添加 ' + (this.skillForm.skill_type === 'tool' ? 'Tool' : 'Skill')
     },
+    currentProviderModels() {
+      if (!this.selectedProviderId) return []
+      return this.allModels.filter(m => parseInt(m.provider_id) === parseInt(this.selectedProviderId))
+    }
 
   },
   mounted() {
@@ -438,6 +680,7 @@ export default {
       }
     },
     loadData() {
+      this.loadProviderModels()
       Base.BasePost('/api/AgentV2List', {}, (res) => {
         const agents = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
         const agent = agents.find(a => a.id === this.agentId)
@@ -451,6 +694,8 @@ export default {
               const cfg = JSON.parse(agent.config)
               if (cfg.session_dir) this.piConfig.session_dir = cfg.session_dir
               if (cfg.extra_args) this.piConfig.extra_args = cfg.extra_args
+              if (cfg.provider_id) this.selectedProviderId = cfg.provider_id
+              if (cfg.model_id) this.selectedModelId = cfg.model_id
             } catch (e) {}
           }
         }
@@ -461,6 +706,8 @@ export default {
     },
     saveConfig() {
       const configObj = {
+        provider_id: this.selectedProviderId || 0,
+        model_id: this.selectedModelId || 0,
         session_dir: this.piConfig.session_dir,
         extra_args: this.piConfig.extra_args
       }
@@ -480,6 +727,190 @@ export default {
         this.installed = (res.ErrCode === 0 && res.Data) ? res.Data.installed : false
         this.installHint = (res.ErrCode === 0 && res.Data) ? (res.Data.install_hint || '') : ''
       })
+    },
+
+    loadProviderModels() {
+      Base.BasePost('/api/AgentV2ProviderModels', {}, (res) => {
+        if (res.ErrCode === 0 && res.Data && res.Data.providers) {
+          const providers = res.Data.providers
+          this.providerList = providers.map(p => ({ id: p.id, name: p.name, provider_type: p.provider_type }))
+          // 模型配置 Tab 用的完整数据
+          this.fullProviders = providers.map(p => ({ ...p }))
+          // 默认展开所有 Provider
+          for (const p of providers) {
+            this.expandedProviderIds[p.id] = true
+          }
+          this.allModels = []
+          for (const p of providers) {
+            for (const m of (p.models || [])) {
+              m.provider_id = p.id
+              this.allModels.push(m)
+            }
+          }
+        }
+      })
+    },
+    onProviderChange() {
+      this.selectedModelId = null
+    },
+
+    // ========== 模型配置 Tab：Provider 管理 ==========
+    getProviderModels(pid) {
+      return this.allModels.filter(m => parseInt(m.provider_id) === parseInt(pid))
+    },
+    isProviderExpanded(pid) {
+      return this.expandedProviderIds[pid] === true
+    },
+    toggleExpand(pid) {
+      if (this.expandedProviderIds[pid]) {
+        this.expandedProviderIds = { ...this.expandedProviderIds, [pid]: false }
+      } else {
+        this.expandedProviderIds = { ...this.expandedProviderIds, [pid]: true }
+      }
+    },
+    showAddProvider() {
+      this.editingProviderId = 0
+      this.providerForm = { name: '', request_format: 'openai', base_url: '', api_key: '' }
+      this.showProviderDlg = true
+    },
+    showEditProvider(p) {
+      this.editingProviderId = p.id
+      this.providerForm = { id: p.id, name: p.name, request_format: p.provider_type, base_url: p.base_url, api_key: p.api_key }
+      this.showProviderDlg = true
+    },
+    saveProvider() {
+      if (!this.providerForm.name || !this.providerForm.base_url) {
+        this.$message.warning('请填写名称和基础域名')
+        return
+      }
+      aiSet.AiProviderAdd({
+        id: this.editingProviderId || undefined,
+        name: this.providerForm.name,
+        request_format: this.providerForm.request_format,
+        base_url: this.providerForm.base_url,
+        api_key: this.providerForm.api_key
+      }, (res) => {
+        if (res.ErrCode === 0) {
+          this.showProviderDlg = false
+          this.loadProviderModels()
+          this.$message.success('保存成功')
+        }
+      })
+    },
+    deleteProvider(p) {
+      this.$confirm(`确定删除 Provider「${p.name}」？关联的模型也会被删除。`, '提示', { type: 'warning' }).then(() => {
+        aiSet.AiProviderDelete({ id: p.id }, (res) => {
+          if (res.ErrCode === 0) {
+            this.loadProviderModels()
+            this.$message.success('已删除')
+          }
+        })
+      }).catch(() => {})
+    },
+
+    // ========== 模型配置 Tab：Model 管理 ==========
+    defaultUriForProvider(pid) {
+      const p = this.fullProviders.find(p => parseInt(p.id) === parseInt(pid))
+      if (!p) return '/v1/chat/completions'
+      const fmt = p.provider_type || p.request_format || 'openai'
+      switch (fmt) {
+        case 'anthropic': return '/v1/messages'
+        case 'openai-responses': return '/v1/responses'
+        case 'google': return '/v1beta/models'
+        default: return '/v1/chat/completions'
+      }
+    },
+    showAddModel(p) {
+      this.expandedProviderIds[p.id] = true
+      this.editingModelId = 0
+      this.modelForm = { provider_id: p.id, name: '', model_type: 'llm', model: '', uri: '', context_size: 128000 }
+      this.showModelDlg = true
+    },
+    showEditModel(m) {
+      this.editingModelId = m.id
+      this.modelForm = {
+        id: m.id, provider_id: m.provider_id, name: m.name,
+        model_type: m.model_type || 'llm', model: m.model,
+        uri: m.uri || '', context_size: m.context_size || 128000
+      }
+      this.showModelDlg = true
+    },
+    saveModel() {
+      if (!this.modelForm.model) {
+        this.$message.warning('请填写模型标识')
+        return
+      }
+      // 新建时 URI 为空才给默认值，编辑时原样保存
+      const uri = this.editingModelId ? this.modelForm.uri : (this.modelForm.uri || this.defaultUriForProvider(this.modelForm.provider_id))
+      aiSet.AiModelAdd({
+        id: this.editingModelId || undefined,
+        provider_id: this.modelForm.provider_id,
+        name: this.modelForm.name || this.modelForm.model,
+        model_type: this.modelForm.model_type,
+        model: this.modelForm.model,
+        uri: uri,
+        context_size: this.modelForm.context_size || 128000
+      }, (res) => {
+        if (res.ErrCode === 0) {
+          this.showModelDlg = false
+          this.loadProviderModels()
+          this.$message.success('保存成功')
+        }
+      })
+    },
+    deleteModel(m) {
+      this.$confirm(`确定删除模型「${m.name || m.model}」？`, '提示', { type: 'warning' }).then(() => {
+        aiSet.AiModelDelete({ id: m.id }, (res) => {
+          if (res.ErrCode === 0) {
+            this.loadProviderModels()
+            this.$message.success('已删除')
+          }
+        })
+      }).catch(() => {})
+    },
+    testModel(m) {
+      const provider = this.fullProviders.find(p => p.id === m.provider_id)
+      const providerName = provider ? provider.name : 'Unknown'
+      this.testingModelId = m.id
+      Base.BasePost('/api/AgentV2ModelTest', {
+        provider_id: m.provider_id,
+        model_id: m.id
+      }, (res) => {
+        this.testingModelId = 0
+        if (res.ErrCode === 0) {
+          const resp = res.Data.response || ''
+          this.$notify({
+            title: `测试通过 — ${providerName} / ${m.name || m.model}`,
+            message: resp,
+            type: 'success',
+            duration: 5000
+          })
+        } else {
+          this.$notify({
+            title: `测试失败 — ${providerName} / ${m.name || m.model}`,
+            message: res.ErrMsg || '未知错误',
+            type: 'error',
+            duration: 8000
+          })
+        }
+      })
+    },
+    buildUrl(base, uri) {
+      const cleanBase = (base || '').replace(/\/+$/, '')
+      if (!cleanBase) return uri || ''
+      if (!uri) return cleanBase
+      const cleanUri = uri.startsWith('/') ? uri : '/' + uri
+      return cleanBase + cleanUri
+    },
+    getProviderBaseUrl(pid) {
+      const p = this.fullProviders.find(p => parseInt(p.id) === parseInt(pid))
+      return p ? p.base_url : ''
+    },
+    fmtCtx(size) {
+      if (!size) return '—'
+      if (size >= 1000000) return (size / 1000000).toFixed(1) + 'M'
+      if (size >= 1000) return (size / 1000).toFixed(0) + 'K'
+      return String(size)
     },
 
     // Skills & Tools
@@ -633,6 +1064,56 @@ export default {
       Base.BasePost('/api/AgentV2EnvToolList', {}, (res) => {
         this.envTools = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
       })
+      this.loadHeadroomStatus()
+    },
+    // Headroom 代理
+    loadHeadroomStatus() {
+      Base.BasePost('/api/AgentV2HeadroomStatus', { agent_id: this.agentId }, (res) => {
+        if (res.ErrCode === 0 && res.Data) {
+          this.headroomStatus = {
+            installed: res.Data.installed || false,
+            version: res.Data.version || '',
+            running: res.Data.running || false,
+            pid: res.Data.pid || 0,
+            started_at: res.Data.started_at || 0
+          }
+          if (res.Data.port) {
+            this.headroomConfig = {
+              port: res.Data.port || 8787,
+              anthropic_api_url: res.Data.anthropic_api_url || '',
+              openai_api_url: res.Data.openai_api_url || '',
+              gemini_api_url: res.Data.gemini_api_url || '',
+              cloudcode_api_url: res.Data.cloudcode_api_url || '',
+              vertex_api_url: res.Data.vertex_api_url || ''
+            }
+          }
+        }
+      })
+    },
+    showHeadroomConfig(row) {
+      this.showHeadroomConfigDialog = true
+    },
+    saveHeadroomConfig() {
+      Base.BasePost('/api/AgentV2HeadroomConfigSave', {
+        agent_id: this.agentId,
+        config: this.headroomConfig
+      }, () => {
+        this.$message.success('Headroom 配置已保存')
+        this.showHeadroomConfigDialog = false
+        this.loadHeadroomStatus()
+      })
+    },
+    headroomProcess(action) {
+      const labels = { start: '启动', stop: '停止', restart: '重启' }
+      Base.BasePost('/api/AgentV2HeadroomProcess', {
+        agent_id: this.agentId,
+        action: action
+      }, (res) => {
+        if (res.ErrCode === 0) {
+          this.$message.success(`Headroom ${labels[action] || action}成功`)
+          this.loadHeadroomStatus()
+        }
+      })
     },
     showEnvToolInstall(tool) {
       this.envToolDialogData = tool
@@ -642,11 +1123,19 @@ export default {
       if (tool.homepage) window.open(tool.homepage, '_blank')
     },
     envToolStatusType(row) {
+      if (row.key === 'headroom') {
+        if (this.headroomStatus.running) return 'success'
+        return row.installed ? 'warning' : 'info'
+      }
       if (row.extension_installed) return 'success'
       if (row.installed) return 'warning'
       return 'info'
     },
     envToolStatusLabel(row) {
+      if (row.key === 'headroom') {
+        if (this.headroomStatus.running) return '代理运行中'
+        return row.installed ? '已安装' : '未安装'
+      }
       if (row.extension_installed) return '已安装'
       if (row.installed) return '已安装(未激活)'
       return '未安装'
@@ -871,6 +1360,90 @@ export default {
 .script-editor-wrapper :deep(.el-textarea__inner:focus) {
   box-shadow: none;
 }
+
+/* ===== 模型配置 Tab ===== */
+.model-config-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.provider-card {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.provider-card:hover { border-color: #c0c4cc; }
+.provider-card--expanded { border-color: #409eff; }
+
+.provider-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+.provider-card__header:hover { background: #fafafa; }
+
+.provider-card__info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.provider-card__name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.provider-card__url {
+  font-size: 12px;
+  color: #909399;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+.provider-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.provider-card__arrow {
+  margin-left: 6px;
+  font-size: 14px;
+  color: #c0c4cc;
+  transition: transform .2s;
+}
+.provider-card__arrow--open { transform: rotate(90deg); }
+
+.provider-card__models {
+  border-top: 1px solid #ebeef5;
+  padding: 12px 16px 16px;
+}
+
+.url-preview {
+  font-size: 12px;
+  color: #909399;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  background: #f5f7fa;
+  padding: 8px 12px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.empty-hint { padding: 16px; text-align: center; color: #c0c4cc; font-size: 13px; }
 
 
 </style>

@@ -68,6 +68,16 @@ func CheckExtensionFile(filename string) (bool, string) {
 // BuiltinEnvToolDefs 内置环境工具定义列表
 var BuiltinEnvToolDefs = []define.AgentV2EnvToolItem{
 	{
+		Key:             "headroom",
+		Name:            "Headroom (API Proxy & Context Compressor)",
+		Description:     "LLM 上下文压缩层，60-95% token 节省（JSON），15-20% token 节省（代码）。代理模式零代码改动，支持 Anthropic/OpenAI/Gemini/Vertex/CloudCode/Bedrock 六个大模型服务商。",
+		Icon:            "🧠",
+		Homepage:        "https://github.com/chopratejas/headroom",
+		InstallCmdHint:  GetHeadroomInstallHint(),
+		ActivateCmdHint: "", // Headroom 不需要 "激活" — 直接启动代理进程
+		DetectBin:       HeadroomDetectBin,
+	},
+	{
 		Key:             "rtk",
 		Name:            "RTK (Rust Token Killer)",
 		Description:     "CLI 代理工具，自动过滤和压缩命令输出，为 LLM 节省 60-90% token。支持 100+ 常用命令，<10ms 开销。安装后执行激活命令即可对 Pi Agent 生效。",
@@ -98,13 +108,12 @@ func DetectEnvToolStatus(def define.AgentV2EnvToolItem) define.AgentV2EnvToolSta
 	}
 
 	// 检测二进制是否在 PATH 中
-	binPath, err := exec.LookPath(def.DetectBin)
+	_, err := exec.LookPath(def.DetectBin)
 	if err != nil {
 		return st
 	}
 
 	st.Installed = true
-	st.Status = "installed"
 
 	// 尝试获取版本号
 	checkCmd := getCheckCmd(def)
@@ -120,6 +129,12 @@ func DetectEnvToolStatus(def define.AgentV2EnvToolItem) define.AgentV2EnvToolSta
 		}
 	}
 
+	// headroom 不走 Pi 扩展文件机制，直接标记为 installed
+	if def.Key == "headroom" {
+		st.Status = "installed"
+		return st
+	}
+
 	// 检测 Pi 扩展文件是否已安装到 .pi/extensions/
 	if found, path := CheckExtensionFile(def.Key); found {
 		st.ExtensionInstalled = true
@@ -127,9 +142,11 @@ func DetectEnvToolStatus(def define.AgentV2EnvToolItem) define.AgentV2EnvToolSta
 		st.Status = "activated"
 	} else {
 		// 回退：检测 shell hook 是否激活
-		st.Activated = checkRTKHookActivated(def.Key, binPath)
+		st.Activated = checkRTKHookActivated(def.Key)
 		if st.Activated {
 			st.Status = "activated"
+		} else {
+			st.Status = "installed"
 		}
 	}
 
@@ -137,7 +154,7 @@ func DetectEnvToolStatus(def define.AgentV2EnvToolItem) define.AgentV2EnvToolSta
 }
 
 // checkRTKHookActivated 检测环境工具 hook 是否已激活
-func checkRTKHookActivated(key, binPath string) bool {
+func checkRTKHookActivated(key string) bool {
 	switch key {
 	case "rtk":
 		// 尝试执行 rtk status 或检测 hook 注入情况
@@ -187,6 +204,8 @@ func getCheckCmd(t define.AgentV2EnvToolItem) string {
 	switch t.Key {
 	case "rtk":
 		return "rtk --version"
+	case "headroom":
+		return "headroom --version"
 	default:
 		return t.DetectBin + " --version"
 	}

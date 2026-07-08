@@ -2224,10 +2224,11 @@ func SetRemoteBranchCheck(c *gin.Context) {
 			continue
 		}
 
-		// 检查远程分支是否存在
+		// 检查远程分支是否存在（同时获取远程 HEAD SHA）
 		lsCmd := exec.Command(`git`, `-C`, localDir, `ls-remote`, `--heads`, `origin`, branchName)
 		lsOutput, lsErr := lsCmd.CombinedOutput()
-		remoteExists := lsErr == nil && strings.TrimSpace(string(lsOutput)) != ``
+		lsTrimmed := strings.TrimSpace(string(lsOutput))
+		remoteExists := lsErr == nil && lsTrimmed != ``
 
 		// 检查当前本地分支（确认目录下确实是该分支）
 		currentBranchCmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, `--abbrev-ref`, `HEAD`)
@@ -2247,29 +2248,46 @@ func SetRemoteBranchCheck(c *gin.Context) {
 		// 远程分支存在则已推送
 		row[`pushed`] = true
 
-		// 先 fetch 以获取最新远程信息（静默 fetch）
-		fetchCmd := exec.Command(`git`, `-C`, localDir, `fetch`, `origin`, branchName)
-		fetchCmd.CombinedOutput() // 忽略 fetch 错误，继续检查
-
-		// 获取追踪的远程分支名
-		trackCmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, `--abbrev-ref`, branchName+`@{upstream}`)
-		trackOutput, trackErr := trackCmd.CombinedOutput()
-		if trackErr == nil {
-			row[`remote_branch_name`] = strings.TrimSpace(string(trackOutput))
-		} else {
-			row[`remote_branch_name`] = `origin/` + branchName
+		// 获取远程 HEAD SHA（从 ls-remote 输出解析，格式：<sha>\trefs/heads/<name>）
+		remoteSha := ``
+		if fields := strings.Fields(lsTrimmed); len(fields) >= 1 {
+			remoteSha = fields[0]
 		}
 
-		// 检查 ahead/behind
-		revListCmd := exec.Command(`git`, `-C`, localDir, `rev-list`, `--left-right`, `--count`, branchName+`...origin/`+branchName)
-		revOutput, revErr := revListCmd.CombinedOutput()
+		// 获取本地分支 HEAD SHA，用于快速比对
+		localShaCmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, branchName)
+		localShaOutput, _ := localShaCmd.CombinedOutput()
+		localSha := strings.TrimSpace(string(localShaOutput))
+
 		localAhead := 0
 		remoteAhead := 0
-		if revErr == nil {
-			parts := strings.Fields(strings.TrimSpace(string(revOutput)))
-			if len(parts) >= 2 {
-				localAhead = cast.ToInt(parts[0])
-				remoteAhead = cast.ToInt(parts[1])
+
+		if remoteSha != `` && localSha == remoteSha {
+			// 本地与远程 HEAD 一致，无需 fetch，跳过耗时操作
+			row[`remote_branch_name`] = `origin/` + branchName
+		} else {
+			// HEAD 不一致，需要 fetch 获取最新远程引用后精确计算 ahead/behind
+			fetchCmd := exec.Command(`git`, `-C`, localDir, `fetch`, `--no-tags`, `origin`, branchName)
+			fetchCmd.CombinedOutput() // 忽略 fetch 错误，继续检查
+
+			// 获取追踪的远程分支名
+			trackCmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, `--abbrev-ref`, branchName+`@{upstream}`)
+			trackOutput, trackErr := trackCmd.CombinedOutput()
+			if trackErr == nil {
+				row[`remote_branch_name`] = strings.TrimSpace(string(trackOutput))
+			} else {
+				row[`remote_branch_name`] = `origin/` + branchName
+			}
+
+			// 检查 ahead/behind
+			revListCmd := exec.Command(`git`, `-C`, localDir, `rev-list`, `--left-right`, `--count`, branchName+`...origin/`+branchName)
+			revOutput, revErr := revListCmd.CombinedOutput()
+			if revErr == nil {
+				parts := strings.Fields(strings.TrimSpace(string(revOutput)))
+				if len(parts) >= 2 {
+					localAhead = cast.ToInt(parts[0])
+					remoteAhead = cast.ToInt(parts[1])
+				}
 			}
 		}
 

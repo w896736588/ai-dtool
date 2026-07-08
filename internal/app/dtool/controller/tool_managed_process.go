@@ -612,13 +612,20 @@ func (r *systemManagedProcessRunner) Start(config managedProcessConfig, logFile 
 		return nil, err
 	}
 
+	pid := cmd.Process.Pid
+
+	// 立即释放进程句柄，使子进程彻底脱离父进程 lifecycle / Release process handle immediately to completely detach child from parent lifecycle.
+	// 在 Windows 上防止父进程退出时连带终止子进程 / On Windows this prevents child termination when parent exits.
+	_ = cmd.Process.Release()
+
 	go func() {
-		_ = cmd.Wait()
+		// 使用 PID 轮询等待进程退出，不依赖 exec.Cmd.Wait() 持有的句柄 / Poll by PID instead of relying on handle held by exec.Cmd.Wait().
+		waitForManagedProcessExit(pid)
 		_ = writer.Close()
 	}()
 
 	return &managedProcessSnapshot{
-		PID:       int32(cmd.Process.Pid),
+		PID:       int32(pid),
 		LogFile:   logFile,
 		StartedAt: time.Now().Unix(),
 		IsManaged: true,
@@ -672,6 +679,31 @@ func normalizeManagedExecutable(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = filepath.Base(value)
 	return strings.TrimSuffix(value, `.exe`)
+}
+
+// waitForManagedProcessExit 通过 PID 轮询等待进程退出 / Poll process by PID until it exits.
+// 不使用 exec.Cmd.Wait() 持有的句柄，避免父进程退出时影响子进程 / Avoids holding process handle that ties child lifecycle to parent.
+func waitForManagedProcessExit(pid int) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		if !isManagedProcessAliveByPid(pid) {
+			return
+		}
+	}
+}
+
+// isManagedProcessAliveByPid 通过 PID 检测进程是否存活 / Check if process is alive by PID.
+func isManagedProcessAliveByPid(pid int) bool {
+	proc, err := process.NewProcess(int32(pid))
+	if err != nil {
+		return false
+	}
+	running, err := proc.IsRunning()
+	if err != nil {
+		return false
+	}
+	return running
 }
 
 type managedProcessLogWriter struct {

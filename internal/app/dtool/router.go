@@ -666,6 +666,10 @@ func agentV2Router(tGin *p_gin.Gin) {
 	// 环境工具（系统级 CLI 工具，如 RTK）
 	tGin.GinPost(`/api/AgentV2EnvToolList`, controller.AgentV2EnvToolList)
 	tGin.GinPost(`/api/AgentV2EnvToolAction`, controller.AgentV2EnvToolAction)
+	// Headroom 代理管理（独立于 EnvTool 的代理进程配置+启停控制）
+	tGin.GinPost(`/api/AgentV2HeadroomStatus`, controller.AgentV2HeadroomStatus)
+	tGin.GinPost(`/api/AgentV2HeadroomConfigSave`, controller.AgentV2HeadroomConfigSave)
+	tGin.GinPost(`/api/AgentV2HeadroomProcess`, controller.AgentV2HeadroomProcess)
 	// 已安装扩展扫描（.pi/extensions/ 目录）
 	tGin.GinPost(`/api/AgentV2InstalledToolList`, controller.AgentV2InstalledToolList)
 	tGin.GinPost(`/api/AgentV2InstalledToolRemove`, controller.AgentV2InstalledToolRemove)
