@@ -1,6 +1,6 @@
 ﻿<template>
   <div class="kv-table">
-    <div class="kv-table-scroll">
+    <div class="kv-table-scroll" ref="scrollContainer">
     <table class="kv-table-inner">
       <thead>
       <tr>
@@ -108,8 +108,9 @@
     </table>
     </div>
 
-    <div class="footer" style="margin: 10px;">
+    <div class="footer" style="margin: 10px; display: flex; align-items: center; gap: 8px;">
       <pl-button type="primary" plain size="small" class="add-rule-btn" @click="addItem">+ 添加参数</pl-button>
+      <pl-button v-if="showJsonImport" size="small" @click="$emit('json-import')">通过JSON导入</pl-button>
 <!--      <pl-button link @click="handleBulkEdit">批量编辑</pl-button>-->
     </div>
   </div>
@@ -120,10 +121,15 @@ import Base from '@/utils/base.js'
 
 export default {
   name: 'KeyValueEditor',
+  emits: ['update', 'json-import'],
   props: {
     list: {
       type: Array,
       default: () => []
+    },
+    showJsonImport: {
+      type: Boolean,
+      default: false
     },
   },
   data() {
@@ -147,6 +153,12 @@ export default {
     addItem() {
       this.list.push({ id: this.nextId++, field: '', type: 'string', value: '', description: '' })
       this.handleDataChange()
+      this.$nextTick(() => {
+        const el = this.$refs.scrollContainer
+        if (el) {
+          el.scrollTop = el.scrollHeight
+        }
+      })
     },
 
     removeItem(index) {

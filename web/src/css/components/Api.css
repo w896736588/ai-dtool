@@ -358,6 +358,7 @@
   color: #4f804f;
   background: #fff;
   border-bottom: 1px solid #fff;
+  box-shadow: none;
 }
 
 .workspace-tabs :deep(.el-tabs__item:hover) {

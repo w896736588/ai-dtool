@@ -20,8 +20,8 @@
 
 .api-header {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 10px;
   background: #f7f9f5;
   border: 1px solid #e6ece0;
@@ -32,13 +32,81 @@
   z-index: 100;
 }
 
-.api-name-input {
-  flex: 0 0 240px;
-  max-width: 300px;
+.api-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.api-header-row--full {
+  width: 100%;
 }
 
 .api-id-tag {
   flex-shrink: 0;
+}
+
+/* header 中方法+名称的纯文本展示 */
+.api-display-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.api-display-method {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fff;
+}
+
+.api-display-method--get {
+  background: #5a8a5a;
+}
+
+.api-display-method--post {
+  background: #d97706;
+}
+
+.api-display-name-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* 基础信息编辑 Tab */
+.basic-info-form {
+  max-width: 520px;
+  padding: 4px 0;
+}
+
+.basic-info-item {
+  margin-bottom: 16px;
+}
+
+.basic-info-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5a6755;
+}
+
+.basic-method-select {
+  width: 160px;
 }
 
 .api-title-section {
@@ -47,10 +115,6 @@
   gap: 12px;
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.api-method-select {
-  flex: 0 0 92px;
 }
 
 .api-env-select {
@@ -182,12 +246,6 @@
   overflow: hidden;
 }
 
-.body-import-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
-}
-
 .body-editor-json {
   padding: 10px;
   border: 1px solid #e6ece0;
@@ -279,7 +337,6 @@
   border-radius: 10px;
   border-color: #6ea46b;
   background: linear-gradient(180deg, #7cbc76 0%, #659f61 100%);
-  box-shadow: 0 8px 18px rgba(101, 159, 97, 0.24);
 }
 
 .request-run-btn:hover,
@@ -337,7 +394,6 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   transition: background 0.2s, transform 0.2s;
   z-index: 10;
 }
@@ -502,7 +558,6 @@
   background: #5a8a5a;
   border-color: #5a8a5a;
   color: #fff;
-  box-shadow: 0 6px 14px rgba(90, 138, 90, 0.22);
 }
 
 :deep(.detail-segmented .el-radio-button__inner:hover) {
@@ -770,4 +825,11 @@
   :deep(.detail-segmented) {
     width: 100%;
   }
+}
+
+/* 移除 tab 所有 box-shadow */
+::deep(.detail-tabs > .el-tabs__header .el-tabs__item),
+::deep(.detail-tabs > .el-tabs__header .el-tabs__item.is-active),
+::deep(.detail-tabs > .el-tabs__header .el-tabs__active-bar) {
+  box-shadow: none;
 }
