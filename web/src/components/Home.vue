@@ -80,55 +80,55 @@
         </el-menu-item>
       </el-menu>
 
-      <!-- 底部工具栏 -->
+      <!-- 底部工具栏 - 快捷操作区 -->
       <div class="sidebar-footer">
         <el-tag v-if="ip" size="small" type="info" @click="copyIp()" style="cursor: pointer; margin-bottom: 8px;">
           {{ ip }}
         </el-tag>
-        <div class="footer-buttons">
-          <button type="button" class="footer-action footer-action--leaf" @click="OpenNewBlank()">
-            <span class="footer-action__title">新页卡</span>
+        <div class="footer-quick-ops">
+          <button type="button" class="quick-op quick-op--leaf" @click="OpenNewBlank()" title="新页卡">
+            <span class="quick-op__icon">▸</span>
+            <span class="quick-op__label">新页卡</span>
           </button>
-          <button type="button" class="footer-action footer-action--mint" @click="drawerVisibleTools = true">
-            <span class="footer-action__title">小工具</span>
+          <button
+            type="button"
+            class="quick-op quick-op--amber"
+            :class="{ 'quick-op--active': gitPendingTotalCount > 0 }"
+            @click="openGitPendingDialog"
+            title="Git 未提交"
+          >
+            <span class="quick-op__dot" :class="{ 'quick-op__dot--on': gitPendingTotalCount > 0 }"></span>
+            <span class="quick-op__label">Git</span>
           </button>
-          <button type="button" class="footer-action footer-action--sky" @click="openSshConnectionsDialog">
-            <span class="footer-action__title">当前 SSH 连接数 {{ sshConnectionCount }}</span>
+          <button
+            type="button"
+            class="quick-op quick-op--sse"
+            :class="sseOpClass"
+            @click="showSseDetailDialog"
+            :title="'SSE ' + sseConnectionCount + '/' + sseConnectionTotal"
+          >
+            <span class="quick-op__dot" :class="{ 'quick-op__dot--on': sseConnectionCount > 0, 'quick-op__dot--warn': sseConnectionPct >= 90, 'quick-op__dot--full': sseConnectionPct >= 100 }"></span>
+            <span class="quick-op__label">SSE</span>
+          </button>
+          <button type="button" class="quick-op quick-op--mint" @click="drawerVisibleTools = true" title="小工具">
+            <span class="quick-op__icon">⚙</span>
+            <span class="quick-op__label">小工具</span>
+          </button>
+          <button type="button" class="quick-op quick-op--sky" @click="openSshConnectionsDialog" title="SSH连接">
+            <span class="quick-op__dot quick-op__dot--ssh"></span>
+            <span class="quick-op__label">SSH</span>
+          </button>
+          <button
+            type="button"
+            class="quick-op quick-op--task"
+            :class="[getTaskOpClass(), { 'quick-op--pulse': hasRunningAsyncTask() }]"
+            @click="openAsyncTaskDialog"
+            title="异步任务"
+          >
+            <span class="quick-op__dot" :class="{ 'quick-op__dot--on': asyncTaskSummary.total > 0, 'quick-op__dot--running': hasRunningAsyncTask(), 'quick-op__dot--failed': asyncTaskSummary.failed_count > 0 }"></span>
+            <span class="quick-op__label">任务</span>
           </button>
         </div>
-        <button
-          type="button"
-          class="footer-action footer-action--sand async-task-entry"
-          :class="[getAsyncTaskEntryClassName(), { 'async-task-entry--running': hasRunningAsyncTask() }]"
-          @click="openAsyncTaskDialog"
-        >
-          <span class="footer-action__title async-task-entry__title">
-            <span class="async-task-entry__label">任务</span>
-            <span class="async-task-entry__summary">
-              <span
-                class="async-task-entry__digit async-task-entry__digit--running"
-                :title="getAsyncTaskCounterDescription('running')"
-              >{{ asyncTaskSummary.running_count || 0 }}</span>
-              <span class="async-task-entry__slash">/</span>
-              <span
-                class="async-task-entry__digit async-task-entry__digit--pending"
-                :title="getAsyncTaskCounterDescription('pending')"
-              >{{ asyncTaskSummary.pending_count || 0 }}</span>
-              <span class="async-task-entry__slash">/</span>
-              <span
-                class="async-task-entry__digit async-task-entry__digit--await-confirm"
-                :title="getAsyncTaskCounterDescription('await_confirm')"
-              >{{ asyncTaskSummary.await_confirm_count || 0 }}</span>
-              <span class="async-task-entry__slash">/</span>
-              <span
-                class="async-task-entry__digit async-task-entry__digit--failed"
-                :title="getAsyncTaskCounterDescription('failed')"
-              >{{ asyncTaskSummary.failed_count || 0 }}</span>
-            </span>
-            <span v-if="hasRunningAsyncTask()" class="async-task-entry__spinner" aria-hidden="true"></span>
-          </span>
-        </button>
-
       </div>
     </aside>
 
@@ -152,7 +152,7 @@
     size="90%"
     title="小工具"
   >
-    <tools></tools>
+    <Tools></Tools>
   </el-drawer>
 
   <!-- Safe 登录弹窗 -->
@@ -184,13 +184,61 @@
     </template>
   </el-dialog>
 
-  <el-dialog
-    v-model="sshConnectionsDialogVisible"
-    title="当前SSH连接列表"
-    width="82%"
-    top="6vh"
-    class="ssh-connections-dialog"
-  >
+  <el-dialog v-model="gitDialogVisible" title="Git 未提交文件" width="720px">
+      <div v-if="gitRepos.length === 0">暂无未提交文件</div>
+      <div v-for="repo in gitRepos" :key="repo.label + repo.dir" class="git-repo-block">
+        <div class="git-repo-head">
+          <div>
+            <div class="git-repo-title">{{ repo.label }} · {{ repo.count }}</div>
+            <div class="git-repo-dir">{{ repo.dir }}</div>
+          </div>
+          <el-button
+            type="primary"
+            size="small"
+            :loading="commitPushLoadingMap[repo.dir] === true"
+            @click="commitPushRepo(repo)"
+          >
+            commit+push
+          </el-button>
+        </div>
+        <el-table :data="normalizeRepoFiles(repo).map(item => ({ path: item }))" size="small" border max-height="240">
+          <el-table-column prop="path" label="文件" />
+        </el-table>
+      </div>
+    </el-dialog>
+
+    <el-dialog v-model="sseDetailVisible" title="SSE 连接详情" width="860px" top="8vh">
+      <el-table :data="sseDetailList" border size="small" style="width: 100%">
+        <el-table-column prop="businessLabel" label="业务类型" width="130" />
+        <el-table-column prop="clientId" label="Client ID" min-width="220">
+          <template #default="{ row }">
+            <span v-if="row.clientId" class="sse-detail-mono">{{ row.clientId }}</span>
+            <span v-else style="color: #909399;">（未连接）</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="url" label="SSE 地址" min-width="340">
+          <template #default="{ row }">
+            <span v-if="row.url" class="sse-detail-mono sse-detail-url">{{ row.url }}</span>
+            <span v-else style="color: #909399;">（未连接）</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="statusLabel" label="状态" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.connected ? 'success' : 'info'" size="small" disable-transitions>
+              {{ row.connected ? '已连接' : '未连接' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
+    <el-dialog
+      v-model="sshConnectionsDialogVisible"
+      title="当前SSH连接列表"
+      width="82%"
+      top="6vh"
+      class="ssh-connections-dialog"
+    >
     <div class="ssh-dialog-toolbar">
       <el-tag type="success" effect="light">连接数 {{ sshConnectionCount }}</el-tag>
       <pl-button size="small" type="primary" plain @click="refreshSshConnections(true)">刷新列表</pl-button>
@@ -414,6 +462,9 @@ import agentCliApi from '@/utils/base/agent_cli'
 import homeTaskApi from '@/utils/base/home_task'
 import taskWorkflowApi from '@/utils/base/task_workflow'
 import sseDistribute from '@/utils/base/sse_distribute'
+import sseBusiness from '@/utils/base/sse_business'
+import git from '@/utils/base/git'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import Tools from "@/components/Tools.vue";
 import Markdown from '@/components/Markdown.vue'
 import GitActionButton from "@/components/base/GitActionButton.vue";
@@ -436,6 +487,14 @@ import {
 
 // SSH_CONNECTION_REFRESH_INTERVAL_MS 统一控制 SSH 连接轮询周期。
 const SSH_CONNECTION_REFRESH_INTERVAL_MS = 5000
+// SSE_BUSINESS_LABEL_MAP SSE 业务类型中文标签映射
+const SSE_BUSINESS_LABEL_MAP = {
+  general: '通用 SSE',
+  agent_cli: 'Agent CLI',
+  task_workflow: 'Task Workflow',
+  agent_cli_chat: 'Agent CLI 对话',
+  work_flow_chat: 'Workflow 对话',
+}
 // ASYNC_TASK_ACTION_* 统一定义异步任务动作常量。
 const ASYNC_TASK_ACTION_SAVE_DAILY_REPORT = 'save_daily_report'
 const ASYNC_TASK_ACTION_OVERWRITE_MEMORY_FRAGMENT = 'overwrite_memory_fragment'
@@ -486,6 +545,20 @@ export default {
       },
       ip: '',
       sshConnectionCount: 0,
+      sshConnections: [],
+      sshConnectionsDialogVisible: false,
+      sshConnectionsLoading: false,
+      sshConnectionTimer: null,
+      // Git 未提交相关
+      gitPendingTotalCount: 0,
+      gitRepos: [],
+      gitDialogVisible: false,
+      commitPushLoadingMap: {},
+      // SSE 连接相关
+      sseConnectionCount: 0,
+      sseConnectionTotal: 0,
+      sseDetailVisible: false,
+      sseDetailList: [],
       workflowUnreadVisible: false,
       workflowUnreadTotal: 0,
       workflowUnreadMap: {},
@@ -538,6 +611,18 @@ export default {
     hideAppSidebar() {
       return String(this.$route.query.hide_menu || '') === '1'
     },
+    // sseConnectionPct SSE 连接占比百分比
+    sseConnectionPct() {
+      if (!this.sseConnectionTotal) return 0
+      return Math.round((this.sseConnectionCount / this.sseConnectionTotal) * 100)
+    },
+    // sseOpClass SSE 按钮状态样式
+    sseOpClass() {
+      if (this.sseConnectionPct >= 100) return 'quick-op--sse-full'
+      if (this.sseConnectionPct >= 90) return 'quick-op--sse-warn'
+      if (this.sseConnectionCount > 0) return 'quick-op--sse-ok'
+      return ''
+    },
   },
   watch: {
     '$route.path'(newPath) {
@@ -560,6 +645,13 @@ export default {
     // 注册Shell连接状态SSE监听
     sseDistribute.RegisterReceive('shell_connections', function(data, type, distributeId) {
       _that.handleSshConnectionsUpdate(data)
+    })
+    // 注册SSE连接数监听
+    sseDistribute.RegisterReceive('sse_connection_count', function(data) {
+      if (data && typeof data === 'object') {
+        _that.sseConnectionCount = data.count || 0
+        _that.sseConnectionTotal = data.total || 0
+      }
     })
     // 注册异步任务状态SSE监听
     sseDistribute.RegisterReceive('async_tasks', function(data) {
@@ -1161,6 +1253,16 @@ export default {
       }
     },
     handleGitPendingStatusUpdate(data) {
+      if (!data || typeof data !== 'object') {
+        this.gitPendingTotalCount = 0
+        this.gitRepos = []
+      } else {
+        this.gitPendingTotalCount = Number(data.total_count || 0)
+        this.gitRepos = Array.isArray(data.repos) ? data.repos.map(repo => ({
+          ...repo,
+          files: Array.isArray(repo.files) ? repo.files.filter(item => typeof item === 'string' && item.trim() !== '') : [],
+        })) : []
+      }
       const exceedsLimit = !!data?.main_db_storage_alert?.exceeds_limit
       this.mainDbStorageAlertVisible = exceedsLimit
       if (this.$eventBus) {
@@ -1298,6 +1400,138 @@ export default {
       this.menuName = keyPath[0]
       this.$router.push(keyPath[0])
     },
+    // openGitPendingDialog 打开 Git 未提交文件弹窗
+    openGitPendingDialog() {
+      this.gitDialogVisible = true
+    },
+    // getTaskOpClass 任务按钮状态样式
+    getTaskOpClass() {
+      if (this.asyncTaskSummary.failed_count > 0) return 'quick-op--task-failed'
+      if (this.asyncTaskSummary.await_confirm_count > 0) return 'quick-op--task-warn'
+      if (this.asyncTaskSummary.running_count > 0) return 'quick-op--task-running'
+      if (this.asyncTaskSummary.total > 0) return 'quick-op--task-pending'
+      return 'quick-op--task-idle'
+    },
+    // normalizeRepoFiles
+    normalizeRepoFiles(repo) {
+      if (!repo || !Array.isArray(repo.files)) return []
+      return repo.files.filter(item => typeof item === 'string' && item.trim() !== '')
+    },
+    // commitPushRepo
+    async commitPushRepo(repo) {
+      const dir = repo && repo.dir ? String(repo.dir).trim() : ''
+      if (!dir) return
+      try {
+        const result = await ElMessageBox.prompt('请输入 commit message', 'commit+push', {
+          confirmButtonText: '提交',
+          cancelButtonText: '取消',
+          inputValue: `chore: sync pending changes ${new Date().toLocaleString()}`,
+          inputPattern: /\S+/,
+          inputErrorMessage: 'commit message 不能为空',
+        })
+        const message = (result.value || '').trim()
+        if (!message) return
+        this.commitPushLoadingMap = {
+          ...this.commitPushLoadingMap,
+          [dir]: true,
+        }
+        git.GitPendingCommitPush({ dir, message }, (response) => {
+          this.commitPushLoadingMap = {
+            ...this.commitPushLoadingMap,
+            [dir]: false,
+          }
+          if (!response || response.ErrCode !== 0) {
+            ElMessage.error((response && response.ErrMsg) || 'commit+push 失败')
+            return
+          }
+          ElMessage.success('commit+push 成功')
+          this.refreshGitPendingStatus()
+        })
+      } catch (err) {
+        return
+      }
+    },
+    // refreshGitPendingStatus 刷新 Git 待提交状态
+    refreshGitPendingStatus() {
+      base.BasePost('/api/GitPendingStatus', {}, (response) => {
+        if (!response || response.ErrCode !== 0 || !response.Data) {
+          return
+        }
+        this.gitPendingTotalCount = Number(response.Data.total_count || 0)
+        this.gitRepos = Array.isArray(response.Data.repos) ? response.Data.repos.map(repo => ({
+          ...repo,
+          files: Array.isArray(repo.files) ? repo.files.filter(item => typeof item === 'string' && item.trim() !== '') : [],
+        })) : []
+      })
+    },
+    // showSseDetailDialog 点击 SSE 按钮时弹窗展示连接详情
+    showSseDetailDialog() {
+      const list = []
+      const generalInfo = sseDistribute.GetSseInfo()
+      if (generalInfo) {
+        list.push({
+          businessType: 'general',
+          businessLabel: SSE_BUSINESS_LABEL_MAP['general'] || '通用 SSE',
+          clientId: generalInfo.clientId || '',
+          url: generalInfo.url || '',
+          connected: generalInfo.connected,
+          source: 'local',
+        })
+      }
+      const bizInfos = sseBusiness.GetAllBusinessInfos()
+      if (bizInfos && bizInfos.length) {
+        for (let i = 0; i < bizInfos.length; i++) {
+          const info = bizInfos[i]
+          list.push({
+            businessType: info.businessType,
+            businessLabel: SSE_BUSINESS_LABEL_MAP[info.businessType] || info.businessType,
+            clientId: info.clientId || '',
+            url: info.url || '',
+            connected: info.connected,
+            source: 'local',
+          })
+        }
+      }
+      this.sseDetailList = list
+      this.sseDetailVisible = true
+      this.fetchServerSseConnections()
+    },
+    // fetchServerSseConnections 从后端拉取服务端 SSE 连接
+    fetchServerSseConnections() {
+      base.BasePost('/api/SseConnectionDetails', {}, (response) => {
+        if (!response || response.ErrCode !== 0 || !response.Data || !response.Data.connections) {
+          return
+        }
+        const serverConns = response.Data.connections || []
+        const localClientIds = new Set()
+        for (let i = 0; i < this.sseDetailList.length; i++) {
+          if (this.sseDetailList[i].clientId) {
+            localClientIds.add(this.sseDetailList[i].clientId)
+          }
+        }
+        const sseHost = base.GetSseApiHost()
+        for (let i = 0; i < serverConns.length; i++) {
+          const conn = serverConns[i]
+          if (localClientIds.has(conn.client_id)) continue
+          const connType = conn.type || 'general'
+          let routePath = '/sse'
+          if (connType === 'agent_cli') {
+            routePath = '/sse/agent_cli'
+          } else if (connType === 'task_workflow') {
+            routePath = '/sse/task_workflow'
+          }
+          const url = sseHost ? (sseHost + routePath + '?client_id=' + encodeURIComponent(conn.client_id) + '&token=***') : ''
+          this.sseDetailList.push({
+            businessType: connType,
+            businessLabel: SSE_BUSINESS_LABEL_MAP[connType] || connType,
+            clientId: conn.client_id || '',
+            url: url,
+            connected: true,
+            source: 'server',
+          })
+        }
+      })
+    },
   },
   beforeUnmount() {
     if (this.sshConnectionTimer) {
@@ -1323,6 +1557,7 @@ export default {
     }
     // 注销所有 SSE 接收回调
     sseDistribute.UnRegisterReceive('shell_connections')
+    sseDistribute.UnRegisterReceive('sse_connection_count')
     sseDistribute.UnRegisterReceive('async_tasks')
     sseDistribute.UnRegisterReceive('safe_auth_required')
     sseDistribute.UnRegisterReceive('git_pending_status')
