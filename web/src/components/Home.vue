@@ -98,7 +98,7 @@
             title="Git 未提交"
           >
             <span class="quick-op__dot" :class="{ 'quick-op__dot--on': gitPendingTotalCount > 0 }"></span>
-            <span class="quick-op__label">Git</span>
+            <span class="quick-op__label">Git<span v-if="gitPendingTotalCount > 0">({{ gitPendingTotalCount }})</span></span>
           </button>
           <button
             type="button"
@@ -107,8 +107,8 @@
             @click="showSseDetailDialog"
             :title="'SSE ' + sseConnectionCount + '/' + sseConnectionTotal"
           >
-            <span class="quick-op__dot" :class="{ 'quick-op__dot--on': sseConnectionCount > 0, 'quick-op__dot--warn': sseConnectionPct >= 90, 'quick-op__dot--full': sseConnectionPct >= 100 }"></span>
-            <span class="quick-op__label">SSE</span>
+          <span class="quick-op__dot" :class="{ 'quick-op__dot--on': sseConnectionCount > 0, 'quick-op__dot--warn': sseConnectionPct >= 90, 'quick-op__dot--full': sseConnectionPct >= 100 }"></span>
+          <span class="quick-op__label">SSE<span v-if="sseConnectionCount > 0">({{ sseConnectionCount }})</span></span>
           </button>
           <button type="button" class="quick-op quick-op--mint" @click="drawerVisibleTools = true" title="小工具">
             <span class="quick-op__icon">⚙</span>
@@ -116,7 +116,7 @@
           </button>
           <button type="button" class="quick-op quick-op--sky" @click="openSshConnectionsDialog" title="SSH连接">
             <span class="quick-op__dot quick-op__dot--ssh"></span>
-            <span class="quick-op__label">SSH</span>
+            <span class="quick-op__label">SSH<span v-if="sshConnectionCount > 0">({{ sshConnectionCount }})</span></span>
           </button>
           <button
             type="button"

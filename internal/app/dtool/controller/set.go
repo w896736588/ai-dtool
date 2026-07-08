@@ -1492,8 +1492,13 @@ func SetCronConfigGet(c *gin.Context) {
 	}
 	result := make([]map[string]any, 0, len(list))
 	for _, row := range list {
+		// 跳过已从 CronTaskRegistry 移除的孤儿定时任务（如已废弃的兜底同步任务），避免在前端重复展示。
+		taskType := cast.ToString(row[`type`])
+		if _, ok := define.CronTaskRegistry[taskType]; !ok {
+			continue
+		}
 		result = append(result, map[string]any{
-			`type`:              cast.ToString(row[`type`]),
+			`type`:              taskType,
 			`name`:              cast.ToString(row[`name`]),
 			`enabled`:           cast.ToInt(row[`enabled`]),
 			`trigger_time`:      strings.TrimSpace(cast.ToString(row[`trigger_time`])),

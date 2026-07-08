@@ -177,3 +177,33 @@
 .error-text {
   color: #f56c6c;
 }
+
+/* --- API Key 眼睛切换图标 --- */
+.api-key-input-wrap {
+  position: relative;
+  width: 100%;
+}
+.api-key-eye {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #909399;
+  font-size: 16px;
+  transition: color .2s;
+}
+.api-key-eye:hover {
+  color: #409eff;
+}
+.api-key-eye--loading {
+  cursor: default;
+  animation: api-key-spin 1s linear infinite;
+}
+@keyframes api-key-spin {
+  from { transform: translateY(-50%) rotate(0deg); }
+  to { transform: translateY(-50%) rotate(360deg); }
+}

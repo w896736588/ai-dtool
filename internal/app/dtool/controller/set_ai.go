@@ -39,11 +39,41 @@ order by id desc`
 	gsgin.GinResponseSuccess(c, ``, list)
 }
 
+// SetAiProviderKeyGet 查询指定 AI 服务商的真实 API Key，仅用于编辑时查看明文。
+// 列表接口已脱敏，此处单独提供明文以便用户核对，避免编辑其他字段时误用脱敏值覆盖真实密钥。
+func SetAiProviderKeyGet(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	id := cast.ToInt(dataMap[`id`])
+	if id == 0 {
+		gsgin.GinResponseError(c, `id不能为空`, nil)
+		return
+	}
+	list, err := common.DbMain.Client.QueryBySql(
+		`select api_key from tbl_ai_provider where id = ? and status = 1`, id,
+	).All()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if len(list) == 0 {
+		gsgin.GinResponseError(c, `服务商不存在`, nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`api_key`: strings.TrimSpace(cast.ToString(list[0][`api_key`])),
+	})
+}
+
 // SetAiProviderAdd 新增或更新 AI 服务商配置
 func SetAiProviderAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `base_url`, `api_key`})
+	// 编辑时若前端未提交 API Key（空），则不覆盖已保存的真实密钥，避免误清空。
+	if cast.ToString(updateData[`api_key`]) == `` {
+		delete(updateData, `api_key`)
+	}
 	if cast.ToString(updateData[`name`]) == `` {
 		gsgin.GinResponseError(c, `服务商名称不能为空`, nil)
 		return

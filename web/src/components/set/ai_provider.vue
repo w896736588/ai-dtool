@@ -161,7 +161,24 @@
           />
         </el-form-item>
         <el-form-item label="API Key">
-          <el-input v-model="state.editProvider.api_key" type="password" show-password autocomplete="off"/>
+          <el-input
+            v-model="state.editProvider.api_key"
+            :type="state.showApiKey ? 'text' : 'password'"
+            autocomplete="off"
+            :placeholder="Number(state.editProvider.id) > 0 && !state.apiKeyFetched ? '已保存（点击右侧眼睛查看）' : '请输入 API Key'"
+          >
+            <template #suffix>
+              <el-icon
+                class="api-key-eye"
+                :class="{ 'api-key-eye--loading': state.apiKeyLoading }"
+                :title="state.showApiKey ? '隐藏' : '显示'"
+                @click="ToggleApiKey"
+              >
+                <View v-if="state.showApiKey" />
+                <Hide v-else />
+              </el-icon>
+            </template>
+          </el-input>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -246,12 +263,12 @@
 
 <script>
 import {defineComponent, getCurrentInstance, reactive} from 'vue'
-import {ArrowRight} from '@element-plus/icons-vue'
+import {ArrowRight, View, Hide, Loading} from '@element-plus/icons-vue'
 import common from '@/utils/common'
 import aiSet from '@/utils/base/ai_set'
 
 export default defineComponent({
-  components: {ArrowRight},
+  components: {ArrowRight, View, Hide, Loading},
   setup() {
     const proxy = getCurrentInstance().proxy
     const instance = getCurrentInstance().appContext.config.globalProperties
@@ -263,6 +280,10 @@ export default defineComponent({
       dialogProvider: false,
       dialogModel: false,
       testingModelId: 0,
+      // API Key 显隐控制
+      showApiKey: false,        // 是否明文显示
+      apiKeyFetched: false,     // 是否已拉取真实密钥（区分“未改动”与“已查看”）
+      apiKeyLoading: false,     // 拉取真实密钥中
       editProvider: {},
       editModel: {},
       // 请求日志相关
@@ -373,18 +394,55 @@ export default defineComponent({
     // --- Provider 操作 ---
 
     const ShowAddProvider = function (){
-      state.editProvider = {request_format: 'openai'}
+      state.editProvider = {request_format: 'openai', api_key: ''}
+      state.showApiKey = false
+      state.apiKeyFetched = false
+      state.apiKeyLoading = false
       state.dialogProvider = true
     }
 
     const ShowEditProvider = function (row, isCopy){
       state.editProvider = {...row, request_format: row.request_format || row.provider_type || 'openai'}
+      // 编辑已有服务商时，API Key 保留后端返回的脱敏值用于 * 号展示；
+      // 复制时视为新建，不携带原密钥。
       if(isCopy) state.editProvider.id = 0
+      if(Number(state.editProvider.id) === 0) state.editProvider.api_key = ''
+      state.showApiKey = false
+      state.apiKeyFetched = false
+      state.apiKeyLoading = false
       state.dialogProvider = true
+    }
+
+    // 切换 API Key 显隐：编辑已有服务商且尚未拉取真实密钥时，先请求明文再显示。
+    const ToggleApiKey = function (){
+      if(state.showApiKey){
+        state.showApiKey = false
+        return
+      }
+      if(Number(state.editProvider.id) > 0 && !state.apiKeyFetched){
+        state.apiKeyLoading = true
+        aiSet.AiProviderKeyGet({id: state.editProvider.id}, function (res){
+          state.apiKeyLoading = false
+          if(res.ErrCode === 0){
+            state.editProvider.api_key = res.Data.api_key || ''
+            state.apiKeyFetched = true
+            state.showApiKey = true
+          }else{
+            instance.$helperNotify.error(res.ErrMsg)
+          }
+        })
+      }else{
+        state.showApiKey = true
+      }
     }
 
     const SaveProvider = function (){
       const submitData = {...state.editProvider, request_format: state.editProvider.request_format || 'openai'}
+      // 编辑已有服务商且未查看/未修改 API Key 时，不提交该字段，
+      // 避免用脱敏值（如 sk-****1234）覆盖数据库中保存的真实密钥。
+      if(Number(state.editProvider.id) > 0 && !state.apiKeyFetched){
+        delete submitData.api_key
+      }
       aiSet.AiProviderAdd(submitData, function (response){
         if(response.ErrCode === 0){
           state.dialogProvider = false
@@ -518,6 +576,7 @@ export default defineComponent({
       OpenLogDialog,
       ShowAddProvider,
       ShowEditProvider,
+      ToggleApiKey,
       SaveProvider,
       DeleteProvider,
       ShowAddModel,

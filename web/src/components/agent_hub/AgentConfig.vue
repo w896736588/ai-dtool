@@ -407,7 +407,24 @@
           <el-input v-model="providerForm.base_url" placeholder="例如：https://api.openai.com" />
         </el-form-item>
         <el-form-item label="API Key">
-          <el-input v-model="providerForm.api_key" type="password" show-password placeholder="API 认证密钥" />
+          <div class="api-key-input-wrap">
+            <el-input
+              v-model="providerForm.api_key"
+              :type="showApiKey ? 'text' : 'password'"
+              autocomplete="off"
+              :placeholder="editingProviderId > 0 && !apiKeyFetched ? '已保存（点击右侧眼睛查看）' : 'API 认证密钥'"
+            />
+            <span
+              class="api-key-eye"
+              :class="{ 'api-key-eye--loading': apiKeyLoading }"
+              :title="showApiKey ? '隐藏' : '显示'"
+              @click="toggleApiKey"
+            >
+              <el-icon v-if="apiKeyLoading"><Loading /></el-icon>
+              <el-icon v-else-if="showApiKey"><View /></el-icon>
+              <el-icon v-else><Hide /></el-icon>
+            </span>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -561,11 +578,11 @@
 <script>
 import Base from '@/utils/base.js'
 import aiSet from '@/utils/base/ai_set'
-import { ArrowLeft, ArrowRight, Plus } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Plus, View, Hide, Loading } from '@element-plus/icons-vue'
 
 export default {
   name: 'AgentConfig',
-  components: { ArrowLeft, ArrowRight, Plus },
+  components: { ArrowLeft, ArrowRight, Plus, View, Hide, Loading },
   data() {
     return {
       activeTab: 'basic',
@@ -591,6 +608,10 @@ export default {
       showProviderDlg: false,
       editingProviderId: 0,
       providerForm: { name: '', request_format: 'openai', base_url: '', api_key: '' },
+      // API Key 显隐控制（编辑时通过接口拉取真实密钥）
+      showApiKey: false,
+      apiKeyFetched: false,
+      apiKeyLoading: false,
 
       // Model 对话框
       showModelDlg: false,
@@ -771,25 +792,60 @@ export default {
     showAddProvider() {
       this.editingProviderId = 0
       this.providerForm = { name: '', request_format: 'openai', base_url: '', api_key: '' }
+      this.showApiKey = false
+      this.apiKeyFetched = false
+      this.apiKeyLoading = false
       this.showProviderDlg = true
     },
     showEditProvider(p) {
       this.editingProviderId = p.id
-      this.providerForm = { id: p.id, name: p.name, request_format: p.provider_type, base_url: p.base_url, api_key: p.api_key }
+      // AgentV2ProviderModels 不返回 api_key，默认留空，点击眼睛时再通过接口拉取真实密钥。
+      this.providerForm = { id: p.id, name: p.name, request_format: p.provider_type, base_url: p.base_url, api_key: '' }
+      this.showApiKey = false
+      this.apiKeyFetched = false
+      this.apiKeyLoading = false
       this.showProviderDlg = true
+    },
+    // 切换 API Key 显隐：编辑已有服务商且尚未拉取真实密钥时，先请求明文再显示。
+    toggleApiKey() {
+      if (this.showApiKey) {
+        this.showApiKey = false
+        return
+      }
+      if (this.editingProviderId > 0 && !this.apiKeyFetched) {
+        this.apiKeyLoading = true
+        aiSet.AiProviderKeyGet({ id: this.editingProviderId }, (res) => {
+          this.apiKeyLoading = false
+          if (res.ErrCode === 0) {
+            this.providerForm.api_key = res.Data.api_key || ''
+            this.apiKeyFetched = true
+            this.showApiKey = true
+          } else {
+            this.$message.error(res.ErrMsg)
+          }
+        })
+      } else {
+        this.showApiKey = true
+      }
     },
     saveProvider() {
       if (!this.providerForm.name || !this.providerForm.base_url) {
         this.$message.warning('请填写名称和基础域名')
         return
       }
-      aiSet.AiProviderAdd({
+      const submitData = {
         id: this.editingProviderId || undefined,
         name: this.providerForm.name,
         request_format: this.providerForm.request_format,
         base_url: this.providerForm.base_url,
         api_key: this.providerForm.api_key
-      }, (res) => {
+      }
+      // 编辑已有服务商且未查看/未修改 API Key 时，不提交该字段，
+      // 避免用空值覆盖数据库中保存的真实密钥。
+      if (this.editingProviderId > 0 && !this.apiKeyFetched) {
+        delete submitData.api_key
+      }
+      aiSet.AiProviderAdd(submitData, (res) => {
         if (res.ErrCode === 0) {
           this.showProviderDlg = false
           this.loadProviderModels()
@@ -1444,6 +1500,36 @@ export default {
 }
 
 .empty-hint { padding: 16px; text-align: center; color: #c0c4cc; font-size: 13px; }
+
+/* --- API Key 眼睛切换图标 --- */
+.api-key-input-wrap {
+  position: relative;
+  width: 100%;
+}
+.api-key-eye {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #909399;
+  font-size: 16px;
+  transition: color .2s;
+}
+.api-key-eye:hover {
+  color: #409eff;
+}
+.api-key-eye--loading {
+  cursor: default;
+  animation: api-key-spin 1s linear infinite;
+}
+@keyframes api-key-spin {
+  from { transform: translateY(-50%) rotate(0deg); }
+  to { transform: translateY(-50%) rotate(360deg); }
+}
 
 
 </style>
