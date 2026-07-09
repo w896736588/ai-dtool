@@ -257,7 +257,16 @@
                     <el-button v-if="headroomStatus.running" text size="small" @click="headroomProcess('restart')">
                       重启
                     </el-button>
+                    <el-button text size="small" type="warning" @click="envToolUpgrade(row)" :loading="upgradingKey === row.key">
+                      升级
+                    </el-button>
+                    <el-button v-if="headroomStatus.running" text size="small" type="info" @click="showHeadroomStats(row)">
+                      统计
+                    </el-button>
                   </template>
+                  <el-button text size="small" type="info" @click="showHeadroomLogs(row)">
+                    日志
+                  </el-button>
                   <el-button text size="small" @click="openEnvToolHomepage(row)">
                     主页 ↗
                   </el-button>
@@ -272,6 +281,9 @@
                   </el-button>
                   <el-button v-if="row.extension_installed" text size="small" type="danger" @click="envToolRemove(row)">
                     移除
+                  </el-button>
+                  <el-button v-if="row.installed" text size="small" type="warning" @click="envToolUpgrade(row)" :loading="upgradingKey === row.key">
+                    升级
                   </el-button>
                   <el-button text size="small" @click="openEnvToolHomepage(row)">
                     主页 ↗
@@ -512,6 +524,10 @@
           <el-input-number v-model="headroomConfig.port" :min="1" :max="65535" style="width:160px" />
           <div class="field-hint">代理服务监听端口，Agent 将请求发给 localhost:此端口</div>
         </el-form-item>
+        <el-form-item label="自动启动">
+          <el-switch v-model="headroomConfig.auto_start" />
+          <div class="field-hint" style="margin-left:8px">开启后，程序启动时自动检测并启动 Headroom（默认开启）</div>
+        </el-form-item>
         <el-divider content-position="left">大模型服务商上游地址（留空使用默认值）</el-divider>
         <el-form-item label="Anthropic">
           <el-input v-model="headroomConfig.anthropic_api_url" placeholder="默认: https://api.anthropic.com" />
@@ -570,6 +586,85 @@
       </div>
       <template #footer>
         <el-button @click="showEnvToolDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Headroom 统计信息对话框 -->
+    <el-dialog v-model="showStatsDialog" title="Headroom 压缩统计" width="860px" :close-on-click-modal="true">
+      <div v-if="statsLoading" style="text-align:center;padding:40px">
+        <el-icon class="is-loading" style="font-size:24px"><Loading /></el-icon>
+        <p style="color:#909399;margin-top:8px">正在获取统计信息...</p>
+      </div>
+      <div v-else-if="statsItems.length > 0" class="stats-table-wrap">
+        <table class="stats-table">
+          <tbody>
+            <template v-for="item in statsItems" :key="item.key + item.label">
+              <tr v-if="item.key === '_group_'" class="stats-group-row">
+                <td colspan="2">{{ item.label }}</td>
+              </tr>
+              <tr v-else>
+                <td class="stats-label">{{ item.label }}</td>
+                <td class="stats-value">
+                  <span :class="{ 'stats-num': isNumeric(item.value) }">{{ item.value || '-' }}</span>
+                  <span v-if="item.key !== item.label" class="stats-key-hint">{{ item.key }}</span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div v-else style="color:#909399;text-align:center;padding:20px">无数据，请确保 Headroom 已启动并运行一段时间</div>
+      <template #footer>
+        <el-button @click="showStatsDialog = false">关闭</el-button>
+        <el-button type="primary" @click="showHeadroomStats()">刷新</el-button>
+        <el-button text @click="showStatsRaw = !showStatsRaw">{{ showStatsRaw ? '表格视图' : '原始 JSON' }}</el-button>
+      </template>
+      <div v-if="showStatsRaw" style="margin-top:12px">
+        <pre class="stats-pre">{{ statsRawJson }}</pre>
+      </div>
+    </el-dialog>
+
+    <!-- Headroom 升级/RTK 升级输出对话框 -->
+    <el-dialog v-model="showUpgradeDialog" :title="upgradingKey === 'rtk' ? 'RTK 升级' : 'Headroom 升级'" width="640px" :close-on-click-modal="true">
+      <div v-if="upgradeLoading" style="text-align:center;padding:40px">
+        <el-icon class="is-loading" style="font-size:24px"><Loading /></el-icon>
+        <p style="color:#909399;margin-top:8px">正在检查/执行升级...</p>
+      </div>
+      <div v-else-if="upgradeResult" class="upgrade-output">
+        <pre class="stats-pre">{{ upgradeResult }}</pre>
+      </div>
+      <div v-else style="color:#909399;text-align:center;padding:20px">无输出</div>
+      <template #footer>
+        <el-button @click="showUpgradeDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Headroom 日志查看对话框 -->
+    <el-dialog v-model="showLogDialog" title="Headroom 运行日志" width="780px" :close-on-click-modal="true" class="log-dialog">
+      <div class="log-dialog-layout">
+        <div class="log-sidebar">
+          <div class="log-sidebar-header">日志文件</div>
+          <div v-for="item in logFiles" :key="item.name"
+            class="log-file-item"
+            :class="{ 'log-file-item--active': selectedLogFile === item.name }"
+            @click="selectLogFile(item.name)">
+            <div class="log-file-name">{{ item.name }}</div>
+            <div class="log-file-info">{{ fmtFileSize(item.size) }} · {{ fmtTime(item.mod_time) }}</div>
+          </div>
+          <div v-if="logFiles.length === 0" style="color:#909399;font-size:12px;padding:12px">暂无日志文件</div>
+        </div>
+        <div class="log-content">
+          <div v-if="logContentLoading" style="text-align:center;padding:40px">
+            <el-icon class="is-loading" style="font-size:24px"><Loading /></el-icon>
+          </div>
+          <pre v-else-if="logContent" class="log-content-pre">{{ logContent }}</pre>
+          <div v-else style="color:#909399;text-align:center;padding:40px">选择左侧日志文件查看内容</div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showLogDialog = false">关闭</el-button>
+        <el-button type="primary" @click="loadHeadroomLogs">刷新列表</el-button>
+        <el-button v-if="selectedLogFile" type="primary" @click="selectLogFile(selectedLogFile)">刷新内容</el-button>
       </template>
     </el-dialog>
   </div>
@@ -643,7 +738,8 @@ export default {
         openai_api_url: '',
         gemini_api_url: '',
         cloudcode_api_url: '',
-        vertex_api_url: ''
+        vertex_api_url: '',
+        auto_start: true
       },
       headroomStatus: {
         installed: false,
@@ -653,7 +749,24 @@ export default {
         started_at: 0
       },
 
-      installedTools: []
+      installedTools: [],
+
+      // Stats / Log / Upgrade
+      showStatsDialog: false,
+      statsLoading: false,
+      statsItems: [],
+      statsRawJson: '',
+      showStatsRaw: false,
+      showUpgradeDialog: false,
+      upgradingKey: '',
+      upgradeLoading: false,
+      upgradeResult: '',
+      upgradeCheckOnly: false,
+      showLogDialog: false,
+      logFiles: [],
+      selectedLogFile: '',
+      logContent: '',
+      logContentLoading: false
     }
   },
   computed: {
@@ -1140,7 +1253,8 @@ export default {
               openai_api_url: res.Data.openai_api_url || '',
               gemini_api_url: res.Data.gemini_api_url || '',
               cloudcode_api_url: res.Data.cloudcode_api_url || '',
-              vertex_api_url: res.Data.vertex_api_url || ''
+              vertex_api_url: res.Data.vertex_api_url || '',
+              auto_start: res.Data.hasOwnProperty('auto_start') ? res.Data.auto_start : true
             }
           }
         }
@@ -1277,6 +1391,100 @@ export default {
       this.$confirm('确定删除此工作空间？', '提示', { type: 'warning' }).then(() => {
         Base.BasePost('/api/AgentV2WorkspaceDelete', { id: row.id }, () => { this.loadWorkspaces() })
       }).catch(() => {})
+    },
+
+    // Headroom 统计信息
+    showHeadroomStats(row) {
+      this.showStatsDialog = true
+      this.statsLoading = true
+      this.statsItems = []
+      this.statsRawJson = ''
+      this.showStatsRaw = false
+      Base.BasePost('/api/AgentV2HeadroomStats', { agent_id: this.agentId }, (res) => {
+        this.statsLoading = false
+        if (res.ErrCode === 0 && res.Data) {
+          this.statsItems = res.Data.items || []
+          this.statsRawJson = res.Data.raw_json || ''
+        } else {
+          this.statsItems = []
+          this.statsRawJson = '获取失败: ' + (res.ErrMsg || '未知错误')
+        }
+      })
+    },
+
+    isNumeric(val) {
+      if (!val) return false
+      return /^[\d,.]+[%BMKms]?$/.test(String(val).trim())
+    },
+
+    // Headroom 升级 / RTK 升级
+    envToolUpgrade(row) {
+      this.upgradingKey = row.key
+      this.showUpgradeDialog = true
+      this.upgradeLoading = true
+      this.upgradeResult = ''
+      Base.BasePost('/api/AgentV2HeadroomUpgrade', {
+        agent_id: this.agentId,
+        key: row.key,
+        check: false,
+        pre: false
+      }, (res) => {
+        this.upgradingKey = ''
+        this.upgradeLoading = false
+        if (res.ErrCode === 0 && res.Data) {
+          const data = res.Data
+          this.upgradeResult = (data.output || '无输出') + '\n\n' + (data.success ? '操作成功' : '操作失败')
+        } else {
+          this.upgradeResult = '操作失败: ' + (res.ErrMsg || '未知错误')
+        }
+      })
+    },
+
+    // Headroom 日志查看
+    showHeadroomLogs(row) {
+      this.showLogDialog = true
+      this.selectedLogFile = ''
+      this.logContent = ''
+      this.loadHeadroomLogs()
+    },
+
+    loadHeadroomLogs() {
+      Base.BasePost('/api/AgentV2HeadroomLogList', { agent_id: this.agentId }, (res) => {
+        if (res.ErrCode === 0 && res.Data && res.Data.list) {
+          this.logFiles = res.Data.list
+        } else {
+          this.logFiles = []
+        }
+      })
+    },
+
+    selectLogFile(filename) {
+      this.selectedLogFile = filename
+      this.logContentLoading = true
+      this.logContent = ''
+      Base.BasePost('/api/AgentV2HeadroomLogRead', { agent_id: this.agentId, action: 'log_read', log_file: filename }, (res) => {
+        this.logContentLoading = false
+        if (res.ErrCode === 0 && res.Data) {
+          this.logContent = res.Data.content || '(空)'
+        } else {
+          this.logContent = '读取失败: ' + (res.ErrMsg || '未知错误')
+        }
+      })
+    },
+
+    fmtFileSize(bytes) {
+      if (!bytes) return '0 B'
+      if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB'
+      if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB'
+      return bytes + ' B'
+    },
+
+    fmtTime(ts) {
+      if (!ts) return '-'
+      const d = new Date(ts * 1000)
+      const pad = (n) => String(n).padStart(2, '0')
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
+        pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds())
     },
 
     typeLabel(type) {
@@ -1500,6 +1708,101 @@ export default {
 }
 
 .empty-hint { padding: 16px; text-align: center; color: #c0c4cc; font-size: 13px; }
+
+/* --- Stats / Upgrade 输出 --- */
+.stats-table-wrap { max-height: 460px; overflow-y: auto; }
+.stats-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.stats-table td { padding: 8px 14px; border-bottom: 1px solid #f0f0f0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+.stats-label { color: #606266; white-space: nowrap; width: 240px; font-weight: 500; }
+.stats-value { color: #303133; }
+.stats-num { font-weight: 600; color: #409eff; }
+.stats-key-hint { font-size: 11px; color: #c0c4cc; margin-left: 8px; display: inline-block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+
+.stats-group-row td {
+  padding: 10px 14px 6px;
+  color: #909399;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.stats-pre {
+  background: #f5f7fa;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  padding: 16px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 360px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+/* --- Log 对话框布局 --- */
+.log-dialog :deep(.el-dialog__body) {
+  padding: 0;
+}
+
+.log-dialog-layout {
+  display: flex;
+  height: 420px;
+}
+
+.log-sidebar {
+  width: 220px;
+  border-right: 1px solid #e4e7ed;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.log-sidebar-header {
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  border-bottom: 1px solid #ebeef5;
+  background: #fafafa;
+}
+
+.log-file-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f5f5f5;
+  transition: background .15s;
+}
+.log-file-item:hover { background: #f5f7fa; }
+.log-file-item--active { background: #ecf5ff; }
+.log-file-name {
+  font-size: 12px;
+  color: #303133;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  word-break: break-all;
+  margin-bottom: 2px;
+}
+.log-file-info {
+  font-size: 11px;
+  color: #c0c4cc;
+}
+
+.log-content {
+  flex: 1;
+  overflow: auto;
+}
+
+.log-content-pre {
+  padding: 12px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  color: #303133;
+}
 
 /* --- API Key 眼睛切换图标 --- */
 .api-key-input-wrap {

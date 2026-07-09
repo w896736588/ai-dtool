@@ -671,6 +671,11 @@ func agentV2Router(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/AgentV2HeadroomStatus`, controller.AgentV2HeadroomStatus)
 	tGin.GinPost(`/api/AgentV2HeadroomConfigSave`, controller.AgentV2HeadroomConfigSave)
 	tGin.GinPost(`/api/AgentV2HeadroomProcess`, controller.AgentV2HeadroomProcess)
+	// Headroom 升级/统计/日志
+	tGin.GinPost(`/api/AgentV2HeadroomUpgrade`, controller.AgentV2HeadroomUpgrade)
+	tGin.GinPost(`/api/AgentV2HeadroomStats`, controller.AgentV2HeadroomStats)
+	tGin.GinPost(`/api/AgentV2HeadroomLogList`, controller.AgentV2HeadroomLogList)
+	tGin.GinPost(`/api/AgentV2HeadroomLogRead`, controller.AgentV2HeadroomLogRead)
 	// 已安装扩展扫描（.pi/extensions/ 目录）
 	tGin.GinPost(`/api/AgentV2InstalledToolList`, controller.AgentV2InstalledToolList)
 	tGin.GinPost(`/api/AgentV2InstalledToolRemove`, controller.AgentV2InstalledToolRemove)

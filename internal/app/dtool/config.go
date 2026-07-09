@@ -496,6 +496,10 @@ func InitComponent() {
 		controller.AgentV2SessionRecoverRunning()
 		go controller.InitBrowserPortPool()
 	}
+
+	// 自动启动已配置 auto_start 的 Headroom 代理（异步，不阻塞启动）
+	go controller.AutoStartHeadroom()
+
 	for _, tGin := range component.TGins {
 		if tGin.IsRun == true {
 			InitRouter(tGin)
