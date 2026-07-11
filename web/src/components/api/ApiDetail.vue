@@ -1,34 +1,56 @@
 ﻿<template>
   <div class="api-detail" tabindex="0" @keydown="handleKeyDown" @keyup="handleKeyUp">
     <div class="api-header">
-      <el-tag type="info" size="small" class="api-id-tag">ID: {{ apiForm.id }}</el-tag>
-      <el-input v-model="apiForm.name" class="api-name-input" placeholder="输入接口名称" type="text" @blur="handleBlurSave"></el-input>
-      <div class="api-title-section">
-        <el-select v-model="apiForm.method" class="api-method-select">
-          <el-option label="GET" value="GET"/>
-          <el-option label="POST" value="POST"/>
-        </el-select>
-        <el-input v-model="apiForm.url" class="api-url-input" placeholder="输入请求URL" @blur="handleBlurSave"></el-input>
+      <div class="api-header-row">
+        <el-tag type="info" size="small" class="api-id-tag">ID: {{ apiForm.id }}</el-tag>
+        <div class="api-display-name">
+          <span class="api-display-method" :class="'api-display-method--' + apiForm.method.toLowerCase()">{{ apiForm.method }}</span>
+          <span class="api-display-name-text">{{ apiForm.name }}</span>
+        </div>
       </div>
+      <div class="api-header-row api-header-row--full">
+        <div class="api-title-section">
+          <el-input v-model="apiForm.url" class="api-url-input" placeholder="输入请求URL" @blur="handleBlurSave"></el-input>
+        </div>
 
-      <div class="api-actions">
-        <el-select v-model="envIdString" placeholder="选择环境" class="api-env-select" @change="changeEnv">
-          <el-option
-              v-for="env in envs"
-              :key="env.id"
-              :label="env.id === 0 && folderEnvId ? '继承文件夹环境' : env.name"
-              :value="env.id"
-          />
-        </el-select>
-        <pl-button :loading="executing" type="primary" @click="handleExecute">
-          执行接口
-        </pl-button>
-        <pl-button @click="handleSave">保存</pl-button>
-        <pl-button type="info" @click="showResult">结果</pl-button>
+        <div class="api-actions">
+          <el-select v-model="envIdString" placeholder="选择环境" class="api-env-select" @change="changeEnv">
+            <el-option
+                v-for="env in envs"
+                :key="env.id"
+                :label="env.id === 0 && folderEnvId ? '继承文件夹环境' : env.name"
+                :value="env.id"
+            />
+          </el-select>
+          <pl-button :loading="executing" type="primary" @click="handleExecute">
+            执行接口
+          </pl-button>
+          <pl-button @click="handleSave">保存</pl-button>
+          <pl-button type="info" @click="showResult">结果</pl-button>
+        </div>
       </div>
     </div>
 
     <el-tabs v-model="configActiveTab" class="detail-tabs api-config-tabs" @tab-change="responseTabChange">
+      <el-tab-pane label="基础信息编辑" name="basic">
+        <div class="basic-info-form">
+          <div class="basic-info-item">
+            <label class="basic-info-label">请求方法</label>
+            <el-select v-model="apiForm.method" class="basic-method-select" @change="handleBlurSave">
+              <el-option label="GET" value="GET"/>
+              <el-option label="POST" value="POST"/>
+            </el-select>
+          </div>
+          <div class="basic-info-item">
+            <label class="basic-info-label">接口名称</label>
+            <el-input v-model="apiForm.name" placeholder="输入接口名称" @blur="handleBlurSave"></el-input>
+          </div>
+          <div class="basic-info-item">
+            <label class="basic-info-label">请求URL</label>
+            <el-input v-model="apiForm.url" placeholder="输入请求URL" @blur="handleBlurSave"></el-input>
+          </div>
+        </div>
+      </el-tab-pane>
       <el-tab-pane label="备注" name="desc" class="desc-tab-pane">
         <MdEditor class="desc-editor" v-model="apiForm.desc" @blur="handleBlurSave" :onSave="handleSave" />
       </el-tab-pane>
@@ -56,10 +78,7 @@
             <json-editor-vue v-model="apiForm.body_json_data" class="json-box" @blur="handleBlurSave"/>
           </div>
           <div v-else-if="['application/x-www-form-urlencoded', 'multipart/form-data'].includes(apiForm.content_type)" class="body-editor">
-            <div class="body-import-toolbar">
-              <pl-button size="small" @click="openBodyJsonImportDialog">通过JSON导入</pl-button>
-            </div>
-            <key-value-editor @update="handleSaveBodyFormData" :list="apiForm.body_form_data"/>
+            <key-value-editor @update="handleSaveBodyFormData" :list="apiForm.body_form_data" :show-json-import="true" @json-import="openBodyJsonImportDialog"/>
           </div>
           <div v-else-if="apiForm.content_type === 'raw'" class="body-editor body-editor-raw">
             <el-input
@@ -216,7 +235,7 @@
           <div class="response-status-item response-status-item--ok">时间: {{ apiForm.last_result_data.request_time }}</div>
         </div>
 
-        <el-tabs v-model="responseActiveTab" class="detail-tabs" @tab-change="handleSave">
+        <el-tabs v-model="responseActiveTab" class="detail-tabs">
           <el-tab-pane label="返回结果" name="body">
             <div class="response-body-container" ref="responseContainerRef" @scroll="handleResponseScroll">
               <div class="response-toolbar">

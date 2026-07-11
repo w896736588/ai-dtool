@@ -1801,13 +1801,7 @@ func taskWorkflowBuildStepFragmentShareURL(fileID, apiHost string) string {
 	if err != nil {
 		return ``
 	}
-	if apiHost == `` {
-		return ``
-	}
-	shareURL, _ := url.Parse(apiHost)
-	cleanID := filepath.Base(fileID)
-	shareURL.Path = `/share/` + url.PathEscape(cleanID) + `/` + url.PathEscape(share.Token)
-	return shareURL.String()
+	return memoryFragmentBuildShareURL(fileID, share.Token, apiHost)
 }
 
 // taskWorkflowBuildStepFragmentRelativePath 为步骤文档知识片段构建相对于 fragments/ 目录的相对路径。
@@ -1894,13 +1888,7 @@ func taskWorkflowBuildShareURL(c *gin.Context, workflowInfo map[string]any, apiH
 	if err != nil {
 		return ``
 	}
-	if apiHost == `` {
-		return ``
-	}
-	shareURL, _ := url.Parse(apiHost)
-	cleanID := filepath.Base(fragmentRef.FileID)
-	shareURL.Path = `/share/` + url.PathEscape(cleanID) + `/` + url.PathEscape(share.Token)
-	return shareURL.String()
+	return memoryFragmentBuildShareURL(fragmentRef.FileID, share.Token, apiHost)
 }
 
 // taskWorkflowBuildPlainTextShareURL 为纯文本需求知识片段生成分享链接。
@@ -1921,13 +1909,7 @@ func taskWorkflowBuildPlainTextShareURL(c *gin.Context, workflowInfo map[string]
 	if err != nil {
 		return ``
 	}
-	if apiHost == `` {
-		return ``
-	}
-	shareURL, _ := url.Parse(apiHost)
-	cleanID := filepath.Base(fileID)
-	shareURL.Path = `/share/` + url.PathEscape(cleanID) + `/` + url.PathEscape(share.Token)
-	return shareURL.String()
+	return memoryFragmentBuildShareURL(fileID, share.Token, apiHost)
 }
 
 // taskWorkflowResolvePlaceholders 批量替换模板中的占位符。
@@ -2431,13 +2413,7 @@ func taskWorkflowBuildDesignPlanShareURL(c *gin.Context, workflowInfo map[string
 	if err != nil {
 		return ``
 	}
-	if apiHost == `` {
-		return ``
-	}
-	shareURL, _ := url.Parse(apiHost)
-	cleanID := filepath.Base(fileID)
-	shareURL.Path = `/share/` + url.PathEscape(cleanID) + `/` + url.PathEscape(share.Token)
-	return shareURL.String()
+	return memoryFragmentBuildShareURL(fileID, share.Token, apiHost)
 }
 
 // taskWorkflowBuildDesignPlanFragmentRelativePath 为需求设计方案知识片段构建相对路径。

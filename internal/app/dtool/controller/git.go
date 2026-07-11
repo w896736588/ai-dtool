@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bufio"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/define"
@@ -75,19 +76,63 @@ func gitCleanupAndSwitchRunLocalStep(sse *gsgin.Sse, localDir string, stepName s
 			`command`:   `git ` + strings.Join(args, ` `),
 		},
 	})
+
 	cmd := exec.Command(`git`, append([]string{`-C`, localDir}, args...)...)
-	output, err := cmd.CombinedOutput()
-	trimmed := strings.TrimSpace(string(output))
-	if trimmed != `` {
-		for _, line := range strings.Split(trimmed, "\n") {
-			sendGitSwitchStreamLine(sse, strings.TrimRight(line, "\r"))
-		}
+
+	stdout, stdoutErr := cmd.StdoutPipe()
+	if stdoutErr != nil {
+		sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+			Type:    `step`,
+			Status:  `error`,
+			Message: stepName + `失败`,
+			Data:    map[string]any{`error`: stdoutErr.Error()},
+		})
+		return fmt.Errorf(stdoutErr.Error())
 	}
-	if err != nil {
-		msg := trimmed
-		if msg == `` {
-			msg = err.Error()
+	stderr, stderrErr := cmd.StderrPipe()
+	if stderrErr != nil {
+		sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+			Type:    `step`,
+			Status:  `error`,
+			Message: stepName + `失败`,
+			Data:    map[string]any{`error`: stderrErr.Error()},
+		})
+		return fmt.Errorf(stderrErr.Error())
+	}
+	if startErr := cmd.Start(); startErr != nil {
+		sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
+			Type:    `step`,
+			Status:  `error`,
+			Message: stepName + `失败`,
+			Data: map[string]any{
+				`command`: `git ` + strings.Join(args, ` `),
+				`error`:   startErr.Error(),
+			},
+		})
+		return fmt.Errorf(startErr.Error())
+	}
+
+	// 并发读取 stdout 和 stderr，逐行实时推送到 SSE
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			sendGitSwitchStreamLine(sse, scanner.Text())
 		}
+	}()
+	go func() {
+		defer wg.Done()
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			sendGitSwitchStreamLine(sse, scanner.Text())
+		}
+	}()
+	wg.Wait()
+
+	waitErr := cmd.Wait()
+	if waitErr != nil {
 		sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
 			Type:    `step`,
 			Status:  `error`,
@@ -95,10 +140,10 @@ func gitCleanupAndSwitchRunLocalStep(sse *gsgin.Sse, localDir string, stepName s
 			Data: map[string]any{
 				`local_dir`: localDir,
 				`command`:   `git ` + strings.Join(args, ` `),
-				`error`:     msg,
+				`error`:     waitErr.Error(),
 			},
 		})
-		return fmt.Errorf(msg)
+		return fmt.Errorf(waitErr.Error())
 	}
 	sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
 		Type:    `step`,
@@ -157,7 +202,7 @@ func GitCleanupAndSwitchBranchByIdStream(urlValues url.Values, stopC chan int, c
 			{name: `检查当前仓库`, args: []string{`rev-parse`, `--show-toplevel`}},
 			{name: `清理索引区和工作区`, args: []string{`reset`, `--hard`, `HEAD`}},
 			{name: `删除未跟踪文件`, args: []string{`clean`, `-fd`}},
-			{name: `拉取远端引用`, args: []string{`fetch`, `--all`, `--prune`}},
+			{name: `拉取远端引用`, args: []string{`fetch`, `--all`, `--prune`, `--progress`}},
 			{name: `切换到基线分支`, args: []string{`checkout`, baseBranch}},
 			{name: `同步基线分支`, args: []string{`pull`, `origin`, baseBranch}},
 		}

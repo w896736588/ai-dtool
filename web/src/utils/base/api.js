@@ -129,6 +129,14 @@ function CleanupArchiveFolders(data , callBack){
     base.BasePost('/api/CleanupArchiveFolders', data , callBack)
 }
 
+function BatchDeleteTree(data , callBack){
+    base.BasePost('/api/ApiBatchDeleteTree', data , callBack)
+}
+
+function BatchDeleteApi(data , callBack){
+    base.BasePost('/api/ApiBatchDelete', data , callBack)
+}
+
 function RestoreFolder(data , callBack){
     base.BasePost('/api/RestoreFolder', data , callBack)
 }
@@ -168,6 +176,8 @@ export default {
     ArchiveFolderList,
     CleanupCandidateFolders,
     CleanupArchiveFolders,
+    BatchDeleteTree,
+    BatchDeleteApi,
     RestoreFolder,
     PermanentDeleteDir,
 }

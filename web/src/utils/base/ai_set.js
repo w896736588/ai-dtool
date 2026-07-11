@@ -10,6 +10,11 @@ function AiProviderAdd(data , callBack){
     base.BasePost('/api/Set/AiProviderAdd', data, callBack)
 }
 
+// AiProviderKeyGet 查询指定服务商的真实 API Key（编辑时查看明文）
+function AiProviderKeyGet(data , callBack){
+    base.BasePost('/api/Set/AiProviderKeyGet', data, callBack)
+}
+
 // AiProviderDelete 删除 AI 服务商
 function AiProviderDelete(data , callBack){
     base.BasePost('/api/Set/AiProviderDelete', data, callBack)
@@ -43,6 +48,7 @@ function AiRequestLogList(data , callBack){
 export default {
     AiProviderList,
     AiProviderAdd,
+    AiProviderKeyGet,
     AiProviderDelete,
     AiModelList,
     AiModelAdd,

@@ -497,7 +497,7 @@
 
     <SettingsDialog
       v-model="settingsDialogVisible"
-      title="记忆设置"
+      title="知识片段设置"
       width="76%"
       @closed="refreshMemoryAfterSettingsClose"
     >
@@ -1631,8 +1631,8 @@ export default {
       this.activeTab = TRASH_TAB_NAME
       this.loadTrashList()
     },
-    // openSettingsDialog 打开记忆设置弹窗，在当前业务页内完成 AI 配置维护。
-    // Open the memory settings modal so AI configuration can be maintained in-place.
+    // openSettingsDialog 打开知识片段设置弹窗，在当前业务页内完成配置维护。
+    // Open the knowledge fragment settings modal so configuration can be maintained in-place.
     openSettingsDialog() {
       this.settingsDialogVisible = true
       this.$nextTick(() => {
