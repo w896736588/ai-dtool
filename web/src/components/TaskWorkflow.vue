@@ -37,21 +37,6 @@
           <GitActionButton compact :loading="loading" @click="reloadWorkflowPage">
             刷新
           </GitActionButton>
-          <GitActionButton compact variant="warning" @click="openIssueFixDialog">
-            问题修改提示词
-          </GitActionButton>
-          <ChatHistoryButton
-            compact
-            variant="info"
-            :running="getPromptChatCounts('issue_fix').running > 0"
-            :running-count="getPromptChatCounts('issue_fix').running"
-            :interrupted-count="getPromptChatCounts('issue_fix').interrupted"
-            :total-count="getPromptChatCounts('issue_fix').total"
-            :unread="hasUnreadInPromptType('issue_fix')"
-            @click="openChatHistoryDialog"
-          >
-            历史对话
-          </ChatHistoryButton>
           <!--
           <GitActionButton compact variant="success" @click="openZcodeConfigDialog">
             zcode配置
