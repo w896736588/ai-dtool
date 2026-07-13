@@ -54,6 +54,7 @@ func InitRouter(tGin *p_gin.Gin) {
 	mcp(tGin)
 	agentCli(tGin)
 	webhookConfig(tGin)
+	e2eRouter(tGin)
 	tGin.GinPost(`/test/multiformdata`, func(c *gin.Context) {
 		// 解析 multipart/form-data
 		form, err := c.MultipartForm()
@@ -643,4 +644,28 @@ func webhookConfig(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/WebhookConfigSave`, controller.WebhookConfigSave)
 	tGin.GinPost(`/api/WebhookConfigDelete`, controller.WebhookConfigDelete)
 	tGin.GinPost(`/api/WebhookConfigTest`, controller.WebhookConfigTest)
+}
+
+// e2eRouter E2E 自动化测试路由。
+func e2eRouter(tGin *p_gin.Gin) {
+	tGin.GinPost(`/api/E2E/GroupList`, controller.E2EGroupList)
+	tGin.GinPost(`/api/E2E/GroupCreate`, controller.E2EGroupCreate)
+	tGin.GinPost(`/api/E2E/GroupUpdate`, controller.E2EGroupUpdate)
+	tGin.GinPost(`/api/E2E/GroupDelete`, controller.E2EGroupDelete)
+
+	tGin.GinPost(`/api/E2E/CaseList`, controller.E2ECaseList)
+	tGin.GinPost(`/api/E2E/CaseDetail`, controller.E2ECaseDetail)
+	tGin.GinPost(`/api/E2E/CaseSave`, controller.E2ECaseSave)
+	tGin.GinPost(`/api/E2E/CaseDelete`, controller.E2ECaseDelete)
+
+	tGin.GinPost(`/api/E2E/RunExecute`, controller.E2ERunExecute)
+	tGin.GinPost(`/api/E2E/RunBatch`, controller.E2ERunBatch)
+	tGin.GinPost(`/api/E2E/RunStop`, controller.E2ERunStop)
+	tGin.GinPost(`/api/E2E/RunList`, controller.E2ERunList)
+	tGin.GinPost(`/api/E2E/RunDetail`, controller.E2ERunDetail)
+	tGin.GinPost(`/api/E2E/RunRequests`, controller.E2ERunRequests)
+
+	tGin.GinPost(`/api/E2E/StepTypeList`, controller.E2EStepTypeList)
+	tGin.GinPost(`/api/E2E/AssertionTypeList`, controller.E2EAssertionTypeList)
+	tGin.GinPost(`/api/E2E/Health`, controller.E2EHealth)
 }
