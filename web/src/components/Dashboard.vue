@@ -1895,51 +1895,51 @@ export default {
     }
     // 加载 Docker 服务列表（用于快速重启/停止）
     const loadDockerServiceList = () => {
-      // 从命令栈中找到已选择的项目
-      const projectCmd = commandStack.value.find(cmd =>
-        Array.isArray(cmd?.default_service_list) || Array.isArray(cmd?.data?.default_service_list)
+      // 先清空旧的候选，避免残留上一次其它 docker 配置的服务列表。
+      dynamicDataCache.value['dockerServiceList'] = []
+      currentChildren.value = []
+
+      // 精确定位项目：docker quick-restart/quick-stop 的项目一定在 action 命令的下一位，
+      // 不要在整个命令栈里扫描"第一个带 default_service_list 的项"，否则可能命中风马牛不相及的项目。
+      const actionIndex = commandStack.value.findIndex(cmd =>
+        cmd?.action === 'dockerQuickRestart' || cmd?.action === 'dockerQuickStop'
       )
+      const projectCmd = actionIndex >= 0 ? commandStack.value[actionIndex + 1] : null
       const services = Array.isArray(projectCmd?.default_service_list)
         ? projectCmd.default_service_list
         : (Array.isArray(projectCmd?.data?.default_service_list) ? projectCmd.data.default_service_list : [])
 
-      if (projectCmd && services.length > 0) {
-        const list = services.map(service => ({
+      const buildAndApply = (targetProject, serviceList) => {
+        const list = serviceList.map(service => ({
           command: service,
           name: service,
           desc: '服务',
-          data: { service, projectId: projectCmd.id }
+          data: { service, projectId: targetProject.id }
         }))
         dynamicDataCache.value['dockerServiceList'] = list
         currentChildren.value = list
-        isLoadingDynamic.value = false
-        reparseForPendingHistoryExecution('dockerServiceList')
-        refreshCommandDropdownVisibility()
+      }
+
+      if (projectCmd && services.length > 0) {
+        buildAndApply(projectCmd, services)
       } else {
-        // 如果没有找到项目信息，尝试从缓存的 dockerComposeList 中查找
-        const cachedList = dynamicDataCache.value['dockerComposeList']
-        if (cachedList && cachedList.length > 0) {
-          // 找到命令栈中选择的项目名称
-          const projectName = commandStack.value.find(cmd => 
-            cachedList.some(item => item.name === cmd.name || item.command === cmd.command)
-          )?.name || cachedList[0].name
-          
-          const project = cachedList.find(item => item.name === projectName)
-          if (project && project.default_service_list) {
-            const list = project.default_service_list.map(service => ({
-              command: service,
-              name: service,
-              desc: '服务',
-              data: { service, projectId: project.id }
-            }))
-            dynamicDataCache.value['dockerServiceList'] = list
-            currentChildren.value = list
+        // 兜底：按已选项目的 id / 名称从 dockerComposeList 精确匹配，禁止使用第 0 项兜底，
+        // 否则会错误地展示其它 docker 配置的默认服务。
+        const cachedList = dynamicDataCache.value['dockerComposeList'] || []
+        if (projectCmd && cachedList.length > 0) {
+          const project = cachedList.find(item =>
+            item.id === projectCmd.id ||
+            normalizeCommandPart(item.name) === normalizeCommandPart(projectCmd.name) ||
+            normalizeCommandPart(item.command) === normalizeCommandPart(projectCmd.command)
+          )
+          if (project && Array.isArray(project.default_service_list) && project.default_service_list.length > 0) {
+            buildAndApply(project, project.default_service_list)
           }
         }
-        isLoadingDynamic.value = false
-        reparseForPendingHistoryExecution('dockerServiceList')
-        refreshCommandDropdownVisibility()
       }
+      isLoadingDynamic.value = false
+      reparseForPendingHistoryExecution('dockerServiceList')
+      refreshCommandDropdownVisibility()
     }
 
     // 加载 Git 项目列表
@@ -1957,6 +1957,13 @@ export default {
           const seen = new Set()
           const list = []
           const gitList = Array.isArray(response.Data.git_list) ? response.Data.git_list : []
+          // 统计同名项目数量：同名时在下拉与匹配里加"分组 + 目录"后缀区分，
+          // 避免两个同名项目（如都叫 go_core）在列表中无法分辨、误选到第一个。
+          const nameCountMap = {}
+          gitList.forEach(item => {
+            const rawName = normalizeCommandPart(item.name)
+            nameCountMap[rawName] = (nameCountMap[rawName] || 0) + 1
+          })
           gitList.forEach(item => {
             const itemId = normalizeCommandPart(item.id)
             const dedupeKey = itemId || [
@@ -1968,9 +1975,18 @@ export default {
               return
             }
             seen.add(dedupeKey)
+            const rawName = normalizeCommandPart(item.name)
+            // 同名项目加唯一后缀（分组 + 目录），仅用于下拉展示，保证列表中每个项目可被准确区分。
+            // 注意：匹配/回填用的 command 必须保持为无空格的原始名（如 go_core），
+            // 否则输入框高亮会把带空格的后缀按多个 token 解析、整体标红（invalid）。
+            const dirPart = normalizeCommandPart(item.path || item.code_path)
+            const displayName = nameCountMap[rawName] > 1
+              ? `${rawName} · ${groupMap[item.git_group_id] || '未分组'}${dirPart ? ' · ' + dirPart : ''}`
+              : rawName
             list.push({
-              command: item.name,
-              name: item.name,
+              command: rawName,
+              name: displayName,
+              insertText: rawName,
               aliases: [item.path || '', item.code_path || ''].filter(Boolean),
               desc: `${groupMap[item.git_group_id] || '未分组'} ${item.path || item.code_path || ''}`.trim(),
               id: item.id,
