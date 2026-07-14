@@ -657,6 +657,10 @@ func GitCommitLog(c *gin.Context) {
 }
 
 func GitConfigList(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	isDashboard := cast.ToInt(dataMap[`is_dashboard`]) == 1
+
 	gitGroupList, _ := common.DbMain.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
 		`type`: define.GroupTypeGit,
 	}).All()
@@ -664,12 +668,38 @@ func GitConfigList(c *gin.Context) {
 	for k, v := range gitGroupList {
 		gitGroupList[k][`id`] = cast.ToString(v[`id`])
 	}
+	if isDashboard {
+		groupNameCounts := dashboardNameCounts(gitGroupList, `name`)
+		for k, groupInfo := range gitGroupList {
+			rawName := strings.TrimSpace(cast.ToString(groupInfo[`name`]))
+			gitGroupList[k][`raw_name`] = rawName
+			if dashboardHasDuplicateName(groupNameCounts, rawName) {
+				gitGroupList[k][`name`] = dashboardJoinName(`ID`+cast.ToString(groupInfo[`id`]), rawName)
+			}
+		}
+	}
 	gitList, _ := common.DbMain.Client.QuickQuery(`tbl_git`, `*`, nil).All()
 	gitList = filterGitListByExistingGroups(gitGroupList, gitList)
 	//id转为字符串
 	for k, v := range gitList {
 		gitList[k][`id`] = cast.ToString(v[`id`])
 		gitList[k][`git_group_id`] = cast.ToString(v[`git_group_id`])
+	}
+	if isDashboard {
+		groupNameMap := make(map[string]string, len(gitGroupList))
+		for _, groupInfo := range gitGroupList {
+			groupNameMap[cast.ToString(groupInfo[`id`])] = cast.ToString(groupInfo[`name`])
+		}
+		for k, v := range gitList {
+			rawName := strings.TrimSpace(cast.ToString(v[`name`]))
+			groupID := cast.ToString(v[`git_group_id`])
+			groupName := strings.TrimSpace(groupNameMap[groupID])
+			if groupName == `` {
+				groupName = `未分组`
+			}
+			gitList[k][`raw_name`] = rawName
+			gitList[k][`name`] = groupName + `-` + rawName
+		}
 	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`git_group_list`: gitGroupList,

@@ -337,6 +337,34 @@ export default {
       ].filter(Boolean)
     }
 
+    const toCommandToken = (value) => {
+      return normalizeCommandPart(value).replace(/\s+/g, '_')
+    }
+
+    const joinCommandToken = (...parts) => {
+      return parts
+        .map(part => toCommandToken(part))
+        .filter(Boolean)
+        .join('-')
+    }
+
+    const countDuplicateNames = (list, getName) => {
+      const countMap = {}
+      ;(Array.isArray(list) ? list : []).forEach(item => {
+        const key = normalizeCommandPart(getName(item)).toLowerCase()
+        if (!key) {
+          return
+        }
+        countMap[key] = (countMap[key] || 0) + 1
+      })
+      return countMap
+    }
+
+    const hasDuplicateName = (countMap, name) => {
+      const key = normalizeCommandPart(name).toLowerCase()
+      return !!key && Number(countMap[key] || 0) > 1
+    }
+
     // getSupervisorProcessCacheKey 按环境生成首页 Supervisor 服务列表缓存 key，避免不同环境串缓存。
     const getSupervisorProcessCacheKey = (envData) => {
       const id = normalizeCommandPart(envData?.id)
@@ -388,7 +416,7 @@ export default {
         .split('\n')
         .map(line => normalizeCommandPart(line))
         .filter(Boolean)
-      return lines.map((line, index) => {
+      const processItems = lines.map((line, index) => {
         const [configNameRaw, supervisorNameRaw] = line.split('---')
         const configName = normalizeCommandPart(configNameRaw)
         let supervisorName = normalizeCommandPart(supervisorNameRaw)
@@ -399,15 +427,22 @@ export default {
         const configDir = normalizeCommandPart(envCmd?.data?.config_dir)
         const configPath = configDir && configName ? `${configDir}/${configName}` : configName
         const displayName = supervisorName || configName || `进程${index + 1}`
+        return { configName, supervisorName, configPath, displayName, index }
+      })
+      const duplicateNameCountMap = countDuplicateNames(processItems, item => item.displayName)
+      return processItems.map(item => {
+        const commandName = hasDuplicateName(duplicateNameCountMap, item.displayName)
+          ? joinCommandToken(item.configName || `IDX${item.index + 1}`, item.displayName)
+          : item.displayName
         return {
-          command: displayName,
-          name: displayName,
-          aliases: [configName].filter(Boolean),
-          desc: configName || '进程配置',
-          id: `${envCmd?.id || envCmd?.data?.id || 'env'}_${index}`,
+          command: commandName,
+          name: commandName,
+          aliases: [item.configName].filter(Boolean),
+          desc: item.configName || '进程配置',
+          id: `${envCmd?.id || envCmd?.data?.id || 'env'}_${item.index}`,
           data: {
-            supervisor_name: supervisorName,
-            supervisor_config: configPath
+            supervisor_name: item.supervisorName,
+            supervisor_config: item.configPath
           }
         }
       })
@@ -1833,7 +1868,7 @@ export default {
           .filter(Boolean)
       }
 
-      compose.DockerComposeList({}, (response) => {
+      compose.DockerComposeList({ is_dashboard: 1 }, (response) => {
         const composeItemList = Array.isArray(response?.Data?.list)
           ? response.Data.list
           : (Array.isArray(response?.Data) ? response.Data : [])
@@ -1846,29 +1881,16 @@ export default {
           return
         }
 
-        const duplicateNameCountMap = {}
-        composeItemList.forEach(item => {
-          const nameKey = normalizeCommandPart(item?.name).toLowerCase()
-          if (!nameKey) {
-            return
-          }
-          duplicateNameCountMap[nameKey] = (duplicateNameCountMap[nameKey] || 0) + 1
-        })
         const list = composeItemList
           .map(item => {
             const sshId = normalizeCommandPart(item?.ssh_id)
             const sshName = normalizeCommandPart(item?.ssh_name) || `SSH ${sshId || '-'}`
             const normalizedName = normalizeCommandPart(item?.name)
-            const hasDuplicateName = !!normalizedName && duplicateNameCountMap[normalizedName.toLowerCase()] > 1
-            const displayName = hasDuplicateName ? `${normalizedName} (${sshName})` : normalizedName
             return {
-              command: displayName,
-              name: displayName,
-              insertText: displayName,
+              command: normalizedName,
+              name: normalizedName,
+              insertText: normalizedName,
               aliases: [
-                normalizedName,
-                `${normalizedName}@${sshName}`,
-                `${normalizedName}(${sshName})`,
                 String(item.id || '')
               ].filter(Boolean),
               desc: [sshName, item.compose_yml_path || ''].filter(Boolean).join(' | '),
@@ -1944,7 +1966,7 @@ export default {
 
     // 加载 Git 项目列表
     const loadGitProjectList = () => {
-      git.GitConfigList({}, (response) => {
+      git.GitConfigList({ is_dashboard: 1 }, (response) => {
         isLoadingDynamic.value = false
         delete loadingDynamicTypes.value['gitProjectList']
         if (response.ErrCode === 0) {
@@ -1957,13 +1979,6 @@ export default {
           const seen = new Set()
           const list = []
           const gitList = Array.isArray(response.Data.git_list) ? response.Data.git_list : []
-          // 统计同名项目数量：同名时在下拉与匹配里加"分组 + 目录"后缀区分，
-          // 避免两个同名项目（如都叫 go_core）在列表中无法分辨、误选到第一个。
-          const nameCountMap = {}
-          gitList.forEach(item => {
-            const rawName = normalizeCommandPart(item.name)
-            nameCountMap[rawName] = (nameCountMap[rawName] || 0) + 1
-          })
           gitList.forEach(item => {
             const itemId = normalizeCommandPart(item.id)
             const dedupeKey = itemId || [
@@ -1976,17 +1991,9 @@ export default {
             }
             seen.add(dedupeKey)
             const rawName = normalizeCommandPart(item.name)
-            // 同名项目加唯一后缀（分组 + 目录），仅用于下拉展示，保证列表中每个项目可被准确区分。
-            // 注意：匹配/回填用的 command 必须保持为无空格的原始名（如 go_core），
-            // 否则输入框高亮会把带空格的后缀按多个 token 解析、整体标红（invalid）。
-            const dirPart = normalizeCommandPart(item.path || item.code_path)
-            const displayName = nameCountMap[rawName] > 1
-              ? `${rawName} · ${groupMap[item.git_group_id] || '未分组'}${dirPart ? ' · ' + dirPart : ''}`
-              : rawName
             list.push({
               command: rawName,
-              name: displayName,
-              insertText: rawName,
+              name: rawName,
               aliases: [item.path || '', item.code_path || ''].filter(Boolean),
               desc: `${groupMap[item.git_group_id] || '未分组'} ${item.path || item.code_path || ''}`.trim(),
               id: item.id,
@@ -2006,7 +2013,7 @@ export default {
 
     // 加载 Git 分组列表
     const loadGitGroupList = () => {
-      git.GitConfigList({}, (response) => {
+      git.GitConfigList({ is_dashboard: 1 }, (response) => {
         isLoadingDynamic.value = false
         delete loadingDynamicTypes.value['gitGroupList']
         if (response.ErrCode === 0) {
@@ -2103,14 +2110,15 @@ export default {
 
     // 加载 Supervisor 环境列表
     const loadSupervisorEnvList = () => {
-      supervisor.SupervisorConfigList({}, (response) => {
+      supervisor.SupervisorConfigList({ is_dashboard: 1 }, (response) => {
         isLoadingDynamic.value = false
         delete loadingDynamicTypes.value['supervisorEnvList']
         if (response.ErrCode === 0) {
-          const list = response.Data.supervisor_list.map(item => ({
+          const supervisorList = Array.isArray(response.Data.supervisor_list) ? response.Data.supervisor_list : []
+          const list = supervisorList.map(item => ({
             command: item.name,
             name: item.name,
-            desc: item.host || '',
+            desc: [item.raw_name || '', item.host || ''].filter(Boolean).join(' | ') || item.host || '',
             id: item.id,
             data: item
           }))
@@ -2164,10 +2172,11 @@ export default {
 
     // 加载终端输出列表
     const loadShellOutList = () => {
-      shellOut.ShellOuts({}, (response) => {
+      shellOut.ShellOuts({ is_dashboard: 1 }, (response) => {
         isLoadingDynamic.value = false
         if (response.ErrCode === 0) {
-          const list = response.Data.map(item => ({
+          const shellOutList = Array.isArray(response.Data) ? response.Data : []
+          const list = shellOutList.map(item => ({
             command: item.name,
             name: item.name,
             desc: item.command || '',
@@ -2182,7 +2191,7 @@ export default {
 
     // 加载自定义链接列表（新表 smart_link，每个链接一个独立行）
     const loadLinkList = () => {
-      smartLinkSet.SmartLinkItemList((response) => {
+      smartLinkSet.SmartLinkItemList({ is_dashboard: 1 }, (response) => {
         isLoadingDynamic.value = false
         delete loadingDynamicTypes.value['linkList']
         delete loadingDynamicTypes.value['linkConfigList']
@@ -2227,15 +2236,25 @@ export default {
     // 加载已选链接下的账号列表
     const loadLinkAccountList = () => {
       const { linkCmd } = getLinkRunSelection(commandStack.value)
-      const list = buildLinkAccountOptionsFromLink(linkCmd).map((item, index) => ({
-        ...item,
-        desc: '账号',
-        id: `${linkCmd?.id || 'link'}_${index}`,
-        data: {
-          ...(item.data || {}),
-          link: linkCmd?.data || {}
+      const accountOptions = buildLinkAccountOptionsFromLink(linkCmd)
+      const duplicateNameCountMap = countDuplicateNames(accountOptions, item => item?.command || item?.name)
+      const list = accountOptions.map((item, index) => {
+        const rawName = normalizeCommandPart(item.command || item.name) || `账号${index + 1}`
+        const commandName = hasDuplicateName(duplicateNameCountMap, rawName)
+          ? joinCommandToken(`IDX${index + 1}`, rawName)
+          : rawName
+        return {
+          ...item,
+          command: commandName,
+          name: commandName,
+          desc: '账号',
+          id: `${linkCmd?.id || 'link'}_${index}`,
+          data: {
+            ...(item.data || {}),
+            link: linkCmd?.data || {}
+          }
         }
-      }))
+      })
       dynamicDataCache.value['linkAccountList'] = list
       currentChildren.value = list
       isLoadingDynamic.value = false
@@ -2246,7 +2265,7 @@ export default {
 
     // 加载 script 脚本列表
     const loadScriptList = () => {
-      variableSet.VariableList((response) => {
+      variableSet.VariableList({ is_dashboard: 1 }, (response) => {
         isLoadingDynamic.value = false
         delete loadingDynamicTypes.value['scriptList']
         if (!(response && response.ErrCode === 0)) {
@@ -2286,12 +2305,16 @@ export default {
         refreshCommandDropdownVisibility()
         return
       }
+      const duplicateLabelCountMap = countDuplicateNames(optionList, option => option?.Label)
       const list = optionList.map((item, index) => {
         const label = normalizeCommandPart(item?.Label) || `选项${index + 1}`
         const optionValue = normalizeCommandPart(item?.Value)
+        const commandName = hasDuplicateName(duplicateLabelCountMap, label)
+          ? joinCommandToken(`IDX${index + 1}`, label)
+          : label
         return {
-          command: label,
-          name: label,
+          command: commandName,
+          name: commandName,
           aliases: [optionValue].filter(Boolean),
           desc: optionValue ? `值: ${optionValue}` : '选项',
           id: `${scriptSession.value.runCmdId || 'cmd'}_${index}`,

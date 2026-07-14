@@ -61,6 +61,20 @@ func DockerComposeList(c *gin.Context) {
 		return
 	}
 	applyDockerComposeSshNames(all, allSsh)
+	if cast.ToInt(dataMap[`is_dashboard`]) == 1 {
+		nameCounts := dashboardNameCounts(all, `name`)
+		for k, item := range all {
+			rawName := strings.TrimSpace(cast.ToString(item[`name`]))
+			all[k][`raw_name`] = rawName
+			if dashboardHasDuplicateName(nameCounts, rawName) {
+				scopeName := cast.ToString(item[`ssh_name`])
+				if scopeName == `` {
+					scopeName = `SSH` + cast.ToString(item[`ssh_id`])
+				}
+				all[k][`name`] = dashboardJoinName(scopeName, rawName)
+			}
+		}
+	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`list`: all,
 	})

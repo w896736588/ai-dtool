@@ -229,7 +229,23 @@ func parseSupervisorConfListOutput(raw string) []string {
 }
 
 func SupervisorConfigList(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
 	supervisorList, _ := common.DbMain.Client.QuickQuery(`tbl_supervisor`, `*`, nil).All()
+	if cast.ToInt(dataMap[`is_dashboard`]) == 1 {
+		nameCounts := dashboardNameCounts(supervisorList, `name`)
+		for k, item := range supervisorList {
+			rawName := strings.TrimSpace(cast.ToString(item[`name`]))
+			supervisorList[k][`raw_name`] = rawName
+			if dashboardHasDuplicateName(nameCounts, rawName) {
+				scopeName := cast.ToString(item[`ssh_name`])
+				if scopeName == `` {
+					scopeName = `SSH` + cast.ToString(item[`ssh_id`])
+				}
+				supervisorList[k][`name`] = dashboardJoinName(scopeName, rawName)
+			}
+		}
+	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`supervisor_list`: supervisorList,
 	})

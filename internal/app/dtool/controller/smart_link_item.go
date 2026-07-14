@@ -3,6 +3,7 @@ package controller
 import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,6 +14,8 @@ import (
 
 // SmartLinkItemList 获取新表 smart_link 列表，附带分组信息
 func SmartLinkItemList(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
 	groupList, _ := common.DbMain.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
 		`type`: define.GroupTypeSmartLink,
 	}).All()
@@ -34,6 +37,37 @@ func SmartLinkItemList(c *gin.Context) {
 		}
 		userList := getAccountListByName(linkMap)
 		itemList[i][`userList`] = userList
+	}
+	if cast.ToInt(dataMap[`is_dashboard`]) == 1 {
+		groupNameMap := make(map[string]string, len(groupList))
+		for _, groupInfo := range groupList {
+			groupNameMap[cast.ToString(groupInfo[`id`])] = cast.ToString(groupInfo[`name`])
+		}
+		labelCounts := dashboardNameCounts(itemList, `label`)
+		scopedCounts := make(map[string]int, len(itemList))
+		for _, item := range itemList {
+			rawLabel := strings.TrimSpace(cast.ToString(item[`label`]))
+			groupName := strings.TrimSpace(groupNameMap[cast.ToString(item[`smart_link_group_id`])])
+			if groupName == `` {
+				groupName = `未分组`
+			}
+			scopedCounts[strings.ToLower(dashboardJoinName(groupName, rawLabel))]++
+		}
+		for k, item := range itemList {
+			rawLabel := strings.TrimSpace(cast.ToString(item[`label`]))
+			groupName := strings.TrimSpace(groupNameMap[cast.ToString(item[`smart_link_group_id`])])
+			if groupName == `` {
+				groupName = `未分组`
+			}
+			itemList[k][`raw_label`] = rawLabel
+			if dashboardHasDuplicateName(labelCounts, rawLabel) {
+				scopedName := dashboardJoinName(groupName, rawLabel)
+				if scopedCounts[strings.ToLower(scopedName)] > 1 {
+					scopedName = dashboardJoinName(groupName, `ID`+cast.ToString(item[`id`]), rawLabel)
+				}
+				itemList[k][`label`] = scopedName
+			}
+		}
 	}
 
 	gsgin.GinResponseSuccess(c, ``, map[string]any{

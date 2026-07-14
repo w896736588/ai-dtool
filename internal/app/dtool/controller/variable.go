@@ -18,6 +18,8 @@ import (
 )
 
 func VariableList(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
 	variableGroupList, _ := common.DbMain.Client.QuickQuery(`tbl_group`, `*`, map[string]any{
 		`type`: define.GroupTypeVariable,
 	}).All()
@@ -43,6 +45,37 @@ func VariableList(c *gin.Context) {
 		for _, variableGroup := range variableGroupList {
 			if cast.ToString(variableGroup[`id`]) == cast.ToString(variable[`variable_group_id`]) {
 				variableGroup[`variable_list`] = append(variableGroup[`variable_list`].([]map[string]any), variable)
+			}
+		}
+	}
+	if cast.ToInt(dataMap[`is_dashboard`]) == 1 {
+		groupNameMap := make(map[string]string, len(variableGroupList))
+		for _, groupInfo := range variableGroupList {
+			groupNameMap[cast.ToString(groupInfo[`id`])] = cast.ToString(groupInfo[`name`])
+		}
+		nameCounts := dashboardNameCounts(variableList, `name`)
+		scopedCounts := make(map[string]int, len(variableList))
+		for _, item := range variableList {
+			rawName := strings.TrimSpace(cast.ToString(item[`name`]))
+			groupName := strings.TrimSpace(groupNameMap[cast.ToString(item[`variable_group_id`])])
+			if groupName == `` {
+				groupName = `未分组`
+			}
+			scopedCounts[strings.ToLower(dashboardJoinName(groupName, rawName))]++
+		}
+		for k, item := range variableList {
+			rawName := strings.TrimSpace(cast.ToString(item[`name`]))
+			groupName := strings.TrimSpace(groupNameMap[cast.ToString(item[`variable_group_id`])])
+			if groupName == `` {
+				groupName = `未分组`
+			}
+			variableList[k][`raw_name`] = rawName
+			if dashboardHasDuplicateName(nameCounts, rawName) {
+				scopedName := dashboardJoinName(groupName, rawName)
+				if scopedCounts[strings.ToLower(scopedName)] > 1 {
+					scopedName = dashboardJoinName(groupName, `ID`+cast.ToString(item[`id`]), rawName)
+				}
+				variableList[k][`name`] = scopedName
 			}
 		}
 	}
