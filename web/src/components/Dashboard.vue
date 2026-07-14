@@ -544,6 +544,50 @@ export default {
       }
     }
 
+    const getDockerQuickSelection = (stack, actionName = '') => {
+      const sourceStack = Array.isArray(stack) ? stack : []
+      const actionIndex = sourceStack.findIndex(item => {
+        if (actionName) {
+          return item?.action === actionName
+        }
+        return item?.action === 'dockerQuickRestart' || item?.action === 'dockerQuickStop'
+      })
+      return {
+        actionIndex,
+        projectCmd: actionIndex >= 0 ? sourceStack[actionIndex + 1] : null,
+        serviceCmd: actionIndex >= 0 ? sourceStack[actionIndex + 2] : null
+      }
+    }
+
+    const getDockerProjectKey = (projectCmd) => {
+      return normalizeCommandPart(projectCmd?.id) ||
+        normalizeCommandPart(projectCmd?.data?.id) ||
+        normalizeCommandPart(projectCmd?.command || projectCmd?.name)
+    }
+
+    const getDockerProjectDefaultServices = (projectCmd) => {
+      if (Array.isArray(projectCmd?.default_service_list)) {
+        return projectCmd.default_service_list.map(item => normalizeCommandPart(item)).filter(Boolean)
+      }
+      if (Array.isArray(projectCmd?.data?.default_service_list)) {
+        return projectCmd.data.default_service_list.map(item => normalizeCommandPart(item)).filter(Boolean)
+      }
+      return []
+    }
+
+    const isDockerServiceInProject = (projectCmd, serviceCmd) => {
+      const serviceName = normalizeCommandPart(serviceCmd?.data?.service || serviceCmd?.command || serviceCmd?.name)
+      if (!projectCmd || !serviceCmd || !serviceName) {
+        return false
+      }
+      const projectKey = getDockerProjectKey(projectCmd)
+      const serviceProjectKey = normalizeCommandPart(serviceCmd?.data?.projectKey || serviceCmd?.data?.projectId)
+      if (projectKey && serviceProjectKey && projectKey !== serviceProjectKey) {
+        return false
+      }
+      return getDockerProjectDefaultServices(projectCmd).includes(serviceName)
+    }
+
     // 判断动作命令是否已满足执行条件（含多级目标校验）
     const isActionReady = (actionCmd, stack, inputValue) => {
       if (!actionCmd) return false
@@ -561,9 +605,8 @@ export default {
       }
       // docker quick-restart/quick-stop 需要先选项目，再选服务
       if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop') {
-        const actionIndex = sourceStack.findIndex(item => item?.action === actionCmd.action)
-        const serviceCmd = actionIndex >= 0 ? sourceStack[actionIndex + 2] : null
-        return !!(serviceCmd && serviceCmd.data)
+        const { projectCmd, serviceCmd } = getDockerQuickSelection(sourceStack, actionCmd.action)
+        return isDockerServiceInProject(projectCmd, serviceCmd)
       }
       if (actionCmd.action === 'supervisorRestart' || actionCmd.action === 'supervisorStop' || actionCmd.action === 'supervisorConfig') {
         const actionIndex = sourceStack.findIndex(item => item?.action === actionCmd.action)
@@ -618,9 +661,12 @@ export default {
         return `命令未完成：${actionCmd.inputPlaceholder || '请输入参数'}`
       }
       if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop') {
-        const serviceCmd = actionIndex >= 0 ? sourceStack[actionIndex + 2] : null
+        const { projectCmd, serviceCmd } = getDockerQuickSelection(sourceStack, actionCmd.action)
         if (!(serviceCmd && serviceCmd.data)) {
           return '命令未完成：请选择服务'
+        }
+        if (!isDockerServiceInProject(projectCmd, serviceCmd)) {
+          return '命令未完成：请选择当前项目下的服务'
         }
       }
       if (actionCmd.action === 'supervisorRestart' || actionCmd.action === 'supervisorStop' || actionCmd.action === 'supervisorConfig') {
@@ -1779,6 +1825,7 @@ export default {
         type !== 'linkAccountList' &&
         type !== 'scriptOptionList' &&
         type !== 'historyList' &&
+        type !== 'dockerServiceList' &&
         dynamicDataCache.value[type]
       ) {
         isLoadingDynamic.value = false
@@ -1927,16 +1974,19 @@ export default {
         cmd?.action === 'dockerQuickRestart' || cmd?.action === 'dockerQuickStop'
       )
       const projectCmd = actionIndex >= 0 ? commandStack.value[actionIndex + 1] : null
-      const services = Array.isArray(projectCmd?.default_service_list)
-        ? projectCmd.default_service_list
-        : (Array.isArray(projectCmd?.data?.default_service_list) ? projectCmd.data.default_service_list : [])
+      const services = getDockerProjectDefaultServices(projectCmd)
 
       const buildAndApply = (targetProject, serviceList) => {
+        const projectKey = getDockerProjectKey(targetProject)
         const list = serviceList.map(service => ({
           command: service,
           name: service,
           desc: '服务',
-          data: { service, projectId: targetProject.id }
+          data: {
+            service,
+            projectId: projectKey,
+            projectKey
+          }
         }))
         dynamicDataCache.value['dockerServiceList'] = list
         currentChildren.value = list
@@ -1960,6 +2010,7 @@ export default {
         }
       }
       isLoadingDynamic.value = false
+      delete loadingDynamicTypes.value['dockerServiceList']
       reparseForPendingHistoryExecution('dockerServiceList')
       refreshCommandDropdownVisibility()
     }
@@ -3247,6 +3298,12 @@ export default {
                 finishExecution()
                 return
               }
+              if (!isDockerServiceInProject(composeCmd, serviceCmd)) {
+                appendOutputResult('错误：请选择当前项目下的服务\n')
+                sseDistribute.UnRegisterReceive(newSseDistributeId)
+                finishExecution()
+                return
+              }
               appendOutputResult(`正在快速重启服务 ${service}...\n\n`)
               compose.DockerComposeRestart({ ...basePayload, service }, (response) => done(response, () => appendOutputResult('快速重启完成\n')))
             }
@@ -3256,6 +3313,12 @@ export default {
               const serviceStop = serviceCmd && serviceCmd.data ? serviceCmd.data.service : ''
               if (!serviceStop) {
                 appendOutputResult('错误：请先选择要停止的服务\n')
+                sseDistribute.UnRegisterReceive(newSseDistributeId)
+                finishExecution()
+                return
+              }
+              if (!isDockerServiceInProject(composeCmd, serviceCmd)) {
+                appendOutputResult('错误：请选择当前项目下的服务\n')
                 sseDistribute.UnRegisterReceive(newSseDistributeId)
                 finishExecution()
                 return
