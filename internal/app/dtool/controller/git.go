@@ -87,7 +87,7 @@ func gitCleanupAndSwitchRunLocalStep(sse *gsgin.Sse, localDir string, stepName s
 			Message: stepName + `失败`,
 			Data:    map[string]any{`error`: stdoutErr.Error()},
 		})
-		return fmt.Errorf(stdoutErr.Error())
+		return errors.New(stdoutErr.Error())
 	}
 	stderr, stderrErr := cmd.StderrPipe()
 	if stderrErr != nil {
@@ -97,7 +97,7 @@ func gitCleanupAndSwitchRunLocalStep(sse *gsgin.Sse, localDir string, stepName s
 			Message: stepName + `失败`,
 			Data:    map[string]any{`error`: stderrErr.Error()},
 		})
-		return fmt.Errorf(stderrErr.Error())
+		return errors.New(stderrErr.Error())
 	}
 	if startErr := cmd.Start(); startErr != nil {
 		sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
@@ -109,7 +109,7 @@ func gitCleanupAndSwitchRunLocalStep(sse *gsgin.Sse, localDir string, stepName s
 				`error`:   startErr.Error(),
 			},
 		})
-		return fmt.Errorf(startErr.Error())
+		return errors.New(startErr.Error())
 	}
 
 	// 并发读取 stdout 和 stderr，逐行实时推送到 SSE
@@ -143,7 +143,7 @@ func gitCleanupAndSwitchRunLocalStep(sse *gsgin.Sse, localDir string, stepName s
 				`error`:     waitErr.Error(),
 			},
 		})
-		return fmt.Errorf(waitErr.Error())
+		return errors.New(waitErr.Error())
 	}
 	sendGitSwitchStreamEvent(sse, gitSwitchStreamEvent{
 		Type:    `step`,
@@ -348,9 +348,17 @@ func GitChangeBranch(c *gin.Context) {
 		gsgin.GinResponseError(c, `切换的分支不能为空`, nil)
 		return
 	}
+	if !isSafeGitBranchInput(branchName) {
+		gsgin.GinResponseError(c, `切换的分支格式不合法`, nil)
+		return
+	}
 	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
 	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
+		return
+	}
+	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, cast.ToBool(reqMap[`discard_local_changes`]), cmdTimeout); worktreeErr != nil {
+		gsgin.GinResponseError(c, worktreeErr.Error(), nil)
 		return
 	}
 	sendGitSse(sse, fmt.Sprintf("[ssh] 切换 %s 到分支 %s...", codePath, branchName))
@@ -367,10 +375,7 @@ func GitChangeBranch(c *gin.Context) {
 	command := p_shell.NewCommand()
 	//command.Sudo()
 	command.Cd(codePath)
-	command.GitIgnoreAll()
-	command.GitCleanAll()
 	command.GitFetch()
-	command.GitPull()
 	currentBranch = strings.Replace(currentBranch, "\n", "", -1)
 	if currentBranch != branchName {
 		//command.RemoteOriginBranch(branchName)
@@ -403,9 +408,17 @@ func GitChangeBranchRemote(c *gin.Context) {
 		gsgin.GinResponseError(c, `切换的分支不能为空`, nil)
 		return
 	}
+	if !isSafeGitBranchInput(branchName) {
+		gsgin.GinResponseError(c, `远程分支格式不合法`, nil)
+		return
+	}
 	// 所有通过 SSH 的 Git 操作前，默认先执行"目录安全 + 保存账号密码"。
 	if prepareErr := prepareGitOperationEnv(sshClient, codePath, cmdTimeout); prepareErr != nil {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
+		return
+	}
+	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, cast.ToBool(reqMap[`discard_local_changes`]), cmdTimeout); worktreeErr != nil {
+		gsgin.GinResponseError(c, worktreeErr.Error(), nil)
 		return
 	}
 	command1 := p_shell.NewCommand()
@@ -420,9 +433,7 @@ func GitChangeBranchRemote(c *gin.Context) {
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
-	command.GitIgnoreAll()
 	command.GitFetch()
-	command.GitPull()
 	if !strings.Contains(currentBranch, branchName) {
 		command.RemoteOriginBranch(branchName)
 		command.GitCheckout(branchName)
@@ -454,15 +465,16 @@ func GitPullBranchOrigin(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
+	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, cast.ToBool(reqMap[`discard_local_changes`]), cmdTimeout); worktreeErr != nil {
+		gsgin.GinResponseError(c, worktreeErr.Error(), nil)
+		return
+	}
 
 	sendGitSse(sse, fmt.Sprintf("[ssh] 拉取 %s 项目代码...", codePath))
 	command := p_shell.NewCommand()
 	//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 	command.Cd(codePath)
-	command.GitIgnoreAll()
-	command.GitCleanAll()
 	command.GitFetch()
-	command.GitPull()
 	// 通过命令替换动态取当前分支，避免分支探测输出中的 prompt/命令残留污染后续拉取命令。
 	command.GitPullOriginCurrentBranch()
 	command.Echo(`当前分支：`)
@@ -550,6 +562,10 @@ func GitQuickCreateBranch(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
+	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, cast.ToBool(reqMap[`discard_local_changes`]), cmdTimeout); worktreeErr != nil {
+		gsgin.GinResponseError(c, worktreeErr.Error(), nil)
+		return
+	}
 
 	globalMap, mapErr := common.DbMain.AllGlobalMap()
 	if mapErr != nil {
@@ -569,11 +585,8 @@ func GitQuickCreateBranch(c *gin.Context) {
 	sendGitSse(sse, fmt.Sprintf("[ssh] 在 %s 创建分支 %s...", codePath, newBranchName))
 	command := p_shell.NewCommand()
 	command.Cd(codePath)
-	// 按约定顺序执行：pull -> fetch -> checkout . -> clean
-	command.GitPull()
+	// 工作区已在上方校验或按明确参数清理，这里只执行分支操作。
 	command.GitFetch()
-	command.GitIgnoreAll()
-	command.GitCleanAll()
 	command.GitCheckout(baseBranch)
 	command.GitPullOrigin(baseBranch)
 	command.GitCheckoutNewBranch(newBranchName)
@@ -1305,14 +1318,14 @@ func GitSaveCredentials(c *gin.Context) {
 	command.SetCommand(`grep -i -E '^\[credential\]|^[[:space:]]*helper[[:space:]]*=[[:space:]]*store' .git/config`)
 	result, _ := sshClient.RunCommandWait(command.GetCommand().ToStr(), 4*time.Second)
 	if strings.Contains(result, `store`) && strings.Contains(result, `credential`) {
-		sse.Send(`已存在设置，不再新增` + "\n")
+		sendGitSse(sse, `已存在设置，不再新增`)
 	} else {
 		command := p_shell.NewCommand()
 		//command.Sudo() 不要用sudo否则服务器会提示输入密码，导致执行被卡死
 		command.Cd(codePath)
 		command.Append(`.git/config`, "[credential]\nhelper = store\n")
 		_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), 4*time.Second)
-		sse.Send(`写入成功` + "\n")
+		sendGitSse(sse, `写入成功`)
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
@@ -1335,6 +1348,25 @@ func prepareGitOperationEnv(sshClient *gsssh.SshTerminal, codePath string, cmdTi
 	cmd.SetCommand(`grep -qi '\[credential\]' .git/config 2>/dev/null && grep -qi 'helper.*=.*store' .git/config 2>/dev/null || printf '[credential]\nhelper = store\n' >> .git/config`)
 	_, err := sshClient.RunCommandWait(cmd.GetCommand().ToStr(), cmdTimeout)
 	return err
+}
+
+// prepareGitWorkingTree prevents pull/checkout from silently destroying local work.
+// Cleanup is allowed only when the caller explicitly sets discard_local_changes=true.
+func prepareGitWorkingTree(sshClient *gsssh.SshTerminal, codePath string, discard bool, cmdTimeout time.Duration) error {
+	cmd := p_shell.NewCommand()
+	cmd.Cd(codePath)
+	if discard {
+		cmd.GitResetHard()
+		cmd.GitCleanAll()
+		_, err := sshClient.RunCommandWait(cmd.GetCommand().ToStr(), cmdTimeout)
+		return err
+	}
+	cmd.SetCommand(`test -z "$(git status --porcelain --untracked-files=normal)"`)
+	_, err := sshClient.RunCommandWait(cmd.GetCommand().ToStr(), cmdTimeout)
+	if err != nil {
+		return errors.New(`Git 工作区存在未提交修改；请先处理修改，或在明确授权后设置 discard_local_changes=true`)
+	}
+	return nil
 }
 
 const (
@@ -1389,7 +1421,9 @@ func GitUploadFile(c *gin.Context) {
 			gsgin.GinResponseError(c, `relative_file_path不能为空`, nil)
 			return
 		}
-		if strings.Contains(item.RelativeFilePath, `..`) {
+		normalized := strings.ReplaceAll(item.RelativeFilePath, `\`, `/`)
+		cleaned := path.Clean(normalized)
+		if path.IsAbs(normalized) || cleaned == `.` || cleaned == `..` || strings.HasPrefix(cleaned, `../`) {
 			gsgin.GinResponseError(c, `relative_file_path不合法: `+item.RelativeFilePath, nil)
 			return
 		}
@@ -1445,7 +1479,7 @@ func GitUploadFile(c *gin.Context) {
 	gstool.FmtPrintlnLogTime(`[GitUploadFile] 需要创建的远程目录: %v`, targetDirs)
 	for dir := range targetDirs {
 		gstool.FmtPrintlnLogTime(`[GitUploadFile] mkdir -p %s`, dir)
-		if out, mkdirErr := sshOnce.RunCommandOnce(fmt.Sprintf(`mkdir -p %s`, dir)); mkdirErr != nil {
+		if out, mkdirErr := sshOnce.RunCommandOnce(fmt.Sprintf(`mkdir -p -- %s`, p_shell.ShellQuote(dir))); mkdirErr != nil {
 			gstool.FmtPrintlnLogTime(`[GitUploadFile] mkdir失败: dir=%s err=%s out=%s`, dir, mkdirErr.Error(), out)
 			gsgin.GinResponseError(c, `创建远程目录失败: `+mkdirErr.Error(), nil)
 			return
@@ -1490,7 +1524,7 @@ func GitUploadFile(c *gin.Context) {
 
 		// mv临时文件到最终路径（已存在则覆盖），复用已有的sshOnce连接
 		gstool.FmtPrintlnLogTime(`[GitUploadFile] mv临时文件: %s -> %s`, targetTempFile, targetPath)
-		if _, mvErr := sshOnce.RunCommandOnce(fmt.Sprintf(`mv %s %s`, targetTempFile, targetPath)); mvErr != nil {
+		if _, mvErr := sshOnce.RunCommandOnce(fmt.Sprintf(`mv -- %s %s`, p_shell.ShellQuote(targetTempFile), p_shell.ShellQuote(targetPath))); mvErr != nil {
 			gstool.FmtPrintlnLogTime(`[GitUploadFile] mv失败: %s`, mvErr.Error())
 			gsgin.GinResponseError(c, fmt.Sprintf(`移动文件失败[%s]: %s`, fileName, mvErr.Error()), nil)
 			return
@@ -1600,13 +1634,14 @@ func GitPull(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
+	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, cast.ToBool(reqMap[`discard_local_changes`]), cmdTimeout); worktreeErr != nil {
+		gsgin.GinResponseError(c, worktreeErr.Error(), nil)
+		return
+	}
 
 	command := p_shell.NewCommand()
 	command.Cd(codePath)
-	command.GitIgnoreAll()
-	command.GitCleanAll()
 	command.GitFetch()
-	command.GitPull()
 	command.GitPullOriginCurrentBranch()
 	command.Echo(`当前分支：`)
 	command.GitShowBranch()
@@ -1635,6 +1670,10 @@ func GitChangeBranchById(c *gin.Context) {
 		gsgin.GinResponseError(c, `branch_name不能为空`, nil)
 		return
 	}
+	if !isSafeGitBranchInput(branchName) {
+		gsgin.GinResponseError(c, `branch_name格式不合法`, nil)
+		return
+	}
 	gitInfo, sshClient, cmdTimeout, err := getGitInfoByGitId(gitId)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -1648,6 +1687,10 @@ func GitChangeBranchById(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
+	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, cast.ToBool(reqMap[`discard_local_changes`]), cmdTimeout); worktreeErr != nil {
+		gsgin.GinResponseError(c, worktreeErr.Error(), nil)
+		return
+	}
 
 	// 先查询当前分支
 	command1 := p_shell.NewCommand()
@@ -1659,10 +1702,7 @@ func GitChangeBranchById(c *gin.Context) {
 
 	command := p_shell.NewCommand()
 	command.Cd(codePath)
-	command.GitIgnoreAll()
-	command.GitCleanAll()
 	command.GitFetch()
-	command.GitPull()
 	currentBranch = strings.Replace(currentBranch, "\n", "", -1)
 	if currentBranch != branchName {
 		command.GitCheckout(branchName)
