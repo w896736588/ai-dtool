@@ -2,6 +2,7 @@ package agent
 
 import (
 	"dev_tool/internal/app/dtool/define"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -52,6 +53,36 @@ func ScanInstalledTools() []define.AgentV2InstalledTool {
 func RemoveInstalledTool(name string) error {
 	extDir := GetPiExtensionsDir()
 	filePath := filepath.Join(extDir, name+".ts")
+	return os.Remove(filePath)
+}
+
+// WriteToolExtension 将 DB 中的 tool 脚本物化到 ~/.pi/agent/extensions/<name>.ts
+// 这样 Pi 启动时才能真正加载该工具（Pi 默认扩展目录即此）。
+func WriteToolExtension(name, scriptContent string) error {
+	if name == "" || scriptContent == "" {
+		return nil
+	}
+	extDir := GetPiExtensionsDir()
+	if extDir == "" {
+		return fmt.Errorf("无法定位 Pi 扩展目录")
+	}
+	if err := os.MkdirAll(extDir, 0o755); err != nil {
+		return err
+	}
+	filePath := filepath.Join(extDir, name+".ts")
+	return os.WriteFile(filePath, []byte(scriptContent), 0o644)
+}
+
+// RemoveToolExtension 删除 ~/.pi/agent/extensions/<name>.ts（文件不存在视为成功）
+func RemoveToolExtension(name string) error {
+	if name == "" {
+		return nil
+	}
+	extDir := GetPiExtensionsDir()
+	filePath := filepath.Join(extDir, name+".ts")
+	if _, err := os.Stat(filePath); err != nil {
+		return nil
+	}
 	return os.Remove(filePath)
 }
 

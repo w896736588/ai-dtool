@@ -298,7 +298,10 @@ func AgentV2SkillList(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, "", gin.H{"list": items})
 }
 
-// AgentV2SkillSave 新增/编辑 Skill
+// AgentV2SkillSave 新增/编辑 Skill/Tool
+// 说明：当 skill_type == "tool" 且 config 中包含 script_content 时，
+// 会把脚本物化到 Pi 扩展目录 ~/.pi/agent/extensions/<name>.ts，
+// 这样 Pi 启动时才能真正加载该工具（此前只写 DB 导致扩展目录为空）。
 func AgentV2SkillSave(c *gin.Context) {
 	var req define.AgentV2SkillSaveRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -307,7 +310,27 @@ func AgentV2SkillSave(c *gin.Context) {
 	}
 
 	now := time.Now().Unix()
+
+	// 新建时，若同名同类型已存在则改为更新（幂等，便于重复安装内置工具）
+	if req.Id == 0 {
+		rows, _ := common.DbMain.Client.QueryBySql(
+			`SELECT id FROM tbl_agent_v2_skill WHERE agent_id = ? AND name = ? AND skill_type = ?`,
+			req.AgentId, req.Name, req.SkillType,
+		).All()
+		if len(rows) > 0 {
+			req.Id = cast.ToInt(rows[0]["id"])
+		}
+	}
+
 	if req.Id > 0 {
+		// 改名时清理旧扩展文件
+		var oldName string
+		rows, _ := common.DbMain.Client.QueryBySql(
+			`SELECT name FROM tbl_agent_v2_skill WHERE id = ?`, req.Id,
+		).All()
+		if len(rows) > 0 {
+			oldName = cast.ToString(rows[0]["name"])
+		}
 		_, err := common.DbMain.Client.ExecBySql(
 			`UPDATE tbl_agent_v2_skill SET name = ?, skill_type = ?, config = ?, enabled = ?, updated_at = ? WHERE id = ?`,
 			req.Name, req.SkillType, req.Config, req.Enabled, now, req.Id,
@@ -315,6 +338,12 @@ func AgentV2SkillSave(c *gin.Context) {
 		if err != nil {
 			gsgin.GinResponseError(c, err.Error(), nil)
 			return
+		}
+		if req.SkillType == "tool" {
+			if oldName != "" && oldName != req.Name {
+				_ = agent.RemoveToolExtension(oldName)
+			}
+			materializeToolExtension(req.Name, req.Config)
 		}
 	} else {
 		_, err := common.DbMain.Client.InsertBySql(
@@ -325,12 +354,35 @@ func AgentV2SkillSave(c *gin.Context) {
 			gsgin.GinResponseError(c, err.Error(), nil)
 			return
 		}
+		if req.SkillType == "tool" {
+			materializeToolExtension(req.Name, req.Config)
+		}
 	}
 
 	gsgin.GinResponseSuccess(c, "", nil)
 }
 
-// AgentV2SkillDelete 删除 Skill
+// materializeToolExtension 将 tool 的 script_content 写入 Pi 扩展目录
+func materializeToolExtension(name, configStr string) {
+	if name == "" || configStr == "" {
+		return
+	}
+	var cfg struct {
+		ScriptContent string `json:"script_content"`
+	}
+	if err := json.Unmarshal([]byte(configStr), &cfg); err != nil {
+		return
+	}
+	if cfg.ScriptContent == "" {
+		return
+	}
+	if err := agent.WriteToolExtension(name, cfg.ScriptContent); err != nil {
+		log.Printf("[agent-v2] 物化工具扩展失败 %q: %v", name, err)
+	}
+}
+
+// AgentV2SkillDelete 删除 Skill/Tool
+// 工具类需同时清理 ~/.pi/agent/extensions/ 下的对应 .ts 文件
 func AgentV2SkillDelete(c *gin.Context) {
 	var req struct {
 		Id int `json:"id"`
@@ -340,12 +392,25 @@ func AgentV2SkillDelete(c *gin.Context) {
 		return
 	}
 
+	// 删除前取出名称与类型，工具类需清理扩展文件
+	var toolName string
+	rows, _ := common.DbMain.Client.QueryBySql(
+		`SELECT name, skill_type FROM tbl_agent_v2_skill WHERE id = ?`, req.Id,
+	).All()
+	if len(rows) > 0 && cast.ToString(rows[0]["skill_type"]) == "tool" {
+		toolName = cast.ToString(rows[0]["name"])
+	}
+
 	_, err := common.DbMain.Client.ExecBySql(
 		`DELETE FROM tbl_agent_v2_skill WHERE id = ?`, req.Id,
 	).Exec()
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
+	}
+
+	if toolName != "" {
+		_ = agent.RemoveToolExtension(toolName)
 	}
 
 	gsgin.GinResponseSuccess(c, "", nil)
@@ -387,17 +452,21 @@ func AgentV2BuiltinToolList(c *gin.Context) {
 			continue
 		}
 
-		// 读取脚本文件（优先 index.ts，否则第一个 .ts 文件）
+		// 读取脚本文件：优先 index.ts；排除 *.d.ts 类型声明文件（如 env.d.ts）
 		scriptContent := ""
-		tsFiles, _ := filepath.Glob(filepath.Join(dirPath, "*.ts"))
-		if len(tsFiles) > 0 {
+		indexFile := filepath.Join(dirPath, "index.ts")
+		if data, err := os.ReadFile(indexFile); err == nil {
+			scriptContent = string(data)
+		} else {
+			// 回退：取目录中第一个非 *.d.ts 的 .ts 文件
+			tsFiles, _ := filepath.Glob(filepath.Join(dirPath, "*.ts"))
 			for _, f := range tsFiles {
-				if filepath.Base(f) == "index.ts" || strings.HasSuffix(f, ".ts") {
-					data, err := os.ReadFile(f)
-					if err == nil {
-						scriptContent = string(data)
-						break
-					}
+				if strings.HasSuffix(f, ".d.ts") {
+					continue
+				}
+				if data, err := os.ReadFile(f); err == nil {
+					scriptContent = string(data)
+					break
 				}
 			}
 		}

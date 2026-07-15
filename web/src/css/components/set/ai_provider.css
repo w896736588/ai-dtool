@@ -29,6 +29,11 @@
   color: #909399;
 }
 
+/* --- Header --- */
+.pmp-header {
+  margin-bottom: 16px;
+}
+
 /* --- Provider 卡片列表 --- */
 .provider-list {
   display: flex;
@@ -47,7 +52,7 @@
   transition: border-color .2s;
 }
 .provider-card:hover { border-color: #c0c4cc; }
-.provider-card--expanded { border-color: #409eff; }
+.provider-card--expanded { border-color: #e4e7ed; }
 
 .provider-card__header {
   display: flex;

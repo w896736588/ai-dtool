@@ -1,0 +1,21 @@
+{
+  "name": "Git 工具",
+  "tool_name": "dtool_git",
+  "description": "dtool Git 操作工具：上传文件、查询/切换分支、拉取代码（远程 API），以及查看分支改动、单文件 diff、本地文件变更、前端/后端范围 diff（本地 git）。",
+  "tool_description": "Git toolkit for dtool. Remote (via dtool API): upload local files to remote git project, query current branch, pull code, switch branch. Local: list changed files vs a base branch with status and line counts, show single-file diff (text/binary/image), local change summary, and frontend/backend scoped diffs. Select the operation via the `action` parameter.",
+  "parameters": [
+    {"name": "action", "type": "string", "description": "操作类型：upload_file | current_branch | pull | change_branch | branch_diff | file_diff | file_changes | frontend_diff | backend_diff", "required": true},
+    {"name": "git_id", "type": "string", "description": "远程操作（upload_file/current_branch/pull/change_branch）所需的 git 仓库 ID", "required": false},
+    {"name": "base_url", "type": "string", "description": "dtool 服务地址，默认 http://localhost:17170", "required": false},
+    {"name": "token", "type": "string", "description": "dtool 认证 Token", "required": false},
+    {"name": "branch_name", "type": "string", "description": "change_branch 的目标分支名", "required": false},
+    {"name": "base_branch", "type": "string", "description": "branch_diff/file_diff/frontend_diff/backend_diff 的对比基分支；file_diff 可用 _workspace_ 表示对比 HEAD 与工作区", "required": false},
+    {"name": "file_path", "type": "string", "description": "file_diff 的目标文件路径", "required": false},
+    {"name": "local_dir", "type": "string", "description": "本地 git 仓库目录，默认当前工作目录", "required": false},
+    {"name": "parent_branch", "type": "string", "description": "file_changes 的对比基分支（可选）", "required": false},
+    {"name": "with_diffs", "type": "boolean", "description": "file_changes 是否返回所有文件 diff", "required": false},
+    {"name": "target_file", "type": "string", "description": "file_changes 单文件 diff 路径", "required": false},
+    {"name": "extra_excludes", "type": "array", "description": "frontend_diff/backend_diff 额外排除的路径列表（可选）", "required": false},
+    {"name": "local_file_paths", "type": "array", "description": "upload_file 要上传的文件列表（每项含 full_file_path 与 relative_file_path）", "required": false}
+  ]
+}
