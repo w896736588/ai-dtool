@@ -391,6 +391,8 @@ export default {
         if (msg === sse.SseEventClean) {
           _that.shellController.sshResult = ''
           _that.shellController.sourceSshResult = ''
+        } else if (String(msg).indexOf('[SMART_LINK_RUN_DONE]') !== -1) {
+          // 忽略执行完成标记，不展示到日志框
         } else {
           _that.shellController.sourceSshResult += msg
           _that.shellController.sshResult = _that.shellController.sourceSshResult

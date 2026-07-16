@@ -3663,7 +3663,9 @@ export default {
         finishExecution()
         return
       }
-      const payload = buildLinkRunPayload(selection, sseDistributeId.value, normalizeCommandPart)
+      // 每次执行使用独立的 SSE 分发 ID，避免与通用 dashboard 通道的日志相互串扰
+      const newSseDistributeId = sseDistribute.GetSseDistributeId('dashboard_link')
+      const payload = buildLinkRunPayload(selection, newSseDistributeId, normalizeCommandPart)
 
       if (!payload.id || !payload.label) {
         appendOutputResult('错误：链接配置不完整，无法执行\n')
@@ -3671,14 +3673,45 @@ export default {
         return
       }
 
+      const throttleStringFunc = new Throttle_string(50, (text) => {
+        if (currentOutputMessage.value) {
+          appendOutputProcess(text)
+        }
+      })
+      let linkFinished = false
+      let linkResponse = null
+      const finishLinkExecution = () => {
+        if (linkFinished) return
+        linkFinished = true
+        sseDistribute.UnRegisterReceive(newSseDistributeId)
+        if (linkResponse && linkResponse.ErrCode === 0) {
+          appendOutputResult('执行完成\n')
+        } else if (linkResponse) {
+          appendOutputResult(`执行失败: ${normalizeCommandPart(linkResponse.ErrMsg) || '未知错误'}\n`)
+        }
+        finishExecution(linkResponse)
+      }
+      // 兜底：若 60s 内未收到后端完成标记，仍正常收尾，避免界面卡在执行中
+      const linkFallbackTimer = setTimeout(finishLinkExecution, 60000)
+      sseDistribute.RegisterReceive(newSseDistributeId, (msg) => {
+        // 后端在所有浏览器实例执行完毕后推送完成标记，据此收尾并保留已推送的明细日志
+        if (String(msg).indexOf('[SMART_LINK_RUN_DONE]') !== -1) {
+          clearTimeout(linkFallbackTimer)
+          // 略微延迟以让节流缓冲中的末尾日志落盘
+          setTimeout(finishLinkExecution, 300)
+          return
+        }
+        throttleStringFunc.update(msg)
+      })
+
       appendOutputResult(`正在执行链接 [${payload.label}] 的自定义网页任务...\n\n`)
       smartLinkSet.SmartLinkRun(payload, (response) => {
-        if (response && response.ErrCode === 0) {
-          appendOutputResult('执行完成\n')
-        } else {
-          appendOutputResult(`执行失败: ${normalizeCommandPart(response?.ErrMsg) || '未知错误'}\n`)
+        linkResponse = response
+        // 接口失败时后端不会推送完成标记，需立即收尾
+        if (!response || response.ErrCode !== 0) {
+          clearTimeout(linkFallbackTimer)
+          finishLinkExecution()
         }
-        finishExecution(response)
       })
     }
 
