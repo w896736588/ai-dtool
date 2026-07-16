@@ -80,14 +80,9 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column v-if="!chooseSshId" label="环境" sortable width="120">
+        <el-table-column v-if="!chooseSshId" label="环境" sortable width="220">
           <template #default="scope">
             <span v-html="scope.row.ssh_name"></span>
-          </template>
-        </el-table-column>
-        <el-table-column label="位置" sortable width="260">
-          <template #default="scope">
-            <code class="path-text" v-html="scope.row.compose_yml_path"></code>
           </template>
         </el-table-column>
         <el-table-column fixed="right" label="操作" min-width="360">
@@ -96,7 +91,7 @@
               <span class="operation-title">快速重启：</span>
               <div class="quick-actions">
                 <template v-for="item in scope.row.default_service_list" :key="`restart_${scope.row.id}_${item}`">
-                  <pl-button size="small" type="success" plain @click="restart(scope.row , item)">{{ item }}</pl-button>
+                  <pl-button size="small" type="success" link @click="restart(scope.row , item)">{{ item }}</pl-button>
                 </template>
               </div>
             </div>
@@ -104,23 +99,7 @@
               <span class="operation-title">快速停止：</span>
               <div class="quick-actions">
                 <template v-for="item in scope.row.default_service_list" :key="`stop_${scope.row.id}_${item}`">
-                  <pl-button size="small" type="warning" plain @click="stop(scope.row , item)">{{ item }}</pl-button>
-                </template>
-              </div>
-            </div>
-            <div v-if="scope.row.default_service_list && scope.row.default_service_list.length" class="operation-block">
-              <span class="operation-title">快速 down：</span>
-              <div class="quick-actions">
-                <template v-for="item in scope.row.default_service_list" :key="`down_${scope.row.id}_${item}`">
-                  <pl-button size="small" type="danger" plain @click="down(scope.row , item)">{{ item }}</pl-button>
-                </template>
-              </div>
-            </div>
-            <div v-if="scope.row.default_service_list && scope.row.default_service_list.length" class="operation-block">
-              <span class="operation-title">快速 pull：</span>
-              <div class="quick-actions">
-                <template v-for="item in scope.row.default_service_list" :key="`pull_${scope.row.id}_${item}`">
-                  <pl-button size="small" type="primary" plain @click="pull(scope.row , item)">{{ item }}</pl-button>
+                  <pl-button size="small" type="warning" link @click="stop(scope.row , item)">{{ item }}</pl-button>
                 </template>
               </div>
             </div>
@@ -129,7 +108,7 @@
         <el-table-column fixed="right" label="更多操作" width="120">
           <template #default="scope">
             <el-dropdown @command="(command) => handleComposeRowActionCommand(scope.row, command)">
-              <pl-button size="small" type="primary" plain class="operation-dropdown-trigger">
+              <pl-button size="small" type="primary" link class="operation-dropdown-trigger">
                 更多操作
                 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
               </pl-button>
