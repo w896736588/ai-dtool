@@ -304,6 +304,23 @@ func e2eToInt(v any) int {
 	return 0
 }
 
+func e2eToBool(v any) bool {
+	if v == nil {
+		return false
+	}
+	switch x := v.(type) {
+	case bool:
+		return x
+	case int:
+		return x != 0
+	case int64:
+		return x != 0
+	case float64:
+		return x != 0
+	}
+	return false
+}
+
 func e2eToInt64(v any) int64 {
 	if v == nil {
 		return 0
@@ -338,7 +355,7 @@ func mapE2EGroupRow(r map[string]any) define.E2EGroupItem {
 		ID:                  e2eToInt(r["id"]),
 		Name:                e2eToStr(r["name"]),
 		WorkflowTaskID:      e2eToInt(r["workflow_task_id"]),
-		NotificationEnabled: e2eToInt(r["notification_enabled"]),
+		NotificationEnabled: e2eToBool(r["notification_enabled"]),
 		WebhookConfigID:     e2eToInt(r["webhook_config_id"]),
 		CaseCount:           e2eToInt(r["case_count"]),
 		CreatedAt:           e2eToInt64(r["created_at"]),
@@ -371,7 +388,7 @@ func mapE2ECaseRow(r map[string]any) define.E2ECaseItem {
 		AssertionCount:      assertsCount,
 		Tags:                e2eToStr(r["tags"]),
 		TimeoutSeconds:      e2eToInt(r["timeout_seconds"]),
-		NotificationEnabled: e2eToInt(r["notification_enabled"]),
+		NotificationEnabled: e2eToBool(r["notification_enabled"]),
 		LastRunStatus:       e2eToStr(r["last_run_status"]),
 		LastRunAt:           e2eToInt64(r["last_run_at"]),
 		CreatedAt:           e2eToInt64(r["created_at"]),

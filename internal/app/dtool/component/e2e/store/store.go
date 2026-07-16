@@ -80,7 +80,7 @@ func (s *GroupStore) Create(req *define.E2EGroupCreateRequest) (int64, error) {
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		req.Name,
 		req.WorkflowTaskID,
-		req.NotificationEnabled,
+		boolToInt(req.NotificationEnabled),
 		req.WebhookConfigID,
 		now, now,
 	).Exec()
@@ -93,9 +93,7 @@ func (s *GroupStore) Update(req *define.E2EGroupUpdateRequest) error {
 	if req.Name != "" {
 		updates["name"] = req.Name
 	}
-	if req.NotificationEnabled > 0 {
-		updates["notification_enabled"] = req.NotificationEnabled
-	}
+	updates["notification_enabled"] = boolToInt(req.NotificationEnabled)
 	if req.WebhookConfigID > 0 {
 		updates["webhook_config_id"] = req.WebhookConfigID
 	}
@@ -108,6 +106,14 @@ func (s *GroupStore) Update(req *define.E2EGroupUpdateRequest) error {
 		updates,
 	).Exec()
 	return err
+}
+
+// boolToInt 布尔转整数（数据库存储用）。
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // Delete 删除分组（联动删除用例 - 由外键 CASCADE 处理）。
@@ -200,7 +206,7 @@ func (s *CaseStore) Create(req *define.E2ECaseSaveRequest) (int64, error) {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		req.GroupID, req.Name, req.EnvURL, req.EnvBaseURL,
 		string(steps), string(assertions), string(variables),
-		timeout, req.Tags, req.NotificationEnabled,
+		timeout, req.Tags, boolToInt(req.NotificationEnabled),
 		now, now,
 	).Exec()
 	return id, err
@@ -227,7 +233,7 @@ func (s *CaseStore) Update(req *define.E2ECaseSaveRequest) error {
 		updates["timeout_seconds"] = req.TimeoutSeconds
 	}
 	updates["tags"] = req.Tags
-	updates["notification_enabled"] = req.NotificationEnabled
+	updates["notification_enabled"] = boolToInt(req.NotificationEnabled)
 	_, err := common.DbMain.Client.QuickUpdate(
 		"tbl_e2e_case",
 		map[string]any{"id": req.ID},
@@ -589,11 +595,4 @@ func normalizeJSONObject(raw json.RawMessage) string {
 	}
 	out, _ := json.Marshal(obj)
 	return string(out)
-}
-
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
 }

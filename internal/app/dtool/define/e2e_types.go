@@ -16,30 +16,30 @@ const (
 
 // E2EGroupItem 分组列表项。
 type E2EGroupItem struct {
-	ID                 int    `json:"id"`
-	Name               string `json:"name"`
-	WorkflowTaskID     int    `json:"workflow_task_id"`
-	NotificationEnabled int   `json:"notification_enabled"`
-	WebhookConfigID    int    `json:"webhook_config_id"`
-	CaseCount          int    `json:"case_count"`
-	CreatedAt          int64  `json:"created_at"`
-	UpdatedAt          int64  `json:"updated_at"`
+	ID                  int   `json:"id"`
+	Name                string `json:"name"`
+	WorkflowTaskID      int   `json:"workflow_task_id"`
+	NotificationEnabled bool  `json:"notification_enabled"`
+	WebhookConfigID     int   `json:"webhook_config_id"`
+	CaseCount           int   `json:"case_count"`
+	CreatedAt           int64 `json:"created_at"`
+	UpdatedAt           int64 `json:"updated_at"`
 }
 
 // E2EGroupCreateRequest 分组新建请求。
 type E2EGroupCreateRequest struct {
-	Name               string `json:"name"`
-	WorkflowTaskID     int    `json:"workflow_task_id,omitempty"`
-	NotificationEnabled int   `json:"notification_enabled,omitempty"`
-	WebhookConfigID    int    `json:"webhook_config_id,omitempty"`
+	Name                string `json:"name"`
+	WorkflowTaskID      int    `json:"workflow_task_id,omitempty"`
+	NotificationEnabled bool   `json:"notification_enabled,omitempty"`
+	WebhookConfigID     int    `json:"webhook_config_id,omitempty"`
 }
 
 // E2EGroupUpdateRequest 分组更新请求。
 type E2EGroupUpdateRequest struct {
-	ID                 int    `json:"id"`
-	Name               string `json:"name,omitempty"`
-	NotificationEnabled int   `json:"notification_enabled,omitempty"`
-	WebhookConfigID    int    `json:"webhook_config_id,omitempty"`
+	ID                  int   `json:"id"`
+	Name                string `json:"name,omitempty"`
+	NotificationEnabled bool   `json:"notification_enabled,omitempty"`
+	WebhookConfigID     int   `json:"webhook_config_id,omitempty"`
 }
 
 // E2EGroupDeleteRequest 分组删除请求。
@@ -79,7 +79,7 @@ type E2ECaseItem struct {
 	AssertionCount      int             `json:"assertion_count"`
 	Tags                string          `json:"tags"`
 	TimeoutSeconds      int             `json:"timeout_seconds"`
-	NotificationEnabled int             `json:"notification_enabled"`
+	NotificationEnabled bool            `json:"notification_enabled"`
 	LastRunStatus       string          `json:"last_run_status"`
 	LastRunAt           int64           `json:"last_run_at"`
 	CreatedAt           int64           `json:"created_at"`
@@ -123,7 +123,7 @@ type E2ECaseSaveRequest struct {
 	Variables           json.RawMessage `json:"variables"`           // JSON 对象
 	Tags                string          `json:"tags,omitempty"`
 	TimeoutSeconds      int             `json:"timeout_seconds,omitempty"`
-	NotificationEnabled int             `json:"notification_enabled,omitempty"`
+	NotificationEnabled bool            `json:"notification_enabled,omitempty"`
 }
 
 // E2ECaseDeleteRequest 用例删除请求。
@@ -164,19 +164,19 @@ type E2ERunDetailRequest struct {
 
 // E2ERunDetailResponse 执行详情响应（包含 steps / assertions / requests）。
 type E2ERunDetailResponse struct {
-	Run       json.RawMessage `json:"run"`
-	Steps     json.RawMessage `json:"steps"`
+	Run        json.RawMessage `json:"run"`
+	Steps      json.RawMessage `json:"steps"`
 	Assertions json.RawMessage `json:"assertions"`
-	Requests  json.RawMessage `json:"requests"`
+	Requests   json.RawMessage `json:"requests"`
 }
 
 // E2ERunListRequest 执行列表请求。
 type E2ERunListRequest struct {
-	CaseID  int    `json:"case_id,omitempty"`
-	GroupID int    `json:"group_id,omitempty"`
-	Status  string `json:"status,omitempty"`
-	Page    int    `json:"page,omitempty"`
-	PageSize int   `json:"page_size,omitempty"`
+	CaseID   int    `json:"case_id,omitempty"`
+	GroupID  int    `json:"group_id,omitempty"`
+	Status   string `json:"status,omitempty"`
+	Page     int    `json:"page,omitempty"`
+	PageSize int    `json:"page_size,omitempty"`
 }
 
 // E2ERunListResponse 执行列表响应。
@@ -217,21 +217,21 @@ type E2ERunRequestsRequest struct {
 
 // E2ERunRequestItem 请求追踪项。
 type E2ERunRequestItem struct {
-	ID              string `json:"id"`
-	RunID           int64  `json:"run_id"`
-	RunStepID       int    `json:"run_step_id"`
-	StepID          string `json:"step_id"`
-	URL             string `json:"url"`
-	Method          string `json:"method"`
-	RequestHeaders  string `json:"request_headers"`
-	RequestBody     string `json:"request_body,omitempty"`
-	ResponseStatus  int    `json:"response_status"`
-	ResponseHeaders string `json:"response_headers"`
-	ResponseBody    string `json:"response_body,omitempty"`
-	ResponseTimeMs  int    `json:"response_time_ms"`
-	Matched         bool   `json:"matched"`
-	MatchedBy       string `json:"matched_by,omitempty"`
-	CapturedAt      int64  `json:"captured_at"`
+	ID               string `json:"id"`
+	RunID            int64  `json:"run_id"`
+	RunStepID        int    `json:"run_step_id"`
+	StepID           string `json:"step_id"`
+	URL              string `json:"url"`
+	Method           string `json:"method"`
+	RequestHeaders   string `json:"request_headers"`
+	RequestBody      string `json:"request_body,omitempty"`
+	ResponseStatus   int    `json:"response_status"`
+	ResponseHeaders  string `json:"response_headers"`
+	ResponseBody     string `json:"response_body,omitempty"`
+	ResponseTimeMs   int    `json:"response_time_ms"`
+	Matched          bool   `json:"matched"`
+	MatchedBy        string `json:"matched_by,omitempty"`
+	CapturedAt       int64  `json:"captured_at"`
 }
 
 // E2ERunRequestDetailRequest 单个请求详情请求。
@@ -242,10 +242,10 @@ type E2ERunRequestDetailRequest struct {
 
 // E2ERecordStartRequest 开始录制请求。
 type E2ERecordStartRequest struct {
-	CaseID      int    `json:"case_id,omitempty"`
-	EnvURL      string `json:"env_url"`
-	EnvBaseURL  string `json:"env_base_url,omitempty"`
-	Name        string `json:"name,omitempty"`
+	CaseID     int    `json:"case_id,omitempty"`
+	EnvURL     string `json:"env_url"`
+	EnvBaseURL string `json:"env_base_url,omitempty"`
+	Name       string `json:"name,omitempty"`
 }
 
 // E2ERecordStartResponse 开始录制响应（返回 session id）。
@@ -260,20 +260,20 @@ type E2ERecordStopRequest struct {
 
 // E2ERecordSessionResponse 录制会话详情。
 type E2ERecordSessionResponse struct {
-	SessionID   string          `json:"session_id"`
-	CaseID      int             `json:"case_id"`
-	EnvURL      string          `json:"env_url"`
-	EnvBaseURL  string          `json:"env_base_url"`
-	Name        string          `json:"name"`
-	Steps       json.RawMessage `json:"steps"`
-	UpdatedAt   int64           `json:"updated_at"`
+	SessionID  string          `json:"session_id"`
+	CaseID     int            `json:"case_id"`
+	EnvURL     string         `json:"env_url"`
+	EnvBaseURL string         `json:"env_base_url"`
+	Name       string         `json:"name"`
+	Steps      json.RawMessage `json:"steps"`
+	UpdatedAt  int64          `json:"updated_at"`
 }
 
 // E2ERecordSaveRequest 录制转用例保存请求。
 type E2ERecordSaveRequest struct {
 	SessionID string          `json:"session_id"`
-	GroupID   int             `json:"group_id"`
-	Name      string          `json:"name"`
+	GroupID   int            `json:"group_id"`
+	Name      string         `json:"name"`
 	Steps     json.RawMessage `json:"steps,omitempty"` // 若传入，使用传入的步骤覆盖
 }
 
