@@ -24,10 +24,9 @@ Use `scope=frontend` for `web/**`, `scope=backend` for everything outside `web/*
 
 ## Remote workflow
 
-Confirm `base_url`, Token, and the required repository/group identifiers before calling remote actions. Pass credentials through `DTOOL_TOKEN` or `--token`; never write a Token into a source file.
+Confirm `base_url` and the required repository/group identifiers before calling remote actions.
 
 ```powershell
-$env:DTOOL_TOKEN='<token>'
 python scripts/git_tool.py remote config_list --base-url <url>
 python scripts/git_tool.py remote status --base-url <url> --git-id <id>
 ```

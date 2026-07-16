@@ -435,13 +435,13 @@ def action_diff(args: argparse.Namespace) -> dict[str, Any]:
     return result
 
 
-def call_api(base_url: str, token: str, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+def call_api(base_url: str, path: str, payload: dict[str, Any]) -> dict[str, Any]:
     url = base_url.rstrip("/") + path
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = request.Request(
         url=url,
         data=body,
-        headers={"Content-Type": "application/json; charset=utf-8", "Token": token},
+        headers={"Content-Type": "application/json; charset=utf-8"},
         method="POST",
     )
     try:
@@ -494,7 +494,7 @@ PASSTHROUGH_REMOTE_ACTIONS = {
 def repository_config(args: argparse.Namespace) -> dict[str, Any]:
     if not args.git_id:
         raise ToolError("GIT_ID_REQUIRED", f"{args.remote_action} 必须指定 git_id")
-    response = call_api(args.base_url, args.token, REMOTE_PATHS["config_list"], {})
+    response = call_api(args.base_url, REMOTE_PATHS["config_list"], {})
     repositories = (response.get("data") or {}).get("git_list") or []
     for item in repositories:
         if str(item.get("id")) == str(args.git_id):
@@ -546,7 +546,7 @@ def action_remote(args: argparse.Namespace) -> dict[str, Any]:
                 "business_en": args.business_en,
                 "discard_local_changes": bool(args.discard_local_changes),
             })
-    response = call_api(args.base_url, args.token, REMOTE_PATHS[action], payload)
+    response = call_api(args.base_url, REMOTE_PATHS[action], payload)
     return {"ok": True, "action": "remote", "remote_action": action, **response}
 
 
@@ -574,7 +574,6 @@ def parser() -> argparse.ArgumentParser:
     remote = sub.add_parser("remote")
     remote.add_argument("remote_action", choices=tuple(REMOTE_PATHS))
     remote.add_argument("--base-url", default=os.environ.get("DTOOL_BASE_URL", "http://localhost:17170"))
-    remote.add_argument("--token", default=os.environ.get("DTOOL_TOKEN", ""))
     remote.add_argument("--git-id", default="")
     remote.add_argument("--git-group-id", default="")
     remote.add_argument("--branch-name", default="")

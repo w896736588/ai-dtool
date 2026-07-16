@@ -46,7 +46,7 @@ Run `python scripts/git_tool.py remote <action> [options]`.
 
 | Action | Required parameters | Purpose |
 | --- | --- | --- |
-| `config_list` | base URL, Token | List Git groups and repositories |
+| `config_list` | base URL | List Git groups and repositories |
 | `current_branch` | `git_id` | Query local and tracked remote branch |
 | `status` | `git_id` | Query repository status |
 | `commit_log` | `git_id` | Query recent commits |

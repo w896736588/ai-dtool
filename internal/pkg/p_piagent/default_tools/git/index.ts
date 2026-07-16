@@ -77,7 +77,7 @@ async function executeGitTool(params: any, signal?: AbortSignal, onUpdate?: (upd
 
   return await new Promise<string>((resolvePromise, rejectPromise) => {
     const child = spawn(pythonCommand(), args, {
-      env: { ...process.env, DTOOL_TOKEN: String(params.token || '') },
+      env: { ...process.env },
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -158,7 +158,6 @@ export default function (pi: ExtensionAPI) {
         timeout_ms: { type: 'number', description: '工具超时毫秒数；本地默认 120000，远程默认 600000' },
         include_content: { type: 'boolean', description: '单文件 diff 是否附带新旧内容；AI 默认不需要' },
         base_url: { type: 'string', description: 'dtool 服务地址' },
-        token: { type: 'string', description: 'dtool Token' },
         git_id: { type: 'string', description: '远程仓库配置 ID' },
         git_group_id: { type: 'string', description: 'group_branches 的 Git 分组 ID' },
         branch_name: { type: 'string', description: '切换的目标分支' },

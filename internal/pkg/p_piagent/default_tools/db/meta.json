@@ -1,0 +1,15 @@
+{
+  "name": "数据库工具",
+  "tool_name": "dtool_db",
+  "description": "通过 dtool 数据库配置查询表、表结构和数据，或执行已确认的 INSERT/UPDATE。支持 MySQL 和 PgSQL。",
+  "tool_description": "Use dtool database configurations for MySQL or PgSQL. List tables, inspect a table structure, run SELECT queries, or execute INSERT/UPDATE only after explicit user confirmation.",
+  "parameters": [
+    {"name": "action", "type": "string", "description": "tables | structure | query | exec", "required": true},
+    {"name": "mysql_id", "type": "string", "description": "dtool 数据库配置 ID（支持 MySQL/PgSQL）", "required": true},
+    {"name": "table_name", "type": "string", "description": "structure 操作要查看的表名", "required": false},
+    {"name": "sql", "type": "string", "description": "query 的 SELECT，或 exec 的 INSERT/UPDATE", "required": false},
+    {"name": "confirmed_write", "type": "boolean", "description": "exec 操作必须为 true，表示用户已明确确认写入及影响范围", "required": false},
+    {"name": "base_url", "type": "string", "description": "dtool 服务地址，默认 http://localhost:17170", "required": false},
+    {"name": "timeout_ms", "type": "number", "description": "执行超时毫秒数，默认 60000", "required": false}
+  ]
+}

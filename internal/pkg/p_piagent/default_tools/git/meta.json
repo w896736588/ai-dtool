@@ -18,7 +18,6 @@
     {"name": "max_diff_bytes", "type": "number", "description": "最大 diff UTF-8 字节数", "required": false},
     {"name": "timeout_ms", "type": "number", "description": "执行超时毫秒数", "required": false},
     {"name": "base_url", "type": "string", "description": "dtool 服务地址", "required": false},
-    {"name": "token", "type": "string", "description": "dtool Token", "required": false},
     {"name": "git_id", "type": "string", "description": "远程仓库配置 ID", "required": false},
     {"name": "git_group_id", "type": "string", "description": "Git 分组 ID", "required": false},
     {"name": "branch_name", "type": "string", "description": "目标分支名", "required": false},
