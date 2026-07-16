@@ -237,6 +237,12 @@ func E2ERunRequests(req *define.E2ERunRequestsRequest) ([]map[string]any, error)
 	return rqs.ListByRun(req.RunID, req.StepID)
 }
 
+// E2ERunRequestDetail 单个请求详情。
+func E2ERunRequestDetail(runID int64, requestID string) (map[string]any, error) {
+	rqs := store.NewRequestStore()
+	return rqs.GetByID(runID, requestID)
+}
+
 // ---- 业务方法：类型清单 ----
 
 // E2EStepTypeList 返回前端动态渲染用的步骤类型列表。
@@ -245,6 +251,7 @@ func E2EStepTypeList() *define.E2EStepTypeListResponse {
 		{Type: "open_env", BaseType: "open_env", Version: "1.0", Label: "打开环境", Group: "action"},
 		{Type: "click_v1", BaseType: "click", Version: "1.0", Label: "点击", Group: "action", ConfigKeys: []string{"selector", "selector_type"}},
 		{Type: "input_v1", BaseType: "input", Version: "1.0", Label: "输入（固定）", Group: "action", ConfigKeys: []string{"selector", "value", "clear_before"}},
+		{Type: "input_v2", BaseType: "input", Version: "2.0", Label: "输入（多输入源）", Group: "action", ConfigKeys: []string{"selector", "source_type"}},
 		{Type: "hover_v1", BaseType: "hover", Version: "1.0", Label: "悬停", Group: "action"},
 		{Type: "select_v1", BaseType: "select", Version: "1.0", Label: "下拉选择", Group: "action"},
 		{Type: "navigate_v1", BaseType: "navigate", Version: "1.0", Label: "页面导航", Group: "action"},
@@ -255,6 +262,7 @@ func E2EStepTypeList() *define.E2EStepTypeListResponse {
 		{Type: "wait_timeout_v1", BaseType: "wait_timeout", Version: "1.0", Label: "固定等待", Group: "wait"},
 		{Type: "extract_text_v1", BaseType: "extract_text", Version: "1.0", Label: "提取文本", Group: "extract", ConfigKeys: []string{"selector", "extract_to"}},
 		{Type: "extract_attr_v1", BaseType: "extract_attr", Version: "1.0", Label: "提取属性", Group: "extract"},
+		{Type: "extract_api_v1", BaseType: "extract_api", Version: "1.0", Label: "提取API响应", Group: "extract", ConfigKeys: []string{"find_by_pattern", "response_json_path", "extract_to"}},
 		{Type: "script_v1", BaseType: "script", Version: "1.0", Label: "执行 JS", Group: "script"},
 	}
 	return &define.E2EStepTypeListResponse{Items: items}

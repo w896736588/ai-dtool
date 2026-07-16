@@ -494,6 +494,17 @@ func (s *RequestStore) ListByRun(runID int64, stepID string) ([]map[string]any, 
 	).All()
 }
 
+// GetByID 根据 run_id 和 request_id 获取单个请求详情。
+func (s *RequestStore) GetByID(runID int64, requestID string) (map[string]any, error) {
+	return common.DbMain.Client.QueryBySql(`
+		SELECT cr.*, rs.step_id AS step_id
+		FROM tbl_e2e_captured_request cr
+		LEFT JOIN tbl_e2e_run_step rs ON rs.id = cr.run_step_id
+		WHERE cr.run_id = ? AND cr.id = ?
+		LIMIT 1`, runID, requestID,
+	).One()
+}
+
 // RecordSessionStore 录制会话数据访问。
 type RecordSessionStore struct{}
 

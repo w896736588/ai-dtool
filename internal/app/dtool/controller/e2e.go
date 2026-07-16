@@ -152,6 +152,48 @@ func E2ECaseDelete(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, "", nil)
 }
 
+// E2ECaseCreate 创建用例。
+func E2ECaseCreate(c *gin.Context) {
+	var req define.E2ECaseSaveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		gsgin.GinResponseError(c, "名称不能为空", nil)
+		return
+	}
+	if req.GroupID <= 0 {
+		gsgin.GinResponseError(c, "group_id 不能为空", nil)
+		return
+	}
+	id, err := business.E2ECaseSave(&req)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", gin.H{"id": id})
+}
+
+// E2ECaseUpdate 更新用例。
+func E2ECaseUpdate(c *gin.Context) {
+	var req define.E2ECaseSaveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+	if req.ID <= 0 {
+		gsgin.GinResponseError(c, "id 不能为空", nil)
+		return
+	}
+	id, err := business.E2ECaseSave(&req)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", gin.H{"id": id})
+}
+
 // ---- 执行 ----
 
 // E2ERunExecute 触发执行（异步）。
@@ -240,6 +282,23 @@ func E2ERunDetail(c *gin.Context) {
 
 // E2ERunRequests 请求追踪。
 func E2ERunRequests(c *gin.Context) {
+	// 支持 GET 请求的 RESTful 风格路由
+	runID := c.Param("runId")
+	if runID != "" {
+		// RESTful 风格：GET /api/e2e/run/:runId/requests
+		req := define.E2ERunRequestsRequest{
+			RunID: cast.ToInt64(runID),
+		}
+		rows, err := business.E2ERunRequests(&req)
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+		gsgin.GinResponseSuccess(c, "", gin.H{"requests": rows, "total": len(rows)})
+		return
+	}
+
+	// POST 请求风格
 	var req define.E2ERunRequestsRequest
 	_ = gsgin.GinPostBody(c, &req)
 	if req.RunID <= 0 {
@@ -252,6 +311,22 @@ func E2ERunRequests(c *gin.Context) {
 		return
 	}
 	gsgin.GinResponseSuccess(c, "", gin.H{"list": rows, "total": len(rows)})
+}
+
+// E2ERunRequestDetail 单个请求详情。
+func E2ERunRequestDetail(c *gin.Context) {
+	runID := c.Param("runId")
+	requestID := c.Param("requestId")
+	if runID == "" || requestID == "" {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+	detail, err := business.E2ERunRequestDetail(cast.ToInt64(runID), requestID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", detail)
 }
 
 // ---- 类型清单 ----

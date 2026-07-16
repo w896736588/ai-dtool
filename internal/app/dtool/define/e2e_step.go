@@ -9,23 +9,24 @@ type E2EStepType string
 const (
 	// ===== 页面操作类 =====
 	E2EStepOpenEnv      E2EStepType = "open_env"     // 打开环境
-	E2EStepClickV1      E2EStepType = "click_v1"     // 点击（基础）
-	E2EStepInputV1      E2EStepType = "input_v1"     // 输入（基础）
-	E2EStepHoverV1      E2EStepType = "hover_v1"     // 悬停
-	E2EStepSelectV1     E2EStepType = "select_v1"    // 下拉选择
-	E2EStepNavigateV1   E2EStepType = "navigate_v1"  // 页面导航
-	E2EStepGoBackV1     E2EStepType = "go_back_v1"   // 返回上一页
-	E2EStepReloadV1     E2EStepType = "reload_v1"    // 刷新
-	E2EStepPressKeyV1   E2EStepType = "press_key_v1" // 按键
+	E2EStepClickV1     E2EStepType = "click_v1"     // 点击（基础）
+	E2EStepInputV1     E2EStepType = "input_v1"     // 输入（基础）
+	E2EStepInputV2     E2EStepType = "input_v2"     // 输入（多输入源）
+	E2EStepHoverV1     E2EStepType = "hover_v1"     // 悬停
+	E2EStepSelectV1    E2EStepType = "select_v1"    // 下拉选择
+	E2EStepNavigateV1  E2EStepType = "navigate_v1"  // 页面导航
+	E2EStepGoBackV1    E2EStepType = "go_back_v1"   // 返回上一页
+	E2EStepReloadV1    E2EStepType = "reload_v1"    // 刷新
+	E2EStepPressKeyV1  E2EStepType = "press_key_v1" // 按键
 
 	// ===== 等待类 =====
 	E2EStepWaitElementV1 E2EStepType = "wait_element_v1" // 等待元素
 	E2EStepWaitTimeoutV1 E2EStepType = "wait_timeout_v1" // 固定等待
 
 	// ===== 提取类 =====
-	E2EStepExtractTextV1  E2EStepType = "extract_text_v1"  // 提取文本
-	E2EStepExtractAttrV1  E2EStepType = "extract_attr_v1"  // 提取属性
-	E2EStepExtractAPIV1   E2EStepType = "extract_api_v1"   // 从捕获的 API 响应提取
+	E2EStepExtractTextV1 E2EStepType = "extract_text_v1" // 提取文本
+	E2EStepExtractAttrV1 E2EStepType = "extract_attr_v1" // 提取属性
+	E2EStepExtractAPIV1  E2EStepType = "extract_api_v1"  // 从捕获的 API 响应提取
 
 	// ===== 脚本类 =====
 	E2EStepScriptV1 E2EStepType = "script_v1" // 执行自定义 JS 脚本

@@ -25,7 +25,7 @@ go install github.com/air-verse/air@latest
 
 ```bash
 # 启动服务，启动后前端变更后都会自动热更新
-task dun-dev-company
+task run-dev-company
 
 # 前端开发地址
 http://localhost:8080

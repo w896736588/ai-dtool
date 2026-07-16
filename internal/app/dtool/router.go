@@ -696,24 +696,56 @@ func webhookConfig(tGin *p_gin.Gin) {
 }
 
 // e2eRouter E2E 自动化测试路由。
+// 注意：前端使用小写路由格式（如 /api/e2e/case/list），且部分使用 GET 方法
 func e2eRouter(tGin *p_gin.Gin) {
+	// 分组管理
+	tGin.GinPost(`/api/e2e/group/list`, controller.E2EGroupList)
+	tGin.GinPost(`/api/e2e/group/create`, controller.E2EGroupCreate)
+	tGin.GinPost(`/api/e2e/group/update`, controller.E2EGroupUpdate)
+	tGin.GinPost(`/api/e2e/group/delete`, controller.E2EGroupDelete)
+
+	// 用例管理
+	tGin.GinPost(`/api/e2e/case/list`, controller.E2ECaseList)
+	tGin.GinPost(`/api/e2e/case/detail`, controller.E2ECaseDetail)
+	tGin.GinPost(`/api/e2e/case/save`, controller.E2ECaseSave)
+	tGin.GinPost(`/api/e2e/case/create`, controller.E2ECaseCreate)
+	tGin.GinPost(`/api/e2e/case/update`, controller.E2ECaseUpdate)
+	tGin.GinPost(`/api/e2e/case/delete`, controller.E2ECaseDelete)
+
+	// 执行控制
+	tGin.GinPost(`/api/e2e/run/execute`, controller.E2ERunExecute)
+	tGin.GinPost(`/api/e2e/run/batch`, controller.E2ERunBatch)
+	tGin.GinPost(`/api/e2e/run/stop`, controller.E2ERunStop)
+	tGin.GinPost(`/api/e2e/run/list`, controller.E2ERunList)
+	tGin.GinPost(`/api/e2e/run/detail`, controller.E2ERunDetail)
+	tGin.GinPost(`/api/e2e/run/requests`, controller.E2ERunRequests)
+
+	// 请求追踪（支持前端使用的 REST 风格路由）
+	tGin.GinGet(`/api/e2e/run/:runId/requests`, controller.E2ERunRequests)
+	tGin.GinGet(`/api/e2e/run/:runId/request/:requestId`, controller.E2ERunRequestDetail)
+
+	// 类型清单
+	tGin.GinPost(`/api/e2e/step/type/list`, controller.E2EStepTypeList)
+	tGin.GinPost(`/api/e2e/assertion/type/list`, controller.E2EAssertionTypeList)
+
+	// 健康检查
+	tGin.GinPost(`/api/e2e/health`, controller.E2EHealth)
+
+	// 兼容旧的大写路由（如果前端没有全部改完）
 	tGin.GinPost(`/api/E2E/GroupList`, controller.E2EGroupList)
 	tGin.GinPost(`/api/E2E/GroupCreate`, controller.E2EGroupCreate)
 	tGin.GinPost(`/api/E2E/GroupUpdate`, controller.E2EGroupUpdate)
 	tGin.GinPost(`/api/E2E/GroupDelete`, controller.E2EGroupDelete)
-
 	tGin.GinPost(`/api/E2E/CaseList`, controller.E2ECaseList)
 	tGin.GinPost(`/api/E2E/CaseDetail`, controller.E2ECaseDetail)
 	tGin.GinPost(`/api/E2E/CaseSave`, controller.E2ECaseSave)
 	tGin.GinPost(`/api/E2E/CaseDelete`, controller.E2ECaseDelete)
-
 	tGin.GinPost(`/api/E2E/RunExecute`, controller.E2ERunExecute)
 	tGin.GinPost(`/api/E2E/RunBatch`, controller.E2ERunBatch)
 	tGin.GinPost(`/api/E2E/RunStop`, controller.E2ERunStop)
 	tGin.GinPost(`/api/E2E/RunList`, controller.E2ERunList)
 	tGin.GinPost(`/api/E2E/RunDetail`, controller.E2ERunDetail)
 	tGin.GinPost(`/api/E2E/RunRequests`, controller.E2ERunRequests)
-
 	tGin.GinPost(`/api/E2E/StepTypeList`, controller.E2EStepTypeList)
 	tGin.GinPost(`/api/E2E/AssertionTypeList`, controller.E2EAssertionTypeList)
 	tGin.GinPost(`/api/E2E/Health`, controller.E2EHealth)

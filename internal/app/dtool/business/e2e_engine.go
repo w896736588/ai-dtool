@@ -57,6 +57,7 @@ func (e *E2EEngine) registerDefaultSteps() {
 	e.stepReg.Register(&step_executor.OpenEnvExecutor{})
 	e.stepReg.Register(&step_executor.ClickV1Executor{})
 	e.stepReg.Register(&step_executor.InputV1Executor{})
+	e.stepReg.Register(&step_executor.InputV2Executor{})   // 多种输入源
 	e.stepReg.Register(&step_executor.HoverV1Executor{})
 	e.stepReg.Register(&step_executor.SelectV1Executor{})
 	e.stepReg.Register(&step_executor.NavigateV1Executor{})
@@ -64,6 +65,7 @@ func (e *E2EEngine) registerDefaultSteps() {
 	e.stepReg.Register(&step_executor.WaitTimeoutV1Executor{})
 	e.stepReg.Register(&step_executor.ExtractTextV1Executor{})
 	e.stepReg.Register(&step_executor.ExtractAttrV1Executor{})
+	e.stepReg.Register(&step_executor.ExtractAPIV1Executor{}) // 从捕获的 API 响应提取
 	e.stepReg.Register(&step_executor.ScriptV1Executor{})
 	e.stepReg.Register(&step_executor.GoBackV1Executor{})
 	e.stepReg.Register(&step_executor.ReloadV1Executor{})

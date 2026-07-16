@@ -74,6 +74,10 @@
           <el-icon><Monitor /></el-icon>
           <span>Log Witch</span>
         </el-menu-item>
+        <el-menu-item index="/E2E">
+          <el-icon><VideoPlay /></el-icon>
+          <span>E2E 管理</span>
+        </el-menu-item>
         <el-menu-item index="/Set" class="menu-item-settings" :class="{ 'menu-item-settings--alert': mainDbStorageAlertVisible }">
           <el-icon><Setting /></el-icon>
           <span>Setting</span>
@@ -482,7 +486,8 @@ import {
   Connection,
   Monitor,
   List,
-  Tools as ToolsIcon
+  Tools as ToolsIcon,
+  VideoPlay,
 } from "@element-plus/icons-vue";
 
 // SSH_CONNECTION_REFRESH_INTERVAL_MS 统一控制 SSH 连接轮询周期。
@@ -1583,6 +1588,7 @@ export default {
     MarkdownRenderer,
     Tools,
     Clipboard,
+    VideoPlay,
   },
 }
 </script>

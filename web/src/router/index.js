@@ -118,6 +118,14 @@ const router = createRouter({
           meta: { keepAlive: true, title: '日志监控' },
         },
         {
+          path: '/E2E',
+          name: 'E2E',
+          components: {
+            home: () => import('../components/E2e'),
+          },
+          meta: { keepAlive: true, title: 'E2E 管理' },
+        },
+        {
           path: '/Api',
           name: 'api',
           components: {

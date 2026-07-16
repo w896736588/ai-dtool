@@ -4,6 +4,7 @@ import (
 	"dev_tool/internal/app/dtool/component/e2e/interceptor"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,10 +15,13 @@ import (
 // 实现要点：
 // - 通过 page.OnRequest / OnResponse 监听请求/响应
 // - 通过 page.OnRequestFinished 补齐未收到 response 的请求
+// - 使用请求 ID + 序列号确保同一 URL+Method 的多个请求能正确区分
 type E2ERequestCatcher struct {
-	page     playwright.Page
-	repo     *interceptor.RequestRepository
-	pendings map[string]*interceptor.CapturedRequest
+	page      playwright.Page
+	repo      *interceptor.RequestRepository
+	pendings  map[string]*interceptor.CapturedRequest
+	seq       int64 // 序列号，确保 key 唯一
+	mu        sync.Mutex
 }
 
 func NewE2ERequestCatcher(page playwright.Page, repo *interceptor.RequestRepository) *E2ERequestCatcher {
@@ -39,6 +43,15 @@ func (c *E2ERequestCatcher) register() {
 		if pd, err := req.PostData(); err == nil {
 			postData = pd
 		}
+
+		c.mu.Lock()
+		c.seq++
+		seq := c.seq
+		c.mu.Unlock()
+
+		// 使用请求 ID + 序列号作为 key，避免同一 URL+Method 的请求覆盖
+		key := req.URL() + "::" + req.Method() + "::" + string(rune(seq))
+
 		captured := &interceptor.CapturedRequest{
 			ID:         uuid.New().String(),
 			URL:        req.URL(),
@@ -47,43 +60,70 @@ func (c *E2ERequestCatcher) register() {
 			PostData:   postData,
 			CapturedAt: time.Now(),
 		}
-		key := req.URL() + "::" + req.Method()
+		c.mu.Lock()
 		c.pendings[key] = captured
+		c.mu.Unlock()
 	})
 
 	c.page.OnResponse(func(resp playwright.Response) {
 		key := resp.URL() + "::" + resp.Request().Method()
-		cap, ok := c.pendings[key]
-		if !ok {
+
+		// 查找匹配的 key（可能需要遍历）
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		var matchedKey string
+		var cap *interceptor.CapturedRequest
+		for k, v := range c.pendings {
+			if strings.HasPrefix(k, key+"::") && v.URL == resp.URL() && v.Method == resp.Request().Method() {
+				matchedKey = k
+				cap = v
+				break
+			}
+		}
+		if matchedKey == "" {
 			return
 		}
+
 		body := ""
 		if b, err := resp.Body(); err == nil {
 			body = string(b)
 		}
+
+		startTime := cap.CapturedAt
+		timeMs := int(time.Since(startTime).Milliseconds())
+
 		cap.Response = &interceptor.CapturedResponse{
 			Status:     resp.Status(),
 			StatusText: resp.StatusText(),
 			Headers:    resp.Headers(),
 			Body:       body,
 			BodySize:   len(body),
+			TimeMs:     timeMs,
 		}
 		c.repo.Add(cap)
-		delete(c.pendings, key)
+		delete(c.pendings, matchedKey)
 	})
 
 	c.page.OnRequestFinished(func(req playwright.Request) {
 		if !c.shouldCapture(req.Method(), req.URL()) {
 			return
 		}
+
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		// 查找匹配的 key
 		key := req.URL() + "::" + req.Method()
-		cap, ok := c.pendings[key]
-		if !ok {
-			return
-		}
-		if cap.Response == nil {
-			c.repo.Add(cap)
-			delete(c.pendings, key)
+		for k, v := range c.pendings {
+			if strings.HasPrefix(k, key+"::") && v.URL == req.URL() && v.Method == req.Method() {
+				if v.Response == nil {
+					// 响应未收到，添加无响应的请求记录
+					c.repo.Add(v)
+				}
+				delete(c.pendings, k)
+				return
+			}
 		}
 	})
 }
