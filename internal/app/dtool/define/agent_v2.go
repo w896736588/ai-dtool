@@ -68,17 +68,18 @@ type AgentV2WorkspaceSaveRequest struct {
 
 // AgentV2Session 会话
 type AgentV2Session struct {
-	Id            int    `json:"id"`
-	AgentId       int    `json:"agent_id"`
-	WorkspaceId   int    `json:"workspace_id"`
-	WorkspaceName string `json:"workspace_name,omitempty"`
-	WorkspacePath string `json:"workspace_path,omitempty"`
-	Name          string `json:"name"`
-	SessionDir    string `json:"session_dir"`
-	ModelName     string `json:"model_name"`
-	Status        string `json:"status"`
-	CreatedAt     int64  `json:"created_at"`
-	UpdatedAt     int64  `json:"updated_at"`
+	Id             int    `json:"id"`
+	AgentId        int    `json:"agent_id"`
+	WorkspaceId    int    `json:"workspace_id"`
+	WorkspaceName  string `json:"workspace_name,omitempty"`
+	WorkspacePath  string `json:"workspace_path,omitempty"`
+	Name           string `json:"name"`
+	SessionDir     string `json:"session_dir"`
+	ModelName      string `json:"model_name"`
+	Status         string `json:"status"`
+	ExecDurationMs int64  `json:"exec_duration_ms"`
+	CreatedAt      int64  `json:"created_at"`
+	UpdatedAt      int64  `json:"updated_at"`
 }
 
 // AgentV2SessionSaveRequest 会话保存请求

@@ -101,11 +101,11 @@
           <span v-else>选择一个对话或创建新对话</span>
         </div>
         <div class="chat-header__actions">
-          <!-- Token 用量统计（会话级） -->
-          <div v-if="tokenStats" class="token-stats">
-            <span class="token-stats__item">输入: {{ fmtNum(tokenStats.input_tokens) }}</span>
-            <span class="token-stats__item">输出: {{ fmtNum(tokenStats.output_tokens) }}</span>
-            <span class="token-stats__item" v-if="tokenStats.total_cost">费用: ${{ fmtCost(tokenStats.total_cost) }}</span>
+          <!-- 会话执行耗时（后端计时，WS exec_progress 推送） -->
+          <div class="exec-time" :class="{ 'exec-time--running': executionRunning }">
+            <el-icon class="exec-time__icon"><Timer /></el-icon>
+            <span class="exec-time__label">执行</span>
+            <span class="exec-time__value">{{ fmtExecDuration(executionElapsedMs) }}</span>
           </div>
           <el-button
             v-if="isStreaming"
@@ -368,7 +368,8 @@ import {
   ChatDotRound,
   Close,
   Tools,
-  Loading
+  Loading,
+  Timer
 } from '@element-plus/icons-vue'
 
 export default {
@@ -381,7 +382,8 @@ export default {
     ChatDotRound,
     Close,
     Tools,
-    Loading
+    Loading,
+    Timer
   },
   data() {
     return {
@@ -430,6 +432,14 @@ export default {
       runtimeNow: Date.now(),
       _runtimeTicker: null,
       _statsPollTimer: null,
+
+      // 会话执行耗时（后端计时，通过 WS exec_progress 推送）
+      // executionServerMs：后端最近一次推送的累计耗时；executionSyncAt：收到推送时的本地时间（用于插值平滑）
+      executionRunning: false,
+      executionServerMs: 0,
+      executionSyncAt: 0,
+      executionElapsedMs: 0,
+      _execTicker: null,
 
       // 加载状态
       historyLoading: false,
@@ -532,11 +542,18 @@ export default {
     this.loadAgentInfo()
     this.loadWorkspaces()
     this.loadSkills()
+    // 执行耗时由后端推送，前端仅做插值平滑展示
+    this.ensureExecTicker()
   },
   beforeUnmount() {
     this.disconnectAllWS()
     this.stopRuntimeTicker()
     this.stopStatsPolling()
+    if (this._execTicker) {
+      clearInterval(this._execTicker)
+      this._execTicker = null
+    }
+    this.resetExecutionTimer()
   },
   methods: {
     goBack() {
@@ -630,6 +647,7 @@ export default {
       this.resetMessageAutoScroll()
       this.stopThinkingTimer()
       this.stopStatsPolling()
+      this.resetExecutionTimer()
       this._historyLoaded = false // 标记：HTTP API 是否已加载了历史消息
 
       // 恢复该会话最后使用的模型
@@ -647,6 +665,15 @@ export default {
         this.historyLoading = true
         this.loadSessionMessages()
         if (session.status === 'running') this.connectWS(true)
+      }
+      // 执行耗时由后端计时：已结束会话直接用库里的 exec_duration_ms 展示；运行中的会话由 WS exec_progress 实时推送
+      if (session.status !== 'running' && session.exec_duration_ms) {
+        this.executionServerMs = Number(session.exec_duration_ms || 0)
+        this.executionRunning = false
+        this.executionSyncAt = Date.now()
+        this.executionElapsedMs = this.executionServerMs
+      } else {
+        this.resetExecutionTimer()
       }
     },
     deleteSession(session) {
@@ -668,6 +695,7 @@ export default {
           this.compacting = false
           this.stopThinkingTimer()
           this.stopStatsPolling()
+          this.resetExecutionTimer()
           this.resetMessageAutoScroll()
         }
         // 调用后端删除
@@ -800,6 +828,8 @@ export default {
       this.thinkingElapsedSeconds = this.thinkingStartAt
         ? Math.max(0, Math.floor((this.runtimeNow - this.thinkingStartAt) / 1000))
         : 0
+
+      // 执行耗时由后端驱动，不在前端快照中保存
 
       this.syncLiveAssistantMessage()
 
@@ -1052,6 +1082,7 @@ export default {
       this.isStreaming = false
       this.stopThinkingTimer()
       this.stopStatsPolling()
+      this.stopExecutionTimer()
     },
 
     // ========== WebSocket ==========
@@ -1097,6 +1128,7 @@ export default {
               this.isStreaming = false
               this.stopThinkingTimer()
               this.stopStatsPolling()
+              this.stopExecutionTimer()
               this.stopRuntimeTickerIfIdle()
             }
           } catch (e) {
@@ -1122,6 +1154,7 @@ export default {
       this.isStreaming = false
       this.stopThinkingTimer()
       this.stopStatsPolling()
+      this.stopExecutionTimer()
     },
     handleWSMessage(data) {
       // 防御性检查：忽略来自非当前会话的消息
@@ -1144,6 +1177,7 @@ export default {
             this.isStreaming = false
             this.stopThinkingTimer()
             this.stopStatsPolling()
+            this.stopExecutionTimer()
             this.stopRuntimeTickerIfIdle()
           }
         }
@@ -1161,6 +1195,12 @@ export default {
       const evtType = event.type
 
       switch (evtType) {
+        // ===== 后端推送的执行耗时（agent_start / 工具·思考完成 / agent_end 等触发） =====
+        case 'exec_progress': {
+          this.handleExecProgress(event.total_ms, event.running)
+          break
+        }
+
         // ===== 消息流式更新 =====
         case 'message_update': {
           const msgEvt = event.assistantMessageEvent || {}
@@ -1197,7 +1237,7 @@ export default {
         case 'message_start': {
           const msg = event.message
           if (msg && msg.role === 'user') {
-            this.scrollToBottom()
+            this.scrollToBottom({ force: true })
           } else if (msg && msg.role === 'assistant') {
             // 新 assistant 消息开始时清理上一轮 tool_execution 残留
             this.pendingToolCalls = {}
@@ -1289,12 +1329,16 @@ export default {
             this._lastUserMessage = ''
           }
           this.ensureLiveAssistantMessage()
+          // 用户主动追问时，无论之前是否滚动到顶部，都强制滚动到底部
+          this.scrollToBottom({ force: true })
+          // 执行耗时由后端在 agent_start 时推送 exec_progress，前端无需自行计时
           break
         }
         case 'agent_end': {
           this.markSessionStatus(this.currentSessionId, 'active')
           this.isStreaming = false
           this.stopThinkingTimer()
+          this.stopExecutionTimer()
           this.stopStatsPolling()
           // 仅在 message_end 未推送时才兜底推送（与后端 needPushAssistant 逻辑一致）
           const thinkingContent = this.streamingThinking.replace(/\u200B/g, '')
@@ -1578,6 +1622,48 @@ export default {
       this.thinkingStartAt = 0
       this.thinkingElapsedSeconds = 0
       this.stopRuntimeTickerIfIdle()
+    },
+    // ========== 执行耗时（后端 WS exec_progress 推送，前端仅插值平滑） ==========
+    // 后端在 agent_start / 工具·思考完成 / agent_end 等事件时推送最新累计耗时，
+    // 并在每轮结束时落库 tbl_agent_v2_session.exec_duration_ms
+    handleExecProgress(totalMs, running) {
+      this.executionServerMs = Number(totalMs || 0)
+      this.executionRunning = !!running
+      this.executionSyncAt = Date.now()
+      this.executionElapsedMs = this.executionServerMs
+      // 非运行态（已结束）时把最终耗时同步到当前会话，便于列表/头部持久展示
+      if (!running && this.currentSession) {
+        this.currentSession.exec_duration_ms = this.executionServerMs
+      }
+    },
+    // 全局插值计时器：运行中时按本地时钟平滑累加，避免 2s 推送间隔导致跳变
+    ensureExecTicker() {
+      if (this._execTicker) return
+      this._execTicker = setInterval(() => {
+        if (this.executionRunning) {
+          this.executionElapsedMs = this.executionServerMs + (Date.now() - this.executionSyncAt)
+        }
+      }, 250)
+    },
+    fmtExecDuration(ms) {
+      if (!ms || ms < 0) return '0s'
+      const totalSec = Math.floor(ms / 1000)
+      const h = Math.floor(totalSec / 3600)
+      const m = Math.floor((totalSec % 3600) / 60)
+      const s = totalSec % 60
+      if (h > 0) return `${h}h${m}m${s}s`
+      if (m > 0) return `${m}m${s}s`
+      return `${s}s`
+    },
+    // WS 断开时冻结展示值（保留最近一次后端推送的累计耗时），待重连后由 exec_progress 恢复
+    stopExecutionTimer() {
+      this.executionRunning = false
+    },
+    resetExecutionTimer() {
+      this.executionRunning = false
+      this.executionServerMs = 0
+      this.executionSyncAt = 0
+      this.executionElapsedMs = 0
     },
     startRuntimeTicker() {
       if (this._runtimeTicker) return
@@ -2098,8 +2184,20 @@ export default {
 .chat-header__title { font-weight: 500; font-size: 15px; }
 .chat-header__actions { display: flex; gap: 8px; align-items: center; }
 
-.token-stats { display: flex; gap: 12px; font-size: 11px; color: #909399; }
-.token-stats__item { white-space: nowrap; }
+.exec-time {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 999px;
+  background: #f4f6fa; border: 1px solid #e4e7ed;
+  font-size: 12px; color: #606266; white-space: nowrap; user-select: none;
+}
+.exec-time__icon { font-size: 13px; color: #909399; }
+.exec-time__label { color: #909399; }
+.exec-time__value { font-variant-numeric: tabular-nums; font-weight: 600; color: #303133; }
+.exec-time--running {
+  background: #ecf5ff; border-color: #b3d8ff;
+}
+.exec-time--running .exec-time__icon { color: #409eff; animation: exec-pulse 1s ease-in-out infinite; }
+@keyframes exec-pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
 
 .chat-messages-wrap {
   position: relative;
@@ -2141,8 +2239,8 @@ export default {
 .chat-empty__hint { font-size: 13px; margin-top: 4px; }
 
 .chat-message { display: flex; gap: 8px; margin-bottom: 16px; max-width: 90%; }
-.chat-message--assistant { max-width: 100%; }
-.chat-message--user { margin-left: auto; flex-direction: row-reverse; }
+.chat-message--assistant { max-width: 70%; }
+.chat-message--user { margin-left: auto; flex-direction: row-reverse; max-width: 70%; }
 
 .avatar {
   width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0;
@@ -2156,10 +2254,11 @@ export default {
 .chat-message__body { min-width: 0; }
 .chat-message__content {
   background: #fff; border-radius: 10px; padding: 8px 12px;
-  border: 1px solid #ebeef5; line-height: 1.5; font-size: 14px;
+  border: 1px solid #ebeef5; line-height: 1.5; font-size: 13px;
 }
 .chat-message--user .chat-message__content {
   background: #409eff; color: #fff; border-color: #409eff;
+  max-height: 300px; overflow-y: auto; word-break: break-word;
 }
 
 .thinking-block { margin-bottom: 4px; }

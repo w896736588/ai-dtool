@@ -1,0 +1,14 @@
+{
+  "name": "接口开发工具",
+  "tool_name": "dtool_api",
+  "description": "按 URI 将接口定义同步到 dtool 接口开发模块；已有 URI 更新，不存在则创建。",
+  "tool_description": "Synchronize API definitions to a dtool collection folder by URI. Existing URIs are updated and missing URIs are created. The target collection and folder must be explicitly identified before writing.",
+  "parameters": [
+    {"name": "collection_name", "type": "string", "description": "目标集合名称", "required": true},
+    {"name": "folder_name", "type": "string", "description": "目标文件夹名称", "required": true},
+    {"name": "apis", "type": "array", "description": "要同步的接口定义列表", "required": true},
+    {"name": "create_folder", "type": "boolean", "description": "文件夹不存在时是否创建，默认 false", "required": false},
+    {"name": "base_url", "type": "string", "description": "dtool 服务地址，默认 http://localhost:17170", "required": false},
+    {"name": "timeout_ms", "type": "number", "description": "执行超时毫秒数，默认 120000", "required": false}
+  ]
+}

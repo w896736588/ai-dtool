@@ -44,17 +44,18 @@ func AgentV2SessionList(c *gin.Context) {
 	items := make([]define.AgentV2Session, 0, len(rows))
 	for _, row := range rows {
 		items = append(items, define.AgentV2Session{
-			Id:            cast.ToInt(row["id"]),
-			AgentId:       cast.ToInt(row["agent_id"]),
-			WorkspaceId:   cast.ToInt(row["workspace_id"]),
-			WorkspaceName: cast.ToString(row["workspace_name"]),
-			WorkspacePath: cast.ToString(row["workspace_path"]),
-			Name:          cast.ToString(row["name"]),
-			SessionDir:    cast.ToString(row["session_dir"]),
-			ModelName:     cast.ToString(row["model_name"]),
-			Status:        cast.ToString(row["status"]),
-			CreatedAt:     cast.ToInt64(row["created_at"]),
-			UpdatedAt:     cast.ToInt64(row["updated_at"]),
+			Id:             cast.ToInt(row["id"]),
+			AgentId:        cast.ToInt(row["agent_id"]),
+			WorkspaceId:    cast.ToInt(row["workspace_id"]),
+			WorkspaceName:  cast.ToString(row["workspace_name"]),
+			WorkspacePath:  cast.ToString(row["workspace_path"]),
+			Name:           cast.ToString(row["name"]),
+			SessionDir:     cast.ToString(row["session_dir"]),
+			ModelName:      cast.ToString(row["model_name"]),
+			Status:         cast.ToString(row["status"]),
+			ExecDurationMs: cast.ToInt64(row["exec_duration_ms"]),
+			CreatedAt:      cast.ToInt64(row["created_at"]),
+			UpdatedAt:      cast.ToInt64(row["updated_at"]),
 		})
 	}
 

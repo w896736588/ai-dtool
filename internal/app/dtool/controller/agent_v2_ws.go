@@ -49,6 +49,9 @@ type sessionProc struct {
 	writerDone   chan struct{}
 	forwardDone  chan struct{}
 	taskRunning  bool
+	// 执行耗时累计（毫秒）：跨轮次累加；execTurnStartAt 为当前轮起始时间（零值表示未在运行）
+	execAccumulatedMs int64
+	execTurnStartAt   time.Time
 }
 
 var (
@@ -305,6 +308,8 @@ func (sp *sessionProc) stop() {
 	if sp.writerDone != nil {
 		<-sp.writerDone
 	}
+	// 进程结束时兜底落库执行耗时（防止 agent_end 未收到而丢失当前轮计时）
+	sp.persistExecDuration()
 	updateAgentV2SessionStatus(sp.sessionID, "active")
 }
 
@@ -426,6 +431,58 @@ func (sp *sessionProc) isTaskRunning() bool {
 	return sp.taskRunning
 }
 
+// execTotalMs 返回当前累计执行耗时（含正在运行轮的实时时长）
+func (sp *sessionProc) execTotalMs() int64 {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	total := sp.execAccumulatedMs
+	if !sp.execTurnStartAt.IsZero() {
+		total += time.Since(sp.execTurnStartAt).Milliseconds()
+	}
+	return total
+}
+
+// persistExecDuration 将累计耗时落库；若当前轮仍在运行则先并入，随后清零轮起始（幂等）
+func (sp *sessionProc) persistExecDuration() {
+	sp.mu.Lock()
+	if !sp.execTurnStartAt.IsZero() {
+		sp.execAccumulatedMs += time.Since(sp.execTurnStartAt).Milliseconds()
+		sp.execTurnStartAt = time.Time{}
+	}
+	acc := sp.execAccumulatedMs
+	sp.mu.Unlock()
+	if sp.sessionID > 0 {
+		if _, err := common.DbMain.Client.ExecBySql(
+			`UPDATE tbl_agent_v2_session SET exec_duration_ms = ? WHERE id = ?`,
+			acc, sp.sessionID,
+		).Exec(); err != nil {
+			log.Printf("[agent-v2/ws] persist exec_duration_ms session=%d error: %v", sp.sessionID, err)
+		}
+	}
+}
+
+// pushExecProgress 通过 WS 向前端推送当前执行耗时（工具/思考完成等事件触发，或定时刷新）
+func (sp *sessionProc) pushExecProgress() {
+	sp.mu.Lock()
+	running := !sp.execTurnStartAt.IsZero()
+	sp.mu.Unlock()
+	if !running && sp.execTotalMs() == 0 {
+		return // 全新会话尚未开始，无需推送
+	}
+	conn := sp.currentConn()
+	if conn == nil {
+		return
+	}
+	sp.writeConn(conn, gin.H{
+		"type": "event",
+		"event": gin.H{
+			"type":     "exec_progress",
+			"total_ms": sp.execTotalMs(),
+			"running":  running,
+		},
+	})
+}
+
 func AgentV2WS(c *gin.Context) {
 	agentId := cast.ToInt(c.Query("agent_id"))
 	sessionId := cast.ToInt(c.Query("session_id"))
@@ -543,6 +600,9 @@ func AgentV2WS(c *gin.Context) {
 	sp.attachConn(conn)
 	defer sp.detachConn(conn)
 
+	// 连接建立即推送一次当前执行耗时，刷新页面后能立即显示进行中的计时
+	sp.pushExecProgress()
+
 	action := "attached"
 	if started {
 		action = "started"
@@ -640,9 +700,38 @@ func (sp *sessionProc) readWSCommands(conn *websocket.Conn, sessionId int, sessi
 	}
 }
 
+// isExecCompletionEvent 判断是否为“完成类”事件（工具调用完成/思考完成/消息完成等），
+// 此类事件触发一次执行耗时推送，使前端在每步完成时即时刷新。
+func isExecCompletionEvent(evtType string) bool {
+	switch evtType {
+	case "tool_execution_end", "thinking_end", "message_end", "agent_end", "step_end", "turn_end":
+		return true
+	}
+	return strings.HasSuffix(evtType, "_end") || strings.Contains(evtType, "complete")
+}
+
 func (sp *sessionProc) forwardPiEvents() {
 	defer close(sp.forwardDone)
 	defer sp.markTaskRunning(false)
+
+	// 定时推送执行耗时，保证长工具执行等“无事件间隙”也能实时显示
+	progressTicker := time.NewTicker(2 * time.Second)
+	defer progressTicker.Stop()
+	go func() {
+		for {
+			select {
+			case <-sp.ctx:
+				return
+			case <-progressTicker.C:
+				sp.mu.Lock()
+				running := !sp.execTurnStartAt.IsZero()
+				sp.mu.Unlock()
+				if running {
+					sp.pushExecProgress()
+				}
+			}
+		}
+	}()
 
 	for evt := range sp.adapter.Events() {
 		select {
@@ -663,11 +752,22 @@ func (sp *sessionProc) forwardPiEvents() {
 		log.Printf("[agent-v2/ws] pi event -> ws, type=%s raw=%s", evtType, string(evt.Raw))
 		switch evtType {
 		case "agent_start":
+			sp.mu.Lock()
+			sp.execTurnStartAt = time.Now()
+			sp.mu.Unlock()
 			sp.markTaskRunning(true)
+			sp.pushExecProgress()
 		case "agent_end":
+			sp.persistExecDuration()
 			sp.markTaskRunning(false)
+			sp.pushExecProgress()
 		case "response":
 			rawEvt["_command"] = cast.ToString(rawEvt["command"])
+		}
+
+		// 完成类事件（工具/思考/消息完成）即时推送最新耗时
+		if isExecCompletionEvent(evtType) {
+			sp.pushExecProgress()
 		}
 
 		conn := sp.currentConn()
