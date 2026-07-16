@@ -357,7 +357,8 @@ func GitChangeBranch(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
-	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, cast.ToBool(reqMap[`discard_local_changes`]), cmdTimeout); worktreeErr != nil {
+	// 切换分支默认丢弃本地未提交修改（git reset --hard HEAD + git clean -df）
+	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, true, cmdTimeout); worktreeErr != nil {
 		gsgin.GinResponseError(c, worktreeErr.Error(), nil)
 		return
 	}
@@ -417,7 +418,8 @@ func GitChangeBranchRemote(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
-	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, cast.ToBool(reqMap[`discard_local_changes`]), cmdTimeout); worktreeErr != nil {
+	// 切换分支默认丢弃本地未提交修改（git reset --hard HEAD + git clean -df）
+	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, true, cmdTimeout); worktreeErr != nil {
 		gsgin.GinResponseError(c, worktreeErr.Error(), nil)
 		return
 	}
@@ -465,7 +467,8 @@ func GitPullBranchOrigin(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
-	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, cast.ToBool(reqMap[`discard_local_changes`]), cmdTimeout); worktreeErr != nil {
+	// 拉取默认丢弃本地未提交修改（git reset --hard HEAD + git clean -df）
+	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, true, cmdTimeout); worktreeErr != nil {
 		gsgin.GinResponseError(c, worktreeErr.Error(), nil)
 		return
 	}
@@ -1634,7 +1637,8 @@ func GitPull(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
-	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, cast.ToBool(reqMap[`discard_local_changes`]), cmdTimeout); worktreeErr != nil {
+	// 拉取默认丢弃本地未提交修改（git reset --hard HEAD + git clean -df）
+	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, true, cmdTimeout); worktreeErr != nil {
 		gsgin.GinResponseError(c, worktreeErr.Error(), nil)
 		return
 	}
@@ -1687,7 +1691,8 @@ func GitChangeBranchById(c *gin.Context) {
 		gsgin.GinResponseError(c, prepareErr.Error(), nil)
 		return
 	}
-	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, cast.ToBool(reqMap[`discard_local_changes`]), cmdTimeout); worktreeErr != nil {
+	// 切换分支默认丢弃本地未提交修改（git reset --hard HEAD + git clean -df）
+	if worktreeErr := prepareGitWorkingTree(sshClient, codePath, true, cmdTimeout); worktreeErr != nil {
 		gsgin.GinResponseError(c, worktreeErr.Error(), nil)
 		return
 	}
