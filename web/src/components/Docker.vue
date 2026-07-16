@@ -108,6 +108,22 @@
                 </template>
               </div>
             </div>
+            <div v-if="scope.row.default_service_list && scope.row.default_service_list.length" class="operation-block">
+              <span class="operation-title">快速 down：</span>
+              <div class="quick-actions">
+                <template v-for="item in scope.row.default_service_list" :key="`down_${scope.row.id}_${item}`">
+                  <pl-button size="small" type="danger" plain @click="down(scope.row , item)">{{ item }}</pl-button>
+                </template>
+              </div>
+            </div>
+            <div v-if="scope.row.default_service_list && scope.row.default_service_list.length" class="operation-block">
+              <span class="operation-title">快速 pull：</span>
+              <div class="quick-actions">
+                <template v-for="item in scope.row.default_service_list" :key="`pull_${scope.row.id}_${item}`">
+                  <pl-button size="small" type="primary" plain @click="pull(scope.row , item)">{{ item }}</pl-button>
+                </template>
+              </div>
+            </div>
           </template>
         </el-table-column>
         <el-table-column fixed="right" label="更多操作" width="120">
@@ -126,6 +142,8 @@
                   <el-dropdown-item :command="COMPOSE_ROW_ACTION_RESTART" divided>重启（restart）</el-dropdown-item>
                   <el-dropdown-item :command="COMPOSE_ROW_ACTION_STOP">停止（stop）</el-dropdown-item>
                   <el-dropdown-item :command="COMPOSE_ROW_ACTION_START">启动（up -d）</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_DOWN">拆除（down）</el-dropdown-item>
+                  <el-dropdown-item :command="COMPOSE_ROW_ACTION_PULL">拉取（pull）</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -156,6 +174,8 @@
             <pl-button link type="primary" @click="restart(dialogServiceConfig , scope.row.name)">restart</pl-button>
             <pl-button link type="primary" @click="stop(dialogServiceConfig , scope.row.name)">stop</pl-button>
             <pl-button link type="primary" @click="start(dialogServiceConfig , scope.row.name)">up</pl-button>
+            <pl-button link type="danger" @click="down(dialogServiceConfig , scope.row.name)">down</pl-button>
+            <pl-button link type="primary" @click="pull(dialogServiceConfig , scope.row.name)">pull</pl-button>
             <pl-button
               v-if="!isDefaultService(dialogServiceConfig, scope.row.name)"
               link
@@ -268,6 +288,8 @@ const COMPOSE_ROW_ACTION_SHOW_ENV = 'show_env'
 const COMPOSE_ROW_ACTION_RESTART = 'restart'
 const COMPOSE_ROW_ACTION_STOP = 'stop'
 const COMPOSE_ROW_ACTION_START = 'start'
+const COMPOSE_ROW_ACTION_DOWN = 'down'
+const COMPOSE_ROW_ACTION_PULL = 'pull'
 
 export default {
   props: {},
@@ -333,6 +355,8 @@ export default {
       COMPOSE_ROW_ACTION_RESTART,
       COMPOSE_ROW_ACTION_STOP,
       COMPOSE_ROW_ACTION_START,
+      COMPOSE_ROW_ACTION_DOWN,
+      COMPOSE_ROW_ACTION_PULL,
     }
   },
   inject: ["showTerminal", "resizeTerminal"],
@@ -394,6 +418,12 @@ export default {
           return
         case COMPOSE_ROW_ACTION_START:
           this.start(row)
+          return
+        case COMPOSE_ROW_ACTION_DOWN:
+          this.down(row)
+          return
+        case COMPOSE_ROW_ACTION_PULL:
+          this.pull(row)
           return
         default:
           return
@@ -730,6 +760,40 @@ export default {
         service : service,
       }
       compose.DockerComposeStart(data, function (response) {
+            _that.$helperNotify.success('成功')
+            _that.getComposeList()
+            _that.shellController.isRunning = false
+          }
+      )
+    },
+    down: function (value , service) {
+      let _that = this
+      _that.shellController.isRunning = true
+      _that.prepareActionSse('down')
+      let data = {
+        ssh_id: _that.getSshId(value),
+        id: value.id,
+        sse_distribute_id: _that.sse_distribute_id,
+        service : service,
+      }
+      compose.DockerComposeDown(data, function (response) {
+            _that.$helperNotify.success('成功')
+            _that.getComposeList()
+            _that.shellController.isRunning = false
+          }
+      )
+    },
+    pull: function (value , service) {
+      let _that = this
+      _that.shellController.isRunning = true
+      _that.prepareActionSse('pull')
+      let data = {
+        ssh_id: _that.getSshId(value),
+        id: value.id,
+        sse_distribute_id: _that.sse_distribute_id,
+        service : service,
+      }
+      compose.DockerComposePull(data, function (response) {
             _that.$helperNotify.success('成功')
             _that.getComposeList()
             _that.shellController.isRunning = false

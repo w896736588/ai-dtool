@@ -307,6 +307,17 @@ func (h *Command) DockerComposeStop(dockerCmd, envFile string) *Command {
 	return h
 }
 
+// DockerComposeDown 执行 docker compose down，可传入 services 仅拆除指定服务。
+// 不传 services 时对整体执行 down。
+func (h *Command) DockerComposeDown(dockerCmd, envFile string, services []string) *Command {
+	if len(services) > 0 {
+		h.SetCommand(fmt.Sprintf(`%s %s %s down %s`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile), strings.Join(services, ` `)))
+	} else {
+		h.SetCommand(fmt.Sprintf(`%s %s %s down`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile)))
+	}
+	return h
+}
+
 func (h *Command) DockerComposeStatus(dockerCmd, envFile string) *Command {
 	h.SetCommand(fmt.Sprintf(`%s docker stats $(sudo %s %s ps -q) --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.BlockIO}}"`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile)))
 	return h
@@ -319,6 +330,17 @@ func (h *Command) DockerComposeRestart(dockerCmd, envFile string, services []str
 
 func (h *Command) DockerComposeStopService(dockerCmd, envFile string, services []string) *Command {
 	h.SetCommand(fmt.Sprintf(`%s %s %s stop %s`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile), strings.Join(services, ` `)))
+	return h
+}
+
+// DockerComposePull 执行 docker compose pull，可传入 services 仅拉取指定服务镜像。
+// 不传 services 时拉取全部服务镜像。
+func (h *Command) DockerComposePull(dockerCmd, envFile string, services []string) *Command {
+	if len(services) > 0 {
+		h.SetCommand(fmt.Sprintf(`%s %s %s pull %s`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile), strings.Join(services, ` `)))
+	} else {
+		h.SetCommand(fmt.Sprintf(`%s %s %s pull`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile)))
+	}
 	return h
 }
 

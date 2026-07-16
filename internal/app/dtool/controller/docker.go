@@ -301,6 +301,72 @@ func DockerComposeStop(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 }
 
+func DockerComposeDown(c *gin.Context) {
+	data, sshClient, err := getDockerComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	id := cast.ToInt(data[`id`])
+	if id == 0 {
+		gsgin.GinResponseError(c, `id is empty`, nil)
+		return
+	}
+	one, oneErr := common.DbMain.Client.QuickQuery(`tbl_docker_compose`, `*`, map[string]any{
+		`id`: id,
+	}).One()
+	if oneErr != nil {
+		gsgin.GinResponseError(c, oneErr.Error(), nil)
+		return
+	}
+	service := cast.ToString(data[`service`])
+	composeYmlPath := one[`compose_yml_path`].(string)
+	envFile := cast.ToString(one[`env_file`])
+	services := make([]string, 0)
+	if service != `` {
+		services = append(services, service)
+	}
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.Cd(path.Dir(composeYmlPath))
+	command.DockerComposeDown(cast.ToString(one[`docker_cmd`]), envFile, services)
+	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+}
+
+func DockerComposePull(c *gin.Context) {
+	data, sshClient, err := getDockerComponent(c)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	id := cast.ToInt(data[`id`])
+	if id == 0 {
+		gsgin.GinResponseError(c, `id is empty`, nil)
+		return
+	}
+	one, oneErr := common.DbMain.Client.QuickQuery(`tbl_docker_compose`, `*`, map[string]any{
+		`id`: id,
+	}).One()
+	if oneErr != nil {
+		gsgin.GinResponseError(c, oneErr.Error(), nil)
+		return
+	}
+	service := cast.ToString(data[`service`])
+	composeYmlPath := one[`compose_yml_path`].(string)
+	envFile := cast.ToString(one[`env_file`])
+	services := make([]string, 0)
+	if service != `` {
+		services = append(services, service)
+	}
+	command := p_shell.NewCommand()
+	command.Sudo()
+	command.Cd(path.Dir(composeYmlPath))
+	command.DockerComposePull(cast.ToString(one[`docker_cmd`]), envFile, services)
+	_, _ = sshClient.RunCommandWait(command.GetCommand().ToStr(), dockerActionTimeoutSeconds*time.Second)
+	gsgin.GinResponseSuccess(c, ``, map[string]any{})
+}
+
 func DockerComposeStart(c *gin.Context) {
 	data, sshClient, err := getDockerComponent(c)
 	if err != nil {

@@ -550,7 +550,7 @@ export default {
         if (actionName) {
           return item?.action === actionName
         }
-        return item?.action === 'dockerQuickRestart' || item?.action === 'dockerQuickStop'
+        return item?.action === 'dockerQuickRestart' || item?.action === 'dockerQuickStop' || item?.action === 'dockerQuickDown' || item?.action === 'dockerQuickPull'
       })
       return {
         actionIndex,
@@ -603,8 +603,8 @@ export default {
         const selection = getLinkRunSelection(sourceStack)
         return isLinkRunSelectionComplete(selection)
       }
-      // docker quick-restart/quick-stop 需要先选项目，再选服务
-      if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop') {
+      // docker quick-restart/quick-stop/quick-down 需要先选项目，再选服务
+      if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop' || actionCmd.action === 'dockerQuickDown' || actionCmd.action === 'dockerQuickPull') {
         const { projectCmd, serviceCmd } = getDockerQuickSelection(sourceStack, actionCmd.action)
         return isDockerServiceInProject(projectCmd, serviceCmd)
       }
@@ -660,7 +660,7 @@ export default {
       if (actionCmd.needInput && !normalizeCommandPart(inputValue)) {
         return `命令未完成：${actionCmd.inputPlaceholder || '请输入参数'}`
       }
-      if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop') {
+      if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop' || actionCmd.action === 'dockerQuickDown' || actionCmd.action === 'dockerQuickPull') {
         const { projectCmd, serviceCmd } = getDockerQuickSelection(sourceStack, actionCmd.action)
         if (!(serviceCmd && serviceCmd.data)) {
           return '命令未完成：请选择服务'
@@ -1971,7 +1971,7 @@ export default {
       // 精确定位项目：docker quick-restart/quick-stop 的项目一定在 action 命令的下一位，
       // 不要在整个命令栈里扫描"第一个带 default_service_list 的项"，否则可能命中风马牛不相及的项目。
       const actionIndex = commandStack.value.findIndex(cmd =>
-        cmd?.action === 'dockerQuickRestart' || cmd?.action === 'dockerQuickStop'
+        cmd?.action === 'dockerQuickRestart' || cmd?.action === 'dockerQuickStop' || cmd?.action === 'dockerQuickDown' || cmd?.action === 'dockerQuickPull'
       )
       const projectCmd = actionIndex >= 0 ? commandStack.value[actionIndex + 1] : null
       const services = getDockerProjectDefaultServices(projectCmd)
@@ -3061,6 +3061,12 @@ export default {
         case 'dockerQuickStop':
           executeDockerAction('quickStop', currentStack)
           break
+        case 'dockerQuickDown':
+          executeDockerAction('quickDown', currentStack)
+          break
+        case 'dockerQuickPull':
+          executeDockerAction('quickPull', currentStack)
+          break
         case 'supervisorStatus':
           executeSupervisorAction('status', currentStack)
           break
@@ -3325,6 +3331,44 @@ export default {
               }
               appendOutputResult(`正在快速停止服务 ${serviceStop}...\n\n`)
               compose.DockerComposeStop({ ...basePayload, service: serviceStop }, (response) => done(response, () => appendOutputResult('快速停止完成\n')))
+            }
+            break
+          case 'quickDown':
+            {
+              const serviceDown = serviceCmd && serviceCmd.data ? serviceCmd.data.service : ''
+              if (!serviceDown) {
+                appendOutputResult('错误：请先选择要拆除的服务\n')
+                sseDistribute.UnRegisterReceive(newSseDistributeId)
+                finishExecution()
+                return
+              }
+              if (!isDockerServiceInProject(composeCmd, serviceCmd)) {
+                appendOutputResult('错误：请选择当前项目下的服务\n')
+                sseDistribute.UnRegisterReceive(newSseDistributeId)
+                finishExecution()
+                return
+              }
+              appendOutputResult(`正在快速 down 服务 ${serviceDown}...\n\n`)
+              compose.DockerComposeDown({ ...basePayload, service: serviceDown }, (response) => done(response, () => appendOutputResult('快速 down 完成\n')))
+            }
+            break
+          case 'quickPull':
+            {
+              const servicePull = serviceCmd && serviceCmd.data ? serviceCmd.data.service : ''
+              if (!servicePull) {
+                appendOutputResult('错误：请先选择要拉取的服务\n')
+                sseDistribute.UnRegisterReceive(newSseDistributeId)
+                finishExecution()
+                return
+              }
+              if (!isDockerServiceInProject(composeCmd, serviceCmd)) {
+                appendOutputResult('错误：请选择当前项目下的服务\n')
+                sseDistribute.UnRegisterReceive(newSseDistributeId)
+                finishExecution()
+                return
+              }
+              appendOutputResult(`正在快速 pull 服务 ${servicePull}...\n\n`)
+              compose.DockerComposePull({ ...basePayload, service: servicePull }, (response) => done(response, () => appendOutputResult('快速 pull 完成\n')))
             }
             break
           default:

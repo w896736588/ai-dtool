@@ -111,6 +111,26 @@ const commandConfig = [
         // 选择项目后，自动加载服务列表
         nextDynamicChildren: 'dockerServiceList',
         action: 'dockerQuickStop'
+      },
+      {
+        command: 'quick-down',
+        name: '快速拆除',
+        desc: '快速 down 默认服务',
+        needTarget: true,
+        dynamicChildren: 'dockerComposeList',
+        // 选择项目后，自动加载服务列表
+        nextDynamicChildren: 'dockerServiceList',
+        action: 'dockerQuickDown'
+      },
+      {
+        command: 'quick-pull',
+        name: '快速拉取',
+        desc: '快速 pull 默认服务',
+        needTarget: true,
+        dynamicChildren: 'dockerComposeList',
+        // 选择项目后，自动加载服务列表
+        nextDynamicChildren: 'dockerServiceList',
+        action: 'dockerQuickPull'
       }
     ]
   },
