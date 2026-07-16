@@ -89,18 +89,33 @@
                     <el-icon><Check /></el-icon>
                   </GitActionButton>
                 </el-tooltip>
-                <el-tooltip :content="shareButtonText" placement="top">
+                <el-dropdown
+                  trigger="click"
+                  class="editor-action-dropdown share-dropdown"
+                  :disabled="!draftFragment.id"
+                  @command="handleShareCommand"
+                >
                   <GitActionButton
                     variant="info"
                     compact
                     class="toolbar-icon-button"
                     :loading="sharing"
                     :aria-label="shareButtonText"
-                    @click="handleShareLink"
+                    :title="shareButtonText"
                   >
                     <el-icon><Share /></el-icon>
                   </GitActionButton>
-                </el-tooltip>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="raw" :disabled="sharing">
+                        markdown原文地址
+                      </el-dropdown-item>
+                      <el-dropdown-item command="beautified" :disabled="sharing">
+                        markdown美化地址
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
                 <el-tooltip :content="organizeButtonText" placement="top">
                   <GitActionButton
                     variant="warning"
@@ -813,32 +828,21 @@ export default {
         this.$helperNotify.success('ZIP更新成功')
       })
     },
-    // handleShareLink 创建 24 小时只读分享链接并复制到剪贴板。
-    handleShareLink() {
-      if (this.sharing) {
-        return
-      }
+    // handleShareCommand 分享下拉：markdown原文地址 / markdown美化地址。
+    async handleShareCommand(command) {
       if (!this.draftFragment.id) {
         this.$helperNotify.error('请先保存片段后再分享')
         return
       }
-      this.sharing = true
-      MemoryFragmentApi.MemoryFragmentShareCreate(this.draftFragment.id, async (response) => {
-        this.sharing = false
-        if (response.ErrCode !== 0 || !response.Data || !response.Data.token) {
-          if (response.ErrMsg) {
-            this.$helperNotify.error(response.ErrMsg)
-          }
-          return
-        }
-        const shareUrl = base.BuildMemoryFragmentShareUrl(this.draftFragment.id, response.Data.token, response.Data.url)
-        try {
-          await this.writeClipboard(shareUrl)
-          this.$helperNotify.success('分享链接已复制，24小时内有效')
-        } catch (error) {
-          this.$helperNotify.error('分享链接复制失败')
-        }
-      })
+      const shareUrl = command === 'raw'
+        ? base.BuildMemoryFragmentRawShareUrl(this.draftFragment.id)
+        : base.BuildMemoryFragmentShareUrl(this.draftFragment.id)
+      try {
+        await this.writeClipboard(shareUrl)
+        this.$helperNotify.success('分享链接已复制')
+      } catch (error) {
+        this.$helperNotify.error('分享链接复制失败')
+      }
     },
     // writeClipboard 复制文本，兼容不支持 navigator.clipboard 的浏览器环境。
     writeClipboard(text) {

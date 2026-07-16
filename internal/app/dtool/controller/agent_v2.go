@@ -187,7 +187,7 @@ func AgentV2WorkspaceList(c *gin.Context) {
 	}
 
 	rows, err := common.DbMain.Client.QueryBySql(
-		`SELECT * FROM tbl_agent_v2_workspace WHERE agent_id = ? ORDER BY id`, req.AgentId,
+		`SELECT * FROM tbl_agent_v2_workspace WHERE agent_id = ? ORDER BY sort_order ASC, id ASC`, req.AgentId,
 	).All()
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
@@ -201,6 +201,7 @@ func AgentV2WorkspaceList(c *gin.Context) {
 			AgentId:   cast.ToInt(row["agent_id"]),
 			Name:      cast.ToString(row["name"]),
 			Path:      cast.ToString(row["path"]),
+			SortOrder: cast.ToInt(row["sort_order"]),
 			CreatedAt: cast.ToInt64(row["created_at"]),
 		})
 	}
@@ -227,9 +228,18 @@ func AgentV2WorkspaceSave(c *gin.Context) {
 			return
 		}
 	} else {
-		_, err := common.DbMain.Client.InsertBySql(
-			`INSERT INTO tbl_agent_v2_workspace (agent_id, name, path, created_at) VALUES (?, ?, ?, ?)`,
-			req.AgentId, req.Name, req.Path, now,
+		// 新工作空间追加到末尾：sort_order 取当前最大值 + 1
+		mxVal, err := common.DbMain.Client.QueryBySql(
+			`SELECT COALESCE(MAX(sort_order), 0) AS mx FROM tbl_agent_v2_workspace WHERE agent_id = ?`, req.AgentId,
+		).Value(`mx`)
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+		sortOrder := cast.ToInt(mxVal) + 1
+		_, err = common.DbMain.Client.InsertBySql(
+			`INSERT INTO tbl_agent_v2_workspace (agent_id, name, path, sort_order, created_at) VALUES (?, ?, ?, ?, ?)`,
+			req.AgentId, req.Name, req.Path, sortOrder, now,
 		).Exec()
 		if err != nil {
 			gsgin.GinResponseError(c, err.Error(), nil)
@@ -256,6 +266,38 @@ func AgentV2WorkspaceDelete(c *gin.Context) {
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
+	}
+
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// AgentV2WorkspaceReorder 批量保存工作空间顺序（按传入 id 顺序写入 sort_order）
+func AgentV2WorkspaceReorder(c *gin.Context) {
+	var req struct {
+		AgentId    int   `json:"agent_id"`
+		OrderedIds []int `json:"ordered_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+	if req.AgentId <= 0 {
+		gsgin.GinResponseError(c, "缺少 agent_id", nil)
+		return
+	}
+
+	for i, id := range req.OrderedIds {
+		if id <= 0 {
+			continue
+		}
+		_, err := common.DbMain.Client.ExecBySql(
+			`UPDATE tbl_agent_v2_workspace SET sort_order = ? WHERE id = ? AND agent_id = ?`,
+			i, id, req.AgentId,
+		).Exec()
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
 	}
 
 	gsgin.GinResponseSuccess(c, "", nil)

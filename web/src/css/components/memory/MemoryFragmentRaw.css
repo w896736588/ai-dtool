@@ -1,0 +1,110 @@
+.memory-raw-page {
+  min-height: 100vh;
+  background: #f5f7f2;
+  color: #2f3c2b;
+}
+
+.memory-raw-shell {
+  width: min(1200px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 32px 0;
+}
+
+.memory-raw-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 320px;
+  color: #5f7059;
+  font-size: 14px;
+}
+
+.memory-raw-loading {
+  animation: memory-raw-spin 1s linear infinite;
+}
+
+.memory-raw-viewer {
+  min-height: calc(100vh - 64px);
+  border: 1px solid #e2e8d8;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(54, 74, 54, 0.08);
+  overflow: hidden;
+}
+
+.memory-raw-header {
+  padding: 24px 28px 18px;
+  border-bottom: 1px solid #e8eee0;
+  background: #f8faf5;
+}
+
+.memory-raw-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.memory-raw-header h1 {
+  margin: 0;
+  color: #263523;
+  font-size: 24px;
+  line-height: 1.35;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.memory-raw-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  color: #687762;
+  font-size: 13px;
+}
+
+.memory-raw-content {
+  padding: 22px 28px 32px;
+}
+
+.memory-raw-pre {
+  margin: 0;
+  padding: 18px 20px;
+  border: 1px solid #e2e8d8;
+  border-radius: 8px;
+  background: #f8faf5;
+  color: #33422f;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+@keyframes memory-raw-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .memory-raw-shell {
+    width: calc(100% - 20px);
+    padding: 10px 0;
+  }
+
+  .memory-raw-viewer {
+    min-height: calc(100vh - 20px);
+  }
+
+  .memory-raw-header,
+  .memory-raw-content {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}

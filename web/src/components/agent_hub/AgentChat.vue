@@ -727,6 +727,29 @@ export default {
       list.splice(toIdx, 0, moved)
       this.workspaces = list
       this.saveWorkspaceOrder()
+      // 同步后端排序数据（sort_order）
+      Base.BasePost('/api/AgentV2WorkspaceReorder', {
+        agent_id: this.agentId,
+        ordered_ids: list.map(w => Number(w.id))
+      })
+    },
+    // 对话执行时把当前工作空间置顶展示，并同步到后端排序数据
+    bumpWorkspaceToFront(workspaceId) {
+      const id = Number(workspaceId)
+      if (!id || !this.workspaces.length) return
+      // 已在首位则无需调整
+      if (Number(this.workspaces[0].id) === id) return
+      const idx = this.workspaces.findIndex(w => Number(w.id) === id)
+      if (idx < 0) return
+      const next = this.workspaces.slice()
+      const [moved] = next.splice(idx, 1)
+      next.unshift(moved)
+      this.workspaces = next
+      this.saveWorkspaceOrder()
+      Base.BasePost('/api/AgentV2WorkspaceReorder', {
+        agent_id: this.agentId,
+        ordered_ids: next.map(w => Number(w.id))
+      })
     },
 
     // ========== 会话管理 ==========
@@ -766,6 +789,9 @@ export default {
 
       this.currentSessionId = session.id
       this.currentSession = session
+      // 选中会话时同步当前工作空间，确保「在旧对话继续提问」也能把所属工作空间置顶
+      const selWsId = Number(session.workspace_id || 0)
+      if (selWsId) this.currentWorkspaceId = selWsId
       this.pendingSession = false
       this.messages = []
       this.streamingText = ''
@@ -1906,6 +1932,11 @@ export default {
       this._lastUserMessage = text
       // 发送中：按钮转圈，先不清空输入框，待后端 agent_start 确认收到后再清空
       this.sending = true
+
+      // 对话执行时把所在工作空间置顶（同时写后端排序数据）
+      if (this.currentWorkspaceId) {
+        this.bumpWorkspaceToFront(this.currentWorkspaceId)
+      }
 
       // 立即用当前问题更新会话标题（与后端 prompt 重命名保持一致，
       // 避免新建会话发送首条消息后顶部仍显示创建时间的占位名）

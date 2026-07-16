@@ -55,6 +55,7 @@ type AgentV2Workspace struct {
 	AgentId   int    `json:"agent_id"`
 	Name      string `json:"name"`
 	Path      string `json:"path"`
+	SortOrder int    `json:"sort_order"`
 	CreatedAt int64  `json:"created_at"`
 }
 

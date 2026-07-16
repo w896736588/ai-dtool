@@ -165,14 +165,18 @@ function GetAbsoluteApiHost() {
     return window.location.origin
 }
 
-function BuildMemoryFragmentShareUrl(fragmentId, token, serverUrl) {
-    const configuredUrl = String(serverUrl || '').trim()
-    if (configuredUrl) {
-        return configuredUrl
-    }
-    const cleanId = String(fragmentId || '').includes('/') ? String(fragmentId || '').replace(/^.*\//, '') : String(fragmentId || '')
-    const apiHost = String(GetApiHost() || window.location.origin).trim()
-    return new URL(`/share/${encodeURIComponent(cleanId)}/${encodeURIComponent(token)}`, apiHost).toString()
+// BuildMemoryFragmentShareUrl 构建 markdown 美化地址（路由 /MemoryFragmentShare，按片段 id 直接访问，不校验 token）。
+function BuildMemoryFragmentShareUrl(fragmentId) {
+    const cleanId = String(fragmentId || '').trim()
+    const origin = String(window.location.origin || '').trim()
+    return `${origin}/#/MemoryFragmentShare?id=${encodeURIComponent(cleanId)}`
+}
+
+// BuildMemoryFragmentRawShareUrl 构建 markdown 原文地址（路由 /MemoryFragmentRaw，按片段 id 直接访问，不校验 token）。
+function BuildMemoryFragmentRawShareUrl(fragmentId) {
+    const cleanId = String(fragmentId || '').trim()
+    const origin = String(window.location.origin || '').trim()
+    return `${origin}/#/MemoryFragmentRaw?id=${encodeURIComponent(cleanId)}`
 }
 
 // 获取 SSE API 地址
@@ -294,6 +298,7 @@ export default {
     GetApiHost,
     GetAbsoluteApiHost,
     BuildMemoryFragmentShareUrl,
+    BuildMemoryFragmentRawShareUrl,
     GetSseApiHost,
     GetServerConfig,
     GetSafeToken,

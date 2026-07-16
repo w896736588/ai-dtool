@@ -652,6 +652,7 @@ func agentV2Router(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/AgentV2WorkspaceList`, controller.AgentV2WorkspaceList)
 	tGin.GinPost(`/api/AgentV2WorkspaceSave`, controller.AgentV2WorkspaceSave)
 	tGin.GinPost(`/api/AgentV2WorkspaceDelete`, controller.AgentV2WorkspaceDelete)
+	tGin.GinPost(`/api/AgentV2WorkspaceReorder`, controller.AgentV2WorkspaceReorder)
 	// 会话
 	tGin.GinPost(`/api/AgentV2SessionList`, controller.AgentV2SessionList)
 	tGin.GinPost(`/api/AgentV2SessionCreate`, controller.AgentV2SessionCreate)
