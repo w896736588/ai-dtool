@@ -16,17 +16,22 @@
           <el-button text size="small" @click="showWorkspaceDialog = true">+</el-button>
         </div>
         <div class="workspace-list">
-          <div
+          <el-tooltip
             v-for="ws in workspaces"
             :key="ws.id"
-            class="workspace-item"
-            :class="{ 'workspace-item--active': ws.id === currentWorkspaceId }"
-            @click="selectWorkspace(ws)"
+            :content="ws.path"
+            placement="right"
+            effect="dark"
           >
-            <el-icon><Folder /></el-icon>
-            <span class="workspace-item__name">{{ ws.name }}</span>
-            <span class="workspace-item__path">{{ ws.path }}</span>
-          </div>
+            <div
+              class="workspace-item"
+              :class="{ 'workspace-item--active': ws.id === currentWorkspaceId }"
+              @click="selectWorkspace(ws)"
+            >
+              <el-icon><Folder /></el-icon>
+              <span class="workspace-item__name">{{ ws.name }}</span>
+            </div>
+          </el-tooltip>
           <div v-if="workspaces.length === 0" class="empty-hint">暂无工作空间，点击 + 添加</div>
         </div>
       </div>
@@ -56,7 +61,6 @@
             @drop="session._isWorkspaceHeader ? onWorkspaceDrop(session, $event) : null"
             @dragend="onWorkspaceDragEnd()"
             @click="session._isShowMore ? showMoreSessions(session.workspace_id) : (session._isWorkspaceHeader ? toggleWorkspaceGroup(session) : selectSession(session))"
-            @contextmenu.prevent="session._isWorkspaceHeader ? null : (session._isShowMore ? null : showSessionMenu($event, session))"
           >
             <template v-if="session._isWorkspaceHeader">
               <el-icon class="workspace-group-header__arrow">
@@ -72,9 +76,11 @@
             <span v-else-if="sessionRunningMap[session.id]" class="agent-status-spinner session-item__spinner"></span>
             <el-icon v-else><ChatDotRound /></el-icon>
             <div class="session-item__info">
-              <span class="session-item__name">{{ session.name }}</span>
-              <span v-if="session._isWorkspaceHeader" class="workspace-group-header__path">{{ session.path }}</span>
-              <span v-else class="session-item__time">{{ formatTime(session.updated_at) }}</span>
+              <el-tooltip v-if="session._isWorkspaceHeader" :content="session.path" placement="right" effect="dark">
+                <span class="session-item__name">{{ session.name }}</span>
+              </el-tooltip>
+              <span v-else class="session-item__name">{{ session.name }}</span>
+              <span v-if="!session._isWorkspaceHeader && !session._isShowMore && session.exec_duration_ms" class="session-item__exec">{{ fmtExecDuration(session.exec_duration_ms) }}</span>
             </div>
             <span v-if="session._isWorkspaceHeader" class="workspace-group-header__count">{{ session.count }} 个对话</span>
             <el-button v-if="!session._isWorkspaceHeader && !session._isShowMore" text size="small" class="session-item__del" @click.stop="deleteSession(session)">
@@ -111,6 +117,7 @@
         <div class="chat-header__title">
           <span v-if="currentSession">{{ currentSession.name }}</span>
           <span v-else>选择一个对话或创建新对话</span>
+          <span v-if="currentSession" class="chat-header__created">创建于 {{ formatTime(currentSession.created_at) }}</span>
         </div>
         <div class="chat-header__actions">
           <!-- 会话执行耗时（后端计时，WS exec_progress 推送） -->
@@ -188,9 +195,12 @@
                     <div class="tool-call__compact-row" @click="toggleToolCallCollapse(tc)">
                       <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
                       <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
-                      <span class="tool-call__compact-label">{{ tc.name }}</span>
+                      <span v-if="toolMeta(tc.name).found" class="tool-call__icon" :style="{ background: toolMeta(tc.name).bg, color: toolMeta(tc.name).color }">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="toolMeta(tc.name).svg"></svg>
+                      </span>
+                      <span v-if="!toolMeta(tc.name).found" class="tool-call__compact-label">{{ tc.name }}</span>
                       <span class="tool-call__compact-text" :title="getCompactText(tc)">{{ getCompactText(tc) }}</span>
-                      <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template></span>
+                      <span v-if="!isToolDone(tc)" class="tool-call__compact-status">{{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template></span>
                       <el-icon class="tool-call__compact-arrow" :class="{ 'tool-call__compact-arrow--open': !isToolCallCollapsed(tc) }">
                         <ArrowRight />
                       </el-icon>
@@ -205,9 +215,11 @@
                     <div class="tool-call__header">
                       <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
                       <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
-                      <el-icon><Tools /></el-icon>
-                      <span class="tool-call__name">{{ tc.name }}</span>
-                      <el-tag :type="tc.status === 'done' ? 'success' : tc.status === 'running' ? 'warning' : 'info'" size="small">
+                      <span v-if="toolMeta(tc.name).found" class="tool-call__icon" :style="{ background: toolMeta(tc.name).bg, color: toolMeta(tc.name).color }">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="toolMeta(tc.name).svg"></svg>
+                      </span>
+                      <span v-if="!toolMeta(tc.name).found" class="tool-call__name">{{ tc.name }}</span>
+                      <el-tag v-if="!isToolDone(tc)" :type="tc.status === 'done' ? 'success' : tc.status === 'running' ? 'warning' : 'info'" size="small">
                         {{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template>
                       </el-tag>
                     </div>
@@ -245,7 +257,7 @@
             type="textarea"
             :rows="2"
             placeholder="输入消息，Enter 发送，Shift+Enter 换行..."
-            :disabled="isStreaming || (sessionRunningMap[currentSessionId] && !wsConnected)"
+            :disabled="isStreaming || this.sending || (sessionRunningMap[currentSessionId] && !wsConnected)"
             @keydown.enter.exact.prevent="sendMessage"
             resize="none"
           />
@@ -330,6 +342,7 @@
               <el-button
                 v-else
                 type="primary"
+                :loading="sending"
                 :disabled="!inputText.trim() || (sessionRunningMap[currentSessionId] && !wsConnected)"
                 @click="sendMessage"
               >
@@ -357,14 +370,7 @@
       </template>
     </el-dialog>
 
-    <!-- 会话重命名对话框 -->
-    <el-dialog v-model="showRenameDialog" title="重命名会话" width="400px">
-      <el-input v-model="renameForm.name" />
-      <template #footer>
-        <el-button @click="showRenameDialog = false">取消</el-button>
-        <el-button type="primary" @click="renameSession">保存</el-button>
-      </template>
-    </el-dialog>
+
   </div>
 </template>
 
@@ -372,6 +378,7 @@
 import Base from '@/utils/base.js'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { getToolMeta } from '@/utils/toolIcons.js'
 import {
   ArrowLeft,
   ArrowDown,
@@ -419,12 +426,12 @@ export default {
       sessions: [],
       currentSessionId: 0,
       currentSession: null,
-      showRenameDialog: false,
-      renameForm: { id: 0, name: '' },
+
 
       messages: [],
       inputText: '',
       isStreaming: false,
+      sending: false, // 发送中：等待后端确认收到用户问题（agent_start 时清空输入框并停止转圈）
       streamingText: '',
       streamingThinking: '',
       autoScrollEnabled: true,
@@ -476,6 +483,7 @@ export default {
     inputHint() {
       if (!this.wsConnected) return '未连接'
       if (this.isStreaming) return 'Pi 正在思考...'
+      if (this.sending) return '发送中...'
       if (this.compacting) return '正在压缩上下文...'
       return 'Enter 发送'
     },
@@ -747,6 +755,7 @@ export default {
       this.compacting = false
       this._assistantPushedInTurn = false
       this.isStreaming = false
+      this.sending = false
       this.resetMessageAutoScroll()
     },
     selectSession(session) {
@@ -766,6 +775,7 @@ export default {
       this.compacting = false
       this._assistantPushedInTurn = false
       this.isStreaming = false
+      this.sending = false
       this.resetMessageAutoScroll()
       this.stopThinkingTimer()
       this.stopStatsPolling()
@@ -825,22 +835,6 @@ export default {
           this.loadSessions()
         })
       }).catch(() => {})
-    },
-    showSessionMenu(event, session) {
-      this.renameForm = { id: session.id, name: session.name }
-      this.showRenameDialog = true
-    },
-    renameSession() {
-      Base.BasePost('/api/AgentV2SessionRename', {
-        id: this.renameForm.id,
-        name: this.renameForm.name
-      }, () => {
-        this.showRenameDialog = false
-        this.loadSessions()
-        if (this.currentSession && this.currentSession.id === this.renameForm.id) {
-          this.currentSession.name = this.renameForm.name
-        }
-      })
     },
     loadSessionMessages() {
       const sessionId = this.currentSessionId
@@ -1311,6 +1305,7 @@ export default {
         }
       } else if (data.type === 'error') {
         this.$message.error(data.error)
+        this.sending = false
       }
     },
     handlePiEvent(event) {
@@ -1450,6 +1445,9 @@ export default {
             this.messages.push({ role: 'user', content: this._lastUserMessage })
             this._lastUserMessage = ''
           }
+          // 后端已确认收到用户问题：清空输入框并停止发送转圈
+          this.inputText = ''
+          this.sending = false
           this.ensureLiveAssistantMessage()
           // 用户主动追问时，无论之前是否滚动到顶部，都强制滚动到底部
           this.scrollToBottom({ force: true })
@@ -1902,16 +1900,26 @@ export default {
     // ========== 发送消息 ==========
     sendMessage() {
       const text = this.inputText.trim()
-      if (!text || this.isStreaming) return
+      if (!text || this.isStreaming || this.sending) return
 
       // 保存最后发送的消息文本（agent_start 时用于展示用户消息）
       this._lastUserMessage = text
-      this.inputText = ''
+      // 发送中：按钮转圈，先不清空输入框，待后端 agent_start 确认收到后再清空
+      this.sending = true
+
+      // 立即用当前问题更新会话标题（与后端 prompt 重命名保持一致，
+      // 避免新建会话发送首条消息后顶部仍显示创建时间的占位名）
+      if (this.currentSession && this.currentSessionId) {
+        const title = this.truncateTitle(text)
+        this.currentSession.name = title
+        const inList = this.sessions.find(s => s.id === this.currentSessionId)
+        if (inList) inList.name = title
+      }
 
       // 懒创建模式：先暂存消息，等会话创建+WS 连接成功后再发送
       if (this.pendingSession && !this.currentSessionId) {
         this._pendingFirstMessage = text
-        this.createRealSessionAndSend()
+        this.createRealSessionAndSend(text)
         return
       }
 
@@ -1927,28 +1935,32 @@ export default {
         command: { type: 'prompt', message: text }
       })
     },
-    createRealSessionAndSend() {
+    createRealSessionAndSend(firstText) {
+      const title = this.truncateTitle(firstText)
       Base.BasePost('/api/AgentV2SessionCreate', {
         agent_id: this.agentId,
         workspace_id: this.currentWorkspaceId,
-        name: new Date().toLocaleString()
+        name: title
       }, (res) => {
         const newId = (res.ErrCode === 0 && res.Data) ? res.Data.id : null
         if (!newId) {
           this.$message.error('创建会话失败')
           this.pendingSession = false
+          this.sending = false
           return
         }
         // 添加到会话列表
+        const now = Math.floor(Date.now() / 1000)
         const newSession = {
           id: newId,
           agent_id: this.agentId,
           workspace_id: this.currentWorkspaceId,
           workspace_name: this.getWorkspaceName(this.currentWorkspaceId),
           workspace_path: this.getWorkspacePath(this.currentWorkspaceId),
-          name: new Date().toLocaleString(),
+          name: title,
           status: 'running',
-          updated_at: Math.floor(Date.now() / 1000)
+          created_at: now,
+          updated_at: now
         }
         this.sessions.unshift(newSession)
         this.currentSessionId = newId
@@ -2106,6 +2118,10 @@ export default {
       return tc.name === 'read' || tc.name === 'read_file' || tc.name === 'bash'
         || tc.name === 'edit' || tc.name === 'write' || tc.name === 'write_file'
     },
+    // 复用共享工具图标映射（src/utils/toolIcons.js）
+    toolMeta(name) {
+      return getToolMeta(name)
+    },
     getCompactText(tc) {
       if (!tc.input) return ''
       let obj = tc.input
@@ -2189,6 +2205,13 @@ export default {
       const d = new Date(ts * 1000)
       return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     },
+    // 按字符（rune）截断标题，避免按字节切 UTF-8 多字节中文产生乱码，与后端 prompt 重命名逻辑一致
+    truncateTitle(text) {
+      if (!text) return ''
+      const runes = Array.from(text)
+      if (runes.length > 50) return runes.slice(0, 50).join('') + '...'
+      return text
+    },
     fmtNum(n) {
       if (!n) return '0'
       if (n > 1000000) return (n / 1000000).toFixed(1) + 'M'
@@ -2238,7 +2261,7 @@ export default {
 .workspace-item:hover { background: #f5f7fa; }
 .workspace-item--active { background: #ecf5ff; color: #409eff; }
 .workspace-item__name { font-weight: 500; }
-.workspace-item__path { font-size: 11px; color: #c0c4cc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 
 .session-list { padding: 0 8px; }
 .session-item {
@@ -2263,22 +2286,6 @@ export default {
 .workspace-group-header--dragover { border-top: 2px solid #409eff; box-shadow: 0 -2px 0 #409eff; }
 .workspace-group-header__arrow,
 .workspace-group-header__folder { flex-shrink: 0; color: #409eff; }
-.workspace-group-header__path {
-  display: block;
-  font-size: 11px;
-  color: #5f7897;
-  font-weight: 400;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-height: 0;
-  opacity: 0;
-  transition: opacity .15s ease, max-height .15s ease;
-}
-.workspace-group-header:hover .workspace-group-header__path {
-  max-height: 16px;
-  opacity: 1;
-}
 .workspace-group-header__count {
   flex-shrink: 0;
   font-size: 11px;
@@ -2289,9 +2296,11 @@ export default {
   padding: 2px 7px;
 }
 .session-item__add { opacity: 1; font-weight: 700; }
-.session-item__info { flex: 1; min-width: 0; }
-.session-item__name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.session-item__time { font-size: 11px; color: #c0c4cc; }
+.session-item__info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.session-item__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-group-header .session-item__name { flex: 0 0 auto; display: inline-block; max-width: 100%; vertical-align: middle; }
+.session-item__exec { flex: 0 0 auto; margin-left: auto; font-size: 11px; color: #c0c4cc; }
+.chat-header__created { display: block; margin-top: 3px; font-size: 12px; font-weight: 400; color: #909399; }
 .session-item__del { opacity: 0; }
 .session-item:hover .session-item__del { opacity: 1; }
 .session-item__spinner {
@@ -2352,9 +2361,13 @@ export default {
   flex: 1;
   min-height: 0;
   margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .chat-messages {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 16px;
 }
@@ -2406,7 +2419,7 @@ export default {
   border: 1px solid #ebeef5; line-height: 1.5; font-size: 13px;
 }
 .chat-message--user .chat-message__content {
-  background: #eef5e9; color: #303133; border-color: #d6e8cc;
+  background: #eaf2ff; color: #303133; border-color: #cfe0f7;
   max-height: 300px; overflow-y: auto; word-break: break-word;
 }
 
@@ -2477,6 +2490,12 @@ export default {
   display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 13px;
 }
 .tool-call__name { font-weight: 500; }
+.tool-call__icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.tool-call__icon svg { width: 14px; height: 14px; display: block; }
 .tool-call__input, .tool-call__output {
   background: #fff; border-radius: 4px; padding: 8px; font-size: 12px;
   max-height: 150px; overflow: auto; margin: 0; border: 1px solid #ebeef5;

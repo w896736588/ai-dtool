@@ -86,12 +86,19 @@
         <el-tab-pane label="扩展" name="tools">
           <div class="skills-toolbar">
             <el-button type="primary" size="small" @click="openSkillAdd('tool')">添加 Tool</el-button>
-            <el-divider direction="vertical" />
-            <el-button size="small" @click="openBuiltinDialog">内置工具</el-button>
             <span class="skills-hint">所有扩展保存在 ~/.pi/agent/extensions/ 目录下</span>
           </div>
           <el-table :data="mergedToolList" class="config-table" empty-text="暂无 Tools">
-            <el-table-column prop="name" label="名称" min-width="130" />
+            <el-table-column label="名称" min-width="150">
+              <template #default="{ row }">
+                <span class="tool-cell">
+                  <span v-if="row._source !== 'fs' && getToolMeta(toolName(row)).found" class="tool-call__icon" :style="{ background: getToolMeta(toolName(row)).bg, color: getToolMeta(toolName(row)).color }">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="getToolMeta(toolName(row)).svg"></svg>
+                  </span>
+                  <span class="tool-cell__name">{{ row.name }}</span>
+                </span>
+              </template>
+            </el-table-column>
             <el-table-column label="来源" width="90">
               <template #default="{ row }">
                 <el-tag v-if="row._source === 'fs'" size="small" type="success">文件系统</el-tag>
@@ -109,6 +116,7 @@
             <el-table-column label="脚本" width="80">
               <template #default="{ row }">
                 <el-tag v-if="row._source === 'fs'" size="small" type="success">已安装</el-tag>
+                <el-tag v-else-if="row._source === 'builtin-new'" size="small" type="info">未安装</el-tag>
                 <el-tag v-else size="small" :type="hasScript(row) ? 'success' : 'info'">
                   {{ hasScript(row) ? '已编写' : '未编写' }}
                 </el-tag>
@@ -116,16 +124,21 @@
             </el-table-column>
             <el-table-column label="状态" width="80">
               <template #default="{ row }">
-                <el-switch v-if="row._source !== 'fs'" :model-value="row.enabled === 1" @change="toggleSkill(row)" size="small" />
-                <el-tag v-else size="small" type="success">已安装</el-tag>
+                <el-tag v-if="row._source === 'fs'" size="small" type="success">已安装</el-tag>
+                <el-tag v-else-if="row._source === 'builtin-new'" size="small" type="info">未安装</el-tag>
+                <el-switch v-else :model-value="row.enabled === 1" @change="toggleSkill(row)" size="small" />
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="140">
+            <el-table-column label="操作" width="200">
               <template #default="{ row }">
                 <template v-if="row._source === 'fs'">
                   <el-button text size="small" type="danger" @click="removeInstalledTool(row)">移除</el-button>
                 </template>
+                <template v-else-if="row._source === 'builtin-new'">
+                  <el-button text size="small" type="primary" @click="installBuiltinTool(row._builtinRef)">安装</el-button>
+                </template>
                 <template v-else>
+                  <el-button v-if="isBuiltinTool(row)" text size="small" type="warning" @click="updateMergedTool(row)">更新</el-button>
                   <el-button text size="small" @click="openSkillEdit(row)">编辑</el-button>
                   <el-button text size="small" type="danger" @click="deleteSkill(row)">删除</el-button>
                 </template>
@@ -351,41 +364,6 @@
       </template>
     </el-dialog>
 
-    <!-- 内置工具对话框 -->
-    <el-dialog v-model="showBuiltinDialog" title="Dtool 内置 Tools" width="640px" :close-on-click-modal="true">
-      <el-table :data="builtinTools" max-height="400" empty-text="暂无内置工具，请在 internal/pkg/p_piagent/default_tools/ 目录下添加">
-        <el-table-column prop="name" label="名称" width="120" />
-        <el-table-column label="来源" width="120">
-          <template #default="{ row }">
-            <el-tag size="small" type="info">data/{{ row.dir_name }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" label="描述" min-width="180">
-          <template #default="{ row }">
-            <span style="color:#909399;font-size:13px">{{ row.description }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="参数" width="70">
-          <template #default="{ row }">
-            <span style="color:#909399;font-size:12px">{{ (row.parameters || []).length }} 个</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button v-if="!isBuiltinInstalled(row)" text size="small" type="primary" @click="installBuiltinTool(row)">安装</el-button>
-            <el-button v-else text size="small" type="warning" @click="updateBuiltinTool(row)">更新</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="field-hint" style="margin-top: 12px;">
-        内置工具存放在 <code>internal/pkg/p_piagent/default_tools/</code> 目录下，每个子目录对应一个工具。
-        <a href="https://pi-doc.com/docs/latest/extensions.html" target="_blank" style="color:#409eff">Pi Extensions 文档</a>
-      </div>
-      <template #footer>
-        <el-button @click="showBuiltinDialog = false">关闭</el-button>
-      </template>
-    </el-dialog>
-
     <!-- Headroom 配置对话框 -->
     <el-dialog v-model="showHeadroomConfigDialog" title="Headroom 代理配置" width="640px" :close-on-click-modal="true">
       <el-form :model="headroomConfig" label-width="140px">
@@ -543,6 +521,7 @@
 import Base from '@/utils/base.js'
 import ProviderModelPanel from '@/components/ProviderModelPanel.vue'
 import { ArrowLeft, ArrowRight, Plus, View, Hide, Loading } from '@element-plus/icons-vue'
+import { getToolMeta } from '@/utils/toolIcons.js'
 
 export default {
   name: 'AgentConfig',
@@ -574,7 +553,6 @@ export default {
       workspaceForm: { name: '', path: '' },
 
       builtinTools: [],
-      showBuiltinDialog: false,
 
       envTools: [],
       showEnvToolDialog: false,
@@ -627,14 +605,47 @@ export default {
       return this.skills.filter(s => s.skill_type === 'tool')
     },
     mergedToolList() {
-      // DB 中的 tools
-      const dbTools = this.skills.filter(s => s.skill_type === 'tool').map(t => ({ ...t, _source: 'db' }))
-      // 文件系统中有但 DB 中没有的（按 name 去重）
-      const dbNames = new Set(dbTools.map(t => t.name))
-      const fsOnly = this.installedTools
-        .filter(t => !dbNames.has(t.name))
-        .map(t => ({ name: t.name, file_path: t.file_path, _source: 'fs' }))
-      return [...dbTools, ...fsOnly]
+      const list = []
+      // 内置工具：全部展示（已安装的复用 DB 记录，未安装的生成安装占位行）
+      const builtinToolNames = new Set(this.builtinTools.map(t => t.tool_name))
+      const installedByToolName = {}
+      for (const s of this.skills) {
+        if (s.skill_type !== 'tool') continue
+        let tn = ''
+        try { tn = (JSON.parse(s.config || '{}')).tool_name || '' } catch (e) {}
+        installedByToolName[tn] = s
+      }
+      for (const bt of this.builtinTools) {
+        const inst = installedByToolName[bt.tool_name]
+        if (inst) {
+          list.push({ ...inst, _source: 'db', _builtin: true })
+        } else {
+          list.push({
+            _source: 'builtin-new',
+            _builtinRef: bt,
+            name: bt.name,
+            tool_name: bt.tool_name,
+            description: bt.description,
+            enabled: 1
+          })
+        }
+      }
+      // 自定义工具（非内置）：按目前方式展示
+      for (const s of this.skills) {
+        if (s.skill_type !== 'tool') continue
+        let tn = ''
+        try { tn = (JSON.parse(s.config || '{}')).tool_name || '' } catch (e) {}
+        if (builtinToolNames.has(tn)) continue // 内置工具已在上面处理
+        list.push({ ...s, _source: 'db', _builtin: false })
+      }
+      // 文件系统扩展（DB 中无对应记录的）
+      const allDbToolNames = new Set(this.skills.filter(s => s.skill_type === 'tool').map(s => s.name))
+      for (const t of this.installedTools) {
+        if (!allDbToolNames.has(t.name)) {
+          list.push({ name: t.name, file_path: t.file_path, _source: 'fs' })
+        }
+      }
+      return list
     },
     dialogTitle() {
       if (this.editingSkillId) return '编辑 ' + (this.skillForm.skill_type === 'tool' ? 'Tool' : 'Skill')
@@ -738,12 +749,13 @@ export default {
         this.skills = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
       })
       this.loadInstalledTools()
+      this.loadBuiltinTools()
     },
     skillDesc(row) {
       try {
         const cfg = JSON.parse(row.config || '{}')
-        return cfg.description || '-'
-      } catch (e) { return '-' }
+        return cfg.description || row.description || '-'
+      } catch (e) { return row.description || '-' }
     },
     skillCmd(row) {
       try {
@@ -754,8 +766,8 @@ export default {
     toolName(row) {
       try {
         const cfg = JSON.parse(row.config || '{}')
-        return cfg.tool_name || '-'
-      } catch (e) { return '-' }
+        return cfg.tool_name || row.tool_name || '-'
+      } catch (e) { return row.tool_name || '-' }
     },
     hasScript(row) {
       try {
@@ -846,18 +858,27 @@ export default {
     },
 
     // 内置工具
-    openBuiltinDialog() {
-      this.showBuiltinDialog = true
-      this.loadSkills()
-      this.loadBuiltinTools()
+    getToolMeta(name) {
+      return getToolMeta(name)
+    },
+    isBuiltinTool(row) {
+      if (row._source === 'fs') return false
+      const tn = this.toolName(row)
+      return this.builtinTools.some(t => t.tool_name === tn)
+    },
+    updateMergedTool(row) {
+      const tn = this.toolName(row)
+      const bt = this.builtinTools.find(t => t.tool_name === tn)
+      if (!bt) {
+        this.$message.warning('未找到内置工具「' + (row.name || '') + '」的最新定义')
+        return
+      }
+      this.updateBuiltinTool(bt)
     },
     loadBuiltinTools() {
       Base.BasePost('/api/AgentV2BuiltinToolList', {}, (res) => {
         this.builtinTools = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
       })
-    },
-    isBuiltinInstalled(tool) {
-      return this.skills.some(s => s.skill_type === 'tool' && s.name === tool.name)
     },
     installBuiltinTool(tool) {
       this.$confirm(`安装内置工具「${tool.name}」？安装后可在 Tools 列表中查看和编辑。`, '确认安装', { type: 'info' }).then(() => {
@@ -876,7 +897,6 @@ export default {
           enabled: 1
         }, () => {
           this.$message.success('工具已安装')
-          this.showBuiltinDialog = false
           this.loadSkills()
         })
       }).catch(() => {})
@@ -1396,6 +1416,18 @@ export default {
   margin: 0;
   color: #303133;
 }
+
+/* 内置工具列表中的小图标 */
+.tool-cell {
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.tool-cell__name { line-height: 1; }
+.tool-call__icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.tool-call__icon svg { width: 14px; height: 14px; display: block; }
 
 
 

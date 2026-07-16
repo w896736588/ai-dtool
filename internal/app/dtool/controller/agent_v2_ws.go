@@ -659,8 +659,10 @@ func (sp *sessionProc) readWSCommands(conn *websocket.Conn, sessionId int, sessi
 					sp.markTaskRunning(true)
 
 					title := userMsg
-					if len(title) > 50 {
-						title = title[:50] + "..."
+					// 按 rune（字符）截断，避免按字节切 UTF-8 多字节中文产生乱码（如 "你当前的任务是…" 被切成 "�"）
+					runes := []rune(userMsg)
+					if len(runes) > 50 {
+						title = string(runes[:50]) + "..."
 					}
 					if sessionId > 0 {
 						now := time.Now().Unix()
