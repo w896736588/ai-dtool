@@ -370,9 +370,10 @@
             <span style="color:#909399;font-size:12px">{{ (row.parameters || []).length }} 个</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80">
+        <el-table-column label="操作" width="100">
           <template #default="{ row }">
-            <el-button text size="small" type="primary" @click="installBuiltinTool(row)">安装</el-button>
+            <el-button v-if="!isBuiltinInstalled(row)" text size="small" type="primary" @click="installBuiltinTool(row)">安装</el-button>
+            <el-button v-else text size="small" type="warning" @click="updateBuiltinTool(row)">更新</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -847,12 +848,16 @@ export default {
     // 内置工具
     openBuiltinDialog() {
       this.showBuiltinDialog = true
+      this.loadSkills()
       this.loadBuiltinTools()
     },
     loadBuiltinTools() {
       Base.BasePost('/api/AgentV2BuiltinToolList', {}, (res) => {
         this.builtinTools = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
       })
+    },
+    isBuiltinInstalled(tool) {
+      return this.skills.some(s => s.skill_type === 'tool' && s.name === tool.name)
     },
     installBuiltinTool(tool) {
       this.$confirm(`安装内置工具「${tool.name}」？安装后可在 Tools 列表中查看和编辑。`, '确认安装', { type: 'info' }).then(() => {
@@ -872,6 +877,29 @@ export default {
         }, () => {
           this.$message.success('工具已安装')
           this.showBuiltinDialog = false
+          this.loadSkills()
+        })
+      }).catch(() => {})
+    },
+    updateBuiltinTool(tool) {
+      const existing = this.skills.find(s => s.skill_type === 'tool' && s.name === tool.name)
+      const enabled = existing ? existing.enabled : 1
+      this.$confirm(`更新内置工具「${tool.name}」？将用内置最新定义覆盖当前配置与脚本。`, '确认更新', { type: 'warning' }).then(() => {
+        const configObj = {
+          description: tool.description,
+          tool_name: tool.tool_name,
+          tool_description: tool.tool_description,
+          parameters: tool.parameters || [],
+          script_content: tool.script_content || ''
+        }
+        Base.BasePost('/api/AgentV2SkillSave', {
+          agent_id: this.agentId,
+          name: tool.name,
+          skill_type: 'tool',
+          config: JSON.stringify(configObj),
+          enabled: enabled
+        }, () => {
+          this.$message.success('工具已更新')
           this.loadSkills()
         })
       }).catch(() => {})

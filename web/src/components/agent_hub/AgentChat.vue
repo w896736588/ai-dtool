@@ -43,13 +43,20 @@
             :key="session._key || session.id"
             class="session-item"
             :class="{
-              'session-item--active': !session._isWorkspaceHeader && session.id === currentSessionId,
+              'session-item--active': !session._isWorkspaceHeader && !session._isShowMore && session.id === currentSessionId,
               'workspace-group-header': session._isWorkspaceHeader,
               'workspace-group-header--active': session._isWorkspaceHeader && Number(session.workspace_id) === Number(currentWorkspaceId),
-              'workspace-group-header--collapsed': session._isWorkspaceHeader && session._isCollapsed
+              'workspace-group-header--collapsed': session._isWorkspaceHeader && session._isCollapsed,
+              'workspace-group-header--dragover': session._isWorkspaceHeader && Number(session.workspace_id) === Number(this.dragOverWorkspaceId),
+              'session-item--show-more': session._isShowMore
             }"
-            @click="session._isWorkspaceHeader ? toggleWorkspaceGroup(session) : selectSession(session)"
-            @contextmenu.prevent="session._isWorkspaceHeader ? null : showSessionMenu($event, session)"
+            :draggable="session._isWorkspaceHeader"
+            @dragstart="session._isWorkspaceHeader ? onWorkspaceDragStart(session, $event) : null"
+            @dragover.prevent="session._isWorkspaceHeader ? onWorkspaceDragOver(session, $event) : null"
+            @drop="session._isWorkspaceHeader ? onWorkspaceDrop(session, $event) : null"
+            @dragend="onWorkspaceDragEnd()"
+            @click="session._isShowMore ? showMoreSessions(session.workspace_id) : (session._isWorkspaceHeader ? toggleWorkspaceGroup(session) : selectSession(session))"
+            @contextmenu.prevent="session._isWorkspaceHeader ? null : (session._isShowMore ? null : showSessionMenu($event, session))"
           >
             <template v-if="session._isWorkspaceHeader">
               <el-icon class="workspace-group-header__arrow">
@@ -58,17 +65,22 @@
               </el-icon>
               <el-icon class="workspace-group-header__folder"><Folder /></el-icon>
             </template>
+            <template v-else-if="session._isShowMore">
+              <el-icon class="session-item__more-icon"><ArrowDown /></el-icon>
+              <span class="session-item__more-text">展示更多（还剩 {{ session._remaining }} 个）</span>
+            </template>
             <span v-else-if="sessionRunningMap[session.id]" class="agent-status-spinner session-item__spinner"></span>
             <el-icon v-else><ChatDotRound /></el-icon>
             <div class="session-item__info">
               <span class="session-item__name">{{ session.name }}</span>
-              <span class="session-item__time">{{ session._isWorkspaceHeader ? session.path : formatTime(session.updated_at) }}</span>
+              <span v-if="session._isWorkspaceHeader" class="workspace-group-header__path">{{ session.path }}</span>
+              <span v-else class="session-item__time">{{ formatTime(session.updated_at) }}</span>
             </div>
             <span v-if="session._isWorkspaceHeader" class="workspace-group-header__count">{{ session.count }} 个对话</span>
-            <el-button v-if="!session._isWorkspaceHeader" text size="small" class="session-item__del" @click.stop="deleteSession(session)">
+            <el-button v-if="!session._isWorkspaceHeader && !session._isShowMore" text size="small" class="session-item__del" @click.stop="deleteSession(session)">
               <el-icon><Close /></el-icon>
             </el-button>
-            <el-button v-else text size="small" class="session-item__del session-item__add" @click.stop="createSession(session.workspace)">+</el-button>
+            <el-button v-else-if="session._isWorkspaceHeader" text size="small" class="session-item__del session-item__add" @click.stop="createSession(session.workspace)">+</el-button>
           </div>
           <div v-if="sessions.length === 0" class="empty-hint">
             {{ currentWorkspaceId ? '暂无对话，点击 + 创建' : '请先选择工作空间' }}
@@ -244,7 +256,7 @@
                 v-if="providerModels.length > 0"
                 v-model="selectedModel"
                 size="small"
-                style="width: 200px"
+                class="chat-input__model-select"
                 placeholder="选择模型"
                 :disabled="isStreaming"
                 @change="setModel"
@@ -396,6 +408,11 @@ export default {
       workspaces: [],
       currentWorkspaceId: 0,
       collapsedWorkspaceMap: {},
+      // 每个工作空间默认展示的会话数量（展示更多时累加 5），按 workspaceId 记录
+      workspaceSessionLimit: {},
+      // 工作空间拖动排序状态
+      dragWorkspaceId: 0,
+      dragOverWorkspaceId: 0,
       showWorkspaceDialog: false,
       workspaceForm: { name: '', path: '' },
 
@@ -512,7 +529,7 @@ export default {
           count: workspaceSessions.length,
           _isCollapsed: collapsed
         })
-        if (!collapsed) rows.push(...workspaceSessions)
+        if (!collapsed) this.appendWorkspaceSessions(rows, workspaceId, workspaceSessions)
       })
       byWorkspace.forEach((items, workspaceId) => {
         if (this.workspaces.some(ws => Number(ws.id) === Number(workspaceId))) return
@@ -528,10 +545,10 @@ export default {
           count: items.length,
           _isCollapsed: collapsed
         })
-        if (!collapsed) rows.push(...items)
+        if (!collapsed) this.appendWorkspaceSessions(rows, workspaceId, items)
       })
       return rows
-    }
+    },
   },
   mounted() {
     this.agentId = parseInt(this.$route.query.agent_id) || 0
@@ -539,6 +556,7 @@ export default {
       this.$router.push('/AgentHub')
       return
     }
+    this.loadCollapsedState()
     this.loadAgentInfo()
     this.loadWorkspaces()
     this.loadSkills()
@@ -567,7 +585,8 @@ export default {
     // ========== 工作空间 ==========
     async loadWorkspaces() {
       Base.BasePost('/api/AgentV2WorkspaceList', { agent_id: this.agentId }, (res) => {
-        this.workspaces = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
+        const list = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
+        this.workspaces = this.applyWorkspaceOrder(list)
         if (!this.currentWorkspaceId && this.workspaces.length > 0) {
           this.currentWorkspaceId = this.workspaces[0].id
         }
@@ -585,6 +604,7 @@ export default {
         ...this.collapsedWorkspaceMap,
         [workspaceId]: !this.collapsedWorkspaceMap[workspaceId]
       }
+      this.saveCollapsedState()
     },
     saveWorkspace() {
       if (!this.workspaceForm.name || !this.workspaceForm.path) return
@@ -597,6 +617,108 @@ export default {
         this.workspaceForm = { name: '', path: '' }
         this.loadWorkspaces()
       })
+    },
+    // 展开的工作空间会话追加到列表（按更新时间倒序，默认 5 个，超出显示展示更多）
+    appendWorkspaceSessions(rows, workspaceId, sessions) {
+      const wsId = Number(workspaceId)
+      const sorted = sessions.slice().sort((a, b) => (Number(b.updated_at) || 0) - (Number(a.updated_at) || 0))
+      const limit = this.workspaceSessionLimit[wsId] || 5
+      rows.push(...sorted.slice(0, limit))
+      if (sorted.length > limit) {
+        rows.push({
+          _isShowMore: true,
+          _key: 'showmore-' + wsId,
+          id: 0,
+          workspace_id: wsId,
+          _remaining: sorted.length - limit
+        })
+      }
+    },
+    showMoreSessions(workspaceId) {
+      const wsId = Number(workspaceId)
+      const current = this.workspaceSessionLimit[wsId] || 5
+      this.workspaceSessionLimit = {
+        ...this.workspaceSessionLimit,
+        [wsId]: current + 5
+      }
+    },
+    collapsedStorageKey() {
+      return 'agentchat_collapsed_ws_' + this.agentId
+    },
+    loadCollapsedState() {
+      try {
+        const raw = localStorage.getItem(this.collapsedStorageKey())
+        this.collapsedWorkspaceMap = raw ? JSON.parse(raw) : {}
+      } catch (e) {
+        this.collapsedWorkspaceMap = {}
+      }
+    },
+    saveCollapsedState() {
+      try {
+        localStorage.setItem(this.collapsedStorageKey(), JSON.stringify(this.collapsedWorkspaceMap))
+      } catch (e) {
+        // localStorage 不可用时静默忽略
+      }
+    },
+
+    // ========== 工作空间拖动排序 ==========
+    workspaceOrderKey() {
+      return 'agentchat_ws_order_' + this.agentId
+    },
+    loadWorkspaceOrder() {
+      try {
+        const raw = localStorage.getItem(this.workspaceOrderKey())
+        return raw ? JSON.parse(raw) : []
+      } catch (e) {
+        return []
+      }
+    },
+    saveWorkspaceOrder() {
+      try {
+        localStorage.setItem(this.workspaceOrderKey(), JSON.stringify(this.workspaces.map(w => Number(w.id))))
+      } catch (e) {
+        // localStorage 不可用时静默忽略
+      }
+    },
+    applyWorkspaceOrder(list) {
+      const order = this.loadWorkspaceOrder()
+      if (!order || !order.length) return list
+      const rank = (id) => {
+        const i = order.indexOf(Number(id))
+        return i < 0 ? order.length : i
+      }
+      return list.slice().sort((a, b) => rank(a.id) - rank(b.id))
+    },
+    onWorkspaceDragStart(session, event) {
+      this.dragWorkspaceId = Number(session.workspace_id)
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData('text/plain', String(this.dragWorkspaceId))
+      }
+    },
+    onWorkspaceDragOver(session) {
+      this.dragOverWorkspaceId = Number(session.workspace_id)
+    },
+    onWorkspaceDrop(session) {
+      const fromId = this.dragWorkspaceId
+      const toId = Number(session.workspace_id)
+      this.dragOverWorkspaceId = 0
+      if (!fromId || fromId === toId) return
+      this.reorderWorkspace(fromId, toId)
+    },
+    onWorkspaceDragEnd() {
+      this.dragWorkspaceId = 0
+      this.dragOverWorkspaceId = 0
+    },
+    reorderWorkspace(fromId, toId) {
+      const list = this.workspaces.slice()
+      const fromIdx = list.findIndex(w => Number(w.id) === Number(fromId))
+      const toIdx = list.findIndex(w => Number(w.id) === Number(toId))
+      if (fromIdx < 0 || toIdx < 0) return
+      const [moved] = list.splice(fromIdx, 1)
+      list.splice(toIdx, 0, moved)
+      this.workspaces = list
+      this.saveWorkspaceOrder()
     },
 
     // ========== 会话管理 ==========
@@ -2138,8 +2260,25 @@ export default {
 .workspace-group-header:hover { background: #eaf3ff; border-color: #bcd9ff; }
 .workspace-group-header--active { background: #e8f3ff; color: #1f5f99; }
 .workspace-group-header--collapsed { margin-bottom: 8px; }
+.workspace-group-header--dragover { border-top: 2px solid #409eff; box-shadow: 0 -2px 0 #409eff; }
 .workspace-group-header__arrow,
 .workspace-group-header__folder { flex-shrink: 0; color: #409eff; }
+.workspace-group-header__path {
+  display: block;
+  font-size: 11px;
+  color: #5f7897;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-height: 0;
+  opacity: 0;
+  transition: opacity .15s ease, max-height .15s ease;
+}
+.workspace-group-header:hover .workspace-group-header__path {
+  max-height: 16px;
+  opacity: 1;
+}
 .workspace-group-header__count {
   flex-shrink: 0;
   font-size: 11px;
@@ -2149,7 +2288,6 @@ export default {
   border-radius: 999px;
   padding: 2px 7px;
 }
-.workspace-group-header .session-item__time { color: #5f7897; font-weight: 400; }
 .session-item__add { opacity: 1; font-weight: 700; }
 .session-item__info { flex: 1; min-width: 0; }
 .session-item__name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2159,6 +2297,16 @@ export default {
 .session-item__spinner {
   width: 14px; height: 14px; flex-shrink: 0;
 }
+.session-item--show-more {
+  justify-content: center;
+  color: #409eff;
+  background: #f5f9ff;
+  font-size: 12px;
+  margin-top: 2px;
+}
+.session-item--show-more:hover { background: #eaf3ff; }
+.session-item__more-icon { font-size: 13px; color: #409eff; }
+.session-item__more-text { font-weight: 500; }
 
 .empty-hint { padding: 16px; text-align: center; color: #c0c4cc; font-size: 13px; }
 
@@ -2203,6 +2351,7 @@ export default {
   position: relative;
   flex: 1;
   min-height: 0;
+  margin-bottom: 8px;
 }
 .chat-messages {
   height: 100%;
@@ -2257,7 +2406,7 @@ export default {
   border: 1px solid #ebeef5; line-height: 1.5; font-size: 13px;
 }
 .chat-message--user .chat-message__content {
-  background: #409eff; color: #fff; border-color: #409eff;
+  background: #eef5e9; color: #303133; border-color: #d6e8cc;
   max-height: 300px; overflow-y: auto; word-break: break-word;
 }
 
@@ -2366,24 +2515,52 @@ export default {
 @keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: 0 } }
 @keyframes agent-spin { to { transform: rotate(360deg); } }
 
-.chat-input { padding: 12px 24px 10px; background: #fff; border-top: 1px solid #e4e7ed; }
-.chat-input__wrapper { width: 100%; }
+.chat-input { padding: 12px 24px 14px; background: #fff; border-top: 1px solid #e4e7ed; }
+.chat-input__wrapper {
+  width: 100%; overflow: hidden; background: #fff;
+  border: 1px solid #dcdfe6; border-radius: 10px;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.chat-input__wrapper:hover { border-color: #c0c4cc; }
+.chat-input__wrapper:focus-within {
+  border-color: #409eff; box-shadow: 0 0 0 2px rgba(64, 158, 255, .1);
+}
+.chat-input__wrapper :deep(.el-textarea__inner) {
+  min-height: 72px !important; padding: 14px 16px 8px;
+  border: 0; border-radius: 0; box-shadow: none; background: transparent;
+}
+.chat-input__wrapper :deep(.el-textarea__inner:focus) { box-shadow: none; }
 .chat-input__hint { font-size: 12px; color: #c0c4cc; margin-right: 8px; }
 
-/* 底部工具栏 */
+/* 输入框内底部工具栏 */
 .chat-input__toolbar {
-  display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 8px;
+  display: flex; justify-content: space-between; align-items: center;
+  min-height: 40px; padding: 4px 10px 8px; gap: 8px;
 }
 .chat-input__toolbar-left {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0;
 }
 .chat-input__toolbar-right {
   display: flex; align-items: center; flex-shrink: 0;
 }
-.chat-input__toolbar-btn {
-  font-size: 12px; color: #606266; padding: 4px 10px;
+.chat-input__model-select { width: 200px; }
+.chat-input__model-select :deep(.el-select__wrapper),
+.chat-input__model-select :deep(.el-input__wrapper) {
+  padding: 0 6px; background: transparent; box-shadow: none !important;
 }
-.chat-input__toolbar-btn:hover { color: #409eff; }
+.chat-input__model-select :deep(.el-select__wrapper:hover),
+.chat-input__model-select :deep(.el-select__wrapper.is-hovering),
+.chat-input__model-select :deep(.el-select__wrapper.is-focused),
+.chat-input__model-select :deep(.el-input__wrapper:hover),
+.chat-input__model-select :deep(.el-input__wrapper.is-focus) {
+  background: #f5f7fa; box-shadow: none !important;
+}
+.chat-input__toolbar-btn {
+  font-size: 12px; color: #606266; padding: 4px 6px;
+  border: 0; background: transparent;
+}
+.chat-input__toolbar-btn:hover,
+.chat-input__toolbar-btn:focus { color: #409eff; border-color: transparent; background: #f5f7fa; }
 .chat-input__stat-item {
   font-size: 11px; color: #909399; white-space: nowrap; user-select: none;
 }
@@ -2421,6 +2598,6 @@ export default {
 :deep(.chat-message__content pre code) { background: none; padding: 0; }
 :deep(.chat-message--user .chat-message__content pre),
 :deep(.chat-message--user .chat-message__content code) {
-  background: rgba(255,255,255,.2); color: #fff;
+  background: rgba(0,0,0,.045); color: #303133;
 }
 </style>
