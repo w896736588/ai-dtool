@@ -1408,6 +1408,270 @@ func ApiFolderDetail(c *gin.Context) {
 	})
 }
 
+// ApiBatchDeleteTree 返回完整轻量树结构（集合→文件夹→接口 + 归档节点），用于批量删除弹窗展示。
+// 规则：集合下仅展示未归档文件夹，所有归档文件夹统一归入末尾的"归档文件夹"节点。
+func ApiBatchDeleteTree(c *gin.Context) {
+	collections, _ := common.DbMain.Client.QueryBySql(`
+select id, name from tbl_api_collection order by id asc`).All()
+
+	result := make([]map[string]any, 0, len(collections))
+	for _, col := range collections {
+		colId := cast.ToInt(col[`id`])
+		colNode := map[string]any{
+			`id`:       colId,
+			`name`:     col[`name`],
+			`type`:     define.ApiTypeCollection,
+			`children`: []map[string]any{},
+		}
+		// 仅查询该集合下未归档的文件夹
+		dirs, _ := common.DbMain.Client.QueryBySql(`
+select d.id, d.name from tbl_api_dir d
+where d.collection_id = ? and d.archived = 0
+order by d.id asc`, colId).All()
+		folderChildren := make([]map[string]any, 0, len(dirs))
+		for _, dir := range dirs {
+			dirId := cast.ToInt(dir[`id`])
+			dirNode := map[string]any{
+				`id`:            dirId,
+				`collection_id`: colId,
+				`name`:          dir[`name`],
+				`type`:          define.ApiTypeFolder,
+				`is_archived`:   false,
+				`children`:      []map[string]any{},
+			}
+			apis, _ := common.DbMain.Client.QueryBySql(`
+select id, name, method from tbl_api
+where folder_id = ? order by weight, id asc`, dirId).All()
+			apiChildren := make([]map[string]any, 0, len(apis))
+			for _, api := range apis {
+				apiChildren = append(apiChildren, map[string]any{
+					`id`:            cast.ToInt(api[`id`]),
+					`folder_id`:     dirId,
+					`collection_id`: colId,
+					`name`:          api[`name`],
+					`method`:        api[`method`],
+					`type`:          define.ApiTypeApi,
+				})
+			}
+			dirNode[`children`] = apiChildren
+			dirNode[`child_count`] = len(apiChildren)
+			folderChildren = append(folderChildren, dirNode)
+		}
+		colNode[`children`] = folderChildren
+		colNode[`child_count`] = len(folderChildren)
+		result = append(result, colNode)
+	}
+
+	// 归档汇总节点：展示所有已归档文件夹（含其接口）
+	archiveDirs, _ := common.DbMain.Client.QueryBySql(`
+select d.id, d.name, d.original_collection_id, c.name as collection_name
+from tbl_api_dir d
+left join tbl_api_collection c on c.id = d.original_collection_id
+where d.archived = 1
+order by d.id asc`).All()
+	archiveChildren := make([]map[string]any, 0, len(archiveDirs))
+	for _, dir := range archiveDirs {
+		dirId := cast.ToInt(dir[`id`])
+		colName := cast.ToString(dir[`collection_name`])
+		displayName := dir[`name`]
+		if colName != `` {
+			displayName = cast.ToString(displayName) + ` (` + colName + `)`
+		}
+		dirNode := map[string]any{
+			`id`:            dirId,
+			`collection_id`: cast.ToInt(dir[`original_collection_id`]),
+			`name`:          displayName,
+			`type`:          define.ApiTypeFolder,
+			`is_archived`:   true,
+			`children`:      []map[string]any{},
+		}
+		apis, _ := common.DbMain.Client.QueryBySql(`
+select id, name, method from tbl_api
+where folder_id = ? order by weight, id asc`, dirId).All()
+		apiChildren := make([]map[string]any, 0, len(apis))
+		for _, api := range apis {
+			apiChildren = append(apiChildren, map[string]any{
+				`id`:            cast.ToInt(api[`id`]),
+				`folder_id`:     dirId,
+				`collection_id`: cast.ToInt(dir[`original_collection_id`]),
+				`name`:          api[`name`],
+				`method`:        api[`method`],
+				`type`:          define.ApiTypeApi,
+			})
+		}
+		dirNode[`children`] = apiChildren
+		dirNode[`child_count`] = len(apiChildren)
+		archiveChildren = append(archiveChildren, dirNode)
+	}
+	if len(archiveChildren) > 0 {
+		result = append(result, map[string]any{
+			`id`:          0,
+			`name`:        `归档文件夹`,
+			`type`:        `archive`,
+			`child_count`: len(archiveChildren),
+			`children`:    archiveChildren,
+		})
+	}
+
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`list`: result,
+	})
+}
+
+// ApiBatchDelete 批量删除集合、文件夹和接口。
+// 集合：硬删除（级联删除其下文件夹和接口）
+// 已归档文件夹：永久删除（硬删除该文件夹及其下接口）
+// 未归档文件夹：软删除（移入归档）
+// 接口：硬删除。
+func ApiBatchDelete(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+
+	collectionIds := parseApiIDs(dataMap[`collection_ids`])
+	folderIds := parseApiIDs(dataMap[`folder_ids`])
+	apiIds := parseApiIDs(dataMap[`api_ids`])
+
+	// 构建集合ID集合，用于判断文件夹是否属于待删除集合
+	collectionIdSet := make(map[int]bool)
+	for _, cid := range collectionIds {
+		collectionIdSet[cid] = true
+	}
+
+	// 收集待删除集合下的所有文件夹ID和API ID（级联）
+	cascadeFolderIds := make(map[int]bool)
+	cascadeApiIds := make(map[int]bool)
+	if len(collectionIdSet) > 0 {
+		phs := make([]string, 0, len(collectionIdSet))
+		args := make([]any, 0, len(collectionIdSet))
+		for cid := range collectionIdSet {
+			phs = append(phs, `?`)
+			args = append(args, cid)
+		}
+		// 查询集合下的文件夹
+		dirs, _ := common.DbMain.Client.QueryBySql(
+			`SELECT id FROM tbl_api_dir WHERE collection_id IN (`+strings.Join(phs, `,`)+`)`, args...,
+		).All()
+		for _, d := range dirs {
+			cascadeFolderIds[cast.ToInt(d[`id`])] = true
+		}
+		// 查询集合下的接口（通过文件夹关联）
+		apis, _ := common.DbMain.Client.QueryBySql(
+			`SELECT a.id FROM tbl_api a
+			 INNER JOIN tbl_api_dir d ON a.folder_id = d.id
+			 WHERE d.collection_id IN (`+strings.Join(phs, `,`)+`)`, args...,
+		).All()
+		for _, a := range apis {
+			cascadeApiIds[cast.ToInt(a[`id`])] = true
+		}
+	}
+
+	// 收集直接选中的文件夹下的API ID，并区分已归档/未归档文件夹
+	directFolderApiIds := make(map[int]bool)
+	archivedFolderIds := make(map[int]bool)
+	for _, fid := range folderIds {
+		apis, _ := common.DbMain.Client.QueryBySql(
+			`SELECT id FROM tbl_api WHERE folder_id = ?`, fid,
+		).All()
+		for _, a := range apis {
+			directFolderApiIds[cast.ToInt(a[`id`])] = true
+		}
+		// 检查该文件夹是否已归档
+		fi, _ := common.DbMain.Client.QueryBySql(
+			`SELECT archived FROM tbl_api_dir WHERE id = ?`, fid,
+		).One()
+		if len(fi) > 0 && cast.ToInt(fi[`archived`]) == 1 {
+			archivedFolderIds[fid] = true
+		}
+	}
+
+	// 合并所有要删除的API ID
+	allApiIds := make(map[int]bool)
+	for _, id := range apiIds {
+		allApiIds[id] = true
+	}
+	for id := range cascadeApiIds {
+		allApiIds[id] = true
+	}
+	for id := range directFolderApiIds {
+		allApiIds[id] = true
+	}
+
+	deletedCollections := 0
+	deletedFolders := 0
+	permanentDeletedFolders := 0
+	deletedApis := 0
+
+	// 1. 删除所有相关API
+	for apiId := range allApiIds {
+		apiInfo, _ := common.DbMain.Client.QueryBySql(
+			`SELECT id, folder_id, collection_id FROM tbl_api WHERE id = ?`, apiId,
+		).One()
+		if len(apiInfo) == 0 {
+			continue
+		}
+		_, _ = common.DbMain.Client.ExecBySql(`DELETE FROM tbl_api WHERE id = ?`, apiId).Exec()
+		deletedApis++
+		go BroadcastApiChange(c.GetHeader("SseClientId"), `api_deleted`, map[string]any{
+			`collection_id`: cast.ToInt(apiInfo[`collection_id`]),
+			`folder_id`:     cast.ToInt(apiInfo[`folder_id`]),
+			`api_id`:        apiId,
+		})
+	}
+
+	// 2. 归档未归档的文件夹 / 永久删除已归档的文件夹（跳过属于待删除集合的文件夹，它们将在步骤3被硬删除）
+	for _, folderId := range folderIds {
+		if cascadeFolderIds[folderId] {
+			continue // 属于待删除集合，将在步骤3级联删除
+		}
+		folderInfo, _ := common.DbMain.Client.QueryBySql(
+			`SELECT id, collection_id, archived FROM tbl_api_dir WHERE id = ?`, folderId,
+		).One()
+		if len(folderInfo) == 0 {
+			continue
+		}
+		colId := cast.ToInt(folderInfo[`collection_id`])
+		if collectionIdSet[colId] {
+			continue
+		}
+		if cast.ToInt(folderInfo[`archived`]) == 1 {
+			// 已归档文件夹 → 永久删除
+			_, _ = common.DbMain.Client.ExecBySql(`DELETE FROM tbl_api_dir WHERE id = ?`, folderId).Exec()
+			permanentDeletedFolders++
+			go BroadcastApiChange(c.GetHeader("SseClientId"), `folder_permanent_deleted`, map[string]any{
+				`folder_id`: folderId,
+			})
+		} else {
+			// 未归档文件夹 → 移入归档
+			_, _ = common.DbMain.Client.ExecBySql(
+				`UPDATE tbl_api_dir SET archived = 1, original_collection_id = ?, update_time = ? WHERE id = ?`,
+				colId, time.Now().Unix(), folderId,
+			).Exec()
+			deletedFolders++
+			go BroadcastApiChange(c.GetHeader("SseClientId"), `folder_archived`, map[string]any{
+				`collection_id`: colId,
+				`folder_id`:     folderId,
+			})
+		}
+	}
+
+	// 3. 硬删除选中的集合及其文件夹
+	for _, colId := range collectionIds {
+		_, _ = common.DbMain.Client.ExecBySql(`DELETE FROM tbl_api_dir WHERE collection_id = ?`, colId).Exec()
+		_, _ = common.DbMain.Client.ExecBySql(`DELETE FROM tbl_api_collection WHERE id = ?`, colId).Exec()
+		deletedCollections++
+		go BroadcastApiChange(c.GetHeader("SseClientId"), `collection_deleted`, map[string]any{
+			`collection_id`: colId,
+		})
+	}
+
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`deleted_collections`:       deletedCollections,
+		`deleted_folders`:           deletedFolders,
+		`permanent_deleted_folders`: permanentDeletedFolders,
+		`deleted_apis`:              deletedApis,
+	})
+}
+
 // ApiArchiveFolderList 查询所有已归档的文件夹列表。
 func ApiArchiveFolderList(c *gin.Context) {
 	list, _ := common.DbMain.Client.QueryBySql(`
@@ -1474,14 +1738,36 @@ func ApiPermanentDeleteDir(c *gin.Context) {
 		gsgin.GinResponseError(c, `请选择文件夹`, nil)
 		return
 	}
+	folderInfo, err := common.DbMain.Client.QueryBySql(
+		`SELECT id FROM tbl_api_dir WHERE id = ? AND archived = 1`, folderId,
+	).One()
+	if err != nil {
+		gsgin.GinResponseError(c, `查询失败 `+err.Error(), nil)
+		return
+	}
+	if len(folderInfo) == 0 {
+		gsgin.GinResponseError(c, `归档文件夹不存在或已被删除`, nil)
+		return
+	}
 	// 删除该文件夹下的所有接口
-	_, _ = common.DbMain.Client.QueryBySql(
+	if _, err = common.DbMain.Client.ExecBySql(
 		`DELETE FROM tbl_api WHERE folder_id = ?`, folderId,
-	).Exec()
+	).Exec(); err != nil {
+		gsgin.GinResponseError(c, `删除接口失败 `+err.Error(), nil)
+		return
+	}
 	// 删除文件夹
-	_, _ = common.DbMain.Client.QueryBySql(
+	rowsAffected, err := common.DbMain.Client.ExecBySql(
 		`DELETE FROM tbl_api_dir WHERE id = ? AND archived = 1`, folderId,
 	).Exec()
+	if err != nil {
+		gsgin.GinResponseError(c, `删除失败 `+err.Error(), nil)
+		return
+	}
+	if rowsAffected == 0 {
+		gsgin.GinResponseError(c, `归档文件夹不存在或已被删除`, nil)
+		return
+	}
 	go BroadcastApiChange(c.GetHeader("SseClientId"), `folder_permanent_deleted`, map[string]any{
 		`folder_id`: folderId,
 	})

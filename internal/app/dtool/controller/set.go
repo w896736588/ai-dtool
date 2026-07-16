@@ -7,6 +7,7 @@ import (
 	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -958,6 +959,11 @@ func SetMemoryConfigGet(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	shareBaseURL, err := memoryConfigValue(define.MemoryConfigShareBaseURL)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
 	gsgin.GinResponseSuccess(c, ``, map[string]any{
 		`db_dir`:                    mainDBConfig.Dir,
 		`db_name`:                   mainDBConfig.DBName,
@@ -969,6 +975,7 @@ func SetMemoryConfigGet(c *gin.Context) {
 		`memory_arrange_prompt`:     arrangePrompt,
 		`memory_arrange_model_id`:   cast.ToInt(arrangeModelID),
 		`memory_ai_search_model_id`: cast.ToInt(aiSearchModelID),
+		`memory_share_base_url`:     shareBaseURL,
 		`safe_password`:             component.ConfigViper.GetString(`safe.password`),
 		`main_db_storage`:           mainDBStorage,
 		`client_version`:            component.EnvClient.SmartLinkConfig.ClientVersion,
@@ -982,6 +989,11 @@ func SetMemoryConfigSave(c *gin.Context) {
 	memoryArrangePrompt := strings.TrimSpace(cast.ToString(dataMap[`memory_arrange_prompt`]))
 	if memoryArrangePrompt == `` {
 		memoryArrangePrompt = defaultMemoryArrangePrompt()
+	}
+	shareBaseURL := strings.TrimSpace(cast.ToString(dataMap[`memory_share_base_url`]))
+	if err := validateMemoryShareBaseURL(shareBaseURL); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
 	}
 	memoryArrangeModelID := cast.ToInt(dataMap[`memory_arrange_model_id`])
 	if memoryArrangeModelID > 0 {
@@ -1020,7 +1032,25 @@ func SetMemoryConfigSave(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	if err := common.DbMain.MemoryConfigSave(`分享地址`, define.MemoryConfigShareBaseURL, shareBaseURL, `知识片段分享链接基础地址`); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
 	gsgin.GinResponseSuccess(c, ``, nil)
+}
+
+func validateMemoryShareBaseURL(raw string) error {
+	if raw == `` {
+		return nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == `` || parsed.Host == `` {
+		return fmt.Errorf(`分享地址必须是完整的 http/https 地址`)
+	}
+	if parsed.Scheme != `http` && parsed.Scheme != `https` {
+		return fmt.Errorf(`分享地址仅支持 http/https`)
+	}
+	return nil
 }
 
 // SetRuntimeConfigSave 保存可编辑的 ini 配置并重新加载运行时配置。 // Save editable ini config values and reload runtime config.
@@ -1462,8 +1492,13 @@ func SetCronConfigGet(c *gin.Context) {
 	}
 	result := make([]map[string]any, 0, len(list))
 	for _, row := range list {
+		// 跳过已从 CronTaskRegistry 移除的孤儿定时任务（如已废弃的兜底同步任务），避免在前端重复展示。
+		taskType := cast.ToString(row[`type`])
+		if _, ok := define.CronTaskRegistry[taskType]; !ok {
+			continue
+		}
 		result = append(result, map[string]any{
-			`type`:              cast.ToString(row[`type`]),
+			`type`:              taskType,
 			`name`:              cast.ToString(row[`name`]),
 			`enabled`:           cast.ToInt(row[`enabled`]),
 			`trigger_time`:      strings.TrimSpace(cast.ToString(row[`trigger_time`])),
@@ -1701,14 +1736,18 @@ func SetHomeTaskConfigSave(c *gin.Context) {
 	}
 	homeTaskDailyReportModelID := cast.ToInt(dataMap[`home_task_daily_report_model_id`])
 	if homeTaskDailyReportModelID > 0 {
-		modelInfo, err := common.DbMain.AiModelInfo(homeTaskDailyReportModelID)
-		if err != nil {
-			gsgin.GinResponseError(c, `AI 模型不存在`, nil)
-			return
-		}
-		if strings.ToLower(cast.ToString(modelInfo[`model_type`])) != `llm` {
-			gsgin.GinResponseError(c, `工作日报仅支持选择 LLM 模型`, nil)
-			return
+		// 仅当日报模型 ID 发生变化时才校验，避免保存其他配置时因已删除的旧模型 ID 被拦截
+		storedModelIDText, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigDailyReportModelID)
+		if homeTaskDailyReportModelID != cast.ToInt(storedModelIDText) {
+			modelInfo, err := common.DbMain.AiModelInfo(homeTaskDailyReportModelID)
+			if err != nil {
+				gsgin.GinResponseError(c, `AI 模型不存在`, nil)
+				return
+			}
+			if strings.ToLower(cast.ToString(modelInfo[`model_type`])) != `llm` {
+				gsgin.GinResponseError(c, `工作日报仅支持选择 LLM 模型`, nil)
+				return
+			}
 		}
 	}
 	saveHomeTaskPromptWithLog(define.HomeTaskConfigDailyReportPrompt, `工作日报提示词`, homeTaskDailyReportPrompt, `首页任务工作日报 AI 提示词`)
@@ -1781,8 +1820,23 @@ func SetHomeTaskConfigSave(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	homeTaskBranchNameModelID := cast.ToString(cast.ToInt(dataMap[`home_task_branch_name_model_id`]))
-	if err := common.DbMain.HomeTaskConfigSave(`分支名生成模型`, define.HomeTaskConfigBranchNameModelID, homeTaskBranchNameModelID, `分支名生成所用模型 id`); err != nil {
+	homeTaskBranchNameModelID := cast.ToInt(dataMap[`home_task_branch_name_model_id`])
+	if homeTaskBranchNameModelID > 0 {
+		// 仅当分支名模型 ID 发生变化时才校验
+		storedBranchModelIDText, _ := common.DbMain.HomeTaskConfigValue(define.HomeTaskConfigBranchNameModelID)
+		if homeTaskBranchNameModelID != cast.ToInt(storedBranchModelIDText) {
+			modelInfo, err := common.DbMain.AiModelInfo(homeTaskBranchNameModelID)
+			if err != nil {
+				gsgin.GinResponseError(c, `AI 模型不存在`, nil)
+				return
+			}
+			if strings.ToLower(cast.ToString(modelInfo[`model_type`])) != `llm` {
+				gsgin.GinResponseError(c, `分支名生成仅支持 LLM 模型`, nil)
+				return
+			}
+		}
+	}
+	if err := common.DbMain.HomeTaskConfigSave(`分支名生成模型`, define.HomeTaskConfigBranchNameModelID, cast.ToString(homeTaskBranchNameModelID), `分支名生成所用模型 id`); err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
@@ -2175,10 +2229,11 @@ func SetRemoteBranchCheck(c *gin.Context) {
 			continue
 		}
 
-		// 检查远程分支是否存在
+		// 检查远程分支是否存在（同时获取远程 HEAD SHA）
 		lsCmd := exec.Command(`git`, `-C`, localDir, `ls-remote`, `--heads`, `origin`, branchName)
 		lsOutput, lsErr := lsCmd.CombinedOutput()
-		remoteExists := lsErr == nil && strings.TrimSpace(string(lsOutput)) != ``
+		lsTrimmed := strings.TrimSpace(string(lsOutput))
+		remoteExists := lsErr == nil && lsTrimmed != ``
 
 		// 检查当前本地分支（确认目录下确实是该分支）
 		currentBranchCmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, `--abbrev-ref`, `HEAD`)
@@ -2198,29 +2253,46 @@ func SetRemoteBranchCheck(c *gin.Context) {
 		// 远程分支存在则已推送
 		row[`pushed`] = true
 
-		// 先 fetch 以获取最新远程信息（静默 fetch）
-		fetchCmd := exec.Command(`git`, `-C`, localDir, `fetch`, `origin`, branchName)
-		fetchCmd.CombinedOutput() // 忽略 fetch 错误，继续检查
-
-		// 获取追踪的远程分支名
-		trackCmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, `--abbrev-ref`, branchName+`@{upstream}`)
-		trackOutput, trackErr := trackCmd.CombinedOutput()
-		if trackErr == nil {
-			row[`remote_branch_name`] = strings.TrimSpace(string(trackOutput))
-		} else {
-			row[`remote_branch_name`] = `origin/` + branchName
+		// 获取远程 HEAD SHA（从 ls-remote 输出解析，格式：<sha>\trefs/heads/<name>）
+		remoteSha := ``
+		if fields := strings.Fields(lsTrimmed); len(fields) >= 1 {
+			remoteSha = fields[0]
 		}
 
-		// 检查 ahead/behind
-		revListCmd := exec.Command(`git`, `-C`, localDir, `rev-list`, `--left-right`, `--count`, branchName+`...origin/`+branchName)
-		revOutput, revErr := revListCmd.CombinedOutput()
+		// 获取本地分支 HEAD SHA，用于快速比对
+		localShaCmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, branchName)
+		localShaOutput, _ := localShaCmd.CombinedOutput()
+		localSha := strings.TrimSpace(string(localShaOutput))
+
 		localAhead := 0
 		remoteAhead := 0
-		if revErr == nil {
-			parts := strings.Fields(strings.TrimSpace(string(revOutput)))
-			if len(parts) >= 2 {
-				localAhead = cast.ToInt(parts[0])
-				remoteAhead = cast.ToInt(parts[1])
+
+		if remoteSha != `` && localSha == remoteSha {
+			// 本地与远程 HEAD 一致，无需 fetch，跳过耗时操作
+			row[`remote_branch_name`] = `origin/` + branchName
+		} else {
+			// HEAD 不一致，需要 fetch 获取最新远程引用后精确计算 ahead/behind
+			fetchCmd := exec.Command(`git`, `-C`, localDir, `fetch`, `--no-tags`, `origin`, branchName)
+			fetchCmd.CombinedOutput() // 忽略 fetch 错误，继续检查
+
+			// 获取追踪的远程分支名
+			trackCmd := exec.Command(`git`, `-C`, localDir, `rev-parse`, `--abbrev-ref`, branchName+`@{upstream}`)
+			trackOutput, trackErr := trackCmd.CombinedOutput()
+			if trackErr == nil {
+				row[`remote_branch_name`] = strings.TrimSpace(string(trackOutput))
+			} else {
+				row[`remote_branch_name`] = `origin/` + branchName
+			}
+
+			// 检查 ahead/behind
+			revListCmd := exec.Command(`git`, `-C`, localDir, `rev-list`, `--left-right`, `--count`, branchName+`...origin/`+branchName)
+			revOutput, revErr := revListCmd.CombinedOutput()
+			if revErr == nil {
+				parts := strings.Fields(strings.TrimSpace(string(revOutput)))
+				if len(parts) >= 2 {
+					localAhead = cast.ToInt(parts[0])
+					remoteAhead = cast.ToInt(parts[1])
+				}
 			}
 		}
 

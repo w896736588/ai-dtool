@@ -53,6 +53,7 @@ func InitRouter(tGin *p_gin.Gin) {
 	apiUse(tGin)
 	mcp(tGin)
 	agentCli(tGin)
+	agentV2Router(tGin)
 	webhookConfig(tGin)
 	e2eRouter(tGin)
 	tGin.GinPost(`/test/multiformdata`, func(c *gin.Context) {
@@ -261,6 +262,7 @@ func setRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/Set/AccountGroupDelete`, controller.SetAccountGroupDelete)
 	tGin.GinPost(`/api/Set/AiProviderList`, controller.SetAiProviderList)
 	tGin.GinPost(`/api/Set/AiProviderAdd`, controller.SetAiProviderAdd)
+	tGin.GinPost(`/api/Set/AiProviderKeyGet`, controller.SetAiProviderKeyGet)
 	tGin.GinPost(`/api/Set/AiProviderDelete`, controller.SetAiProviderDelete)
 	tGin.GinPost(`/api/Set/AiModelList`, controller.SetAiModelList)
 	tGin.GinPost(`/api/Set/AiModelAdd`, controller.SetAiModelAdd)
@@ -533,6 +535,8 @@ func api(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/FolderDetail`, controller.ApiFolderDetail)
 	tGin.GinPost(`/api/ApiMove`, controller.ApiMoveApi)
 	tGin.GinPost(`/api/ArchiveFolderList`, controller.ApiArchiveFolderList)
+	tGin.GinPost(`/api/ApiBatchDeleteTree`, controller.ApiBatchDeleteTree)
+	tGin.GinPost(`/api/ApiBatchDelete`, controller.ApiBatchDelete)
 	tGin.GinPost(`/api/CleanupCandidateFolders`, controller.ApiCleanupCandidateFolders)
 	tGin.GinPost(`/api/CleanupArchiveFolders`, controller.ApiCleanupArchiveFolders)
 	tGin.GinPost(`/api/RestoreFolder`, controller.ApiRestoreFolder)
@@ -636,6 +640,51 @@ func agentCli(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/AgentCliPromptTemplateList`, controller.AgentCliPromptTemplateList)
 	tGin.GinPost(`/api/AgentCliPromptTemplateSave`, controller.AgentCliPromptTemplateSave)
 	tGin.GinPost(`/api/AgentCliPromptTemplateDelete`, controller.AgentCliPromptTemplateDelete)
+}
+
+// agentV2Router Agent V2 路由（新一代 Agent 管理系统）
+func agentV2Router(tGin *p_gin.Gin) {
+	// Agent CRUD
+	tGin.GinPost(`/api/AgentV2List`, controller.AgentV2List)
+	tGin.GinPost(`/api/AgentV2Save`, controller.AgentV2Save)
+	tGin.GinPost(`/api/AgentV2Delete`, controller.AgentV2Delete)
+	tGin.GinPost(`/api/AgentV2CheckInstall`, controller.AgentV2CheckInstall)
+	// 工作空间
+	tGin.GinPost(`/api/AgentV2WorkspaceList`, controller.AgentV2WorkspaceList)
+	tGin.GinPost(`/api/AgentV2WorkspaceSave`, controller.AgentV2WorkspaceSave)
+	tGin.GinPost(`/api/AgentV2WorkspaceDelete`, controller.AgentV2WorkspaceDelete)
+	// 会话
+	tGin.GinPost(`/api/AgentV2SessionList`, controller.AgentV2SessionList)
+	tGin.GinPost(`/api/AgentV2SessionCreate`, controller.AgentV2SessionCreate)
+	tGin.GinPost(`/api/AgentV2SessionDelete`, controller.AgentV2SessionDelete)
+	tGin.GinPost(`/api/AgentV2SessionRename`, controller.AgentV2SessionRename)
+	tGin.GinPost(`/api/AgentV2SessionMessages`, controller.AgentV2SessionMessages)
+	// Skills
+	tGin.GinPost(`/api/AgentV2SkillList`, controller.AgentV2SkillList)
+	tGin.GinPost(`/api/AgentV2SkillSave`, controller.AgentV2SkillSave)
+	tGin.GinPost(`/api/AgentV2SkillDelete`, controller.AgentV2SkillDelete)
+	// 内置工具
+	tGin.GinPost(`/api/AgentV2BuiltinToolList`, controller.AgentV2BuiltinToolList)
+	// 环境工具（系统级 CLI 工具，如 RTK）
+	tGin.GinPost(`/api/AgentV2EnvToolList`, controller.AgentV2EnvToolList)
+	tGin.GinPost(`/api/AgentV2EnvToolAction`, controller.AgentV2EnvToolAction)
+	// Headroom 代理管理（独立于 EnvTool 的代理进程配置+启停控制）
+	tGin.GinPost(`/api/AgentV2HeadroomStatus`, controller.AgentV2HeadroomStatus)
+	tGin.GinPost(`/api/AgentV2HeadroomConfigSave`, controller.AgentV2HeadroomConfigSave)
+	tGin.GinPost(`/api/AgentV2HeadroomProcess`, controller.AgentV2HeadroomProcess)
+	// Headroom 升级/统计/日志
+	tGin.GinPost(`/api/AgentV2HeadroomUpgrade`, controller.AgentV2HeadroomUpgrade)
+	tGin.GinPost(`/api/AgentV2HeadroomStats`, controller.AgentV2HeadroomStats)
+	tGin.GinPost(`/api/AgentV2HeadroomLogList`, controller.AgentV2HeadroomLogList)
+	tGin.GinPost(`/api/AgentV2HeadroomLogRead`, controller.AgentV2HeadroomLogRead)
+	// 已安装扩展扫描（.pi/extensions/ 目录）
+	tGin.GinPost(`/api/AgentV2InstalledToolList`, controller.AgentV2InstalledToolList)
+	tGin.GinPost(`/api/AgentV2InstalledToolRemove`, controller.AgentV2InstalledToolRemove)
+	// 模型配置（复用 tbl_ai_provider + tbl_ai_model）
+	tGin.GinPost(`/api/AgentV2ProviderModels`, controller.AgentV2ProviderModels)
+	tGin.GinPost(`/api/AgentV2ModelTest`, controller.AgentV2ModelTest)
+	// WebSocket 实时通道
+	tGin.GinGet(`/api/AgentV2WS`, controller.AgentV2WS)
 }
 
 // webhookConfig 路由

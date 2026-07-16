@@ -1107,7 +1107,12 @@ export default {
         try {
           objData = JSON.parse(event.data)
         } catch (e) {
-          // 非JSON消息（如 [CONNECT]），忽略
+          // 非JSON消息（如 [CONNECT]），作为系统消息显示
+          if (_that.isReceive && event.data) {
+            if (_that.throttleStringFunc[tabId]) {
+              _that.throttleStringFunc[tabId].update('[系统] ' + event.data + '\n')
+            }
+          }
           return
         }
         if (!objData || !objData.sse_distribute_id) {

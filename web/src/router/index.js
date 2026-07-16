@@ -84,6 +84,7 @@ const router = createRouter({
           },
           meta: { keepAlive: true, title: '工具' },
         },
+
         {
           path: '/Docker',
           name: 'Docker',
@@ -156,6 +157,31 @@ const router = createRouter({
           },
           meta: { keepAlive: true, title: 'Agent Cli' },
         },
+        {
+          path: '/AgentHub',
+          name: 'AgentHub',
+          components: {
+            home: () => import('../components/agent_hub/AgentHub'),
+          },
+          meta: { keepAlive: true, title: 'Agent' },
+        },
+        {
+          path: '/AgentChat',
+          name: 'AgentChat',
+          components: {
+            home: () => import('../components/agent_hub/AgentChat'),
+          },
+          meta: { keepAlive: false, title: 'Agent Chat' },
+        },
+        {
+          path: '/AgentConfig',
+          name: 'AgentConfig',
+          components: {
+            home: () => import('../components/agent_hub/AgentConfig'),
+          },
+          meta: { keepAlive: false, title: 'Agent 配置' },
+        },
+
       ],
     },
     {

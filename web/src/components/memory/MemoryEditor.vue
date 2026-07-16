@@ -831,7 +831,7 @@ export default {
           }
           return
         }
-        const shareUrl = this.buildShareUrl(this.draftFragment.id, response.Data.token)
+        const shareUrl = base.BuildMemoryFragmentShareUrl(this.draftFragment.id, response.Data.token, response.Data.url)
         try {
           await this.writeClipboard(shareUrl)
           this.$helperNotify.success('分享链接已复制，24小时内有效')
@@ -839,13 +839,6 @@ export default {
           this.$helperNotify.error('分享链接复制失败')
         }
       })
-    },
-    // buildShareUrl 生成后端直出的纯 HTML 分享链接，避免依赖前端 SPA 渲染。
-    // URL 格式：/share/{cleanFragmentId}/{token}，自动提取末段干净 ID。
-    buildShareUrl(fragmentId, token) {
-      const cleanId = fragmentId.includes('/') ? fragmentId.replace(/^.*\//, '') : fragmentId
-      const apiHost = String(base.GetApiHost() || window.location.origin).trim()
-      return new URL(`/share/${encodeURIComponent(cleanId)}/${encodeURIComponent(token)}`, apiHost).toString()
     },
     // writeClipboard 复制文本，兼容不支持 navigator.clipboard 的浏览器环境。
     writeClipboard(text) {

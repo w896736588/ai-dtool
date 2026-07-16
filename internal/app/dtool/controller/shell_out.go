@@ -8,6 +8,7 @@ import (
 	"dev_tool/internal/pkg/p_define"
 	"dev_tool/internal/pkg/p_sse"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -261,6 +262,18 @@ func ShellOutSearchContent(c *gin.Context) {
 	return
 }
 
+// sendFullpageSSEStep 通过 SSE 通道向前端推送步骤进度消息（仅 fullpage 场景）
+func sendFullpageSSEStep(sse *gsgin.Sse, sseDistributeId string, msg string) {
+	if sse == nil {
+		return
+	}
+	_ = sse.SendToChan(gstool.JsonEncode(p_define.SseData{
+		SseDistributeId: sseDistributeId,
+		Data:            msg,
+		Type:            p_define.SseContentTypeMsg,
+	}))
+}
+
 func ShellOutSetSeeId(c *gin.Context) {
 	dataMap := make(map[string]interface{})
 	err := gsgin.GinPostBody(c, &dataMap)
@@ -292,12 +305,16 @@ func ShellOutSetSeeId(c *gin.Context) {
 	sseConn := GetFullpageSseByClientID(sseClientId)
 	if sseConn != nil {
 		gstool.FmtPrintlnLogTime(`[ShellOutSetSeeId] 使用Fullpage专用SSE sse_distribute_id=%s clientID=%s`, sseDistributeId, sseClientId)
+		sendFullpageSSEStep(sseConn, sseDistributeId, "[系统] Fullpage SSE 通道已就绪 → 开始绑定 Shell 输出流\n")
 	} else {
 		sseConn = gsgin.SseGetByClientId(sseClientId)
 		if sseConn != nil {
 			gstool.FmtPrintlnLogTime(`[ShellOutSetSeeId] 使用通用SSE sse_distribute_id=%s clientID=%s`, sseDistributeId, sseClientId)
+			sendFullpageSSEStep(sseConn, sseDistributeId, "[系统] 通用 SSE 通道已就绪 → 开始绑定 Shell 输出流\n")
 		} else {
 			gstool.FmtPrintlnLogTime(`[ShellOutSetSeeId] SSE连接不存在 sse_distribute_id=%s clientID=%s`, sseDistributeId, sseClientId)
+			gsgin.GinResponseError(c, `SSE连接未建立，无法绑定Shell输出流（请刷新页面后重试）`, nil)
+			return
 		}
 	}
 
@@ -305,15 +322,32 @@ func ShellOutSetSeeId(c *gin.Context) {
 		Sse:             sseConn,
 		SseDistributeId: sseDistributeId,
 	}
+
+	// 推送步骤详情：查询 SSH 配置
+	sendFullpageSSEStep(sseConn, sseDistributeId, fmt.Sprintf("[系统] ① 查询 SSH 配置 (ssh_id=%s)...\n", sshId))
+	sshConfig, getSshErr := component.DbMain.GetSshConfig(sshId)
+	if getSshErr != nil {
+		sendFullpageSSEStep(sseConn, sseDistributeId, fmt.Sprintf("[系统] ❌ SSH 配置查询失败: %s\n", getSshErr.Error()))
+		gsgin.GinResponseError(c, getSshErr.Error(), nil)
+		return
+	}
+	sendFullpageSSEStep(sseConn, sseDistributeId, fmt.Sprintf("[系统] ② SSH 目标: %s:%s (user=%s)\n",
+		cast.ToString(sshConfig[`host`]), cast.ToString(sshConfig[`port`]), cast.ToString(sshConfig[`username`])))
+
+	// 推送步骤详情：即将执行命令
+	sendFullpageSSEStep(sseConn, sseDistributeId, fmt.Sprintf("[系统] ③ 即将执行命令: %s\n", command))
+
 	err = component.ShellOutClient.SetClientSseId(shellClientId, sshId, sse, command, groupId, ruleSetID, func(s string) []string {
 		return []string{p_common.TBaseClient.FilterTerminalChars(s)}
 	})
 	if err != nil {
 		gstool.FmtPrintlnLogTime(`[ShellOutSetSeeId] SetClientSseId失败 sse_distribute_id=%s err=%s`, sseDistributeId, err.Error())
+		sendFullpageSSEStep(sseConn, sseDistributeId, fmt.Sprintf("[系统] ❌ 绑定失败: %s\n", err.Error()))
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
 	gstool.FmtPrintlnLogTime(`[ShellOutSetSeeId] 绑定成功 sse_distribute_id=%s shell_client_id=%s`, sseDistributeId, shellClientId)
+	sendFullpageSSEStep(sseConn, sseDistributeId, "[系统] ✅ Shell 输出流绑定完成，等待命令输出...\n")
 	gsgin.GinResponseSuccess(c, ``, map[string]any{})
 	return
 }

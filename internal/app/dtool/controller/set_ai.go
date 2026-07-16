@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -29,7 +30,39 @@ order by id desc`
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	// 脱敏 API Key（列表接口不应返回明文密钥）
+	for i := range list {
+		if apiKey, ok := list[i][`api_key`].(string); ok && apiKey != `` {
+			list[i][`api_key`] = maskApiKey(apiKey)
+		}
+	}
 	gsgin.GinResponseSuccess(c, ``, list)
+}
+
+// SetAiProviderKeyGet 查询指定 AI 服务商的真实 API Key，仅用于编辑时查看明文。
+// 列表接口已脱敏，此处单独提供明文以便用户核对，避免编辑其他字段时误用脱敏值覆盖真实密钥。
+func SetAiProviderKeyGet(c *gin.Context) {
+	dataMap := make(map[string]any)
+	_ = gsgin.GinPostBody(c, &dataMap)
+	id := cast.ToInt(dataMap[`id`])
+	if id == 0 {
+		gsgin.GinResponseError(c, `id不能为空`, nil)
+		return
+	}
+	list, err := common.DbMain.Client.QueryBySql(
+		`select api_key from tbl_ai_provider where id = ? and status = 1`, id,
+	).All()
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if len(list) == 0 {
+		gsgin.GinResponseError(c, `服务商不存在`, nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, ``, map[string]any{
+		`api_key`: strings.TrimSpace(cast.ToString(list[0][`api_key`])),
+	})
 }
 
 // SetAiProviderAdd 新增或更新 AI 服务商配置
@@ -37,6 +70,10 @@ func SetAiProviderAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
 	updateData := gstool.MapTakeKeys(&dataMap, []string{`name`, `base_url`, `api_key`})
+	// 编辑时若前端未提交 API Key（空），则不覆盖已保存的真实密钥，避免误清空。
+	if cast.ToString(updateData[`api_key`]) == `` {
+		delete(updateData, `api_key`)
+	}
 	if cast.ToString(updateData[`name`]) == `` {
 		gsgin.GinResponseError(c, `服务商名称不能为空`, nil)
 		return
@@ -48,8 +85,8 @@ func SetAiProviderAdd(c *gin.Context) {
 	if requestFormat == `` {
 		requestFormat = `openai`
 	}
-	if requestFormat != `openai` && requestFormat != `anthropic` && requestFormat != `deepseek` {
-		gsgin.GinResponseError(c, `请求格式仅支持 openai、anthropic 或 deepseek`, nil)
+	if requestFormat != `openai` && requestFormat != `anthropic` && requestFormat != `deepseek` && requestFormat != `openai-responses` {
+		gsgin.GinResponseError(c, `请求格式仅支持 openai、openai-responses、anthropic、deepseek`, nil)
 		return
 	}
 	updateData[`base_url`] = normalizeAiProviderBaseURL(cast.ToString(updateData[`base_url`]))
@@ -76,6 +113,10 @@ func SetAiProviderAdd(c *gin.Context) {
 			gsgin.GinResponseError(c, err.Error(), nil)
 			return
 		}
+	}
+	// Provider 变更后同步 Pi models.json
+	if err := syncPiModelsConfig(); err != nil {
+		log.Printf("[set-ai] syncPiModelsConfig after provider update: %v", err)
 	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
@@ -105,6 +146,10 @@ func SetAiProviderDelete(c *gin.Context) {
 		`status`:      0,
 		`update_time`: time.Now().Unix(),
 	}).Exec()
+	// Provider 删除后同步 Pi models.json
+	if err := syncPiModelsConfig(); err != nil {
+		log.Printf("[set-ai] syncPiModelsConfig after provider delete: %v", err)
+	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -140,7 +185,7 @@ where m.status = 1 and p.status = 1`
 func SetAiModelAdd(c *gin.Context) {
 	dataMap := make(map[string]any)
 	_ = gsgin.GinPostBody(c, &dataMap)
-	updateData := gstool.MapTakeKeys(&dataMap, []string{`provider_id`, `name`, `model`, `uri`, `model_type`})
+	updateData := gstool.MapTakeKeys(&dataMap, []string{`provider_id`, `name`, `model`, `uri`, `model_type`, `context_size`})
 	if cast.ToInt(updateData[`provider_id`]) == 0 {
 		gsgin.GinResponseError(c, `请选择服务商`, nil)
 		return
@@ -150,7 +195,8 @@ func SetAiModelAdd(c *gin.Context) {
 		return
 	}
 	updateData[`uri`] = normalizeAiModelURI(cast.ToString(updateData[`uri`]))
-	if cast.ToString(updateData[`uri`]) == `` {
+	// 新建时 URI 必填，编辑时允许为空
+	if cast.ToInt(dataMap[`id`]) == 0 && cast.ToString(updateData[`uri`]) == `` {
 		gsgin.GinResponseError(c, `模型 URI 不能为空`, nil)
 		return
 	}
@@ -185,6 +231,10 @@ func SetAiModelAdd(c *gin.Context) {
 			return
 		}
 	}
+	// Model 变更后同步 Pi models.json
+	if err := syncPiModelsConfig(); err != nil {
+		log.Printf("[set-ai] syncPiModelsConfig after model update: %v", err)
+	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -206,6 +256,10 @@ func SetAiModelDelete(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	// Model 删除后同步 Pi models.json
+	if err := syncPiModelsConfig(); err != nil {
+		log.Printf("[set-ai] syncPiModelsConfig after model delete: %v", err)
+	}
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -223,18 +277,26 @@ func SetAiModelTest(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	requestURL := strings.TrimRight(strings.TrimSpace(cast.ToString(modelInfo[`base_url`])), `/`) +
-		normalizeAiModelURI(cast.ToString(modelInfo[`uri`]))
-	if requestURL == `` {
-		gsgin.GinResponseError(c, `模型请求地址不能为空`, nil)
-		return
+	providerType := strings.ToLower(cast.ToString(modelInfo[`provider_type`]))
+	if providerType == `` {
+		providerType = `openai`
 	}
 	apiKey := strings.TrimSpace(cast.ToString(modelInfo[`api_key`]))
 	if apiKey == `` {
 		gsgin.GinResponseError(c, `API Key 不能为空`, nil)
 		return
 	}
-	method, bodyMap, err := buildAiModelConnectivityRequest(modelInfo)
+	baseURL := strings.TrimSpace(cast.ToString(modelInfo[`base_url`]))
+	uri := cast.ToString(modelInfo[`uri`])
+	if strings.TrimSpace(uri) == `` {
+		uri = defaultAiModelURIForProviderType(providerType)
+	}
+	requestURL := strings.TrimRight(baseURL, `/`) + normalizeAiModelURI(uri)
+	if requestURL == `` {
+		gsgin.GinResponseError(c, `模型请求地址不能为空`, nil)
+		return
+	}
+	method, bodyMap, err := buildAiModelConnectivityRequest(modelInfo, providerType)
 	if err != nil {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
@@ -245,12 +307,18 @@ func SetAiModelTest(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	// 按服务商类型设置认证头
+	setProviderAuthHeadersForTest(request, providerType, apiKey)
 	// 脱敏 headers
 	headers := map[string]string{
-		`Authorization`: maskApiKey(apiKey),
-		`Content-Type`:  `application/json`,
+		`Content-Type`: `application/json`,
 	}
-	request.Header.Set(`Authorization`, `Bearer `+apiKey)
+	if providerType == `anthropic` {
+		headers[`x-api-key`] = maskApiKey(apiKey)
+		headers[`anthropic-version`] = `2023-06-01`
+	} else {
+		headers[`Authorization`] = maskApiKey(apiKey)
+	}
 	request.Header.Set(`Content-Type`, `application/json`)
 	client := &http.Client{Timeout: 30 * time.Second}
 	startTime := time.Now()
@@ -274,6 +342,30 @@ func SetAiModelTest(c *gin.Context) {
 		`status_code`: response.StatusCode,
 		`message`:     `连通成功`,
 	})
+}
+
+// setProviderAuthHeadersForTest 根据服务商类型设置请求认证头（测试用）。
+func setProviderAuthHeadersForTest(request *http.Request, providerType, apiKey string) {
+	switch providerType {
+	case `anthropic`:
+		request.Header.Set(`x-api-key`, apiKey)
+		request.Header.Set(`anthropic-version`, `2023-06-01`)
+	default:
+		// openai, deepseek, openai-responses 使用 Bearer Token
+		request.Header.Set(`Authorization`, `Bearer `+apiKey)
+	}
+}
+
+// defaultAiModelURIForProviderType 返回服务商类型的默认 URI，用于 URI 为空时的回退。
+func defaultAiModelURIForProviderType(providerType string) string {
+	switch providerType {
+	case `anthropic`:
+		return `/v1/messages`
+	case `openai-responses`:
+		return `/v1/responses`
+	default:
+		return `/v1/chat/completions`
+	}
 }
 
 // maskApiKey 脱敏 API Key
@@ -341,6 +433,11 @@ func logTestRequestToDb(
 
 	// 异步写入日志
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("[set_ai] logTestRequestToDb panic: %v\n", r)
+			}
+		}()
 		if common.DbLog != nil && common.DbLog.Client != nil {
 			_, _ = common.DbLog.Client.QuickCreate(`tbl_ai_request_log`, logData).Exec()
 		}
@@ -382,7 +479,7 @@ func normalizeAiModelType(raw string) string {
 	}
 }
 
-func buildAiModelConnectivityRequest(modelInfo map[string]any) (string, map[string]any, error) {
+func buildAiModelConnectivityRequest(modelInfo map[string]any, providerType string) (string, map[string]any, error) {
 	modelType := strings.ToLower(strings.TrimSpace(cast.ToString(modelInfo[`model_type`])))
 	if modelType == `` {
 		modelType = `llm`
@@ -393,20 +490,41 @@ func buildAiModelConnectivityRequest(modelInfo map[string]any) (string, map[stri
 	}
 	switch modelType {
 	case `llm`:
-		return http.MethodPost, map[string]any{
-			`model`: modelName,
-			`messages`: []map[string]string{
-				{
-					`role`:    `user`,
-					`content`: `ping`,
+		switch providerType {
+		case `anthropic`:
+			return http.MethodPost, map[string]any{
+				`model`:      modelName,
+				`max_tokens`: 10,
+				`messages`: []map[string]string{
+					{`role`: `user`, `content`: `ping`},
 				},
-			},
-		}, nil
+			}, nil
+		default:
+			// openai, deepseek, openai-responses
+			return http.MethodPost, map[string]any{
+				`model`: modelName,
+				`messages`: []map[string]string{
+					{
+						`role`:    `user`,
+						`content`: `ping`,
+					},
+				},
+			}, nil
+		}
 	case `embedding`:
-		return http.MethodPost, map[string]any{
-			`model`: modelName,
-			`input`: `ping`,
-		}, nil
+		switch providerType {
+		case `anthropic`:
+			// Anthropic 通常不提供专用嵌入 API，回退到 OpenAI 兼容格式
+			return http.MethodPost, map[string]any{
+				`model`: modelName,
+				`input`: `ping`,
+			}, nil
+		default:
+			return http.MethodPost, map[string]any{
+				`model`: modelName,
+				`input`: `ping`,
+			}, nil
+		}
 	default:
 		return ``, nil, errors.New(`不支持的模型类型: ` + modelType)
 	}

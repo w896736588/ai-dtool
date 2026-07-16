@@ -420,46 +420,45 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="dialogShow.cleanupFolders" title="清理文件夹" width="760" @closed="resetCleanupSelection">
-    <div class="cleanup-dialog">
-      <div class="cleanup-toolbar">
-        <div class="cleanup-toolbar-main">
-          <span class="cleanup-toolbar-label">默认显示</span>
-          <el-input-number v-model="dialogData.cleanupFolders.days" :min="1" :max="3650" controls-position="right" />
-          <span class="cleanup-toolbar-label">天未使用</span>
-          <pl-button type="primary" :loading="cleanupLoading" @click="checkCleanupFolders">检查</pl-button>
-        </div>
-        <el-checkbox
-          v-if="dialogData.cleanupFolders.candidates.length > 0"
-          v-model="dialogData.cleanupFolders.selectAll"
-          @change="toggleCleanupSelectAll"
-        >
-          全选
-        </el-checkbox>
+  <el-dialog v-model="dialogShow.batchDelete" title="批量删除" width="760" @closed="resetBatchDeleteSelection">
+    <div class="batch-delete-dialog">
+      <div class="batch-delete-toolbar">
+        <span class="batch-delete-toolbar-label">选择要删除的集合 / 文件夹 / 接口（含归档）</span>
+        <el-button link type="primary" @click="toggleBatchDeleteExpandAll">
+          {{ batchDeleteExpandAll ? '收起全部' : '展开全部' }}
+        </el-button>
       </div>
-
-      <div class="cleanup-result">
-        <el-empty v-if="!cleanupLoading && dialogData.cleanupFolders.checkedAt === 0" description="点击检查后列出可清理文件夹" />
-        <el-empty v-else-if="!cleanupLoading && dialogData.cleanupFolders.candidates.length === 0" description="没有符合条件的文件夹" />
-        <div v-else class="cleanup-list">
-          <label v-for="folder in dialogData.cleanupFolders.candidates" :key="folder.id" class="cleanup-item">
-            <el-checkbox v-model="dialogData.cleanupFolders.selectedIds" :label="folder.id">
-              <span class="cleanup-item-title">{{ folder.collection_name }} / {{ folder.name }}</span>
-            </el-checkbox>
-            <div class="cleanup-item-meta">
-              <span>接口数 {{ folder.child_count }}</span>
-              <span>最近活动 {{ formatTimestamp(folder.latest_active_time) }}</span>
-              <span>最近执行 {{ formatTimestamp(folder.last_run_time) }}</span>
-              <span>最近修改 {{ formatTimestamp(Math.max(Number(folder.update_time || 0), Number(folder.last_api_update_time || 0))) }}</span>
-            </div>
-          </label>
-        </div>
+      <div class="batch-delete-tree-wrapper">
+        <el-empty v-if="batchDeleteTreeLoading" description="加载中..." />
+        <el-empty v-else-if="batchDeleteTreeData.length === 0" description="暂无数据" />
+        <el-tree
+          v-else
+          ref="batchDeleteTreeRef"
+          :data="batchDeleteTreeData"
+          show-checkbox
+          node-key="nodeKey"
+          :props="batchDeleteTreeProps"
+          :default-expand-all="batchDeleteExpandAll"
+          @check="handleBatchDeleteCheck"
+        >
+          <template #default="{ data }">
+            <span class="batch-delete-node" :class="{ 'batch-delete-node--archived': data.is_archived }">
+              <el-icon v-if="data.type === 'collection'"><Folder /></el-icon>
+              <el-icon v-else-if="data.type === 'archive'"><FolderOpened /></el-icon>
+              <el-icon v-else-if="data.type === 'folder'"><Folder /></el-icon>
+              <el-tag v-else-if="data.type === 'api'" :type="data.method === 'GET' ? 'success' : 'primary'" size="small" style="margin-right:6px;">{{ data.method }}</el-tag>
+              <span class="batch-delete-node-label">{{ data.name }}</span>
+              <el-tag v-if="data.is_archived" type="warning" size="small">归档</el-tag>
+              <span v-if="data.child_count !== undefined" class="batch-delete-node-count">({{ data.child_count }})</span>
+            </span>
+          </template>
+        </el-tree>
       </div>
     </div>
     <template #footer>
       <div class="dialog-footer">
-        <pl-button @click="dialogShow.cleanupFolders = false">取消</pl-button>
-        <pl-button type="danger" :disabled="dialogData.cleanupFolders.selectedIds.length === 0" :loading="cleanupDeleting" @click="confirmCleanupDelete">删除</pl-button>
+        <pl-button @click="dialogShow.batchDelete = false">取消</pl-button>
+        <pl-button type="danger" :disabled="batchDeleteCheckedKeys.length === 0" :loading="batchDeleteDeleting" @click="confirmBatchDelete">删除选中 ({{ batchDeleteCheckedKeys.length }})</pl-button>
       </div>
     </template>
   </el-dialog>
@@ -557,6 +556,7 @@ export default {
         moveApi: false, //迁移接口弹窗
         jsonImport: false, //JSON导入弹窗
         cleanupFolders: false, //清理文件夹弹窗
+        batchDelete: false, //批量删除弹窗
       },
       dialogData: {
         createCollection: {
@@ -627,6 +627,16 @@ export default {
       moveApiFolderOptionsLoading: false,
       cleanupLoading: false,
       cleanupDeleting: false,
+      // 批量删除
+      batchDeleteTreeData: [],
+      batchDeleteTreeLoading: false,
+      batchDeleteDeleting: false,
+      batchDeleteCheckedKeys: [],
+      batchDeleteExpandAll: false,
+      batchDeleteTreeProps: {
+        children: 'children',
+        label: 'name',
+      },
       // 弹窗保存防重入，避免回车和点击导致重复提交
       dialogSubmitting: {
         createCollection: false,
@@ -1254,6 +1264,15 @@ export default {
         return
       }
       this.$refs.collectionTreeRef.updateKeyChildren(nodeKey, Array.isArray(children) ? children : [])
+    },
+    getTreeNodeByData(data) {
+      if (!this.$refs.collectionTreeRef || !data) {
+        return null
+      }
+      return this.$refs.collectionTreeRef.getNode(data.uniqueid || data)
+    },
+    findArchiveNode() {
+      return this.treeData.find((node) => node.type === 'archive') || null
     },
     formatTimestamp(timestamp) {
       const value = Number(timestamp || 0)
@@ -2291,73 +2310,170 @@ export default {
       })
     },
     openCleanupDialog() {
-      this.dialogShow.cleanupFolders = true
-      if (this.dialogData.cleanupFolders.checkedAt === 0) {
-        this.checkCleanupFolders()
+      this.openBatchDeleteDialog()
+    },
+    // ==================== 批量删除 ====================
+    async openBatchDeleteDialog() {
+      this.dialogShow.batchDelete = true
+      this.batchDeleteExpandAll = false
+      if (this.batchDeleteTreeData.length === 0) {
+        await this.loadBatchDeleteTree()
       }
     },
-    resetCleanupSelection() {
-      this.dialogData.cleanupFolders.selectedIds = []
-      this.dialogData.cleanupFolders.selectAll = false
+    resetBatchDeleteSelection() {
+      this.batchDeleteCheckedKeys = []
     },
-    toggleCleanupSelectAll(checked) {
-      this.dialogData.cleanupFolders.selectedIds = checked
-        ? this.dialogData.cleanupFolders.candidates.map((item) => item.id)
-        : []
-    },
-    async checkCleanupFolders() {
-      const days = Number(this.dialogData.cleanupFolders.days || 7)
-      if (days <= 0) {
-        this.$message.error('天数必须大于 0')
+    handleBatchDeleteCheck() {
+      if (!this.$refs.batchDeleteTreeRef) {
         return
       }
-      this.cleanupLoading = true
+      this.batchDeleteCheckedKeys = this.$refs.batchDeleteTreeRef.getCheckedKeys()
+    },
+    toggleBatchDeleteExpandAll() {
+      this.batchDeleteExpandAll = !this.batchDeleteExpandAll
+      if (!this.$refs.batchDeleteTreeRef) {
+        return
+      }
+      if (this.batchDeleteExpandAll) {
+        const treeRef = this.$refs.batchDeleteTreeRef
+        const expandAll = (nodes) => {
+          nodes.forEach((node) => {
+            const treeNode = treeRef.getNode(node)
+            if (treeNode) treeNode.expand()
+            if (Array.isArray(node.children)) expandAll(node.children)
+          })
+        }
+        expandAll(this.batchDeleteTreeData)
+      } else {
+        const treeRef = this.$refs.batchDeleteTreeRef
+        const collapseAll = (nodes) => {
+          nodes.forEach((node) => {
+            const treeNode = treeRef.getNode(node)
+            if (treeNode) treeNode.collapse()
+            if (Array.isArray(node.children)) collapseAll(node.children)
+          })
+        }
+        collapseAll(this.batchDeleteTreeData)
+      }
+    },
+    async loadBatchDeleteTree() {
+      this.batchDeleteTreeLoading = true
       try {
-        const data = await this.requestApi('CleanupCandidateFolders', { days })
-        this.dialogData.cleanupFolders.candidates = Array.isArray(data.list) ? data.list : []
-        this.dialogData.cleanupFolders.selectedIds = []
-        this.dialogData.cleanupFolders.selectAll = false
-        this.dialogData.cleanupFolders.checkedAt = Date.now()
+        const data = await this.requestApi('BatchDeleteTree', {})
+        this.batchDeleteTreeData = (data.list || []).map((col) => this.normalizeBatchDeleteNode(col))
       } catch (error) {
-        this.$message.error(error.message || '检查失败')
+        this.$message.error(error.message || '加载失败')
       } finally {
-        this.cleanupLoading = false
+        this.batchDeleteTreeLoading = false
       }
     },
-    confirmCleanupDelete() {
-      const selectedFolders = this.dialogData.cleanupFolders.candidates.filter((item) =>
-        this.dialogData.cleanupFolders.selectedIds.includes(item.id)
-      )
-      if (selectedFolders.length === 0) {
-        this.$message.error('请选择要删除的文件夹')
+    normalizeBatchDeleteNode(node) {
+      return {
+        ...node,
+        nodeKey: `${node.type}_${node.id}`,
+        children: Array.isArray(node.children)
+          ? node.children.map((child) => this.normalizeBatchDeleteNode(child))
+          : [],
+      }
+    },
+    confirmBatchDelete() {
+      if (this.batchDeleteCheckedKeys.length === 0) {
+        this.$message.error('请选择要删除的项')
         return
       }
-      this.$confirm(`删除后进入回收站，确定归档选中的 ${selectedFolders.length} 个文件夹吗？`, '批量删除', {
-        confirmButtonText: '确定',
+      const counts = this.countBatchDeleteItems()
+      const parts = []
+      if (counts.collections > 0) parts.push(`${counts.collections} 个集合`)
+      if (counts.folders > 0) parts.push(`${counts.folders} 个文件夹`)
+      if (counts.archivedFolders > 0) parts.push(`${counts.archivedFolders} 个归档文件夹`)
+      if (counts.apis > 0) parts.push(`${counts.apis} 个接口`)
+      const warnLines = []
+      if (counts.collections > 0) {
+        warnLines.push('删除集合将同时删除其下所有文件夹和接口，且不可恢复！')
+      }
+      if (counts.folders > 0) {
+        warnLines.push('未归档文件夹将移入归档（可恢复）')
+      }
+      if (counts.archivedFolders > 0) {
+        warnLines.push('归档文件夹将被永久删除（不可恢复）')
+      }
+      if (counts.apis > 0) {
+        warnLines.push('接口将被永久删除')
+      }
+      const warnMsg = warnLines.length > 0 ? '<br/>' + warnLines.join('<br/>') : ''
+      this.$confirm(`确定要删除选中的 ${parts.join('、')} 吗？${warnMsg}`, '批量删除', {
+        confirmButtonText: '确定删除',
         cancelButtonText: '取消',
         type: 'warning',
+        dangerouslyUseHTMLString: true,
       }).then(() => {
-        this.executeCleanupDelete(selectedFolders)
+        this.executeBatchDelete()
       }).catch(() => {
         this.$message.info('已取消删除')
       })
     },
-    async executeCleanupDelete(selectedFolders) {
-      this.cleanupDeleting = true
+    countBatchDeleteItems() {
+      const result = { collections: 0, folders: 0, archivedFolders: 0, apis: 0 }
+      const checkedKeys = new Set(this.batchDeleteCheckedKeys)
+      // 从树数据中查找节点以判断 is_archived
+      const findNode = (nodes) => {
+        nodes.forEach((node) => {
+          if (!node.nodeKey) return
+          if (checkedKeys.has(node.nodeKey)) {
+            if (node.type === 'collection') result.collections++
+            else if (node.type === 'folder' && node.is_archived) result.archivedFolders++
+            else if (node.type === 'folder' && !node.is_archived) result.folders++
+            else if (node.type === 'api') result.apis++
+          }
+          if (Array.isArray(node.children)) findNode(node.children)
+        })
+      }
+      findNode(this.batchDeleteTreeData)
+      return result
+    },
+    async executeBatchDelete() {
+      this.batchDeleteDeleting = true
       try {
-        const folderIds = selectedFolders.map((item) => item.id)
-        await this.requestApi('CleanupArchiveFolders', { folder_ids: folderIds })
-        const collectionIds = [...new Set(selectedFolders.map((item) => Number(item.collection_id || 0)).filter((id) => id > 0))]
-        selectedFolders.forEach((folder) => this.closeWorkspaceTabsByFolder(folder.id))
-        await Promise.all(collectionIds.map((collectionId) => this.refreshCollectionFolders(collectionId)))
+        const collectionIds = []
+        const folderIds = []
+        const apiIds = []
+        this.batchDeleteCheckedKeys.forEach((key) => {
+          const parts = key.split('_')
+          const type = parts[0]
+          const id = Number(parts[1])
+          if (type === 'collection') collectionIds.push(id)
+          else if (type === 'folder') folderIds.push(id)
+          else if (type === 'api') apiIds.push(id)
+        })
+        const result = await this.requestApi('BatchDeleteApi', {
+          collection_ids: collectionIds,
+          folder_ids: folderIds,
+          api_ids: apiIds,
+        })
+        // 关闭已删除集合和文件夹相关的 tab
+        collectionIds.forEach((id) => this.closeWorkspaceTabsByCollection(id))
+        folderIds.forEach((id) => this.closeWorkspaceTabsByFolder(id))
+        // 重新加载左侧树（完整刷新）
+        await this.loadCollectionData()
         await this.refreshArchiveNode()
         this.syncTreeSortCacheFromTree()
-        this.$message.success('已移入回收站')
-        await this.checkCleanupFolders()
+        // 重新加载批量删除树
+        this.batchDeleteCheckedKeys = []
+        this.batchDeleteTreeData = []
+        this.batchDeleteExpandAll = false
+        await this.loadBatchDeleteTree()
+        // 构建结果提示
+        const parts = []
+        if (result.deleted_collections > 0) parts.push(`${result.deleted_collections} 个集合`)
+        if (result.deleted_folders > 0) parts.push(`${result.deleted_folders} 个文件夹已归档`)
+        if (result.permanent_deleted_folders > 0) parts.push(`${result.permanent_deleted_folders} 个归档文件夹已永久删除`)
+        if (result.deleted_apis > 0) parts.push(`${result.deleted_apis} 个接口`)
+        const msg = parts.length > 0 ? `批量删除完成：${parts.join('，')}` : '未执行任何删除操作'
+        this.$message.success(msg)
       } catch (error) {
         this.$message.error(error.message || '删除失败')
       } finally {
-        this.cleanupDeleting = false
+        this.batchDeleteDeleting = false
       }
     },
     //删除集合
@@ -2744,21 +2860,59 @@ export default {
       }
     },
     // 刷新归档节点
-    async refreshArchiveNode() {
-      const archiveNode = this.treeData.find((node) => node.type === 'archive')
+    async refreshArchiveNode(options = {}) {
+      const archiveNode = this.findArchiveNode()
       if (!archiveNode) {
         return
       }
+      const treeNode = this.getTreeNodeByData(archiveNode)
+      const wasExpanded = options.keepExpanded === true || !!(treeNode && treeNode.expanded)
       archiveNode.loaded = false
-      archiveNode.children = []
-      this.syncTreeNodeChildren(archiveNode.uniqueid, [])
-      const treeRef = this.$refs.collectionTreeRef
-      if (treeRef) {
-        const treeNode = treeRef.getNode(archiveNode)
-        if (treeNode && treeNode.expanded) {
-          await this.loadArchiveFolders(archiveNode)
+      await this.loadArchiveFolders(archiveNode)
+      if (wasExpanded) {
+        await this.$nextTick()
+        const updatedTreeNode = this.getTreeNodeByData(archiveNode)
+        if (updatedTreeNode && !updatedTreeNode.expanded) {
+          updatedTreeNode.expand()
         }
       }
+    },
+    removeArchivedFolderNode(folderId) {
+      const archiveNode = this.findArchiveNode()
+      if (!archiveNode) {
+        return
+      }
+      const targetId = parseInt(folderId)
+      const treeNode = this.getTreeNodeByData(archiveNode)
+      const treeRef = this.$refs.collectionTreeRef
+      const treeChildren = treeNode && Array.isArray(treeNode.childNodes)
+        ? treeNode.childNodes.map((node) => node && node.data).filter(Boolean)
+        : []
+
+      if (treeChildren.length > 0) {
+        const targetNode = treeNode.childNodes.find((node) =>
+          node && node.data && parseInt(node.data.id) === targetId
+        )
+        if (targetNode && treeRef && typeof treeRef.remove === 'function') {
+          treeRef.remove(targetNode.data)
+          archiveNode.children = treeNode.childNodes
+            .map((node) => node && node.data)
+            .filter((item) => item && parseInt(item.id) !== targetId)
+        } else {
+          archiveNode.children = treeChildren.filter((item) => parseInt(item.id) !== targetId)
+          this.syncTreeNodeChildren(archiveNode.uniqueid, archiveNode.children)
+        }
+      } else if (Array.isArray(archiveNode.children) && archiveNode.children.length > 0) {
+        archiveNode.children = archiveNode.children.filter((item) => parseInt(item.id) !== targetId)
+        this.syncTreeNodeChildren(archiveNode.uniqueid, archiveNode.children)
+      } else {
+        archiveNode.child_count = Math.max(Number(archiveNode.child_count || 1) - 1, 0)
+        archiveNode.isLeaf = archiveNode.child_count <= 0
+        return
+      }
+      archiveNode.child_count = archiveNode.children.length
+      archiveNode.isLeaf = archiveNode.child_count <= 0
+      archiveNode.loaded = true
     },
     // 恢复归档文件夹
     handleRestoreFolder(folder) {
@@ -2784,7 +2938,7 @@ export default {
         Api.PermanentDeleteDir({ id: folder.id }, function (res) {
           if (res.ErrCode === 0) {
             _that.closeWorkspaceTabsByFolder(folder.id)
-            _that.refreshArchiveNode()
+            _that.removeArchivedFolderNode(folder.id)
             _that.$message.success('已永久删除')
           } else {
             _that.$message.error(res.ErrMsg)

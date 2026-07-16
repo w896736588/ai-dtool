@@ -37,21 +37,6 @@
           <GitActionButton compact :loading="loading" @click="reloadWorkflowPage">
             刷新
           </GitActionButton>
-          <GitActionButton compact variant="warning" @click="openIssueFixDialog">
-            问题修改提示词
-          </GitActionButton>
-          <ChatHistoryButton
-            compact
-            variant="info"
-            :running="getPromptChatCounts('issue_fix').running > 0"
-            :running-count="getPromptChatCounts('issue_fix').running"
-            :interrupted-count="getPromptChatCounts('issue_fix').interrupted"
-            :total-count="getPromptChatCounts('issue_fix').total"
-            :unread="hasUnreadInPromptType('issue_fix')"
-            @click="openChatHistoryDialog"
-          >
-            历史对话
-          </ChatHistoryButton>
           <!--
           <GitActionButton compact variant="success" @click="openZcodeConfigDialog">
             zcode配置
@@ -1802,10 +1787,7 @@ export default {
           this.requirementShareUrl = ''
           return
         }
-        // 提取干净 ID：fragmentId 可能是文件路径格式 "fragments/xxx-uuid"，取末段
-        const cleanId = fragmentId.includes('/') ? fragmentId.replace(/^.*\//, '') : fragmentId
-        const apiHost = String(baseUtils.GetApiHost() || window.location.origin).trim()
-        this.requirementShareUrl = new URL(`/share/${encodeURIComponent(cleanId)}/${encodeURIComponent(token)}`, apiHost).toString()
+        this.requirementShareUrl = baseUtils.BuildMemoryFragmentShareUrl(fragmentId, token, response.Data.url)
         this.replaceRequirementShareUrlPlaceholder()
       })
     },
@@ -3463,16 +3445,8 @@ export default {
           }
           return
         }
-        // 提取干净 ID：fileId 可能是文件路径格式 "fragments/xxx-uuid"，取末段
-        const cleanId = fileId.includes('/') ? fileId.replace(/^.*\//, '') : fileId
-        const apiHost = String(baseUtils.GetApiHost() || window.location.origin).trim()
-        const shareUrl = new URL(`/share/${encodeURIComponent(cleanId)}/${encodeURIComponent(response.Data.token)}`, apiHost).toString()
-        try {
-          await navigator.clipboard.writeText(shareUrl)
-          this.$helperNotify.success('分享链接已复制到剪贴板（24小时有效）')
-        } catch {
-          this.$helperNotify.success('分享链接创建成功')
-        }
+        const shareUrl = baseUtils.BuildMemoryFragmentShareUrl(fileId, response.Data.token, response.Data.url)
+        this.copyText(shareUrl, '分享链接已复制到剪贴板（24小时有效）')
       })
     },
     // 处理文档工具栏下拉菜单命令（目前仅支持历史记录）
