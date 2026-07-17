@@ -864,7 +864,7 @@ export default {
   --link-primary-hover: #268a5c;
   --link-primary-soft: #e8f5ee;
   --link-primary-soft-2: #f1f9f4;
-  --link-accent: #7ec9a4;
+  --link-accent: #5ace99;
   --link-border: #e4ece7;
   --link-bg: #ffffff;
   --link-bg-soft: #f6faf7;

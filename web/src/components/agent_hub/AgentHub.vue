@@ -60,6 +60,10 @@
             <el-option label="Claude Code" value="claude-code" :disabled="true" />
           </el-select>
         </el-form-item>
+        <el-form-item label="运行目录">
+          <el-input v-model="addForm.runtime_dir" placeholder="留空使用 Pi 默认目录 ~/.pi/agent" />
+          <div class="form-hint">Pi 的数据/配置目录（扩展、设置等）。留空则用默认目录，但多个 Agent 的运行目录不能重复。</div>
+        </el-form-item>
         <div class="form-hint">创建后可进入配置页进行详细设置</div>
       </el-form>
       <template #footer>
@@ -79,10 +83,15 @@ export default {
     return {
       agents: [],
       showAddDialog: false,
-      addForm: { name: '', type: 'pi' }
+      addForm: { name: '', type: 'pi', runtime_dir: '' }
     }
   },
   mounted() {
+    this.loadAgents()
+  },
+  // keep-alive 缓存下，从 AgentConfig 编辑返回时 mounted 不会再次触发，
+  // 用 activated 钩子保证每次进入/返回都重新加载列表
+  activated() {
     this.loadAgents()
   },
   methods: {
@@ -94,13 +103,19 @@ export default {
       })
     },
     saveAgent() {
+      if (!this.addForm.name.trim()) return
+      const config = JSON.stringify({ runtime_dir: this.addForm.runtime_dir.trim() })
       Base.BasePost('/api/AgentV2Save', {
         name: this.addForm.name.trim(),
         type: this.addForm.type,
-        config: '{}'
-      }, () => {
+        config: config
+      }, (res) => {
+        if (res.ErrCode !== 0) {
+          this.$message.error(res.ErrMsg || '创建失败')
+          return
+        }
         this.showAddDialog = false
-        this.addForm = { name: '', type: 'pi' }
+        this.addForm = { name: '', type: 'pi', runtime_dir: '' }
         this.loadAgents()
       })
     },

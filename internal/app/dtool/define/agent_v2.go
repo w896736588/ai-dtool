@@ -39,6 +39,7 @@ type AgentV2PiConfig struct {
 	Model      string `json:"model"`
 	SessionDir string `json:"session_dir"`
 	ExtraArgs  string `json:"extra_args"`
+	RuntimeDir string `json:"runtime_dir"` // Pi 数据/配置目录（对应 PI_CODING_AGENT_DIR），留空则用 Pi 默认 ~/.pi/agent
 }
 
 // AgentV2SaveRequest 保存请求

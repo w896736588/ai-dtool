@@ -89,24 +89,26 @@ func cleanupStaleSessions(maxAge time.Duration) {
 }
 
 // parsePiConfig resolves the provider/model/session configuration for a Pi run.
-func parsePiConfig(configStr string, runtimeModel string) (providerName, model, sessionDir, extraArgs string) {
+func parsePiConfig(configStr string, runtimeModel string) (providerName, model, sessionDir, extraArgs, runtimeDir string) {
 	if configStr == "" {
-		return "", "", "", ""
+		return "", "", "", "", ""
 	}
 	var cfg struct {
 		Provider   string `json:"provider"`
 		Model      string `json:"model"`
 		SessionDir string `json:"session_dir"`
 		ExtraArgs  string `json:"extra_args"`
+		RuntimeDir string `json:"runtime_dir"`
 		ProviderId int    `json:"provider_id"`
 		ModelId    int    `json:"model_id"`
 	}
 	if err := json.Unmarshal([]byte(configStr), &cfg); err != nil {
-		return "", "", "", ""
+		return "", "", "", "", ""
 	}
 
 	sessionDir = cfg.SessionDir
 	extraArgs = cfg.ExtraArgs
+	runtimeDir = cfg.RuntimeDir
 
 	if runtimeModel != "" {
 		idx := strings.LastIndex(runtimeModel, "/")
@@ -125,7 +127,7 @@ func parsePiConfig(configStr string, runtimeModel string) (providerName, model, 
 					mName, providerId,
 				).One()
 				if err == nil && len(modelRow) > 0 {
-					return pName, cast.ToString(modelRow["model"]), sessionDir, extraArgs
+					return pName, cast.ToString(modelRow["model"]), sessionDir, extraArgs, runtimeDir
 				}
 			}
 		}
@@ -153,7 +155,7 @@ func parsePiConfig(configStr string, runtimeModel string) (providerName, model, 
 		}
 	}
 
-	return cfg.Provider, cfg.Model, sessionDir, extraArgs
+	return cfg.Provider, cfg.Model, sessionDir, extraArgs, runtimeDir
 }
 
 func computeSessionDir(agentCfgSessionDir string, agentId, sessionId int) string {
@@ -529,7 +531,7 @@ func AgentV2WS(c *gin.Context) {
 
 	configStr := cast.ToString(agentRow["config"])
 	runtimeModel := c.Query("model")
-	providerName, model, cfgSessionDir, extraArgs := parsePiConfig(configStr, runtimeModel)
+	providerName, model, cfgSessionDir, extraArgs, runtimeDir := parsePiConfig(configStr, runtimeModel)
 	sessionDir := computeSessionDir(cfgSessionDir, agentId, sessionId)
 
 	if err := syncPiModelsConfig(); err != nil {
@@ -548,6 +550,11 @@ func AgentV2WS(c *gin.Context) {
 		Provider:   providerName,
 		Model:      model,
 		ExtraArgs:  extraArgsList,
+		Env:        map[string]string{},
+	}
+	// 运行目录：指定时通过 PI_CODING_AGENT_DIR 让该 Pi 实例使用独立的数据/配置目录
+	if runtimeDir != "" {
+		startCfg.Env["PI_CODING_AGENT_DIR"] = expandHome(runtimeDir)
 	}
 
 	attachOnly := c.Query("attach_only") == "1"

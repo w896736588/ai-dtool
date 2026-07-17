@@ -1792,7 +1792,6 @@ export default {
       this.requirementShareUrl = fragmentId
         ? baseUtils.BuildMemoryFragmentShareUrl(fragmentId)
         : ''
-      this.replaceRequirementShareUrlPlaceholder()
     },
     ensureWorkflowSse() {
       if (this.workflowId <= 0) {

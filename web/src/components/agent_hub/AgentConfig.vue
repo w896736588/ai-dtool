@@ -37,6 +37,10 @@
               <el-input v-model="piConfig.session_dir" placeholder="留空使用默认目录" />
               <div class="field-hint">Pi 会话 JSONL 文件的存储路径，留空则默认 logs/pi_agent_sessions</div>
             </el-form-item>
+            <el-form-item label="运行目录">
+              <el-input v-model="piConfig.runtime_dir" placeholder="留空使用 Pi 默认目录 ~/.pi/agent" />
+              <div class="field-hint">Pi 的数据/配置目录（扩展、设置等），对应 PI_CODING_AGENT_DIR。留空则用默认 ~/.pi/agent，但多个 Agent 的运行目录不能重复。</div>
+            </el-form-item>
             <el-form-item label="额外启动参数">
               <el-input v-model="piConfig.extra_args" placeholder="例如：--no-session" />
               <div class="field-hint">空格分隔的额外命令行参数，如 --no-session 禁用会话持久化</div>
@@ -535,7 +539,7 @@ export default {
       installHint: '',
 
       configForm: { name: '', type: '' },
-      piConfig: { session_dir: '', extra_args: '' },
+      piConfig: { session_dir: '', extra_args: '', runtime_dir: '' },
 
       // Agent 配置用的 Provider/Model 列表
       providerList: [],
@@ -665,6 +669,17 @@ export default {
     }
     this.loadData()
   },
+  // keep-alive 会复用组件实例，切换不同 Agent 时 mounted 不会再次触发，
+  // 通过监听路由参数变化重新加载对应 Agent 的配置
+  watch: {
+    '$route'(to, from) {
+      const newAgentId = parseInt(to.query.agent_id) || 0
+      if (newAgentId && newAgentId !== this.agentId) {
+        this.agentId = newAgentId
+        this.loadData()
+      }
+    }
+  },
   methods: {
     emptySkillForm() {
       return {
@@ -684,13 +699,18 @@ export default {
           this.installed = agent.installed
           this.installHint = agent.install_hint
           this.configForm = { name: agent.name, type: agent.type }
+          // 先重置为默认值，避免 keep-alive 复用实例时残留上一个 Agent 的配置
+          this.piConfig = { session_dir: '', extra_args: '', runtime_dir: '' }
+          this.selectedProviderId = null
+          this.selectedModelId = null
           if (agent.config) {
             try {
               const cfg = JSON.parse(agent.config)
-              if (cfg.session_dir) this.piConfig.session_dir = cfg.session_dir
-              if (cfg.extra_args) this.piConfig.extra_args = cfg.extra_args
-              if (cfg.provider_id) this.selectedProviderId = cfg.provider_id
-              if (cfg.model_id) this.selectedModelId = cfg.model_id
+              this.piConfig.session_dir = cfg.session_dir || ''
+              this.piConfig.extra_args = cfg.extra_args || ''
+              this.piConfig.runtime_dir = cfg.runtime_dir || ''
+              this.selectedProviderId = cfg.provider_id || null
+              this.selectedModelId = cfg.model_id || null
             } catch (e) {}
           }
         }
@@ -704,7 +724,8 @@ export default {
         provider_id: this.selectedProviderId || 0,
         model_id: this.selectedModelId || 0,
         session_dir: this.piConfig.session_dir,
-        extra_args: this.piConfig.extra_args
+        extra_args: this.piConfig.extra_args,
+        runtime_dir: this.piConfig.runtime_dir
       }
       const config = JSON.stringify(configObj)
       Base.BasePost('/api/AgentV2Save', {

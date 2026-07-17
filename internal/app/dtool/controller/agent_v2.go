@@ -18,6 +18,38 @@ import (
 
 // ======================== Agent V2 CRUD ========================
 
+// defaultPiAgentDir 返回 Pi 默认数据/配置目录（~/.pi/agent）
+func defaultPiAgentDir() string {
+	if h, err := os.UserHomeDir(); err == nil && h != "" {
+		return filepath.Join(h, ".pi", "agent")
+	}
+	return filepath.Join(".pi", "agent")
+}
+
+// expandHome 将路径开头的 ~ 展开为用户主目录
+func expandHome(p string) string {
+	if p == "~" {
+		if h, err := os.UserHomeDir(); err == nil && h != "" {
+			return h
+		}
+	}
+	if strings.HasPrefix(p, "~/") {
+		if h, err := os.UserHomeDir(); err == nil && h != "" {
+			return filepath.Join(h, p[2:])
+		}
+	}
+	return p
+}
+
+// resolveRuntimeDir 解析运行目录：空 -> Pi 默认目录；否则展开 ~ 后返回
+func resolveRuntimeDir(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return defaultPiAgentDir()
+	}
+	return expandHome(raw)
+}
+
 // AgentV2List 列出所有 Agent V2 配置
 func AgentV2List(c *gin.Context) {
 	rows, err := common.DbMain.Client.QueryBySql(
@@ -69,6 +101,29 @@ func AgentV2Save(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		gsgin.GinResponseError(c, "参数错误", nil)
 		return
+	}
+
+	// 运行目录唯一性校验：解析后的有效目录不能与其他 Agent 重复
+	var cfg struct {
+		RuntimeDir string `json:"runtime_dir"`
+	}
+	_ = json.Unmarshal([]byte(req.Config), &cfg)
+	newRuntimeDir := resolveRuntimeDir(cfg.RuntimeDir)
+	rows, _ := common.DbMain.Client.QueryBySql(
+		`SELECT id, config FROM tbl_agent_v2`,
+	).All()
+	for _, row := range rows {
+		if cast.ToInt(row["id"]) == req.Id {
+			continue
+		}
+		var ocfg struct {
+			RuntimeDir string `json:"runtime_dir"`
+		}
+		_ = json.Unmarshal([]byte(cast.ToString(row["config"])), &ocfg)
+		if resolveRuntimeDir(ocfg.RuntimeDir) == newRuntimeDir {
+			gsgin.GinResponseError(c, "运行目录 "+newRuntimeDir+" 已被其他 Agent 占用，请指定不同的目录", nil)
+			return
+		}
 	}
 
 	now := time.Now().Unix()
