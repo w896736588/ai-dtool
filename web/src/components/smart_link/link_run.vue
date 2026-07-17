@@ -15,12 +15,6 @@
   </el-alert>
   <div class="link-run-page">
     <div class="link-run-header-card">
-      <div class="link-run-header-title">
-        <div class="link-run-header-title__main">
-          自定义网页工作台
-        </div>
-        <div class="link-run-header-title__desc">集中管理页面入口、运行方式和流程跳转，顶部操作区独立展示更利于快速切换。</div>
-      </div>
       <div class="link-run-toolbar">
         <el-tag size="small" type="info" effect="light">已打开 Page {{ openPageNum }}</el-tag>
         <GitActionButton variant="warning" @click="openAccountSettings">
@@ -885,30 +879,6 @@ export default {
   padding: 16px 20px;
   margin-bottom: 14px;
   box-shadow: var(--link-shadow);
-}
-.link-run-header-title { margin-bottom: 14px; }
-.link-run-header-title__main {
-  display: flex;
-  align-items: center;
-  color: var(--link-text);
-  font-size: 19px;
-  font-weight: 700;
-  letter-spacing: .3px;
-}
-.link-run-header-title__main::before {
-  content: "";
-  width: 4px;
-  height: 18px;
-  border-radius: 3px;
-  background: var(--link-primary);
-  margin-right: 10px;
-}
-.link-run-header-title__desc {
-  margin-top: 8px;
-  color: var(--link-text-2);
-  font-size: 13px;
-  line-height: 1.6;
-  max-width: 780px;
 }
 .link-run-toolbar {
   display: flex;

@@ -1,14 +1,14 @@
 <template>
   <div class="link-module-shell">
-    <div class="link-module-switch-card">
-      <div class="link-module-switch-card__title">自定义网页工作台</div>
-      <div class="link-module-switch-card__actions">
-        <pl-button :type="model === 'links' ? 'primary' : 'default'" @click="changeToLinks">
-          切换到执行
-        </pl-button>
-        <pl-button :type="model === 'process' ? 'warning' : 'default'" @click="changeToEditProcess">
-          切换到运行逻辑
-        </pl-button>
+    <div class="link-module-header">
+      <div class="link-module-header__title">自定义网页工作台</div>
+      <div class="link-module-header__switch">
+        <span class="link-module-header__switch-label" :class="{ 'is-active': !isLinks }">运行逻辑</span>
+        <el-switch
+          v-model="isLinks"
+          class="link-module-header__switch-control"
+        />
+        <span class="link-module-header__switch-label" :class="{ 'is-active': isLinks }">执行</span>
       </div>
     </div>
     <Links @changeModelToFlow="changeToFlow" @changeModelToEditProcess="changeToEditProcess" v-if="model === 'links'"/>
@@ -36,6 +36,21 @@ export default {
     return {
       model : 'links',
     }
+  },
+  computed: {
+    // isLinks 开关状态：开=执行(links)，关=运行逻辑(process/flow 均视为运行逻辑一侧
+    isLinks: {
+      get() {
+        return this.model === 'links'
+      },
+      set(val) {
+        if (val) {
+          this.changeToLinks()
+        } else {
+          this.changeToEditProcess()
+        }
+      },
+    },
   },
   mounted: function () {
     let _that = this

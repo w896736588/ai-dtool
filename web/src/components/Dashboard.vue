@@ -3,7 +3,7 @@
     <div class="chat-container">
       <!-- 消息列表区域 -->
       <div ref="messageList" class="message-list">
-        <div class="welcome-message">
+        <div v-if="!hasExecutedCommand" class="welcome-message">
           <h2>命令快捷操作</h2>
           <div class="fixed-command-panel">
             <div class="fixed-command-title">支持的一级命令</div>
@@ -276,6 +276,7 @@ export default {
     // SSE 相关状态
     const sseDistributeId = ref('') // SSE 分发 ID
     const isExecuting = ref(false) // 是否正在执行命令
+    const hasExecutedCommand = ref(false) // 是否已执行过命令（用于隐藏顶部欢迎/命令快捷操作区）
     const currentOutputMessage = ref(null) // 当前输出消息的引用
     // script 会话状态（用于首页脚本执行多步交互）
     const scriptSession = ref({
@@ -999,6 +1000,8 @@ export default {
       if (isExecuting.value) {
         return false
       }
+      // 续跑队列命令会接管输入框并清空，先备份用户正在输入的草稿。
+      const userDraft = inputText.value
       const dequeueResult = consumeNextPendingCommand(
         pendingCommandQueue.value,
         (rawCommand) => {
@@ -1009,6 +1012,13 @@ export default {
         return false
       }
       pendingCommandQueue.value = dequeueResult.queue
+      // 仅当队列命令已真正进入执行，才把用户草稿还原回去；
+      // 若队列命令仍需补全（未进入执行），保留其输入态供用户继续完成。
+      if (normalizeCommandPart(userDraft) && isExecuting.value) {
+        inputText.value = userDraft
+        parseInput()
+        refreshCommandDropdownVisibility()
+      }
       return true
     }
 
@@ -3019,6 +3029,7 @@ export default {
       messages.value.push(outputMsg)
       currentOutputMessage.value = outputMsg
       isExecuting.value = true
+      hasExecutedCommand.value = true
       
       // 清理输入状态
       inputText.value = ''
@@ -4241,6 +4252,7 @@ export default {
       getResultLines,
       renderProcessMarkdown,
       hasCommandLayout,
+      hasExecutedCommand,
     }
   }
 }

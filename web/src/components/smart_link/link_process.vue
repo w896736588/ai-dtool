@@ -26,25 +26,16 @@
               <span class="process-item-name">{{ process.name }}</span>
             </div>
             <div class="process-item-actions">
-              <GitActionButton
-                  compact
-                  sizeMode="compact-small"
-                  variant="info"
+              <span
+                  class="process-item-link process-item-link--info"
                   @click.stop="openCopyProcessDialog(process)"
-              >复制
-              </GitActionButton>
+              >复制</span>
               <el-popconfirm
                   title="确定删除此执行逻辑吗？"
                   @confirm="deleteProcess(process.id)"
               >
                 <template #reference>
-                  <GitActionButton
-                      compact
-                      sizeMode="compact-small"
-                      variant="danger"
-                      @click.stop
-                  >删除
-                  </GitActionButton>
+                  <span class="process-item-link process-item-link--danger" @click.stop>删除</span>
                 </template>
               </el-popconfirm>
             </div>

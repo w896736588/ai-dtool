@@ -3,11 +3,14 @@
   height: 100%;
   font-size: 13px;
   color: #4a4a4a;
+  /* 统一的边框/分隔色板，避免页面内分隔线颜色不一致 */
+  --sp-border: #e6e8de;
+  --sp-divider: #eaece4;
 }
 
 .left-sidebar {
   width: 300px;
-  border-right: 1px solid #e6e8de;
+  border-right: 1px solid var(--sp-border);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -15,11 +18,11 @@
 }
 
 .search-box {
-  padding: 16px 16px 12px;
+  padding: 16px 16px 10px;
 }
 
 .add-btn {
-  padding: 0 16px 14px;
+  padding: 0 16px 12px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -29,7 +32,8 @@
 .process-list {
   flex: 1;
   overflow: hidden;
-  padding-bottom: 8px;
+  padding: 12px 0 8px;
+  border-top: 1px solid var(--sp-border);
 }
 
 .process-item {
@@ -66,8 +70,35 @@
 .process-item-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 12px;
   flex: 0 0 auto;
+}
+
+.process-item-link {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s ease;
+}
+
+.process-item-link--info {
+  color: #4b627a;
+}
+
+.process-item-link--info:hover {
+  color: #384d63;
+  text-decoration: underline;
+}
+
+.process-item-link--danger {
+  color: #d65c5c;
+}
+
+.process-item-link--danger:hover {
+  color: #bb4747;
+  text-decoration: underline;
 }
 
 .process-item-id {
@@ -101,7 +132,8 @@
   justify-content: space-between;
   gap: 14px;
   padding: 2px 2px 14px;
-  margin-bottom: 4px;
+  border-bottom: 1px solid var(--sp-border);
+  margin-bottom: 14px;
   flex-shrink: 0;
 }
 
@@ -110,10 +142,15 @@
 }
 
 .process-header-eyebrow {
-  margin-bottom: 4px;
-  color: #82917d;
-  font-size: 12px;
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 7px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #eef3ea;
+  color: #5f7c53;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -137,7 +174,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid #e6e8de;
+  border: 1px solid var(--sp-border);
   border-radius: 10px;
   background: #ffffff;
   overflow: hidden;
@@ -157,7 +194,7 @@
   align-items: center;
   padding: 10px 12px;
   background: #f7f7f2;
-  border-bottom: 1px solid #eceee6;
+  border-bottom: 1px solid var(--sp-border);
   color: #6f7f68;
   font-size: 12px;
   font-weight: 600;
@@ -169,7 +206,7 @@
   gap: 10px;
   align-items: start;
   padding: 10px 12px;
-  border-bottom: 1px solid #eef0ea;
+  border-bottom: 1px solid var(--sp-divider);
   background: #fff;
 }
 
@@ -283,7 +320,7 @@
   height: 100%;
   color: #879483;
   font-size: 14px;
-  border: 1px dashed #d8dfd3;
+  border: 1px dashed #cdd6c8;
   border-radius: 10px;
   background: #ffffff;
 }
@@ -299,11 +336,6 @@
 :deep(.process-header-actions .git-action-button) {
   height: 28px;
   padding: 4px 10px;
-  font-size: 11px;
-}
-
-:deep(.process-item .git-action-button),
-:deep(.item-actions .git-action-button) {
   font-size: 11px;
 }
 
@@ -328,7 +360,7 @@
     width: 100%;
     height: 300px;
     border-right: none;
-    border-bottom: 1px solid #e6e8de;
+    border-bottom: 1px solid var(--sp-border);
   }
 
   .process-header {
