@@ -777,9 +777,17 @@ export default {
       this.rememberInteractionMode()
       if (!this.wsConnected) {
         if (targetMode === 'plan') {
-          this.planState = { visible: false, phase: 'plan', items: [] }
-        } else if (this.planState.phase === 'plan') {
-          this.planState = { ...this.planState, visible: false, phase: '' }
+          this.planState = {
+            ...this.planState,
+            visible: this.planState.items.length > 0,
+            phase: 'plan'
+          }
+        } else {
+          this.planState = {
+            ...this.planState,
+            visible: this.planState.items.length > 0,
+            phase: this.planState.items.length > 0 ? 'execute' : ''
+          }
         }
         return
       }
@@ -790,9 +798,17 @@ export default {
         command: { type: 'prompt', message: '/plan' }
       })
       if (targetMode === 'plan') {
-        this.planState = { visible: false, phase: 'plan', items: [] }
-      } else if (this.planState.phase === 'plan') {
-        this.planState = { ...this.planState, visible: false, phase: '' }
+        this.planState = {
+          ...this.planState,
+          visible: this.planState.items.length > 0,
+          phase: 'plan'
+        }
+      } else {
+        this.planState = {
+          ...this.planState,
+          visible: this.planState.items.length > 0,
+          phase: this.planState.items.length > 0 ? 'execute' : ''
+        }
       }
       window.setTimeout(() => {
         this.switchingInteractionMode = false
@@ -1822,10 +1838,19 @@ export default {
                 done: !!(it && it.done)
               }))
             : []
-          this.planState = {
-            visible: true,
-            phase: event.phase || 'plan',
-            items
+          if (items.length > 0) {
+            this.planState = {
+              visible: true,
+              phase: event.phase || 'plan',
+              items
+            }
+          } else if (this.planState.items.length > 0) {
+            // 空更新只表示扩展暂时没有新的 widget 内容，不应抹掉已有计划。
+            this.planState = {
+              ...this.planState,
+              visible: true,
+              phase: event.phase || this.planState.phase
+            }
           }
           this.scrollToBottom()
           break
@@ -1862,8 +1887,10 @@ export default {
               }
             })
           }
-        } else if (this.planState.phase === 'execute') {
-          this.planState = { visible: false, phase: '', items: [] }
+        } else if (this.planState.items.length > 0) {
+          // 扩展切换模式时可能先清空 widget；保留最后一份任务列表，
+          // 后续非空 widget 会继续覆盖完成进度。
+          this.planState = { ...this.planState, visible: true }
         }
       } else if (method === 'confirm') {
         this.$confirm(event.message || event.title || '确认操作?', event.title || '提示', {
