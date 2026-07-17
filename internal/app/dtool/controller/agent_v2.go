@@ -5,11 +5,13 @@ import (
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
@@ -128,14 +130,24 @@ func AgentV2Save(c *gin.Context) {
 
 	now := time.Now().Unix()
 	if req.Id > 0 {
-		_, err := common.DbMain.Client.ExecBySql(
+		// 合并配置：保留原有 config 中本接口不管理的子键（如 headroom），
+		// 否则保存基础配置时会整体覆盖，导致 Headroom 上游地址等被清空。
+		mergedConfig, err := mergeAgentV2Config(req.Id, req.Config)
+		if err != nil {
+			gsgin.GinResponseError(c, err.Error(), nil)
+			return
+		}
+		_, err = common.DbMain.Client.ExecBySql(
 			`UPDATE tbl_agent_v2 SET name = ?, type = ?, config = ?, updated_at = ? WHERE id = ?`,
-			req.Name, req.Type, req.Config, now, req.Id,
+			req.Name, req.Type, mergedConfig, now, req.Id,
 		).Exec()
 		if err != nil {
 			gsgin.GinResponseError(c, err.Error(), nil)
 			return
 		}
+		// 保存 Agent 基础配置（可能更新 runtime_dir）后同步一次模型列表，
+		// 保证该 Agent 运行目录下 models.json 与最新 Provider/Model 配置一致。
+		syncPiModelsConfigAllAgents("after agent update")
 		gsgin.GinResponseSuccess(c, "", nil)
 	} else {
 		name := req.Name
@@ -150,8 +162,54 @@ func AgentV2Save(c *gin.Context) {
 			gsgin.GinResponseError(c, err.Error(), nil)
 			return
 		}
+		// 新建 Agent 后立即同步一次模型列表，确保自定义 runtime_dir 的 Agent
+		// 运行目录下写入 models.json（新建后可能首次启动 pi，避免 Unknown provider）。
+		syncPiModelsConfigAllAgents("after agent create")
 		gsgin.GinResponseSuccess(c, "", gin.H{"id": lastId})
 	}
+}
+
+// mergeAgentV2Config 将新的配置 JSON 合并到现有 config 中，保留现有配置里
+// 本接口不直接管理的子键（如 headroom），避免保存基础 Agent 配置时整体覆盖导致丢失。
+// 新配置中的同名 key 覆盖旧值；若现有/新配置无法解析则回退为直接覆盖，保证不报错。
+func mergeAgentV2Config(agentID int, newConfig string) (string, error) {
+	rows, err := common.DbMain.Client.QueryBySql(
+		`SELECT config FROM tbl_agent_v2 WHERE id = ?`, agentID,
+	).All()
+	if err != nil {
+		return "", err
+	}
+	if len(rows) == 0 {
+		return newConfig, nil
+	}
+
+	existingRaw := cast.ToString(rows[0]["config"])
+	var existing map[string]interface{}
+	if existingRaw != "" && existingRaw != "{}" {
+		if err := json.Unmarshal([]byte(existingRaw), &existing); err != nil {
+			// 现有配置损坏，直接用新配置覆盖
+			return newConfig, nil
+		}
+	}
+	if existing == nil {
+		return newConfig, nil
+	}
+
+	var incoming map[string]interface{}
+	if err := json.Unmarshal([]byte(newConfig), &incoming); err != nil || incoming == nil {
+		// 新配置无法解析，保留现有配置
+		return existingRaw, nil
+	}
+
+	for k, v := range incoming {
+		existing[k] = v
+	}
+
+	b, err := json.Marshal(existing)
+	if err != nil {
+		return newConfig, nil
+	}
+	return string(b), nil
 }
 
 // AgentV2Delete 删除 Agent V2 配置
@@ -611,12 +669,220 @@ func AgentV2InstalledToolRemove(c *gin.Context) {
 
 // AgentV2EnvToolList 列出所有环境工具及其安装状态
 func AgentV2EnvToolList(c *gin.Context) {
+	var req struct {
+		AgentId int `json:"agent_id"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	// 计划模式（Pi 内置扩展）的安装/启用状态取决于 Agent 启动参数（--plan / --extension）
+	extraArgs := ""
+	if req.AgentId > 0 {
+		if ea, err := loadAgentV2ExtraArgs(req.AgentId); err == nil {
+			extraArgs = ea
+		}
+	}
+
 	tools := make([]define.AgentV2EnvToolStatus, 0, len(agent.BuiltinEnvToolDefs))
 	for _, def := range agent.BuiltinEnvToolDefs {
-		st := agent.DetectEnvToolStatus(def)
+		var st define.AgentV2EnvToolStatus
+		if def.Key == "plan-mode" {
+			st = detectPlanModeStatus(def, extraArgs)
+		} else {
+			st = agent.DetectEnvToolStatus(def)
+		}
 		tools = append(tools, st)
 	}
 	gsgin.GinResponseSuccess(c, "", gin.H{"list": tools})
+}
+
+// detectPlanModeStatus 根据 Agent 启动参数判断 Pi 内置计划模式的启用情况
+func detectPlanModeStatus(def define.AgentV2EnvToolItem, extraArgs string) define.AgentV2EnvToolStatus {
+	st := define.AgentV2EnvToolStatus{AgentV2EnvToolItem: def}
+	hasPlan, hasExt := parsePlanModeFlags(extraArgs)
+	switch {
+	case hasPlan && hasExt:
+		st.Installed = true
+		st.ExtensionInstalled = true
+		st.Activated = true
+		st.Status = "activated"
+	case hasExt:
+		st.Installed = true
+		st.ExtensionInstalled = true
+		st.Status = "installed"
+	default:
+		st.Status = "not_installed"
+	}
+	return st
+}
+
+// parseAgentExtraArgs 将保存为字符串的额外参数解析为参数数组。
+// 支持单引号和双引号，确保 Windows 上带空格的扩展路径不会被拆开。
+func parseAgentExtraArgs(raw string) []string {
+	args := make([]string, 0)
+	var current strings.Builder
+	var quote rune
+	tokenStarted := false
+	runes := []rune(raw)
+
+	flush := func() {
+		if tokenStarted {
+			args = append(args, current.String())
+			current.Reset()
+			tokenStarted = false
+		}
+	}
+
+	for i := 0; i < len(runes); i++ {
+		ch := runes[i]
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+				tokenStarted = true
+				continue
+			}
+			if ch == '\\' && i+1 < len(runes) && runes[i+1] == quote {
+				current.WriteRune(quote)
+				tokenStarted = true
+				i++
+				continue
+			}
+			current.WriteRune(ch)
+			tokenStarted = true
+			continue
+		}
+
+		switch {
+		case ch == '\'' || ch == '"':
+			quote = ch
+			tokenStarted = true
+		case unicode.IsSpace(ch):
+			flush()
+		default:
+			current.WriteRune(ch)
+			tokenStarted = true
+		}
+	}
+	flush()
+	return args
+}
+
+func quoteAgentExtraArg(arg string) string {
+	if arg == "" {
+		return `""`
+	}
+	if !strings.ContainsAny(arg, " \t\r\n'\"") {
+		return arg
+	}
+	if !strings.ContainsRune(arg, '\'') {
+		return "'" + arg + "'"
+	}
+	return `"` + strings.ReplaceAll(arg, `"`, `\"`) + `"`
+}
+
+func joinAgentExtraArgs(args []string) string {
+	quoted := make([]string, 0, len(args))
+	for _, arg := range args {
+		quoted = append(quoted, quoteAgentExtraArg(arg))
+	}
+	return strings.Join(quoted, " ")
+}
+
+// parsePlanModeFlags 解析启动参数，判断是否包含 --plan 与指向 plan-mode 的 --extension
+func parsePlanModeFlags(extraArgs string) (hasPlan, hasExt bool) {
+	tokens := parseAgentExtraArgs(extraArgs)
+	for i := 0; i < len(tokens); i++ {
+		switch tokens[i] {
+		case "--plan":
+			hasPlan = true
+		case "--extension":
+			if i+1 < len(tokens) && strings.Contains(tokens[i+1], "plan-mode") {
+				hasExt = true
+			}
+		}
+	}
+	return
+}
+
+// loadAgentV2ExtraArgs 读取指定 Agent 的启动参数（extra_args）
+func loadAgentV2ExtraArgs(agentID int) (string, error) {
+	rows, err := common.DbMain.Client.QueryBySql(
+		`SELECT config FROM tbl_agent_v2 WHERE id = ?`, agentID,
+	).All()
+	if err != nil {
+		return "", err
+	}
+	if len(rows) == 0 {
+		return "", fmt.Errorf("agent 不存在")
+	}
+	var cfg struct {
+		ExtraArgs string `json:"extra_args"`
+	}
+	if err := json.Unmarshal([]byte(cast.ToString(rows[0]["config"])), &cfg); err != nil {
+		return "", err
+	}
+	return cfg.ExtraArgs, nil
+}
+
+// saveAgentV2ExtraArgs 写回指定 Agent 的启动参数（保留其他配置字段）
+func saveAgentV2ExtraArgs(agentID int, extraArgs string) error {
+	rows, err := common.DbMain.Client.QueryBySql(
+		`SELECT config FROM tbl_agent_v2 WHERE id = ?`, agentID,
+	).All()
+	if err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return fmt.Errorf("agent 不存在")
+	}
+	var cfg map[string]interface{}
+	if err := json.Unmarshal([]byte(cast.ToString(rows[0]["config"])), &cfg); err != nil || cfg == nil {
+		cfg = map[string]interface{}{}
+	}
+	cfg["extra_args"] = extraArgs
+	b, _ := json.Marshal(cfg)
+	_, err = common.DbMain.Client.ExecBySql(
+		`UPDATE tbl_agent_v2 SET config = ?, updated_at = ? WHERE id = ?`,
+		string(b), time.Now().Unix(), agentID,
+	).Exec()
+	return err
+}
+
+// enablePlanModeFlags 在 Agent 启动参数中加入 --plan 与 --extension <plan-mode 源文件>
+func enablePlanModeFlags(agentID int, extPath string) error {
+	extra, err := loadAgentV2ExtraArgs(agentID)
+	if err != nil {
+		return err
+	}
+	tokens := parseAgentExtraArgs(extra)
+	hasPlan, hasExt := parsePlanModeFlags(extra)
+	if !hasPlan {
+		tokens = append(tokens, "--plan")
+	}
+	if !hasExt {
+		tokens = append(tokens, "--extension", extPath)
+	}
+	return saveAgentV2ExtraArgs(agentID, joinAgentExtraArgs(tokens))
+}
+
+// disablePlanModeFlags 从 Agent 启动参数中移除 --plan 与指向 plan-mode 的 --extension
+func disablePlanModeFlags(agentID int) error {
+	extra, err := loadAgentV2ExtraArgs(agentID)
+	if err != nil {
+		return err
+	}
+	tokens := parseAgentExtraArgs(extra)
+	out := make([]string, 0, len(tokens))
+	for i := 0; i < len(tokens); i++ {
+		if tokens[i] == "--plan" {
+			continue
+		}
+		if tokens[i] == "--extension" && i+1 < len(tokens) && strings.Contains(tokens[i+1], "plan-mode") {
+			i++ // 跳过紧跟的扩展路径
+			continue
+		}
+		out = append(out, tokens[i])
+	}
+	return saveAgentV2ExtraArgs(agentID, joinAgentExtraArgs(out))
 }
 
 // AgentV2EnvToolAction 执行环境工具操作（安装/激活/停用/移除）
@@ -649,6 +915,20 @@ func AgentV2EnvToolAction(c *gin.Context) {
 			"success": false,
 		})
 	case "activate":
+		// Pi 内置计划模式：一键加载扩展并加入启动参数，无需手动复制文件
+		if def.Key == "plan-mode" {
+			src := agent.FindPiPlanModeSource()
+			if src == "" {
+				gsgin.GinResponseError(c, "未找到 Pi 自带的 plan-mode 扩展源文件，请确认 pi-coding-agent 已正确安装", nil)
+				return
+			}
+			if err := enablePlanModeFlags(req.AgentId, src); err != nil {
+				gsgin.GinResponseError(c, "启用计划模式失败: "+err.Error(), nil)
+				return
+			}
+			gsgin.GinResponseSuccess(c, "计划模式已启用（已加入 --plan 与 --extension 启动参数），重启 Agent 会话后生效", nil)
+			return
+		}
 		cmd := def.ActivateCmdHint
 		if cmd == "" {
 			gsgin.GinResponseError(c, "该工具无需激活", nil)
@@ -673,6 +953,15 @@ func AgentV2EnvToolAction(c *gin.Context) {
 			"success": false,
 		})
 	case "remove":
+		// Pi 内置计划模式：仅移除启动参数（未复制文件到扩展目录）
+		if def.Key == "plan-mode" {
+			if err := disablePlanModeFlags(req.AgentId); err != nil {
+				gsgin.GinResponseError(c, "关闭计划模式失败: "+err.Error(), nil)
+				return
+			}
+			gsgin.GinResponseSuccess(c, "计划模式已关闭（已移除启动参数），重启 Agent 会话后生效", nil)
+			return
+		}
 		// 直接从 .pi/extensions/ 删除文件
 		if err := agent.RemoveInstalledTool(req.Key); err != nil {
 			gsgin.GinResponseError(c, "移除失败: "+err.Error(), nil)

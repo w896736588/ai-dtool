@@ -86,69 +86,23 @@
           </el-table>
         </el-tab-pane>
 
-        <!-- 扩展 -->
-        <el-tab-pane label="扩展" name="tools">
-          <div class="skills-toolbar">
-            <el-button type="primary" size="small" @click="openSkillAdd('tool')">添加 Tool</el-button>
-            <span class="skills-hint">所有扩展保存在 ~/.pi/agent/extensions/ 目录下</span>
-          </div>
-          <el-table :data="mergedToolList" class="config-table" empty-text="暂无 Tools">
-            <el-table-column label="名称" min-width="150">
-              <template #default="{ row }">
-                <span class="tool-cell">
-                  <span v-if="row._source !== 'fs' && getToolMeta(toolName(row)).found" class="tool-call__icon" :style="{ background: getToolMeta(toolName(row)).bg, color: getToolMeta(toolName(row)).color }">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="getToolMeta(toolName(row)).svg"></svg>
-                  </span>
-                  <span class="tool-cell__name">{{ row.name }}</span>
-                </span>
-              </template>
-            </el-table-column>
-            <el-table-column label="来源" width="90">
-              <template #default="{ row }">
-                <el-tag v-if="row._source === 'fs'" size="small" type="success">文件系统</el-tag>
-                <el-tag v-else size="small" type="info">内置</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="工具名" width="140">
-              <template #default="{ row }">{{ row._source === 'fs' ? '-' : toolName(row) }}</template>
-            </el-table-column>
-            <el-table-column label="描述" min-width="160">
-              <template #default="{ row }">
-                <span style="color:#909399;font-size:13px">{{ row._source === 'fs' ? '来自文件系统的扩展' : skillDesc(row) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="脚本" width="80">
-              <template #default="{ row }">
-                <el-tag v-if="row._source === 'fs'" size="small" type="success">已安装</el-tag>
-                <el-tag v-else-if="row._source === 'builtin-new'" size="small" type="info">未安装</el-tag>
-                <el-tag v-else size="small" :type="hasScript(row) ? 'success' : 'info'">
-                  {{ hasScript(row) ? '已编写' : '未编写' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" width="80">
-              <template #default="{ row }">
-                <el-tag v-if="row._source === 'fs'" size="small" type="success">已安装</el-tag>
-                <el-tag v-else-if="row._source === 'builtin-new'" size="small" type="info">未安装</el-tag>
-                <el-switch v-else :model-value="row.enabled === 1" @change="toggleSkill(row)" size="small" />
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="200">
-              <template #default="{ row }">
-                <template v-if="row._source === 'fs'">
-                  <el-button text size="small" type="danger" @click="removeInstalledTool(row)">移除</el-button>
-                </template>
-                <template v-else-if="row._source === 'builtin-new'">
-                  <el-button text size="small" type="primary" @click="installBuiltinTool(row._builtinRef)">安装</el-button>
-                </template>
-                <template v-else>
-                  <el-button v-if="isBuiltinTool(row)" text size="small" type="warning" @click="updateMergedTool(row)">更新</el-button>
-                  <el-button text size="small" @click="openSkillEdit(row)">编辑</el-button>
-                  <el-button text size="small" type="danger" @click="deleteSkill(row)">删除</el-button>
-                </template>
-              </template>
-            </el-table-column>
-          </el-table>
+        <!-- 强制提示词 -->
+        <el-tab-pane label="强制提示词" name="forceprompt">
+          <el-form label-width="130px" class="config-form">
+            <el-form-item label="说明">
+              <div class="field-hint" style="font-size:13px;color:#606266;line-height:1.6">
+                设置后，每次对话都会自动在用户消息前追加以下提示词（与是否安装计划模式扩展无关）。留空不会追加任何内容；填入 <code>off</code> 也可关闭。
+              </div>
+            </el-form-item>
+            <el-form-item label="强制提示词">
+              <el-input
+                v-model="piConfig.force_prompt"
+                type="textarea"
+                :rows="6"
+                placeholder="留空不追加任何强制提示词"
+              />
+            </el-form-item>
+          </el-form>
         </el-tab-pane>
 
         <!-- 工作空间 -->
@@ -175,41 +129,58 @@
         <!-- 推荐扩展 -->
         <el-tab-pane label="推荐扩展" name="envtools">
           <div class="envtools-toolbar">
-            <span class="skills-hint">推荐的 Pi 扩展，安装后可增强 Agent 能力。已安装的可以直接在此移除。</span>
+            <span class="skills-hint">推荐的 Pi 扩展与已安装的自定义扩展，安装后可增强 Agent 能力。已安装的可以直接在此移除。</span>
             <el-button size="small" @click="loadEnvTools">刷新状态</el-button>
           </div>
-          <el-table :data="envTools" class="config-table" empty-text="暂无可用环境工具">
-            <el-table-column label="工具" min-width="220">
+          <el-table :data="allExtensions" class="config-table" empty-text="暂无可用扩展">
+            <el-table-column label="名称" min-width="240">
               <template #default="{ row }">
                 <div style="display:flex;align-items:center;gap:8px">
-                  <span style="font-size:18px">{{ row.icon }}</span>
+                  <span v-if="row._cat === 'env' && row.icon" style="font-size:18px">{{ row.icon }}</span>
+                  <span v-else-if="row._cat === 'tool' && row._source !== 'fs' && getToolMeta(toolName(row)).found" class="tool-call__icon" :style="{ background: getToolMeta(toolName(row)).bg, color: getToolMeta(toolName(row)).color }">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="getToolMeta(toolName(row)).svg"></svg>
+                  </span>
                   <div>
                     <div style="font-weight:500">{{ row.name }}</div>
-                    <div style="font-size:12px;color:#909399">{{ row.description }}</div>
+                    <div style="font-size:12px;color:#909399">{{ row._cat === 'env' ? row.description : (row._source === 'fs' ? '来自文件系统的扩展' : skillDesc(row)) }}</div>
                   </div>
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="140">
+            <el-table-column label="来源" width="100">
               <template #default="{ row }">
-                <template v-if="row.key === 'headroom' && headroomStatus.running">
-                  <el-tag type="success" size="small">运行中</el-tag>
-                  <span v-if="headroomStatus.pid" style="font-size:11px;color:#909399;margin-left:4px">PID:{{ headroomStatus.pid }}</span>
-                </template>
-                <template v-else>
-                  <el-tag :type="envToolStatusType(row)" size="small">{{ envToolStatusLabel(row) }}</el-tag>
-                </template>
+                <el-tag v-if="row._cat === 'env'" size="small" type="primary">推荐</el-tag>
+                <el-tag v-else-if="row._source === 'fs'" size="small" type="success">文件系统</el-tag>
+                <el-tag v-else size="small" type="info">内置</el-tag>
               </template>
             </el-table-column>
             <el-table-column label="版本" width="100">
               <template #default="{ row }">
-                <span style="font-size:12px;color:#909399">{{ row.version || '-' }}</span>
+                <span style="font-size:12px;color:#909399">{{ row._cat === 'env' ? (row.version || '-') : '-' }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" min-width="260">
+            <el-table-column label="状态" width="140">
               <template #default="{ row }">
-                <!-- Headroom 专属操作 -->
-                <template v-if="row.key === 'headroom'">
+                <template v-if="row._cat === 'env'">
+                  <template v-if="row.key === 'headroom' && headroomStatus.running">
+                    <el-tag type="success" size="small">运行中</el-tag>
+                    <span v-if="headroomStatus.pid" style="font-size:11px;color:#909399;margin-left:4px">PID:{{ headroomStatus.pid }}</span>
+                  </template>
+                  <template v-else>
+                    <el-tag :type="envToolStatusType(row)" size="small">{{ envToolStatusLabel(row) }}</el-tag>
+                  </template>
+                </template>
+                <template v-else>
+                  <el-tag v-if="row._source === 'fs'" size="small" type="success">已安装</el-tag>
+                  <el-tag v-else-if="row._source === 'builtin-new'" size="small" type="info">未安装</el-tag>
+                  <el-switch v-else :model-value="row.enabled === 1" @change="toggleSkill(row)" size="small" />
+                </template>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" min-width="280">
+              <template #default="{ row }">
+                <!-- 环境工具：Headroom -->
+                <template v-if="row._cat === 'env' && row.key === 'headroom'">
                   <el-button v-if="!row.installed" text size="small" type="primary" @click="showEnvToolInstall(row)">
                     查看安装指引
                   </el-button>
@@ -240,8 +211,23 @@
                     主页 ↗
                   </el-button>
                 </template>
-                <!-- 其他工具通用操作 -->
-                <template v-else>
+                <!-- 环境工具：计划模式 -->
+                <template v-else-if="row._cat === 'env' && row.key === 'plan-mode'">
+                  <el-button v-if="!row.extension_installed" text size="small" type="primary" @click="envToolAction(row, 'activate')">
+                    安装并启用
+                  </el-button>
+                  <el-button v-if="!row.extension_installed" text size="small" @click="showEnvToolInstall(row)">
+                    安装指引
+                  </el-button>
+                  <el-button v-if="row.extension_installed" text size="small" type="danger" @click="envToolRemove(row)">
+                    移除
+                  </el-button>
+                  <el-button text size="small" @click="openEnvToolHomepage(row)">
+                    主页 ↗
+                  </el-button>
+                </template>
+                <!-- 环境工具：其他（rtk 等） -->
+                <template v-else-if="row._cat === 'env'">
                   <el-button v-if="!row.installed" text size="small" type="primary" @click="showEnvToolInstall(row)">
                     查看安装指引
                   </el-button>
@@ -258,9 +244,27 @@
                     主页 ↗
                   </el-button>
                 </template>
+                <!-- 自定义工具：文件系统 -->
+                <template v-else-if="row._source === 'fs'">
+                  <el-button text size="small" type="danger" @click="removeInstalledTool(row)">移除</el-button>
+                </template>
+                <!-- 自定义工具：内置未安装 -->
+                <template v-else-if="row._source === 'builtin-new'">
+                  <el-button text size="small" type="primary" @click="installBuiltinTool(row._builtinRef)">安装</el-button>
+                </template>
+                <!-- 自定义工具：已安装（内置/自定义） -->
+                <template v-else>
+                  <el-button v-if="isBuiltinTool(row)" text size="small" type="warning" @click="updateMergedTool(row)">更新</el-button>
+                  <el-button text size="small" @click="openSkillEdit(row)">编辑</el-button>
+                  <el-button text size="small" type="danger" @click="deleteSkill(row)">删除</el-button>
+                </template>
               </template>
             </el-table-column>
           </el-table>
+          <div class="skills-toolbar" style="margin-top:16px">
+            <el-button type="primary" size="small" @click="openSkillAdd('tool')">添加 Tool</el-button>
+            <span class="skills-hint">自定义 / 内置 / 文件系统扩展，保存在 ~/.pi/agent/extensions/ 目录下</span>
+          </div>
         </el-tab-pane>
 
       </el-tabs>
@@ -418,7 +422,7 @@
           :model-value="envToolDialogData.install_cmd_hint"
           readonly
           type="textarea"
-          :rows="1"
+          :rows="6"
           style="font-family:'Cascadia Code',monospace;font-size:13px"
         />
       </div>
@@ -428,7 +432,7 @@
           :model-value="envToolDialogData.activate_cmd_hint"
           readonly
           type="textarea"
-          :rows="1"
+          :rows="6"
           style="font-family:'Cascadia Code',monospace;font-size:13px"
         />
       </div>
@@ -539,7 +543,7 @@ export default {
       installHint: '',
 
       configForm: { name: '', type: '' },
-      piConfig: { session_dir: '', extra_args: '', runtime_dir: '' },
+      piConfig: { session_dir: '', extra_args: '', runtime_dir: '', force_prompt: '' },
 
       // Agent 配置用的 Provider/Model 列表
       providerList: [],
@@ -655,6 +659,16 @@ export default {
       if (this.editingSkillId) return '编辑 ' + (this.skillForm.skill_type === 'tool' ? 'Tool' : 'Skill')
       return '添加 ' + (this.skillForm.skill_type === 'tool' ? 'Tool' : 'Skill')
     },
+    // 推荐扩展与自定义扩展合并为同一个列表
+    allExtensions() {
+      const env = (this.envTools || []).map(r => ({ ...r, _cat: 'env' }))
+      // 过滤掉与推荐扩展（环境工具）同名的自定义/文件系统扩展，避免重复展示（如 rtk）
+      const envKeys = new Set(env.map(r => r.key))
+      const tools = (this.mergedToolList || [])
+        .filter(r => !envKeys.has(r.name) && !envKeys.has(this.toolName(r)))
+        .map(r => ({ ...r, _cat: 'tool' }))
+      return [...env, ...tools]
+    },
     currentProviderModels() {
       if (!this.selectedProviderId) return []
       return this.allModels.filter(m => parseInt(m.provider_id) === parseInt(this.selectedProviderId))
@@ -709,6 +723,7 @@ export default {
               this.piConfig.session_dir = cfg.session_dir || ''
               this.piConfig.extra_args = cfg.extra_args || ''
               this.piConfig.runtime_dir = cfg.runtime_dir || ''
+              this.piConfig.force_prompt = cfg.force_prompt || ''
               this.selectedProviderId = cfg.provider_id || null
               this.selectedModelId = cfg.model_id || null
             } catch (e) {}
@@ -725,7 +740,8 @@ export default {
         model_id: this.selectedModelId || 0,
         session_dir: this.piConfig.session_dir,
         extra_args: this.piConfig.extra_args,
-        runtime_dir: this.piConfig.runtime_dir
+        runtime_dir: this.piConfig.runtime_dir,
+        force_prompt: this.piConfig.force_prompt
       }
       const config = JSON.stringify(configObj)
       Base.BasePost('/api/AgentV2Save', {
@@ -948,7 +964,7 @@ export default {
 
     // 环境工具
     loadEnvTools() {
-      Base.BasePost('/api/AgentV2EnvToolList', {}, (res) => {
+      Base.BasePost('/api/AgentV2EnvToolList', { agent_id: this.agentId }, (res) => {
         this.envTools = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
       })
       this.loadHeadroomStatus()
@@ -1015,6 +1031,10 @@ export default {
         if (this.headroomStatus.running) return 'success'
         return row.installed ? 'warning' : 'info'
       }
+      if (row.key === 'plan-mode') {
+        if (row.extension_installed) return row.activated ? 'success' : 'warning'
+        return 'info'
+      }
       if (row.extension_installed) return 'success'
       if (row.installed) return 'warning'
       return 'info'
@@ -1023,6 +1043,10 @@ export default {
       if (row.key === 'headroom') {
         if (this.headroomStatus.running) return '代理运行中'
         return row.installed ? '已安装' : '未安装'
+      }
+      if (row.key === 'plan-mode') {
+        if (row.extension_installed) return row.activated ? '已启用' : '已安装(未启用)'
+        return '未安装'
       }
       if (row.extension_installed) return '已安装'
       if (row.installed) return '已安装(未激活)'
@@ -1062,22 +1086,26 @@ export default {
           key: row.key,
           action: action
         }, (res) => {
-          if (res.ErrCode === 0 && res.Data) {
-            const cmd = res.Data.command || ''
-            const msg = res.Data.message || ''
-            this.$alert(
-              `<div style="margin-bottom:8px">${msg}</div>
-               <div style="background:#f5f7fa;border-radius:4px;padding:10px;font-family:'Cascadia Code',monospace;font-size:13px;word-break:break-all">${cmd}</div>`,
-              `${label}命令`,
-              { dangerouslyUseHTMLString: true, confirmButtonText: '复制并关闭', beforeClose: (action, instance, done) => {
-                if (action === 'confirm' && cmd) {
-                  navigator.clipboard.writeText(cmd).then(() => {
-                    this.$message.success('命令已复制到剪贴板')
-                  })
-                }
-                done()
-              }}
-            )
+          if (res.ErrCode === 0) {
+            const cmd = (res.Data && res.Data.command) || ''
+            const msg = (res.Data && res.Data.message) || res.Msg || ''
+            if (cmd) {
+              this.$alert(
+                `<div style="margin-bottom:8px">${msg}</div>
+                 <div style="background:#f5f7fa;border-radius:4px;padding:10px;font-family:'Cascadia Code',monospace;font-size:13px;word-break:break-all">${cmd}</div>`,
+                `${label}命令`,
+                { dangerouslyUseHTMLString: true, confirmButtonText: '复制并关闭', beforeClose: (action, instance, done) => {
+                  if (action === 'confirm' && cmd) {
+                    navigator.clipboard.writeText(cmd).then(() => {
+                      this.$message.success('命令已复制到剪贴板')
+                    })
+                  }
+                  done()
+                }}
+              )
+            } else {
+              this.$message.success(msg || '操作成功')
+            }
             this.loadEnvTools()
           }
         })

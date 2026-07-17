@@ -53,7 +53,8 @@ func AgentV2ModelTest(c *gin.Context) {
 	modelName := cast.ToString(modelRow["model"])
 
 	// 同步 models.json（永久化配置，所有 Provider/Model 都注册）
-	if err := syncPiModelsConfig(); err != nil {
+	// 模型测试不注入 PI_CODING_AGENT_DIR，pi 使用默认目录，故同步到默认目录
+	if err := syncPiModelsConfig(""); err != nil {
 		gsgin.GinResponseError(c, "同步 Pi 模型配置失败: "+err.Error(), nil)
 		return
 	}
@@ -260,15 +261,54 @@ func applyModelCompat(providerType, modelName string, mc piModelConfig) piModelC
 	return mc
 }
 
-// syncPiModelsConfig 同步所有 Provider/Model 配置到 ~/.pi/agent/models.json（永久化）
-// 从数据库读取所有启用的 providers 和 models，生成完整的 models.json
-// 使用 provider name 作为 Pi provider key（唯一标识），provider_type 仅决定 api 字段
-func syncPiModelsConfig() error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return err
+// syncPiModelsConfigAllAgents 将 models.json 同步到默认目录以及所有 Agent 各自的运行目录，
+// 确保配置了独立 runtime_dir 的 Agent 也能读到最新的 provider/model 配置。
+// tag 仅用于日志定位调用来源。
+func syncPiModelsConfigAllAgents(tag string) {
+	// 默认目录（未配置 runtime_dir 的 Agent 及模型测试使用）
+	if err := syncPiModelsConfig(""); err != nil {
+		log.Printf("[set-ai] syncPiModelsConfig(default) %s: %v", tag, err)
 	}
-	configDir := filepath.Join(homeDir, ".pi", "agent")
+
+	rows, err := common.DbMain.Client.QueryBySql(`SELECT config FROM tbl_agent_v2`).All()
+	if err != nil {
+		log.Printf("[set-ai] load agents for sync %s: %v", tag, err)
+		return
+	}
+	seen := make(map[string]struct{})
+	for _, row := range rows {
+		var cfg struct {
+			RuntimeDir string `json:"runtime_dir"`
+		}
+		if err := json.Unmarshal([]byte(cast.ToString(row["config"])), &cfg); err != nil {
+			continue
+		}
+		if strings.TrimSpace(cfg.RuntimeDir) == "" {
+			continue // 使用默认目录，已同步
+		}
+		dir := resolveRuntimeDir(cfg.RuntimeDir)
+		if _, ok := seen[dir]; ok {
+			continue
+		}
+		seen[dir] = struct{}{}
+		if err := syncPiModelsConfig(dir); err != nil {
+			log.Printf("[set-ai] syncPiModelsConfig(%s) %s: %v", dir, tag, err)
+		}
+	}
+}
+
+// syncPiModelsConfig 同步所有 Provider/Model 配置到指定 Pi 运行目录的 models.json（永久化）
+// configDir 为目标运行目录（对应 PI_CODING_AGENT_DIR）；传空则回退到 Pi 默认目录 ~/.pi/agent。
+// 从数据库读取所有启用的 providers 和 models，生成完整的 models.json。
+// 使用 provider name 作为 Pi provider key（唯一标识），provider_type 仅决定 api 字段。
+func syncPiModelsConfig(configDir string) error {
+	if strings.TrimSpace(configDir) == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		configDir = filepath.Join(homeDir, ".pi", "agent")
+	}
 	modelsPath := filepath.Join(configDir, "models.json")
 
 	// 查询所有启用的 Provider

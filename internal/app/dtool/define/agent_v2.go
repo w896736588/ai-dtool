@@ -35,11 +35,12 @@ type AgentV2StatusItem struct {
 
 // AgentV2Config Pi Agent 配置
 type AgentV2PiConfig struct {
-	Provider   string `json:"provider"`
-	Model      string `json:"model"`
-	SessionDir string `json:"session_dir"`
-	ExtraArgs  string `json:"extra_args"`
-	RuntimeDir string `json:"runtime_dir"` // Pi 数据/配置目录（对应 PI_CODING_AGENT_DIR），留空则用 Pi 默认 ~/.pi/agent
+	Provider    string `json:"provider"`
+	Model       string `json:"model"`
+	SessionDir  string `json:"session_dir"`
+	ExtraArgs   string `json:"extra_args"`
+	RuntimeDir  string `json:"runtime_dir"`  // Pi 数据/配置目录（对应 PI_CODING_AGENT_DIR），留空则用 Pi 默认 ~/.pi/agent
+	ForcePrompt string `json:"force_prompt"` // 强制提示词：每轮对话自动追加到用户消息前（与是否安装计划模式扩展无关）
 }
 
 // AgentV2SaveRequest 保存请求

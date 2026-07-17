@@ -120,6 +120,10 @@
           <span v-if="currentSession" class="chat-header__created">创建于 {{ formatTime(currentSession.created_at) }}</span>
         </div>
         <div class="chat-header__actions">
+          <!-- Pi 内置计划模式已启用：显示计划图标 -->
+          <el-tooltip v-if="planExtensionInstalled" content="当前处于计划-确认-执行模式" placement="bottom" effect="dark">
+            <span class="plan-mode-badge" @click="scrollToPlan">📋</span>
+          </el-tooltip>
           <!-- 会话执行耗时（后端计时，WS exec_progress 推送） -->
           <div class="exec-time" :class="{ 'exec-time--running': executionRunning }">
             <el-icon class="exec-time__icon"><Timer /></el-icon>
@@ -135,6 +139,36 @@
           >停止</el-button>
         </div>
       </header>
+
+      <!-- 计划-确认-执行 面板 -->
+      <transition name="el-fade-in">
+        <div v-if="planState.visible" ref="planPanel" class="plan-panel" :class="{ 'plan-panel--collapsed': planCollapsed }">
+          <div class="plan-panel__header" @click="planCollapsed = !planCollapsed">
+            <span class="plan-panel__icon">📋</span>
+            <span class="plan-panel__title">计划与进度</span>
+            <el-tag size="small" :type="planState.phase === 'plan' ? 'warning' : 'success'">
+              {{ planState.phase === 'plan' ? '待确认' : (planState.phase === 'done' ? '已完成' : '执行中') }}
+            </el-tag>
+            <span class="plan-panel__progress">{{ planDoneCount }}/{{ planState.items.length }}</span>
+            <span class="plan-panel__toggle">{{ planCollapsed ? '展开' : '收起' }}</span>
+          </div>
+          <div v-show="!planCollapsed" class="plan-panel__body">
+            <ul class="plan-list">
+              <li v-for="(it, i) in planState.items" :key="i" :class="{ 'plan-list__done': it.done }">
+                <span class="plan-list__check">{{ it.done ? '☑' : '☐' }}</span>
+                <span class="plan-list__text">{{ it.text }}</span>
+              </li>
+            </ul>
+            <el-button
+              v-if="planState.phase === 'plan' && planState.items.length"
+              size="small"
+              type="primary"
+              :disabled="isStreaming && !pendingPlanChoice"
+              @click="approvePlan"
+            >确认执行</el-button>
+          </div>
+        </div>
+      </transition>
 
       <!-- 消息列表 -->
       <div class="chat-messages-wrap">
@@ -263,6 +297,42 @@
           />
           <div class="chat-input__toolbar">
             <div class="chat-input__toolbar-left">
+              <!-- Pi 计划模式扩展：模式切换固定放在输入框最左侧 -->
+              <el-dropdown
+                v-if="planExtensionInstalled"
+                class="chat-input__mode-select"
+                :disabled="(isStreaming && !pendingPlanChoice) || switchingInteractionMode"
+                trigger="click"
+                placement="top-start"
+                popper-class="chat-mode-menu"
+                @command="setInteractionMode"
+              >
+                <el-button
+                  size="small"
+                  class="chat-input__mode-button"
+                  :class="'chat-input__mode-button--' + interactionMode"
+                >
+                  <el-icon class="chat-input__mode-icon">
+                    <Memo v-if="interactionMode === 'plan'" />
+                    <VideoPlay v-else />
+                  </el-icon>
+                  <span>{{ interactionMode === 'plan' ? '计划' : '执行' }}</span>
+                  <el-icon class="chat-input__mode-arrow"><ArrowUp /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="execute" :class="{ 'is-active': interactionMode === 'execute' }">
+                      <el-icon><VideoPlay /></el-icon>
+                      <span>执行模式</span>
+                    </el-dropdown-item>
+                    <el-dropdown-item command="plan" :class="{ 'is-active': interactionMode === 'plan' }">
+                      <el-icon><Memo /></el-icon>
+                      <span>计划模式</span>
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+
               <!-- 模型选择（按 Provider 分组） -->
               <el-select
                 v-if="providerModels.length > 0"
@@ -382,13 +452,16 @@ import { getToolMeta } from '@/utils/toolIcons.js'
 import {
   ArrowLeft,
   ArrowDown,
+  ArrowUp,
   ArrowRight,
   Folder,
   ChatDotRound,
   Close,
   Tools,
   Loading,
-  Timer
+  Timer,
+  Memo,
+  VideoPlay
 } from '@element-plus/icons-vue'
 
 export default {
@@ -396,19 +469,32 @@ export default {
   components: {
     ArrowLeft,
     ArrowDown,
+    ArrowUp,
     ArrowRight,
     Folder,
     ChatDotRound,
     Close,
     Tools,
     Loading,
-    Timer
+    Timer,
+    Memo,
+    VideoPlay
   },
   data() {
     return {
       agentId: 0,
       agentName: '',
       agentConfig: null,
+
+      // 计划模式扩展
+      planExtensionInstalled: false,
+      defaultInteractionMode: 'execute',
+      interactionMode: 'execute',
+      switchingInteractionMode: false,
+      pendingPlanChoice: null,
+      planState: { visible: false, phase: '', items: [] },
+      planCollapsed: false,
+
 
       pendingSession: false, // 新建对话标记：为 true 时不创建 DB 记录，等用户发消息后再创建
 
@@ -479,6 +565,10 @@ export default {
   computed: {
     hasRunningTools() {
       return Object.values(this.pendingToolCalls).some(tc => tc.status !== 'done')
+    },
+    planDoneCount() {
+      if (!this.planState.items) return 0
+      return this.planState.items.filter((it) => it.done).length
     },
     inputHint() {
       if (!this.wsConnected) return '未连接'
@@ -559,7 +649,7 @@ export default {
     },
   },
   mounted() {
-    this.agentId = parseInt(this.$route.query.agent_id) || 0
+      this.agentId = parseInt(this.$route.query.agent_id) || 0
     if (!this.agentId) {
       this.$router.push('/AgentHub')
       return
@@ -586,6 +676,128 @@ export default {
       this.disconnectAllWS()
       this.$router.push('/AgentHub')
     },
+
+    // ========== 计划模式（Pi 内置） ==========
+    // 通过 Agent 启动参数判断是否启用 Pi 内置计划模式（--plan + --extension <plan-mode>），决定是否显示计划图标
+    checkPlanExtension() {
+      const cfg = this.agentConfig || {}
+      const extra = (cfg.extra_args || '').trim()
+      if (!extra) {
+        this.planExtensionInstalled = false
+        this.defaultInteractionMode = 'execute'
+        this.interactionMode = 'execute'
+        return
+      }
+      const hasPlan = /(?:^|\s)--plan(?:\s|$)/.test(extra)
+      const hasPlanExt = /(?:^|\s)--extension\s+(?:"[^"]*plan-mode[^"]*"|'[^']*plan-mode[^']*'|\S*plan-mode\S*)/.test(extra)
+      this.planExtensionInstalled = hasPlanExt
+      this.defaultInteractionMode = hasPlan && hasPlanExt ? 'plan' : 'execute'
+      const remembered = this.loadRememberedInteractionMode(this.currentSessionId)
+      if (!this.currentSessionId || !remembered) this.interactionMode = this.defaultInteractionMode
+    },
+    interactionModeStorageKey() {
+      return 'agentchat_interaction_modes_' + this.agentId
+    },
+    loadRememberedInteractionMode(sessionId) {
+      if (!sessionId) return ''
+      try {
+        const modes = JSON.parse(localStorage.getItem(this.interactionModeStorageKey()) || '{}')
+        return modes[String(sessionId)] === 'plan' ? 'plan' : (modes[String(sessionId)] === 'execute' ? 'execute' : '')
+      } catch (e) {
+        return ''
+      }
+    },
+    rememberInteractionMode() {
+      if (!this.currentSessionId) return
+      try {
+        const key = this.interactionModeStorageKey()
+        const modes = JSON.parse(localStorage.getItem(key) || '{}')
+        modes[String(this.currentSessionId)] = this.interactionMode
+        localStorage.setItem(key, JSON.stringify(modes))
+      } catch (e) {
+        // localStorage 不可用时仅保留当前页面内的选择。
+      }
+    },
+    // 用户确认执行计划：直接回复 Pi 扩展的 select 请求，避免用自然语言模拟协议。
+    approvePlan() {
+      if (!this.planState.items.length) return
+      this.changeInteractionMode('execute')
+    },
+    setInteractionMode(mode) {
+      this.changeInteractionMode(mode)
+    },
+    changeInteractionMode(mode) {
+      const targetMode = mode === 'plan' ? 'plan' : 'execute'
+      const pending = this.pendingPlanChoice
+
+      // 计划生成后扩展正在等待选择，直接回复原始 UI 请求。
+      if (pending) {
+        const option = targetMode === 'execute'
+          ? pending.options.find((item) => String(item).startsWith('Execute'))
+          : pending.options.find((item) => String(item).startsWith('Stay'))
+        if (option) {
+          this.sendWS({
+            type: 'command',
+            command: { type: 'extension_ui_response', id: pending.id, value: option }
+          })
+          this.pendingPlanChoice = null
+          this.interactionMode = targetMode
+          this.rememberInteractionMode()
+          this.planState = {
+            ...this.planState,
+            visible: this.planState.items.length > 0,
+            phase: targetMode === 'execute' ? 'execute' : 'plan'
+          }
+          return
+        }
+      }
+
+      if (targetMode === this.interactionMode) return
+      this.interactionMode = targetMode
+      this.rememberInteractionMode()
+      if (!this.wsConnected) {
+        if (targetMode === 'plan') {
+          this.planState = { visible: false, phase: 'plan', items: [] }
+        } else if (this.planState.phase === 'plan') {
+          this.planState = { ...this.planState, visible: false, phase: '' }
+        }
+        return
+      }
+      // /plan 是扩展提供的正式切换命令；后端会保持它位于消息首部。
+      this.switchingInteractionMode = true
+      this.sendWS({
+        type: 'command',
+        command: { type: 'prompt', message: '/plan' }
+      })
+      if (targetMode === 'plan') {
+        this.planState = { visible: false, phase: 'plan', items: [] }
+      } else if (this.planState.phase === 'plan') {
+        this.planState = { ...this.planState, visible: false, phase: '' }
+      }
+      window.setTimeout(() => {
+        this.switchingInteractionMode = false
+      }, 500)
+    },
+    extractPlanItemsFromMessages() {
+      const assistant = [...this.messages].reverse().find((msg) => msg && msg.role === 'assistant' && msg.content)
+      if (!assistant) return []
+      const lines = String(assistant.content).split(/\r?\n/)
+      const items = []
+      for (const line of lines) {
+        const match = line.match(/^\s*\d+[.)]\s+(.+?)\s*$/)
+        if (match) items.push({ text: match[1], done: false })
+      }
+      return items
+    },
+    scrollToPlan() {
+      this.planCollapsed = false
+      this.$nextTick(() => {
+        if (this.$refs.planPanel && this.$refs.planPanel.scrollIntoView) {
+          this.$refs.planPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        }
+      })
+    },
+
     openConfig() {
       this.$router.push({ path: '/AgentConfig', query: { agent_id: this.agentId } })
     },
@@ -769,6 +981,11 @@ export default {
       this.currentSessionId = 0
       this.currentSession = null
       this.pendingSession = true
+      this.interactionMode = this.defaultInteractionMode
+      this.pendingPlanChoice = null
+      this.planState = { visible: false, phase: '', items: [] }
+      this.planCollapsed = false
+      this.switchingInteractionMode = false
       this.messages = []
       this._historyLoaded = false
       this.streamingText = ''
@@ -789,6 +1006,11 @@ export default {
 
       this.currentSessionId = session.id
       this.currentSession = session
+      this.interactionMode = this.loadRememberedInteractionMode(session.id) || this.defaultInteractionMode
+      this.pendingPlanChoice = null
+      this.planState = { visible: false, phase: '', items: [] }
+      this.planCollapsed = false
+      this.switchingInteractionMode = false
       // 选中会话时同步当前工作空间，确保「在旧对话继续提问」也能把所属工作空间置顶
       const selWsId = Number(session.workspace_id || 0)
       if (selWsId) this.currentWorkspaceId = selWsId
@@ -851,6 +1073,10 @@ export default {
           this.pendingToolCalls = {}
           this.tokenStats = null
           this.compacting = false
+          this.pendingPlanChoice = null
+          this.planState = { visible: false, phase: '', items: [] }
+          this.planCollapsed = false
+          this.switchingInteractionMode = false
           this.stopThinkingTimer()
           this.stopStatsPolling()
           this.resetExecutionTimer()
@@ -892,6 +1118,8 @@ export default {
               // agent.config 可能为空或非 JSON，保持默认配置即可
             }
           }
+          // Agent 配置就绪后，依据启动参数判断计划模式是否启用
+          this.checkPlanExtension()
         }
         // Agent 信息加载完成后加载模型列表（确保 agentConfig 已就绪）
         this.loadProviderModels()
@@ -953,6 +1181,9 @@ export default {
       target.thinkingStartAt = this.thinkingStartAt
       target.thinkingElapsedSeconds = this.thinkingElapsedSeconds
       target.runtimeNow = this.runtimeNow
+      target.pendingPlanChoice = this.cloneSessionData(this.pendingPlanChoice, null)
+      target.planState = this.cloneSessionData(this.planState, { visible: false, phase: '', items: [] })
+      target.planCollapsed = this.planCollapsed
       return target
     },
     applySessionRuntimeState(snapshot) {
@@ -966,6 +1197,10 @@ export default {
       this._historyLoaded = Boolean(snapshot._historyLoaded)
       this._lastUserMessage = snapshot._lastUserMessage || ''
       this.thinkingStartAt = Number(snapshot.thinkingStartAt || 0)
+      this.pendingPlanChoice = this.cloneSessionData(snapshot.pendingPlanChoice, null)
+      this.planState = this.cloneSessionData(snapshot.planState, { visible: false, phase: '', items: [] })
+      this.planCollapsed = Boolean(snapshot.planCollapsed)
+      this.switchingInteractionMode = false
       this.runtimeNow = Date.now()
       this.thinkingElapsedSeconds = this.thinkingStartAt
         ? Math.max(0, Math.floor((this.runtimeNow - this.thinkingStartAt) / 1000))
@@ -1077,6 +1312,7 @@ export default {
       existing.ws = this.ws
       existing.wsConnected = this.ws.readyState === WebSocket.OPEN
       existing.selectedModel = this.selectedModel
+      existing.interactionMode = this.interactionMode
       existing._isRunning = this.isStreaming // 保持当前运行状态，避免切换后转圈消失
       existing._bufferedMessages = existing._bufferedMessages || []
       this.captureSessionRuntimeState(existing)
@@ -1165,6 +1401,7 @@ export default {
       this.ws = ss.ws
       this.wsConnected = ss.ws.readyState === WebSocket.OPEN
       if (ss.selectedModel) this.selectedModel = ss.selectedModel
+      if (ss.interactionMode) this.interactionMode = ss.interactionMode
 
       // 若后台会话仍在执行中，恢复 isStreaming 状态
       this.isStreaming = Boolean(ss._isRunning)
@@ -1240,8 +1477,9 @@ export default {
       const host = apiHost.replace(/^https?:\/\//, '')
       const token = Base.GetSafeToken() || ''
       const modelParam = this.selectedModel ? `&model=${encodeURIComponent(this.selectedModel)}` : ''
+      const modeParam = this.planExtensionInstalled ? `&interaction_mode=${encodeURIComponent(this.interactionMode)}` : ''
       const attachParam = attachOnly ? '&attach_only=1' : ''
-      const url = `${protocol}//${host}/api/AgentV2WS?agent_id=${this.agentId}&session_id=${this.currentSessionId}&token=${token}${modelParam}${attachParam}`
+      const url = `${protocol}//${host}/api/AgentV2WS?agent_id=${this.agentId}&session_id=${this.currentSessionId}&token=${token}${modelParam}${modeParam}${attachParam}`
 
       const sessionId = this.currentSessionId // 闭包捕获
       this.ws = new WebSocket(url)
@@ -1540,6 +1778,23 @@ export default {
           break
         }
 
+        // ===== 计划模式扩展：计划/进度更新 =====
+        case 'plan_update': {
+          const items = Array.isArray(event.items)
+            ? event.items.map((it) => ({
+                text: it && it.text != null ? String(it.text) : '',
+                done: !!(it && it.done)
+              }))
+            : []
+          this.planState = {
+            visible: true,
+            phase: event.phase || 'plan',
+            items
+          }
+          this.scrollToBottom()
+          break
+        }
+
         default:
           console.log('[AgentChat] unhandled pi event type:', evtType, event)
           break
@@ -1550,7 +1805,31 @@ export default {
       const method = event.method
       const reqId = event.id
 
-      if (method === 'confirm') {
+      if (method === 'setStatus' && event.statusKey === 'plan-mode') {
+        const status = String(event.statusText || '')
+        this.interactionMode = status.includes('plan') ? 'plan' : 'execute'
+        this.switchingInteractionMode = false
+        if (status && !status.includes('plan')) {
+          this.planState = { ...this.planState, visible: this.planState.items.length > 0, phase: 'execute' }
+        }
+      } else if (method === 'setWidget' && event.widgetKey === 'plan-todos') {
+        const lines = Array.isArray(event.widgetLines) ? event.widgetLines : []
+        if (lines.length > 0) {
+          this.planState = {
+            visible: true,
+            phase: 'execute',
+            items: lines.map((line) => {
+              const text = String(line)
+              return {
+                done: text.trim().startsWith('☑'),
+                text: text.replace(/^\s*[☑☐]\s*/, '').replace(/^~+|~+$/g, '')
+              }
+            })
+          }
+        } else if (this.planState.phase === 'execute') {
+          this.planState = { visible: false, phase: '', items: [] }
+        }
+      } else if (method === 'confirm') {
         this.$confirm(event.message || event.title || '确认操作?', event.title || '提示', {
           confirmButtonText: '确认',
           cancelButtonText: '取消'
@@ -1560,12 +1839,30 @@ export default {
           this.sendWS({ type: 'command', command: { type: 'extension_ui_response', id: reqId, cancelled: true } })
         })
       } else if (method === 'select') {
-        // 使用 options 列表弹出选择
         const options = event.options || []
         if (options.length === 0) {
           this.sendWS({ type: 'command', command: { type: 'extension_ui_response', id: reqId, cancelled: true } })
           return
         }
+
+        // Pi 的 plan-mode 示例扩展会在计划生成后发出英文三选一请求。
+        // 在网页端把它收进模式切换器和计划面板，不再弹英文系统框。
+        const isPlanModeChoice = options.some((item) => String(item).startsWith('Execute')) &&
+          options.some((item) => String(item).startsWith('Stay'))
+        if (isPlanModeChoice) {
+          const items = this.extractPlanItemsFromMessages()
+          this.pendingPlanChoice = { id: reqId, options }
+          this.interactionMode = 'plan'
+          this.planState = {
+            visible: items.length > 0,
+            phase: 'plan',
+            items
+          }
+          this.scrollToBottom()
+          return
+        }
+
+        // 其他扩展的通用选择请求仍使用弹窗。
         this.$msgbox({
           title: event.title || '选择',
           message: '请选择一项操作',
@@ -1924,8 +2221,10 @@ export default {
     },
 
     // ========== 发送消息 ==========
-    sendMessage() {
-      const text = this.inputText.trim()
+    sendMessage(overrideText) {
+      // 注意：通过 @click / @keydown 绑定调用时会传入 DOM 事件对象，
+      // 只有当传入的是字符串时才作为覆盖文本，否则使用输入框内容
+      const text = (typeof overrideText === 'string' ? overrideText : this.inputText).trim()
       if (!text || this.isStreaming || this.sending) return
 
       // 保存最后发送的消息文本（agent_start 时用于展示用户消息）
@@ -1996,6 +2295,7 @@ export default {
         this.sessions.unshift(newSession)
         this.currentSessionId = newId
         this.currentSession = newSession
+        this.rememberInteractionMode()
         this.pendingSession = false
         this._historyLoaded = false
         // 建立 WebSocket（onopen 中会发送 _pendingFirstMessage）
@@ -2371,6 +2671,95 @@ export default {
 }
 .chat-header__title { font-weight: 500; font-size: 15px; }
 .chat-header__actions { display: flex; gap: 8px; align-items: center; }
+
+.plan-mode-badge {
+  font-size: 18px; cursor: pointer; line-height: 1;
+  filter: grayscale(0.1); transition: transform .15s;
+}
+.plan-mode-badge:hover { transform: scale(1.15); }
+
+/* 计划-确认-执行 面板 */
+.plan-panel {
+  margin: 10px 16px 0;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  overflow: hidden;
+}
+.plan-panel__header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; cursor: pointer;
+  background: #fafafa; border-bottom: 1px solid #ebeef5;
+}
+.plan-panel--collapsed .plan-panel__header { border-bottom: none; }
+.plan-panel__icon { font-size: 15px; }
+.plan-panel__title { font-weight: 600; font-size: 14px; color: #303133; }
+.plan-panel__progress {
+  font-size: 12px; color: #909399;
+  font-variant-numeric: tabular-nums;
+}
+.plan-panel__toggle { margin-left: auto; font-size: 12px; color: #409eff; }
+.plan-panel__body { padding: 10px 14px 12px; }
+.plan-list { list-style: none; margin: 0 0 10px; padding: 0; }
+.plan-list li {
+  display: flex; gap: 8px; align-items: flex-start;
+  padding: 4px 0; font-size: 13px; color: #303133; line-height: 1.5;
+}
+.plan-list__check { color: #c0c4cc; flex-shrink: 0; }
+.plan-list__done .plan-list__check { color: #67c23a; }
+.plan-list__done .plan-list__text { color: #909399; text-decoration: line-through; }
+
+.chat-input__mode-select {
+  flex: 0 0 auto;
+}
+.chat-input__mode-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  font-weight: 600;
+  box-shadow: none;
+}
+.chat-input__mode-button--execute {
+  color: #176b3a;
+  background: transparent;
+}
+.chat-input__mode-button--execute:hover,
+.chat-input__mode-button--execute:focus {
+  color: #0f5d30;
+  background: transparent;
+}
+.chat-input__mode-button--plan {
+  color: #9a5b00;
+  background: transparent;
+}
+.chat-input__mode-button--plan:hover,
+.chat-input__mode-button--plan:focus {
+  color: #804b00;
+  background: transparent;
+}
+.chat-input__mode-icon {
+  font-size: 15px;
+}
+.chat-input__mode-arrow {
+  margin-left: 1px;
+  font-size: 11px;
+  opacity: .65;
+}
+:global(.chat-mode-menu .el-dropdown-menu__item) {
+  min-width: 126px;
+  gap: 7px;
+}
+:global(.chat-mode-menu .el-dropdown-menu__item.is-active) {
+  color: #409eff;
+  background: #ecf5ff;
+  font-weight: 600;
+}
+
 
 .exec-time {
   display: flex; align-items: center; gap: 4px;

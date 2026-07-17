@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -114,10 +113,8 @@ func SetAiProviderAdd(c *gin.Context) {
 			return
 		}
 	}
-	// Provider 变更后同步 Pi models.json
-	if err := syncPiModelsConfig(); err != nil {
-		log.Printf("[set-ai] syncPiModelsConfig after provider update: %v", err)
-	}
+	// Provider 变更后同步 Pi models.json（同步到所有 Agent 运行目录）
+	syncPiModelsConfigAllAgents("after provider update")
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -146,10 +143,8 @@ func SetAiProviderDelete(c *gin.Context) {
 		`status`:      0,
 		`update_time`: time.Now().Unix(),
 	}).Exec()
-	// Provider 删除后同步 Pi models.json
-	if err := syncPiModelsConfig(); err != nil {
-		log.Printf("[set-ai] syncPiModelsConfig after provider delete: %v", err)
-	}
+	// Provider 删除后同步 Pi models.json（同步到所有 Agent 运行目录）
+	syncPiModelsConfigAllAgents("after provider delete")
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -231,10 +226,8 @@ func SetAiModelAdd(c *gin.Context) {
 			return
 		}
 	}
-	// Model 变更后同步 Pi models.json
-	if err := syncPiModelsConfig(); err != nil {
-		log.Printf("[set-ai] syncPiModelsConfig after model update: %v", err)
-	}
+	// Model 变更后同步 Pi models.json（同步到所有 Agent 运行目录）
+	syncPiModelsConfigAllAgents("after model update")
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
@@ -256,10 +249,8 @@ func SetAiModelDelete(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	// Model 删除后同步 Pi models.json
-	if err := syncPiModelsConfig(); err != nil {
-		log.Printf("[set-ai] syncPiModelsConfig after model delete: %v", err)
-	}
+	// Model 删除后同步 Pi models.json（同步到所有 Agent 运行目录）
+	syncPiModelsConfigAllAgents("after model delete")
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 
