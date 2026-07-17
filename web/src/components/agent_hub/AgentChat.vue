@@ -140,36 +140,6 @@
         </div>
       </header>
 
-      <!-- 计划-确认-执行 面板 -->
-      <transition name="el-fade-in">
-        <div v-if="planState.visible" ref="planPanel" class="plan-panel" :class="{ 'plan-panel--collapsed': planCollapsed }">
-          <div class="plan-panel__header" @click="planCollapsed = !planCollapsed">
-            <span class="plan-panel__icon">📋</span>
-            <span class="plan-panel__title">计划与进度</span>
-            <el-tag size="small" :type="planState.phase === 'plan' ? 'warning' : 'success'">
-              {{ planState.phase === 'plan' ? '待确认' : (planState.phase === 'done' ? '已完成' : '执行中') }}
-            </el-tag>
-            <span class="plan-panel__progress">{{ planDoneCount }}/{{ planState.items.length }}</span>
-            <span class="plan-panel__toggle">{{ planCollapsed ? '展开' : '收起' }}</span>
-          </div>
-          <div v-show="!planCollapsed" class="plan-panel__body">
-            <ul class="plan-list">
-              <li v-for="(it, i) in planState.items" :key="i" :class="{ 'plan-list__done': it.done }">
-                <span class="plan-list__check">{{ it.done ? '☑' : '☐' }}</span>
-                <span class="plan-list__text">{{ it.text }}</span>
-              </li>
-            </ul>
-            <el-button
-              v-if="planState.phase === 'plan' && planState.items.length"
-              size="small"
-              type="primary"
-              :disabled="isStreaming && !pendingPlanChoice"
-              @click="approvePlan"
-            >确认执行</el-button>
-          </div>
-        </div>
-      </transition>
-
       <!-- 消息列表 -->
       <div class="chat-messages-wrap">
         <div
@@ -285,8 +255,36 @@
 
       <!-- 输入区域 -->
       <footer class="chat-input" v-if="currentSession || pendingSession">
+        <!-- 计划-确认-执行 面板：紧贴输入框，方便确认或继续补充问题 -->
+        <transition name="el-fade-in">
+          <div v-if="planState.visible" ref="planPanel" class="plan-panel" :class="{ 'plan-panel--collapsed': planCollapsed }">
+            <div class="plan-panel__header" @click="planCollapsed = !planCollapsed">
+              <span class="plan-panel__icon">📋</span>
+              <span class="plan-panel__title">计划与进度</span>
+              <el-tag size="small" :type="planState.phase === 'plan' ? 'warning' : 'success'">
+                {{ planState.phase === 'plan' ? (pendingPlanChoice ? '待确认' : '计划中') : (planState.phase === 'done' ? '已完成' : '执行中') }}
+              </el-tag>
+              <span class="plan-panel__progress">{{ planDoneCount }}/{{ planState.items.length }}</span>
+              <span class="plan-panel__toggle">{{ planCollapsed ? '展开' : '收起' }}</span>
+            </div>
+            <div v-show="!planCollapsed" class="plan-panel__body">
+              <ul class="plan-list">
+                <li v-for="(it, i) in planState.items" :key="i" :class="{ 'plan-list__done': it.done }">
+                  <span class="plan-list__check">{{ it.done ? '☑' : '☐' }}</span>
+                  <span class="plan-list__text">{{ it.text }}</span>
+                </li>
+              </ul>
+              <div v-if="planState.phase === 'plan' && planState.items.length && pendingPlanChoice" class="plan-panel__actions">
+                <el-button size="small" @click="deferPlanExecution">暂不执行，继续提问</el-button>
+                <el-button size="small" type="primary" @click="approvePlan">确认执行</el-button>
+              </div>
+            </div>
+          </div>
+        </transition>
+
         <div class="chat-input__wrapper">
           <el-input
+            ref="messageInput"
             v-model="inputText"
             type="textarea"
             :rows="2"
@@ -720,8 +718,27 @@ export default {
     },
     // 用户确认执行计划：直接回复 Pi 扩展的 select 请求，避免用自然语言模拟协议。
     approvePlan() {
-      if (!this.planState.items.length) return
+      if (!this.planState.items.length || !this.pendingPlanChoice) return
       this.changeInteractionMode('execute')
+    },
+    // 暂不执行：正式选择 Stay in plan mode，解除扩展等待并允许继续提问/改进计划。
+    deferPlanExecution() {
+      if (!this.pendingPlanChoice) return
+      this.changeInteractionMode('plan')
+    },
+    releasePlanInputWait() {
+      this.isStreaming = false
+      this.sending = false
+      this.switchingInteractionMode = false
+      this.stopThinkingTimer()
+      this.stopStatsPolling()
+      this.stopExecutionTimer()
+      this.stopRuntimeTickerIfIdle()
+      this.$nextTick(() => {
+        if (this.$refs.messageInput && typeof this.$refs.messageInput.focus === 'function') {
+          this.$refs.messageInput.focus()
+        }
+      })
     },
     setInteractionMode(mode) {
       this.changeInteractionMode(mode)
@@ -747,6 +764,9 @@ export default {
             ...this.planState,
             visible: this.planState.items.length > 0,
             phase: targetMode === 'execute' ? 'execute' : 'plan'
+          }
+          if (targetMode === 'plan') {
+            this.releasePlanInputWait()
           }
           return
         }
@@ -1097,6 +1117,22 @@ export default {
         if (res.ErrCode === 0 && res.Data && res.Data.messages) {
           if (res.Data.messages.length > 0) {
             this.messages = res.Data.messages
+          }
+          const historyPlan = res.Data.plan_state
+          if (historyPlan && Array.isArray(historyPlan.items) && historyPlan.items.length > 0 &&
+              (!this.planState.items || this.planState.items.length === 0)) {
+            this.planState = {
+              visible: historyPlan.visible !== false,
+              phase: historyPlan.phase || 'plan',
+              items: historyPlan.items.map((item) => ({
+                text: item && item.text != null ? String(item.text) : '',
+                done: !!(item && item.done)
+              }))
+            }
+            if (this.currentSession && this.currentSession.status === 'running' &&
+                historyPlan.pending_plan_choice && !this.pendingPlanChoice) {
+              this.pendingPlanChoice = historyPlan.pending_plan_choice
+            }
           }
           this._historyLoaded = true
           this.scrollToBottom({ force: true })
@@ -2308,6 +2344,20 @@ export default {
       }
     },
     abortAgent() {
+      // Pi 的计划选择框属于扩展 UI 等待，单独发送 abort 无法解除；先取消该请求。
+      if (this.pendingPlanChoice) {
+        this.sendWS({
+          type: 'command',
+          command: {
+            type: 'extension_ui_response',
+            id: this.pendingPlanChoice.id,
+            cancelled: true
+          }
+        })
+        this.pendingPlanChoice = null
+        this.planState = { ...this.planState, phase: 'plan' }
+        this.releasePlanInputWait()
+      }
       this.sendWS({ type: 'command', command: { type: 'abort' } })
     },
     setModel() {
@@ -2680,35 +2730,51 @@ export default {
 
 /* 计划-确认-执行 面板 */
 .plan-panel {
-  margin: 10px 16px 0;
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  width: min(680px, 100%);
+  box-sizing: border-box;
+  margin: 0 auto 10px;
+  background: #fafbfc;
+  border: 1px solid #dfe4ea;
+  border-radius: 7px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.03);
   overflow: hidden;
 }
 .plan-panel__header {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 14px; cursor: pointer;
-  background: #fafafa; border-bottom: 1px solid #ebeef5;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; cursor: pointer;
+  background: #f6f7f9; border-bottom: 1px solid #e6e9ed;
 }
 .plan-panel--collapsed .plan-panel__header { border-bottom: none; }
-.plan-panel__icon { font-size: 15px; }
-.plan-panel__title { font-weight: 600; font-size: 14px; color: #303133; }
+.plan-panel__icon { font-size: 14px; }
+.plan-panel__title { font-weight: 600; font-size: 13px; color: #303133; }
 .plan-panel__progress {
   font-size: 12px; color: #909399;
   font-variant-numeric: tabular-nums;
 }
 .plan-panel__toggle { margin-left: auto; font-size: 12px; color: #409eff; }
-.plan-panel__body { padding: 10px 14px 12px; }
-.plan-list { list-style: none; margin: 0 0 10px; padding: 0; }
+.plan-panel__body { padding: 7px 10px 9px; }
+.plan-list {
+  list-style: none;
+  max-height: 160px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+}
 .plan-list li {
   display: flex; gap: 8px; align-items: flex-start;
-  padding: 4px 0; font-size: 13px; color: #303133; line-height: 1.5;
+  padding: 3px 0; font-size: 12px; color: #303133; line-height: 1.45;
 }
 .plan-list__check { color: #c0c4cc; flex-shrink: 0; }
 .plan-list__done .plan-list__check { color: #67c23a; }
 .plan-list__done .plan-list__text { color: #909399; text-decoration: line-through; }
+.plan-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #ebeef5;
+}
 
 .chat-input__mode-select {
   flex: 0 0 auto;
