@@ -478,6 +478,8 @@ type E2ERecordOpenResponse struct {
 	RecorderURL string `json:"recorder_url,omitempty"`
 	EnvURL      string `json:"env_url,omitempty"`
 	Error       string `json:"error,omitempty"`
+	// Warning 非空表示 process list 部分失败但 page 仍可用，前端应展示给用户并让用户手工补完。
+	Warning string `json:"warning,omitempty"`
 }
 
 // E2ERecordStepByTokenRequest recorder.js 通过 ws_token 上报单步。

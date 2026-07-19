@@ -25,15 +25,24 @@ const recorderProxyPath = "/api/e2e/recorder/proxy.html"
 
 // recorderInitScriptFmt AddInitScript 注入到被录 page 的 JS 模板。
 // %q 会自动做 JSON 字符串转义，避免 ws_token 中的特殊字符破坏脚本。
+// 同时兼容：
+//   - DOMContentLoaded 还没触发（page 加载中）：监听器等待事件。
+//   - DOMContentLoaded 已经过去（Evaluate 立即执行时）：直接挂 toolbar。
 const recorderInitScriptFmt = `
 (function(){
   window.__dtoolRecorder = {wsToken:%q, recorderUrl:%q, sessionUUID:%q};
-  document.addEventListener('DOMContentLoaded', function(){
+  function mountRecorder(){
     var iframe = document.createElement('iframe');
     iframe.src = window.__dtoolRecorder.recorderUrl;
     iframe.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;border:0;right:0;bottom:0;';
     document.body.appendChild(iframe);
-  });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mountRecorder);
+  } else {
+    // DOMContentLoaded 已经过去，立即挂；不影响后续 navigation，由 AddInitScript 重新触发
+    mountRecorder();
+  }
 })();
 `
 
@@ -63,16 +72,18 @@ func querySmartLinkLabel(smartLinkID int) (string, error) {
 //   1) GetRunParams -> 把 smart_link 行 + process_id 列表装配成 PlaywrightRunParams。
 //   2) NewPlaywright -> 创建 plw.Playwright（含 ContextPageList）。
 //   3) GetPage       -> 复用带用户数据目录的 BrowserContext，NewPage + Navigate 到 link。
-//   4) RunProcessesSync -> 跑登录 process 列表（输入账号 / 输入密码 / 登录 / 进入后台...）。
+//   4) RunProcessesSync -> 跑登录 process 列表（输入账号 / 输入密码 / 登录 / 进入后台...）；
+//      即使失败（典型情况：SPA 跳转慢于 wait_mills 但 form submit 已发起），也会把 page 一并
+//      返回给 caller，由 controller 决定是否继续注入 recorder，让用户手工补完登录。
 //   5) 注：不在此处 AddInitScript，由 E2ERecordOpen 在拿到 page 后注入，使 init script
 //      在用户开始操作之前就被加入，但不会被登录流程破坏。
 //
 // 返回 *playwright.Page：plw.GetPage 函数签名就是返回指针到 Page 接口，调用方必须按
 // `(*page).Close()` / `(*page).AddInitScript(...)` 方式调用方法。
-func openSmartLinkRecorder(smartLinkID int, userName, password string) (string, *playwright.Page, string, error) {
+func openSmartLinkRecorder(smartLinkID int, userName, password string) (string, *playwright.Page, string, string, error) {
 	label, err := querySmartLinkLabel(smartLinkID)
 	if err != nil {
-		return "", nil, "", err
+		return "", nil, "", "", err
 	}
 	stream := recorderStream()
 	stream(`构建run_params`, `开始`)
@@ -83,7 +94,7 @@ func openSmartLinkRecorder(smartLinkID int, userName, password string) (string, 
 	runParams, runErr := plw.GetRunParams(smartLinkID, label, userName, password, 0, 1, map[string]string{})
 	if runErr != nil {
 		stream(`构建run_params`, `失败:`+runErr.Error())
-		return "", nil, "", runErr
+		return "", nil, "", "", runErr
 	}
 	stream(`构建run_params`, fmt.Sprintf(`成功 link=%s label=%s user=%s`, runParams.Link, runParams.Label, userName))
 	runParams.StreamFunc = stream
@@ -92,18 +103,23 @@ func openSmartLinkRecorder(smartLinkID int, userName, password string) (string, 
 	page, pageErr := playwrightClient.GetPage(common.GetCall())
 	if pageErr != nil {
 		stream(`打开浏览器实例`, `失败:`+pageErr.Error())
-		return "", nil, "", pageErr
+		return "", nil, "", "", pageErr
 	}
 	stream(`打开浏览器实例`, `完成，准备执行 process list`)
+	warning := ``
 	if procErr := playwrightClient.RunProcessesSync(page); procErr != nil {
-		stream(`执行process`, `失败:`+procErr.Error())
-		(*page).Close()
-		return "", nil, "", procErr
+		// 重要：不再 Close page 丢弃浏览器上下文。process list 失败通常意味着 SPA 跳转还没完成
+		// 但 form submit 已经发起，cookies 已经在写入。这种情况让用户手工补完就能继续录制，
+		// 比让他重头再来友好得多。
+		warning = `smart_link 的 process list 部分失败（SPA 跳转慢于 wait_mills 是常见原因）：` + procErr.Error() +
+			`。浏览器已经打开，请手工完成剩余步骤后再开始录制。`
+		stream(`执行process`, `失败但保留 page 等用户手工补完: `+procErr.Error())
+	} else {
+		stream(`执行process`, `全部完成`)
 	}
-	stream(`执行process`, `全部完成`)
 
 	browserID := fmt.Sprintf("rec_%d_%d", smartLinkID, time.Now().UnixNano())
-	return browserID, page, runParams.Link, nil
+	return browserID, page, runParams.Link, warning, nil
 }
 
 // E2ERecordOpen 开启一次 smart_link 录制会话。
@@ -114,7 +130,7 @@ func E2ERecordOpen(req *define.E2ERecordOpenRequest) (*define.E2ERecordOpenRespo
 		return nil, errors.New("smart_link_id 必须为正数")
 	}
 
-	browserID, page, envURL, err := openSmartLinkRecorder(req.SmartLinkID, req.UserName, req.Password)
+	browserID, page, envURL, warning, err := openSmartLinkRecorder(req.SmartLinkID, req.UserName, req.Password)
 	if err != nil {
 		return &define.E2ERecordOpenResponse{OK: false, Error: err.Error()}, nil
 	}
@@ -149,7 +165,18 @@ func E2ERecordOpen(req *define.E2ERecordOpenRequest) (*define.E2ERecordOpenRespo
 			RecorderURL: recorderURL,
 			EnvURL:      envURL,
 			BrowserID:   browserID,
+			Warning:     warning,
 		}, nil
+	}
+
+	// process list 部分失败时（典型：SPA 跳转慢于 wait_mills），当前 page 大概率还是登录页或
+	// 半完成页。AddInitScript 只在新 navigation 才会跑，所以这里额外 Evaluate 把 toolbar
+	// 立刻挂到当前 DOMContentLoaded —— 即使用户还没手工完成登录，toolbar 也先出现，避免他
+	// 登录完成后还要再 reload 一次。
+	if warning != `` {
+		if _, evalErr := (*page).Evaluate(initBody); evalErr != nil {
+			gstool.FmtPrintlnLogTime(`[recorder] 直接 evaluate 注入 toolbar 失败 %s`, evalErr.Error())
+		}
 	}
 
 	return &define.E2ERecordOpenResponse{
@@ -160,6 +187,7 @@ func E2ERecordOpen(req *define.E2ERecordOpenRequest) (*define.E2ERecordOpenRespo
 		WSToken:     wsToken,
 		RecorderURL: recorderURL,
 		EnvURL:      envURL,
+		Warning:     warning,
 	}, nil
 }
 

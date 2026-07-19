@@ -781,7 +781,17 @@ export default {
         this.recordStarting = false
         if (res && res.ErrCode === 0) {
           this.recordDialogVisible = false
-          ElMessage.success('录制已启动，请在 E2E 页面查看会话')
+          // 即便后端 process list 部分失败，只要返回了 ok=true 就说明 page 还能用，
+          // 提醒用户去浏览器手工完成剩余步骤，不要直接关闭。
+          const warning = res.Data?.warning || ''
+          if (warning) {
+            this.$alert(warning, '录制已开启但登录流程未结束', {
+              confirmButtonText: '我知道了',
+              type: 'warning',
+            })
+          } else {
+            ElMessage.success('录制已启动，请在 E2E 页面查看会话')
+          }
           this.$message({
             message: '录制已就绪，请切换到 E2E 页面开始录制',
             type: 'success',
