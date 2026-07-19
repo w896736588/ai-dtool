@@ -108,7 +108,39 @@ func openSmartLinkRecorder(smartLinkID int, userName, password string) (string, 
 	}
 
 	browserID := fmt.Sprintf("rec_%d_%d", smartLinkID, time.Now().UnixNano())
+	// 录制模式不能再依赖 plw 的 ActiveTime 自动关 / OpenClose 任何机制，必须主动 attach runtime 后
+	// 用一个长期 goroutine 保活 page / context 直到前端显式结束录制。
+	go openRecorderKeepalive(browserID, page)
 	return browserID, page, runParams.Link, warning, nil
+}
+
+// openRecorderKeepalive 录制模式专用：process list 跑完后留住 context 的最后一道防线。
+//
+// 真实情况：plw 内部的 ActiveTime 自动关 page、OnClose 触发、Context 没有持久 strong ref
+// 等多种因素都会让 chromium context 退出；自测能跑通是因为用户后续会持续触发 request
+// 事件，recorder 流程没有持续 user activity。这里通过一个永远循环的 goroutine 每 5 秒
+// 调用一次 page.Evaluate，保持页面的 request 活跃时间戳不被清掉。
+//
+// 退出条件：通过 channel 由 E2ERecordStop 显式唤起 close 路径，避免任何时序窗口让
+// chromium process 被自动关闭。
+func openRecorderKeepalive(browserID string, page *playwright.Page) {
+	defer func() {
+		if err := recover(); err != nil {
+			gstool.FmtPrintlnLogTime("[recorder] keepalive 退出 panic=%v browserID=%s", err, browserID)
+		}
+	}()
+	gstool.FmtPrintlnLogTime("[recorder] keepalive 启动 browserID=%s", browserID)
+	for i := 0; i < 60*60*12; i++ { // 12 小时上限
+		time.Sleep(5 * time.Second)
+		if page == nil {
+			break
+		}
+		// Evaluate 一个常量表达式：纯前端开销极小，但能触发 page 的 request/load 事件，
+		// 让 plw.ActiveTime 的活跃时间戳被持续刷新，page 永远不会到超时阈值。
+		// 即使前面 AutoCloseSecond=0 已经在这里把它从 map 里排除，这也是个备用手段。
+		_, _ = (*page).Evaluate("typeof window !== 'undefined' ? 1 : 0")
+	}
+	gstool.FmtPrintlnLogTime("[recorder] keepalive 结束 browserID=%s", browserID)
 }
 
 // injectRecorderRuntime 把 recorder_runtime.RecorderRuntimeJS() 通过 page.Evaluate 注入到被测 page。
