@@ -250,7 +250,9 @@ type E2ERecordStartRequest struct {
 
 // E2ERecordStartResponse 开始录制响应（返回 session id）。
 type E2ERecordStartResponse struct {
-	SessionID string `json:"session_id"`
+	SessionID   string `json:"session_id"`
+	RecorderURL string `json:"recorder_url,omitempty"` // 录制浏览器页面的本地标识（用于前端展示）
+	EnvURL      string `json:"env_url"`
 }
 
 // E2ERecordStopRequest 停止录制请求。
@@ -261,20 +263,192 @@ type E2ERecordStopRequest struct {
 // E2ERecordSessionResponse 录制会话详情。
 type E2ERecordSessionResponse struct {
 	SessionID  string          `json:"session_id"`
-	CaseID     int            `json:"case_id"`
-	EnvURL     string         `json:"env_url"`
-	EnvBaseURL string         `json:"env_base_url"`
-	Name       string         `json:"name"`
+	CaseID     int             `json:"case_id"`
+	EnvURL     string          `json:"env_url"`
+	EnvBaseURL string          `json:"env_base_url"`
+	Name       string          `json:"name"`
 	Steps      json.RawMessage `json:"steps"`
-	UpdatedAt  int64          `json:"updated_at"`
+	UpdatedAt  int64           `json:"updated_at"`
 }
 
 // E2ERecordSaveRequest 录制转用例保存请求。
 type E2ERecordSaveRequest struct {
 	SessionID string          `json:"session_id"`
-	GroupID   int            `json:"group_id"`
-	Name      string         `json:"name"`
+	GroupID   int             `json:"group_id"`
+	Name      string          `json:"name"`
 	Steps     json.RawMessage `json:"steps,omitempty"` // 若传入，使用传入的步骤覆盖
+}
+
+// ===== v5.0 录制扩展接口 =====
+
+// E2ERecordSessionCreateRequest 创建录制会话（细粒度版本，等价于 Start）。
+// v6：携带 smart_link 绑定字段，recorder.js 通过 ws_token 鉴权上报步骤。
+type E2ERecordSessionCreateRequest struct {
+	SessionName string `json:"session_name"`           // 会话名（前端展示）
+	SessionID   string `json:"session_id,omitempty"`    // 客户端可传 UUID，否则后端生成
+	CaseID      int    `json:"case_id,omitempty"`       // 关联已有用例（0 表示新建录制）
+	GroupID     int    `json:"group_id,omitempty"`      // 关联分组，便于按组汇总
+	EnvURL      string `json:"env_url"`                 // 录制入口 URL
+	EnvBaseURL  string `json:"env_base_url,omitempty"`  // 环境 base URL
+	BrowserID   string `json:"browser_id,omitempty"`    // Playwright 实例标识
+	SmartLinkID int    `json:"smart_link_id,omitempty"` // 关联 smart_link，便于复用登录链路
+	LinkID      int    `json:"link_id,omitempty"`       // smart_link 对应的子链接 ID
+	UserName    string `json:"user_name,omitempty"`     // 录制人
+	WSToken     string `json:"ws_token,omitempty"`      // 一次性 token，供 recorder.js 调用
+	RecorderURL string `json:"recorder_url,omitempty"`  // recorder proxy iframe 路径
+}
+
+// E2ERecordSessionCreateResponse 创建录制会话响应。
+type E2ERecordSessionCreateResponse struct {
+	ID        int64  `json:"id"`         // 自增主键
+	SessionID string `json:"session_id"` // 业务 ID
+	Status    string `json:"status"`     // recording
+	GroupID   int    `json:"group_id"`
+	CaseID    int    `json:"case_id"`
+}
+
+// E2ERecordSessionGetRequest 查询录制会话请求。
+type E2ERecordSessionGetRequest struct {
+	ID int64 `json:"id"`
+}
+
+// E2ERecordSessionListRequest 录制会话列表请求。
+type E2ERecordSessionListRequest struct {
+	Page     int    `json:"page,omitempty"`
+	PageSize int    `json:"page_size,omitempty"`
+	CaseID   int    `json:"case_id,omitempty"`
+	GroupID  int    `json:"group_id,omitempty"`
+	Status   string `json:"status,omitempty"`
+}
+
+// E2ERecordSessionListResponse 录制会话列表响应。
+type E2ERecordSessionListResponse struct {
+	Items    []E2ERecordListItem `json:"items"`
+	Total    int                 `json:"total"`
+	Page     int                 `json:"page"`
+	PageSize int                 `json:"page_size"`
+}
+
+// E2ERecordSessionDeleteRequest 删除录制会话请求。
+type E2ERecordSessionDeleteRequest struct {
+	ID int64 `json:"id"`
+}
+
+// E2ERecordStepAddRequest 追加录制步骤请求。
+type E2ERecordStepAddRequest struct {
+	SessionID int64           `json:"session_id"`
+	Step      E2ERecordedStep `json:"step"`         // 完整步骤 JSON（与 E2EStep 兼容）
+	Position  int             `json:"position,omitempty"` // 插入位置，默认追加到末尾
+}
+
+// E2ERecordStepAddResponse 追加步骤响应。
+type E2ERecordStepAddResponse struct {
+	SessionID string `json:"session_id"`
+	StepID    string `json:"step_id"`
+	StepIndex int    `json:"step_index"`
+}
+
+// E2ERecordStepUpdateRequest 更新步骤请求（编辑 wait_after / description / assertions）。
+type E2ERecordStepUpdateRequest struct {
+	SessionID int64           `json:"session_id"`
+	StepID    string          `json:"step_id"`
+	Step      E2ERecordedStep `json:"step"`             // 整步替换
+}
+
+// E2ERecordStepDeleteRequest 删除步骤请求。
+type E2ERecordStepDeleteRequest struct {
+	SessionID int64  `json:"session_id"`
+	StepID    string `json:"step_id"`
+}
+
+// E2ERecordStepReplayRequest 单步试回放请求。
+type E2ERecordStepReplayRequest struct {
+	SessionID int64  `json:"session_id"`
+	StepID    string `json:"step_id"`
+}
+
+// E2ERecordReplayResponse 回放结果响应。
+type E2ERecordReplayResponse struct {
+	Success    bool   `json:"success"`
+	Error      string `json:"error,omitempty"`
+	Screenshot string `json:"screenshot,omitempty"`
+	Log        string `json:"log,omitempty"`
+}
+
+// E2ERecordSessionReplayRequest 录制会话批量回放请求。
+type E2ERecordSessionReplayRequest struct {
+	SessionID      int64  `json:"session_id"`
+	StartIndex     int    `json:"start_index,omitempty"` // 从第 N 步开始（0-indexed）
+	EndIndex       int    `json:"end_index,omitempty"`   // 到第 N 步结束（含）
+	ContinueOnError bool  `json:"continue_on_error,omitempty"`
+}
+
+// E2ERecordCommitRequest 录制会话提交到用例请求。
+type E2ERecordCommitRequest struct {
+	SessionID      int64  `json:"session_id"`
+	CaseID         int    `json:"case_id,omitempty"`    // 为 0 表示新建
+	GroupID        int    `json:"group_id"`             // 新建用例所属分组
+	Name           string `json:"name,omitempty"`
+	Tags           string `json:"tags,omitempty"`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
+}
+
+// E2ERecordCommitResponse 提交响应。
+type E2ERecordCommitResponse struct {
+	CaseID  int64 `json:"case_id"`
+	Steps   int   `json:"steps"`
+	GroupID int   `json:"group_id"`
+}
+
+// E2ERecordListItem 录制会话列表项。
+type E2ERecordListItem struct {
+	ID         int64  `json:"id"`
+	SessionID  string `json:"session_id"`
+	CaseID     int    `json:"case_id"`
+	GroupID    int    `json:"group_id"`
+	Name       string `json:"name"`
+	EnvURL     string `json:"env_url"`
+	EnvBaseURL string `json:"env_base_url,omitempty"`
+	BrowserID  string `json:"browser_id,omitempty"`
+	Status     string `json:"status"`
+	StepCount  int    `json:"step_count"`
+	UpdatedAt  int64  `json:"updated_at"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
+// E2ERecordSessionDetail 录制会话详情（含步骤列表）。
+type E2ERecordSessionDetail struct {
+	ID          int64           `json:"id"`
+	SessionID   string          `json:"session_id"`
+	CaseID      int             `json:"case_id"`
+	GroupID     int             `json:"group_id"`
+	Name        string          `json:"name"`
+	EnvURL      string          `json:"env_url"`
+	EnvBaseURL  string          `json:"env_base_url,omitempty"`
+	BrowserID   string          `json:"browser_id,omitempty"`
+	SmartLinkID int             `json:"smart_link_id,omitempty"`
+	LinkID      int             `json:"link_id,omitempty"`
+	UserName    string          `json:"user_name,omitempty"`
+	RecorderURL string          `json:"recorder_url,omitempty"`
+	Status      string          `json:"status"`
+	Steps       []E2ERecordedStep `json:"steps"`
+	CreatedAt   int64           `json:"created_at"`
+	UpdatedAt   int64           `json:"updated_at"`
+}
+
+// E2ERecordedStep 录制时的步骤结构（与 E2EStep 兼容，额外带 wait_after_ms 等录制元信息）。
+// 这里用 alias，避免重复定义导致的不一致。
+type E2ERecordedStep = RecordedStep
+
+// E2ERecordOpenBrowserRequest 录制入口打开浏览器请求。
+type E2ERecordOpenBrowserRequest struct {
+	EnvURL string `json:"env_url"`
+}
+
+// E2ERecordOpenBrowserResponse 录制入口打开浏览器响应。
+type E2ERecordOpenBrowserResponse struct {
+	OK     bool   `json:"ok"`
+	EnvURL string `json:"env_url"`
 }
 
 // E2EStepTypeListResponse 步骤类型清单响应（用于前端动态渲染）。
@@ -309,4 +483,46 @@ type E2EAssertionTypeMeta struct {
 	ConfigKeys  []string `json:"config_keys"`
 	Group       string   `json:"group"` // page/api/variable
 	Deprecated  bool     `json:"deprecated"`
+}
+
+// ===== v6.0 基于 smart_link + ws_token 的录制接口 =====
+
+// E2ERecordOpenRequest 开启一次 smart_link 录制会话。
+// smart_link_id 决定登录链路与浏览器上下文；ws_token 内部生成。
+type E2ERecordOpenRequest struct {
+	SmartLinkID int    `json:"smart_link_id"`
+	LinkID      int    `json:"link_id,omitempty"`
+	UserName    string `json:"user_name"`
+	SessionName string `json:"session_name,omitempty"`
+	GroupID     int    `json:"group_id,omitempty"`
+	CaseID      int    `json:"case_id,omitempty"`
+}
+
+// E2ERecordOpenResponse 开启录制会话响应。
+type E2ERecordOpenResponse struct {
+	OK          bool   `json:"ok"`
+	BrowserID   string `json:"browser_id,omitempty"`
+	SessionID   int64  `json:"session_id,omitempty"`
+	SessionUUID string `json:"session_uuid,omitempty"`
+	WSToken     string `json:"ws_token,omitempty"`
+	RecorderURL string `json:"recorder_url,omitempty"`
+	EnvURL      string `json:"env_url,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
+// E2ERecordStepByTokenRequest recorder.js 通过 ws_token 上报单步。
+type E2ERecordStepByTokenRequest struct {
+	Step RecordedStep `json:"step"`
+}
+
+// E2ERecordCommitByTokenRequest recorder.js 通过 ws_token 提交录制到用例。
+type E2ERecordCommitByTokenRequest struct {
+	GroupID int    `json:"group_id"`
+	Name    string `json:"name,omitempty"`
+	Tags    string `json:"tags,omitempty"`
+}
+
+// E2ERecordResumeRequest 续录请求（按 row_id 复用会话）。
+type E2ERecordResumeRequest struct {
+	SessionID int64 `json:"session_id"`
 }
