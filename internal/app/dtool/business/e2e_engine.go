@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/playwright-community/playwright-go"
 )
 
 // E2EEngine 执行引擎。
@@ -27,6 +29,10 @@ type E2EEngine struct {
 
 	mu        sync.Mutex
 	runStates map[int64]*E2ERunState
+
+	// v6 录制入口按 smart_link + browserID 索引 page，替代旧的 lastPage。
+	recPageMu    sync.Mutex
+	recorderPages map[string]recordedPage
 }
 
 // E2ERunState 正在运行的执行实例。
@@ -40,13 +46,14 @@ type E2ERunState struct {
 // NewE2EEngine 创建并注册所有内置步骤/断言处理器。
 func NewE2EEngine() *E2EEngine {
 	e := &E2EEngine{
-		stepReg:   step_executor.NewRegistry(),
-		assertReg: assertion.NewRegistry(),
-		caseStore: store.NewCaseStore(),
-		runStore:  store.NewRunStore(),
-		stepStore: store.NewStepStore(),
-		reqStore:  store.NewRequestStore(),
-		runStates: make(map[int64]*E2ERunState),
+		stepReg:      step_executor.NewRegistry(),
+		assertReg:    assertion.NewRegistry(),
+		caseStore:    store.NewCaseStore(),
+		runStore:     store.NewRunStore(),
+		stepStore:    store.NewStepStore(),
+		reqStore:     store.NewRequestStore(),
+		runStates:    make(map[int64]*E2ERunState),
+		recorderPages: make(map[string]recordedPage),
 	}
 	e.registerDefaultSteps()
 	e.registerDefaultAsserters()
@@ -70,6 +77,11 @@ func (e *E2EEngine) registerDefaultSteps() {
 	e.stepReg.Register(&step_executor.GoBackV1Executor{})
 	e.stepReg.Register(&step_executor.ReloadV1Executor{})
 	e.stepReg.Register(&step_executor.PressKeyV1Executor{})
+	// v5.0 录制专用步骤
+	e.stepReg.Register(&step_executor.ClickByPositionV1Executor{})
+	e.stepReg.Register(&step_executor.RightClickV1Executor{})
+	e.stepReg.Register(&step_executor.ScrollV1Executor{})
+	e.stepReg.Register(&step_executor.WaitAfterV1Executor{})
 }
 
 func (e *E2EEngine) registerDefaultAsserters() {
@@ -88,6 +100,94 @@ func (e *E2EEngine) StepRegistry() *step_executor.Registry { return e.stepReg }
 
 // AssertionRegistry 断言注册表。
 func (e *E2EEngine) AssertionRegistry() *assertion.Registry { return e.assertReg }
+
+// NewStringOutput 创建一个新的 OutputBuffer（用于录制单步 / 整段回放）。
+func (e *E2EEngine) NewStringOutput() *step_executor.OutputBuffer {
+	return &step_executor.OutputBuffer{Lines: []string{}}
+}
+
+// recordedPage v6 录制入口缓存的 page + 元数据（按 browserID 索引）。
+type recordedPage struct {
+	page        playwright.Page
+	smartLinkID int
+	userName    string
+	createdAt   time.Time
+}
+
+// OpenRecorder 基于 smart_link 打开一个 Playwright page，并缓存到 recorderPages。
+// 流程不再依赖 plw.Playwright.GetPage，避免 PlaywrightRunParams / *p_common.Call 强耦合。
+// smartLinkID 必须为正数；userName 可空。
+func (e *E2EEngine) OpenRecorder(smartLinkID int, userName string) (string, playwright.Page, error) {
+	if smartLinkID <= 0 {
+		return "", nil, errors.New("smart_link_id 必须为正数")
+	}
+	browser := component.PlaywrightClient.BrowserWebkitChrome
+	if browser == nil {
+		browser = component.PlaywrightClient.BrowserWebkitSilence
+	}
+	if browser == nil {
+		return "", nil, errors.New("Playwright 浏览器未启动，请先安装核心")
+	}
+	page, err := browser.NewPage()
+	if err != nil {
+		return "", nil, fmt.Errorf("NewPage 失败: %w", err)
+	}
+	browserID := fmt.Sprintf("rec_%d_%d", smartLinkID, time.Now().UnixNano())
+	e.recPageMu.Lock()
+	e.recorderPages[browserID] = recordedPage{
+		page:        page,
+		smartLinkID: smartLinkID,
+		userName:    userName,
+		createdAt:   time.Now(),
+	}
+	e.recPageMu.Unlock()
+	return browserID, page, nil
+}
+
+// GetRecorderPage 根据 browserID 取回之前 OpenRecorder 缓存的 page。
+func (e *E2EEngine) GetRecorderPage(browserID string) (playwright.Page, error) {
+	e.recPageMu.Lock()
+	defer e.recPageMu.Unlock()
+	rp, ok := e.recorderPages[browserID]
+	if !ok || rp.page == nil {
+		return nil, fmt.Errorf("未找到 recorder page: %s", browserID)
+	}
+	return rp.page, nil
+}
+
+// ---- v6 已移除的旧 API 留 stub，等待 controller/router 改造（任务 10） ----
+
+// TODO(removed-by-v6-refactor): OpenRecorderBrowser 已被 E2ERecordOpen 取代。
+// 保留 stub 仅用于兼容 controller/E2ERecordOpenBrowser 的临时调用，主代理应在任务 10 删除。
+func (e *E2EEngine) OpenRecorderBrowser(envURL string) (int64, error) {
+	_ = envURL
+	return 0, errors.New("OpenRecorderBrowser 已废弃，请使用 E2ERecordOpen + smart_link")
+}
+
+// TODO(removed-by-v6-refactor): GetBrowserPage 已被 GetRecorderPage(browserID) 取代。
+func (e *E2EEngine) GetBrowserPage(browserID string) (playwright.Page, error) {
+	_ = browserID
+	return nil, nil
+}
+
+// TODO(removed-by-v6-refactor): GetAnyPage 已被 GetRecorderPage(browserID) 取代。
+func (e *E2EEngine) GetAnyPage() playwright.Page {
+	return nil
+}
+
+// TODO(removed-by-v6-refactor): SetLastPage 已不再需要，page 通过 recorderPages 直接索引。
+func (e *E2EEngine) SetLastPage(p playwright.Page) { _ = p }
+
+// TODO(removed-by-v6-refactor): ExecuteStepForTest 旧录制回放暴露方法，待任务 10 移除调用。
+func (e *E2EEngine) ExecuteStepForTest(ctx *step_executor.ExecuteContext, step define.E2EStep) *step_executor.StepResult {
+	return &step_executor.StepResult{Success: false, ErrorMsg: "ExecuteStepForTest 已废弃"}
+}
+
+// TODO(removed-by-v6-refactor): ApplyPostStepWaitForTest 旧录制回放暴露方法，待任务 10 移除调用。
+func (e *E2EEngine) ApplyPostStepWaitForTest(step define.E2EStep, ctx *step_executor.ExecuteContext) {
+	_ = step
+	_ = ctx
+}
 
 // RunCase 异步执行用例。
 func (e *E2EEngine) RunCase(caseID int, triggerType string) (int64, error) {
@@ -229,6 +329,12 @@ func (e *E2EEngine) runAsync(state *E2ERunState, caseRow map[string]any,
 			_ = e.runStore.IncrementStepStats(state.RunID, 1, 0)
 		} else {
 			_ = e.runStore.IncrementStepStats(state.RunID, 0, 1)
+		}
+
+		// 录制场景下，步骤可能带有 wait_after_ms 字段（来自前端步骤确认弹窗）。
+		// 也支持 wait_after_v1 步骤类型（更通用）。
+		if stepResult.Success {
+			e.applyPostStepWait(step, execCtx)
 		}
 
 		if !stepResult.Success {
@@ -374,4 +480,28 @@ func e2eBoolToStatus(b bool) string {
 		return define.E2ERunStatusPassed
 	}
 	return define.E2ERunStatusFailed
+}
+
+// applyPostStepWait 步骤执行后等待：支持录制场景下用户在步骤确认弹窗设置的 wait_after_ms。
+// 实现：直接在当前 page 上调用 waitForTimeout，避免增加一个 wait_after_v1 子步骤。
+func (e *E2EEngine) applyPostStepWait(step define.E2EStep, execCtx *step_executor.ExecuteContext) {
+	dur := 0
+	if step.WaitAfterMs > 0 {
+		dur = step.WaitAfterMs
+	} else {
+		// 兼容 wait_after_v1 步骤类型（用户手工拼接）
+		var cfg define.WaitAfterV1Config
+		if step.Type == define.E2EStepWaitAfterV1 {
+			_ = json.Unmarshal(step.Config, &cfg)
+			dur = cfg.DurationMs
+		}
+	}
+	if dur <= 0 {
+		return
+	}
+	if execCtx == nil || execCtx.Page == nil {
+		return
+	}
+	execCtx.Page.WaitForTimeout(float64(dur))
+	execCtx.Output.Writef("[step] wait_after %dms", dur)
 }
