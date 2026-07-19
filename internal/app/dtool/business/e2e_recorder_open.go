@@ -19,6 +19,7 @@ import (
 	"dev_tool/internal/app/dtool/component/e2e/store"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/plw"
+	p_common "dev_tool/internal/pkg/p_common"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -30,10 +31,16 @@ import (
 	"github.com/w896736588/go-tool/gstool"
 )
 
-// recorderSessionTokenNone v7 方案的 sentinel 值：ws_token 列有 UNIQUE 索引，
-// 迁移脚本把所有空字符串 / NULL 规整为同一个 sentinel，v7 不再下发真实 ws_token，
-// 直接复用 sentinel 占位即可。
-const recorderSessionTokenNone = `none`
+// buildRecorderSessionTokenNone v7 方案构造一次性 sentinel 占位 ws_token：
+// UNIQUE 索引 `idx_tbl_e2e_record_session_token` 已有历史行 ws_token='none'，
+// 所有 v7 新行如果也写 'none' 会冲突；这里把 sessionUUID 拼到 sentinel 后面保证全局唯一，
+// 同时仍然不使用真实 token（v7 不走 ws_token HTTP 通道）。
+func buildRecorderSessionTokenNone(sessionUUID string) string {
+	if sessionUUID == `` {
+		return `none_` + p_common.TBaseClient.GetUnique(`token_`)
+	}
+	return `none_` + sessionUUID
+}
 
 // recorderStream 录制专用的 StreamFunc：
 // - 把 plw Playwright.Open 的关键节点（构建run_params / 打开浏览器 / 登录 process）实时打到日志。
@@ -183,10 +190,10 @@ func E2ERecordOpen(req *define.E2ERecordOpenRequest) (*define.E2ERecordOpenRespo
 	}
 
 	// v7 不再用 ws_token 走 HTTP；保留 UpdateSmartLink 是为了让历史行结构兼容（session_uuid / smart_link_id / link_id 仍要落库）。
-	// 重要：ws_token 列有 UNIQUE 索引，迁移脚本已把所有空字符串 / NULL 规整为 sentinel 'none'。
-	// 这里传 'none' 而不是空字符串，避免再次触犯 UNIQUE 约束（旧会话里已经有一行 ws_token='' 的，
-	// 多个 '' 会让 UNIQUE 冲突）。
-	if err := store.NewRecordSessionStore().UpdateSmartLink(sessionID, req.SmartLinkID, req.UserName, recorderSessionTokenNone, "", req.LinkID); err != nil {
+	// 重要：ws_token 列有 UNIQUE 索引，且历史数据中已有 ws_token='none'（迁移脚本把所有空字符串 / NULL 规整为该 sentinel）。
+	// 所以 v7 不能直接写 'none'，必须在 sentinel 后拼上 sessionUUID 之类保证唯一的后缀。
+	wsTokenSentinel := buildRecorderSessionTokenNone(sessionUUID)
+	if err := store.NewRecordSessionStore().UpdateSmartLink(sessionID, req.SmartLinkID, req.UserName, wsTokenSentinel, "", req.LinkID); err != nil {
 		closePage()
 		return nil, err
 	}
