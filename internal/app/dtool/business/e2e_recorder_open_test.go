@@ -1,10 +1,19 @@
 package business
 
-import "testing"
+import (
+	"dev_tool/internal/app/dtool/define"
+	"testing"
+)
 
 func TestE2EEngine_OpenRecorder_RequiresSmartLinkID(t *testing.T) {
 	e := NewE2EEngine()
 	if _, _, err := e.OpenRecorder(0, "alice"); err == nil {
 		t.Fatal("expected error when smart_link_id=0")
+	}
+}
+
+func TestE2ERecordOpen_RequiresSmartLinkID(t *testing.T) {
+	if _, err := E2ERecordOpen(&define.E2ERecordOpenRequest{SmartLinkID: 0, UserName: "alice"}); err == nil {
+		t.Fatal("期望错误")
 	}
 }
