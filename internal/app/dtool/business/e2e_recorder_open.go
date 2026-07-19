@@ -78,7 +78,9 @@ func openSmartLinkRecorder(smartLinkID int, userName string) (string, *playwrigh
 	stream(`构建run_params`, `开始`)
 	// openType=2 与 controller/smart_link.go SmartLinkRunPlaywright 一致，使用内置浏览器核心；
 	// 实际上 openType 决定 Channel selection，传入 0 让 GetRunParams 从 smart_link 表的 open_type 字段读。
-	runParams, runErr := plw.GetRunParams(smartLinkID, label, userName, "", 0, 1, nil)
+	// replaceList 必须传非 nil map：getRunParamsFromNewTable 内部会向其写入 {user_name}/{password}，
+	// 传 nil 会触发 "assignment to entry in nil map" panic。
+	runParams, runErr := plw.GetRunParams(smartLinkID, label, userName, "", 0, 1, map[string]string{})
 	if runErr != nil {
 		stream(`构建run_params`, `失败:`+runErr.Error())
 		return "", nil, "", runErr
