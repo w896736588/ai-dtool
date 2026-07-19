@@ -450,65 +450,17 @@
               </el-select>
             </el-form-item>
           </el-form>
-          <template #footer>
-            <el-button @click="recorderDialogVisible = false">取消</el-button>
-            <el-button type="primary" @click="startRecording" :loading="recorderStarting">
-              启动
-            </el-button>
-          </template>
-        </el-tab-pane>
-
-        <el-tab-pane label="导入录制 JSON" name="import">
-          <el-alert
-            type="info"
-            :closable="false"
-            show-icon
-            title="如何获取 JSON"
-            description="在录制浏览器里点 toolbar 的「结束并下载」会自动下载 dtool-record-*.json；或点「复制 JSON」拿到剪贴板内容。"
-            style="margin-bottom: 12px;"
-          />
-          <el-form label-width="100px">
-            <el-form-item label="JSON 内容">
-              <el-input
-                v-model="importJsonText"
-                type="textarea"
-                :rows="8"
-                placeholder='粘贴从 recorder toolbar 复制的 JSON，或点下方"选择文件"导入 .json 文件'
-              />
-            </el-form-item>
-            <el-form-item>
-              <input ref="importJsonFileInput" type="file" accept=".json,application/json" style="display:none" @change="onImportJsonFile" />
-              <el-button @click="$refs.importJsonFileInput.click()">选择 .json 文件</el-button>
-              <el-button type="primary" :loading="importParsing" @click="parseImportJson">解析并预览</el-button>
-              <el-button @click="pasteFromClipboard">从剪贴板粘贴</el-button>
-            </el-form-item>
-            <el-form-item label="目标分组" required>
-              <el-select v-model="recorderForm.group_id" placeholder="选择分组">
-                <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="g.id" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="新用例名">
-              <el-input v-model="recorderForm.session_name" placeholder="可选：导入后保存为新用例" />
-            </el-form-item>
-            <el-form-item label="关联用例">
-              <el-select v-model="recorderForm.case_id" placeholder="可选：覆盖现有用例" clearable filterable>
-                <el-option
-                  v-for="c in caseList"
-                  :key="c.id"
-                  :label="`[${c.group_name || ''}] ${c.name}`"
-                  :value="c.id"
-                />
-              </el-select>
-            </el-form-item>
-          </el-form>
-          <template #footer>
-            <el-button @click="recorderDialogVisible = false">取消</el-button>
-            <el-button type="primary" :disabled="!importParseResult || !recorderForm.group_id" @click="commitImportJson">
-              保存为用例
-            </el-button>
-          </template>
         </el-tab-pane>
       </el-tabs>
+      <!--
+        关键：el-dialog 的 #footer 必须挂在 el-dialog 直接 children，不能藏在 el-tabs > el-tab-pane 里
+        （el-tab-pane 没有 footer 插槽，tab 内的 footer 模板会被静默忽略）。
+        「导入录制 JSON」已经从启动弹窗里挪到 sessionDialogVisible 会话详情弹窗中。
+      -->
+      <template #footer>
+        <el-button @click="recorderDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="recorderStarting" @click="startRecording">启动录制</el-button>
+      </template>
     </el-dialog>
 
     <!-- 步骤确认弹窗 -->
@@ -542,6 +494,45 @@
             提交到用例
           </el-button>
         </div>
+
+        <!--
+          导入步骤 JSON：从 dtool-record-*.json 文件或剪贴板导入步骤，追加到当前会话的步骤表。
+          不创建新会话，不 commit 用例；导入完成后用户继续走"提交到用例"。
+        -->
+        <el-collapse v-model="importPanelOpen" class="session-import-panel">
+          <el-collapse-item name="import" title="导入步骤 JSON（追加到当前会话）">
+            <el-alert
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-bottom: 8px;"
+              title="如何获取 JSON"
+              description="在录制浏览器里点 toolbar 的「结束并下载」会自动下载 dtool-record-*.json；或点「复制 JSON」拿到剪贴板内容。"
+            />
+            <el-form label-width="100px">
+              <el-form-item label="JSON 内容">
+                <el-input
+                  v-model="importJsonText"
+                  type="textarea"
+                  :rows="6"
+                  placeholder='粘贴 recorder toolbar 导出的 JSON，或点下方"选择文件"导入 .json 文件'
+                />
+              </el-form-item>
+              <el-form-item>
+                <input ref="importJsonFileInput" type="file" accept=".json,application/json" style="display:none" @change="onImportJsonFile" />
+                <el-button size="small" @click="$refs.importJsonFileInput.click()">选择 .json 文件</el-button>
+                <el-button size="small" type="primary" :loading="importParsing" @click="parseImportJson">解析并预览</el-button>
+                <el-button size="small" @click="pasteFromClipboard">从剪贴板粘贴</el-button>
+              </el-form-item>
+              <el-form-item v-if="importParseResult" label="预览">
+                <div class="import-preview">
+                  <el-tag size="small">解析成功：{{ (importParseResult.steps || []).length }} 步</el-tag>
+                  <el-button size="small" type="success" :loading="importAppending" @click="appendImportStepsToSession">追加到当前会话</el-button>
+                </div>
+              </el-form-item>
+            </el-form>
+          </el-collapse-item>
+        </el-collapse>
 
         <el-table :data="currentSession.steps || []" border stripe size="small" max-height="50vh">
           <el-table-column type="index" label="#" width="60" />
@@ -703,7 +694,8 @@ export default {
       importJsonText: '',
       importParseResult: null, // {schema, steps, ...} | null
       importParsing: false,
-      importPreviewVisible: false,
+      importAppending: false,
+      importPanelOpen: [],
       sessionDialogVisible: false,
       sessionDialogTitle: '录制会话详情',
       currentSession: null,
@@ -1230,78 +1222,49 @@ export default {
         this.importParsing = false
       }
     },
-    // commitImportJson 把解析结果写入后端：先创建 session 再批量 add step，再 commit 为 case
-    commitImportJson() {
+    // appendImportStepsToSession 把解析后的 steps 逐条 append 到当前会话（不再创建新会话、不再直接 commit 用例）。
+    // 导入完成后用户继续点 "提交到用例" 走原 commit 流程。
+    appendImportStepsToSession() {
       if (!this.importParseResult) { this.$message.warning('请先解析 JSON'); return }
-      if (!this.recorderForm.group_id) { this.$message.warning('请选择分组'); return }
+      if (!this.recorderSession) { this.$message.warning('当前没有打开的录制会话'); return }
       const steps = this.importParseResult.steps || []
-      const sessionName = (this.recorderForm.session_name || '').trim()
-        || `导入-${new Date().toLocaleString()}`
+      if (!steps.length) { this.$message.warning('JSON 中没有步骤'); return }
+      this.importAppending = true
+      const sessionId = this.recorderSession.session_id
       const self = this
-      // 1) 创建 session
-      base.BasePost('/api/e2e/record/session/create', {
-        session_name: sessionName,
-        group_id: this.recorderForm.group_id,
-        case_id: this.recorderForm.case_id || 0,
-        smart_link_id: 0,
-        link_id: 0,
-        user_name: '',
-        env_url: this.importParseResult.url || '',
-      }, (res) => {
-        if (!(res && res.ErrCode === 0)) {
-          self.$message.error(res?.ErrMsg || '创建会话失败')
-          return
+      let i = 0
+      let failed = 0
+      const next = () => {
+        if (i >= steps.length) return finish()
+        const s = steps[i++]
+        base.BasePost('/api/e2e/record/step/add', {
+          session_id: sessionId,
+          step: {
+            id: 'stp_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
+            type: s.type,
+            version: s.version || '1.0',
+            description: s.description || '',
+            wait_after_ms: s.wait_after_ms || 0,
+            config: s.config || {},
+            recorded_at: s.recorded_at || Date.now(),
+          },
+        }, (r) => {
+          if (!(r && r.ErrCode === 0)) failed++
+          next()
+        })
+      }
+      const finish = () => {
+        self.importAppending = false
+        if (failed > 0) {
+          self.$message.warning(`已追加：${steps.length - failed}/${steps.length} 步（${failed} 失败）`)
+        } else {
+          self.$message.success(`已追加 ${steps.length} 步到当前会话`)
         }
-        const sessionId = res.Data?.id || res.Data?.session_id
-        if (!sessionId) {
-          self.$message.error('会话 id 缺失')
-          return
-        }
-        // 2) 批量追加步骤
-        let i = 0
-        const next = () => {
-          if (i >= steps.length) return finish()
-          const s = steps[i++]
-          base.BasePost('/api/e2e/record/step/add', {
-            session_id: sessionId,
-            step: {
-              id: 'stp_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
-              type: s.type,
-              version: s.version || '1.0',
-              description: s.description || '',
-              wait_after_ms: s.wait_after_ms || 0,
-              config: s.config || {},
-              recorded_at: s.recorded_at || Date.now(),
-            },
-          }, (r) => {
-            if (!(r && r.ErrCode === 0)) {
-              self.$message.warning(`第 ${i} 步添加失败：${r?.ErrMsg || 'unknown'}`)
-            }
-            next()
-          })
-        }
-        // 3) commit 成 case
-        const finish = () => {
-          base.BasePost('/api/e2e/record/commit', {
-            session_id: sessionId,
-            group_id: self.recorderForm.group_id,
-            name: sessionName,
-            case_id: self.recorderForm.case_id || 0,
-            tags: 'imported',
-          }, (r2) => {
-            if (r2 && r2.ErrCode === 0) {
-              self.$message.success(`已保存为用例：${steps.length} 步`)
-              self.importJsonText = ''
-              self.importParseResult = null
-              self.recorderDialogVisible = false
-              if (typeof self.loadCaseList === 'function') self.loadCaseList()
-            } else {
-              self.$message.error(r2?.ErrMsg || '保存用例失败')
-            }
-          })
-        }
-        next()
-      })
+        self.importJsonText = ''
+        self.importParseResult = null
+        self.loadRecordedSteps()
+      }
+      next()
     },
 
     confirmPendingStep(updatedStep) {

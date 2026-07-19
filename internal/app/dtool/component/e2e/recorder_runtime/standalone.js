@@ -253,12 +253,13 @@
     renderBuffer(toolbar)
   }
 
-  // ---- 事件监听 ----
+  // ---- 事件监听（挂在 window 上而不是 document，SPA 路由跳转后新 document 替换时不会丢监听） ----
   function isInToolbar(el) {
-    return el && el.closest && el.closest('[data-dtool-recorder]')
+    if (!el || !el.closest) return false
+    return !!el.closest('[data-dtool-recorder]')
   }
 
-  document.addEventListener('click', function (ev) {
+  window.addEventListener('click', function (ev) {
     if (isInToolbar(ev.target)) return
     if (mode !== 'click' && mode !== 'click_xy') return
     var cfg = {}
@@ -283,7 +284,7 @@
     })
   }, true)
 
-  document.addEventListener('input', function (ev) {
+  window.addEventListener('input', function (ev) {
     if (isInToolbar(ev.target)) return
     if (mode !== 'input') return
     var cfg = {
@@ -302,7 +303,7 @@
     })
   }, true)
 
-  document.addEventListener('scroll', function () {
+  window.addEventListener('scroll', function () {
     if (mode !== 'scroll') return
     // 去重：上一次 scroll 距今 < 200ms 就跳过
     var last = buffer[buffer.length - 1]
@@ -317,6 +318,43 @@
       _ts: Date.now(),
     })
   }, true)
+
+  // ---- SPA 路由感知 ----
+  // pushState / replaceState 不触发 popstate，需要 patch 它们发自定义事件。
+  // 路由变化后 SPA 通常替换 body，重新调用 ensureToolbar() 重建 toolbar DOM。
+  try {
+    var origPushState = history.pushState
+    var origReplaceState = history.replaceState
+    history.pushState = function () {
+      var ret = origPushState.apply(this, arguments)
+      window.dispatchEvent(new Event('dtool:locationchange'))
+      return ret
+    }
+    history.replaceState = function () {
+      var ret = origReplaceState.apply(this, arguments)
+      window.dispatchEvent(new Event('dtool:locationchange'))
+      return ret
+    }
+  } catch (e) {}
+
+  function onLocationChange() {
+    // 让浏览器先完成 DOM 替换（pushState 同步，但 vdom diff 是微任务）
+    setTimeout(function () {
+      try {
+        ensureStyles()
+        var tb = ensureToolbar()
+        // 重建时 sync 当前 mode / buffer 计数
+        updateStat(tb)
+        renderBuffer(tb)
+      } catch (e) {
+        // 重建失败不影响录制，只是 toolbar 临时不见
+      }
+    }, 50)
+  }
+
+  window.addEventListener('popstate', onLocationChange)
+  window.addEventListener('hashchange', onLocationChange)
+  window.addEventListener('dtool:locationchange', onLocationChange)
 
   // ---- 暴露给 Playwright / 前端 ----
   window.__dtoolRecordBuffer = buffer
