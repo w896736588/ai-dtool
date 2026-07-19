@@ -2,10 +2,16 @@
 package business
 
 import (
+	"dev_tool/internal/app/dtool/component/e2e/step_executor"
 	"dev_tool/internal/app/dtool/component/e2e/store"
 	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
+	"errors"
+	"strings"
 	"sync"
+	"time"
+
+	"github.com/spf13/cast"
 )
 
 var (
@@ -248,22 +254,26 @@ func E2ERunRequestDetail(runID int64, requestID string) (map[string]any, error) 
 // E2EStepTypeList 返回前端动态渲染用的步骤类型列表。
 func E2EStepTypeList() *define.E2EStepTypeListResponse {
 	items := []define.E2EStepTypeMeta{
-		{Type: "open_env", BaseType: "open_env", Version: "1.0", Label: "打开环境", Group: "action"},
-		{Type: "click_v1", BaseType: "click", Version: "1.0", Label: "点击", Group: "action", ConfigKeys: []string{"selector", "selector_type"}},
+		{Type: "open_env", BaseType: "open_env", Version: "1.0", Label: "打开环境", Group: "action", ConfigKeys: []string{"url", "wait_load"}},
+		{Type: "click_v1", BaseType: "click", Version: "1.0", Label: "点击元素", Group: "action", ConfigKeys: []string{"selector", "selector_type"}},
+		{Type: "click_by_position_v1", BaseType: "click_by_position", Version: "1.0", Label: "坐标点击", Group: "action", ConfigKeys: []string{"x", "y", "viewport_width", "viewport_height"}},
+		{Type: "right_click_v1", BaseType: "right_click", Version: "1.0", Label: "右键点击", Group: "action", ConfigKeys: []string{"x", "y", "viewport_width", "viewport_height"}},
 		{Type: "input_v1", BaseType: "input", Version: "1.0", Label: "输入（固定）", Group: "action", ConfigKeys: []string{"selector", "value", "clear_before"}},
 		{Type: "input_v2", BaseType: "input", Version: "2.0", Label: "输入（多输入源）", Group: "action", ConfigKeys: []string{"selector", "source_type"}},
-		{Type: "hover_v1", BaseType: "hover", Version: "1.0", Label: "悬停", Group: "action"},
-		{Type: "select_v1", BaseType: "select", Version: "1.0", Label: "下拉选择", Group: "action"},
-		{Type: "navigate_v1", BaseType: "navigate", Version: "1.0", Label: "页面导航", Group: "action"},
+		{Type: "hover_v1", BaseType: "hover", Version: "1.0", Label: "悬停", Group: "action", ConfigKeys: []string{"selector"}},
+		{Type: "select_v1", BaseType: "select", Version: "1.0", Label: "下拉选择", Group: "action", ConfigKeys: []string{"selector", "value"}},
+		{Type: "navigate_v1", BaseType: "navigate", Version: "1.0", Label: "页面导航", Group: "action", ConfigKeys: []string{"url"}},
 		{Type: "go_back_v1", BaseType: "go_back", Version: "1.0", Label: "返回上一页", Group: "action"},
 		{Type: "reload_v1", BaseType: "reload", Version: "1.0", Label: "刷新", Group: "action"},
-		{Type: "press_key_v1", BaseType: "press_key", Version: "1.0", Label: "按键", Group: "action"},
+		{Type: "press_key_v1", BaseType: "press_key", Version: "1.0", Label: "按键", Group: "action", ConfigKeys: []string{"key"}},
+		{Type: "scroll_v1", BaseType: "scroll", Version: "1.0", Label: "滚动页面", Group: "action", ConfigKeys: []string{"delta_x", "delta_y"}},
 		{Type: "wait_element_v1", BaseType: "wait_element", Version: "1.0", Label: "等待元素", Group: "wait", ConfigKeys: []string{"selector", "timeout_ms"}},
-		{Type: "wait_timeout_v1", BaseType: "wait_timeout", Version: "1.0", Label: "固定等待", Group: "wait"},
+		{Type: "wait_timeout_v1", BaseType: "wait_timeout", Version: "1.0", Label: "固定等待", Group: "wait", ConfigKeys: []string{"duration_ms"}},
+		{Type: "wait_after_v1", BaseType: "wait_after", Version: "1.0", Label: "步骤后等待", Group: "wait", ConfigKeys: []string{"duration_ms"}},
 		{Type: "extract_text_v1", BaseType: "extract_text", Version: "1.0", Label: "提取文本", Group: "extract", ConfigKeys: []string{"selector", "extract_to"}},
-		{Type: "extract_attr_v1", BaseType: "extract_attr", Version: "1.0", Label: "提取属性", Group: "extract"},
+		{Type: "extract_attr_v1", BaseType: "extract_attr", Version: "1.0", Label: "提取属性", Group: "extract", ConfigKeys: []string{"selector", "attribute", "extract_to"}},
 		{Type: "extract_api_v1", BaseType: "extract_api", Version: "1.0", Label: "提取API响应", Group: "extract", ConfigKeys: []string{"find_by_pattern", "response_json_path", "extract_to"}},
-		{Type: "script_v1", BaseType: "script", Version: "1.0", Label: "执行 JS", Group: "script"},
+		{Type: "script_v1", BaseType: "script", Version: "1.0", Label: "执行 JS", Group: "script", ConfigKeys: []string{"code"}},
 	}
 	return &define.E2EStepTypeListResponse{Items: items}
 }
@@ -422,4 +432,426 @@ func jsonScan(s string, target any) (int, error) {
 		*t = n
 	}
 	return i, nil
+}
+
+// =============== 录制功能（v5.0）业务实现 ===============
+
+// E2ERecordSessionCreate 创建录制会话。
+// v6：当请求体携带 smart_link 绑定字段时，附加调用 UpdateSmartLink 写入。
+func E2ERecordSessionCreate(req *define.E2ERecordSessionCreateRequest) (*define.E2ERecordSessionCreateResponse, error) {
+	if req == nil {
+		return nil, errors.New("请求不能为空")
+	}
+	sessionID := req.SessionID
+	if sessionID == "" {
+		sessionID = "rec_" + time.Now().Format("20060102150405") + "_" + cast.ToString(time.Now().UnixNano())
+	}
+	id, err := store.NewRecordSessionStore().Create(
+		strings.TrimSpace(req.SessionName), sessionID,
+		strings.TrimSpace(req.EnvURL), strings.TrimSpace(req.EnvBaseURL),
+		req.CaseID, req.GroupID, strings.TrimSpace(req.BrowserID),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if req.SmartLinkID > 0 || req.UserName != "" || req.LinkID > 0 || req.WSToken != "" || req.RecorderURL != "" {
+		if err := store.NewRecordSessionStore().UpdateSmartLink(
+			id, req.SmartLinkID, req.UserName,
+			req.WSToken, req.RecorderURL, req.LinkID,
+		); err != nil {
+			return nil, err
+		}
+	}
+	return &define.E2ERecordSessionCreateResponse{
+		ID:        id,
+		SessionID: sessionID,
+		Status:    "recording",
+	}, nil
+}
+
+// E2ERecordSessionGet 获取录制会话详情。
+func E2ERecordSessionGet(id int64) (*define.E2ERecordSessionDetail, error) {
+	row, err := store.NewRecordSessionStore().GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, nil
+	}
+	return mapRecordSessionRow(row), nil
+}
+
+// E2ERecordSessionList 列出录制会话。
+func E2ERecordSessionList(req *define.E2ERecordSessionListRequest) (*define.E2ERecordSessionListResponse, error) {
+	page := req.Page
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := req.PageSize
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	rows, total, err := store.NewRecordSessionStore().List(req.CaseID, req.Status, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]define.E2ERecordListItem, 0, len(rows))
+	for _, r := range rows {
+		items = append(items, define.E2ERecordListItem{
+			ID:            int64(e2eToInt(r["row_id"])),
+			SessionID:     e2eToStr(r["session_id"]),
+			CaseID:        e2eToInt(r["case_id"]),
+			GroupID:       e2eToInt(r["group_id"]),
+			Name:          e2eToStr(r["name"]),
+			EnvURL:        e2eToStr(r["env_url"]),
+			EnvBaseURL:    e2eToStr(r["env_base_url"]),
+			BrowserID:     e2eToStr(r["browser_id"]),
+			Status:        e2eToStr(r["status"]),
+			StepCount:     countJSONArray(r["steps"]),
+			CreatedAt:     e2eToInt64(r["created_at"]),
+			UpdatedAt:     e2eToInt64(r["updated_at"]),
+		})
+	}
+	return &define.E2ERecordSessionListResponse{Items: items, Total: total, Page: page, PageSize: pageSize}, nil
+}
+
+// E2ERecordSessionDelete 删除录制会话。
+func E2ERecordSessionDelete(id int64) error {
+	row, err := store.NewRecordSessionStore().GetByID(id)
+	if err != nil {
+		return err
+	}
+	if row == nil {
+		return nil
+	}
+	// 标记为 discarded 而非物理删除，便于追溯
+	if e2eToStr(row["status"]) == "recording" {
+		_ = store.NewRecordSessionStore().UpdateStatus(e2eToStr(row["session_id"]), "discarded")
+		return nil
+	}
+	return store.NewRecordSessionStore().DeleteByID(id)
+}
+
+// E2ERecordStepAdd 追加一步。
+func E2ERecordStepAdd(req *define.E2ERecordStepAddRequest) (*define.E2ERecordStepAddResponse, error) {
+	row, err := store.NewRecordSessionStore().GetByID(req.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, errors.New("录制会话不存在")
+	}
+	sessionID := e2eToStr(row["session_id"])
+	step := req.Step
+	// 缺省 ID
+	if step.ID == "" {
+		step.ID = "stp_" + cast.ToString(time.Now().UnixNano())
+	}
+	// 缺省 version
+	if step.Version == "" {
+		step.Version = "1.0"
+	}
+	// 自动追加 wait_after_ms：若前端没传，默认 200ms
+	if step.WaitAfterMs <= 0 {
+		step.WaitAfterMs = 200
+	}
+	step.RecordedAt = time.Now().UnixMilli()
+	stepJSON, _ := json.Marshal(step)
+	if err := store.NewRecordSessionStore().AppendStep(sessionID, string(stepJSON)); err != nil {
+		return nil, err
+	}
+	return &define.E2ERecordStepAddResponse{StepID: step.ID, SessionID: sessionID, StepIndex: countJSONArray(row["steps"])}, nil
+}
+
+// E2ERecordStepUpdate 更新一步。
+func E2ERecordStepUpdate(req *define.E2ERecordStepUpdateRequest) error {
+	row, err := store.NewRecordSessionStore().GetByID(req.SessionID)
+	if err != nil {
+		return err
+	}
+	if row == nil {
+		return errors.New("录制会话不存在")
+	}
+	sessionID := e2eToStr(row["session_id"])
+	if req.Step.ID == "" {
+		req.Step.ID = req.StepID
+	}
+	data, _ := json.Marshal(req.Step)
+	return store.NewRecordSessionStore().UpdateStep(sessionID, req.StepID, string(data))
+}
+
+// E2ERecordStepDelete 删除一步。
+func E2ERecordStepDelete(req *define.E2ERecordStepDeleteRequest) error {
+	row, err := store.NewRecordSessionStore().GetByID(req.SessionID)
+	if err != nil {
+		return err
+	}
+	if row == nil {
+		return errors.New("录制会话不存在")
+	}
+	sessionID := e2eToStr(row["session_id"])
+	return store.NewRecordSessionStore().DeleteStep(sessionID, req.StepID)
+}
+
+// E2ERecordStepReplay 单步回放。
+func E2ERecordStepReplay(req *define.E2ERecordStepReplayRequest) (*define.E2ERecordReplayResponse, error) {
+	row, err := store.NewRecordSessionStore().GetByID(req.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, errors.New("录制会话不存在")
+	}
+	step := findStepByID(row["steps"], req.StepID)
+	if step == nil {
+		return nil, errors.New("步骤不存在: " + req.StepID)
+	}
+	engine := GetE2EEngine()
+	// 用 browser_id 找到 page
+	page, err := engine.GetBrowserPage(e2eToStr(row["browser_id"]))
+	if err != nil || page == nil {
+		// 兜底：拿到任意空闲 page
+		page = engine.GetAnyPage()
+	}
+	if page == nil {
+		return &define.E2ERecordReplayResponse{Success: false, Error: "未找到可用的 Playwright 页面"}, nil
+	}
+	stepDef := define.E2EStep{
+		ID:          step.ID,
+		Type:        step.Type,
+		Version:     step.Version,
+		Description: step.Description,
+		WaitAfterMs: step.WaitAfterMs,
+		Config:      step.Config,
+	}
+	out := engine.NewStringOutput()
+	ctx := &step_executor.ExecuteContext{Page: page, Output: out}
+	res := engine.ExecuteStepForTest(ctx, stepDef)
+	engine.ApplyPostStepWaitForTest(stepDef, ctx)
+	return &define.E2ERecordReplayResponse{
+		Success:    res.Success,
+		Error:      res.ErrorMsg,
+		Screenshot: res.Screenshot,
+		Log:        out.String(),
+	}, nil
+}
+
+// E2ERecordSessionReplay 整段回放。
+func E2ERecordSessionReplay(req *define.E2ERecordSessionReplayRequest) (*define.E2ERecordReplayResponse, error) {
+	row, err := store.NewRecordSessionStore().GetByID(req.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, errors.New("录制会话不存在")
+	}
+	steps := parseRecordedSteps(row["steps"])
+	if len(steps) == 0 {
+		return &define.E2ERecordReplayResponse{Success: true, Log: "[空录制，无步骤]"}, nil
+	}
+	engine := GetE2EEngine()
+	page, _ := engine.GetBrowserPage(e2eToStr(row["browser_id"]))
+	if page == nil {
+		page = engine.GetAnyPage()
+	}
+	if page == nil {
+		return &define.E2ERecordReplayResponse{Success: false, Error: "未找到可用的 Playwright 页面"}, nil
+	}
+	out := engine.NewStringOutput()
+	ctx := &step_executor.ExecuteContext{Page: page, Output: out}
+	startIdx := req.StartIndex
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	allOK := true
+	var firstErr string
+	for i := startIdx; i < len(steps); i++ {
+		s := steps[i]
+		stepDef := define.E2EStep{
+			ID:          s.ID,
+			Type:        s.Type,
+			Version:     s.Version,
+			Description: s.Description,
+			WaitAfterMs: s.WaitAfterMs,
+			Config:      s.Config,
+		}
+		out.Writef("[step %d/%d] %s %s", i+1, len(steps), s.Type, s.Description)
+		res := engine.ExecuteStepForTest(ctx, stepDef)
+		if !res.Success {
+			allOK = false
+			firstErr = res.ErrorMsg
+			out.Writef("  ✗ %s", res.ErrorMsg)
+			if !req.ContinueOnError {
+				break
+			}
+			continue
+		}
+		out.Writef("  ✓")
+		engine.ApplyPostStepWaitForTest(stepDef, ctx)
+	}
+	return &define.E2ERecordReplayResponse{
+		Success: allOK,
+		Error:   firstErr,
+		Log:     out.String(),
+	}, nil
+}
+
+// E2ERecordOpenBrowser 录制入口：开 Playwright 浏览器并访问 env_url。
+func E2ERecordOpenBrowser(req *define.E2ERecordOpenBrowserRequest) (*define.E2ERecordOpenBrowserResponse, error) {
+	if req == nil {
+		return nil, errors.New("请求不能为空")
+	}
+	if _, err := GetE2EEngine().OpenRecorderBrowser(strings.TrimSpace(req.EnvURL)); err != nil {
+		return nil, err
+	}
+	return &define.E2ERecordOpenBrowserResponse{OK: true, EnvURL: req.EnvURL}, nil
+}
+
+// E2ERecordCommit 将录制会话落库为用例。
+func E2ERecordCommit(req *define.E2ERecordCommitRequest) (*define.E2ERecordCommitResponse, error) {
+	row, err := store.NewRecordSessionStore().GetByID(req.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, errors.New("录制会话不存在")
+	}
+	steps := parseRecordedSteps(row["steps"])
+	// 转换为 E2EStep（含断言）
+	e2eSteps := make([]define.E2EStep, 0, len(steps))
+	for _, s := range steps {
+		e2eSteps = append(e2eSteps, define.E2EStep{
+			ID:          s.ID,
+			Type:        s.Type,
+			Version:     s.Version,
+			Description: s.Description,
+			WaitAfterMs: s.WaitAfterMs,
+			Config:      s.Config,
+		})
+	}
+	stepsJSON, _ := json.Marshal(e2eSteps)
+	// 收集所有断言
+	var allAsserts []define.E2EAssertion
+	for _, s := range steps {
+		if len(s.Assertions) > 0 {
+			var arr []define.E2EAssertion
+			if err := json.Unmarshal(s.Assertions, &arr); err == nil {
+				allAsserts = append(allAsserts, arr...)
+			}
+		}
+	}
+	assertsJSON, _ := json.Marshal(allAsserts)
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = e2eToStr(row["name"])
+	}
+	if name == "" {
+		name = "录制用例 " + time.Now().Format("20060102 150405")
+	}
+	envURL := e2eToStr(row["env_url"])
+	envBaseURL := e2eToStr(row["env_base_url"])
+
+	// 调用 case store 的 Create / Update
+	caseStore := store.NewCaseStore()
+	var caseID int64
+	if req.CaseID > 0 {
+		// 更新现有用例
+		caseID = int64(req.CaseID)
+		updateReq := &define.E2ECaseSaveRequest{
+			Name:           name,
+			GroupID:        req.GroupID,
+			EnvURL:         envURL,
+			EnvBaseURL:     envBaseURL,
+			Steps:          stepsJSON,
+			Assertions:     assertsJSON,
+			Tags:           strings.TrimSpace(req.Tags),
+			TimeoutSeconds: req.TimeoutSeconds,
+		}
+		if err := caseStore.Update(updateReq); err != nil {
+			return nil, err
+		}
+	} else {
+		createReq := &define.E2ECaseSaveRequest{
+			Name:           name,
+			GroupID:        req.GroupID,
+			EnvURL:         envURL,
+			EnvBaseURL:     envBaseURL,
+			Steps:          stepsJSON,
+			Assertions:     assertsJSON,
+			Tags:           strings.TrimSpace(req.Tags),
+			TimeoutSeconds: req.TimeoutSeconds,
+		}
+		caseID, err = caseStore.Create(createReq)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 标记会话状态
+	_ = store.NewRecordSessionStore().UpdateStatus(e2eToStr(row["session_id"]), "committed")
+
+	return &define.E2ERecordCommitResponse{
+		CaseID:  caseID,
+		Steps:   len(e2eSteps),
+		GroupID: req.GroupID,
+	}, nil
+}
+
+// ---- 录制辅助 ----
+
+func mapRecordSessionRow(r map[string]any) *define.E2ERecordSessionDetail {
+	if r == nil {
+		return nil
+	}
+	steps := parseRecordedSteps(r["steps"])
+	return &define.E2ERecordSessionDetail{
+		ID:          int64(e2eToInt(r["row_id"])),
+		SessionID:   e2eToStr(r["session_id"]),
+		CaseID:      e2eToInt(r["case_id"]),
+		GroupID:     e2eToInt(r["group_id"]),
+		Name:        e2eToStr(r["name"]),
+		EnvURL:      e2eToStr(r["env_url"]),
+		EnvBaseURL:  e2eToStr(r["env_base_url"]),
+		BrowserID:   e2eToStr(r["browser_id"]),
+		SmartLinkID: e2eToInt(r["smart_link_id"]),
+		LinkID:      e2eToInt(r["link_id"]),
+		UserName:    e2eToStr(r["user_name"]),
+		RecorderURL: e2eToStr(r["recorder_url"]),
+		Status:      e2eToStr(r["status"]),
+		Steps:       steps,
+		CreatedAt:   e2eToInt64(r["created_at"]),
+		UpdatedAt:   e2eToInt64(r["updated_at"]),
+	}
+}
+
+func parseRecordedSteps(raw any) []define.RecordedStep {
+	str := e2eToStr(raw)
+	if str == "" {
+		return nil
+	}
+	var steps []define.RecordedStep
+	if err := json.Unmarshal([]byte(str), &steps); err != nil {
+		return nil
+	}
+	return steps
+}
+
+func findStepByID(raw any, stepID string) *define.RecordedStep {
+	for i := range parseRecordedSteps(raw) {
+		if parseRecordedSteps(raw)[i].ID == stepID {
+			s := parseRecordedSteps(raw)[i]
+			return &s
+		}
+	}
+	return nil
+}
+
+func countJSONArray(raw any) int {
+	str := e2eToStr(raw)
+	if str == "" {
+		return 0
+	}
+	var arr []any
+	_ = json.Unmarshal([]byte(str), &arr)
+	return len(arr)
 }
