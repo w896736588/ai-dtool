@@ -461,7 +461,7 @@
       v-if="pendingStep"
       v-model:visible="stepConfirmVisible"
       :step="pendingStep"
-      :session-id="recorderSession ? recorderSession.id : ''"
+      :session-id="recorderSession ? recorderSession.session_id : ''"
       title="确认录制步骤"
       @confirmed="confirmPendingStep"
       @cancelled="cancelPendingStep"
@@ -1066,7 +1066,7 @@ export default {
 
     _doCloseRecorder() {
       if (this.recorderSession) {
-        base.BasePost('/api/e2e/record/session/delete', { id: this.recorderSession.id }, () => {})
+        base.BasePost('/api/e2e/record/session/delete', { id: this.recorderSession.session_id }, () => {})
       }
       this.toolbarVisible = false
       this.recorderSession = null
@@ -1075,7 +1075,7 @@ export default {
 
     loadRecordedSteps() {
       if (!this.recorderSession) return
-      base.BasePost('/api/e2e/record/session/get', { id: this.recorderSession.id }, (res) => {
+      base.BasePost('/api/e2e/record/session/get', { id: this.recorderSession.session_id }, (res) => {
         if (res && res.ErrCode === 0) {
           this.currentSession = res.Data
           this.recordedSteps = res.Data?.steps || []
@@ -1106,7 +1106,7 @@ export default {
         recorded_at: Date.now(),
       }
       base.BasePost('/api/e2e/record/step/add', {
-        session_id: this.recorderSession.id,
+        session_id: this.recorderSession.session_id,
         step,
       }, (res) => {
         if (res && res.ErrCode === 0) {
@@ -1122,7 +1122,7 @@ export default {
     confirmPendingStep(updatedStep) {
       if (!this.pendingStep || !this.recorderSession) return
       base.BasePost('/api/e2e/record/step/update', {
-        session_id: this.recorderSession.id,
+        session_id: this.recorderSession.session_id,
         step_id: this.pendingStep.id,
         step: updatedStep,
       }, (res) => {
@@ -1141,7 +1141,7 @@ export default {
       // 取消即删除该步骤
       if (this.pendingStep && this.recorderSession) {
         base.BasePost('/api/e2e/record/step/delete', {
-          session_id: this.recorderSession.id,
+          session_id: this.recorderSession.session_id,
           step_id: this.pendingStep.id,
         }, () => {
           this.pendingStep = null
@@ -1162,7 +1162,7 @@ export default {
       if (!this.recorderSession) return
       this.$message.info(`回放步骤 ${row.type}...`)
       base.BasePost('/api/e2e/record/step/replay', {
-        session_id: this.recorderSession.id,
+        session_id: this.recorderSession.session_id,
         step_id: row.id,
       }, (res) => {
         if (res && res.ErrCode === 0) {
@@ -1182,7 +1182,7 @@ export default {
     deleteRecordedStep(row) {
       this.$confirm('确定删除该步骤吗？', '提示', { type: 'warning' }).then(() => {
         base.BasePost('/api/e2e/record/step/delete', {
-          session_id: this.recorderSession.id,
+          session_id: this.recorderSession.session_id,
           step_id: row.id,
         }, (res) => {
           if (res && res.ErrCode === 0) {
@@ -1197,7 +1197,7 @@ export default {
       if (!this.recorderSession) return
       this.replayingAll = true
       base.BasePost('/api/e2e/record/session/replay', {
-        session_id: this.recorderSession.id,
+        session_id: this.recorderSession.session_id,
         start_index: 0,
         continue_on_error: true,
       }, (res) => {
@@ -1231,7 +1231,7 @@ export default {
       }
       this.committing = true
       base.BasePost('/api/e2e/record/commit', {
-        session_id: this.recorderSession.id,
+        session_id: this.recorderSession.session_id,
         group_id: this.commitForm.group_id,
         name: this.commitForm.name,
         tags: this.commitForm.tags,

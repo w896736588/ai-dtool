@@ -4,8 +4,10 @@ package business
 import (
 	"crypto/rand"
 	"dev_tool/internal/app/dtool/common"
+	"dev_tool/internal/app/dtool/component"
 	"dev_tool/internal/app/dtool/component/e2e/store"
 	"dev_tool/internal/app/dtool/define"
+	"dev_tool/internal/app/dtool/plw"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -14,10 +16,11 @@ import (
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/spf13/cast"
+	"github.com/w896736588/go-tool/gstool"
 )
 
 // recorderProxyPath recorder iframe proxy 同源路径。
-// 本任务阶段 controller/router 还未挂载；任务 10 会注册。
+// 与 router.go 的 /api/e2e/recorder/proxy.html 保持一致。
 const recorderProxyPath = "/api/e2e/recorder/proxy.html"
 
 // recorderInitScriptFmt AddInitScript 注入到被录 page 的 JS 模板。
@@ -34,44 +37,106 @@ const recorderInitScriptFmt = `
 })();
 `
 
-// E2ERecordOpen 开启一次 smart_link 录制会话：开浏览器 → 写 DB → 注入 init script → 跳到 env_url。
-// 返回 *E2ERecordOpenResponse，错误通过 Response.Error 透出给 controller（避免吞掉用户可见提示）。
+// recorderStream 录制专用的 StreamFunc：
+// - 把 plw Playwright.Open 的关键节点（构建run_params / 打开浏览器 / 登录 process）实时打到日志。
+// - 与 controller/smart_link.go 中 SmartLinkRunPlaywright 走一样的套路。
+func recorderStream() func(string, string) {
+	return func(stage, msg string) {
+		gstool.FmtPrintlnLogTime("[recorder] %s %s", stage, msg)
+	}
+}
+
+// querySmartLinkLabel 复刻 controller/ai_browser.go::querySmartLinkLabel 的语义：
+// 在业务层直接查 smart_link.label，避免反向依赖 controller 包。
+func querySmartLinkLabel(smartLinkID int) (string, error) {
+	row, err := common.DbMain.Client.QueryBySql(
+		`SELECT label FROM smart_link WHERE id = ? AND status = ?`,
+		smartLinkID, define.SmartLinkStatusNormal,
+	).One()
+	if err != nil || row == nil {
+		return "", fmt.Errorf("smart_link %d 不存在或已失效", smartLinkID)
+	}
+	return cast.ToString(row["label"]), nil
+}
+
+// openSmartLinkRecorder 真正复用 smart_link 的 plw 流程：
+//   1) GetRunParams -> 把 smart_link 行 + process_id 列表装配成 PlaywrightRunParams。
+//   2) NewPlaywright -> 创建 plw.Playwright（含 ContextPageList）。
+//   3) GetPage       -> 复用带用户数据目录的 BrowserContext，NewPage + Navigate 到 link。
+//   4) RunProcessesSync -> 跑登录 process 列表（输入账号 / 输入密码 / 登录 / 进入后台...）。
+//   5) 注：不在此处 AddInitScript，由 E2ERecordOpen 在拿到 page 后注入，使 init script
+//      在用户开始操作之前就被加入，但不会被登录流程破坏。
+//
+// 返回 *playwright.Page：plw.GetPage 函数签名就是返回指针到 Page 接口，调用方必须按
+// `(*page).Close()` / `(*page).AddInitScript(...)` 方式调用方法。
+func openSmartLinkRecorder(smartLinkID int, userName string) (string, *playwright.Page, string, error) {
+	label, err := querySmartLinkLabel(smartLinkID)
+	if err != nil {
+		return "", nil, "", err
+	}
+	stream := recorderStream()
+	stream(`构建run_params`, `开始`)
+	// openType=2 与 controller/smart_link.go SmartLinkRunPlaywright 一致，使用内置浏览器核心；
+	// 实际上 openType 决定 Channel selection，传入 0 让 GetRunParams 从 smart_link 表的 open_type 字段读。
+	runParams, runErr := plw.GetRunParams(smartLinkID, label, userName, "", 0, 1, nil)
+	if runErr != nil {
+		stream(`构建run_params`, `失败:`+runErr.Error())
+		return "", nil, "", runErr
+	}
+	stream(`构建run_params`, fmt.Sprintf(`成功 link=%s label=%s user=%s`, runParams.Link, runParams.Label, userName))
+	runParams.StreamFunc = stream
+
+	playwrightClient := plw.NewPlaywright(runParams, component.PlaywrightClient.Log)
+	page, pageErr := playwrightClient.GetPage(common.GetCall())
+	if pageErr != nil {
+		stream(`打开浏览器实例`, `失败:`+pageErr.Error())
+		return "", nil, "", pageErr
+	}
+	stream(`打开浏览器实例`, `完成，准备执行 process list`)
+	if procErr := playwrightClient.RunProcessesSync(page); procErr != nil {
+		stream(`执行process`, `失败:`+procErr.Error())
+		(*page).Close()
+		return "", nil, "", procErr
+	}
+	stream(`执行process`, `全部完成`)
+
+	browserID := fmt.Sprintf("rec_%d_%d", smartLinkID, time.Now().UnixNano())
+	return browserID, page, runParams.Link, nil
+}
+
+// E2ERecordOpen 开启一次 smart_link 录制会话。
+// 关键路径：复用 plw.Playwright 的 GetPage + RunProcessesSync，让 smart_link 的登录/进入后台流程
+// 全部跑完后再注入 recorder init script。用户最终看到的浏览器就是 smart_link 登录后的真实页面。
 func E2ERecordOpen(req *define.E2ERecordOpenRequest) (*define.E2ERecordOpenResponse, error) {
 	if req == nil || req.SmartLinkID <= 0 {
 		return nil, errors.New("smart_link_id 必须为正数")
 	}
 
-	engine := GetE2EEngine()
-	browserID, page, err := engine.OpenRecorder(req.SmartLinkID, req.UserName)
+	browserID, page, envURL, err := openSmartLinkRecorder(req.SmartLinkID, req.UserName)
 	if err != nil {
 		return &define.E2ERecordOpenResponse{OK: false, Error: err.Error()}, nil
 	}
-
-	envURL, _ := fetchSmartLinkEnvURL(req.SmartLinkID)
-	if envURL == "" {
-		_ = page.Close()
-		return &define.E2ERecordOpenResponse{OK: false, Error: "未找到 smart_link 对应 link"}, nil
-	}
+	closePage := func() { _ = (*page).Close() }
 
 	sessionID, sessionUUID, err := newRecordSessionForRecorder(req, browserID, envURL)
 	if err != nil {
-		_ = page.Close()
+		closePage()
 		return nil, fmt.Errorf("创建会话失败: %w", err)
 	}
 
 	wsToken, err := generateWSToken()
 	if err != nil {
-		_ = page.Close()
+		closePage()
 		return nil, err
 	}
 	recorderURL := recorderProxyPath
 	if err := store.NewRecordSessionStore().UpdateSmartLink(sessionID, req.SmartLinkID, req.UserName, wsToken, recorderURL, req.LinkID); err != nil {
-		_ = page.Close()
+		closePage()
 		return nil, err
 	}
 
 	initBody := fmt.Sprintf(recorderInitScriptFmt, wsToken, recorderURL, sessionUUID)
-	if err := page.AddInitScript(playwright.Script{Content: &initBody}); err != nil {
+	if err := (*page).AddInitScript(playwright.Script{Content: &initBody}); err != nil {
 		// init script 失败：仍返回 session，但前端会提示
 		return &define.E2ERecordOpenResponse{
 			OK:          false,
@@ -81,11 +146,8 @@ func E2ERecordOpen(req *define.E2ERecordOpenRequest) (*define.E2ERecordOpenRespo
 			WSToken:     wsToken,
 			RecorderURL: recorderURL,
 			EnvURL:      envURL,
+			BrowserID:   browserID,
 		}, nil
-	}
-
-	if _, err := page.Goto(envURL); err != nil {
-		return &define.E2ERecordOpenResponse{OK: false, Error: err.Error()}, nil
 	}
 
 	return &define.E2ERecordOpenResponse{
@@ -123,21 +185,7 @@ func newRecordSessionForRecorder(req *define.E2ERecordOpenRequest, browserID, en
 	return id, sessionUUID, nil
 }
 
-// fetchSmartLinkEnvURL 查 smart_link 表取 link 字段，作为 env_url。
-// 复用 controller/smart_link_item.go 中的常量 define.SmartLinkStatusNormal。
-func fetchSmartLinkEnvURL(smartLinkID int) (string, error) {
-	row, err := common.DbMain.Client.QueryBySql(
-		`SELECT link FROM smart_link WHERE id = ? AND status = ?`,
-		smartLinkID, define.SmartLinkStatusNormal,
-	).One()
-	if err != nil || row == nil {
-		return "", err
-	}
-	return cast.ToString(row["link"]), nil
-}
-
 // E2ERecordResume 按 session 行（row_id）续录：清掉旧 ws_token 后调用 E2ERecordOpen 重新分配 token 并启动浏览器。
-// 用于 §5.2 失败恢复——前一次 ws_token 已泄露或失效时，由前端触发重开。
 func E2ERecordResume(sessionID int64) (*define.E2ERecordOpenResponse, error) {
 	if sessionID <= 0 {
 		return nil, errors.New("session_id 必须为正数")
