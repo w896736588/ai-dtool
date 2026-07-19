@@ -17,3 +17,9 @@ func TestE2ERecordOpen_RequiresSmartLinkID(t *testing.T) {
 		t.Fatal("期望错误")
 	}
 }
+
+func TestE2ERecordResume_InvalidID(t *testing.T) {
+	if _, err := E2ERecordResume(0); err == nil {
+		t.Fatal("期望错误")
+	}
+}

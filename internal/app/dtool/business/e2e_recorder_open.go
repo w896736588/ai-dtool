@@ -135,3 +135,28 @@ func fetchSmartLinkEnvURL(smartLinkID int) (string, error) {
 	}
 	return cast.ToString(row["link"]), nil
 }
+
+// E2ERecordResume 按 session 行（row_id）续录：清掉旧 ws_token 后调用 E2ERecordOpen 重新分配 token 并启动浏览器。
+// 用于 §5.2 失败恢复——前一次 ws_token 已泄露或失效时，由前端触发重开。
+func E2ERecordResume(sessionID int64) (*define.E2ERecordOpenResponse, error) {
+	if sessionID <= 0 {
+		return nil, errors.New("session_id 必须为正数")
+	}
+	rs := store.NewRecordSessionStore()
+	row, err := rs.GetByID(sessionID)
+	if err != nil || row == nil {
+		return nil, errors.New("会话不存在")
+	}
+	req := &define.E2ERecordOpenRequest{
+		SmartLinkID: cast.ToInt(row["smart_link_id"]),
+		LinkID:      cast.ToInt(row["link_id"]),
+		UserName:    cast.ToString(row["user_name"]),
+		SessionName: cast.ToString(row["name"]),
+		GroupID:     cast.ToInt(row["group_id"]),
+		CaseID:      cast.ToInt(row["case_id"]),
+	}
+	if err := rs.UpdateWSToken(sessionID, ""); err != nil {
+		return nil, err
+	}
+	return E2ERecordOpen(req)
+}
