@@ -1,10 +1,21 @@
-// Package business 提供基于 smart_link + ws_token 的录制入口。
+// Package business 提供基于 smart_link 的录制入口（v7 方案）。
+//
+// v7 与 v6 的关键区别：完全抛弃 iframe / proxy.html / ws_token fetch 这套东西。
+// recorder runtime 是一个自包含 JS bundle，由 Go embed 打进二进制，录制开始时通过
+// page.Evaluate(...) 直接注入到被测 page。被测 page 顶部出现 toolbar，所有 click /
+// input / scroll 动作 push 到 window.__dtoolRecordBuffer；点「结束并下载」会触发
+// JSON 下载 + 复制到剪贴板，并通过 window.__dtoolRecordResult 把结果暴露给
+// Playwright / 前端 E2E 页面读取。
+//
+// 也就是说录制数据**不再走后端 HTTP**。前端 E2E 页面提供「导入录制 JSON」入口，让
+// 用户粘贴 / 上传 JSON 来生成用例步骤。
 package business
 
 import (
 	"crypto/rand"
 	"dev_tool/internal/app/dtool/common"
 	"dev_tool/internal/app/dtool/component"
+	"dev_tool/internal/app/dtool/component/e2e/recorder_runtime"
 	"dev_tool/internal/app/dtool/component/e2e/store"
 	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/plw"
@@ -18,33 +29,6 @@ import (
 	"github.com/spf13/cast"
 	"github.com/w896736588/go-tool/gstool"
 )
-
-// recorderProxyPath recorder iframe proxy 同源路径。
-// 与 router.go 的 /api/e2e/recorder/proxy.html 保持一致。
-const recorderProxyPath = "/api/e2e/recorder/proxy.html"
-
-// recorderInitScriptFmt AddInitScript 注入到被录 page 的 JS 模板。
-// %q 会自动做 JSON 字符串转义，避免 ws_token 中的特殊字符破坏脚本。
-// 同时兼容：
-//   - DOMContentLoaded 还没触发（page 加载中）：监听器等待事件。
-//   - DOMContentLoaded 已经过去（Evaluate 立即执行时）：直接挂 toolbar。
-const recorderInitScriptFmt = `
-(function(){
-  window.__dtoolRecorder = {wsToken:%q, recorderUrl:%q, sessionUUID:%q};
-  function mountRecorder(){
-    var iframe = document.createElement('iframe');
-    iframe.src = window.__dtoolRecorder.recorderUrl;
-    iframe.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;border:0;right:0;bottom:0;';
-    document.body.appendChild(iframe);
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', mountRecorder);
-  } else {
-    // DOMContentLoaded 已经过去，立即挂；不影响后续 navigation，由 AddInitScript 重新触发
-    mountRecorder();
-  }
-})();
-`
 
 // recorderStream 录制专用的 StreamFunc：
 // - 把 plw Playwright.Open 的关键节点（构建run_params / 打开浏览器 / 登录 process）实时打到日志。
@@ -74,12 +58,11 @@ func querySmartLinkLabel(smartLinkID int) (string, error) {
 //   3) GetPage       -> 复用带用户数据目录的 BrowserContext，NewPage + Navigate 到 link。
 //   4) RunProcessesSync -> 跑登录 process 列表（输入账号 / 输入密码 / 登录 / 进入后台...）；
 //      即使失败（典型情况：SPA 跳转慢于 wait_mills 但 form submit 已发起），也会把 page 一并
-//      返回给 caller，由 controller 决定是否继续注入 recorder，让用户手工补完登录。
-//   5) 注：不在此处 AddInitScript，由 E2ERecordOpen 在拿到 page 后注入，使 init script
-//      在用户开始操作之前就被加入，但不会被登录流程破坏。
+//      返回给 caller，由 caller 注入 recorder runtime 后让用户手工补完。
+//   5) caller 在拿到 page 后调用 injectRecorderRuntime(page) 把 standalone.js 注入进去。
 //
 // 返回 *playwright.Page：plw.GetPage 函数签名就是返回指针到 Page 接口，调用方必须按
-// `(*page).Close()` / `(*page).AddInitScript(...)` 方式调用方法。
+// `(*page).Close()` / `(*page).Evaluate(...)` 方式调用方法。
 func openSmartLinkRecorder(smartLinkID int, userName, password string) (string, *playwright.Page, string, string, error) {
 	label, err := querySmartLinkLabel(smartLinkID)
 	if err != nil {
@@ -122,9 +105,23 @@ func openSmartLinkRecorder(smartLinkID int, userName, password string) (string, 
 	return browserID, page, runParams.Link, warning, nil
 }
 
-// E2ERecordOpen 开启一次 smart_link 录制会话。
-// 关键路径：复用 plw.Playwright 的 GetPage + RunProcessesSync，让 smart_link 的登录/进入后台流程
-// 全部跑完后再注入 recorder init script。用户最终看到的浏览器就是 smart_link 登录后的真实页面。
+// injectRecorderRuntime 把 recorder_runtime.RecorderRuntimeJS() 通过 page.Evaluate 注入到被测 page。
+// 失败时仅打印日志，不返回 error —— toolbar 注入失败不会拖垮整个录制流程（用户仍可手工复制 JSON，
+// 因为 runtime 内容是纯前端代码，不会因为注入失败就让 page 不可用）。
+func injectRecorderRuntime(page *playwright.Page) {
+	js := recorder_runtime.RecorderRuntimeJS()
+	if _, err := (*page).Evaluate(js); err != nil {
+		gstool.FmtPrintlnLogTime(`[recorder] 注入 recorder runtime 失败 %s`, err.Error())
+	}
+}
+
+// E2ERecordOpen 开启一次 smart_link 录制会话（v7 方案：纯前端 JSON 方案）。
+//
+// 关键路径：
+//   1) 复用 plw.Playwright 的 GetPage + RunProcessesSync 完成 smart_link 的登录流程。
+//   2) 在 page 上 evaluate recorder runtime（独立 JS bundle），挂 toolbar。
+//   3) 创建 record_session 行（仅用于历史 / 续录 / Playwright 中转拉取）。
+//   4) 返回 BrowserID 让前端能跳转到正确页面。
 func E2ERecordOpen(req *define.E2ERecordOpenRequest) (*define.E2ERecordOpenResponse, error) {
 	if req == nil || req.SmartLinkID <= 0 {
 		return nil, errors.New("smart_link_id 必须为正数")
@@ -142,56 +139,28 @@ func E2ERecordOpen(req *define.E2ERecordOpenRequest) (*define.E2ERecordOpenRespo
 		return nil, fmt.Errorf("创建会话失败: %w", err)
 	}
 
-	wsToken, err := generateWSToken()
-	if err != nil {
-		closePage()
-		return nil, err
-	}
-	recorderURL := recorderProxyPath
-	if err := store.NewRecordSessionStore().UpdateSmartLink(sessionID, req.SmartLinkID, req.UserName, wsToken, recorderURL, req.LinkID); err != nil {
+	// v7 不再用 ws_token 走 HTTP；保留 UpdateSmartLink 是为了让历史行结构兼容（session_uuid / smart_link_id / link_id 仍要落库）。
+	if err := store.NewRecordSessionStore().UpdateSmartLink(sessionID, req.SmartLinkID, req.UserName, "", "", req.LinkID); err != nil {
 		closePage()
 		return nil, err
 	}
 
-	initBody := fmt.Sprintf(recorderInitScriptFmt, wsToken, recorderURL, sessionUUID)
-	if err := (*page).AddInitScript(playwright.Script{Content: &initBody}); err != nil {
-		// init script 失败：仍返回 session，但前端会提示
-		return &define.E2ERecordOpenResponse{
-			OK:          false,
-			Error:       err.Error(),
-			SessionID:   sessionID,
-			SessionUUID: sessionUUID,
-			WSToken:     wsToken,
-			RecorderURL: recorderURL,
-			EnvURL:      envURL,
-			BrowserID:   browserID,
-			Warning:     warning,
-		}, nil
-	}
-
-	// process list 部分失败时（典型：SPA 跳转慢于 wait_mills），当前 page 大概率还是登录页或
-	// 半完成页。AddInitScript 只在新 navigation 才会跑，所以这里额外 Evaluate 把 toolbar
-	// 立刻挂到当前 DOMContentLoaded —— 即使用户还没手工完成登录，toolbar 也先出现，避免他
-	// 登录完成后还要再 reload 一次。
-	if warning != `` {
-		if _, evalErr := (*page).Evaluate(initBody); evalErr != nil {
-			gstool.FmtPrintlnLogTime(`[recorder] 直接 evaluate 注入 toolbar 失败 %s`, evalErr.Error())
-		}
-	}
+	injectRecorderRuntime(page)
 
 	return &define.E2ERecordOpenResponse{
 		OK:          true,
 		BrowserID:   browserID,
 		SessionID:   sessionID,
 		SessionUUID: sessionUUID,
-		WSToken:     wsToken,
-		RecorderURL: recorderURL,
+		// 以下三个字段保留为空字符串，便于前端做兼容判断；旧前端若仍读取也不会 panic。
+		WSToken:     "",
+		RecorderURL: "",
 		EnvURL:      envURL,
 		Warning:     warning,
 	}, nil
 }
 
-// generateWSToken 生成一次性 ws_token（32 字节随机，base64-url 编码）。
+// generateWSToken 保留以备后续（如要做 Playwright 中转拉取录制结果）使用。
 func generateWSToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

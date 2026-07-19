@@ -416,44 +416,99 @@
       </div>
     </el-dialog>
 
-    <!-- 录制入口对话框：填写会话信息后启动 -->
-    <el-dialog v-model="recorderDialogVisible" title="启动录制会话" width="520px">
-      <el-form :model="recorderForm" label-width="100px">
-        <el-form-item label="会话名" required>
-          <el-input v-model="recorderForm.session_name" placeholder="录制会话名称" />
-        </el-form-item>
-        <el-form-item label="所属分组" required>
-          <el-select v-model="recorderForm.group_id" placeholder="选择分组">
-            <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="g.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="选择链接" required>
-          <el-select v-model="recorderForm.smart_link_id" filterable placeholder="选择 smart_link 链接" @change="onSmartLinkPick">
-            <el-option v-for="opt in smartLinkOptions" :key="opt.id" :label="opt.label" :value="opt.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="选择账号">
-          <el-select v-model="recorderForm.user_name" :disabled="!smartLinkUserOptions.length">
-            <el-option v-for="u in smartLinkUserOptions" :key="u" :label="u" :value="u" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="关联用例">
-          <el-select v-model="recorderForm.case_id" placeholder="可选：关联到现有用例" clearable filterable>
-            <el-option
-              v-for="c in caseList"
-              :key="c.id"
-              :label="`[${c.group_name || ''}] ${c.name}`"
-              :value="c.id"
-            />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="recorderDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="startRecording" :loading="recorderStarting">
-          启动
-        </el-button>
-      </template>
+    <!-- 录制入口对话框：tab 切换 启动录制 / 导入 JSON -->
+    <el-dialog v-model="recorderDialogVisible" title="录制 / 导入用例步骤" width="640px">
+      <el-tabs v-model="recorderTab">
+        <el-tab-pane label="启动录制会话" name="live">
+          <el-form :model="recorderForm" label-width="100px">
+            <el-form-item label="会话名" required>
+              <el-input v-model="recorderForm.session_name" placeholder="录制会话名称" />
+            </el-form-item>
+            <el-form-item label="所属分组" required>
+              <el-select v-model="recorderForm.group_id" placeholder="选择分组">
+                <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="g.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="选择链接" required>
+              <el-select v-model="recorderForm.smart_link_id" filterable placeholder="选择 smart_link 链接" @change="onSmartLinkPick">
+                <el-option v-for="opt in smartLinkOptions" :key="opt.id" :label="opt.label" :value="opt.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="选择账号">
+              <el-select v-model="recorderForm.user_name" :disabled="!smartLinkUserOptions.length">
+                <el-option v-for="u in smartLinkUserOptions" :key="u" :label="u" :value="u" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="关联用例">
+              <el-select v-model="recorderForm.case_id" placeholder="可选：关联到现有用例" clearable filterable>
+                <el-option
+                  v-for="c in caseList"
+                  :key="c.id"
+                  :label="`[${c.group_name || ''}] ${c.name}`"
+                  :value="c.id"
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="recorderDialogVisible = false">取消</el-button>
+            <el-button type="primary" @click="startRecording" :loading="recorderStarting">
+              启动
+            </el-button>
+          </template>
+        </el-tab-pane>
+
+        <el-tab-pane label="导入录制 JSON" name="import">
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            title="如何获取 JSON"
+            description="在录制浏览器里点 toolbar 的「结束并下载」会自动下载 dtool-record-*.json；或点「复制 JSON」拿到剪贴板内容。"
+            style="margin-bottom: 12px;"
+          />
+          <el-form label-width="100px">
+            <el-form-item label="JSON 内容">
+              <el-input
+                v-model="importJsonText"
+                type="textarea"
+                :rows="8"
+                placeholder='粘贴从 recorder toolbar 复制的 JSON，或点下方"选择文件"导入 .json 文件'
+              />
+            </el-form-item>
+            <el-form-item>
+              <input ref="importJsonFileInput" type="file" accept=".json,application/json" style="display:none" @change="onImportJsonFile" />
+              <el-button @click="$refs.importJsonFileInput.click()">选择 .json 文件</el-button>
+              <el-button type="primary" :loading="importParsing" @click="parseImportJson">解析并预览</el-button>
+              <el-button @click="pasteFromClipboard">从剪贴板粘贴</el-button>
+            </el-form-item>
+            <el-form-item label="目标分组" required>
+              <el-select v-model="recorderForm.group_id" placeholder="选择分组">
+                <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="g.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="新用例名">
+              <el-input v-model="recorderForm.session_name" placeholder="可选：导入后保存为新用例" />
+            </el-form-item>
+            <el-form-item label="关联用例">
+              <el-select v-model="recorderForm.case_id" placeholder="可选：覆盖现有用例" clearable filterable>
+                <el-option
+                  v-for="c in caseList"
+                  :key="c.id"
+                  :label="`[${c.group_name || ''}] ${c.name}`"
+                  :value="c.id"
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="recorderDialogVisible = false">取消</el-button>
+            <el-button type="primary" :disabled="!importParseResult || !recorderForm.group_id" @click="commitImportJson">
+              保存为用例
+            </el-button>
+          </template>
+        </el-tab-pane>
+      </el-tabs>
     </el-dialog>
 
     <!-- 步骤确认弹窗 -->
@@ -626,6 +681,7 @@ export default {
 
       // ===== 录制功能 =====
       recorderDialogVisible: false,
+      recorderTab: 'live', // live | import
       recorderForm: {
         session_name: '',
         group_id: null,
@@ -643,6 +699,11 @@ export default {
       recordedSteps: [],
       pendingStep: null,
       stepConfirmVisible: false,
+      // 导入 JSON
+      importJsonText: '',
+      importParseResult: null, // {schema, steps, ...} | null
+      importParsing: false,
+      importPreviewVisible: false,
       sessionDialogVisible: false,
       sessionDialogTitle: '录制会话详情',
       currentSession: null,
@@ -1116,6 +1177,130 @@ export default {
         } else {
           this.$message.error(res?.ErrMsg || '追加步骤失败')
         }
+      })
+    },
+
+    // ============ 导入录制 JSON ============
+    // onImportJsonFile 用户选了 .json 文件：读 FileReader 内容回填 textarea
+    onImportJsonFile(ev) {
+      const f = ev.target.files && ev.target.files[0]
+      if (!f) return
+      const reader = new FileReader()
+      reader.onload = () => {
+        this.importJsonText = String(reader.result || '')
+        this.parseImportJson()
+      }
+      reader.onerror = () => this.$message.error('读取文件失败')
+      reader.readAsText(f)
+      // 清空 value 允许选同一文件
+      ev.target.value = ''
+    },
+    // pasteFromClipboard 从 navigator.clipboard 读取
+    async pasteFromClipboard() {
+      try {
+        const text = await navigator.clipboard.readText()
+        this.importJsonText = text || ''
+        this.parseImportJson()
+      } catch (e) {
+        this.$message.warning('剪贴板读取失败：请检查浏览器权限或直接粘贴')
+      }
+    },
+    // parseImportJson 把 textarea 文本解析成 {schema, steps, ...}
+    parseImportJson() {
+      const text = (this.importJsonText || '').trim()
+      if (!text) { this.$message.warning('JSON 内容为空'); return }
+      this.importParsing = true
+      try {
+        const obj = JSON.parse(text)
+        const steps = Array.isArray(obj.steps) ? obj.steps
+          : Array.isArray(obj) ? obj
+            : null
+        if (!steps) throw new Error('JSON 缺少 steps 数组')
+        for (const s of steps) {
+          if (!s || typeof s !== 'object' || !s.type) {
+            throw new Error('步骤缺少 type 字段')
+          }
+        }
+        this.importParseResult = obj
+        this.$message.success(`解析成功：${steps.length} 步`)
+      } catch (e) {
+        this.importParseResult = null
+        this.$message.error('解析失败：' + e.message)
+      } finally {
+        this.importParsing = false
+      }
+    },
+    // commitImportJson 把解析结果写入后端：先创建 session 再批量 add step，再 commit 为 case
+    commitImportJson() {
+      if (!this.importParseResult) { this.$message.warning('请先解析 JSON'); return }
+      if (!this.recorderForm.group_id) { this.$message.warning('请选择分组'); return }
+      const steps = this.importParseResult.steps || []
+      const sessionName = (this.recorderForm.session_name || '').trim()
+        || `导入-${new Date().toLocaleString()}`
+      const self = this
+      // 1) 创建 session
+      base.BasePost('/api/e2e/record/session/create', {
+        session_name: sessionName,
+        group_id: this.recorderForm.group_id,
+        case_id: this.recorderForm.case_id || 0,
+        smart_link_id: 0,
+        link_id: 0,
+        user_name: '',
+        env_url: this.importParseResult.url || '',
+      }, (res) => {
+        if (!(res && res.ErrCode === 0)) {
+          self.$message.error(res?.ErrMsg || '创建会话失败')
+          return
+        }
+        const sessionId = res.Data?.id || res.Data?.session_id
+        if (!sessionId) {
+          self.$message.error('会话 id 缺失')
+          return
+        }
+        // 2) 批量追加步骤
+        let i = 0
+        const next = () => {
+          if (i >= steps.length) return finish()
+          const s = steps[i++]
+          base.BasePost('/api/e2e/record/step/add', {
+            session_id: sessionId,
+            step: {
+              id: 'stp_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
+              type: s.type,
+              version: s.version || '1.0',
+              description: s.description || '',
+              wait_after_ms: s.wait_after_ms || 0,
+              config: s.config || {},
+              recorded_at: s.recorded_at || Date.now(),
+            },
+          }, (r) => {
+            if (!(r && r.ErrCode === 0)) {
+              self.$message.warning(`第 ${i} 步添加失败：${r?.ErrMsg || 'unknown'}`)
+            }
+            next()
+          })
+        }
+        // 3) commit 成 case
+        const finish = () => {
+          base.BasePost('/api/e2e/record/commit', {
+            session_id: sessionId,
+            group_id: self.recorderForm.group_id,
+            name: sessionName,
+            case_id: self.recorderForm.case_id || 0,
+            tags: 'imported',
+          }, (r2) => {
+            if (r2 && r2.ErrCode === 0) {
+              self.$message.success(`已保存为用例：${steps.length} 步`)
+              self.importJsonText = ''
+              self.importParseResult = null
+              self.recorderDialogVisible = false
+              if (typeof self.loadCaseList === 'function') self.loadCaseList()
+            } else {
+              self.$message.error(r2?.ErrMsg || '保存用例失败')
+            }
+          })
+        }
+        next()
       })
     },
 

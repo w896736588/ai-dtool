@@ -130,9 +130,7 @@ func baseRouter(tGin *p_gin.Gin) {
 	tGin.GinGet(`/api/download/:name`, controller.DownloadWebFile)                   //下载 web/download 目录文件
 	tGin.GinGet(`/web/download/:name`, controller.DownloadWebFile)                   //兼容 web/download 直链下载
 	tGin.GinGet(`/memory/images/:name`, controller.MemoryFragmentImageServe)         //记忆库图片静态服务
-	// e2e recorder iframe proxy（任务 10）：在 SafeAuth 之前注册，访问不需要登录；
-	// SafeAuth 中已对 /api/e2e/recorder/* 做前缀放行。
-	tGin.GinGet(`/api/e2e/recorder/proxy.html`, controller.E2ERecorderProxyHTML)
+	// e2e recorder iframe proxy 路由已废弃（v7 改为 page.Evaluate 注入 recorder_runtime standalone.js）。
 }
 
 // redis相关
