@@ -30,6 +30,11 @@ import (
 	"github.com/w896736588/go-tool/gstool"
 )
 
+// recorderSessionTokenNone v7 方案的 sentinel 值：ws_token 列有 UNIQUE 索引，
+// 迁移脚本把所有空字符串 / NULL 规整为同一个 sentinel，v7 不再下发真实 ws_token，
+// 直接复用 sentinel 占位即可。
+const recorderSessionTokenNone = `none`
+
 // recorderStream 录制专用的 StreamFunc：
 // - 把 plw Playwright.Open 的关键节点（构建run_params / 打开浏览器 / 登录 process）实时打到日志。
 // - 与 controller/smart_link.go 中 SmartLinkRunPlaywright 走一样的套路。
@@ -178,7 +183,10 @@ func E2ERecordOpen(req *define.E2ERecordOpenRequest) (*define.E2ERecordOpenRespo
 	}
 
 	// v7 不再用 ws_token 走 HTTP；保留 UpdateSmartLink 是为了让历史行结构兼容（session_uuid / smart_link_id / link_id 仍要落库）。
-	if err := store.NewRecordSessionStore().UpdateSmartLink(sessionID, req.SmartLinkID, req.UserName, "", "", req.LinkID); err != nil {
+	// 重要：ws_token 列有 UNIQUE 索引，迁移脚本已把所有空字符串 / NULL 规整为 sentinel 'none'。
+	// 这里传 'none' 而不是空字符串，避免再次触犯 UNIQUE 约束（旧会话里已经有一行 ws_token='' 的，
+	// 多个 '' 会让 UNIQUE 冲突）。
+	if err := store.NewRecordSessionStore().UpdateSmartLink(sessionID, req.SmartLinkID, req.UserName, recorderSessionTokenNone, "", req.LinkID); err != nil {
 		closePage()
 		return nil, err
 	}
