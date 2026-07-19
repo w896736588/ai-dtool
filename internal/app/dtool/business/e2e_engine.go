@@ -155,40 +155,6 @@ func (e *E2EEngine) GetRecorderPage(browserID string) (playwright.Page, error) {
 	return rp.page, nil
 }
 
-// ---- v6 已移除的旧 API 留 stub，等待 controller/router 改造（任务 10） ----
-
-// TODO(removed-by-v6-refactor): OpenRecorderBrowser 已被 E2ERecordOpen 取代。
-// 保留 stub 仅用于兼容 controller/E2ERecordOpenBrowser 的临时调用，主代理应在任务 10 删除。
-func (e *E2EEngine) OpenRecorderBrowser(envURL string) (int64, error) {
-	_ = envURL
-	return 0, errors.New("OpenRecorderBrowser 已废弃，请使用 E2ERecordOpen + smart_link")
-}
-
-// TODO(removed-by-v6-refactor): GetBrowserPage 已被 GetRecorderPage(browserID) 取代。
-func (e *E2EEngine) GetBrowserPage(browserID string) (playwright.Page, error) {
-	_ = browserID
-	return nil, nil
-}
-
-// TODO(removed-by-v6-refactor): GetAnyPage 已被 GetRecorderPage(browserID) 取代。
-func (e *E2EEngine) GetAnyPage() playwright.Page {
-	return nil
-}
-
-// TODO(removed-by-v6-refactor): SetLastPage 已不再需要，page 通过 recorderPages 直接索引。
-func (e *E2EEngine) SetLastPage(p playwright.Page) { _ = p }
-
-// TODO(removed-by-v6-refactor): ExecuteStepForTest 旧录制回放暴露方法，待任务 10 移除调用。
-func (e *E2EEngine) ExecuteStepForTest(ctx *step_executor.ExecuteContext, step define.E2EStep) *step_executor.StepResult {
-	return &step_executor.StepResult{Success: false, ErrorMsg: "ExecuteStepForTest 已废弃"}
-}
-
-// TODO(removed-by-v6-refactor): ApplyPostStepWaitForTest 旧录制回放暴露方法，待任务 10 移除调用。
-func (e *E2EEngine) ApplyPostStepWaitForTest(step define.E2EStep, ctx *step_executor.ExecuteContext) {
-	_ = step
-	_ = ctx
-}
-
 // RunCase 异步执行用例。
 func (e *E2EEngine) RunCase(caseID int, triggerType string) (int64, error) {
 	caseRow, err := e.caseStore.Get(caseID)

@@ -361,28 +361,6 @@ type E2ERecordStepDeleteRequest struct {
 	StepID    string `json:"step_id"`
 }
 
-// E2ERecordStepReplayRequest 单步试回放请求。
-type E2ERecordStepReplayRequest struct {
-	SessionID int64  `json:"session_id"`
-	StepID    string `json:"step_id"`
-}
-
-// E2ERecordReplayResponse 回放结果响应。
-type E2ERecordReplayResponse struct {
-	Success    bool   `json:"success"`
-	Error      string `json:"error,omitempty"`
-	Screenshot string `json:"screenshot,omitempty"`
-	Log        string `json:"log,omitempty"`
-}
-
-// E2ERecordSessionReplayRequest 录制会话批量回放请求。
-type E2ERecordSessionReplayRequest struct {
-	SessionID      int64  `json:"session_id"`
-	StartIndex     int    `json:"start_index,omitempty"` // 从第 N 步开始（0-indexed）
-	EndIndex       int    `json:"end_index,omitempty"`   // 到第 N 步结束（含）
-	ContinueOnError bool  `json:"continue_on_error,omitempty"`
-}
-
 // E2ERecordCommitRequest 录制会话提交到用例请求。
 type E2ERecordCommitRequest struct {
 	SessionID      int64  `json:"session_id"`
@@ -439,17 +417,6 @@ type E2ERecordSessionDetail struct {
 // E2ERecordedStep 录制时的步骤结构（与 E2EStep 兼容，额外带 wait_after_ms 等录制元信息）。
 // 这里用 alias，避免重复定义导致的不一致。
 type E2ERecordedStep = RecordedStep
-
-// E2ERecordOpenBrowserRequest 录制入口打开浏览器请求。
-type E2ERecordOpenBrowserRequest struct {
-	EnvURL string `json:"env_url"`
-}
-
-// E2ERecordOpenBrowserResponse 录制入口打开浏览器响应。
-type E2ERecordOpenBrowserResponse struct {
-	OK     bool   `json:"ok"`
-	EnvURL string `json:"env_url"`
-}
 
 // E2EStepTypeListResponse 步骤类型清单响应（用于前端动态渲染）。
 type E2EStepTypeListResponse struct {

@@ -23,6 +23,26 @@ var SafeAuthWhiteList = map[string]bool{
 	"/api/Upload":               true, // 上传接口暂时放行，避免阻塞
 }
 
+// SafeAuthPathPrefixSkips 按前缀放行的接口（任务 10：录制 iframe 链路自洽）。
+// 仅限录制专用接口，其他未授权接口严禁加入此白名单。
+var SafeAuthPathPrefixSkips = []string{
+	"/api/e2e/recorder/",       // iframe proxy.html / 后续静态资源
+	"/api/e2e/record/by_token/", // ws_token 鉴权由 RecorderTokenAuthMiddleware 处理
+}
+
+// shouldSkipSafeAuth 判断请求是否在白名单或前缀放行列表中。
+func shouldSkipSafeAuth(path string) bool {
+	if SafeAuthWhiteList[path] {
+		return true
+	}
+	for _, prefix := range SafeAuthPathPrefixSkips {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // getSafeTokenManager 创建 Safe Token 管理器（从配置读取）
 func getSafeTokenManager() *common.SafeTokenManager {
 	password := component.ConfigViper.GetString("safe.password")
@@ -39,7 +59,7 @@ func SafeAuthMiddleware() gin.HandlerFunc {
 		// 1. 检查是否是白名单接口
 		path := c.Request.URL.Path
 		isSsePath := strings.HasPrefix(path, "/sse")
-		if SafeAuthWhiteList[path] {
+		if shouldSkipSafeAuth(path) {
 			if isSsePath {
 				gstool.FmtPrintlnLogTime(`[SSE-Auth] 白名单放行 path=%s`, path)
 			}

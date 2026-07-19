@@ -350,5 +350,221 @@ func E2EHealth(c *gin.Context) {
 	})
 }
 
+// =============== 录制功能（v5.0 新增） ===============
+
+// E2ERecordSessionCreate 创建录制会话。
+func E2ERecordSessionCreate(c *gin.Context) {
+	var req define.E2ERecordSessionCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+	if strings.TrimSpace(req.SessionName) == "" {
+		gsgin.GinResponseError(c, "session_name 不能为空", nil)
+		return
+	}
+	resp, err := business.E2ERecordSessionCreate(&req)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", resp)
+}
+
+// E2ERecordSessionGet 获取单个录制会话详情。
+func E2ERecordSessionGet(c *gin.Context) {
+	var req define.E2ERecordSessionGetRequest
+	_ = gsgin.GinPostBody(c, &req)
+	if req.ID <= 0 {
+		gsgin.GinResponseError(c, "id 不能为空", nil)
+		return
+	}
+	data, err := business.E2ERecordSessionGet(req.ID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if data == nil {
+		gsgin.GinResponseError(c, "录制会话不存在", nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", data)
+}
+
+// E2ERecordSessionList 列出录制会话。
+func E2ERecordSessionList(c *gin.Context) {
+	var req define.E2ERecordSessionListRequest
+	_ = gsgin.GinPostBody(c, &req)
+	resp, err := business.E2ERecordSessionList(&req)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", resp)
+}
+
+// E2ERecordSessionDelete 删除录制会话。
+func E2ERecordSessionDelete(c *gin.Context) {
+	var req define.E2ERecordSessionDeleteRequest
+	_ = gsgin.GinPostBody(c, &req)
+	if req.ID <= 0 {
+		gsgin.GinResponseError(c, "id 不能为空", nil)
+		return
+	}
+	if err := business.E2ERecordSessionDelete(req.ID); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// E2ERecordStepAdd 录制过程中追加一步。
+func E2ERecordStepAdd(c *gin.Context) {
+	var req define.E2ERecordStepAddRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+	if req.SessionID <= 0 {
+		gsgin.GinResponseError(c, "session_id 不能为空", nil)
+		return
+	}
+	if strings.TrimSpace(string(req.Step.Type)) == "" {
+		gsgin.GinResponseError(c, "step.type 不能为空", nil)
+		return
+	}
+	resp, err := business.E2ERecordStepAdd(&req)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", resp)
+}
+
+// E2ERecordStepUpdate 更新录制会话中的某一步。
+func E2ERecordStepUpdate(c *gin.Context) {
+	var req define.E2ERecordStepUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+	if req.SessionID <= 0 || req.StepID == "" {
+		gsgin.GinResponseError(c, "session_id / step_id 不能为空", nil)
+		return
+	}
+	if err := business.E2ERecordStepUpdate(&req); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// E2ERecordStepDelete 删除录制会话中的某一步。
+func E2ERecordStepDelete(c *gin.Context) {
+	var req define.E2ERecordStepDeleteRequest
+	_ = gsgin.GinPostBody(c, &req)
+	if req.SessionID <= 0 || req.StepID == "" {
+		gsgin.GinResponseError(c, "session_id / step_id 不能为空", nil)
+		return
+	}
+	if err := business.E2ERecordStepDelete(&req); err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", nil)
+}
+
+// E2ERecordCommit 将录制会话落库为用例。
+func E2ERecordCommit(c *gin.Context) {
+	var req define.E2ERecordCommitRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+	if req.SessionID <= 0 {
+		gsgin.GinResponseError(c, "session_id 不能为空", nil)
+		return
+	}
+	if req.GroupID <= 0 {
+		gsgin.GinResponseError(c, "group_id 不能为空", nil)
+		return
+	}
+	resp, err := business.E2ERecordCommit(&req)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", resp)
+}
+
+// =============== 录制功能 v6（基于 smart_link + ws_token） ===============
+
+// E2ERecordOpen 开启一次 smart_link 录制会话：开浏览器 + 写 DB + 注入 init script。
+func E2ERecordOpen(c *gin.Context) {
+	var req define.E2ERecordOpenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+	resp, err := business.E2ERecordOpen(&req)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	if !resp.OK {
+		gsgin.GinResponseError(c, resp.Error, resp)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", resp)
+}
+
+// E2ERecordResume 按 session 行续录：清掉旧 ws_token 后重开。
+func E2ERecordResume(c *gin.Context) {
+	var req define.E2ERecordResumeRequest
+	_ = gsgin.GinPostBody(c, &req)
+	if req.SessionID <= 0 {
+		gsgin.GinResponseError(c, "session_id 必须为正数", nil)
+		return
+	}
+	resp, err := business.E2ERecordResume(req.SessionID)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", resp)
+}
+
+// E2ERecordStepAddByToken recorder.js 通过 ws_token 上报单步。
+// ws_token 鉴权已由 RecorderTokenAuthMiddleware 完成。
+func E2ERecordStepAddByToken(c *gin.Context) {
+	tokenRaw, _ := c.Get("ws_token")
+	token, _ := tokenRaw.(string)
+	var req define.E2ERecordStepByTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gsgin.GinResponseError(c, "参数错误", nil)
+		return
+	}
+	resp, err := business.E2ERecordStepAddByToken(token, &req.Step)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", resp)
+}
+
+// E2ERecordCommitByToken recorder.js 通过 ws_token 提交录制到用例。
+func E2ERecordCommitByToken(c *gin.Context) {
+	tokenRaw, _ := c.Get("ws_token")
+	token, _ := tokenRaw.(string)
+	var req define.E2ERecordCommitByTokenRequest
+	_ = c.ShouldBindJSON(&req)
+	resp, err := business.E2ERecordCommitByToken(token, &req)
+	if err != nil {
+		gsgin.GinResponseError(c, err.Error(), nil)
+		return
+	}
+	gsgin.GinResponseSuccess(c, "", resp)
+}
+
 // 避免部分导入未引用告警
 var _ = cast.ToInt64

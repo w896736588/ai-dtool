@@ -130,6 +130,9 @@ func baseRouter(tGin *p_gin.Gin) {
 	tGin.GinGet(`/api/download/:name`, controller.DownloadWebFile)                   //下载 web/download 目录文件
 	tGin.GinGet(`/web/download/:name`, controller.DownloadWebFile)                   //兼容 web/download 直链下载
 	tGin.GinGet(`/memory/images/:name`, controller.MemoryFragmentImageServe)         //记忆库图片静态服务
+	// e2e recorder iframe proxy（任务 10）：在 SafeAuth 之前注册，访问不需要登录；
+	// SafeAuth 中已对 /api/e2e/recorder/* 做前缀放行。
+	tGin.GinGet(`/api/e2e/recorder/proxy.html`, controller.E2ERecorderProxyHTML)
 }
 
 // redis相关
@@ -731,6 +734,24 @@ func e2eRouter(tGin *p_gin.Gin) {
 	// 健康检查
 	tGin.GinPost(`/api/e2e/health`, controller.E2EHealth)
 
+	// 录制功能（v5.0）
+	tGin.GinPost(`/api/e2e/record/session/create`, controller.E2ERecordSessionCreate)
+	tGin.GinPost(`/api/e2e/record/session/get`, controller.E2ERecordSessionGet)
+	tGin.GinPost(`/api/e2e/record/session/list`, controller.E2ERecordSessionList)
+	tGin.GinPost(`/api/e2e/record/session/delete`, controller.E2ERecordSessionDelete)
+	tGin.GinPost(`/api/e2e/record/step/add`, controller.E2ERecordStepAdd)
+	tGin.GinPost(`/api/e2e/record/step/update`, controller.E2ERecordStepUpdate)
+	tGin.GinPost(`/api/e2e/record/step/delete`, controller.E2ERecordStepDelete)
+	tGin.GinPost(`/api/e2e/record/commit`, controller.E2ERecordCommit)
+
+	// 录制功能 v6（基于 smart_link + ws_token）
+	tGin.GinPost(`/api/e2e/record/open`, controller.E2ERecordOpen)
+	tGin.GinPost(`/api/e2e/record/resume`, controller.E2ERecordResume)
+	// ws_token 鉴权路由：SafeAuth 中已对 /api/e2e/record/by_token/* 做前缀放行，
+	// 这里再用 RecorderTokenAuthMiddleware 单独校验 token 合法性。
+	tGin.GinPost(`/api/e2e/record/by_token/step/add`, middleware.RecorderTokenAuthMiddleware(), controller.E2ERecordStepAddByToken)
+	tGin.GinPost(`/api/e2e/record/by_token/commit`, middleware.RecorderTokenAuthMiddleware(), controller.E2ERecordCommitByToken)
+
 	// 兼容旧的大写路由（如果前端没有全部改完）
 	tGin.GinPost(`/api/E2E/GroupList`, controller.E2EGroupList)
 	tGin.GinPost(`/api/E2E/GroupCreate`, controller.E2EGroupCreate)
@@ -749,4 +770,14 @@ func e2eRouter(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/E2E/StepTypeList`, controller.E2EStepTypeList)
 	tGin.GinPost(`/api/E2E/AssertionTypeList`, controller.E2EAssertionTypeList)
 	tGin.GinPost(`/api/E2E/Health`, controller.E2EHealth)
+
+	// 录制功能（兼容旧的大写路由）
+	tGin.GinPost(`/api/E2E/RecordSessionCreate`, controller.E2ERecordSessionCreate)
+	tGin.GinPost(`/api/E2E/RecordSessionGet`, controller.E2ERecordSessionGet)
+	tGin.GinPost(`/api/E2E/RecordSessionList`, controller.E2ERecordSessionList)
+	tGin.GinPost(`/api/E2E/RecordSessionDelete`, controller.E2ERecordSessionDelete)
+	tGin.GinPost(`/api/E2E/RecordStepAdd`, controller.E2ERecordStepAdd)
+	tGin.GinPost(`/api/E2E/RecordStepUpdate`, controller.E2ERecordStepUpdate)
+	tGin.GinPost(`/api/E2E/RecordStepDelete`, controller.E2ERecordStepDelete)
+	tGin.GinPost(`/api/E2E/RecordCommit`, controller.E2ERecordCommit)
 }

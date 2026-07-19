@@ -2,7 +2,6 @@
 package business
 
 import (
-	"dev_tool/internal/app/dtool/component/e2e/step_executor"
 	"dev_tool/internal/app/dtool/component/e2e/store"
 	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
@@ -593,120 +592,6 @@ func E2ERecordStepDelete(req *define.E2ERecordStepDeleteRequest) error {
 	return store.NewRecordSessionStore().DeleteStep(sessionID, req.StepID)
 }
 
-// E2ERecordStepReplay 单步回放。
-func E2ERecordStepReplay(req *define.E2ERecordStepReplayRequest) (*define.E2ERecordReplayResponse, error) {
-	row, err := store.NewRecordSessionStore().GetByID(req.SessionID)
-	if err != nil {
-		return nil, err
-	}
-	if row == nil {
-		return nil, errors.New("录制会话不存在")
-	}
-	step := findStepByID(row["steps"], req.StepID)
-	if step == nil {
-		return nil, errors.New("步骤不存在: " + req.StepID)
-	}
-	engine := GetE2EEngine()
-	// 用 browser_id 找到 page
-	page, err := engine.GetBrowserPage(e2eToStr(row["browser_id"]))
-	if err != nil || page == nil {
-		// 兜底：拿到任意空闲 page
-		page = engine.GetAnyPage()
-	}
-	if page == nil {
-		return &define.E2ERecordReplayResponse{Success: false, Error: "未找到可用的 Playwright 页面"}, nil
-	}
-	stepDef := define.E2EStep{
-		ID:          step.ID,
-		Type:        step.Type,
-		Version:     step.Version,
-		Description: step.Description,
-		WaitAfterMs: step.WaitAfterMs,
-		Config:      step.Config,
-	}
-	out := engine.NewStringOutput()
-	ctx := &step_executor.ExecuteContext{Page: page, Output: out}
-	res := engine.ExecuteStepForTest(ctx, stepDef)
-	engine.ApplyPostStepWaitForTest(stepDef, ctx)
-	return &define.E2ERecordReplayResponse{
-		Success:    res.Success,
-		Error:      res.ErrorMsg,
-		Screenshot: res.Screenshot,
-		Log:        out.String(),
-	}, nil
-}
-
-// E2ERecordSessionReplay 整段回放。
-func E2ERecordSessionReplay(req *define.E2ERecordSessionReplayRequest) (*define.E2ERecordReplayResponse, error) {
-	row, err := store.NewRecordSessionStore().GetByID(req.SessionID)
-	if err != nil {
-		return nil, err
-	}
-	if row == nil {
-		return nil, errors.New("录制会话不存在")
-	}
-	steps := parseRecordedSteps(row["steps"])
-	if len(steps) == 0 {
-		return &define.E2ERecordReplayResponse{Success: true, Log: "[空录制，无步骤]"}, nil
-	}
-	engine := GetE2EEngine()
-	page, _ := engine.GetBrowserPage(e2eToStr(row["browser_id"]))
-	if page == nil {
-		page = engine.GetAnyPage()
-	}
-	if page == nil {
-		return &define.E2ERecordReplayResponse{Success: false, Error: "未找到可用的 Playwright 页面"}, nil
-	}
-	out := engine.NewStringOutput()
-	ctx := &step_executor.ExecuteContext{Page: page, Output: out}
-	startIdx := req.StartIndex
-	if startIdx < 0 {
-		startIdx = 0
-	}
-	allOK := true
-	var firstErr string
-	for i := startIdx; i < len(steps); i++ {
-		s := steps[i]
-		stepDef := define.E2EStep{
-			ID:          s.ID,
-			Type:        s.Type,
-			Version:     s.Version,
-			Description: s.Description,
-			WaitAfterMs: s.WaitAfterMs,
-			Config:      s.Config,
-		}
-		out.Writef("[step %d/%d] %s %s", i+1, len(steps), s.Type, s.Description)
-		res := engine.ExecuteStepForTest(ctx, stepDef)
-		if !res.Success {
-			allOK = false
-			firstErr = res.ErrorMsg
-			out.Writef("  ✗ %s", res.ErrorMsg)
-			if !req.ContinueOnError {
-				break
-			}
-			continue
-		}
-		out.Writef("  ✓")
-		engine.ApplyPostStepWaitForTest(stepDef, ctx)
-	}
-	return &define.E2ERecordReplayResponse{
-		Success: allOK,
-		Error:   firstErr,
-		Log:     out.String(),
-	}, nil
-}
-
-// E2ERecordOpenBrowser 录制入口：开 Playwright 浏览器并访问 env_url。
-func E2ERecordOpenBrowser(req *define.E2ERecordOpenBrowserRequest) (*define.E2ERecordOpenBrowserResponse, error) {
-	if req == nil {
-		return nil, errors.New("请求不能为空")
-	}
-	if _, err := GetE2EEngine().OpenRecorderBrowser(strings.TrimSpace(req.EnvURL)); err != nil {
-		return nil, err
-	}
-	return &define.E2ERecordOpenBrowserResponse{OK: true, EnvURL: req.EnvURL}, nil
-}
-
 // E2ERecordCommit 将录制会话落库为用例。
 func E2ERecordCommit(req *define.E2ERecordCommitRequest) (*define.E2ERecordCommitResponse, error) {
 	row, err := store.NewRecordSessionStore().GetByID(req.SessionID)
@@ -834,16 +719,6 @@ func parseRecordedSteps(raw any) []define.RecordedStep {
 		return nil
 	}
 	return steps
-}
-
-func findStepByID(raw any, stepID string) *define.RecordedStep {
-	for i := range parseRecordedSteps(raw) {
-		if parseRecordedSteps(raw)[i].ID == stepID {
-			s := parseRecordedSteps(raw)[i]
-			return &s
-		}
-	}
-	return nil
 }
 
 func countJSONArray(raw any) int {
