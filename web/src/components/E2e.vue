@@ -75,6 +75,10 @@
           <el-icon><Plus /></el-icon>
           新建用例
         </el-button>
+        <el-button type="success" @click="openRecorderDialog">
+          <el-icon><VideoCamera /></el-icon>
+          开始录制
+        </el-button>
       </div>
 
       <el-table :data="caseList" v-loading="caseLoading" stripe border>
@@ -411,6 +415,132 @@
         </el-tabs>
       </div>
     </el-dialog>
+
+    <!-- 录制入口对话框：填写会话信息后启动 -->
+    <el-dialog v-model="recorderDialogVisible" title="启动录制会话" width="520px">
+      <el-form :model="recorderForm" label-width="100px">
+        <el-form-item label="会话名" required>
+          <el-input v-model="recorderForm.session_name" placeholder="录制会话名称" />
+        </el-form-item>
+        <el-form-item label="所属分组" required>
+          <el-select v-model="recorderForm.group_id" placeholder="选择分组">
+            <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="g.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="选择链接" required>
+          <el-select v-model="recorderForm.smart_link_id" filterable placeholder="选择 smart_link 链接" @change="onSmartLinkPick">
+            <el-option v-for="opt in smartLinkOptions" :key="opt.id" :label="opt.label" :value="opt.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="选择账号">
+          <el-select v-model="recorderForm.user_name" :disabled="!smartLinkUserOptions.length">
+            <el-option v-for="u in smartLinkUserOptions" :key="u" :label="u" :value="u" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="关联用例">
+          <el-select v-model="recorderForm.case_id" placeholder="可选：关联到现有用例" clearable filterable>
+            <el-option
+              v-for="c in caseList"
+              :key="c.id"
+              :label="`[${c.group_name || ''}] ${c.name}`"
+              :value="c.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="recorderDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="startRecording" :loading="recorderStarting">
+          启动
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 步骤确认弹窗 -->
+    <StepConfirmDialog
+      v-if="pendingStep"
+      v-model:visible="stepConfirmVisible"
+      :step="pendingStep"
+      :session-id="recorderSession ? recorderSession.id : ''"
+      title="确认录制步骤"
+      @confirmed="confirmPendingStep"
+      @cancelled="cancelPendingStep"
+    />
+
+    <!-- 会话详情对话框 -->
+    <el-dialog v-model="sessionDialogVisible" :title="sessionDialogTitle" width="90%" top="3vh">
+      <div v-if="currentSession" class="session-detail">
+        <el-descriptions :column="3" border size="small">
+          <el-descriptions-item label="会话 ID">{{ currentSession.id }}</el-descriptions-item>
+          <el-descriptions-item label="业务 ID">{{ currentSession.session_id }}</el-descriptions-item>
+          <el-descriptions-item label="状态">{{ currentSession.status }}</el-descriptions-item>
+          <el-descriptions-item label="环境URL" :span="3">{{ currentSession.env_url }}</el-descriptions-item>
+        </el-descriptions>
+
+        <div class="session-toolbar">
+          <el-button @click="replayWholeSession" :loading="replayingAll">
+            <el-icon><VideoPlay /></el-icon>
+            整段回放
+          </el-button>
+          <el-button type="primary" @click="openCommitDialog">
+            <el-icon><Check /></el-icon>
+            提交到用例
+          </el-button>
+        </div>
+
+        <el-table :data="currentSession.steps || []" border stripe size="small" max-height="50vh">
+          <el-table-column type="index" label="#" width="60" />
+          <el-table-column prop="type" label="类型" width="180">
+            <template #default="{ row }">
+              <el-tag size="small">{{ row.type }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="description" label="描述" min-width="180" />
+          <el-table-column label="配置" min-width="220">
+            <template #default="{ row }">
+              <code class="config-cell">{{ formatJson(row.config) }}</code>
+            </template>
+          </el-table-column>
+          <el-table-column label="等待(ms)" width="80" prop="wait_after_ms" />
+          <el-table-column label="断言" width="80" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="(row.assertions || []).length" size="small" type="warning">
+                {{ (row.assertions || []).length }}
+              </el-tag>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="200" fixed="right">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" link @click="replayOneStep(row)">回放</el-button>
+              <el-button size="small" type="warning" link @click="editRecordedStep(row)">编辑</el-button>
+              <el-button size="small" type="danger" link @click="deleteRecordedStep(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-dialog>
+
+    <!-- 录制会话提交对话框 -->
+    <el-dialog v-model="commitDialogVisible" title="提交录制为用例" width="520px">
+      <el-form :model="commitForm" label-width="100px">
+        <el-form-item label="目标分组" required>
+          <el-select v-model="commitForm.group_id" placeholder="选择分组">
+            <el-option v-for="g in groupList" :key="g.id" :label="g.name" :value="g.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="用例名称">
+          <el-input v-model="commitForm.name" placeholder="留空则使用会话名" />
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-input v-model="commitForm.tags" placeholder="逗号分隔" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="commitDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="commitToCase" :loading="committing">提交</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -420,9 +550,13 @@ import {
   FolderOpened,
   Document,
   VideoPlay,
+  VideoCamera,
   Plus,
   Refresh,
+  Check,
+  Delete,
 } from '@element-plus/icons-vue'
+import StepConfirmDialog from './e2e/StepConfirmDialog.vue'
 
 export default {
   name: 'E2e',
@@ -430,8 +564,12 @@ export default {
     FolderOpened,
     Document,
     VideoPlay,
+    VideoCamera,
     Plus,
     Refresh,
+    Check,
+    Delete,
+    StepConfirmDialog,
   },
   data() {
     return {
@@ -485,6 +623,37 @@ export default {
       requestsLoading: false,
       requestDetailVisible: false,
       requestDetail: null,
+
+      // ===== 录制功能 =====
+      recorderDialogVisible: false,
+      recorderForm: {
+        session_name: '',
+        group_id: null,
+        smart_link_id: null,
+        user_name: '',
+        case_id: null,
+      },
+      smartLinkOptions: [],
+      smartLinkUserOptions: [],
+      recorderStarting: false,
+      recorderSession: null, // { id, session_id, status }
+      toolbarVisible: true,
+      toolbarRecording: true,
+      toolbarMode: 'click',
+      recordedSteps: [],
+      pendingStep: null,
+      stepConfirmVisible: false,
+      sessionDialogVisible: false,
+      sessionDialogTitle: '录制会话详情',
+      currentSession: null,
+      replayingAll: false,
+      commitDialogVisible: false,
+      commitForm: {
+        group_id: null,
+        name: '',
+        tags: '',
+      },
+      committing: false,
     }
   },
   created() {
@@ -803,6 +972,284 @@ export default {
         window.open(row.screenshot, '_blank')
       }
     },
+
+    // ============ 录制功能 ============
+    openRecorderDialog() {
+      // 默认填一个会话名
+      const now = new Date()
+      this.recorderForm = {
+        session_name: `录制-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`,
+        group_id: this.caseFilterGroupId || null,
+        smart_link_id: null,
+        user_name: '',
+        case_id: null,
+      }
+      this.smartLinkOptions = []
+      this.smartLinkUserOptions = []
+      // 拉取 smart_link 列表，附带 userList
+      base.BasePost('/api/SmartLinkItemList', {}, (res) => {
+        if (res && res.ErrCode === 0) {
+          const list = (res.Data && res.Data.smart_link_list) || []
+          this.smartLinkOptions = list.map((it) => ({
+            id: it.id,
+            label: it.label,
+            userList: Array.isArray(it.userList) ? it.userList : [],
+          }))
+        }
+      })
+      this.recorderDialogVisible = true
+    },
+
+    onSmartLinkPick() {
+      const opt = this.smartLinkOptions.find((o) => o.id === this.recorderForm.smart_link_id)
+      this.smartLinkUserOptions = (opt && opt.userList && opt.userList.map((u) => u.user_name)) || []
+      if (this.smartLinkUserOptions.length === 1) this.recorderForm.user_name = this.smartLinkUserOptions[0]
+    },
+
+    startRecording() {
+      if (!this.recorderForm.session_name?.trim()) {
+        this.$message.warning('请填写会话名')
+        return
+      }
+      if (!this.recorderForm.group_id) {
+        this.$message.warning('请选择分组')
+        return
+      }
+      if (!this.recorderForm.smart_link_id) {
+        this.$message.warning('请选择链接')
+        return
+      }
+      this.recorderStarting = true
+      base.BasePost('/api/e2e/record/open', {
+        smart_link_id: this.recorderForm.smart_link_id,
+        link_id: this.recorderForm.smart_link_id,
+        user_name: this.recorderForm.user_name || '',
+        session_name: this.recorderForm.session_name,
+        group_id: this.recorderForm.group_id,
+        case_id: this.recorderForm.case_id || 0,
+      }, (res) => {
+        this.recorderStarting = false
+        if (!(res && res.ErrCode === 0)) {
+          this.$message.error(res?.ErrMsg || '启动失败')
+          return
+        }
+        this.recorderSession = res.Data
+        this.recordedSteps = []
+        this.toolbarMode = 'click'
+        this.toolbarRecording = true
+        this.recorderDialogVisible = false
+        this.$message.success('录制会话已创建，浏览器由 smart_link 接管')
+        this.openSessionDialog()
+      })
+    },
+
+    onToolbarModeChange(m) {
+      this.toolbarMode = m
+      // 切换到步骤列表时刷新
+      if (m === 'list') this.loadRecordedSteps()
+    },
+
+    toggleRecorderRecording() {
+      this.toolbarRecording = !this.toolbarRecording
+      this.$message.info(this.toolbarRecording ? '已继续录制' : '已暂停录制')
+    },
+
+    closeRecorder() {
+      if (this.recorderSession && this.recordedSteps.length === 0) {
+        this.$confirm('当前会话没有步骤，确定关闭吗？', '提示', { type: 'warning' }).then(() => {
+          this._doCloseRecorder()
+        }).catch(() => {})
+      } else {
+        this._doCloseRecorder()
+      }
+    },
+
+    _doCloseRecorder() {
+      if (this.recorderSession) {
+        base.BasePost('/api/e2e/record/session/delete', { id: this.recorderSession.id }, () => {})
+      }
+      this.toolbarVisible = false
+      this.recorderSession = null
+      this.recordedSteps = []
+    },
+
+    loadRecordedSteps() {
+      if (!this.recorderSession) return
+      base.BasePost('/api/e2e/record/session/get', { id: this.recorderSession.id }, (res) => {
+        if (res && res.ErrCode === 0) {
+          this.currentSession = res.Data
+          this.recordedSteps = res.Data?.steps || []
+        }
+      })
+    },
+
+    /**
+     * 录制工具条按钮被外部触发后调用此方法（实际由前端录制脚本注入）
+     * 简化版：提供一个手动添加步骤的入口（用于开发调试）
+     */
+    addRecordedStepManually(stepType, config, description) {
+      if (!this.recorderSession) {
+        this.$message.warning('请先启动录制会话')
+        return
+      }
+      if (!this.toolbarRecording) {
+        this.$message.warning('已暂停，请先继续录制')
+        return
+      }
+      const step = {
+        id: 'stp_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+        type: stepType,
+        version: '1.0',
+        description: description || '',
+        wait_after_ms: 200,
+        config: config || {},
+        recorded_at: Date.now(),
+      }
+      base.BasePost('/api/e2e/record/step/add', {
+        session_id: this.recorderSession.id,
+        step,
+      }, (res) => {
+        if (res && res.ErrCode === 0) {
+          this.pendingStep = res.Data?.step || step
+          this.stepConfirmVisible = true
+          this.loadRecordedSteps()
+        } else {
+          this.$message.error(res?.ErrMsg || '追加步骤失败')
+        }
+      })
+    },
+
+    confirmPendingStep(updatedStep) {
+      if (!this.pendingStep || !this.recorderSession) return
+      base.BasePost('/api/e2e/record/step/update', {
+        session_id: this.recorderSession.id,
+        step_id: this.pendingStep.id,
+        step: updatedStep,
+      }, (res) => {
+        if (res && res.ErrCode === 0) {
+          this.$message.success('步骤已确认')
+          this.stepConfirmVisible = false
+          this.pendingStep = null
+          this.loadRecordedSteps()
+        } else {
+          this.$message.error(res?.ErrMsg || '更新步骤失败')
+        }
+      })
+    },
+
+    cancelPendingStep() {
+      // 取消即删除该步骤
+      if (this.pendingStep && this.recorderSession) {
+        base.BasePost('/api/e2e/record/step/delete', {
+          session_id: this.recorderSession.id,
+          step_id: this.pendingStep.id,
+        }, () => {
+          this.pendingStep = null
+          this.loadRecordedSteps()
+        })
+      } else {
+        this.pendingStep = null
+      }
+    },
+
+    openSessionDialog() {
+      this.sessionDialogVisible = true
+      this.sessionDialogTitle = `录制会话详情 #${this.recorderSession?.id || ''}`
+      this.loadRecordedSteps()
+    },
+
+    replayOneStep(row) {
+      if (!this.recorderSession) return
+      this.$message.info(`回放步骤 ${row.type}...`)
+      base.BasePost('/api/e2e/record/step/replay', {
+        session_id: this.recorderSession.id,
+        step_id: row.id,
+      }, (res) => {
+        if (res && res.ErrCode === 0) {
+          if (res.Data?.success) this.$message.success('回放成功')
+          else this.$message.error('回放失败：' + (res.Data?.error || ''))
+        } else {
+          this.$message.error(res?.ErrMsg || '请求失败')
+        }
+      })
+    },
+
+    editRecordedStep(row) {
+      this.pendingStep = row
+      this.stepConfirmVisible = true
+    },
+
+    deleteRecordedStep(row) {
+      this.$confirm('确定删除该步骤吗？', '提示', { type: 'warning' }).then(() => {
+        base.BasePost('/api/e2e/record/step/delete', {
+          session_id: this.recorderSession.id,
+          step_id: row.id,
+        }, (res) => {
+          if (res && res.ErrCode === 0) {
+            this.$message.success('已删除')
+            this.loadRecordedSteps()
+          }
+        })
+      }).catch(() => {})
+    },
+
+    replayWholeSession() {
+      if (!this.recorderSession) return
+      this.replayingAll = true
+      base.BasePost('/api/e2e/record/session/replay', {
+        session_id: this.recorderSession.id,
+        start_index: 0,
+        continue_on_error: true,
+      }, (res) => {
+        this.replayingAll = false
+        if (res && res.ErrCode === 0) {
+          if (res.Data?.success) this.$message.success('整段回放成功')
+          else this.$message.warning('整段回放完成，存在失败：' + (res.Data?.error || ''))
+        } else {
+          this.$message.error(res?.ErrMsg || '回放失败')
+        }
+      })
+    },
+
+    openCommitDialog() {
+      if (!this.recorderSession || !this.currentSession) {
+        this.$message.warning('会话未加载')
+        return
+      }
+      this.commitForm = {
+        group_id: this.currentSession.group_id || this.caseFilterGroupId,
+        name: '',
+        tags: '',
+      }
+      this.commitDialogVisible = true
+    },
+
+    commitToCase() {
+      if (!this.commitForm.group_id) {
+        this.$message.warning('请选择目标分组')
+        return
+      }
+      this.committing = true
+      base.BasePost('/api/e2e/record/commit', {
+        session_id: this.recorderSession.id,
+        group_id: this.commitForm.group_id,
+        name: this.commitForm.name,
+        tags: this.commitForm.tags,
+      }, (res) => {
+        this.committing = false
+        if (res && res.ErrCode === 0) {
+          this.$message.success(`已提交为用例 #${res.Data.case_id}`)
+          this.commitDialogVisible = false
+          this.sessionDialogVisible = false
+          this.toolbarVisible = false
+          this.recorderSession = null
+          this.recordedSteps = []
+          this.loadCaseList()
+        } else {
+          this.$message.error(res?.ErrMsg || '提交失败')
+        }
+      })
+    },
   },
 }
 </script>
@@ -945,5 +1392,27 @@ export default {
 
 .requests-list {
   min-height: 200px;
+}
+
+.session-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.session-toolbar {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+}
+.config-cell {
+  background: #f5f7fa;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

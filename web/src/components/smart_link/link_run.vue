@@ -30,6 +30,9 @@
         <GitActionButton variant="warning" @click="openAccountSettings">
           <el-icon><User /></el-icon>账号设置
         </GitActionButton>
+        <GitActionButton variant="success" @click="showRecordDialog">
+          <el-icon><VideoCamera /></el-icon>录制 E2E
+        </GitActionButton>
         <GitActionButton @click="showCreateDialog">
           <el-icon><Plus /></el-icon>创建
         </GitActionButton>
@@ -107,6 +110,31 @@
       </div>
     </div>
   </div>
+
+  <!-- 录制 E2E 弹窗 -->
+  <el-dialog v-model="recordDialogVisible" title="录制 E2E 用例" width="520px">
+    <el-form :model="recordForm" label-width="100px">
+      <el-form-item label="会话名" required>
+        <el-input v-model="recordForm.session_name" placeholder="录制会话名称" />
+      </el-form-item>
+      <el-form-item label="所属分组" required>
+        <el-input :value="e2eGroupName" disabled placeholder="请到 E2E 页面选择分组" />
+        <div style="color:#909399;font-size:12px;margin-top:4px">提示：录制的会话将提交到所选分组的 E2E 用例中。</div>
+      </el-form-item>
+      <el-form-item label="录制链接" required>
+        <el-input v-model="recordForm.link" placeholder="https://example.com" />
+      </el-form-item>
+      <el-form-item label="基础路径">
+        <el-input v-model="recordForm.env_base_url" placeholder="/api/v1" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="recordDialogVisible = false">取消</el-button>
+      <el-button type="primary" @click="startRecordingFromLink" :loading="recordStarting">
+        启动 smart_link 浏览器并开始录制
+      </el-button>
+    </template>
+  </el-dialog>
 
   <!-- 新增/编辑弹窗 / Create/Edit dialog -->
   <el-dialog v-model="dialogSmartLink" title="创建/编辑链接" width="90%" class="smart-link-dialog">
@@ -243,6 +271,7 @@
 </template>
 <style scoped src="@/css/components/smart_link/link_run.css"></style>
 <script>
+import base from "@/utils/base"
 import smart_link_set from "@/utils/base/smart_link_set"
 import ticker_step from "@/utils/base/ticker_step"
 import Markdown from "@/components/Markdown.vue";
@@ -255,7 +284,7 @@ import GitActionButton from "@/components/base/GitActionButton.vue";
 import SettingsDialog from '@/components/base/SettingsDialog.vue'
 import AccountSettingPage from '@/components/set/account.vue'
 import accountSet from '@/utils/base/account_set'
-import { Plus, Tools, Refresh, Download, QuestionFilled, MoreFilled, User, FolderOpened, Management } from '@element-plus/icons-vue'
+import { Plus, Tools, Refresh, Download, QuestionFilled, MoreFilled, User, FolderOpened, Management, VideoCamera } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 export default {
@@ -324,6 +353,15 @@ export default {
       runningItems: {},
       tickerKey: 'link',
       versionInfo: {},
+      // 录制 E2E
+      recordDialogVisible: false,
+      recordStarting: false,
+      recordForm: {
+        session_name: '',
+        link: '',
+        env_base_url: '',
+      },
+      e2eGroupName: '（请到 E2E 页面管理）',
       openPageNum: 0,
       is_install: 0,
       node_install_tip: {
@@ -703,6 +741,48 @@ export default {
     redirectLink: function (item) {
       window.open(item.link, '_blank')
       ticker_step.Active(this.tickerKey)
+    },
+    showRecordDialog() {
+      // 默认会话名
+      const now = new Date()
+      this.recordForm = {
+        session_name: `录制-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`,
+        link: '',
+        env_base_url: '',
+      }
+      this.recordDialogVisible = true
+    },
+    startRecordingFromLink() {
+      const link = this.recordForm.link?.trim()
+      if (!link) {
+        ElMessage.warning('请输入录制链接')
+        return
+      }
+      // 从已加载的 smartList 中反查 link 对应的 id 与可选 user
+      const matched = this.smartList.find((it) => it.link === link)
+      const linkId = matched ? matched.id : 0
+      const userName = matched && matched.chooseUserName ? matched.chooseUserName : ''
+      this.recordStarting = true
+      base.BasePost('/api/e2e/record/open', {
+        smart_link_id: linkId,
+        link_id: linkId,
+        user_name: userName,
+        session_name: this.recordForm.session_name,
+        group_id: 0,
+      }, (res) => {
+        this.recordStarting = false
+        if (res && res.ErrCode === 0) {
+          this.recordDialogVisible = false
+          ElMessage.success('录制已启动，请在 E2E 页面查看会话')
+          this.$message({
+            message: '录制已就绪，请切换到 E2E 页面开始录制',
+            type: 'success',
+            duration: 4000,
+          })
+        } else {
+          ElMessage.error(res?.ErrMsg || '启动录制失败')
+        }
+      })
     },
     changeToProcess: function () { this.$emit('changeModelToEditProcess') },
     changeToFlow: function () { this.$emit('changeModelToFlow') },
