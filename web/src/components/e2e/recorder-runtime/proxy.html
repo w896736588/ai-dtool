@@ -2,12 +2,12 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>recorder proxy</title>
 </head>
 <body>
   <!-- 此 HTML 由 dtool 同源 iframe 加载；里面只跑 recorder-runtime 的 fetch 同源代理逻辑。
-       工具条由被录 page 自身的 AddInitScript 注入段负责挂载（见 index.js 的 ensureToolbar）。 -->
-  <script src="<%= BASE_URL %>js/chunk-vendors.<%= VENDOR_HASH %>.js"></script>
-  <script src="<%= BASE_URL %>js/<%= chunk %>.js"></script>
+       工具条由被录 page 自身的 AddInitScript 注入段负责挂载（见 index.js 的 ensureToolbar）。
+       html-webpack-plugin 自动注入到 template body 末尾；vue.config.js pages.recorder.chunks=['chunk-vendors']。 -->
 </body>
 </html>
