@@ -69,7 +69,7 @@ func querySmartLinkLabel(smartLinkID int) (string, error) {
 //
 // 返回 *playwright.Page：plw.GetPage 函数签名就是返回指针到 Page 接口，调用方必须按
 // `(*page).Close()` / `(*page).AddInitScript(...)` 方式调用方法。
-func openSmartLinkRecorder(smartLinkID int, userName string) (string, *playwright.Page, string, error) {
+func openSmartLinkRecorder(smartLinkID int, userName, password string) (string, *playwright.Page, string, error) {
 	label, err := querySmartLinkLabel(smartLinkID)
 	if err != nil {
 		return "", nil, "", err
@@ -80,7 +80,7 @@ func openSmartLinkRecorder(smartLinkID int, userName string) (string, *playwrigh
 	// 实际上 openType 决定 Channel selection，传入 0 让 GetRunParams 从 smart_link 表的 open_type 字段读。
 	// replaceList 必须传非 nil map：getRunParamsFromNewTable 内部会向其写入 {user_name}/{password}，
 	// 传 nil 会触发 "assignment to entry in nil map" panic。
-	runParams, runErr := plw.GetRunParams(smartLinkID, label, userName, "", 0, 1, map[string]string{})
+	runParams, runErr := plw.GetRunParams(smartLinkID, label, userName, password, 0, 1, map[string]string{})
 	if runErr != nil {
 		stream(`构建run_params`, `失败:`+runErr.Error())
 		return "", nil, "", runErr
@@ -114,7 +114,7 @@ func E2ERecordOpen(req *define.E2ERecordOpenRequest) (*define.E2ERecordOpenRespo
 		return nil, errors.New("smart_link_id 必须为正数")
 	}
 
-	browserID, page, envURL, err := openSmartLinkRecorder(req.SmartLinkID, req.UserName)
+	browserID, page, envURL, err := openSmartLinkRecorder(req.SmartLinkID, req.UserName, req.Password)
 	if err != nil {
 		return &define.E2ERecordOpenResponse{OK: false, Error: err.Error()}, nil
 	}

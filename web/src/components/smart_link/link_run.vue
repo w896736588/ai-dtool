@@ -762,11 +762,19 @@ export default {
       const matched = this.smartList.find((it) => it.link === link)
       const linkId = matched ? matched.id : 0
       const userName = matched && matched.chooseUserName ? matched.chooseUserName : ''
+      // 同步拿密码：与 SmartLinkRunPlaywright 同源逻辑，process list 的
+      // "输入密码" 会用 `{password}` placeholder 替换，没有 password 会写空。
+      let userPassword = ''
+      if (matched && matched.userList && userName) {
+        const hit = matched.userList.find((u) => u.user_name === userName)
+        if (hit) userPassword = hit.password || ''
+      }
       this.recordStarting = true
       base.BasePost('/api/e2e/record/open', {
         smart_link_id: linkId,
         link_id: linkId,
         user_name: userName,
+        password: userPassword,
         session_name: this.recordForm.session_name,
         group_id: 0,
       }, (res) => {

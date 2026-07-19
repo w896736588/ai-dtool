@@ -456,10 +456,13 @@ type E2EAssertionTypeMeta struct {
 
 // E2ERecordOpenRequest 开启一次 smart_link 录制会话。
 // smart_link_id 决定登录链路与浏览器上下文；ws_token 内部生成。
+// Password 必须由前端从 smart_link 的 userList 中读出传入，与 SmartLinkRunPlaywright 走
+// 同一份 GetRunParams 逻辑——否则 process list 中的"输入密码"会用空串覆盖密码框。
 type E2ERecordOpenRequest struct {
 	SmartLinkID int    `json:"smart_link_id"`
 	LinkID      int    `json:"link_id,omitempty"`
 	UserName    string `json:"user_name"`
+	Password    string `json:"password,omitempty"`
 	SessionName string `json:"session_name,omitempty"`
 	GroupID     int    `json:"group_id,omitempty"`
 	CaseID      int    `json:"case_id,omitempty"`
