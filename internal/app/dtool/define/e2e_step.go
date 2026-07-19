@@ -8,16 +8,16 @@ type E2EStepType string
 
 const (
 	// ===== 页面操作类 =====
-	E2EStepOpenEnv      E2EStepType = "open_env"     // 打开环境
-	E2EStepClickV1     E2EStepType = "click_v1"     // 点击（基础）
-	E2EStepInputV1     E2EStepType = "input_v1"     // 输入（基础）
-	E2EStepInputV2     E2EStepType = "input_v2"     // 输入（多输入源）
-	E2EStepHoverV1     E2EStepType = "hover_v1"     // 悬停
-	E2EStepSelectV1    E2EStepType = "select_v1"    // 下拉选择
-	E2EStepNavigateV1  E2EStepType = "navigate_v1"  // 页面导航
-	E2EStepGoBackV1    E2EStepType = "go_back_v1"   // 返回上一页
-	E2EStepReloadV1    E2EStepType = "reload_v1"    // 刷新
-	E2EStepPressKeyV1  E2EStepType = "press_key_v1" // 按键
+	E2EStepOpenEnv    E2EStepType = "open_env"     // 打开环境
+	E2EStepClickV1    E2EStepType = "click_v1"     // 点击（基础）
+	E2EStepInputV1    E2EStepType = "input_v1"     // 输入（基础）
+	E2EStepInputV2    E2EStepType = "input_v2"     // 输入（多输入源）
+	E2EStepHoverV1    E2EStepType = "hover_v1"     // 悬停
+	E2EStepSelectV1   E2EStepType = "select_v1"    // 下拉选择
+	E2EStepNavigateV1 E2EStepType = "navigate_v1"  // 页面导航
+	E2EStepGoBackV1   E2EStepType = "go_back_v1"   // 返回上一页
+	E2EStepReloadV1   E2EStepType = "reload_v1"    // 刷新
+	E2EStepPressKeyV1 E2EStepType = "press_key_v1" // 按键
 
 	// ===== 等待类 =====
 	E2EStepWaitElementV1 E2EStepType = "wait_element_v1" // 等待元素
@@ -30,15 +30,23 @@ const (
 
 	// ===== 脚本类 =====
 	E2EStepScriptV1 E2EStepType = "script_v1" // 执行自定义 JS 脚本
+
+	// ===== 录制专用类（v5.0 新增） =====
+	E2EStepClickByPositionV1 E2EStepType = "click_by_position_v1" // 坐标点击（录制生成）
+	E2EStepRightClickV1      E2EStepType = "right_click_v1"       // 右键点击（录制生成）
+	E2EStepScrollV1          E2EStepType = "scroll_v1"            // 滚动（录制生成）
+	E2EStepWaitAfterV1       E2EStepType = "wait_after_v1"        // 步骤后等待（录制自动追加）
 )
 
 // E2EStep 步骤定义，配置以 JSON 存储，支持任意扩展。
 type E2EStep struct {
-	ID          string          `json:"id"`          // 步骤唯一 ID（UUID）
-	Type        E2EStepType     `json:"type"`        // 步骤类型（含版本）
-	Version     string          `json:"version"`     // 配置内部版本（如 "1.0"）
-	Description string          `json:"description"` // 步骤描述
-	Config      json.RawMessage `json:"config"`      // 步骤特有配置
+	ID          string          `json:"id"`                      // 步骤唯一 ID（UUID）
+	Type        E2EStepType     `json:"type"`                    // 步骤类型（含版本）
+	Version     string          `json:"version"`                 // 配置内部版本（如 "1.0"）
+	Description string          `json:"description"`             // 步骤描述
+	WaitAfterMs int             `json:"wait_after_ms,omitempty"` // 录制场景：步骤后等待（毫秒）
+	Config      json.RawMessage `json:"config"`                  // 步骤特有配置
+	Assertions  []E2EAssertion  `json:"assertions,omitempty"`    // 步骤携带的断言列表
 }
 
 // E2EStepWithMeta 是带元信息的步骤（用于执行器内部）。
@@ -49,20 +57,20 @@ type E2EStepWithMeta struct {
 
 // ClickV1Config click_v1 配置：基础点击。
 type ClickV1Config struct {
-	Selector     string `json:"selector"`                // 选择器
-	SelectorType string `json:"selector_type"`           // css/xpath/text/role
-	ClickCount   int    `json:"click_count,omitempty"`  // 1=单击 2=双击
-	TimeoutMs    int    `json:"timeout_ms,omitempty"`   // 等待元素出现超时
-	Force        bool   `json:"force,omitempty"`        // 强制点击
+	Selector     string `json:"selector"`              // 选择器
+	SelectorType string `json:"selector_type"`         // css/xpath/text/role
+	ClickCount   int    `json:"click_count,omitempty"` // 1=单击 2=双击
+	TimeoutMs    int    `json:"timeout_ms,omitempty"`  // 等待元素出现超时
+	Force        bool   `json:"force,omitempty"`       // 强制点击
 }
 
 // InputV1Config input_v1 配置：固定输入。
 type InputV1Config struct {
-	Selector     string `json:"selector"`           // 选择器
-	SelectorType string `json:"selector_type"`      // css/xpath/text/role
-	Value        string `json:"value"`              // 输入值（支持 {{var}} 变量插值）
-	ClearBefore  bool   `json:"clear_before"`       // 输入前清空
-	PressEnter   bool   `json:"press_enter"`        // 输入后回车
+	Selector     string `json:"selector"`      // 选择器
+	SelectorType string `json:"selector_type"` // css/xpath/text/role
+	Value        string `json:"value"`         // 输入值（支持 {{var}} 变量插值）
+	ClearBefore  bool   `json:"clear_before"`  // 输入前清空
+	PressEnter   bool   `json:"press_enter"`   // 输入后回车
 	TimeoutMs    int    `json:"timeout_ms,omitempty"`
 }
 
@@ -76,9 +84,9 @@ type InputV2Config struct {
 
 	SourceType string `json:"source_type"` // fixed/previous_output/api
 
-	FixedValue      string          `json:"fixed_value,omitempty"`
-	PreviousOutput  *PreviousOutput `json:"previous_output,omitempty"`
-	APIInput        *APIInputConfig `json:"api_input,omitempty"`
+	FixedValue     string          `json:"fixed_value,omitempty"`
+	PreviousOutput *PreviousOutput `json:"previous_output,omitempty"`
+	APIInput       *APIInputConfig `json:"api_input,omitempty"`
 }
 
 // PreviousOutput 从上一步提取的输出引用。
@@ -107,24 +115,24 @@ type HoverV1Config struct {
 type SelectV1Config struct {
 	Selector     string `json:"selector"`
 	SelectorType string `json:"selector_type"`
-	Value        string `json:"value"`      // 选项值或文本
+	Value        string `json:"value"`        // 选项值或文本
 	By           string `json:"by,omitempty"` // value/text/index
 	TimeoutMs    int    `json:"timeout_ms,omitempty"`
 }
 
 // NavigateV1Config 导航配置。
 type NavigateV1Config struct {
-	URL        string `json:"url"`         // 目标 URL
-	URLType    string `json:"url_type"`    // env/full/relative
-	WaitLoad   bool   `json:"wait_load"`   // 等待页面加载完成
-	TimeoutMs  int    `json:"timeout_ms,omitempty"`
+	URL       string `json:"url"`       // 目标 URL
+	URLType   string `json:"url_type"`  // env/full/relative
+	WaitLoad  bool   `json:"wait_load"` // 等待页面加载完成
+	TimeoutMs int    `json:"timeout_ms,omitempty"`
 }
 
 // WaitElementV1Config 等待元素配置。
 type WaitElementV1Config struct {
 	Selector     string `json:"selector"`
 	SelectorType string `json:"selector_type"`
-	State        string `json:"state"`              // visible/hidden/attached/detached
+	State        string `json:"state"` // visible/hidden/attached/detached
 	TimeoutMs    int    `json:"timeout_ms"`
 }
 
@@ -153,23 +161,69 @@ type ExtractAttrV1Config struct {
 
 // ExtractAPIV1Config 从捕获的 API 响应提取到变量。
 type ExtractAPIV1Config struct {
-	FindByURL     string `json:"find_by_url,omitempty"`
-	FindByPattern string `json:"find_by_pattern,omitempty"`
-	FindByMethod  string `json:"find_by_method,omitempty"`
+	FindByURL        string `json:"find_by_url,omitempty"`
+	FindByPattern    string `json:"find_by_pattern,omitempty"`
+	FindByMethod     string `json:"find_by_method,omitempty"`
 	ResponseJSONPath string `json:"response_json_path"`
-	ExtractTo     string `json:"extract_to"`
-	MatchIndex    int    `json:"match_index,omitempty"`
+	ExtractTo        string `json:"extract_to"`
+	MatchIndex       int    `json:"match_index,omitempty"`
 }
 
 // ScriptV1Config 自定义 JS 脚本。
 type ScriptV1Config struct {
-	Code        string `json:"code"`     // JavaScript 代码
+	Code        string `json:"code"` // JavaScript 代码
 	Description string `json:"description,omitempty"`
 }
 
 // PressKeyV1Config 按键配置。
 type PressKeyV1Config struct {
-	Key      string `json:"key"` // Enter/Tab/Escape 等
-	Selector string `json:"selector,omitempty"`
+	Key          string `json:"key"` // Enter/Tab/Escape 等
+	Selector     string `json:"selector,omitempty"`
 	SelectorType string `json:"selector_type,omitempty"`
+}
+
+// ClickByPositionV1Config 坐标点击（录制工具条生成）。
+type ClickByPositionV1Config struct {
+	X                 int     `json:"x"`
+	Y                 int     `json:"y"`
+	ViewportWidth     int     `json:"viewport_width"`
+	ViewportHeight    int     `json:"viewport_height"`
+	DeviceScaleFactor float64 `json:"device_scale_factor,omitempty"`
+	ScaleMode         string  `json:"scale_mode,omitempty"` // absolute | ratio，默认 absolute
+	ClickCount        int     `json:"click_count,omitempty"`
+	Button            string  `json:"button,omitempty"` // left/right/middle
+}
+
+// RightClickV1Config 右键点击配置。
+type RightClickV1Config struct {
+	X              int `json:"x"`
+	Y              int `json:"y"`
+	ViewportWidth  int `json:"viewport_width"`
+	ViewportHeight int `json:"viewport_height"`
+}
+
+// ScrollV1Config 滚动配置。
+type ScrollV1Config struct {
+	DeltaX   int `json:"delta_x"`
+	DeltaY   int `json:"delta_y"`
+	Duration int `json:"duration_ms,omitempty"` // 滚动动画时长
+}
+
+// WaitAfterV1Config 步骤后等待（录制时常自动追加）。
+type WaitAfterV1Config struct {
+	DurationMs int `json:"duration_ms"`
+}
+
+// RecordedStep 录制时的步骤结构（与 E2EStep 兼容，额外带 wait_after_ms 等录制元信息）。
+type RecordedStep struct {
+	ID           string          `json:"id"`
+	Type         E2EStepType     `json:"type"`
+	Version      string          `json:"version,omitempty"`
+	Description  string          `json:"description,omitempty"`
+	WaitAfterMs  int             `json:"wait_after_ms,omitempty"`
+	Config       json.RawMessage `json:"config"`
+	Assertions   json.RawMessage `json:"assertions,omitempty"`
+	RecordedAt   int64           `json:"recorded_at,omitempty"`
+	ReplayStatus string          `json:"replay_status,omitempty"` // passed/failed/skipped
+	ReplayError  string          `json:"replay_error,omitempty"`
 }

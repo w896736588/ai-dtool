@@ -50,6 +50,16 @@ func (o *OutputBuffer) Writef(format string, args ...any) {
 	}
 }
 
+// String 拼接全部日志行。
+func (o *OutputBuffer) String() string {
+	if o == nil {
+		return ""
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return strings.Join(o.Lines, "\n")
+}
+
 func formatString(format string, args ...any) string {
 	if len(args) == 0 {
 		return format
@@ -172,8 +182,8 @@ type StepExecutor interface {
 
 // Registry 步骤版本注册表（key: "input_v1"）。
 type Registry struct {
-	mu       sync.RWMutex
-	handlers map[string]StepExecutor
+	mu         sync.RWMutex
+	handlers   map[string]StepExecutor
 	deprecated map[string]string
 }
 

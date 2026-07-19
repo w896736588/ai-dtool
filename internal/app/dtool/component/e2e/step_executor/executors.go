@@ -749,3 +749,152 @@ func unmarshalJSON(raw []byte, target any) error {
 	}
 	return json.Unmarshal(raw, target)
 }
+
+// ==================== 录制专用步骤类型（v5.0 新增） ====================
+
+// ClickByPositionV1Executor click_by_position_v1: 按坐标点击（录制工具条生成）。
+// 回放时若 scale_mode=ratio 且视口尺寸变化，按比例换算。
+type ClickByPositionV1Executor struct{}
+
+func (e *ClickByPositionV1Executor) Type() define.E2EStepType { return define.E2EStepClickByPositionV1 }
+
+func (e *ClickByPositionV1Executor) Validate(step *define.E2EStep) error {
+	var cfg define.ClickByPositionV1Config
+	if err := unmarshalJSON(step.Config, &cfg); err != nil {
+		return err
+	}
+	if cfg.ViewportWidth <= 0 || cfg.ViewportHeight <= 0 {
+		return errors.New("click_by_position_v1: viewport_width/height 不能为空")
+	}
+	return nil
+}
+
+func (e *ClickByPositionV1Executor) Execute(ctx *ExecuteContext, step *define.E2EStep) *StepResult {
+	var cfg define.ClickByPositionV1Config
+	_ = unmarshalJSON(step.Config, &cfg)
+	x, y := cfg.X, cfg.Y
+	if cfg.ScaleMode == "ratio" {
+		// 按比例换算到当前视口
+		curW, curH := currentViewport(ctx.Page)
+		if curW > 0 && curH > 0 {
+			x = cfg.X * curW / cfg.ViewportWidth
+			y = cfg.Y * curH / cfg.ViewportHeight
+		}
+	}
+	button := "left"
+	if cfg.Button != "" {
+		button = cfg.Button
+	}
+	mb := playwright.MouseButton(button)
+	opts := playwright.MouseClickOptions{Button: &mb}
+	if cfg.ClickCount > 1 {
+		opts.ClickCount = playwright.Int(cfg.ClickCount)
+	}
+	if err := ctx.Page.Mouse().Click(float64(x), float64(y), opts); err != nil {
+		return &StepResult{Success: false, ErrorMsg: fmt.Sprintf("坐标点击失败: %v", err)}
+	}
+	return &StepResult{Success: true}
+}
+
+// RightClickV1Executor right_click_v1: 右键点击（录制工具条生成）。
+type RightClickV1Executor struct{}
+
+func (e *RightClickV1Executor) Type() define.E2EStepType { return define.E2EStepRightClickV1 }
+
+func (e *RightClickV1Executor) Validate(step *define.E2EStep) error {
+	var cfg define.RightClickV1Config
+	if err := unmarshalJSON(step.Config, &cfg); err != nil {
+		return err
+	}
+	if cfg.ViewportWidth <= 0 || cfg.ViewportHeight <= 0 {
+		return errors.New("right_click_v1: viewport_width/height 不能为空")
+	}
+	return nil
+}
+
+func (e *RightClickV1Executor) Execute(ctx *ExecuteContext, step *define.E2EStep) *StepResult {
+	var cfg define.RightClickV1Config
+	_ = unmarshalJSON(step.Config, &cfg)
+	x, y := cfg.X, cfg.Y
+	if err := ctx.Page.Mouse().Click(float64(x), float64(y), playwright.MouseClickOptions{
+		Button: playwright.MouseButtonRight,
+	}); err != nil {
+		return &StepResult{Success: false, ErrorMsg: fmt.Sprintf("右键点击失败: %v", err)}
+	}
+	return &StepResult{Success: true}
+}
+
+// ScrollV1Executor scroll_v1: 滚动页面（录制工具条生成）。
+type ScrollV1Executor struct{}
+
+func (e *ScrollV1Executor) Type() define.E2EStepType { return define.E2EStepScrollV1 }
+
+func (e *ScrollV1Executor) Validate(step *define.E2EStep) error {
+	var cfg define.ScrollV1Config
+	if err := unmarshalJSON(step.Config, &cfg); err != nil {
+		return err
+	}
+	if cfg.DeltaX == 0 && cfg.DeltaY == 0 {
+		return errors.New("scroll_v1: delta_x / delta_y 至少有一个非零")
+	}
+	return nil
+}
+
+func (e *ScrollV1Executor) Execute(ctx *ExecuteContext, step *define.E2EStep) *StepResult {
+	var cfg define.ScrollV1Config
+	_ = unmarshalJSON(step.Config, &cfg)
+	// 通过 evaluate 滚动（兼容性最好，跨设备一致）
+	js := fmt.Sprintf("window.scrollBy(%d, %d);", cfg.DeltaX, cfg.DeltaY)
+	if _, err := ctx.Page.Evaluate(js); err != nil {
+		// 失败时尝试 Mouse.Wheel
+		if wheelErr := ctx.Page.Mouse().Wheel(float64(cfg.DeltaX), float64(cfg.DeltaY)); wheelErr != nil {
+			return &StepResult{Success: false, ErrorMsg: fmt.Sprintf("滚动失败: evaluate=%v wheel=%v", err, wheelErr)}
+		}
+	}
+	return &StepResult{Success: true}
+}
+
+// WaitAfterV1Executor wait_after_v1: 步骤后等待（录制时常自动追加，用于等待异步请求 / 动画）。
+type WaitAfterV1Executor struct{}
+
+func (e *WaitAfterV1Executor) Type() define.E2EStepType { return define.E2EStepWaitAfterV1 }
+
+func (e *WaitAfterV1Executor) Validate(step *define.E2EStep) error {
+	var cfg define.WaitAfterV1Config
+	if err := unmarshalJSON(step.Config, &cfg); err != nil {
+		return err
+	}
+	if cfg.DurationMs < 0 {
+		return errors.New("wait_after_v1: duration_ms 不能为负")
+	}
+	return nil
+}
+
+func (e *WaitAfterV1Executor) Execute(ctx *ExecuteContext, step *define.E2EStep) *StepResult {
+	var cfg define.WaitAfterV1Config
+	_ = unmarshalJSON(step.Config, &cfg)
+	dur := cfg.DurationMs
+	if dur <= 0 {
+		return &StepResult{Success: true}
+	}
+	ctx.Page.WaitForTimeout(float64(dur))
+	return &StepResult{Success: true}
+}
+
+// currentViewport 读取当前 page 的视口尺寸（缩放模式时使用）。
+func currentViewport(page playwright.Page) (int, int) {
+	if page == nil {
+		return 0, 0
+	}
+	res, err := page.Evaluate("() => ({ w: window.innerWidth, h: window.innerHeight })")
+	if err != nil || res == nil {
+		return 0, 0
+	}
+	m, ok := res.(map[string]any)
+	if !ok {
+		return 0, 0
+	}
+	w, _ := m["w"].(float64)
+	h, _ := m["h"].(float64)
+	return int(w), int(h)
+}

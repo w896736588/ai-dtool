@@ -4,9 +4,10 @@ package store
 
 import (
 	"dev_tool/internal/app/dtool/common"
-	"dev_tool/internal/app/dtool/define"
 	"dev_tool/internal/app/dtool/component/e2e/interceptor"
+	"dev_tool/internal/app/dtool/define"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/spf13/cast"
@@ -516,22 +517,90 @@ type RecordSessionStore struct{}
 
 func NewRecordSessionStore() *RecordSessionStore { return &RecordSessionStore{} }
 
-// Create 创建录制会话。
-func (s *RecordSessionStore) Create(sessionID string, caseID int, envURL, envBaseURL, name string) error {
+// Create 创建录制会话（自增 row_id + 业务 session_id）。
+func (s *RecordSessionStore) Create(name, sessionID, envURL, envBaseURL string, caseID, groupID int, browserID string) (int64, error) {
 	now := time.Now().Unix()
-	_, err := common.DbMain.Client.ExecBySql(`
-		INSERT INTO tbl_e2e_record_session (id, case_id, env_url, env_base_url, name, steps, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, '[]', ?, ?)`,
-		sessionID, caseID, envURL, envBaseURL, name, now, now,
+	id, err := common.DbMain.Client.InsertBySql(`
+		INSERT INTO tbl_e2e_record_session (session_id, case_id, group_id, env_url, env_base_url, browser_id, name, steps, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, '[]', 'recording', ?, ?)`,
+		sessionID, caseID, groupID, envURL, envBaseURL, browserID, name, now, now,
 	).Exec()
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
-// AppendStep 向录制会话追加步骤。
+// GetByID 按自增 ID 查询。
+func (s *RecordSessionStore) GetByID(id int64) (map[string]any, error) {
+	if id <= 0 {
+		return nil, nil
+	}
+	return common.DbMain.Client.QueryBySql(
+		`SELECT * FROM tbl_e2e_record_session WHERE id = ?`, id,
+	).One()
+}
+
+// GetBySessionID 按业务 session_id 查询。
+func (s *RecordSessionStore) GetBySessionID(sessionID string) (map[string]any, error) {
+	if sessionID == "" {
+		return nil, nil
+	}
+	return common.DbMain.Client.QueryBySql(
+		`SELECT * FROM tbl_e2e_record_session WHERE session_id = ?`, sessionID,
+	).One()
+}
+
+// List 列出录制会话（可选 case_id 过滤）。
+func (s *RecordSessionStore) List(caseID int, status string, page, pageSize int) ([]map[string]any, int, error) {
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if page <= 0 {
+		page = 1
+	}
+	var (
+		rows []map[string]any
+		err  error
+	)
+	if caseID > 0 && status != "" {
+		rows, err = common.DbMain.Client.QueryBySql(
+			`SELECT * FROM tbl_e2e_record_session WHERE case_id = ? AND status = ? ORDER BY id DESC LIMIT ? OFFSET ?`,
+			caseID, status, pageSize, (page-1)*pageSize,
+		).All()
+	} else if caseID > 0 {
+		rows, err = common.DbMain.Client.QueryBySql(
+			`SELECT * FROM tbl_e2e_record_session WHERE case_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`,
+			caseID, pageSize, (page-1)*pageSize,
+		).All()
+	} else if status != "" {
+		rows, err = common.DbMain.Client.QueryBySql(
+			`SELECT * FROM tbl_e2e_record_session WHERE status = ? ORDER BY id DESC LIMIT ? OFFSET ?`,
+			status, pageSize, (page-1)*pageSize,
+		).All()
+	} else {
+		rows, err = common.DbMain.Client.QueryBySql(
+			`SELECT * FROM tbl_e2e_record_session ORDER BY id DESC LIMIT ? OFFSET ?`,
+			pageSize, (page-1)*pageSize,
+		).All()
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	// total
+	var total int
+	totalRow, _ := common.DbMain.Client.QueryBySql(
+		`SELECT COUNT(1) AS c FROM tbl_e2e_record_session`,
+	).One()
+	total = cast.ToInt(totalRow["c"])
+	return rows, total, nil
+}
+
+// AppendStep 向录制会话追加步骤（按 session_id 业务主键）。
 func (s *RecordSessionStore) AppendStep(sessionID string, stepJSON string) error {
 	now := time.Now().Unix()
 	row, err := common.DbMain.Client.QueryBySql(
-		`SELECT steps FROM tbl_e2e_record_session WHERE id = ?`, sessionID,
+		`SELECT steps FROM tbl_e2e_record_session WHERE session_id = ?`, sessionID,
 	).One()
 	if err != nil || len(row) == 0 {
 		return err
@@ -547,26 +616,115 @@ func (s *RecordSessionStore) AppendStep(sessionID string, stepJSON string) error
 	arr = append(arr, step)
 	out, _ := json.Marshal(arr)
 	_, err = common.DbMain.Client.ExecBySql(`
-		UPDATE tbl_e2e_record_session SET steps = ?, updated_at = ? WHERE id = ?`,
+		UPDATE tbl_e2e_record_session SET steps = ?, updated_at = ? WHERE session_id = ?`,
 		string(out), now, sessionID,
 	).Exec()
 	return err
 }
 
-// Get 获取录制会话。
+// UpdateStep 更新录制会话中的某一步（按 step_id 匹配）。
+func (s *RecordSessionStore) UpdateStep(sessionID, stepID, stepJSON string) error {
+	now := time.Now().Unix()
+	row, err := common.DbMain.Client.QueryBySql(
+		`SELECT steps FROM tbl_e2e_record_session WHERE session_id = ?`, sessionID,
+	).One()
+	if err != nil || len(row) == 0 {
+		return err
+	}
+	existing := cast.ToString(row["steps"])
+	if existing == "" {
+		existing = "[]"
+	}
+	var arr []json.RawMessage
+	_ = json.Unmarshal([]byte(existing), &arr)
+	updated := false
+	for i := range arr {
+		var probe map[string]any
+		if err := json.Unmarshal(arr[i], &probe); err != nil {
+			continue
+		}
+		if cast.ToString(probe["id"]) == stepID {
+			arr[i] = json.RawMessage(stepJSON)
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		return fmt.Errorf("未找到 step_id=%s", stepID)
+	}
+	out, _ := json.Marshal(arr)
+	_, err = common.DbMain.Client.ExecBySql(`
+		UPDATE tbl_e2e_record_session SET steps = ?, updated_at = ? WHERE session_id = ?`,
+		string(out), now, sessionID,
+	).Exec()
+	return err
+}
+
+// DeleteStep 删除录制会话中的某一步。
+func (s *RecordSessionStore) DeleteStep(sessionID, stepID string) error {
+	now := time.Now().Unix()
+	row, err := common.DbMain.Client.QueryBySql(
+		`SELECT steps FROM tbl_e2e_record_session WHERE session_id = ?`, sessionID,
+	).One()
+	if err != nil || len(row) == 0 {
+		return err
+	}
+	existing := cast.ToString(row["steps"])
+	if existing == "" {
+		existing = "[]"
+	}
+	var arr []json.RawMessage
+	_ = json.Unmarshal([]byte(existing), &arr)
+	out := make([]json.RawMessage, 0, len(arr))
+	for i := range arr {
+		var probe map[string]any
+		if err := json.Unmarshal(arr[i], &probe); err != nil {
+			continue
+		}
+		if cast.ToString(probe["id"]) != stepID {
+			out = append(out, arr[i])
+		}
+	}
+	data, _ := json.Marshal(out)
+	_, err = common.DbMain.Client.ExecBySql(`
+		UPDATE tbl_e2e_record_session SET steps = ?, updated_at = ? WHERE session_id = ?`,
+		string(data), now, sessionID,
+	).Exec()
+	return err
+}
+
+// Get 获取录制会话（兼容旧接口）。
 func (s *RecordSessionStore) Get(sessionID string) (map[string]any, error) {
 	if sessionID == "" {
 		return nil, nil
 	}
 	return common.DbMain.Client.QueryBySql(
-		`SELECT * FROM tbl_e2e_record_session WHERE id = ?`, sessionID,
+		`SELECT * FROM tbl_e2e_record_session WHERE session_id = ?`, sessionID,
 	).One()
 }
 
-// Delete 删除录制会话。
+// Delete 删除录制会话（按 session_id）。
 func (s *RecordSessionStore) Delete(sessionID string) error {
 	_, err := common.DbMain.Client.ExecBySql(
-		`DELETE FROM tbl_e2e_record_session WHERE id = ?`, sessionID,
+		`DELETE FROM tbl_e2e_record_session WHERE session_id = ?`, sessionID,
+	).Exec()
+	return err
+}
+
+// DeleteByID 删除录制会话（按自增 ID）。
+func (s *RecordSessionStore) DeleteByID(id int64) error {
+	_, err := common.DbMain.Client.ExecBySql(
+		`DELETE FROM tbl_e2e_record_session WHERE id = ?`, id,
+	).Exec()
+	return err
+}
+
+// UpdateStatus 修改会话状态。
+func (s *RecordSessionStore) UpdateStatus(sessionID, status string) error {
+	now := time.Now().Unix()
+	_, err := common.DbMain.Client.ExecBySql(
+		`UPDATE tbl_e2e_record_session SET status = ?, updated_at = ? WHERE session_id = ?`,
+		status, now, sessionID,
 	).Exec()
 	return err
 }
