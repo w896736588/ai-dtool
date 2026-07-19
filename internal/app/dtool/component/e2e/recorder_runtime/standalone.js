@@ -95,7 +95,7 @@
     var s = document.createElement('style')
     s.id = '__dtool_recorder_style'
     s.textContent = TOOLBAR_CSS
-    (document.head || document.documentElement).appendChild(s)
+    ;(document.head || document.documentElement).appendChild(s)
   }
 
   function toast(msg, durationMs) {
