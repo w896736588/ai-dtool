@@ -143,13 +143,30 @@ func openRecorderKeepalive(browserID string, page *playwright.Page) {
 	gstool.FmtPrintlnLogTime("[recorder] keepalive 结束 browserID=%s", browserID)
 }
 
-// injectRecorderRuntime 把 recorder_runtime.RecorderRuntimeJS() 通过 page.Evaluate 注入到被测 page。
-// 失败时仅打印日志，不返回 error —— toolbar 注入失败不会拖垮整个录制流程（用户仍可手工复制 JSON，
-// 因为 runtime 内容是纯前端代码，不会因为注入失败就让 page 不可用）。
+// injectRecorderRuntime 把 recorder_runtime.RecorderRuntimeJS() 通过 page.AddInitScript 注册。
+//
+// 为什么不是 page.Evaluate：
+//   - page.Evaluate 只在当前 document 一次性跑一次，SPA 跳到另一个 URL 时整个 page 对象 navigation，
+//     旧 document 被丢弃，runtime 就丢了。
+//   - page.AddInitScript 在浏览器每次创建「新 document / 每次 navigation」时自动执行（在 page 自带
+//     scripts 之前），所以 `<a href>` 跨页面跳转、location.href=、包括 window.open 出来的新 page
+//     都能拿到 runtime。
+//
+// 去重：
+//   - standalone.js 内部用 window.__dtoolRecorderHost 选举 host，只有第一个 document 建 toolbar，
+//     后续 navigation 的新 document 跑"slave"分支只把事件通过 BroadcastChannel 上报。
+//
+// 失败仅打印日志，不返回 error —— toolbar 注入失败不会拖垮整个录制流程。
 func injectRecorderRuntime(page *playwright.Page) {
 	js := recorder_runtime.RecorderRuntimeJS()
+	script := &playwright.Script{Content: &js}
+	if err := (*page).AddInitScript(*script); err != nil {
+		gstool.FmtPrintlnLogTime(`[recorder] AddInitScript 注册失败 %s`, err.Error())
+	}
+	// 同步在当前 document 里立即跑一次，这样用户看到页面时 toolbar 已经挂了。
+	// 后续 navigation AddInitScript 会自动再跑一次。
 	if _, err := (*page).Evaluate(js); err != nil {
-		gstool.FmtPrintlnLogTime(`[recorder] 注入 recorder runtime 失败 %s`, err.Error())
+		gstool.FmtPrintlnLogTime(`[recorder] 首次注入 recorder runtime 失败 %s`, err.Error())
 	}
 }
 
