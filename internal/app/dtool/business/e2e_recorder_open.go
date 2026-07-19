@@ -81,6 +81,12 @@ func openSmartLinkRecorder(smartLinkID int, userName, password string) (string, 
 	}
 	stream(`构建run_params`, fmt.Sprintf(`成功 link=%s label=%s user=%s`, runParams.Link, runParams.Label, userName))
 	runParams.StreamFunc = stream
+	// 录制模式强制关掉 smart_link 的 auto_close_second 自动关闭：
+	// plw.ActiveTime 监听到页面没有网络请求 / load 事件超过 auto_close_second 秒后会主动
+	// Close page → context 里没 page 残留 → chromium 自动释放 context → 触发 Context.OnClose
+	// 回调，整个浏览器实例直接消失。self-test 能跑通是因为用户手动操作页面会持续触发 request
+	// 事件刷新活跃时间戳，recorder 流程没有持续 user activity，必须关掉这个机制。
+	runParams.AutoCloseSecond = 0
 
 	playwrightClient := plw.NewPlaywright(runParams, component.PlaywrightClient.Log)
 	page, pageErr := playwrightClient.GetPage(common.GetCall())
