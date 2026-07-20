@@ -80,15 +80,15 @@ export default {
     this.cleanupScrollObserver()
   },
   watch: {
-    '$route.query.token'() {
+    '$route.query.id'() {
       this.loadShareInfo()
     },
   },
   methods: {
     loadShareInfo() {
-      const token = String(this.$route.query.token || '').trim()
-      if (!token) {
-        this.errorMessage = '分享链接缺少 token'
+      const id = String(this.$route.query.id || '').trim()
+      if (!id) {
+        this.errorMessage = '分享链接缺少片段 ID'
         return
       }
       this.loading = true
@@ -96,14 +96,14 @@ export default {
       this.tocItems = []
       this.activeHeading = ''
       this.cleanupScrollObserver()
-      MemoryFragmentApi.MemoryFragmentShareInfo(token, (response) => {
+      MemoryFragmentApi.MemoryFragmentInfo(id, (response) => {
         this.loading = false
         if (response.ErrCode !== 0 || !response.Data) {
           this.errorMessage = response.ErrMsg || '分享链接不可用'
           return
         }
-        this.fragment = response.Data.fragment || {}
-        this.share = response.Data.share || {}
+        this.fragment = response.Data || {}
+        this.share = {}
       })
     },
 

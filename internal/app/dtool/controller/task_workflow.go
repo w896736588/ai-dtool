@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"dev_tool/internal/app/dtool/api"
 	"dev_tool/internal/app/dtool/business"
@@ -21,7 +20,6 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -4294,8 +4292,7 @@ func extractAssistantText(data map[string]any) string {
 }
 
 // taskWorkflowFileChangesSummary 获取指定本地目录的文件变更汇总。
-// 当 parentBranch 非空时，调用 show_branch_diff.py 获取文件列表（含 Committed/Staged/Modified/Untracked 状态）；
-// 否则降级为 git status --short 并映射为旧分类。
+// parentBranch 非空时比较当前分支与指定分支；为空时比较 HEAD 与工作区。
 func taskWorkflowFileChangesSummary(localDir, parentBranch string) map[string]any {
 	result := map[string]any{
 		`local_dir`:   localDir,
@@ -4311,179 +4308,7 @@ func taskWorkflowFileChangesSummary(localDir, parentBranch string) map[string]an
 		return result
 	}
 
-	if parentBranch != `` {
-		return taskWorkflowFileChangesFromBranchDiff(localDir, parentBranch, result)
-	}
-
-	// 无 parentBranch 时降级使用 git status --short
-	cmd := exec.Command(`git`, `-C`, localDir, `status`, `--short`)
-	output, runErr := cmd.CombinedOutput()
-	if runErr != nil {
-		msg := strings.TrimSpace(string(output))
-		if msg == `` {
-			msg = runErr.Error()
-		}
-		result[`error`] = msg
-		return result
-	}
-
-	trimmed := strings.TrimSpace(string(output))
-	if trimmed == `` {
-		return result
-	}
-
-	summary := map[string]int{`committed`: 0, `staged`: 0, `modified`: 0, `untracked`: 0, `total`: 0, `additions`: 0, `deletions`: 0}
-	files := make([]map[string]any, 0)
-
-	lines := strings.Split(trimmed, "\n")
-	for _, line := range lines {
-		line = strings.TrimRight(line, "\r")
-		if strings.TrimSpace(line) == `` {
-			continue
-		}
-		statusCode, filePath, cat := categorizeGitStatusLineV2(line)
-		// DEBUG: 打印原始行和解析结果，排查路径异常
-		fmt.Printf("[DEBUG git-status] raw=%q hex=%x => code=%q path=%q cat=%q\n", line, []byte(line), statusCode, filePath, cat)
-		summary[cat]++
-		summary[`total`]++
-		files = append(files, map[string]any{
-			`path`:        filePath,
-			`type`:        cat,
-			`status_code`: statusCode,
-			`additions`:   0,
-			`deletions`:   0,
-		})
-	}
-
-	// 获取工作区增删行数统计（git diff --numstat HEAD）
-	gitNumstat := map[string][2]int{}
-	for _, cmdArgs := range [][]string{
-		{"diff", "--numstat", "HEAD", "--", "."},
-		{"diff", "--numstat", "--cached", "--", "."},
-	} {
-		numstatCmd := exec.Command(`git`, append([]string{`-C`, localDir}, cmdArgs...)...)
-		numstatOut, numstatErr := numstatCmd.CombinedOutput()
-		if numstatErr == nil {
-			for _, numLine := range strings.Split(strings.TrimSpace(string(numstatOut)), "\n") {
-				if strings.TrimSpace(numLine) == `` {
-					continue
-				}
-				parts := strings.SplitN(numLine, "\t", 3)
-				if len(parts) >= 3 {
-					numPath := parts[2]
-					addStr, delStr := parts[0], parts[1]
-					if addStr == "-" || delStr == "-" {
-						// 二进制文件
-						gitNumstat[numPath] = [2]int{1, 1}
-					} else {
-						add, _ := strconv.Atoi(addStr)
-						del, _ := strconv.Atoi(delStr)
-						if prev, ok := gitNumstat[numPath]; ok {
-							gitNumstat[numPath] = [2]int{prev[0] + add, prev[1] + del}
-						} else {
-							gitNumstat[numPath] = [2]int{add, del}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// 将 numstat 合并到 files 中
-	for i, f := range files {
-		fp := cast.ToString(f[`path`])
-		if stats, ok := gitNumstat[fp]; ok {
-			f[`additions`] = stats[0]
-			f[`deletions`] = stats[1]
-			summary[`additions`] += stats[0]
-			summary[`deletions`] += stats[1]
-		} else if cat := cast.ToString(f[`type`]); cat == `untracked` {
-			// 未跟踪文件：统计行数
-			fullPath := filepath.Join(localDir, fp)
-			if content, readErr := os.ReadFile(fullPath); readErr == nil {
-				lineCount := len(bytes.Split(content, []byte{'\n'}))
-				if lineCount > 0 && len(bytes.TrimSpace(content)) == 0 {
-					lineCount = 0
-				}
-				f[`additions`] = lineCount
-				f[`deletions`] = 0
-				summary[`additions`] += lineCount
-			} else {
-				// 二进制等无法读取的文件
-				f[`additions`] = 1
-				f[`deletions`] = 1
-				summary[`additions`] += 1
-				summary[`deletions`] += 1
-			}
-		} else {
-			// 其他无法获取 numstat 的文件（可能已删除等）
-			f[`additions`] = 1
-			f[`deletions`] = 1
-			summary[`additions`] += 1
-			summary[`deletions`] += 1
-		}
-		files[i] = f
-	}
-
-	result[`summary`] = summary
-	result[`files`] = files
-	result[`has_changes`] = summary[`total`] > 0
-	return result
-}
-
-// categorizeGitStatusLineV2 解析 git status --short 的单行输出，返回状态码、文件路径和分类。
-// git status --short 输出格式: "XY path" (X=索引状态, Y=工作区状态, 空格, 文件路径)
-// 分类映射：?? → untracked, A → staged, M(索引) → staged, M(工作区) → modified, 其他 → modified
-func categorizeGitStatusLineV2(line string) (statusCode string, filePath string, category string) {
-	if len(line) < 3 {
-		return `M`, strings.TrimSpace(line), `modified`
-	}
-
-	// 保留原始的2字符状态码，不做 TrimSpace，因为状态码可能包含前导/后置空格
-	// 如 " M" 表示索引无变化、工作区已修改；"M " 表示索引已暂存、工作区无变化
-	code := line[:2]
-
-	// 提取路径: 跳过状态码(2字符)+分隔空格(1字符)
-	// 标准格式索引2为空格，但防御性地处理空格缺失的异常情况
-	rest := ``
-	if len(line) >= 4 && line[2] == ' ' {
-		rest = strings.TrimSpace(line[3:])
-	} else {
-		// 边缘情况：状态码和路径之间缺少空格，搜索第一个空格/制表符
-		for i := 2; i < len(line); i++ {
-			if line[i] == ' ' || line[i] == '\t' {
-				rest = strings.TrimSpace(line[i+1:])
-				break
-			}
-		}
-		if rest == `` {
-			rest = strings.TrimSpace(line[2:])
-		}
-	}
-
-	// 处理重命名 "R  old -> new"
-	if idx := strings.Index(rest, ` -> `); idx >= 0 {
-		rest = strings.TrimSpace(rest[idx+4:])
-	}
-
-	filePath = rest
-
-	switch {
-	case code == `??`:
-		return `U`, filePath, `untracked`
-	case code == `A `, code == `AM`, code == `A?`:
-		return `S`, filePath, `staged`
-	case code == `M `:
-		return `S`, filePath, `staged`
-	case code == ` M`, code == `MM`:
-		return `M`, filePath, `modified`
-	case code == `D `, code == ` D`, code == `DM`, code == `MD`:
-		return `M`, filePath, `modified`
-	case code == `R `, code == ` R`:
-		return `S`, filePath, `staged`
-	default:
-		return `M`, filePath, `modified`
-	}
+	return taskWorkflowFileChangesFromGitTool(localDir, parentBranch, result)
 }
 
 // getPythonCommand 返回可用的 Python 命令路径。
@@ -4538,17 +4363,21 @@ func getPythonCommand() string {
 	return `python`
 }
 
-// taskWorkflowFileChangesFromBranchDiff 调用 show_branch_diff.py 获取文件变更列表。
-// 脚本输出格式：file_path\t[Status1,Status2]
-// 状态映射：Committed→C, Staged→S, Modified→M, Untracked→U
-func taskWorkflowFileChangesFromBranchDiff(localDir, parentBranch string, result map[string]any) map[string]any {
+// taskWorkflowFileChangesFromGitTool 调用统一 Git 工具获取分支或工作区文件变更。
+func taskWorkflowFileChangesFromGitTool(localDir, parentBranch string, result map[string]any) map[string]any {
 	workspaceRoot := os.Getenv(`WORKSPACE`)
 	if workspaceRoot == `` {
 		workspaceRoot = getDefaultWorkspaceRoot()
 	}
-	scriptPath := filepath.Join(workspaceRoot, `skills`, `dtool-git`, `scripts`, `show_branch_diff.py`)
+	scriptPath := filepath.Join(workspaceRoot, `skills`, `dtool-git`, `scripts`, `git_tool.py`)
 
-	cmd := exec.Command(getPythonCommand(), scriptPath, parentBranch)
+	toolArgs := []string{scriptPath, `changes`, `--local-dir`, localDir, `--max-files`, `10000`}
+	if parentBranch == `` {
+		toolArgs = append(toolArgs, `--compare-mode`, `workspace`)
+	} else {
+		toolArgs = append(toolArgs, `--compare-branch`, parentBranch)
+	}
+	cmd := exec.Command(getPythonCommand(), toolArgs...)
 	cmd.Dir = localDir
 
 	var stdout, stderr strings.Builder
@@ -4559,98 +4388,80 @@ func taskWorkflowFileChangesFromBranchDiff(localDir, parentBranch string, result
 	if err != nil {
 		errMsg := strings.TrimSpace(stderr.String())
 		if errMsg == `` {
+			var errorResult struct {
+				Error struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal([]byte(stdout.String()), &errorResult) == nil {
+				errMsg = errorResult.Error.Message
+			}
+		}
+		if errMsg == `` {
 			errMsg = err.Error()
 		}
 		result[`error`] = errMsg
 		return result
 	}
 
-	summary := map[string]int{`committed`: 0, `staged`: 0, `modified`: 0, `untracked`: 0, `total`: 0, `additions`: 0, `deletions`: 0}
-	files := make([]map[string]any, 0)
-
-	output := strings.TrimSpace(stdout.String())
-	if output == `` {
-		result[`summary`] = summary
-		result[`files`] = files
+	type gitToolFile struct {
+		Path      string   `json:"path"`
+		Status    string   `json:"status"`
+		Additions *int     `json:"additions"`
+		Deletions *int     `json:"deletions"`
+		Layers    []string `json:"layers"`
+	}
+	var toolResult struct {
+		OK    bool          `json:"ok"`
+		Files []gitToolFile `json:"files"`
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if jsonErr := json.Unmarshal([]byte(stdout.String()), &toolResult); jsonErr != nil {
+		result[`error`] = `解析 Git 工具输出失败: ` + jsonErr.Error()
+		return result
+	}
+	if !toolResult.OK {
+		result[`error`] = toolResult.Error.Message
 		return result
 	}
 
-	// 状态全称 → 首字母缩写
-	statusAbbr := map[string]string{
-		`Committed`: `C`,
-		`Staged`:    `S`,
-		`Modified`:  `M`,
-		`Untracked`: `U`,
-	}
-	// 状态全称 → 分类
-	statusCategory := map[string]string{
-		`Committed`: `committed`,
-		`Staged`:    `staged`,
-		`Modified`:  `modified`,
-		`Untracked`: `untracked`,
-	}
-
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		line = strings.TrimRight(line, "\r")
-		if strings.TrimSpace(line) == `` {
-			continue
+	summary := map[string]int{`committed`: 0, `staged`: 0, `modified`: 0, `untracked`: 0, `total`: 0, `additions`: 0, `deletions`: 0}
+	files := make([]map[string]any, 0, len(toolResult.Files))
+	for _, item := range toolResult.Files {
+		additions, deletions := 0, 0
+		if item.Additions != nil {
+			additions = *item.Additions
 		}
-		// 格式: file_path\t[Status1,Status2]\tadditions\tdeletions
-		tabIdx := strings.Index(line, "\t")
-		if tabIdx < 0 {
-			continue
+		if item.Deletions != nil {
+			deletions = *item.Deletions
 		}
-		filePath := strings.TrimSpace(line[:tabIdx])
-		rest := strings.TrimSpace(line[tabIdx+1:])
-
-		// 解析 [Status1,Status2]
-		statusPart := rest
-		var additions, deletions int
-
-		// 尝试从 rest 中提取 additions 和 deletions（格式: [Status]\tadditions\tdeletions）
-		if tabIdx2 := strings.Index(rest, "\t"); tabIdx2 >= 0 {
-			statusPart = strings.TrimSpace(rest[:tabIdx2])
-			numPart := strings.TrimSpace(rest[tabIdx2+1:])
-			// numPart 格式: "additions\tdeletions"
-			numFields := strings.SplitN(numPart, "\t", 2)
-			if len(numFields) >= 2 {
-				additions, _ = strconv.Atoi(strings.TrimSpace(numFields[0]))
-				deletions, _ = strconv.Atoi(strings.TrimSpace(numFields[1]))
-			} else if len(numFields) == 1 {
-				additions, _ = strconv.Atoi(strings.TrimSpace(numFields[0]))
+		category, statusCode := `committed`, item.Status
+		if parentBranch == `` {
+			category, statusCode = `modified`, `M`
+			for _, layer := range item.Layers {
+				switch layer {
+				case `untracked`:
+					category, statusCode = `untracked`, `U`
+				case `staged`:
+					if category != `untracked` {
+						category, statusCode = `staged`, `S`
+					}
+				case `modified`:
+					if category != `untracked` {
+						category, statusCode = `modified`, `M`
+					}
+				}
 			}
 		}
-
-		var abbrs []string
-		var primaryCat string
-		statusPart = strings.TrimPrefix(statusPart, `[`)
-		statusPart = strings.TrimSuffix(statusPart, `]`)
-		for _, s := range strings.Split(statusPart, `,`) {
-			s = strings.TrimSpace(s)
-			if abbr, ok := statusAbbr[s]; ok {
-				abbrs = append(abbrs, abbr)
-			}
-			if cat, ok := statusCategory[s]; ok && primaryCat == `` {
-				primaryCat = cat
-			}
-		}
-
-		if primaryCat == `` {
-			primaryCat = `modified`
-		}
-		statusCode := strings.Join(abbrs, `,`)
-		if statusCode == `` {
-			statusCode = `M`
-		}
-
-		summary[primaryCat]++
+		summary[category]++
 		summary[`total`]++
 		summary[`additions`] += additions
 		summary[`deletions`] += deletions
 		files = append(files, map[string]any{
-			`path`:        filePath,
-			`type`:        primaryCat,
+			`path`:        item.Path,
+			`type`:        category,
 			`status_code`: statusCode,
 			`additions`:   additions,
 			`deletions`:   deletions,
@@ -4688,7 +4499,7 @@ func TaskWorkflowFileChangesSummary(c *gin.Context) {
 	})
 }
 
-// TaskWorkflowFileChangesDetail 获取文件变更详情（调用 show_branch_diff.py 获取文件列表）。
+// TaskWorkflowFileChangesDetail 获取文件变更详情。
 func TaskWorkflowFileChangesDetail(c *gin.Context) {
 	var req _struct.TaskWorkflowFileChangesDetailRequest
 	_ = gsgin.GinPostBody(c, &req)
@@ -4710,7 +4521,7 @@ func TaskWorkflowFileChangesDetail(c *gin.Context) {
 	gsgin.GinResponseSuccess(c, ``, result)
 }
 
-// TaskWorkflowFileChangesFileDiff 获取单个文件的 diff（调用 show_file_diff.py）。
+// TaskWorkflowFileChangesFileDiff 获取单个文件的 diff（调用统一 Git 工具）。
 func TaskWorkflowFileChangesFileDiff(c *gin.Context) {
 	var req _struct.TaskWorkflowFileChangesFileDiffRequest
 	_ = gsgin.GinPostBody(c, &req)
@@ -4738,9 +4549,14 @@ func TaskWorkflowFileChangesFileDiff(c *gin.Context) {
 	if workspaceRoot == `` {
 		workspaceRoot = getDefaultWorkspaceRoot()
 	}
-	scriptPath := filepath.Join(workspaceRoot, `skills`, `dtool-git`, `scripts`, `show_file_diff.py`)
-
-	cmd := exec.Command(getPythonCommand(), scriptPath, branchArg, req.FilePath)
+	scriptPath := filepath.Join(workspaceRoot, `skills`, `dtool-git`, `scripts`, `git_tool.py`)
+	toolArgs := []string{scriptPath, `diff`, `--local-dir`, req.LocalDir, `--file-path`, req.FilePath, `--include-content`}
+	if branchArg == `_workspace_` {
+		toolArgs = append(toolArgs, `--compare-mode`, `workspace`)
+	} else {
+		toolArgs = append(toolArgs, `--compare-branch`, branchArg)
+	}
+	cmd := exec.Command(getPythonCommand(), toolArgs...)
 	cmd.Dir = req.LocalDir
 
 	var stdout, stderr strings.Builder
@@ -4750,6 +4566,16 @@ func TaskWorkflowFileChangesFileDiff(c *gin.Context) {
 	err := cmd.Run()
 	if err != nil {
 		errMsg := strings.TrimSpace(stderr.String())
+		if errMsg == `` {
+			var errorResult struct {
+				Error struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal([]byte(stdout.String()), &errorResult) == nil {
+				errMsg = errorResult.Error.Message
+			}
+		}
 		if errMsg == `` {
 			errMsg = err.Error()
 		}

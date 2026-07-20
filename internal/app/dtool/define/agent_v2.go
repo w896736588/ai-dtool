@@ -12,7 +12,7 @@ const DefaultPiSessionDir = "logs/pi_agent_sessions"
 
 // DefaultBuiltinToolsDir 内置工具目录（相对于程序工作目录，通常为项目根目录）
 // 注意：此路径依赖工作目录，若以不同 CWD 启动可能失效，后续考虑改为基于可执行文件路径或配置文件动态解析
-const DefaultBuiltinToolsDir = "internal/app/dtool/data"
+const DefaultBuiltinToolsDir = "internal/pkg/p_piagent/default_tools"
 
 // AgentV2Item Agent 配置项
 type AgentV2Item struct {
@@ -35,10 +35,12 @@ type AgentV2StatusItem struct {
 
 // AgentV2Config Pi Agent 配置
 type AgentV2PiConfig struct {
-	Provider   string `json:"provider"`
-	Model      string `json:"model"`
-	SessionDir string `json:"session_dir"`
-	ExtraArgs  string `json:"extra_args"`
+	Provider    string `json:"provider"`
+	Model       string `json:"model"`
+	SessionDir  string `json:"session_dir"`
+	ExtraArgs   string `json:"extra_args"`
+	RuntimeDir  string `json:"runtime_dir"`  // Pi 数据/配置目录（对应 PI_CODING_AGENT_DIR），留空则用 Pi 默认 ~/.pi/agent
+	ForcePrompt string `json:"force_prompt"` // 强制提示词：每轮对话自动追加到用户消息前（与是否安装计划模式扩展无关）
 }
 
 // AgentV2SaveRequest 保存请求
@@ -55,6 +57,7 @@ type AgentV2Workspace struct {
 	AgentId   int    `json:"agent_id"`
 	Name      string `json:"name"`
 	Path      string `json:"path"`
+	SortOrder int    `json:"sort_order"`
 	CreatedAt int64  `json:"created_at"`
 }
 
@@ -68,17 +71,18 @@ type AgentV2WorkspaceSaveRequest struct {
 
 // AgentV2Session 会话
 type AgentV2Session struct {
-	Id            int    `json:"id"`
-	AgentId       int    `json:"agent_id"`
-	WorkspaceId   int    `json:"workspace_id"`
-	WorkspaceName string `json:"workspace_name,omitempty"`
-	WorkspacePath string `json:"workspace_path,omitempty"`
-	Name          string `json:"name"`
-	SessionDir    string `json:"session_dir"`
-	ModelName     string `json:"model_name"`
-	Status        string `json:"status"`
-	CreatedAt     int64  `json:"created_at"`
-	UpdatedAt     int64  `json:"updated_at"`
+	Id             int    `json:"id"`
+	AgentId        int    `json:"agent_id"`
+	WorkspaceId    int    `json:"workspace_id"`
+	WorkspaceName  string `json:"workspace_name,omitempty"`
+	WorkspacePath  string `json:"workspace_path,omitempty"`
+	Name           string `json:"name"`
+	SessionDir     string `json:"session_dir"`
+	ModelName      string `json:"model_name"`
+	Status         string `json:"status"`
+	ExecDurationMs int64  `json:"exec_duration_ms"`
+	CreatedAt      int64  `json:"created_at"`
+	UpdatedAt      int64  `json:"updated_at"`
 }
 
 // AgentV2SessionSaveRequest 会话保存请求

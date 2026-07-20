@@ -5,15 +5,14 @@
 1. 服务请求地址必须由用户明确提供，不得假设默认地址。
 2. 路由前缀：`/api`
 3. 除 `ApiBatchImport` 外，均为 `POST + application/json`
-4. 所有请求都必须携带 Header 头 `Token`，具体值必须由用户明确提供。
-5. AI 在调用这些接口时，必须使用 UTF-8 编码处理请求与响应，尤其是 `name`、`desc`、错误信息、目录名、集合名等中文字段。
-6. 使用 PowerShell 或其他终端前，必须先切换 UTF-8 编码：
+4. AI 在调用这些接口时，必须使用 UTF-8 编码处理请求与响应，尤其是 `name`、`desc`、错误信息、目录名、集合名等中文字段。
+5. 使用 PowerShell 或其他终端前，必须先切换 UTF-8 编码：
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 ```
 
-7. 如果通过脚本、终端或手工请求这些接口，默认都要按 UTF-8 发送请求体，并按 UTF-8 解读接口返回内容。
+6. 如果通过脚本、终端或手工请求这些接口，默认都要按 UTF-8 发送请求体，并按 UTF-8 解读接口返回内容。
 
 ## 一、集合相关
 
@@ -947,7 +946,6 @@ curl -X POST "http://localhost:17170/api/ApiBatchImport" \
 ```bash
 curl -X POST "http://localhost:17170/api/ApiRun" \
   -H "Content-Type: application/json" \
-  -H "Token: 用户Token值" \
   -d "{\"id\":201}"
 ```
 
@@ -956,7 +954,6 @@ curl -X POST "http://localhost:17170/api/ApiRun" \
 ```bash
 curl -X POST "http://localhost:17170/api/ApiCode" \
   -H "Content-Type: application/json" \
-  -H "Token: 用户Token值" \
   -d "{\"id\":201,\"code_type\":\"curl bash(chrome)\"}"
 ```
 
@@ -965,7 +962,6 @@ curl -X POST "http://localhost:17170/api/ApiCode" \
 ```bash
 curl -X POST "http://localhost:17170/api/ApiTakeJsonResult" \
   -H "Content-Type: application/json" \
-  -H "Token: 用户Token值" \
   -d "{\"id\":201,\"json\":\"{\\\"code\\\":0,\\\"data\\\":{\\\"token\\\":\\\"abc\\\"}}\"}"
 ```
 
@@ -974,7 +970,6 @@ curl -X POST "http://localhost:17170/api/ApiTakeJsonResult" \
 ```bash
 curl -X POST "http://localhost:17170/api/CollectionEnvs" \
   -H "Content-Type: application/json" \
-  -H "Token: 用户Token值" \
   -d "{\"collection_id\":1}"
 ```
 
@@ -983,6 +978,5 @@ curl -X POST "http://localhost:17170/api/CollectionEnvs" \
 ```bash
 curl -X POST "http://localhost:17170/api/CollectionEnvItems" \
   -H "Content-Type: application/json" \
-  -H "Token: 用户Token值" \
   -d "{\"collection_id\":1,\"env_id\":5}"
 ```

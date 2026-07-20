@@ -111,6 +111,7 @@ cp "${ROOT_DIR}/go.mod" "${PACKAGE_DIR}/go.mod"
 cp -R "${ROOT_DIR}/web/dist" "${PACKAGE_DIR}/web"
 mkdir -p "${PACKAGE_DIR}/internal/pkg" "${PACKAGE_DIR}/internal/app/dtool"
 cp -R "${ROOT_DIR}/internal/pkg/p_js" "${PACKAGE_DIR}/internal/pkg/p_js"
+cp -R "${ROOT_DIR}/internal/pkg/p_piagent" "${PACKAGE_DIR}/internal/pkg/p_piagent"
 cp -R "${ROOT_DIR}/internal/app/dtool/database" "${PACKAGE_DIR}/internal/app/dtool/database"
 cp -R "${ROOT_DIR}/internal/app/dtool/database_log" "${PACKAGE_DIR}/internal/app/dtool/database_log"
 

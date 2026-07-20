@@ -133,7 +133,7 @@ func AIBrowserSessionOpen(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	time.Sleep(3 * time.Second)
+	time.Sleep(10 * time.Second)
 	// 等待登录后的页面跳转完成（如点击登录按钮后的重定向）
 	component.PlaywrightClient.WaitForLoadState(page, runParams.LocatorTimeout)
 
@@ -252,7 +252,7 @@ func AIBrowserSessionCaptureHeaders(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
-	time.Sleep(3 * time.Second)
+	time.Sleep(10 * time.Second)
 	component.PlaywrightClient.WaitForLoadState(page, runParams.LocatorTimeout)
 
 	capturedRequest, err := captureFirstNonResourceRequest(page, runParams.LocatorTimeout)

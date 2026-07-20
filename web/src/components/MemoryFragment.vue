@@ -547,11 +547,12 @@
       destroy-on-close
     >
       <el-form label-position="top">
-        <el-form-item label="名称">
+        <el-form-item label="展示名">
           <el-input v-model="folderForm.name" maxlength="50" />
         </el-form-item>
         <el-form-item label="文件夹名称">
           <el-input v-model="folderForm.folder_name" maxlength="50" />
+          <div class="folder-name-hint">文件夹名称是系统内部标识，对应磁盘目录与接口参数，仅支持字母、数字、下划线和中划线，创建后不可修改。</div>
         </el-form-item>
       </el-form>
       <template #footer>

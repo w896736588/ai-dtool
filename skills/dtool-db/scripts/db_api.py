@@ -1,106 +1,75 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""dtool 数据库相关接口示例"""
+"""dtool database API command line client."""
 
-import os, sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../dtool-common/scripts'))
-
-from api_common import TOKEN, call_api
-
-MYSQL_ID = ""  # TODO: 替换为用户提供的数据库配置 ID（支持 MySQL 和 Pgsql）
+import argparse
+import json
+from urllib import error, request
 
 
-def mysql_tables():
-    """查询数据库配置对应的所有表（支持 MySQL 和 Pgsql）"""
-    result = call_api("/api/MysqlTables", {
-        "mysql_id": MYSQL_ID,
-    })
-    if result.get("code") == 0:
-        table_list = result.get("data", {}).get("list", [])
-        print(f"共 {len(table_list)} 张表:")
-        for table in table_list:
-            name = table.get("table_name", "")
-            comment = table.get("table_comment", "")
-            print(f"  {name}" + (f"  -- {comment}" if comment else ""))
-    else:
-        print(f"查询失败: {result.get('msg')}")
+ACTION_PATHS = {
+    "tables": "/api/MysqlTables",
+    "structure": "/api/MysqlTableStructure",
+    "query": "/api/MysqlQuery",
+    "exec": "/api/MysqlExec",
+}
+
+
+def call_api(base_url, path, payload, timeout):
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = request.Request(
+        url=f"{base_url.rstrip('/')}{path}",
+        data=body,
+        headers={"Content-Type": "application/json; charset=utf-8"},
+        method="POST",
+    )
+    try:
+        with request.urlopen(req, timeout=timeout) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        response_body = exc.read().decode("utf-8", errors="replace")
+        return {"code": -1, "msg": f"HTTP {exc.code}", "data": response_body}
+    except Exception as exc:
+        return {"code": -1, "msg": str(exc), "data": None}
+
+    if "ErrCode" in result:
+        result["code"] = result.get("ErrCode")
+    if "ErrMsg" in result:
+        result["msg"] = result.get("ErrMsg")
+    if "Data" in result:
+        result["data"] = result.get("Data")
     return result
 
 
-def mysql_table_structure(table_name):
-    """查询数据库表结构（支持 MySQL 和 Pgsql）"""
-    result = call_api("/api/MysqlTableStructure", {
-        "mysql_id": MYSQL_ID,
-        "table_name": table_name,
-    })
-    if result.get("code") == 0:
-        fields = result.get("data", {}).get("list", [])
-        print(f"\n表 {table_name} 结构 ({len(fields)} 个字段):")
-        print(f"  {'字段':<20} {'类型':<20} {'允许空':<6} {'键':<6} {'默认值':<10} {'备注'}")
-        print(f"  {'-' * 20} {'-' * 20} {'-' * 6} {'-' * 6} {'-' * 10} {'-' * 20}")
-        for field_info in fields:
-            field = field_info.get("Field", "")
-            field_type = field_info.get("Type", "")
-            nullable = field_info.get("Null", "")
-            key = field_info.get("Key", "")
-            default = str(field_info.get("Default", ""))
-            comment = field_info.get("Comment", "")
-            print(f"  {field:<20} {field_type:<20} {nullable:<6} {key:<6} {default:<10} {comment}")
-    else:
-        print(f"查询失败: {result.get('msg')}")
-    return result
+def build_parser():
+    parser = argparse.ArgumentParser(description="调用 dtool 数据库 API")
+    parser.add_argument("action", choices=ACTION_PATHS)
+    parser.add_argument("--base-url", default="http://localhost:17170")
+    parser.add_argument("--mysql-id", required=True, help="数据库配置 ID（MySQL/PgSQL）")
+    parser.add_argument("--table-name")
+    parser.add_argument("--sql")
+    parser.add_argument("--confirmed-write", action="store_true")
+    parser.add_argument("--timeout", type=float, default=60)
+    return parser
 
 
-def mysql_query(sql):
-    """执行数据库 SELECT 查询（支持 MySQL 和 Pgsql）"""
-    result = call_api("/api/MysqlQuery", {
-        "mysql_id": MYSQL_ID,
-        "sql": sql,
-    })
-    if result.get("code") == 0:
-        rows = result.get("data", {}).get("list", [])
-        if not rows:
-            print("查询结果为空")
-        else:
-            columns = list(rows[0].keys())
-            widths = {}
-            for column in columns:
-                widths[column] = max(
-                    len(str(column)),
-                    max(len(str(row.get(column, ""))) for row in rows),
-                )
-            header = " | ".join(str(column).ljust(widths[column]) for column in columns)
-            print(f"\n{header}")
-            print("-" * len(header))
-            for row in rows:
-                line = " | ".join(str(row.get(column, "")).ljust(widths[column]) for column in columns)
-                print(line)
-            print(f"\n共 {len(rows)} 行")
-    else:
-        print(f"查询失败: {result.get('msg')}")
-    return result
+def main():
+    args = build_parser().parse_args()
+    payload = {"mysql_id": args.mysql_id}
+    if args.action == "structure":
+        if not args.table_name:
+            raise SystemExit("structure action 需要 --table-name")
+        payload["table_name"] = args.table_name
+    elif args.action in {"query", "exec"}:
+        if not args.sql:
+            raise SystemExit(f"{args.action} action 需要 --sql")
+        if args.action == "exec" and not args.confirmed_write:
+            raise SystemExit("exec action 需要 --confirmed-write，且必须先获得用户明确确认")
+        payload["sql"] = args.sql
 
-
-def mysql_exec(sql):
-    """执行数据库写入操作（支持 MySQL 和 Pgsql）"""
-    result = call_api("/api/MysqlExec", {
-        "mysql_id": MYSQL_ID,
-        "sql": sql,
-    })
-    if result.get("code") == 0:
-        print(f"执行成功: {result.get('data', '')}")
-    else:
-        print(f"执行失败: {result.get('msg')}")
-    return result
+    result = call_api(args.base_url, ACTION_PATHS[args.action], payload, args.timeout)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
-    if not TOKEN:
-        print("请先设置 TOKEN（向用户确认后填入）")
-        raise SystemExit(1)
-
-    print("=== dtool 数据库 API 示例 ===\n")
-    # mysql_tables()
-    # mysql_table_structure("users")
-    # mysql_query("SELECT * FROM users LIMIT 10")
-    # mysql_exec("UPDATE users SET age = 21 WHERE name = 'test'")
+    main()

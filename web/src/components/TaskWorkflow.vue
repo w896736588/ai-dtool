@@ -645,18 +645,33 @@
                                 <el-icon><Check /></el-icon>
                               </GitActionButton>
                             </el-tooltip>
-                            <el-tooltip content="分享" placement="top">
+                            <el-dropdown
+                              trigger="click"
+                              class="editor-action-dropdown share-dropdown"
+                              :disabled="!getActiveDocFileId()"
+                              @command="handleShareCommand"
+                            >
                               <GitActionButton
                                 variant="info"
                                 compact
                                 class="toolbar-icon-button"
                                 :loading="docSharing"
-                                @click="shareActiveDoc"
                                 :disabled="!getActiveDocFileId()"
+                                title="分享"
                               >
                                 <el-icon><Share /></el-icon>
                               </GitActionButton>
-                            </el-tooltip>
+                              <template #dropdown>
+                                <el-dropdown-menu>
+                                  <el-dropdown-item command="raw" :disabled="docSharing">
+                                    markdown原文地址
+                                  </el-dropdown-item>
+                                  <el-dropdown-item command="beautified" :disabled="docSharing">
+                                    markdown美化地址
+                                  </el-dropdown-item>
+                                </el-dropdown-menu>
+                              </template>
+                            </el-dropdown>
                             <el-tooltip content="打开知识片段" placement="top">
                               <GitActionButton
                                 variant="info"
@@ -1774,22 +1789,9 @@ export default {
     },
     refreshRequirementShareUrl() {
       const fragmentId = this.requirementFragmentId
-      if (!fragmentId) {
-        this.requirementShareUrl = ''
-        return
-      }
-      MemoryFragmentApi.MemoryFragmentShareCreate(fragmentId, (response) => {
-        if (!(response && response.ErrCode === 0 && response.Data)) {
-          return
-        }
-        const token = String(response.Data.token || '').trim()
-        if (!token) {
-          this.requirementShareUrl = ''
-          return
-        }
-        this.requirementShareUrl = baseUtils.BuildMemoryFragmentShareUrl(fragmentId, token, response.Data.url)
-        this.replaceRequirementShareUrlPlaceholder()
-      })
+      this.requirementShareUrl = fragmentId
+        ? baseUtils.BuildMemoryFragmentShareUrl(fragmentId)
+        : ''
     },
     ensureWorkflowSse() {
       if (this.workflowId <= 0) {
@@ -3428,26 +3430,17 @@ export default {
       }
       MemoryFragmentApi.MemoryFragmentDownloadZip(fileId)
     },
-    // 分享当前激活文档（创建24小时有效分享链接并复制到剪贴板）
-    shareActiveDoc() {
-      if (this.docSharing) return
+    // 分享当前激活文档（下拉菜单：markdown原文地址 / markdown美化地址）
+    handleShareCommand(command) {
       const fileId = this.getActiveDocFileId()
       if (!fileId) {
         this.$helperNotify.error('无法分享，文档未关联知识片段')
         return
       }
-      this.docSharing = true
-      MemoryFragmentApi.MemoryFragmentShareCreate(fileId, async (response) => {
-        this.docSharing = false
-        if (response.ErrCode !== 0 || !response.Data || !response.Data.token) {
-          if (response.ErrMsg) {
-            this.$helperNotify.error(response.ErrMsg)
-          }
-          return
-        }
-        const shareUrl = baseUtils.BuildMemoryFragmentShareUrl(fileId, response.Data.token, response.Data.url)
-        this.copyText(shareUrl, '分享链接已复制到剪贴板（24小时有效）')
-      })
+      const shareUrl = command === 'raw'
+        ? baseUtils.BuildMemoryFragmentRawShareUrl(fileId)
+        : baseUtils.BuildMemoryFragmentShareUrl(fileId)
+      this.copyText(shareUrl, '分享链接已复制到剪贴板')
     },
     // 处理文档工具栏下拉菜单命令（目前仅支持历史记录）
     handleDocToolbarAction(command) {

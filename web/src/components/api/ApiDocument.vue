@@ -124,14 +124,13 @@
 
 <script>
 import KeyValueView from './KeyValueView.vue'
-import KeyValueEditor from "@/components/api/KeyValueEditor.vue";
 import Base from '@/utils/base'
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 export default {
   name: 'ApiDocumentation',
   components: {
-    KeyValueEditor,
     KeyValueView
   },
   props: {
@@ -266,10 +265,6 @@ export default {
 
       // 配置 marked
       marked.setOptions({
-        highlight: function(code, language) {
-          const validLang = hljs.getLanguage(language) ? language : 'plaintext';
-          return hljs.highlight(code, { language: validLang }).value;
-        },
         langPrefix: 'hljs language-',
         breaks: true, // 转换换行符为 <br>
         gfm: true,    // 启用 GitHub Flavored Markdown
@@ -277,7 +272,7 @@ export default {
 
       // 渲染 Markdown
       const html = marked(content);
-      return `<div class="markdown-body">${html}</div>`;
+      return DOMPurify.sanitize(`<div class="markdown-body">${html}</div>`);
     },
     getParsedResponseTake(api) {
       if (!api || !api.response_take) return []

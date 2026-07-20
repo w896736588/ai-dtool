@@ -2,6 +2,7 @@ package agent
 
 import (
 	"dev_tool/internal/app/dtool/define"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -55,6 +56,36 @@ func RemoveInstalledTool(name string) error {
 	return os.Remove(filePath)
 }
 
+// WriteToolExtension 将 DB 中的 tool 脚本物化到 ~/.pi/agent/extensions/<name>.ts
+// 这样 Pi 启动时才能真正加载该工具（Pi 默认扩展目录即此）。
+func WriteToolExtension(name, scriptContent string) error {
+	if name == "" || scriptContent == "" {
+		return nil
+	}
+	extDir := GetPiExtensionsDir()
+	if extDir == "" {
+		return fmt.Errorf("无法定位 Pi 扩展目录")
+	}
+	if err := os.MkdirAll(extDir, 0o755); err != nil {
+		return err
+	}
+	filePath := filepath.Join(extDir, name+".ts")
+	return os.WriteFile(filePath, []byte(scriptContent), 0o644)
+}
+
+// RemoveToolExtension 删除 ~/.pi/agent/extensions/<name>.ts（文件不存在视为成功）
+func RemoveToolExtension(name string) error {
+	if name == "" {
+		return nil
+	}
+	extDir := GetPiExtensionsDir()
+	filePath := filepath.Join(extDir, name+".ts")
+	if _, err := os.Stat(filePath); err != nil {
+		return nil
+	}
+	return os.Remove(filePath)
+}
+
 // CheckExtensionFile 检查指定扩展的 .ts 文件是否存在于 .pi/extensions/
 func CheckExtensionFile(filename string) (bool, string) {
 	extDir := GetPiExtensionsDir()
@@ -87,6 +118,49 @@ var BuiltinEnvToolDefs = []define.AgentV2EnvToolItem{
 		ActivateCmdHint: "rtk init -g --agent pi",
 		DetectBin:       "rtk",
 	},
+	{
+		Key:             "plan-mode",
+		Name:            "计划模式 (Plan Mode)",
+		Description:     "Pi 内置计划模式扩展：进入只读探索模式，禁用 edit/write，提交计划由用户确认后再执行，并在进度中标记完成步骤。通过 --plan 标志启用。",
+		Icon:            "📋",
+		Homepage:        "https://github.com/earendil-works/pi-coding-agent/tree/main/examples/extensions/plan-mode",
+		InstallCmdHint:  "点击「安装并启用」会自动加载 Pi 自带的 plan-mode 扩展（--extension）并在启动参数加入 --plan，重启 Agent 会话后生效，无需手动复制文件。",
+		ActivateCmdHint: "",
+		DetectBin:       "",
+	},
+}
+
+// FindPiPlanModeSource 定位 Pi 自带的 plan-mode 扩展源文件（examples/extensions/plan-mode/index.ts）。
+// 找不到时返回空字符串。该扩展通过 --extension <path> 加载，无需复制到扩展目录。
+func FindPiPlanModeSource() string {
+	candidates := make([]string, 0, 4)
+
+	// 1) npm 全局根目录
+	if out, err := runShellCmd([]string{"npm", "root", "-g"}); err == nil {
+		base := strings.TrimSpace(out)
+		if base != "" {
+			candidates = append(candidates, filepath.Join(base, "@earendil-works", "pi-coding-agent", "examples", "extensions", "plan-mode", "index.ts"))
+		}
+	}
+
+	// 2) 从 pi 可执行文件位置反推 node_modules
+	if p, err := exec.LookPath("pi"); err == nil {
+		dir := filepath.Dir(p)
+		candidates = append(candidates,
+			filepath.Join(dir, "node_modules", "@earendil-works", "pi-coding-agent", "examples", "extensions", "plan-mode", "index.ts"),
+			filepath.Join(dir, "..", "node_modules", "@earendil-works", "pi-coding-agent", "examples", "extensions", "plan-mode", "index.ts"),
+		)
+	}
+
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return ""
 }
 
 func getRTKInstallHint() string {

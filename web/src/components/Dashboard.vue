@@ -3,7 +3,7 @@
     <div class="chat-container">
       <!-- 消息列表区域 -->
       <div ref="messageList" class="message-list">
-        <div class="welcome-message">
+        <div v-if="!hasExecutedCommand" class="welcome-message">
           <h2>命令快捷操作</h2>
           <div class="fixed-command-panel">
             <div class="fixed-command-title">支持的一级命令</div>
@@ -276,6 +276,7 @@ export default {
     // SSE 相关状态
     const sseDistributeId = ref('') // SSE 分发 ID
     const isExecuting = ref(false) // 是否正在执行命令
+    const hasExecutedCommand = ref(false) // 是否已执行过命令（用于隐藏顶部欢迎/命令快捷操作区）
     const currentOutputMessage = ref(null) // 当前输出消息的引用
     // script 会话状态（用于首页脚本执行多步交互）
     const scriptSession = ref({
@@ -337,6 +338,34 @@ export default {
       ].filter(Boolean)
     }
 
+    const toCommandToken = (value) => {
+      return normalizeCommandPart(value).replace(/\s+/g, '_')
+    }
+
+    const joinCommandToken = (...parts) => {
+      return parts
+        .map(part => toCommandToken(part))
+        .filter(Boolean)
+        .join('-')
+    }
+
+    const countDuplicateNames = (list, getName) => {
+      const countMap = {}
+      ;(Array.isArray(list) ? list : []).forEach(item => {
+        const key = normalizeCommandPart(getName(item)).toLowerCase()
+        if (!key) {
+          return
+        }
+        countMap[key] = (countMap[key] || 0) + 1
+      })
+      return countMap
+    }
+
+    const hasDuplicateName = (countMap, name) => {
+      const key = normalizeCommandPart(name).toLowerCase()
+      return !!key && Number(countMap[key] || 0) > 1
+    }
+
     // getSupervisorProcessCacheKey 按环境生成首页 Supervisor 服务列表缓存 key，避免不同环境串缓存。
     const getSupervisorProcessCacheKey = (envData) => {
       const id = normalizeCommandPart(envData?.id)
@@ -388,7 +417,7 @@ export default {
         .split('\n')
         .map(line => normalizeCommandPart(line))
         .filter(Boolean)
-      return lines.map((line, index) => {
+      const processItems = lines.map((line, index) => {
         const [configNameRaw, supervisorNameRaw] = line.split('---')
         const configName = normalizeCommandPart(configNameRaw)
         let supervisorName = normalizeCommandPart(supervisorNameRaw)
@@ -399,15 +428,22 @@ export default {
         const configDir = normalizeCommandPart(envCmd?.data?.config_dir)
         const configPath = configDir && configName ? `${configDir}/${configName}` : configName
         const displayName = supervisorName || configName || `进程${index + 1}`
+        return { configName, supervisorName, configPath, displayName, index }
+      })
+      const duplicateNameCountMap = countDuplicateNames(processItems, item => item.displayName)
+      return processItems.map(item => {
+        const commandName = hasDuplicateName(duplicateNameCountMap, item.displayName)
+          ? joinCommandToken(item.configName || `IDX${item.index + 1}`, item.displayName)
+          : item.displayName
         return {
-          command: displayName,
-          name: displayName,
-          aliases: [configName].filter(Boolean),
-          desc: configName || '进程配置',
-          id: `${envCmd?.id || envCmd?.data?.id || 'env'}_${index}`,
+          command: commandName,
+          name: commandName,
+          aliases: [item.configName].filter(Boolean),
+          desc: item.configName || '进程配置',
+          id: `${envCmd?.id || envCmd?.data?.id || 'env'}_${item.index}`,
           data: {
-            supervisor_name: supervisorName,
-            supervisor_config: configPath
+            supervisor_name: item.supervisorName,
+            supervisor_config: item.configPath
           }
         }
       })
@@ -509,6 +545,50 @@ export default {
       }
     }
 
+    const getDockerQuickSelection = (stack, actionName = '') => {
+      const sourceStack = Array.isArray(stack) ? stack : []
+      const actionIndex = sourceStack.findIndex(item => {
+        if (actionName) {
+          return item?.action === actionName
+        }
+        return item?.action === 'dockerQuickRestart' || item?.action === 'dockerQuickStop' || item?.action === 'dockerQuickDown' || item?.action === 'dockerQuickPull'
+      })
+      return {
+        actionIndex,
+        projectCmd: actionIndex >= 0 ? sourceStack[actionIndex + 1] : null,
+        serviceCmd: actionIndex >= 0 ? sourceStack[actionIndex + 2] : null
+      }
+    }
+
+    const getDockerProjectKey = (projectCmd) => {
+      return normalizeCommandPart(projectCmd?.id) ||
+        normalizeCommandPart(projectCmd?.data?.id) ||
+        normalizeCommandPart(projectCmd?.command || projectCmd?.name)
+    }
+
+    const getDockerProjectDefaultServices = (projectCmd) => {
+      if (Array.isArray(projectCmd?.default_service_list)) {
+        return projectCmd.default_service_list.map(item => normalizeCommandPart(item)).filter(Boolean)
+      }
+      if (Array.isArray(projectCmd?.data?.default_service_list)) {
+        return projectCmd.data.default_service_list.map(item => normalizeCommandPart(item)).filter(Boolean)
+      }
+      return []
+    }
+
+    const isDockerServiceInProject = (projectCmd, serviceCmd) => {
+      const serviceName = normalizeCommandPart(serviceCmd?.data?.service || serviceCmd?.command || serviceCmd?.name)
+      if (!projectCmd || !serviceCmd || !serviceName) {
+        return false
+      }
+      const projectKey = getDockerProjectKey(projectCmd)
+      const serviceProjectKey = normalizeCommandPart(serviceCmd?.data?.projectKey || serviceCmd?.data?.projectId)
+      if (projectKey && serviceProjectKey && projectKey !== serviceProjectKey) {
+        return false
+      }
+      return getDockerProjectDefaultServices(projectCmd).includes(serviceName)
+    }
+
     // 判断动作命令是否已满足执行条件（含多级目标校验）
     const isActionReady = (actionCmd, stack, inputValue) => {
       if (!actionCmd) return false
@@ -524,11 +604,10 @@ export default {
         const selection = getLinkRunSelection(sourceStack)
         return isLinkRunSelectionComplete(selection)
       }
-      // docker quick-restart/quick-stop 需要先选项目，再选服务
-      if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop') {
-        const actionIndex = sourceStack.findIndex(item => item?.action === actionCmd.action)
-        const serviceCmd = actionIndex >= 0 ? sourceStack[actionIndex + 2] : null
-        return !!(serviceCmd && serviceCmd.data)
+      // docker quick-restart/quick-stop/quick-down 需要先选项目，再选服务
+      if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop' || actionCmd.action === 'dockerQuickDown' || actionCmd.action === 'dockerQuickPull') {
+        const { projectCmd, serviceCmd } = getDockerQuickSelection(sourceStack, actionCmd.action)
+        return isDockerServiceInProject(projectCmd, serviceCmd)
       }
       if (actionCmd.action === 'supervisorRestart' || actionCmd.action === 'supervisorStop' || actionCmd.action === 'supervisorConfig') {
         const actionIndex = sourceStack.findIndex(item => item?.action === actionCmd.action)
@@ -582,10 +661,13 @@ export default {
       if (actionCmd.needInput && !normalizeCommandPart(inputValue)) {
         return `命令未完成：${actionCmd.inputPlaceholder || '请输入参数'}`
       }
-      if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop') {
-        const serviceCmd = actionIndex >= 0 ? sourceStack[actionIndex + 2] : null
+      if (actionCmd.action === 'dockerQuickRestart' || actionCmd.action === 'dockerQuickStop' || actionCmd.action === 'dockerQuickDown' || actionCmd.action === 'dockerQuickPull') {
+        const { projectCmd, serviceCmd } = getDockerQuickSelection(sourceStack, actionCmd.action)
         if (!(serviceCmd && serviceCmd.data)) {
           return '命令未完成：请选择服务'
+        }
+        if (!isDockerServiceInProject(projectCmd, serviceCmd)) {
+          return '命令未完成：请选择当前项目下的服务'
         }
       }
       if (actionCmd.action === 'supervisorRestart' || actionCmd.action === 'supervisorStop' || actionCmd.action === 'supervisorConfig') {
@@ -918,6 +1000,8 @@ export default {
       if (isExecuting.value) {
         return false
       }
+      // 续跑队列命令会接管输入框并清空，先备份用户正在输入的草稿。
+      const userDraft = inputText.value
       const dequeueResult = consumeNextPendingCommand(
         pendingCommandQueue.value,
         (rawCommand) => {
@@ -928,6 +1012,13 @@ export default {
         return false
       }
       pendingCommandQueue.value = dequeueResult.queue
+      // 仅当队列命令已真正进入执行，才把用户草稿还原回去；
+      // 若队列命令仍需补全（未进入执行），保留其输入态供用户继续完成。
+      if (normalizeCommandPart(userDraft) && isExecuting.value) {
+        inputText.value = userDraft
+        parseInput()
+        refreshCommandDropdownVisibility()
+      }
       return true
     }
 
@@ -1744,6 +1835,7 @@ export default {
         type !== 'linkAccountList' &&
         type !== 'scriptOptionList' &&
         type !== 'historyList' &&
+        type !== 'dockerServiceList' &&
         dynamicDataCache.value[type]
       ) {
         isLoadingDynamic.value = false
@@ -1833,7 +1925,7 @@ export default {
           .filter(Boolean)
       }
 
-      compose.DockerComposeList({}, (response) => {
+      compose.DockerComposeList({ is_dashboard: 1 }, (response) => {
         const composeItemList = Array.isArray(response?.Data?.list)
           ? response.Data.list
           : (Array.isArray(response?.Data) ? response.Data : [])
@@ -1846,29 +1938,16 @@ export default {
           return
         }
 
-        const duplicateNameCountMap = {}
-        composeItemList.forEach(item => {
-          const nameKey = normalizeCommandPart(item?.name).toLowerCase()
-          if (!nameKey) {
-            return
-          }
-          duplicateNameCountMap[nameKey] = (duplicateNameCountMap[nameKey] || 0) + 1
-        })
         const list = composeItemList
           .map(item => {
             const sshId = normalizeCommandPart(item?.ssh_id)
             const sshName = normalizeCommandPart(item?.ssh_name) || `SSH ${sshId || '-'}`
             const normalizedName = normalizeCommandPart(item?.name)
-            const hasDuplicateName = !!normalizedName && duplicateNameCountMap[normalizedName.toLowerCase()] > 1
-            const displayName = hasDuplicateName ? `${normalizedName} (${sshName})` : normalizedName
             return {
-              command: displayName,
-              name: displayName,
-              insertText: displayName,
+              command: normalizedName,
+              name: normalizedName,
+              insertText: normalizedName,
               aliases: [
-                normalizedName,
-                `${normalizedName}@${sshName}`,
-                `${normalizedName}(${sshName})`,
                 String(item.id || '')
               ].filter(Boolean),
               desc: [sshName, item.compose_yml_path || ''].filter(Boolean).join(' | '),
@@ -1895,56 +1974,60 @@ export default {
     }
     // 加载 Docker 服务列表（用于快速重启/停止）
     const loadDockerServiceList = () => {
-      // 从命令栈中找到已选择的项目
-      const projectCmd = commandStack.value.find(cmd =>
-        Array.isArray(cmd?.default_service_list) || Array.isArray(cmd?.data?.default_service_list)
-      )
-      const services = Array.isArray(projectCmd?.default_service_list)
-        ? projectCmd.default_service_list
-        : (Array.isArray(projectCmd?.data?.default_service_list) ? projectCmd.data.default_service_list : [])
+      // 先清空旧的候选，避免残留上一次其它 docker 配置的服务列表。
+      dynamicDataCache.value['dockerServiceList'] = []
+      currentChildren.value = []
 
-      if (projectCmd && services.length > 0) {
-        const list = services.map(service => ({
+      // 精确定位项目：docker quick-restart/quick-stop 的项目一定在 action 命令的下一位，
+      // 不要在整个命令栈里扫描"第一个带 default_service_list 的项"，否则可能命中风马牛不相及的项目。
+      const actionIndex = commandStack.value.findIndex(cmd =>
+        cmd?.action === 'dockerQuickRestart' || cmd?.action === 'dockerQuickStop' || cmd?.action === 'dockerQuickDown' || cmd?.action === 'dockerQuickPull'
+      )
+      const projectCmd = actionIndex >= 0 ? commandStack.value[actionIndex + 1] : null
+      const services = getDockerProjectDefaultServices(projectCmd)
+
+      const buildAndApply = (targetProject, serviceList) => {
+        const projectKey = getDockerProjectKey(targetProject)
+        const list = serviceList.map(service => ({
           command: service,
           name: service,
           desc: '服务',
-          data: { service, projectId: projectCmd.id }
+          data: {
+            service,
+            projectId: projectKey,
+            projectKey
+          }
         }))
         dynamicDataCache.value['dockerServiceList'] = list
         currentChildren.value = list
-        isLoadingDynamic.value = false
-        reparseForPendingHistoryExecution('dockerServiceList')
-        refreshCommandDropdownVisibility()
+      }
+
+      if (projectCmd && services.length > 0) {
+        buildAndApply(projectCmd, services)
       } else {
-        // 如果没有找到项目信息，尝试从缓存的 dockerComposeList 中查找
-        const cachedList = dynamicDataCache.value['dockerComposeList']
-        if (cachedList && cachedList.length > 0) {
-          // 找到命令栈中选择的项目名称
-          const projectName = commandStack.value.find(cmd => 
-            cachedList.some(item => item.name === cmd.name || item.command === cmd.command)
-          )?.name || cachedList[0].name
-          
-          const project = cachedList.find(item => item.name === projectName)
-          if (project && project.default_service_list) {
-            const list = project.default_service_list.map(service => ({
-              command: service,
-              name: service,
-              desc: '服务',
-              data: { service, projectId: project.id }
-            }))
-            dynamicDataCache.value['dockerServiceList'] = list
-            currentChildren.value = list
+        // 兜底：按已选项目的 id / 名称从 dockerComposeList 精确匹配，禁止使用第 0 项兜底，
+        // 否则会错误地展示其它 docker 配置的默认服务。
+        const cachedList = dynamicDataCache.value['dockerComposeList'] || []
+        if (projectCmd && cachedList.length > 0) {
+          const project = cachedList.find(item =>
+            item.id === projectCmd.id ||
+            normalizeCommandPart(item.name) === normalizeCommandPart(projectCmd.name) ||
+            normalizeCommandPart(item.command) === normalizeCommandPart(projectCmd.command)
+          )
+          if (project && Array.isArray(project.default_service_list) && project.default_service_list.length > 0) {
+            buildAndApply(project, project.default_service_list)
           }
         }
-        isLoadingDynamic.value = false
-        reparseForPendingHistoryExecution('dockerServiceList')
-        refreshCommandDropdownVisibility()
       }
+      isLoadingDynamic.value = false
+      delete loadingDynamicTypes.value['dockerServiceList']
+      reparseForPendingHistoryExecution('dockerServiceList')
+      refreshCommandDropdownVisibility()
     }
 
     // 加载 Git 项目列表
     const loadGitProjectList = () => {
-      git.GitConfigList({}, (response) => {
+      git.GitConfigList({ is_dashboard: 1 }, (response) => {
         isLoadingDynamic.value = false
         delete loadingDynamicTypes.value['gitProjectList']
         if (response.ErrCode === 0) {
@@ -1968,9 +2051,10 @@ export default {
               return
             }
             seen.add(dedupeKey)
+            const rawName = normalizeCommandPart(item.name)
             list.push({
-              command: item.name,
-              name: item.name,
+              command: rawName,
+              name: rawName,
               aliases: [item.path || '', item.code_path || ''].filter(Boolean),
               desc: `${groupMap[item.git_group_id] || '未分组'} ${item.path || item.code_path || ''}`.trim(),
               id: item.id,
@@ -1990,7 +2074,7 @@ export default {
 
     // 加载 Git 分组列表
     const loadGitGroupList = () => {
-      git.GitConfigList({}, (response) => {
+      git.GitConfigList({ is_dashboard: 1 }, (response) => {
         isLoadingDynamic.value = false
         delete loadingDynamicTypes.value['gitGroupList']
         if (response.ErrCode === 0) {
@@ -2087,14 +2171,15 @@ export default {
 
     // 加载 Supervisor 环境列表
     const loadSupervisorEnvList = () => {
-      supervisor.SupervisorConfigList({}, (response) => {
+      supervisor.SupervisorConfigList({ is_dashboard: 1 }, (response) => {
         isLoadingDynamic.value = false
         delete loadingDynamicTypes.value['supervisorEnvList']
         if (response.ErrCode === 0) {
-          const list = response.Data.supervisor_list.map(item => ({
+          const supervisorList = Array.isArray(response.Data.supervisor_list) ? response.Data.supervisor_list : []
+          const list = supervisorList.map(item => ({
             command: item.name,
             name: item.name,
-            desc: item.host || '',
+            desc: [item.raw_name || '', item.host || ''].filter(Boolean).join(' | ') || item.host || '',
             id: item.id,
             data: item
           }))
@@ -2148,10 +2233,11 @@ export default {
 
     // 加载终端输出列表
     const loadShellOutList = () => {
-      shellOut.ShellOuts({}, (response) => {
+      shellOut.ShellOuts({ is_dashboard: 1 }, (response) => {
         isLoadingDynamic.value = false
         if (response.ErrCode === 0) {
-          const list = response.Data.map(item => ({
+          const shellOutList = Array.isArray(response.Data) ? response.Data : []
+          const list = shellOutList.map(item => ({
             command: item.name,
             name: item.name,
             desc: item.command || '',
@@ -2166,7 +2252,7 @@ export default {
 
     // 加载自定义链接列表（新表 smart_link，每个链接一个独立行）
     const loadLinkList = () => {
-      smartLinkSet.SmartLinkItemList((response) => {
+      smartLinkSet.SmartLinkItemList({ is_dashboard: 1 }, (response) => {
         isLoadingDynamic.value = false
         delete loadingDynamicTypes.value['linkList']
         delete loadingDynamicTypes.value['linkConfigList']
@@ -2211,15 +2297,25 @@ export default {
     // 加载已选链接下的账号列表
     const loadLinkAccountList = () => {
       const { linkCmd } = getLinkRunSelection(commandStack.value)
-      const list = buildLinkAccountOptionsFromLink(linkCmd).map((item, index) => ({
-        ...item,
-        desc: '账号',
-        id: `${linkCmd?.id || 'link'}_${index}`,
-        data: {
-          ...(item.data || {}),
-          link: linkCmd?.data || {}
+      const accountOptions = buildLinkAccountOptionsFromLink(linkCmd)
+      const duplicateNameCountMap = countDuplicateNames(accountOptions, item => item?.command || item?.name)
+      const list = accountOptions.map((item, index) => {
+        const rawName = normalizeCommandPart(item.command || item.name) || `账号${index + 1}`
+        const commandName = hasDuplicateName(duplicateNameCountMap, rawName)
+          ? joinCommandToken(`IDX${index + 1}`, rawName)
+          : rawName
+        return {
+          ...item,
+          command: commandName,
+          name: commandName,
+          desc: '账号',
+          id: `${linkCmd?.id || 'link'}_${index}`,
+          data: {
+            ...(item.data || {}),
+            link: linkCmd?.data || {}
+          }
         }
-      }))
+      })
       dynamicDataCache.value['linkAccountList'] = list
       currentChildren.value = list
       isLoadingDynamic.value = false
@@ -2230,7 +2326,7 @@ export default {
 
     // 加载 script 脚本列表
     const loadScriptList = () => {
-      variableSet.VariableList((response) => {
+      variableSet.VariableList({ is_dashboard: 1 }, (response) => {
         isLoadingDynamic.value = false
         delete loadingDynamicTypes.value['scriptList']
         if (!(response && response.ErrCode === 0)) {
@@ -2270,12 +2366,16 @@ export default {
         refreshCommandDropdownVisibility()
         return
       }
+      const duplicateLabelCountMap = countDuplicateNames(optionList, option => option?.Label)
       const list = optionList.map((item, index) => {
         const label = normalizeCommandPart(item?.Label) || `选项${index + 1}`
         const optionValue = normalizeCommandPart(item?.Value)
+        const commandName = hasDuplicateName(duplicateLabelCountMap, label)
+          ? joinCommandToken(`IDX${index + 1}`, label)
+          : label
         return {
-          command: label,
-          name: label,
+          command: commandName,
+          name: commandName,
           aliases: [optionValue].filter(Boolean),
           desc: optionValue ? `值: ${optionValue}` : '选项',
           id: `${scriptSession.value.runCmdId || 'cmd'}_${index}`,
@@ -2929,6 +3029,7 @@ export default {
       messages.value.push(outputMsg)
       currentOutputMessage.value = outputMsg
       isExecuting.value = true
+      hasExecutedCommand.value = true
       
       // 清理输入状态
       inputText.value = ''
@@ -2970,6 +3071,12 @@ export default {
           break
         case 'dockerQuickStop':
           executeDockerAction('quickStop', currentStack)
+          break
+        case 'dockerQuickDown':
+          executeDockerAction('quickDown', currentStack)
+          break
+        case 'dockerQuickPull':
+          executeDockerAction('quickPull', currentStack)
           break
         case 'supervisorStatus':
           executeSupervisorAction('status', currentStack)
@@ -3208,6 +3315,12 @@ export default {
                 finishExecution()
                 return
               }
+              if (!isDockerServiceInProject(composeCmd, serviceCmd)) {
+                appendOutputResult('错误：请选择当前项目下的服务\n')
+                sseDistribute.UnRegisterReceive(newSseDistributeId)
+                finishExecution()
+                return
+              }
               appendOutputResult(`正在快速重启服务 ${service}...\n\n`)
               compose.DockerComposeRestart({ ...basePayload, service }, (response) => done(response, () => appendOutputResult('快速重启完成\n')))
             }
@@ -3221,8 +3334,52 @@ export default {
                 finishExecution()
                 return
               }
+              if (!isDockerServiceInProject(composeCmd, serviceCmd)) {
+                appendOutputResult('错误：请选择当前项目下的服务\n')
+                sseDistribute.UnRegisterReceive(newSseDistributeId)
+                finishExecution()
+                return
+              }
               appendOutputResult(`正在快速停止服务 ${serviceStop}...\n\n`)
               compose.DockerComposeStop({ ...basePayload, service: serviceStop }, (response) => done(response, () => appendOutputResult('快速停止完成\n')))
+            }
+            break
+          case 'quickDown':
+            {
+              const serviceDown = serviceCmd && serviceCmd.data ? serviceCmd.data.service : ''
+              if (!serviceDown) {
+                appendOutputResult('错误：请先选择要拆除的服务\n')
+                sseDistribute.UnRegisterReceive(newSseDistributeId)
+                finishExecution()
+                return
+              }
+              if (!isDockerServiceInProject(composeCmd, serviceCmd)) {
+                appendOutputResult('错误：请选择当前项目下的服务\n')
+                sseDistribute.UnRegisterReceive(newSseDistributeId)
+                finishExecution()
+                return
+              }
+              appendOutputResult(`正在快速 down 服务 ${serviceDown}...\n\n`)
+              compose.DockerComposeDown({ ...basePayload, service: serviceDown }, (response) => done(response, () => appendOutputResult('快速 down 完成\n')))
+            }
+            break
+          case 'quickPull':
+            {
+              const servicePull = serviceCmd && serviceCmd.data ? serviceCmd.data.service : ''
+              if (!servicePull) {
+                appendOutputResult('错误：请先选择要拉取的服务\n')
+                sseDistribute.UnRegisterReceive(newSseDistributeId)
+                finishExecution()
+                return
+              }
+              if (!isDockerServiceInProject(composeCmd, serviceCmd)) {
+                appendOutputResult('错误：请选择当前项目下的服务\n')
+                sseDistribute.UnRegisterReceive(newSseDistributeId)
+                finishExecution()
+                return
+              }
+              appendOutputResult(`正在快速 pull 服务 ${servicePull}...\n\n`)
+              compose.DockerComposePull({ ...basePayload, service: servicePull }, (response) => done(response, () => appendOutputResult('快速 pull 完成\n')))
             }
             break
           default:
@@ -3561,7 +3718,9 @@ export default {
         finishExecution()
         return
       }
-      const payload = buildLinkRunPayload(selection, sseDistributeId.value, normalizeCommandPart)
+      // 每次执行使用独立的 SSE 分发 ID，避免与通用 dashboard 通道的日志相互串扰
+      const newSseDistributeId = sseDistribute.GetSseDistributeId('dashboard_link')
+      const payload = buildLinkRunPayload(selection, newSseDistributeId, normalizeCommandPart)
 
       if (!payload.id || !payload.label) {
         appendOutputResult('错误：链接配置不完整，无法执行\n')
@@ -3569,14 +3728,45 @@ export default {
         return
       }
 
+      const throttleStringFunc = new Throttle_string(50, (text) => {
+        if (currentOutputMessage.value) {
+          appendOutputProcess(text)
+        }
+      })
+      let linkFinished = false
+      let linkResponse = null
+      const finishLinkExecution = () => {
+        if (linkFinished) return
+        linkFinished = true
+        sseDistribute.UnRegisterReceive(newSseDistributeId)
+        if (linkResponse && linkResponse.ErrCode === 0) {
+          appendOutputResult('执行完成\n')
+        } else if (linkResponse) {
+          appendOutputResult(`执行失败: ${normalizeCommandPart(linkResponse.ErrMsg) || '未知错误'}\n`)
+        }
+        finishExecution(linkResponse)
+      }
+      // 兜底：若 60s 内未收到后端完成标记，仍正常收尾，避免界面卡在执行中
+      const linkFallbackTimer = setTimeout(finishLinkExecution, 60000)
+      sseDistribute.RegisterReceive(newSseDistributeId, (msg) => {
+        // 后端在所有浏览器实例执行完毕后推送完成标记，据此收尾并保留已推送的明细日志
+        if (String(msg).indexOf('[SMART_LINK_RUN_DONE]') !== -1) {
+          clearTimeout(linkFallbackTimer)
+          // 略微延迟以让节流缓冲中的末尾日志落盘
+          setTimeout(finishLinkExecution, 300)
+          return
+        }
+        throttleStringFunc.update(msg)
+      })
+
       appendOutputResult(`正在执行链接 [${payload.label}] 的自定义网页任务...\n\n`)
       smartLinkSet.SmartLinkRun(payload, (response) => {
-        if (response && response.ErrCode === 0) {
-          appendOutputResult('执行完成\n')
-        } else {
-          appendOutputResult(`执行失败: ${normalizeCommandPart(response?.ErrMsg) || '未知错误'}\n`)
+        linkResponse = response
+        // 接口失败时后端不会推送完成标记，需立即收尾
+        if (!response || response.ErrCode !== 0) {
+          clearTimeout(linkFallbackTimer)
+          finishLinkExecution()
         }
-        finishExecution(response)
       })
     }
 
@@ -4062,6 +4252,7 @@ export default {
       getResultLines,
       renderProcessMarkdown,
       hasCommandLayout,
+      hasExecutedCommand,
     }
   }
 }

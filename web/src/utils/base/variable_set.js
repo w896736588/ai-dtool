@@ -14,8 +14,10 @@ function SetVariableGroupDelete(editVariableGroupConfig, callBack) {
     base.BasePost('/api/Set/VariableGroupDelete', editVariableGroupConfig, callBack)
 }
 
-function VariableList(callBack) {
-    base.BasePost('/api/VariableList', {}, callBack)
+function VariableList(dataOrCallBack, maybeCallBack) {
+    const data = typeof dataOrCallBack === 'function' ? {} : (dataOrCallBack || {})
+    const callBack = typeof dataOrCallBack === 'function' ? dataOrCallBack : maybeCallBack
+    base.BasePost('/api/VariableList', data, callBack)
 }
 
 function VariableAdd(variableConfig, callBack) {

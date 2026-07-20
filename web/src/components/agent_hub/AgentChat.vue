@@ -16,17 +16,22 @@
           <el-button text size="small" @click="showWorkspaceDialog = true">+</el-button>
         </div>
         <div class="workspace-list">
-          <div
+          <el-tooltip
             v-for="ws in workspaces"
             :key="ws.id"
-            class="workspace-item"
-            :class="{ 'workspace-item--active': ws.id === currentWorkspaceId }"
-            @click="selectWorkspace(ws)"
+            :content="ws.path"
+            placement="right"
+            effect="dark"
           >
-            <el-icon><Folder /></el-icon>
-            <span class="workspace-item__name">{{ ws.name }}</span>
-            <span class="workspace-item__path">{{ ws.path }}</span>
-          </div>
+            <div
+              class="workspace-item"
+              :class="{ 'workspace-item--active': ws.id === currentWorkspaceId }"
+              @click="selectWorkspace(ws)"
+            >
+              <el-icon><Folder /></el-icon>
+              <span class="workspace-item__name">{{ ws.name }}</span>
+            </div>
+          </el-tooltip>
           <div v-if="workspaces.length === 0" class="empty-hint">暂无工作空间，点击 + 添加</div>
         </div>
       </div>
@@ -43,13 +48,19 @@
             :key="session._key || session.id"
             class="session-item"
             :class="{
-              'session-item--active': !session._isWorkspaceHeader && session.id === currentSessionId,
+              'session-item--active': !session._isWorkspaceHeader && !session._isShowMore && session.id === currentSessionId,
               'workspace-group-header': session._isWorkspaceHeader,
               'workspace-group-header--active': session._isWorkspaceHeader && Number(session.workspace_id) === Number(currentWorkspaceId),
-              'workspace-group-header--collapsed': session._isWorkspaceHeader && session._isCollapsed
+              'workspace-group-header--collapsed': session._isWorkspaceHeader && session._isCollapsed,
+              'workspace-group-header--dragover': session._isWorkspaceHeader && Number(session.workspace_id) === Number(this.dragOverWorkspaceId),
+              'session-item--show-more': session._isShowMore
             }"
-            @click="session._isWorkspaceHeader ? toggleWorkspaceGroup(session) : selectSession(session)"
-            @contextmenu.prevent="session._isWorkspaceHeader ? null : showSessionMenu($event, session)"
+            :draggable="session._isWorkspaceHeader"
+            @dragstart="session._isWorkspaceHeader ? onWorkspaceDragStart(session, $event) : null"
+            @dragover.prevent="session._isWorkspaceHeader ? onWorkspaceDragOver(session, $event) : null"
+            @drop="session._isWorkspaceHeader ? onWorkspaceDrop(session, $event) : null"
+            @dragend="onWorkspaceDragEnd()"
+            @click="session._isShowMore ? showMoreSessions(session.workspace_id) : (session._isWorkspaceHeader ? toggleWorkspaceGroup(session) : selectSession(session))"
           >
             <template v-if="session._isWorkspaceHeader">
               <el-icon class="workspace-group-header__arrow">
@@ -58,17 +69,24 @@
               </el-icon>
               <el-icon class="workspace-group-header__folder"><Folder /></el-icon>
             </template>
+            <template v-else-if="session._isShowMore">
+              <el-icon class="session-item__more-icon"><ArrowDown /></el-icon>
+              <span class="session-item__more-text">展示更多（还剩 {{ session._remaining }} 个）</span>
+            </template>
             <span v-else-if="sessionRunningMap[session.id]" class="agent-status-spinner session-item__spinner"></span>
             <el-icon v-else><ChatDotRound /></el-icon>
             <div class="session-item__info">
-              <span class="session-item__name">{{ session.name }}</span>
-              <span class="session-item__time">{{ session._isWorkspaceHeader ? session.path : formatTime(session.updated_at) }}</span>
+              <el-tooltip v-if="session._isWorkspaceHeader" :content="session.path" placement="right" effect="dark">
+                <span class="session-item__name">{{ session.name }}</span>
+              </el-tooltip>
+              <span v-else class="session-item__name">{{ session.name }}</span>
+              <span v-if="!session._isWorkspaceHeader && !session._isShowMore && session.exec_duration_ms" class="session-item__exec">{{ fmtExecDuration(session.exec_duration_ms) }}</span>
             </div>
             <span v-if="session._isWorkspaceHeader" class="workspace-group-header__count">{{ session.count }} 个对话</span>
-            <el-button v-if="!session._isWorkspaceHeader" text size="small" class="session-item__del" @click.stop="deleteSession(session)">
+            <el-button v-if="!session._isWorkspaceHeader && !session._isShowMore" text size="small" class="session-item__del" @click.stop="deleteSession(session)">
               <el-icon><Close /></el-icon>
             </el-button>
-            <el-button v-else text size="small" class="session-item__del session-item__add" @click.stop="createSession(session.workspace)">+</el-button>
+            <el-button v-else-if="session._isWorkspaceHeader" text size="small" class="session-item__del session-item__add" @click.stop="createSession(session.workspace)">+</el-button>
           </div>
           <div v-if="sessions.length === 0" class="empty-hint">
             {{ currentWorkspaceId ? '暂无对话，点击 + 创建' : '请先选择工作空间' }}
@@ -99,13 +117,18 @@
         <div class="chat-header__title">
           <span v-if="currentSession">{{ currentSession.name }}</span>
           <span v-else>选择一个对话或创建新对话</span>
+          <span v-if="currentSession" class="chat-header__created">创建于 {{ formatTime(currentSession.created_at) }}</span>
         </div>
         <div class="chat-header__actions">
-          <!-- Token 用量统计（会话级） -->
-          <div v-if="tokenStats" class="token-stats">
-            <span class="token-stats__item">输入: {{ fmtNum(tokenStats.input_tokens) }}</span>
-            <span class="token-stats__item">输出: {{ fmtNum(tokenStats.output_tokens) }}</span>
-            <span class="token-stats__item" v-if="tokenStats.total_cost">费用: ${{ fmtCost(tokenStats.total_cost) }}</span>
+          <!-- Pi 内置计划模式已启用：显示计划图标 -->
+          <el-tooltip v-if="planExtensionInstalled" content="当前处于计划-确认-执行模式" placement="bottom" effect="dark">
+            <span class="plan-mode-badge" @click="scrollToPlan">📋</span>
+          </el-tooltip>
+          <!-- 会话执行耗时（后端计时，WS exec_progress 推送） -->
+          <div class="exec-time" :class="{ 'exec-time--running': executionRunning }">
+            <el-icon class="exec-time__icon"><Timer /></el-icon>
+            <span class="exec-time__label">执行</span>
+            <span class="exec-time__value">{{ fmtExecDuration(executionElapsedMs) }}</span>
           </div>
           <el-button
             v-if="isStreaming"
@@ -176,9 +199,12 @@
                     <div class="tool-call__compact-row" @click="toggleToolCallCollapse(tc)">
                       <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
                       <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
-                      <span class="tool-call__compact-label">{{ tc.name }}</span>
+                      <span v-if="toolMeta(tc.name).found" class="tool-call__icon" :style="{ background: toolMeta(tc.name).bg, color: toolMeta(tc.name).color }">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="toolMeta(tc.name).svg"></svg>
+                      </span>
+                      <span v-if="!toolMeta(tc.name).found" class="tool-call__compact-label">{{ tc.name }}</span>
                       <span class="tool-call__compact-text" :title="getCompactText(tc)">{{ getCompactText(tc) }}</span>
-                      <span class="tool-call__compact-status">{{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template></span>
+                      <span v-if="!isToolDone(tc)" class="tool-call__compact-status">{{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template></span>
                       <el-icon class="tool-call__compact-arrow" :class="{ 'tool-call__compact-arrow--open': !isToolCallCollapsed(tc) }">
                         <ArrowRight />
                       </el-icon>
@@ -193,9 +219,11 @@
                     <div class="tool-call__header">
                       <span v-if="isToolRunning(tc)" class="agent-status-spinner"></span>
                       <span v-else-if="isToolDone(tc)" class="agent-status-check">✓</span>
-                      <el-icon><Tools /></el-icon>
-                      <span class="tool-call__name">{{ tc.name }}</span>
-                      <el-tag :type="tc.status === 'done' ? 'success' : tc.status === 'running' ? 'warning' : 'info'" size="small">
+                      <span v-if="toolMeta(tc.name).found" class="tool-call__icon" :style="{ background: toolMeta(tc.name).bg, color: toolMeta(tc.name).color }">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="toolMeta(tc.name).svg"></svg>
+                      </span>
+                      <span v-if="!toolMeta(tc.name).found" class="tool-call__name">{{ tc.name }}</span>
+                      <el-tag v-if="!isToolDone(tc)" :type="tc.status === 'done' ? 'success' : tc.status === 'running' ? 'warning' : 'info'" size="small">
                         {{ statusLabel(tc.status) }}<template v-if="!isToolDone(tc)">（{{ getToolDurationText(tc) }}）</template>
                       </el-tag>
                     </div>
@@ -227,24 +255,88 @@
 
       <!-- 输入区域 -->
       <footer class="chat-input" v-if="currentSession || pendingSession">
+        <!-- 计划-确认-执行 面板：紧贴输入框，方便确认或继续补充问题 -->
+        <transition name="el-fade-in">
+          <div v-if="planState.visible" ref="planPanel" class="plan-panel" :class="{ 'plan-panel--collapsed': planCollapsed }">
+            <div class="plan-panel__header" @click="planCollapsed = !planCollapsed">
+              <span class="plan-panel__icon">📋</span>
+              <span class="plan-panel__title">计划与进度</span>
+              <el-tag size="small" :type="planState.phase === 'plan' ? 'warning' : 'success'">
+                {{ planState.phase === 'plan' ? (pendingPlanChoice ? '待确认' : '计划中') : (planState.phase === 'done' ? '已完成' : '执行中') }}
+              </el-tag>
+              <span class="plan-panel__progress">{{ planDoneCount }}/{{ planState.items.length }}</span>
+              <span class="plan-panel__toggle">{{ planCollapsed ? '展开' : '收起' }}</span>
+            </div>
+            <div v-show="!planCollapsed" class="plan-panel__body">
+              <ul class="plan-list">
+                <li v-for="(it, i) in planState.items" :key="i" :class="{ 'plan-list__done': it.done }">
+                  <span class="plan-list__check">{{ it.done ? '☑' : '☐' }}</span>
+                  <span class="plan-list__text">{{ it.text }}</span>
+                </li>
+              </ul>
+              <div v-if="planState.phase === 'plan' && planState.items.length && pendingPlanChoice" class="plan-panel__actions">
+                <el-button size="small" @click="deferPlanExecution">暂不执行，继续提问</el-button>
+                <el-button size="small" type="primary" @click="approvePlan">确认执行</el-button>
+              </div>
+            </div>
+          </div>
+        </transition>
+
         <div class="chat-input__wrapper">
           <el-input
+            ref="messageInput"
             v-model="inputText"
             type="textarea"
             :rows="2"
             placeholder="输入消息，Enter 发送，Shift+Enter 换行..."
-            :disabled="isStreaming || (sessionRunningMap[currentSessionId] && !wsConnected)"
+            :disabled="isStreaming || this.sending || (sessionRunningMap[currentSessionId] && !wsConnected)"
             @keydown.enter.exact.prevent="sendMessage"
             resize="none"
           />
           <div class="chat-input__toolbar">
             <div class="chat-input__toolbar-left">
+              <!-- Pi 计划模式扩展：模式切换固定放在输入框最左侧 -->
+              <el-dropdown
+                v-if="planExtensionInstalled"
+                class="chat-input__mode-select"
+                :disabled="(isStreaming && !pendingPlanChoice) || switchingInteractionMode"
+                trigger="click"
+                placement="top-start"
+                popper-class="chat-mode-menu"
+                @command="setInteractionMode"
+              >
+                <el-button
+                  size="small"
+                  class="chat-input__mode-button"
+                  :class="'chat-input__mode-button--' + interactionMode"
+                >
+                  <el-icon class="chat-input__mode-icon">
+                    <Memo v-if="interactionMode === 'plan'" />
+                    <VideoPlay v-else />
+                  </el-icon>
+                  <span>{{ interactionMode === 'plan' ? '计划' : '执行' }}</span>
+                  <el-icon class="chat-input__mode-arrow"><ArrowUp /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="execute" :class="{ 'is-active': interactionMode === 'execute' }">
+                      <el-icon><VideoPlay /></el-icon>
+                      <span>执行模式</span>
+                    </el-dropdown-item>
+                    <el-dropdown-item command="plan" :class="{ 'is-active': interactionMode === 'plan' }">
+                      <el-icon><Memo /></el-icon>
+                      <span>计划模式</span>
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+
               <!-- 模型选择（按 Provider 分组） -->
               <el-select
                 v-if="providerModels.length > 0"
                 v-model="selectedModel"
                 size="small"
-                style="width: 200px"
+                class="chat-input__model-select"
                 placeholder="选择模型"
                 :disabled="isStreaming"
                 @change="setModel"
@@ -318,6 +410,7 @@
               <el-button
                 v-else
                 type="primary"
+                :loading="sending"
                 :disabled="!inputText.trim() || (sessionRunningMap[currentSessionId] && !wsConnected)"
                 @click="sendMessage"
               >
@@ -345,14 +438,7 @@
       </template>
     </el-dialog>
 
-    <!-- 会话重命名对话框 -->
-    <el-dialog v-model="showRenameDialog" title="重命名会话" width="400px">
-      <el-input v-model="renameForm.name" />
-      <template #footer>
-        <el-button @click="showRenameDialog = false">取消</el-button>
-        <el-button type="primary" @click="renameSession">保存</el-button>
-      </template>
-    </el-dialog>
+
   </div>
 </template>
 
@@ -360,15 +446,20 @@
 import Base from '@/utils/base.js'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { getToolMeta } from '@/utils/toolIcons.js'
 import {
   ArrowLeft,
   ArrowDown,
+  ArrowUp,
   ArrowRight,
   Folder,
   ChatDotRound,
   Close,
   Tools,
-  Loading
+  Loading,
+  Timer,
+  Memo,
+  VideoPlay
 } from '@element-plus/icons-vue'
 
 export default {
@@ -376,12 +467,16 @@ export default {
   components: {
     ArrowLeft,
     ArrowDown,
+    ArrowUp,
     ArrowRight,
     Folder,
     ChatDotRound,
     Close,
     Tools,
-    Loading
+    Loading,
+    Timer,
+    Memo,
+    VideoPlay
   },
   data() {
     return {
@@ -389,23 +484,38 @@ export default {
       agentName: '',
       agentConfig: null,
 
+      // 计划模式扩展
+      planExtensionInstalled: false,
+      defaultInteractionMode: 'execute',
+      interactionMode: 'execute',
+      switchingInteractionMode: false,
+      pendingPlanChoice: null,
+      planState: { visible: false, phase: '', items: [] },
+      planCollapsed: false,
+
+
       pendingSession: false, // 新建对话标记：为 true 时不创建 DB 记录，等用户发消息后再创建
 
       workspaces: [],
       currentWorkspaceId: 0,
       collapsedWorkspaceMap: {},
+      // 每个工作空间默认展示的会话数量（展示更多时累加 5），按 workspaceId 记录
+      workspaceSessionLimit: {},
+      // 工作空间拖动排序状态
+      dragWorkspaceId: 0,
+      dragOverWorkspaceId: 0,
       showWorkspaceDialog: false,
       workspaceForm: { name: '', path: '' },
 
       sessions: [],
       currentSessionId: 0,
       currentSession: null,
-      showRenameDialog: false,
-      renameForm: { id: 0, name: '' },
+
 
       messages: [],
       inputText: '',
       isStreaming: false,
+      sending: false, // 发送中：等待后端确认收到用户问题（agent_start 时清空输入框并停止转圈）
       streamingText: '',
       streamingThinking: '',
       autoScrollEnabled: true,
@@ -431,6 +541,14 @@ export default {
       _runtimeTicker: null,
       _statsPollTimer: null,
 
+      // 会话执行耗时（后端计时，通过 WS exec_progress 推送）
+      // executionServerMs：后端最近一次推送的累计耗时；executionSyncAt：收到推送时的本地时间（用于插值平滑）
+      executionRunning: false,
+      executionServerMs: 0,
+      executionSyncAt: 0,
+      executionElapsedMs: 0,
+      _execTicker: null,
+
       // 加载状态
       historyLoading: false,
 
@@ -446,9 +564,14 @@ export default {
     hasRunningTools() {
       return Object.values(this.pendingToolCalls).some(tc => tc.status !== 'done')
     },
+    planDoneCount() {
+      if (!this.planState.items) return 0
+      return this.planState.items.filter((it) => it.done).length
+    },
     inputHint() {
       if (!this.wsConnected) return '未连接'
       if (this.isStreaming) return 'Pi 正在思考...'
+      if (this.sending) return '发送中...'
       if (this.compacting) return '正在压缩上下文...'
       return 'Enter 发送'
     },
@@ -502,7 +625,7 @@ export default {
           count: workspaceSessions.length,
           _isCollapsed: collapsed
         })
-        if (!collapsed) rows.push(...workspaceSessions)
+        if (!collapsed) this.appendWorkspaceSessions(rows, workspaceId, workspaceSessions)
       })
       byWorkspace.forEach((items, workspaceId) => {
         if (this.workspaces.some(ws => Number(ws.id) === Number(workspaceId))) return
@@ -518,31 +641,199 @@ export default {
           count: items.length,
           _isCollapsed: collapsed
         })
-        if (!collapsed) rows.push(...items)
+        if (!collapsed) this.appendWorkspaceSessions(rows, workspaceId, items)
       })
       return rows
-    }
+    },
   },
   mounted() {
-    this.agentId = parseInt(this.$route.query.agent_id) || 0
+      this.agentId = parseInt(this.$route.query.agent_id) || 0
     if (!this.agentId) {
       this.$router.push('/AgentHub')
       return
     }
+    this.loadCollapsedState()
     this.loadAgentInfo()
     this.loadWorkspaces()
     this.loadSkills()
+    // 执行耗时由后端推送，前端仅做插值平滑展示
+    this.ensureExecTicker()
   },
   beforeUnmount() {
     this.disconnectAllWS()
     this.stopRuntimeTicker()
     this.stopStatsPolling()
+    if (this._execTicker) {
+      clearInterval(this._execTicker)
+      this._execTicker = null
+    }
+    this.resetExecutionTimer()
   },
   methods: {
     goBack() {
       this.disconnectAllWS()
       this.$router.push('/AgentHub')
     },
+
+    // ========== 计划模式（Pi 内置） ==========
+    // 通过 Agent 启动参数判断是否启用 Pi 内置计划模式（--plan + --extension <plan-mode>），决定是否显示计划图标
+    checkPlanExtension() {
+      const cfg = this.agentConfig || {}
+      const extra = (cfg.extra_args || '').trim()
+      if (!extra) {
+        this.planExtensionInstalled = false
+        this.defaultInteractionMode = 'execute'
+        this.interactionMode = 'execute'
+        return
+      }
+      const hasPlan = /(?:^|\s)--plan(?:\s|$)/.test(extra)
+      const hasPlanExt = /(?:^|\s)--extension\s+(?:"[^"]*plan-mode[^"]*"|'[^']*plan-mode[^']*'|\S*plan-mode\S*)/.test(extra)
+      this.planExtensionInstalled = hasPlanExt
+      this.defaultInteractionMode = hasPlan && hasPlanExt ? 'plan' : 'execute'
+      const remembered = this.loadRememberedInteractionMode(this.currentSessionId)
+      if (!this.currentSessionId || !remembered) this.interactionMode = this.defaultInteractionMode
+    },
+    interactionModeStorageKey() {
+      return 'agentchat_interaction_modes_' + this.agentId
+    },
+    loadRememberedInteractionMode(sessionId) {
+      if (!sessionId) return ''
+      try {
+        const modes = JSON.parse(localStorage.getItem(this.interactionModeStorageKey()) || '{}')
+        return modes[String(sessionId)] === 'plan' ? 'plan' : (modes[String(sessionId)] === 'execute' ? 'execute' : '')
+      } catch (e) {
+        return ''
+      }
+    },
+    rememberInteractionMode() {
+      if (!this.currentSessionId) return
+      try {
+        const key = this.interactionModeStorageKey()
+        const modes = JSON.parse(localStorage.getItem(key) || '{}')
+        modes[String(this.currentSessionId)] = this.interactionMode
+        localStorage.setItem(key, JSON.stringify(modes))
+      } catch (e) {
+        // localStorage 不可用时仅保留当前页面内的选择。
+      }
+    },
+    // 用户确认执行计划：直接回复 Pi 扩展的 select 请求，避免用自然语言模拟协议。
+    approvePlan() {
+      if (!this.planState.items.length || !this.pendingPlanChoice) return
+      this.changeInteractionMode('execute')
+    },
+    // 暂不执行：正式选择 Stay in plan mode，解除扩展等待并允许继续提问/改进计划。
+    deferPlanExecution() {
+      if (!this.pendingPlanChoice) return
+      this.changeInteractionMode('plan')
+    },
+    releasePlanInputWait() {
+      this.isStreaming = false
+      this.sending = false
+      this.switchingInteractionMode = false
+      this.stopThinkingTimer()
+      this.stopStatsPolling()
+      this.stopExecutionTimer()
+      this.stopRuntimeTickerIfIdle()
+      this.$nextTick(() => {
+        if (this.$refs.messageInput && typeof this.$refs.messageInput.focus === 'function') {
+          this.$refs.messageInput.focus()
+        }
+      })
+    },
+    setInteractionMode(mode) {
+      this.changeInteractionMode(mode)
+    },
+    changeInteractionMode(mode) {
+      const targetMode = mode === 'plan' ? 'plan' : 'execute'
+      const pending = this.pendingPlanChoice
+
+      // 计划生成后扩展正在等待选择，直接回复原始 UI 请求。
+      if (pending) {
+        const option = targetMode === 'execute'
+          ? pending.options.find((item) => String(item).startsWith('Execute'))
+          : pending.options.find((item) => String(item).startsWith('Stay'))
+        if (option) {
+          this.sendWS({
+            type: 'command',
+            command: { type: 'extension_ui_response', id: pending.id, value: option }
+          })
+          this.pendingPlanChoice = null
+          this.interactionMode = targetMode
+          this.rememberInteractionMode()
+          this.planState = {
+            ...this.planState,
+            visible: this.planState.items.length > 0,
+            phase: targetMode === 'execute' ? 'execute' : 'plan'
+          }
+          if (targetMode === 'plan') {
+            this.releasePlanInputWait()
+          }
+          return
+        }
+      }
+
+      if (targetMode === this.interactionMode) return
+      this.interactionMode = targetMode
+      this.rememberInteractionMode()
+      if (!this.wsConnected) {
+        if (targetMode === 'plan') {
+          this.planState = {
+            ...this.planState,
+            visible: this.planState.items.length > 0,
+            phase: 'plan'
+          }
+        } else {
+          this.planState = {
+            ...this.planState,
+            visible: this.planState.items.length > 0,
+            phase: this.planState.items.length > 0 ? 'execute' : ''
+          }
+        }
+        return
+      }
+      // /plan 是扩展提供的正式切换命令；后端会保持它位于消息首部。
+      this.switchingInteractionMode = true
+      this.sendWS({
+        type: 'command',
+        command: { type: 'prompt', message: '/plan' }
+      })
+      if (targetMode === 'plan') {
+        this.planState = {
+          ...this.planState,
+          visible: this.planState.items.length > 0,
+          phase: 'plan'
+        }
+      } else {
+        this.planState = {
+          ...this.planState,
+          visible: this.planState.items.length > 0,
+          phase: this.planState.items.length > 0 ? 'execute' : ''
+        }
+      }
+      window.setTimeout(() => {
+        this.switchingInteractionMode = false
+      }, 500)
+    },
+    extractPlanItemsFromMessages() {
+      const assistant = [...this.messages].reverse().find((msg) => msg && msg.role === 'assistant' && msg.content)
+      if (!assistant) return []
+      const lines = String(assistant.content).split(/\r?\n/)
+      const items = []
+      for (const line of lines) {
+        const match = line.match(/^\s*\d+[.)]\s+(.+?)\s*$/)
+        if (match) items.push({ text: match[1], done: false })
+      }
+      return items
+    },
+    scrollToPlan() {
+      this.planCollapsed = false
+      this.$nextTick(() => {
+        if (this.$refs.planPanel && this.$refs.planPanel.scrollIntoView) {
+          this.$refs.planPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        }
+      })
+    },
+
     openConfig() {
       this.$router.push({ path: '/AgentConfig', query: { agent_id: this.agentId } })
     },
@@ -550,7 +841,8 @@ export default {
     // ========== 工作空间 ==========
     async loadWorkspaces() {
       Base.BasePost('/api/AgentV2WorkspaceList', { agent_id: this.agentId }, (res) => {
-        this.workspaces = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
+        const list = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
+        this.workspaces = this.applyWorkspaceOrder(list)
         if (!this.currentWorkspaceId && this.workspaces.length > 0) {
           this.currentWorkspaceId = this.workspaces[0].id
         }
@@ -568,6 +860,7 @@ export default {
         ...this.collapsedWorkspaceMap,
         [workspaceId]: !this.collapsedWorkspaceMap[workspaceId]
       }
+      this.saveCollapsedState()
     },
     saveWorkspace() {
       if (!this.workspaceForm.name || !this.workspaceForm.path) return
@@ -579,6 +872,131 @@ export default {
         this.showWorkspaceDialog = false
         this.workspaceForm = { name: '', path: '' }
         this.loadWorkspaces()
+      })
+    },
+    // 展开的工作空间会话追加到列表（按更新时间倒序，默认 5 个，超出显示展示更多）
+    appendWorkspaceSessions(rows, workspaceId, sessions) {
+      const wsId = Number(workspaceId)
+      const sorted = sessions.slice().sort((a, b) => (Number(b.updated_at) || 0) - (Number(a.updated_at) || 0))
+      const limit = this.workspaceSessionLimit[wsId] || 5
+      rows.push(...sorted.slice(0, limit))
+      if (sorted.length > limit) {
+        rows.push({
+          _isShowMore: true,
+          _key: 'showmore-' + wsId,
+          id: 0,
+          workspace_id: wsId,
+          _remaining: sorted.length - limit
+        })
+      }
+    },
+    showMoreSessions(workspaceId) {
+      const wsId = Number(workspaceId)
+      const current = this.workspaceSessionLimit[wsId] || 5
+      this.workspaceSessionLimit = {
+        ...this.workspaceSessionLimit,
+        [wsId]: current + 5
+      }
+    },
+    collapsedStorageKey() {
+      return 'agentchat_collapsed_ws_' + this.agentId
+    },
+    loadCollapsedState() {
+      try {
+        const raw = localStorage.getItem(this.collapsedStorageKey())
+        this.collapsedWorkspaceMap = raw ? JSON.parse(raw) : {}
+      } catch (e) {
+        this.collapsedWorkspaceMap = {}
+      }
+    },
+    saveCollapsedState() {
+      try {
+        localStorage.setItem(this.collapsedStorageKey(), JSON.stringify(this.collapsedWorkspaceMap))
+      } catch (e) {
+        // localStorage 不可用时静默忽略
+      }
+    },
+
+    // ========== 工作空间拖动排序 ==========
+    workspaceOrderKey() {
+      return 'agentchat_ws_order_' + this.agentId
+    },
+    loadWorkspaceOrder() {
+      try {
+        const raw = localStorage.getItem(this.workspaceOrderKey())
+        return raw ? JSON.parse(raw) : []
+      } catch (e) {
+        return []
+      }
+    },
+    saveWorkspaceOrder() {
+      try {
+        localStorage.setItem(this.workspaceOrderKey(), JSON.stringify(this.workspaces.map(w => Number(w.id))))
+      } catch (e) {
+        // localStorage 不可用时静默忽略
+      }
+    },
+    applyWorkspaceOrder(list) {
+      const order = this.loadWorkspaceOrder()
+      if (!order || !order.length) return list
+      const rank = (id) => {
+        const i = order.indexOf(Number(id))
+        return i < 0 ? order.length : i
+      }
+      return list.slice().sort((a, b) => rank(a.id) - rank(b.id))
+    },
+    onWorkspaceDragStart(session, event) {
+      this.dragWorkspaceId = Number(session.workspace_id)
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData('text/plain', String(this.dragWorkspaceId))
+      }
+    },
+    onWorkspaceDragOver(session) {
+      this.dragOverWorkspaceId = Number(session.workspace_id)
+    },
+    onWorkspaceDrop(session) {
+      const fromId = this.dragWorkspaceId
+      const toId = Number(session.workspace_id)
+      this.dragOverWorkspaceId = 0
+      if (!fromId || fromId === toId) return
+      this.reorderWorkspace(fromId, toId)
+    },
+    onWorkspaceDragEnd() {
+      this.dragWorkspaceId = 0
+      this.dragOverWorkspaceId = 0
+    },
+    reorderWorkspace(fromId, toId) {
+      const list = this.workspaces.slice()
+      const fromIdx = list.findIndex(w => Number(w.id) === Number(fromId))
+      const toIdx = list.findIndex(w => Number(w.id) === Number(toId))
+      if (fromIdx < 0 || toIdx < 0) return
+      const [moved] = list.splice(fromIdx, 1)
+      list.splice(toIdx, 0, moved)
+      this.workspaces = list
+      this.saveWorkspaceOrder()
+      // 同步后端排序数据（sort_order）
+      Base.BasePost('/api/AgentV2WorkspaceReorder', {
+        agent_id: this.agentId,
+        ordered_ids: list.map(w => Number(w.id))
+      })
+    },
+    // 对话执行时把当前工作空间置顶展示，并同步到后端排序数据
+    bumpWorkspaceToFront(workspaceId) {
+      const id = Number(workspaceId)
+      if (!id || !this.workspaces.length) return
+      // 已在首位则无需调整
+      if (Number(this.workspaces[0].id) === id) return
+      const idx = this.workspaces.findIndex(w => Number(w.id) === id)
+      if (idx < 0) return
+      const next = this.workspaces.slice()
+      const [moved] = next.splice(idx, 1)
+      next.unshift(moved)
+      this.workspaces = next
+      this.saveWorkspaceOrder()
+      Base.BasePost('/api/AgentV2WorkspaceReorder', {
+        agent_id: this.agentId,
+        ordered_ids: next.map(w => Number(w.id))
       })
     },
 
@@ -599,6 +1017,11 @@ export default {
       this.currentSessionId = 0
       this.currentSession = null
       this.pendingSession = true
+      this.interactionMode = this.defaultInteractionMode
+      this.pendingPlanChoice = null
+      this.planState = { visible: false, phase: '', items: [] }
+      this.planCollapsed = false
+      this.switchingInteractionMode = false
       this.messages = []
       this._historyLoaded = false
       this.streamingText = ''
@@ -608,6 +1031,7 @@ export default {
       this.compacting = false
       this._assistantPushedInTurn = false
       this.isStreaming = false
+      this.sending = false
       this.resetMessageAutoScroll()
     },
     selectSession(session) {
@@ -618,6 +1042,14 @@ export default {
 
       this.currentSessionId = session.id
       this.currentSession = session
+      this.interactionMode = this.loadRememberedInteractionMode(session.id) || this.defaultInteractionMode
+      this.pendingPlanChoice = null
+      this.planState = { visible: false, phase: '', items: [] }
+      this.planCollapsed = false
+      this.switchingInteractionMode = false
+      // 选中会话时同步当前工作空间，确保「在旧对话继续提问」也能把所属工作空间置顶
+      const selWsId = Number(session.workspace_id || 0)
+      if (selWsId) this.currentWorkspaceId = selWsId
       this.pendingSession = false
       this.messages = []
       this.streamingText = ''
@@ -627,9 +1059,11 @@ export default {
       this.compacting = false
       this._assistantPushedInTurn = false
       this.isStreaming = false
+      this.sending = false
       this.resetMessageAutoScroll()
       this.stopThinkingTimer()
       this.stopStatsPolling()
+      this.resetExecutionTimer()
       this._historyLoaded = false // 标记：HTTP API 是否已加载了历史消息
 
       // 恢复该会话最后使用的模型
@@ -647,6 +1081,15 @@ export default {
         this.historyLoading = true
         this.loadSessionMessages()
         if (session.status === 'running') this.connectWS(true)
+      }
+      // 执行耗时由后端计时：已结束会话直接用库里的 exec_duration_ms 展示；运行中的会话由 WS exec_progress 实时推送
+      if (session.status !== 'running' && session.exec_duration_ms) {
+        this.executionServerMs = Number(session.exec_duration_ms || 0)
+        this.executionRunning = false
+        this.executionSyncAt = Date.now()
+        this.executionElapsedMs = this.executionServerMs
+      } else {
+        this.resetExecutionTimer()
       }
     },
     deleteSession(session) {
@@ -666,8 +1109,13 @@ export default {
           this.pendingToolCalls = {}
           this.tokenStats = null
           this.compacting = false
+          this.pendingPlanChoice = null
+          this.planState = { visible: false, phase: '', items: [] }
+          this.planCollapsed = false
+          this.switchingInteractionMode = false
           this.stopThinkingTimer()
           this.stopStatsPolling()
+          this.resetExecutionTimer()
           this.resetMessageAutoScroll()
         }
         // 调用后端删除
@@ -675,22 +1123,6 @@ export default {
           this.loadSessions()
         })
       }).catch(() => {})
-    },
-    showSessionMenu(event, session) {
-      this.renameForm = { id: session.id, name: session.name }
-      this.showRenameDialog = true
-    },
-    renameSession() {
-      Base.BasePost('/api/AgentV2SessionRename', {
-        id: this.renameForm.id,
-        name: this.renameForm.name
-      }, () => {
-        this.showRenameDialog = false
-        this.loadSessions()
-        if (this.currentSession && this.currentSession.id === this.renameForm.id) {
-          this.currentSession.name = this.renameForm.name
-        }
-      })
     },
     loadSessionMessages() {
       const sessionId = this.currentSessionId
@@ -701,6 +1133,22 @@ export default {
         if (res.ErrCode === 0 && res.Data && res.Data.messages) {
           if (res.Data.messages.length > 0) {
             this.messages = res.Data.messages
+          }
+          const historyPlan = res.Data.plan_state
+          if (historyPlan && Array.isArray(historyPlan.items) && historyPlan.items.length > 0 &&
+              (!this.planState.items || this.planState.items.length === 0)) {
+            this.planState = {
+              visible: historyPlan.visible !== false,
+              phase: historyPlan.phase || 'plan',
+              items: historyPlan.items.map((item) => ({
+                text: item && item.text != null ? String(item.text) : '',
+                done: !!(item && item.done)
+              }))
+            }
+            if (this.currentSession && this.currentSession.status === 'running' &&
+                historyPlan.pending_plan_choice && !this.pendingPlanChoice) {
+              this.pendingPlanChoice = historyPlan.pending_plan_choice
+            }
           }
           this._historyLoaded = true
           this.scrollToBottom({ force: true })
@@ -722,6 +1170,8 @@ export default {
               // agent.config 可能为空或非 JSON，保持默认配置即可
             }
           }
+          // Agent 配置就绪后，依据启动参数判断计划模式是否启用
+          this.checkPlanExtension()
         }
         // Agent 信息加载完成后加载模型列表（确保 agentConfig 已就绪）
         this.loadProviderModels()
@@ -783,6 +1233,9 @@ export default {
       target.thinkingStartAt = this.thinkingStartAt
       target.thinkingElapsedSeconds = this.thinkingElapsedSeconds
       target.runtimeNow = this.runtimeNow
+      target.pendingPlanChoice = this.cloneSessionData(this.pendingPlanChoice, null)
+      target.planState = this.cloneSessionData(this.planState, { visible: false, phase: '', items: [] })
+      target.planCollapsed = this.planCollapsed
       return target
     },
     applySessionRuntimeState(snapshot) {
@@ -796,10 +1249,16 @@ export default {
       this._historyLoaded = Boolean(snapshot._historyLoaded)
       this._lastUserMessage = snapshot._lastUserMessage || ''
       this.thinkingStartAt = Number(snapshot.thinkingStartAt || 0)
+      this.pendingPlanChoice = this.cloneSessionData(snapshot.pendingPlanChoice, null)
+      this.planState = this.cloneSessionData(snapshot.planState, { visible: false, phase: '', items: [] })
+      this.planCollapsed = Boolean(snapshot.planCollapsed)
+      this.switchingInteractionMode = false
       this.runtimeNow = Date.now()
       this.thinkingElapsedSeconds = this.thinkingStartAt
         ? Math.max(0, Math.floor((this.runtimeNow - this.thinkingStartAt) / 1000))
         : 0
+
+      // 执行耗时由后端驱动，不在前端快照中保存
 
       this.syncLiveAssistantMessage()
 
@@ -905,6 +1364,7 @@ export default {
       existing.ws = this.ws
       existing.wsConnected = this.ws.readyState === WebSocket.OPEN
       existing.selectedModel = this.selectedModel
+      existing.interactionMode = this.interactionMode
       existing._isRunning = this.isStreaming // 保持当前运行状态，避免切换后转圈消失
       existing._bufferedMessages = existing._bufferedMessages || []
       this.captureSessionRuntimeState(existing)
@@ -993,6 +1453,7 @@ export default {
       this.ws = ss.ws
       this.wsConnected = ss.ws.readyState === WebSocket.OPEN
       if (ss.selectedModel) this.selectedModel = ss.selectedModel
+      if (ss.interactionMode) this.interactionMode = ss.interactionMode
 
       // 若后台会话仍在执行中，恢复 isStreaming 状态
       this.isStreaming = Boolean(ss._isRunning)
@@ -1052,6 +1513,7 @@ export default {
       this.isStreaming = false
       this.stopThinkingTimer()
       this.stopStatsPolling()
+      this.stopExecutionTimer()
     },
 
     // ========== WebSocket ==========
@@ -1067,8 +1529,9 @@ export default {
       const host = apiHost.replace(/^https?:\/\//, '')
       const token = Base.GetSafeToken() || ''
       const modelParam = this.selectedModel ? `&model=${encodeURIComponent(this.selectedModel)}` : ''
+      const modeParam = this.planExtensionInstalled ? `&interaction_mode=${encodeURIComponent(this.interactionMode)}` : ''
       const attachParam = attachOnly ? '&attach_only=1' : ''
-      const url = `${protocol}//${host}/api/AgentV2WS?agent_id=${this.agentId}&session_id=${this.currentSessionId}&token=${token}${modelParam}${attachParam}`
+      const url = `${protocol}//${host}/api/AgentV2WS?agent_id=${this.agentId}&session_id=${this.currentSessionId}&token=${token}${modelParam}${modeParam}${attachParam}`
 
       const sessionId = this.currentSessionId // 闭包捕获
       this.ws = new WebSocket(url)
@@ -1097,6 +1560,7 @@ export default {
               this.isStreaming = false
               this.stopThinkingTimer()
               this.stopStatsPolling()
+              this.stopExecutionTimer()
               this.stopRuntimeTickerIfIdle()
             }
           } catch (e) {
@@ -1122,6 +1586,7 @@ export default {
       this.isStreaming = false
       this.stopThinkingTimer()
       this.stopStatsPolling()
+      this.stopExecutionTimer()
     },
     handleWSMessage(data) {
       // 防御性检查：忽略来自非当前会话的消息
@@ -1144,6 +1609,7 @@ export default {
             this.isStreaming = false
             this.stopThinkingTimer()
             this.stopStatsPolling()
+            this.stopExecutionTimer()
             this.stopRuntimeTickerIfIdle()
           }
         }
@@ -1155,12 +1621,19 @@ export default {
         }
       } else if (data.type === 'error') {
         this.$message.error(data.error)
+        this.sending = false
       }
     },
     handlePiEvent(event) {
       const evtType = event.type
 
       switch (evtType) {
+        // ===== 后端推送的执行耗时（agent_start / 工具·思考完成 / agent_end 等触发） =====
+        case 'exec_progress': {
+          this.handleExecProgress(event.total_ms, event.running)
+          break
+        }
+
         // ===== 消息流式更新 =====
         case 'message_update': {
           const msgEvt = event.assistantMessageEvent || {}
@@ -1197,7 +1670,7 @@ export default {
         case 'message_start': {
           const msg = event.message
           if (msg && msg.role === 'user') {
-            this.scrollToBottom()
+            this.scrollToBottom({ force: true })
           } else if (msg && msg.role === 'assistant') {
             // 新 assistant 消息开始时清理上一轮 tool_execution 残留
             this.pendingToolCalls = {}
@@ -1288,13 +1761,20 @@ export default {
             this.messages.push({ role: 'user', content: this._lastUserMessage })
             this._lastUserMessage = ''
           }
+          // 后端已确认收到用户问题：清空输入框并停止发送转圈
+          this.inputText = ''
+          this.sending = false
           this.ensureLiveAssistantMessage()
+          // 用户主动追问时，无论之前是否滚动到顶部，都强制滚动到底部
+          this.scrollToBottom({ force: true })
+          // 执行耗时由后端在 agent_start 时推送 exec_progress，前端无需自行计时
           break
         }
         case 'agent_end': {
           this.markSessionStatus(this.currentSessionId, 'active')
           this.isStreaming = false
           this.stopThinkingTimer()
+          this.stopExecutionTimer()
           this.stopStatsPolling()
           // 仅在 message_end 未推送时才兜底推送（与后端 needPushAssistant 逻辑一致）
           const thinkingContent = this.streamingThinking.replace(/\u200B/g, '')
@@ -1350,6 +1830,32 @@ export default {
           break
         }
 
+        // ===== 计划模式扩展：计划/进度更新 =====
+        case 'plan_update': {
+          const items = Array.isArray(event.items)
+            ? event.items.map((it) => ({
+                text: it && it.text != null ? String(it.text) : '',
+                done: !!(it && it.done)
+              }))
+            : []
+          if (items.length > 0) {
+            this.planState = {
+              visible: true,
+              phase: event.phase || 'plan',
+              items
+            }
+          } else if (this.planState.items.length > 0) {
+            // 空更新只表示扩展暂时没有新的 widget 内容，不应抹掉已有计划。
+            this.planState = {
+              ...this.planState,
+              visible: true,
+              phase: event.phase || this.planState.phase
+            }
+          }
+          this.scrollToBottom()
+          break
+        }
+
         default:
           console.log('[AgentChat] unhandled pi event type:', evtType, event)
           break
@@ -1360,7 +1866,33 @@ export default {
       const method = event.method
       const reqId = event.id
 
-      if (method === 'confirm') {
+      if (method === 'setStatus' && event.statusKey === 'plan-mode') {
+        const status = String(event.statusText || '')
+        this.interactionMode = status.includes('plan') ? 'plan' : 'execute'
+        this.switchingInteractionMode = false
+        if (status && !status.includes('plan')) {
+          this.planState = { ...this.planState, visible: this.planState.items.length > 0, phase: 'execute' }
+        }
+      } else if (method === 'setWidget' && event.widgetKey === 'plan-todos') {
+        const lines = Array.isArray(event.widgetLines) ? event.widgetLines : []
+        if (lines.length > 0) {
+          this.planState = {
+            visible: true,
+            phase: 'execute',
+            items: lines.map((line) => {
+              const text = String(line)
+              return {
+                done: text.trim().startsWith('☑'),
+                text: text.replace(/^\s*[☑☐]\s*/, '').replace(/^~+|~+$/g, '')
+              }
+            })
+          }
+        } else if (this.planState.items.length > 0) {
+          // 扩展切换模式时可能先清空 widget；保留最后一份任务列表，
+          // 后续非空 widget 会继续覆盖完成进度。
+          this.planState = { ...this.planState, visible: true }
+        }
+      } else if (method === 'confirm') {
         this.$confirm(event.message || event.title || '确认操作?', event.title || '提示', {
           confirmButtonText: '确认',
           cancelButtonText: '取消'
@@ -1370,12 +1902,30 @@ export default {
           this.sendWS({ type: 'command', command: { type: 'extension_ui_response', id: reqId, cancelled: true } })
         })
       } else if (method === 'select') {
-        // 使用 options 列表弹出选择
         const options = event.options || []
         if (options.length === 0) {
           this.sendWS({ type: 'command', command: { type: 'extension_ui_response', id: reqId, cancelled: true } })
           return
         }
+
+        // Pi 的 plan-mode 示例扩展会在计划生成后发出英文三选一请求。
+        // 在网页端把它收进模式切换器和计划面板，不再弹英文系统框。
+        const isPlanModeChoice = options.some((item) => String(item).startsWith('Execute')) &&
+          options.some((item) => String(item).startsWith('Stay'))
+        if (isPlanModeChoice) {
+          const items = this.extractPlanItemsFromMessages()
+          this.pendingPlanChoice = { id: reqId, options }
+          this.interactionMode = 'plan'
+          this.planState = {
+            visible: items.length > 0,
+            phase: 'plan',
+            items
+          }
+          this.scrollToBottom()
+          return
+        }
+
+        // 其他扩展的通用选择请求仍使用弹窗。
         this.$msgbox({
           title: event.title || '选择',
           message: '请选择一项操作',
@@ -1579,6 +2129,48 @@ export default {
       this.thinkingElapsedSeconds = 0
       this.stopRuntimeTickerIfIdle()
     },
+    // ========== 执行耗时（后端 WS exec_progress 推送，前端仅插值平滑） ==========
+    // 后端在 agent_start / 工具·思考完成 / agent_end 等事件时推送最新累计耗时，
+    // 并在每轮结束时落库 tbl_agent_v2_session.exec_duration_ms
+    handleExecProgress(totalMs, running) {
+      this.executionServerMs = Number(totalMs || 0)
+      this.executionRunning = !!running
+      this.executionSyncAt = Date.now()
+      this.executionElapsedMs = this.executionServerMs
+      // 非运行态（已结束）时把最终耗时同步到当前会话，便于列表/头部持久展示
+      if (!running && this.currentSession) {
+        this.currentSession.exec_duration_ms = this.executionServerMs
+      }
+    },
+    // 全局插值计时器：运行中时按本地时钟平滑累加，避免 2s 推送间隔导致跳变
+    ensureExecTicker() {
+      if (this._execTicker) return
+      this._execTicker = setInterval(() => {
+        if (this.executionRunning) {
+          this.executionElapsedMs = this.executionServerMs + (Date.now() - this.executionSyncAt)
+        }
+      }, 250)
+    },
+    fmtExecDuration(ms) {
+      if (!ms || ms < 0) return '0s'
+      const totalSec = Math.floor(ms / 1000)
+      const h = Math.floor(totalSec / 3600)
+      const m = Math.floor((totalSec % 3600) / 60)
+      const s = totalSec % 60
+      if (h > 0) return `${h}h${m}m${s}s`
+      if (m > 0) return `${m}m${s}s`
+      return `${s}s`
+    },
+    // WS 断开时冻结展示值（保留最近一次后端推送的累计耗时），待重连后由 exec_progress 恢复
+    stopExecutionTimer() {
+      this.executionRunning = false
+    },
+    resetExecutionTimer() {
+      this.executionRunning = false
+      this.executionServerMs = 0
+      this.executionSyncAt = 0
+      this.executionElapsedMs = 0
+    },
     startRuntimeTicker() {
       if (this._runtimeTicker) return
       this.runtimeNow = Date.now()
@@ -1692,18 +2284,35 @@ export default {
     },
 
     // ========== 发送消息 ==========
-    sendMessage() {
-      const text = this.inputText.trim()
-      if (!text || this.isStreaming) return
+    sendMessage(overrideText) {
+      // 注意：通过 @click / @keydown 绑定调用时会传入 DOM 事件对象，
+      // 只有当传入的是字符串时才作为覆盖文本，否则使用输入框内容
+      const text = (typeof overrideText === 'string' ? overrideText : this.inputText).trim()
+      if (!text || this.isStreaming || this.sending) return
 
       // 保存最后发送的消息文本（agent_start 时用于展示用户消息）
       this._lastUserMessage = text
-      this.inputText = ''
+      // 发送中：按钮转圈，先不清空输入框，待后端 agent_start 确认收到后再清空
+      this.sending = true
+
+      // 对话执行时把所在工作空间置顶（同时写后端排序数据）
+      if (this.currentWorkspaceId) {
+        this.bumpWorkspaceToFront(this.currentWorkspaceId)
+      }
+
+      // 立即用当前问题更新会话标题（与后端 prompt 重命名保持一致，
+      // 避免新建会话发送首条消息后顶部仍显示创建时间的占位名）
+      if (this.currentSession && this.currentSessionId) {
+        const title = this.truncateTitle(text)
+        this.currentSession.name = title
+        const inList = this.sessions.find(s => s.id === this.currentSessionId)
+        if (inList) inList.name = title
+      }
 
       // 懒创建模式：先暂存消息，等会话创建+WS 连接成功后再发送
       if (this.pendingSession && !this.currentSessionId) {
         this._pendingFirstMessage = text
-        this.createRealSessionAndSend()
+        this.createRealSessionAndSend(text)
         return
       }
 
@@ -1719,32 +2328,37 @@ export default {
         command: { type: 'prompt', message: text }
       })
     },
-    createRealSessionAndSend() {
+    createRealSessionAndSend(firstText) {
+      const title = this.truncateTitle(firstText)
       Base.BasePost('/api/AgentV2SessionCreate', {
         agent_id: this.agentId,
         workspace_id: this.currentWorkspaceId,
-        name: new Date().toLocaleString()
+        name: title
       }, (res) => {
         const newId = (res.ErrCode === 0 && res.Data) ? res.Data.id : null
         if (!newId) {
           this.$message.error('创建会话失败')
           this.pendingSession = false
+          this.sending = false
           return
         }
         // 添加到会话列表
+        const now = Math.floor(Date.now() / 1000)
         const newSession = {
           id: newId,
           agent_id: this.agentId,
           workspace_id: this.currentWorkspaceId,
           workspace_name: this.getWorkspaceName(this.currentWorkspaceId),
           workspace_path: this.getWorkspacePath(this.currentWorkspaceId),
-          name: new Date().toLocaleString(),
+          name: title,
           status: 'running',
-          updated_at: Math.floor(Date.now() / 1000)
+          created_at: now,
+          updated_at: now
         }
         this.sessions.unshift(newSession)
         this.currentSessionId = newId
         this.currentSession = newSession
+        this.rememberInteractionMode()
         this.pendingSession = false
         this._historyLoaded = false
         // 建立 WebSocket（onopen 中会发送 _pendingFirstMessage）
@@ -1757,6 +2371,20 @@ export default {
       }
     },
     abortAgent() {
+      // Pi 的计划选择框属于扩展 UI 等待，单独发送 abort 无法解除；先取消该请求。
+      if (this.pendingPlanChoice) {
+        this.sendWS({
+          type: 'command',
+          command: {
+            type: 'extension_ui_response',
+            id: this.pendingPlanChoice.id,
+            cancelled: true
+          }
+        })
+        this.pendingPlanChoice = null
+        this.planState = { ...this.planState, phase: 'plan' }
+        this.releasePlanInputWait()
+      }
       this.sendWS({ type: 'command', command: { type: 'abort' } })
     },
     setModel() {
@@ -1898,6 +2526,10 @@ export default {
       return tc.name === 'read' || tc.name === 'read_file' || tc.name === 'bash'
         || tc.name === 'edit' || tc.name === 'write' || tc.name === 'write_file'
     },
+    // 复用共享工具图标映射（src/utils/toolIcons.js）
+    toolMeta(name) {
+      return getToolMeta(name)
+    },
     getCompactText(tc) {
       if (!tc.input) return ''
       let obj = tc.input
@@ -1981,6 +2613,13 @@ export default {
       const d = new Date(ts * 1000)
       return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     },
+    // 按字符（rune）截断标题，避免按字节切 UTF-8 多字节中文产生乱码，与后端 prompt 重命名逻辑一致
+    truncateTitle(text) {
+      if (!text) return ''
+      const runes = Array.from(text)
+      if (runes.length > 50) return runes.slice(0, 50).join('') + '...'
+      return text
+    },
     fmtNum(n) {
       if (!n) return '0'
       if (n > 1000000) return (n / 1000000).toFixed(1) + 'M'
@@ -2030,7 +2669,7 @@ export default {
 .workspace-item:hover { background: #f5f7fa; }
 .workspace-item--active { background: #ecf5ff; color: #409eff; }
 .workspace-item__name { font-weight: 500; }
-.workspace-item__path { font-size: 11px; color: #c0c4cc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 
 .session-list { padding: 0 8px; }
 .session-item {
@@ -2052,6 +2691,7 @@ export default {
 .workspace-group-header:hover { background: #eaf3ff; border-color: #bcd9ff; }
 .workspace-group-header--active { background: #e8f3ff; color: #1f5f99; }
 .workspace-group-header--collapsed { margin-bottom: 8px; }
+.workspace-group-header--dragover { border-top: 2px solid #409eff; box-shadow: 0 -2px 0 #409eff; }
 .workspace-group-header__arrow,
 .workspace-group-header__folder { flex-shrink: 0; color: #409eff; }
 .workspace-group-header__count {
@@ -2063,16 +2703,27 @@ export default {
   border-radius: 999px;
   padding: 2px 7px;
 }
-.workspace-group-header .session-item__time { color: #5f7897; font-weight: 400; }
 .session-item__add { opacity: 1; font-weight: 700; }
-.session-item__info { flex: 1; min-width: 0; }
-.session-item__name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.session-item__time { font-size: 11px; color: #c0c4cc; }
+.session-item__info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.session-item__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-group-header .session-item__name { flex: 0 0 auto; display: inline-block; max-width: 100%; vertical-align: middle; }
+.session-item__exec { flex: 0 0 auto; margin-left: auto; font-size: 11px; color: #c0c4cc; }
+.chat-header__created { display: block; margin-top: 3px; font-size: 12px; font-weight: 400; color: #909399; }
 .session-item__del { opacity: 0; }
 .session-item:hover .session-item__del { opacity: 1; }
 .session-item__spinner {
   width: 14px; height: 14px; flex-shrink: 0;
 }
+.session-item--show-more {
+  justify-content: center;
+  color: #409eff;
+  background: #f5f9ff;
+  font-size: 12px;
+  margin-top: 2px;
+}
+.session-item--show-more:hover { background: #eaf3ff; }
+.session-item__more-icon { font-size: 13px; color: #409eff; }
+.session-item__more-text { font-weight: 500; }
 
 .empty-hint { padding: 16px; text-align: center; color: #c0c4cc; font-size: 13px; }
 
@@ -2098,16 +2749,138 @@ export default {
 .chat-header__title { font-weight: 500; font-size: 15px; }
 .chat-header__actions { display: flex; gap: 8px; align-items: center; }
 
-.token-stats { display: flex; gap: 12px; font-size: 11px; color: #909399; }
-.token-stats__item { white-space: nowrap; }
+.plan-mode-badge {
+  font-size: 18px; cursor: pointer; line-height: 1;
+  filter: grayscale(0.1); transition: transform .15s;
+}
+.plan-mode-badge:hover { transform: scale(1.15); }
+
+/* 计划-确认-执行 面板 */
+.plan-panel {
+  width: min(680px, 100%);
+  box-sizing: border-box;
+  margin: 0 auto 10px;
+  background: #fafbfc;
+  border: 1px solid #dfe4ea;
+  border-radius: 7px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.03);
+  overflow: hidden;
+}
+.plan-panel__header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; cursor: pointer;
+  background: #f6f7f9; border-bottom: 1px solid #e6e9ed;
+}
+.plan-panel--collapsed .plan-panel__header { border-bottom: none; }
+.plan-panel__icon { font-size: 14px; }
+.plan-panel__title { font-weight: 600; font-size: 13px; color: #303133; }
+.plan-panel__progress {
+  font-size: 12px; color: #909399;
+  font-variant-numeric: tabular-nums;
+}
+.plan-panel__toggle { margin-left: auto; font-size: 12px; color: #409eff; }
+.plan-panel__body { padding: 7px 10px 9px; }
+.plan-list {
+  list-style: none;
+  max-height: 160px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+}
+.plan-list li {
+  display: flex; gap: 8px; align-items: flex-start;
+  padding: 3px 0; font-size: 12px; color: #303133; line-height: 1.45;
+}
+.plan-list__check { color: #c0c4cc; flex-shrink: 0; }
+.plan-list__done .plan-list__check { color: #67c23a; }
+.plan-list__done .plan-list__text { color: #909399; text-decoration: line-through; }
+.plan-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #ebeef5;
+}
+
+.chat-input__mode-select {
+  flex: 0 0 auto;
+}
+.chat-input__mode-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  font-weight: 600;
+  box-shadow: none;
+}
+.chat-input__mode-button--execute {
+  color: #176b3a;
+  background: transparent;
+}
+.chat-input__mode-button--execute:hover,
+.chat-input__mode-button--execute:focus {
+  color: #0f5d30;
+  background: transparent;
+}
+.chat-input__mode-button--plan {
+  color: #9a5b00;
+  background: transparent;
+}
+.chat-input__mode-button--plan:hover,
+.chat-input__mode-button--plan:focus {
+  color: #804b00;
+  background: transparent;
+}
+.chat-input__mode-icon {
+  font-size: 15px;
+}
+.chat-input__mode-arrow {
+  margin-left: 1px;
+  font-size: 11px;
+  opacity: .65;
+}
+:global(.chat-mode-menu .el-dropdown-menu__item) {
+  min-width: 126px;
+  gap: 7px;
+}
+:global(.chat-mode-menu .el-dropdown-menu__item.is-active) {
+  color: #409eff;
+  background: #ecf5ff;
+  font-weight: 600;
+}
+
+
+.exec-time {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 999px;
+  background: #f4f6fa; border: 1px solid #e4e7ed;
+  font-size: 12px; color: #606266; white-space: nowrap; user-select: none;
+}
+.exec-time__icon { font-size: 13px; color: #909399; }
+.exec-time__label { color: #909399; }
+.exec-time__value { font-variant-numeric: tabular-nums; font-weight: 600; color: #303133; }
+.exec-time--running {
+  background: #ecf5ff; border-color: #b3d8ff;
+}
+.exec-time--running .exec-time__icon { color: #409eff; animation: exec-pulse 1s ease-in-out infinite; }
+@keyframes exec-pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
 
 .chat-messages-wrap {
   position: relative;
   flex: 1;
   min-height: 0;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .chat-messages {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 16px;
 }
@@ -2141,8 +2914,8 @@ export default {
 .chat-empty__hint { font-size: 13px; margin-top: 4px; }
 
 .chat-message { display: flex; gap: 8px; margin-bottom: 16px; max-width: 90%; }
-.chat-message--assistant { max-width: 100%; }
-.chat-message--user { margin-left: auto; flex-direction: row-reverse; }
+.chat-message--assistant { max-width: 70%; }
+.chat-message--user { margin-left: auto; flex-direction: row-reverse; max-width: 70%; }
 
 .avatar {
   width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0;
@@ -2156,10 +2929,11 @@ export default {
 .chat-message__body { min-width: 0; }
 .chat-message__content {
   background: #fff; border-radius: 10px; padding: 8px 12px;
-  border: 1px solid #ebeef5; line-height: 1.5; font-size: 14px;
+  border: 1px solid #ebeef5; line-height: 1.5; font-size: 13px;
 }
 .chat-message--user .chat-message__content {
-  background: #409eff; color: #fff; border-color: #409eff;
+  background: #eaf2ff; color: #303133; border-color: #cfe0f7;
+  max-height: 300px; overflow-y: auto; word-break: break-word;
 }
 
 .thinking-block { margin-bottom: 4px; }
@@ -2229,6 +3003,12 @@ export default {
   display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 13px;
 }
 .tool-call__name { font-weight: 500; }
+.tool-call__icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.tool-call__icon svg { width: 14px; height: 14px; display: block; }
 .tool-call__input, .tool-call__output {
   background: #fff; border-radius: 4px; padding: 8px; font-size: 12px;
   max-height: 150px; overflow: auto; margin: 0; border: 1px solid #ebeef5;
@@ -2267,24 +3047,52 @@ export default {
 @keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: 0 } }
 @keyframes agent-spin { to { transform: rotate(360deg); } }
 
-.chat-input { padding: 12px 24px 10px; background: #fff; border-top: 1px solid #e4e7ed; }
-.chat-input__wrapper { width: 100%; }
+.chat-input { padding: 12px 24px 14px; background: #fff; border-top: 1px solid #e4e7ed; }
+.chat-input__wrapper {
+  width: 100%; overflow: hidden; background: #fff;
+  border: 1px solid #dcdfe6; border-radius: 10px;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.chat-input__wrapper:hover { border-color: #c0c4cc; }
+.chat-input__wrapper:focus-within {
+  border-color: #409eff; box-shadow: 0 0 0 2px rgba(64, 158, 255, .1);
+}
+.chat-input__wrapper :deep(.el-textarea__inner) {
+  min-height: 72px !important; padding: 14px 16px 8px;
+  border: 0; border-radius: 0; box-shadow: none; background: transparent;
+}
+.chat-input__wrapper :deep(.el-textarea__inner:focus) { box-shadow: none; }
 .chat-input__hint { font-size: 12px; color: #c0c4cc; margin-right: 8px; }
 
-/* 底部工具栏 */
+/* 输入框内底部工具栏 */
 .chat-input__toolbar {
-  display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 8px;
+  display: flex; justify-content: space-between; align-items: center;
+  min-height: 40px; padding: 4px 10px 8px; gap: 8px;
 }
 .chat-input__toolbar-left {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0;
 }
 .chat-input__toolbar-right {
   display: flex; align-items: center; flex-shrink: 0;
 }
-.chat-input__toolbar-btn {
-  font-size: 12px; color: #606266; padding: 4px 10px;
+.chat-input__model-select { width: 200px; }
+.chat-input__model-select :deep(.el-select__wrapper),
+.chat-input__model-select :deep(.el-input__wrapper) {
+  padding: 0 6px; background: transparent; box-shadow: none !important;
 }
-.chat-input__toolbar-btn:hover { color: #409eff; }
+.chat-input__model-select :deep(.el-select__wrapper:hover),
+.chat-input__model-select :deep(.el-select__wrapper.is-hovering),
+.chat-input__model-select :deep(.el-select__wrapper.is-focused),
+.chat-input__model-select :deep(.el-input__wrapper:hover),
+.chat-input__model-select :deep(.el-input__wrapper.is-focus) {
+  background: #f5f7fa; box-shadow: none !important;
+}
+.chat-input__toolbar-btn {
+  font-size: 12px; color: #606266; padding: 4px 6px;
+  border: 0; background: transparent;
+}
+.chat-input__toolbar-btn:hover,
+.chat-input__toolbar-btn:focus { color: #409eff; border-color: transparent; background: #f5f7fa; }
 .chat-input__stat-item {
   font-size: 11px; color: #909399; white-space: nowrap; user-select: none;
 }
@@ -2322,6 +3130,6 @@ export default {
 :deep(.chat-message__content pre code) { background: none; padding: 0; }
 :deep(.chat-message--user .chat-message__content pre),
 :deep(.chat-message--user .chat-message__content code) {
-  background: rgba(255,255,255,.2); color: #fff;
+  background: rgba(0,0,0,.045); color: #303133;
 }
 </style>

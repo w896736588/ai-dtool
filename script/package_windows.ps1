@@ -66,6 +66,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $TempPackageDir "web") | Ou
 New-Item -ItemType Directory -Force -Path (Join-Path $TempPackageDir "web/dist") | Out-Null
 Copy-Item (Join-Path $FrontendDistDir "*") (Join-Path $TempPackageDir "web/dist") -Recurse -Force
 Copy-Item (Join-Path $RootDir "internal/pkg/p_js") (Join-Path $TempPackageDir "internal/pkg/p_js") -Recurse -Force
+Copy-Item (Join-Path $RootDir "internal/pkg/p_piagent") (Join-Path $TempPackageDir "internal/pkg/p_piagent") -Recurse -Force
 Copy-Item (Join-Path $RootDir "internal/app/dtool/database") (Join-Path $TempPackageDir "internal/app/dtool/database") -Recurse -Force
 Copy-Item (Join-Path $RootDir "internal/app/dtool/database_log") (Join-Path $TempPackageDir "internal/app/dtool/database_log") -Recurse -Force
 Copy-Item (Join-Path $RootDir "skills") (Join-Path $TempPackageDir "skills") -Recurse -Force

@@ -209,6 +209,12 @@ const router = createRouter({
       meta: { keepAlive: false, title: '知识片段分享' },
     },
     {
+      path: '/MemoryFragmentRaw',
+      name: 'memory-fragment-raw',
+      component: () => import('../components/memory/MemoryFragmentRaw.vue'),
+      meta: { keepAlive: false, title: '知识片段原文' },
+    },
+    {
       path: '/MemoryFragmentFullscreen',
       name: 'memory-fragment-fullscreen',
       component: () => import('../components/memory/MemoryFragmentFullscreen.vue'),

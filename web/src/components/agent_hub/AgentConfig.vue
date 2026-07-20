@@ -37,6 +37,10 @@
               <el-input v-model="piConfig.session_dir" placeholder="留空使用默认目录" />
               <div class="field-hint">Pi 会话 JSONL 文件的存储路径，留空则默认 logs/pi_agent_sessions</div>
             </el-form-item>
+            <el-form-item label="运行目录">
+              <el-input v-model="piConfig.runtime_dir" placeholder="留空使用 Pi 默认目录 ~/.pi/agent" />
+              <div class="field-hint">Pi 的数据/配置目录（扩展、设置等），对应 PI_CODING_AGENT_DIR。留空则用默认 ~/.pi/agent，但多个 Agent 的运行目录不能重复。</div>
+            </el-form-item>
             <el-form-item label="额外启动参数">
               <el-input v-model="piConfig.extra_args" placeholder="例如：--no-session" />
               <div class="field-hint">空格分隔的额外命令行参数，如 --no-session 禁用会话持久化</div>
@@ -82,56 +86,23 @@
           </el-table>
         </el-tab-pane>
 
-        <!-- 扩展 -->
-        <el-tab-pane label="扩展" name="tools">
-          <div class="skills-toolbar">
-            <el-button type="primary" size="small" @click="openSkillAdd('tool')">添加 Tool</el-button>
-            <el-divider direction="vertical" />
-            <el-button size="small" @click="openBuiltinDialog">内置工具</el-button>
-            <span class="skills-hint">所有扩展保存在 ~/.pi/agent/extensions/ 目录下</span>
-          </div>
-          <el-table :data="mergedToolList" class="config-table" empty-text="暂无 Tools">
-            <el-table-column prop="name" label="名称" min-width="130" />
-            <el-table-column label="来源" width="90">
-              <template #default="{ row }">
-                <el-tag v-if="row._source === 'fs'" size="small" type="success">文件系统</el-tag>
-                <el-tag v-else size="small" type="info">内置</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="工具名" width="140">
-              <template #default="{ row }">{{ row._source === 'fs' ? '-' : toolName(row) }}</template>
-            </el-table-column>
-            <el-table-column label="描述" min-width="160">
-              <template #default="{ row }">
-                <span style="color:#909399;font-size:13px">{{ row._source === 'fs' ? '来自文件系统的扩展' : skillDesc(row) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="脚本" width="80">
-              <template #default="{ row }">
-                <el-tag v-if="row._source === 'fs'" size="small" type="success">已安装</el-tag>
-                <el-tag v-else size="small" :type="hasScript(row) ? 'success' : 'info'">
-                  {{ hasScript(row) ? '已编写' : '未编写' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" width="80">
-              <template #default="{ row }">
-                <el-switch v-if="row._source !== 'fs'" :model-value="row.enabled === 1" @change="toggleSkill(row)" size="small" />
-                <el-tag v-else size="small" type="success">已安装</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="140">
-              <template #default="{ row }">
-                <template v-if="row._source === 'fs'">
-                  <el-button text size="small" type="danger" @click="removeInstalledTool(row)">移除</el-button>
-                </template>
-                <template v-else>
-                  <el-button text size="small" @click="openSkillEdit(row)">编辑</el-button>
-                  <el-button text size="small" type="danger" @click="deleteSkill(row)">删除</el-button>
-                </template>
-              </template>
-            </el-table-column>
-          </el-table>
+        <!-- 强制提示词 -->
+        <el-tab-pane label="强制提示词" name="forceprompt">
+          <el-form label-width="130px" class="config-form">
+            <el-form-item label="说明">
+              <div class="field-hint" style="font-size:13px;color:#606266;line-height:1.6">
+                设置后，每次对话都会自动在用户消息前追加以下提示词（与是否安装计划模式扩展无关）。留空不会追加任何内容；填入 <code>off</code> 也可关闭。
+              </div>
+            </el-form-item>
+            <el-form-item label="强制提示词">
+              <el-input
+                v-model="piConfig.force_prompt"
+                type="textarea"
+                :rows="6"
+                placeholder="留空不追加任何强制提示词"
+              />
+            </el-form-item>
+          </el-form>
         </el-tab-pane>
 
         <!-- 工作空间 -->
@@ -152,95 +123,64 @@
 
         <!-- 模型配置 -->
         <el-tab-pane label="模型配置" name="models">
-          <div class="model-config-tab">
-            <div class="model-config-header">
-              <el-button type="primary" size="small" @click="showAddProvider">新增 Provider</el-button>
-              <span class="skills-hint">管理所有 LLM 服务商及其模型</span>
-            </div>
-            <div class="provider-list">
-              <div v-for="p in fullProviders" :key="p.id" class="provider-card" :class="{ 'provider-card--expanded': isProviderExpanded(p.id) }">
-                <div class="provider-card__header" @click="toggleExpand(p.id)">
-                  <div class="provider-card__info">
-                    <span class="provider-card__name">{{ p.name }}</span>
-                    <el-tag size="small" effect="plain">{{ p.provider_type }}</el-tag>
-                    <span class="provider-card__url">{{ p.base_url }}</span>
-                  </div>
-                  <div class="provider-card__actions" @click.stop>
-                    <el-button text size="small" @click="showEditProvider(p)">编辑</el-button>
-                    <el-button text size="small" @click="showAddModel(p)">+ 添加模型</el-button>
-                    <el-button text size="small" type="danger" @click="deleteProvider(p)">删除</el-button>
-                    <el-icon class="provider-card__arrow" :class="{ 'provider-card__arrow--open': isProviderExpanded(p.id) }">
-                      <ArrowRight />
-                    </el-icon>
-                  </div>
-                </div>
-                <div v-if="isProviderExpanded(p.id)" class="provider-card__models">
-                  <el-table :data="getProviderModels(p.id)" class="config-table" empty-text="暂无模型">
-                    <el-table-column prop="name" label="展示名" min-width="130" />
-                    <el-table-column prop="model" label="模型标识" min-width="180" />
-                    <el-table-column label="类型" width="70">
-                      <template #default="{ row }">
-                        <el-tag size="small" effect="light">{{ row.model_type === 'embedding' ? '嵌入' : 'LLM' }}</el-tag>
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="上下文窗口" width="110">
-                      <template #default="{ row }">
-                        {{ fmtCtx(row.context_size) }}
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="操作" width="200">
-                      <template #default="{ row }">
-                        <el-button text size="small" @click="showEditModel(row)">编辑</el-button>
-                        <el-button text size="small" type="danger" @click="deleteModel(row)">删除</el-button>
-                        <el-button text size="small" type="warning" :loading="testingModelId === row.id" @click="testModel(row)">测试</el-button>
-                      </template>
-                    </el-table-column>
-                  </el-table>
-                </div>
-              </div>
-              <div v-if="fullProviders.length === 0" class="empty-hint">暂无 Provider，请点击上方按钮添加</div>
-            </div>
-          </div>
+          <ProviderModelPanel mode="agent" />
         </el-tab-pane>
 
         <!-- 推荐扩展 -->
         <el-tab-pane label="推荐扩展" name="envtools">
           <div class="envtools-toolbar">
-            <span class="skills-hint">推荐的 Pi 扩展，安装后可增强 Agent 能力。已安装的可以直接在此移除。</span>
+            <span class="skills-hint">推荐的 Pi 扩展与已安装的自定义扩展，安装后可增强 Agent 能力。已安装的可以直接在此移除。</span>
             <el-button size="small" @click="loadEnvTools">刷新状态</el-button>
           </div>
-          <el-table :data="envTools" class="config-table" empty-text="暂无可用环境工具">
-            <el-table-column label="工具" min-width="220">
+          <el-table :data="allExtensions" class="config-table" empty-text="暂无可用扩展">
+            <el-table-column label="名称" min-width="240">
               <template #default="{ row }">
                 <div style="display:flex;align-items:center;gap:8px">
-                  <span style="font-size:18px">{{ row.icon }}</span>
+                  <span v-if="row._cat === 'env' && row.icon" style="font-size:18px">{{ row.icon }}</span>
+                  <span v-else-if="row._cat === 'tool' && row._source !== 'fs' && getToolMeta(toolName(row)).found" class="tool-call__icon" :style="{ background: getToolMeta(toolName(row)).bg, color: getToolMeta(toolName(row)).color }">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="getToolMeta(toolName(row)).svg"></svg>
+                  </span>
                   <div>
                     <div style="font-weight:500">{{ row.name }}</div>
-                    <div style="font-size:12px;color:#909399">{{ row.description }}</div>
+                    <div style="font-size:12px;color:#909399">{{ row._cat === 'env' ? row.description : (row._source === 'fs' ? '来自文件系统的扩展' : skillDesc(row)) }}</div>
                   </div>
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="140">
+            <el-table-column label="来源" width="100">
               <template #default="{ row }">
-                <template v-if="row.key === 'headroom' && headroomStatus.running">
-                  <el-tag type="success" size="small">运行中</el-tag>
-                  <span v-if="headroomStatus.pid" style="font-size:11px;color:#909399;margin-left:4px">PID:{{ headroomStatus.pid }}</span>
-                </template>
-                <template v-else>
-                  <el-tag :type="envToolStatusType(row)" size="small">{{ envToolStatusLabel(row) }}</el-tag>
-                </template>
+                <el-tag v-if="row._cat === 'env'" size="small" type="primary">推荐</el-tag>
+                <el-tag v-else-if="row._source === 'fs'" size="small" type="success">文件系统</el-tag>
+                <el-tag v-else size="small" type="info">内置</el-tag>
               </template>
             </el-table-column>
             <el-table-column label="版本" width="100">
               <template #default="{ row }">
-                <span style="font-size:12px;color:#909399">{{ row.version || '-' }}</span>
+                <span style="font-size:12px;color:#909399">{{ row._cat === 'env' ? (row.version || '-') : '-' }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" min-width="260">
+            <el-table-column label="状态" width="140">
               <template #default="{ row }">
-                <!-- Headroom 专属操作 -->
-                <template v-if="row.key === 'headroom'">
+                <template v-if="row._cat === 'env'">
+                  <template v-if="row.key === 'headroom' && headroomStatus.running">
+                    <el-tag type="success" size="small">运行中</el-tag>
+                    <span v-if="headroomStatus.pid" style="font-size:11px;color:#909399;margin-left:4px">PID:{{ headroomStatus.pid }}</span>
+                  </template>
+                  <template v-else>
+                    <el-tag :type="envToolStatusType(row)" size="small">{{ envToolStatusLabel(row) }}</el-tag>
+                  </template>
+                </template>
+                <template v-else>
+                  <el-tag v-if="row._source === 'fs'" size="small" type="success">已安装</el-tag>
+                  <el-tag v-else-if="row._source === 'builtin-new'" size="small" type="info">未安装</el-tag>
+                  <el-switch v-else :model-value="row.enabled === 1" @change="toggleSkill(row)" size="small" />
+                </template>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" min-width="280">
+              <template #default="{ row }">
+                <!-- 环境工具：Headroom -->
+                <template v-if="row._cat === 'env' && row.key === 'headroom'">
                   <el-button v-if="!row.installed" text size="small" type="primary" @click="showEnvToolInstall(row)">
                     查看安装指引
                   </el-button>
@@ -271,8 +211,23 @@
                     主页 ↗
                   </el-button>
                 </template>
-                <!-- 其他工具通用操作 -->
-                <template v-else>
+                <!-- 环境工具：计划模式 -->
+                <template v-else-if="row._cat === 'env' && row.key === 'plan-mode'">
+                  <el-button v-if="!row.extension_installed" text size="small" type="primary" @click="envToolAction(row, 'activate')">
+                    安装并启用
+                  </el-button>
+                  <el-button v-if="!row.extension_installed" text size="small" @click="showEnvToolInstall(row)">
+                    安装指引
+                  </el-button>
+                  <el-button v-if="row.extension_installed" text size="small" type="danger" @click="envToolRemove(row)">
+                    移除
+                  </el-button>
+                  <el-button text size="small" @click="openEnvToolHomepage(row)">
+                    主页 ↗
+                  </el-button>
+                </template>
+                <!-- 环境工具：其他（rtk 等） -->
+                <template v-else-if="row._cat === 'env'">
                   <el-button v-if="!row.installed" text size="small" type="primary" @click="showEnvToolInstall(row)">
                     查看安装指引
                   </el-button>
@@ -289,9 +244,27 @@
                     主页 ↗
                   </el-button>
                 </template>
+                <!-- 自定义工具：文件系统 -->
+                <template v-else-if="row._source === 'fs'">
+                  <el-button text size="small" type="danger" @click="removeInstalledTool(row)">移除</el-button>
+                </template>
+                <!-- 自定义工具：内置未安装 -->
+                <template v-else-if="row._source === 'builtin-new'">
+                  <el-button text size="small" type="primary" @click="installBuiltinTool(row._builtinRef)">安装</el-button>
+                </template>
+                <!-- 自定义工具：已安装（内置/自定义） -->
+                <template v-else>
+                  <el-button v-if="isBuiltinTool(row)" text size="small" type="warning" @click="updateMergedTool(row)">更新</el-button>
+                  <el-button text size="small" @click="openSkillEdit(row)">编辑</el-button>
+                  <el-button text size="small" type="danger" @click="deleteSkill(row)">删除</el-button>
+                </template>
               </template>
             </el-table-column>
           </el-table>
+          <div class="skills-toolbar" style="margin-top:16px">
+            <el-button type="primary" size="small" @click="openSkillAdd('tool')">添加 Tool</el-button>
+            <span class="skills-hint">自定义 / 内置 / 文件系统扩展，保存在 ~/.pi/agent/extensions/ 目录下</span>
+          </div>
         </el-tab-pane>
 
       </el-tabs>
@@ -399,124 +372,6 @@
       </template>
     </el-dialog>
 
-    <!-- Provider 编辑对话框 -->
-    <el-dialog v-model="showProviderDlg" :title="editingProviderId ? '编辑 Provider' : '新增 Provider'" width="480px" :close-on-click-modal="true">
-      <el-form label-width="100px">
-        <el-form-item label="名称">
-          <el-input v-model="providerForm.name" placeholder="例如：OpenAI" />
-        </el-form-item>
-        <el-form-item label="请求格式">
-          <el-select v-model="providerForm.request_format" style="width:100%">
-            <el-option label="OpenAI Chat Completions" value="openai" />
-            <el-option label="OpenAI Responses" value="openai-responses" />
-            <el-option label="Anthropic Messages" value="anthropic" />
-            <el-option label="DeepSeek (OpenAI兼容)" value="deepseek" />
-            <el-option label="Google Generative AI" value="google" />
-          </el-select>
-          <div class="field-hint">选择 API 的请求格式，决定 Pi 调用时的 endpoint 路径</div>
-        </el-form-item>
-        <el-form-item label="基础域名">
-          <el-input v-model="providerForm.base_url" placeholder="例如：https://api.openai.com" />
-        </el-form-item>
-        <el-form-item label="API Key">
-          <div class="api-key-input-wrap">
-            <el-input
-              v-model="providerForm.api_key"
-              :type="showApiKey ? 'text' : 'password'"
-              autocomplete="off"
-              :placeholder="editingProviderId > 0 && !apiKeyFetched ? '已保存（点击右侧眼睛查看）' : 'API 认证密钥'"
-            />
-            <span
-              class="api-key-eye"
-              :class="{ 'api-key-eye--loading': apiKeyLoading }"
-              :title="showApiKey ? '隐藏' : '显示'"
-              @click="toggleApiKey"
-            >
-              <el-icon v-if="apiKeyLoading"><Loading /></el-icon>
-              <el-icon v-else-if="showApiKey"><View /></el-icon>
-              <el-icon v-else><Hide /></el-icon>
-            </span>
-          </div>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showProviderDlg = false">取消</el-button>
-        <el-button type="primary" @click="saveProvider">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- Model 编辑对话框 -->
-    <el-dialog v-model="showModelDlg" :title="editingModelId ? '编辑模型' : '新增模型'" width="480px" :close-on-click-modal="true">
-      <el-form label-width="100px">
-        <el-form-item label="所属 Provider">
-          <el-select v-model="modelForm.provider_id" style="width:100%" :disabled="editingModelId > 0">
-            <el-option v-for="p in fullProviders" :key="p.id" :label="p.name" :value="p.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="展示名">
-          <el-input v-model="modelForm.name" placeholder="例如：GPT-4o" />
-        </el-form-item>
-        <el-form-item label="模型标识">
-          <el-input v-model="modelForm.model" placeholder="例如：gpt-4o" />
-        </el-form-item>
-        <el-form-item label="上下文窗口">
-          <el-input-number v-model="modelForm.context_size" :min="1000" :max="4194304" :step="1000" style="width:100%" />
-          <div class="field-hint">以 token 为单位的最大上下文窗口大小</div>
-        </el-form-item>
-        <el-form-item label="模型类型">
-          <el-select v-model="modelForm.model_type" style="width:100%">
-            <el-option label="LLM（大语言模型）" value="llm" />
-            <el-option label="嵌入模型" value="embedding" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="URI">
-          <el-input v-model="modelForm.uri" :placeholder="defaultUriForProvider(modelForm.provider_id)" />
-          <div class="field-hint">留空则根据 Provider 类型自动推断</div>
-        </el-form-item>
-        <el-form-item label="完整地址">
-          <div class="url-preview">{{ buildUrl(getProviderBaseUrl(modelForm.provider_id), editingModelId ? modelForm.uri : (modelForm.uri || defaultUriForProvider(modelForm.provider_id))) || '-' }}</div>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showModelDlg = false">取消</el-button>
-        <el-button type="primary" @click="saveModel">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 内置工具对话框 -->
-    <el-dialog v-model="showBuiltinDialog" title="Dtool 内置 Tools" width="640px" :close-on-click-modal="true">
-      <el-table :data="builtinTools" max-height="400" empty-text="暂无内置工具，请在 internal/app/dtool/data/ 目录下添加">
-        <el-table-column prop="name" label="名称" width="120" />
-        <el-table-column label="来源" width="120">
-          <template #default="{ row }">
-            <el-tag size="small" type="info">data/{{ row.dir_name }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" label="描述" min-width="180">
-          <template #default="{ row }">
-            <span style="color:#909399;font-size:13px">{{ row.description }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="参数" width="70">
-          <template #default="{ row }">
-            <span style="color:#909399;font-size:12px">{{ (row.parameters || []).length }} 个</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="80">
-          <template #default="{ row }">
-            <el-button text size="small" type="primary" @click="installBuiltinTool(row)">安装</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="field-hint" style="margin-top: 12px;">
-        内置工具存放在 <code>internal/app/dtool/data/</code> 目录下，每个子目录对应一个工具。
-        <a href="https://pi-doc.com/docs/latest/extensions.html" target="_blank" style="color:#409eff">Pi Extensions 文档</a>
-      </div>
-      <template #footer>
-        <el-button @click="showBuiltinDialog = false">关闭</el-button>
-      </template>
-    </el-dialog>
-
     <!-- Headroom 配置对话框 -->
     <el-dialog v-model="showHeadroomConfigDialog" title="Headroom 代理配置" width="640px" :close-on-click-modal="true">
       <el-form :model="headroomConfig" label-width="140px">
@@ -567,7 +422,7 @@
           :model-value="envToolDialogData.install_cmd_hint"
           readonly
           type="textarea"
-          :rows="1"
+          :rows="6"
           style="font-family:'Cascadia Code',monospace;font-size:13px"
         />
       </div>
@@ -577,7 +432,7 @@
           :model-value="envToolDialogData.activate_cmd_hint"
           readonly
           type="textarea"
-          :rows="1"
+          :rows="6"
           style="font-family:'Cascadia Code',monospace;font-size:13px"
         />
       </div>
@@ -672,12 +527,13 @@
 
 <script>
 import Base from '@/utils/base.js'
-import aiSet from '@/utils/base/ai_set'
+import ProviderModelPanel from '@/components/ProviderModelPanel.vue'
 import { ArrowLeft, ArrowRight, Plus, View, Hide, Loading } from '@element-plus/icons-vue'
+import { getToolMeta } from '@/utils/toolIcons.js'
 
 export default {
   name: 'AgentConfig',
-  components: { ArrowLeft, ArrowRight, Plus, View, Hide, Loading },
+  components: { ArrowLeft, ArrowRight, Plus, View, Hide, Loading, ProviderModelPanel },
   data() {
     return {
       activeTab: 'basic',
@@ -687,32 +543,13 @@ export default {
       installHint: '',
 
       configForm: { name: '', type: '' },
-      piConfig: { session_dir: '', extra_args: '' },
+      piConfig: { session_dir: '', extra_args: '', runtime_dir: '', force_prompt: '' },
 
       // Agent 配置用的 Provider/Model 列表
       providerList: [],
       allModels: [],
       selectedProviderId: null,
       selectedModelId: null,
-
-      // 模型配置 Tab 用的完整数据
-      fullProviders: [],
-      expandedProviderIds: {},  // { pid: true } 跟踪展开状态
-
-      // Provider 对话框
-      showProviderDlg: false,
-      editingProviderId: 0,
-      providerForm: { name: '', request_format: 'openai', base_url: '', api_key: '' },
-      // API Key 显隐控制（编辑时通过接口拉取真实密钥）
-      showApiKey: false,
-      apiKeyFetched: false,
-      apiKeyLoading: false,
-
-      // Model 对话框
-      showModelDlg: false,
-      editingModelId: 0,
-      modelForm: { provider_id: 0, name: '', model_type: 'llm', model: '', uri: '', context_size: 128000 },
-      testingModelId: 0,  // 正在测试的模型 ID
 
       skills: [],
       showSkillDialog: false,
@@ -724,7 +561,6 @@ export default {
       workspaceForm: { name: '', path: '' },
 
       builtinTools: [],
-      showBuiltinDialog: false,
 
       envTools: [],
       showEnvToolDialog: false,
@@ -777,18 +613,61 @@ export default {
       return this.skills.filter(s => s.skill_type === 'tool')
     },
     mergedToolList() {
-      // DB 中的 tools
-      const dbTools = this.skills.filter(s => s.skill_type === 'tool').map(t => ({ ...t, _source: 'db' }))
-      // 文件系统中有但 DB 中没有的（按 name 去重）
-      const dbNames = new Set(dbTools.map(t => t.name))
-      const fsOnly = this.installedTools
-        .filter(t => !dbNames.has(t.name))
-        .map(t => ({ name: t.name, file_path: t.file_path, _source: 'fs' }))
-      return [...dbTools, ...fsOnly]
+      const list = []
+      // 内置工具：全部展示（已安装的复用 DB 记录，未安装的生成安装占位行）
+      const builtinToolNames = new Set(this.builtinTools.map(t => t.tool_name))
+      const installedByToolName = {}
+      for (const s of this.skills) {
+        if (s.skill_type !== 'tool') continue
+        let tn = ''
+        try { tn = (JSON.parse(s.config || '{}')).tool_name || '' } catch (e) {}
+        installedByToolName[tn] = s
+      }
+      for (const bt of this.builtinTools) {
+        const inst = installedByToolName[bt.tool_name]
+        if (inst) {
+          list.push({ ...inst, _source: 'db', _builtin: true })
+        } else {
+          list.push({
+            _source: 'builtin-new',
+            _builtinRef: bt,
+            name: bt.name,
+            tool_name: bt.tool_name,
+            description: bt.description,
+            enabled: 1
+          })
+        }
+      }
+      // 自定义工具（非内置）：按目前方式展示
+      for (const s of this.skills) {
+        if (s.skill_type !== 'tool') continue
+        let tn = ''
+        try { tn = (JSON.parse(s.config || '{}')).tool_name || '' } catch (e) {}
+        if (builtinToolNames.has(tn)) continue // 内置工具已在上面处理
+        list.push({ ...s, _source: 'db', _builtin: false })
+      }
+      // 文件系统扩展（DB 中无对应记录的）
+      const allDbToolNames = new Set(this.skills.filter(s => s.skill_type === 'tool').map(s => s.name))
+      for (const t of this.installedTools) {
+        if (!allDbToolNames.has(t.name)) {
+          list.push({ name: t.name, file_path: t.file_path, _source: 'fs' })
+        }
+      }
+      return list
     },
     dialogTitle() {
       if (this.editingSkillId) return '编辑 ' + (this.skillForm.skill_type === 'tool' ? 'Tool' : 'Skill')
       return '添加 ' + (this.skillForm.skill_type === 'tool' ? 'Tool' : 'Skill')
+    },
+    // 推荐扩展与自定义扩展合并为同一个列表
+    allExtensions() {
+      const env = (this.envTools || []).map(r => ({ ...r, _cat: 'env' }))
+      // 过滤掉与推荐扩展（环境工具）同名的自定义/文件系统扩展，避免重复展示（如 rtk）
+      const envKeys = new Set(env.map(r => r.key))
+      const tools = (this.mergedToolList || [])
+        .filter(r => !envKeys.has(r.name) && !envKeys.has(this.toolName(r)))
+        .map(r => ({ ...r, _cat: 'tool' }))
+      return [...env, ...tools]
     },
     currentProviderModels() {
       if (!this.selectedProviderId) return []
@@ -803,6 +682,17 @@ export default {
       return
     }
     this.loadData()
+  },
+  // keep-alive 会复用组件实例，切换不同 Agent 时 mounted 不会再次触发，
+  // 通过监听路由参数变化重新加载对应 Agent 的配置
+  watch: {
+    '$route'(to, from) {
+      const newAgentId = parseInt(to.query.agent_id) || 0
+      if (newAgentId && newAgentId !== this.agentId) {
+        this.agentId = newAgentId
+        this.loadData()
+      }
+    }
   },
   methods: {
     emptySkillForm() {
@@ -823,13 +713,19 @@ export default {
           this.installed = agent.installed
           this.installHint = agent.install_hint
           this.configForm = { name: agent.name, type: agent.type }
+          // 先重置为默认值，避免 keep-alive 复用实例时残留上一个 Agent 的配置
+          this.piConfig = { session_dir: '', extra_args: '', runtime_dir: '' }
+          this.selectedProviderId = null
+          this.selectedModelId = null
           if (agent.config) {
             try {
               const cfg = JSON.parse(agent.config)
-              if (cfg.session_dir) this.piConfig.session_dir = cfg.session_dir
-              if (cfg.extra_args) this.piConfig.extra_args = cfg.extra_args
-              if (cfg.provider_id) this.selectedProviderId = cfg.provider_id
-              if (cfg.model_id) this.selectedModelId = cfg.model_id
+              this.piConfig.session_dir = cfg.session_dir || ''
+              this.piConfig.extra_args = cfg.extra_args || ''
+              this.piConfig.runtime_dir = cfg.runtime_dir || ''
+              this.piConfig.force_prompt = cfg.force_prompt || ''
+              this.selectedProviderId = cfg.provider_id || null
+              this.selectedModelId = cfg.model_id || null
             } catch (e) {}
           }
         }
@@ -843,7 +739,9 @@ export default {
         provider_id: this.selectedProviderId || 0,
         model_id: this.selectedModelId || 0,
         session_dir: this.piConfig.session_dir,
-        extra_args: this.piConfig.extra_args
+        extra_args: this.piConfig.extra_args,
+        runtime_dir: this.piConfig.runtime_dir,
+        force_prompt: this.piConfig.force_prompt
       }
       const config = JSON.stringify(configObj)
       Base.BasePost('/api/AgentV2Save', {
@@ -868,12 +766,6 @@ export default {
         if (res.ErrCode === 0 && res.Data && res.Data.providers) {
           const providers = res.Data.providers
           this.providerList = providers.map(p => ({ id: p.id, name: p.name, provider_type: p.provider_type }))
-          // 模型配置 Tab 用的完整数据
-          this.fullProviders = providers.map(p => ({ ...p }))
-          // 默认展开所有 Provider
-          for (const p of providers) {
-            this.expandedProviderIds[p.id] = true
-          }
           this.allModels = []
           for (const p of providers) {
             for (const m of (p.models || [])) {
@@ -888,212 +780,19 @@ export default {
       this.selectedModelId = null
     },
 
-    // ========== 模型配置 Tab：Provider 管理 ==========
-    getProviderModels(pid) {
-      return this.allModels.filter(m => parseInt(m.provider_id) === parseInt(pid))
-    },
-    isProviderExpanded(pid) {
-      return this.expandedProviderIds[pid] === true
-    },
-    toggleExpand(pid) {
-      if (this.expandedProviderIds[pid]) {
-        this.expandedProviderIds = { ...this.expandedProviderIds, [pid]: false }
-      } else {
-        this.expandedProviderIds = { ...this.expandedProviderIds, [pid]: true }
-      }
-    },
-    showAddProvider() {
-      this.editingProviderId = 0
-      this.providerForm = { name: '', request_format: 'openai', base_url: '', api_key: '' }
-      this.showApiKey = false
-      this.apiKeyFetched = false
-      this.apiKeyLoading = false
-      this.showProviderDlg = true
-    },
-    showEditProvider(p) {
-      this.editingProviderId = p.id
-      // AgentV2ProviderModels 不返回 api_key，默认留空，点击眼睛时再通过接口拉取真实密钥。
-      this.providerForm = { id: p.id, name: p.name, request_format: p.provider_type, base_url: p.base_url, api_key: '' }
-      this.showApiKey = false
-      this.apiKeyFetched = false
-      this.apiKeyLoading = false
-      this.showProviderDlg = true
-    },
-    // 切换 API Key 显隐：编辑已有服务商且尚未拉取真实密钥时，先请求明文再显示。
-    toggleApiKey() {
-      if (this.showApiKey) {
-        this.showApiKey = false
-        return
-      }
-      if (this.editingProviderId > 0 && !this.apiKeyFetched) {
-        this.apiKeyLoading = true
-        aiSet.AiProviderKeyGet({ id: this.editingProviderId }, (res) => {
-          this.apiKeyLoading = false
-          if (res.ErrCode === 0) {
-            this.providerForm.api_key = res.Data.api_key || ''
-            this.apiKeyFetched = true
-            this.showApiKey = true
-          } else {
-            this.$message.error(res.ErrMsg)
-          }
-        })
-      } else {
-        this.showApiKey = true
-      }
-    },
-    saveProvider() {
-      if (!this.providerForm.name || !this.providerForm.base_url) {
-        this.$message.warning('请填写名称和基础域名')
-        return
-      }
-      const submitData = {
-        id: this.editingProviderId || undefined,
-        name: this.providerForm.name,
-        request_format: this.providerForm.request_format,
-        base_url: this.providerForm.base_url,
-        api_key: this.providerForm.api_key
-      }
-      // 编辑已有服务商且未查看/未修改 API Key 时，不提交该字段，
-      // 避免用空值覆盖数据库中保存的真实密钥。
-      if (this.editingProviderId > 0 && !this.apiKeyFetched) {
-        delete submitData.api_key
-      }
-      aiSet.AiProviderAdd(submitData, (res) => {
-        if (res.ErrCode === 0) {
-          this.showProviderDlg = false
-          this.loadProviderModels()
-          this.$message.success('保存成功')
-        }
-      })
-    },
-    deleteProvider(p) {
-      this.$confirm(`确定删除 Provider「${p.name}」？关联的模型也会被删除。`, '提示', { type: 'warning' }).then(() => {
-        aiSet.AiProviderDelete({ id: p.id }, (res) => {
-          if (res.ErrCode === 0) {
-            this.loadProviderModels()
-            this.$message.success('已删除')
-          }
-        })
-      }).catch(() => {})
-    },
-
-    // ========== 模型配置 Tab：Model 管理 ==========
-    defaultUriForProvider(pid) {
-      const p = this.fullProviders.find(p => parseInt(p.id) === parseInt(pid))
-      if (!p) return '/v1/chat/completions'
-      const fmt = p.provider_type || p.request_format || 'openai'
-      switch (fmt) {
-        case 'anthropic': return '/v1/messages'
-        case 'openai-responses': return '/v1/responses'
-        case 'google': return '/v1beta/models'
-        default: return '/v1/chat/completions'
-      }
-    },
-    showAddModel(p) {
-      this.expandedProviderIds[p.id] = true
-      this.editingModelId = 0
-      this.modelForm = { provider_id: p.id, name: '', model_type: 'llm', model: '', uri: '', context_size: 128000 }
-      this.showModelDlg = true
-    },
-    showEditModel(m) {
-      this.editingModelId = m.id
-      this.modelForm = {
-        id: m.id, provider_id: m.provider_id, name: m.name,
-        model_type: m.model_type || 'llm', model: m.model,
-        uri: m.uri || '', context_size: m.context_size || 128000
-      }
-      this.showModelDlg = true
-    },
-    saveModel() {
-      if (!this.modelForm.model) {
-        this.$message.warning('请填写模型标识')
-        return
-      }
-      // 新建时 URI 为空才给默认值，编辑时原样保存
-      const uri = this.editingModelId ? this.modelForm.uri : (this.modelForm.uri || this.defaultUriForProvider(this.modelForm.provider_id))
-      aiSet.AiModelAdd({
-        id: this.editingModelId || undefined,
-        provider_id: this.modelForm.provider_id,
-        name: this.modelForm.name || this.modelForm.model,
-        model_type: this.modelForm.model_type,
-        model: this.modelForm.model,
-        uri: uri,
-        context_size: this.modelForm.context_size || 128000
-      }, (res) => {
-        if (res.ErrCode === 0) {
-          this.showModelDlg = false
-          this.loadProviderModels()
-          this.$message.success('保存成功')
-        }
-      })
-    },
-    deleteModel(m) {
-      this.$confirm(`确定删除模型「${m.name || m.model}」？`, '提示', { type: 'warning' }).then(() => {
-        aiSet.AiModelDelete({ id: m.id }, (res) => {
-          if (res.ErrCode === 0) {
-            this.loadProviderModels()
-            this.$message.success('已删除')
-          }
-        })
-      }).catch(() => {})
-    },
-    testModel(m) {
-      const provider = this.fullProviders.find(p => p.id === m.provider_id)
-      const providerName = provider ? provider.name : 'Unknown'
-      this.testingModelId = m.id
-      Base.BasePost('/api/AgentV2ModelTest', {
-        provider_id: m.provider_id,
-        model_id: m.id
-      }, (res) => {
-        this.testingModelId = 0
-        if (res.ErrCode === 0) {
-          const resp = res.Data.response || ''
-          this.$notify({
-            title: `测试通过 — ${providerName} / ${m.name || m.model}`,
-            message: resp,
-            type: 'success',
-            duration: 5000
-          })
-        } else {
-          this.$notify({
-            title: `测试失败 — ${providerName} / ${m.name || m.model}`,
-            message: res.ErrMsg || '未知错误',
-            type: 'error',
-            duration: 8000
-          })
-        }
-      })
-    },
-    buildUrl(base, uri) {
-      const cleanBase = (base || '').replace(/\/+$/, '')
-      if (!cleanBase) return uri || ''
-      if (!uri) return cleanBase
-      const cleanUri = uri.startsWith('/') ? uri : '/' + uri
-      return cleanBase + cleanUri
-    },
-    getProviderBaseUrl(pid) {
-      const p = this.fullProviders.find(p => parseInt(p.id) === parseInt(pid))
-      return p ? p.base_url : ''
-    },
-    fmtCtx(size) {
-      if (!size) return '—'
-      if (size >= 1000000) return (size / 1000000).toFixed(1) + 'M'
-      if (size >= 1000) return (size / 1000).toFixed(0) + 'K'
-      return String(size)
-    },
-
     // Skills & Tools
     loadSkills() {
       Base.BasePost('/api/AgentV2SkillList', { agent_id: this.agentId }, (res) => {
         this.skills = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
       })
       this.loadInstalledTools()
+      this.loadBuiltinTools()
     },
     skillDesc(row) {
       try {
         const cfg = JSON.parse(row.config || '{}')
-        return cfg.description || '-'
-      } catch (e) { return '-' }
+        return cfg.description || row.description || '-'
+      } catch (e) { return row.description || '-' }
     },
     skillCmd(row) {
       try {
@@ -1104,8 +803,8 @@ export default {
     toolName(row) {
       try {
         const cfg = JSON.parse(row.config || '{}')
-        return cfg.tool_name || '-'
-      } catch (e) { return '-' }
+        return cfg.tool_name || row.tool_name || '-'
+      } catch (e) { return row.tool_name || '-' }
     },
     hasScript(row) {
       try {
@@ -1196,9 +895,22 @@ export default {
     },
 
     // 内置工具
-    openBuiltinDialog() {
-      this.showBuiltinDialog = true
-      this.loadBuiltinTools()
+    getToolMeta(name) {
+      return getToolMeta(name)
+    },
+    isBuiltinTool(row) {
+      if (row._source === 'fs') return false
+      const tn = this.toolName(row)
+      return this.builtinTools.some(t => t.tool_name === tn)
+    },
+    updateMergedTool(row) {
+      const tn = this.toolName(row)
+      const bt = this.builtinTools.find(t => t.tool_name === tn)
+      if (!bt) {
+        this.$message.warning('未找到内置工具「' + (row.name || '') + '」的最新定义')
+        return
+      }
+      this.updateBuiltinTool(bt)
     },
     loadBuiltinTools() {
       Base.BasePost('/api/AgentV2BuiltinToolList', {}, (res) => {
@@ -1222,7 +934,29 @@ export default {
           enabled: 1
         }, () => {
           this.$message.success('工具已安装')
-          this.showBuiltinDialog = false
+          this.loadSkills()
+        })
+      }).catch(() => {})
+    },
+    updateBuiltinTool(tool) {
+      const existing = this.skills.find(s => s.skill_type === 'tool' && s.name === tool.name)
+      const enabled = existing ? existing.enabled : 1
+      this.$confirm(`更新内置工具「${tool.name}」？将用内置最新定义覆盖当前配置与脚本。`, '确认更新', { type: 'warning' }).then(() => {
+        const configObj = {
+          description: tool.description,
+          tool_name: tool.tool_name,
+          tool_description: tool.tool_description,
+          parameters: tool.parameters || [],
+          script_content: tool.script_content || ''
+        }
+        Base.BasePost('/api/AgentV2SkillSave', {
+          agent_id: this.agentId,
+          name: tool.name,
+          skill_type: 'tool',
+          config: JSON.stringify(configObj),
+          enabled: enabled
+        }, () => {
+          this.$message.success('工具已更新')
           this.loadSkills()
         })
       }).catch(() => {})
@@ -1230,7 +964,7 @@ export default {
 
     // 环境工具
     loadEnvTools() {
-      Base.BasePost('/api/AgentV2EnvToolList', {}, (res) => {
+      Base.BasePost('/api/AgentV2EnvToolList', { agent_id: this.agentId }, (res) => {
         this.envTools = (res.ErrCode === 0 && res.Data && res.Data.list) ? res.Data.list : []
       })
       this.loadHeadroomStatus()
@@ -1297,6 +1031,10 @@ export default {
         if (this.headroomStatus.running) return 'success'
         return row.installed ? 'warning' : 'info'
       }
+      if (row.key === 'plan-mode') {
+        if (row.extension_installed) return row.activated ? 'success' : 'warning'
+        return 'info'
+      }
       if (row.extension_installed) return 'success'
       if (row.installed) return 'warning'
       return 'info'
@@ -1305,6 +1043,10 @@ export default {
       if (row.key === 'headroom') {
         if (this.headroomStatus.running) return '代理运行中'
         return row.installed ? '已安装' : '未安装'
+      }
+      if (row.key === 'plan-mode') {
+        if (row.extension_installed) return row.activated ? '已启用' : '已安装(未启用)'
+        return '未安装'
       }
       if (row.extension_installed) return '已安装'
       if (row.installed) return '已安装(未激活)'
@@ -1344,22 +1086,26 @@ export default {
           key: row.key,
           action: action
         }, (res) => {
-          if (res.ErrCode === 0 && res.Data) {
-            const cmd = res.Data.command || ''
-            const msg = res.Data.message || ''
-            this.$alert(
-              `<div style="margin-bottom:8px">${msg}</div>
-               <div style="background:#f5f7fa;border-radius:4px;padding:10px;font-family:'Cascadia Code',monospace;font-size:13px;word-break:break-all">${cmd}</div>`,
-              `${label}命令`,
-              { dangerouslyUseHTMLString: true, confirmButtonText: '复制并关闭', beforeClose: (action, instance, done) => {
-                if (action === 'confirm' && cmd) {
-                  navigator.clipboard.writeText(cmd).then(() => {
-                    this.$message.success('命令已复制到剪贴板')
-                  })
-                }
-                done()
-              }}
-            )
+          if (res.ErrCode === 0) {
+            const cmd = (res.Data && res.Data.command) || ''
+            const msg = (res.Data && res.Data.message) || res.Msg || ''
+            if (cmd) {
+              this.$alert(
+                `<div style="margin-bottom:8px">${msg}</div>
+                 <div style="background:#f5f7fa;border-radius:4px;padding:10px;font-family:'Cascadia Code',monospace;font-size:13px;word-break:break-all">${cmd}</div>`,
+                `${label}命令`,
+                { dangerouslyUseHTMLString: true, confirmButtonText: '复制并关闭', beforeClose: (action, instance, done) => {
+                  if (action === 'confirm' && cmd) {
+                    navigator.clipboard.writeText(cmd).then(() => {
+                      this.$message.success('命令已复制到剪贴板')
+                    })
+                  }
+                  done()
+                }}
+              )
+            } else {
+              this.$message.success(msg || '操作成功')
+            }
             this.loadEnvTools()
           }
         })
@@ -1625,90 +1371,6 @@ export default {
   box-shadow: none;
 }
 
-/* ===== 模型配置 Tab ===== */
-.model-config-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.provider-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.provider-card {
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  overflow: hidden;
-  transition: border-color .2s;
-}
-.provider-card:hover { border-color: #c0c4cc; }
-.provider-card--expanded { border-color: #409eff; }
-
-.provider-card__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  cursor: pointer;
-  user-select: none;
-}
-.provider-card__header:hover { background: #fafafa; }
-
-.provider-card__info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.provider-card__name {
-  font-weight: 600;
-  font-size: 14px;
-}
-.provider-card__url {
-  font-size: 12px;
-  color: #909399;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 260px;
-}
-
-.provider-card__actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-.provider-card__arrow {
-  margin-left: 6px;
-  font-size: 14px;
-  color: #c0c4cc;
-  transition: transform .2s;
-}
-.provider-card__arrow--open { transform: rotate(90deg); }
-
-.provider-card__models {
-  border-top: 1px solid #ebeef5;
-  padding: 12px 16px 16px;
-}
-
-.url-preview {
-  font-size: 12px;
-  color: #909399;
-  font-family: 'Cascadia Code', 'Fira Code', monospace;
-  background: #f5f7fa;
-  padding: 8px 12px;
-  border-radius: 4px;
-  word-break: break-all;
-}
-
-.empty-hint { padding: 16px; text-align: center; color: #c0c4cc; font-size: 13px; }
-
 /* --- Stats / Upgrade 输出 --- */
 .stats-table-wrap { max-height: 460px; overflow-y: auto; }
 .stats-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
@@ -1804,35 +1466,18 @@ export default {
   color: #303133;
 }
 
-/* --- API Key 眼睛切换图标 --- */
-.api-key-input-wrap {
-  position: relative;
-  width: 100%;
+/* 内置工具列表中的小图标 */
+.tool-cell {
+  display: inline-flex; align-items: center; gap: 8px;
 }
-.api-key-eye {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #909399;
-  font-size: 16px;
-  transition: color .2s;
+.tool-cell__name { line-height: 1; }
+.tool-call__icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
 }
-.api-key-eye:hover {
-  color: #409eff;
-}
-.api-key-eye--loading {
-  cursor: default;
-  animation: api-key-spin 1s linear infinite;
-}
-@keyframes api-key-spin {
-  from { transform: translateY(-50%) rotate(0deg); }
-  to { transform: translateY(-50%) rotate(360deg); }
-}
+.tool-call__icon svg { width: 14px; height: 14px; display: block; }
+
 
 
 </style>

@@ -7,6 +7,11 @@ import (
 	"github.com/w896736588/go-tool/gstool"
 )
 
+// ShellQuote returns one POSIX-shell argument without allowing command expansion.
+func ShellQuote(value string) string {
+	return `'` + strings.ReplaceAll(value, `'`, `'\''`) + `'`
+}
+
 type Command struct {
 	commandList []string
 	sudo        string //sudo前缀
@@ -66,8 +71,8 @@ func (h *Command) GitShowAllOriginBranches() *Command {
 	return h
 }
 
-func (h *Command) GitIgnoreAll() *Command {
-	h.SetCommand(h.sudo + `git checkout .`)
+func (h *Command) GitResetHard() *Command {
+	h.SetCommand(h.sudo + `git reset --hard HEAD`)
 	return h
 }
 
@@ -94,23 +99,23 @@ func (h *Command) GitFetch() *Command {
 }
 
 func (h *Command) Cd(dir string) *Command {
-	h.SetCommand(fmt.Sprintf(`cd %s`, dir))
+	h.SetCommand(fmt.Sprintf(`cd -- %s`, ShellQuote(dir)))
 	return h
 }
 
 func (h *Command) GitCheckout(branch string) *Command {
-	h.SetCommand(fmt.Sprintf(`%sgit checkout %s`, h.sudo, branch))
+	h.SetCommand(fmt.Sprintf(`%sgit checkout %s`, h.sudo, ShellQuote(branch)))
 	return h
 }
 
 // GitCheckoutNewBranch 基于当前分支创建并切换新分支
 func (h *Command) GitCheckoutNewBranch(branch string) *Command {
-	h.SetCommand(fmt.Sprintf(`%sgit checkout -b %s`, h.sudo, branch))
+	h.SetCommand(fmt.Sprintf(`%sgit checkout -b %s`, h.sudo, ShellQuote(branch)))
 	return h
 }
 
 func (h *Command) GitPullOrigin(branch string) *Command {
-	h.SetCommand(fmt.Sprintf(`%sgit pull --quiet origin %s`, h.sudo, branch))
+	h.SetCommand(fmt.Sprintf(`%sgit pull --quiet origin %s`, h.sudo, ShellQuote(branch)))
 	return h
 }
 
@@ -122,7 +127,7 @@ func (h *Command) GitPullOriginCurrentBranch() *Command {
 
 // GitPushOriginSetUpstream 推送并建立上游跟踪
 func (h *Command) GitPushOriginSetUpstream(branch string) *Command {
-	h.SetCommand(fmt.Sprintf(`%sgit push -u origin %s`, h.sudo, branch))
+	h.SetCommand(fmt.Sprintf(`%sgit push -u origin %s`, h.sudo, ShellQuote(branch)))
 	return h
 }
 
@@ -302,6 +307,17 @@ func (h *Command) DockerComposeStop(dockerCmd, envFile string) *Command {
 	return h
 }
 
+// DockerComposeDown 执行 docker compose down，可传入 services 仅拆除指定服务。
+// 不传 services 时对整体执行 down。
+func (h *Command) DockerComposeDown(dockerCmd, envFile string, services []string) *Command {
+	if len(services) > 0 {
+		h.SetCommand(fmt.Sprintf(`%s %s %s down %s`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile), strings.Join(services, ` `)))
+	} else {
+		h.SetCommand(fmt.Sprintf(`%s %s %s down`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile)))
+	}
+	return h
+}
+
 func (h *Command) DockerComposeStatus(dockerCmd, envFile string) *Command {
 	h.SetCommand(fmt.Sprintf(`%s docker stats $(sudo %s %s ps -q) --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.BlockIO}}"`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile)))
 	return h
@@ -314,6 +330,17 @@ func (h *Command) DockerComposeRestart(dockerCmd, envFile string, services []str
 
 func (h *Command) DockerComposeStopService(dockerCmd, envFile string, services []string) *Command {
 	h.SetCommand(fmt.Sprintf(`%s %s %s stop %s`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile), strings.Join(services, ` `)))
+	return h
+}
+
+// DockerComposePull 执行 docker compose pull，可传入 services 仅拉取指定服务镜像。
+// 不传 services 时拉取全部服务镜像。
+func (h *Command) DockerComposePull(dockerCmd, envFile string, services []string) *Command {
+	if len(services) > 0 {
+		h.SetCommand(fmt.Sprintf(`%s %s %s pull %s`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile), strings.Join(services, ` `)))
+	} else {
+		h.SetCommand(fmt.Sprintf(`%s %s %s pull`, h.sudo, dockerCmd, h.getEnvFileCommand(envFile)))
+	}
 	return h
 }
 

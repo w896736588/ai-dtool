@@ -13,12 +13,17 @@ import (
 	"time"
 
 	"github.com/playwright-community/playwright-go"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
 	"github.com/w896736588/go-tool/gsgin"
 	"github.com/w896736588/go-tool/gstool"
 )
+
+// smartLinkRunDoneMark 所有浏览器实例执行完毕后通过 SSE 推送的完成标记，
+// 前端据此及时收尾并展示完整日志，避免持续推送的明细日志因响应提前结束而被丢弃。
+const smartLinkRunDoneMark = `[SMART_LINK_RUN_DONE]`
 
 // SmartLinkUpWebkit 更新核心
 func SmartLinkUpWebkit(c *gin.Context) {
@@ -176,8 +181,11 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 	openType := cast.ToInt(dataMap[`open_type`])
 	replaceList := make(map[string]string)
 	sse.Send(p_common.TMarkDownClient.BlockQuote(`运行,开始----------------我是分隔君`) + "\n")
+	var wg sync.WaitGroup
 	for i := 0; i < openNum; i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			//生成一个唯一ID，用于 SSE 输出标识
 			runUniqueId := p_common.TBaseClient.GetUnique(`run_`)
 			streamFunc := func(name, msg string) {
@@ -205,6 +213,11 @@ func SmartLinkRunPlaywright(c *gin.Context) {
 		}()
 		time.Sleep(time.Second * 2)
 	}
+	// 所有浏览器实例执行完毕后，向前端推送完成标记，便于前端及时收尾并展示完整日志
+	go func() {
+		wg.Wait()
+		sse.Send(smartLinkRunDoneMark + "\n")
+	}()
 	gsgin.GinResponseSuccess(c, ``, nil)
 }
 

@@ -43,8 +43,10 @@ function SmartLinkChromeUpdate(sseDistributeId , callBack){
 }
 
 // SmartLinkItemList 新表 smart_link 列表（带分组信息）
-function SmartLinkItemList(callBack) {
-    base.BasePost('/api/SmartLinkItemList', {}, callBack)
+function SmartLinkItemList(dataOrCallBack, maybeCallBack) {
+    const data = typeof dataOrCallBack === 'function' ? {} : (dataOrCallBack || {})
+    const callBack = typeof dataOrCallBack === 'function' ? dataOrCallBack : maybeCallBack
+    base.BasePost('/api/SmartLinkItemList', data, callBack)
 }
 
 // SmartLinkItemAdd 新表 smart_link 新增/编辑

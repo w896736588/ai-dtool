@@ -377,6 +377,16 @@ func GetShellOuts(c *gin.Context) {
 		gsgin.GinResponseError(c, err.Error(), nil)
 		return
 	}
+	if cast.ToInt(reqMap[`is_dashboard`]) == 1 {
+		nameCounts := dashboardNameCounts(list, `name`)
+		for k, item := range list {
+			rawName := strings.TrimSpace(cast.ToString(item[`name`]))
+			list[k][`raw_name`] = rawName
+			if dashboardHasDuplicateName(nameCounts, rawName) {
+				list[k][`name`] = dashboardJoinName(`ID`+cast.ToString(item[`id`]), rawName)
+			}
+		}
+	}
 	gsgin.GinResponseSuccess(c, ``, list)
 	return
 }

@@ -1,0 +1,28 @@
+{
+  "name": "Git 工具",
+  "tool_name": "dtool_git",
+  "description": "统一的 dtool Git 工具。本地通过 changes/diff 将当前分支与用户指定分支对比；远程覆盖 Git 页面操作。",
+  "tool_description": "Use changes to inspect a structured change list and diff to inspect a full or single-file patch. In branch mode compare_branch is required and always means the branch explicitly selected by the user. Remote actions cover dtool Git page operations.",
+  "parameters": [
+    {"name": "action", "type": "string", "description": "changes | diff | config_list | current_branch | pull | change_branch | status | commit_log | change_remote_branch | remote_branches | group_branches | quick_create_branch | set_safe | save_credentials | upload_file | settings_list | config_add | config_delete | group_list | group_add | group_delete | quick_list", "required": true},
+    {"name": "compare_branch", "type": "string", "description": "changes/diff 的明确对比分支；branch 模式必填", "required": false},
+    {"name": "compare_mode", "type": "string", "description": "branch 或 workspace", "required": false},
+    {"name": "compare_strategy", "type": "string", "description": "merge_base 或 tree", "required": false},
+    {"name": "local_dir", "type": "string", "description": "本地 Git 仓库目录", "required": false},
+    {"name": "scope", "type": "string", "description": "all、frontend(web/**) 或 backend(非 web/**)", "required": false},
+    {"name": "file_path", "type": "string", "description": "diff 的可选单文件路径", "required": false},
+    {"name": "include_workspace", "type": "boolean", "description": "是否把工作区最终状态合入分支比较", "required": false},
+    {"name": "include_untracked", "type": "boolean", "description": "是否包含未跟踪文件", "required": false},
+    {"name": "extra_excludes", "type": "array", "description": "额外排除的仓库相对路径", "required": false},
+    {"name": "max_files", "type": "number", "description": "最大返回文件数", "required": false},
+    {"name": "max_diff_bytes", "type": "number", "description": "最大 diff UTF-8 字节数", "required": false},
+    {"name": "timeout_ms", "type": "number", "description": "执行超时毫秒数", "required": false},
+    {"name": "base_url", "type": "string", "description": "dtool 服务地址", "required": false},
+    {"name": "git_id", "type": "string", "description": "远程仓库配置 ID", "required": false},
+    {"name": "git_group_id", "type": "string", "description": "Git 分组 ID", "required": false},
+    {"name": "branch_name", "type": "string", "description": "目标分支名", "required": false},
+    {"name": "discard_local_changes", "type": "boolean", "description": "明确授权后才可开启的破坏性清理选项", "required": false},
+    {"name": "payload", "type": "object", "description": "配置和分组管理请求对象", "required": false},
+    {"name": "local_file_paths", "type": "array", "description": "上传文件列表", "required": false}
+  ]
+}

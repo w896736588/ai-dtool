@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -44,17 +45,18 @@ func AgentV2SessionList(c *gin.Context) {
 	items := make([]define.AgentV2Session, 0, len(rows))
 	for _, row := range rows {
 		items = append(items, define.AgentV2Session{
-			Id:            cast.ToInt(row["id"]),
-			AgentId:       cast.ToInt(row["agent_id"]),
-			WorkspaceId:   cast.ToInt(row["workspace_id"]),
-			WorkspaceName: cast.ToString(row["workspace_name"]),
-			WorkspacePath: cast.ToString(row["workspace_path"]),
-			Name:          cast.ToString(row["name"]),
-			SessionDir:    cast.ToString(row["session_dir"]),
-			ModelName:     cast.ToString(row["model_name"]),
-			Status:        cast.ToString(row["status"]),
-			CreatedAt:     cast.ToInt64(row["created_at"]),
-			UpdatedAt:     cast.ToInt64(row["updated_at"]),
+			Id:             cast.ToInt(row["id"]),
+			AgentId:        cast.ToInt(row["agent_id"]),
+			WorkspaceId:    cast.ToInt(row["workspace_id"]),
+			WorkspaceName:  cast.ToString(row["workspace_name"]),
+			WorkspacePath:  cast.ToString(row["workspace_path"]),
+			Name:           cast.ToString(row["name"]),
+			SessionDir:     cast.ToString(row["session_dir"]),
+			ModelName:      cast.ToString(row["model_name"]),
+			Status:         cast.ToString(row["status"]),
+			ExecDurationMs: cast.ToInt64(row["exec_duration_ms"]),
+			CreatedAt:      cast.ToInt64(row["created_at"]),
+			UpdatedAt:      cast.ToInt64(row["updated_at"]),
 		})
 	}
 
@@ -235,14 +237,15 @@ func AgentV2SessionMessages(c *gin.Context) {
 
 	sessionDir := cast.ToString(row["session_dir"])
 	messages := readSessionMessagesList(sessionDir)
-	gsgin.GinResponseSuccess(c, "", gin.H{"messages": messages})
+	planState := readSessionPlanState(sessionDir, messages)
+	gsgin.GinResponseSuccess(c, "", gin.H{
+		"messages":   messages,
+		"plan_state": planState,
+	})
 }
 
-// readSessionMessagesList 从 JSONL 文件读取并转换为前端友好格式
-// 支持两种格式：
-// 1. 简化格式（旧版兼容）：{"type":"user","message":"..."}, {"type":"assistant","message":"..."}
-// 2. Pi 原始事件流：agent_start, message_update, message_end, agent_end 等
-func readSessionMessagesList(sessionDir string) []map[string]interface{} {
+// readSessionEventList 按写入顺序读取会话的 dtool_*.jsonl 事件。
+func readSessionEventList(sessionDir string) []map[string]interface{} {
 	if sessionDir == "" {
 		return []map[string]interface{}{}
 	}
@@ -281,6 +284,15 @@ func readSessionMessagesList(sessionDir string) []map[string]interface{} {
 			allEvents = append(allEvents, raw)
 		}
 	}
+	return allEvents
+}
+
+// readSessionMessagesList 从 JSONL 文件读取并转换为前端友好格式
+// 支持两种格式：
+// 1. 简化格式（旧版兼容）：{"type":"user","message":"..."}, {"type":"assistant","message":"..."}
+// 2. Pi 原始事件流：agent_start, message_update, message_end, agent_end 等
+func readSessionMessagesList(sessionDir string) []map[string]interface{} {
+	allEvents := readSessionEventList(sessionDir)
 
 	// 检测格式：如果全部事件都是简化格式（user/assistant/tool），直接返回
 	allSimple := true
@@ -303,6 +315,142 @@ func readSessionMessagesList(sessionDir string) []map[string]interface{} {
 
 	// 原始 Pi 事件流：重建消息
 	return reconstructMessagesFromPiEvents(allEvents)
+}
+
+// readSessionPlanState 从持久化事件中恢复最后一份计划/任务列表。
+// plan-mode 在确认前主要通过 select 请求携带状态，执行后则通过 plan_update
+// 或 plan-todos widget 更新勾选进度，因此这里同时兼容三种来源。
+func readSessionPlanState(sessionDir string, messages []map[string]interface{}) map[string]interface{} {
+	events := readSessionEventList(sessionDir)
+	items := []map[string]interface{}{}
+	phase := ""
+	sawPlanChoice := false
+	var pendingPlanChoice map[string]interface{}
+
+	for _, raw := range events {
+		if cast.ToString(raw["type"]) == "plan_update" {
+			items = normalizePlanItems(raw["items"])
+			phase = cast.ToString(raw["phase"])
+			if phase == "" {
+				phase = "plan"
+			}
+			if phase != "plan" {
+				pendingPlanChoice = nil
+			}
+			continue
+		}
+		if cast.ToString(raw["type"]) != "extension_ui_request" {
+			continue
+		}
+
+		switch cast.ToString(raw["method"]) {
+		case "setStatus":
+			if cast.ToString(raw["statusKey"]) == "plan-mode" {
+				if strings.Contains(strings.ToLower(cast.ToString(raw["statusText"])), "plan") {
+					phase = "plan"
+				} else {
+					phase = "execute"
+					pendingPlanChoice = nil
+				}
+			}
+		case "setWidget":
+			if cast.ToString(raw["widgetKey"]) != "plan-todos" {
+				continue
+			}
+			lines := cast.ToStringSlice(raw["widgetLines"])
+			if len(lines) > 0 {
+				items = make([]map[string]interface{}, 0, len(lines))
+				for _, line := range lines {
+					text := strings.TrimSpace(line)
+					done := strings.HasPrefix(text, "☑")
+					text = strings.TrimSpace(strings.TrimLeft(text, "☑☐"))
+					text = strings.Trim(text, "~")
+					items = append(items, map[string]interface{}{"text": text, "done": done})
+				}
+				phase = "execute"
+				pendingPlanChoice = nil
+			}
+		case "select":
+			options := cast.ToStringSlice(raw["options"])
+			hasExecute, hasStay := false, false
+			for _, option := range options {
+				hasExecute = hasExecute || strings.HasPrefix(option, "Execute")
+				hasStay = hasStay || strings.HasPrefix(option, "Stay")
+			}
+			if hasExecute && hasStay {
+				sawPlanChoice = true
+				phase = "plan"
+				pendingPlanChoice = map[string]interface{}{
+					"id":      raw["id"],
+					"options": options,
+				}
+			}
+		}
+	}
+
+	// 计划确认前扩展没有单独的 plan_update，任务正文位于最近一条助手消息中。
+	if len(items) == 0 && sawPlanChoice {
+		items = extractPlanItemsFromHistory(messages)
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	if phase == "" {
+		phase = "plan"
+	}
+	state := map[string]interface{}{
+		"visible": true,
+		"phase":   phase,
+		"items":   items,
+	}
+	if pendingPlanChoice != nil {
+		state["pending_plan_choice"] = pendingPlanChoice
+	}
+	return state
+}
+
+func normalizePlanItems(value interface{}) []map[string]interface{} {
+	rawItems, ok := value.([]interface{})
+	if !ok {
+		return []map[string]interface{}{}
+	}
+	items := make([]map[string]interface{}, 0, len(rawItems))
+	for _, rawItem := range rawItems {
+		item, ok := rawItem.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		text := cast.ToString(item["text"])
+		if text == "" {
+			continue
+		}
+		items = append(items, map[string]interface{}{
+			"text": text,
+			"done": cast.ToBool(item["done"]),
+		})
+	}
+	return items
+}
+
+var planHistoryItemPattern = regexp.MustCompile(`^\s*\d+[\.\)]\s+(.+?)\s*$`)
+
+func extractPlanItemsFromHistory(messages []map[string]interface{}) []map[string]interface{} {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if cast.ToString(messages[i]["role"]) != "assistant" {
+			continue
+		}
+		var items []map[string]interface{}
+		for _, line := range strings.Split(cast.ToString(messages[i]["content"]), "\n") {
+			match := planHistoryItemPattern.FindStringSubmatch(line)
+			if len(match) == 2 {
+				items = append(items, map[string]interface{}{"text": match[1], "done": false})
+			}
+		}
+		if len(items) > 0 {
+			return items
+		}
+	}
+	return []map[string]interface{}{}
 }
 
 // convertSimpleFormat 处理简化格式（旧版兼容）

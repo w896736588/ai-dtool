@@ -53,9 +53,22 @@ function DialogForm(title , description , okFunc , cancelFunc){
       })
 }
 
+// 将 Provider 请求格式原始值映射为完整可读名称
+function formatProviderType(t) {
+  switch (String(t || '').toLowerCase()) {
+    case 'openai': return 'OpenAI Chat Completions'
+    case 'openai-responses': return 'OpenAI Responses'
+    case 'anthropic': return 'Anthropic Messages'
+    case 'deepseek': return 'DeepSeek (OpenAI兼容)'
+    case 'google': return 'Google Generative AI'
+    default: return t || '-'
+  }
+}
+
 export default {
   getCurrentDateTime,
   filterEmptyString,
   ConfirmProxyDelete,
   DialogForm,
+  formatProviderType,
 }

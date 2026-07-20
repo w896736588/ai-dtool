@@ -15,16 +15,6 @@
   </el-alert>
   <div class="link-run-page">
     <div class="link-run-header-card">
-      <div class="link-run-header-title">
-        <div class="link-run-header-title__main">
-          自定义网页工作台
-          <span class="link-run-migrate-tip" @click="migrateOldData">
-            <template v-if="migrating">迁移中...</template>
-            <template v-else>迁移老数据</template>
-          </span>
-        </div>
-        <div class="link-run-header-title__desc">集中管理页面入口、运行方式和流程跳转，顶部操作区独立展示更利于快速切换。</div>
-      </div>
       <div class="link-run-toolbar">
         <el-tag size="small" type="info" effect="light">已打开 Page {{ openPageNum }}</el-tag>
         <GitActionButton variant="warning" @click="openAccountSettings">
@@ -56,14 +46,26 @@
     <div class="link-run-content">
       <div v-for="group in groupedSmartList" :key="group.groupId" class="link-run-card">
         <div class="link-group-header">
-          <span class="link-group-name" @click="clickGroupName(group)">{{ group.groupName }}</span>
+          <span class="link-group-name" @click="clickGroupName(group)">
+            <span class="link-group-id">#{{ group.groupId }}</span>{{ group.groupName }}
+          </span>
           <span class="link-group-count">{{ group.items.length }} 个链接</span>
           <el-button size="small" type="primary" link :loading="copyingGroups[group.groupId]" :disabled="copyingGroups[group.groupId]" @click="copyGroup(group)">复制</el-button>
+          <el-popconfirm
+            :title="group.items.length > 0 ? `分组「${group.groupName}」下有 ${group.items.length} 个链接，删除后这些链接将变为未分组，确定删除该分组？` : `确定删除分组「${group.groupName}」？`"
+            @confirm="deleteGroup({ id: group.groupId, name: group.groupName })"
+          >
+            <template #reference>
+              <el-button size="small" type="danger" link :disabled="copyingGroups[group.groupId]">删除</el-button>
+            </template>
+          </el-popconfirm>
         </div>
-        <div class="link-run-links-row">
+        <div v-if="group.items.length > 0" class="link-run-links-row">
           <div v-for="link in group.items" :key="link.id" class="link-grid-item">
             <div class="link-grid-item__row link-grid-item__row--top">
-              <a class="link-grid-item__label" @click="showEditDialog(link)" :title="link.label">#{{ link.id }} {{ link.label || '未命名' }}</a>
+              <a class="link-grid-item__label" @click="showEditDialog(link)" :title="link.label">
+                <span class="link-grid-item__id">#{{ link.id }}</span><span class="link-grid-item__name">{{ link.label || '未命名' }}</span>
+              </a>
               <div class="link-grid-item__top-right">
                 <span v-if="link.runNum" class="link-grid-item__run-num">运行中: {{ link.runNum }}</span>
                 <el-dropdown trigger="click" size="small">
@@ -71,6 +73,7 @@
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item @click="showEditDialog(link)">编辑</el-dropdown-item>
+                      <el-dropdown-item @click="copyLink(link)">复制</el-dropdown-item>
                       <el-dropdown-item @click="confirmDeleteLink(link)">删除</el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
@@ -101,9 +104,10 @@
             </div>
           </div>
         </div>
+        <div v-else class="link-group-empty">该分组暂无链接，点击上方「创建」可添加</div>
       </div>
       <div v-if="groupedSmartList.length === 0" class="link-run-card" style="text-align:center;color:#999;padding:30px;">
-        暂无链接，请先"迁移老数据"或点击"创建"新增
+        暂无分组，请先"迁移老数据"或在「分组管理」中创建分组
       </div>
     </div>
   </div>
@@ -332,7 +336,6 @@ export default {
         install_tip: '请先安装 Node.js（建议 LTS 版本），安装完成后刷新当前页面。',
       },
       accountSettingsVisible: false,
-      migrating: false,
       copyingGroups: {},
       // 分组管理 / Group management
       dialogGroupManage: false,
@@ -347,30 +350,43 @@ export default {
   },
   computed: {
     // groupedSmartList 将 smartList 按 smart_link_group_id 分组展示
+    // 注意：以完整的 groupOptions 为基础，确保没有链接的空分组也会展示
     groupedSmartList() {
       const groups = {}
-      // 先按分组收集
+      // 先建立所有分组（含没有链接的空分组）
+      for (const g of (this.groupOptions || [])) {
+        const gid = Number(g.id || 0)
+        groups[gid] = {
+          groupId: gid,
+          groupName: g.name || '未命名分组',
+          items: [],
+        }
+      }
+      // 再把链接归入对应分组（分组不存在时兜底为「未分组」）
       for (let i = 0; i < this.smartList.length; i++) {
         const item = this.smartList[i]
         const gid = Number(item.smart_link_group_id || 0)
         if (!groups[gid]) {
-          const groupInfo = this.groupOptions.find(g => Number(g.id) === gid)
           groups[gid] = {
             groupId: gid,
-            groupName: groupInfo ? groupInfo.name : '未分组',
+            groupName: '未分组',
             items: [],
           }
         }
         groups[gid].items.push(item)
       }
-      // 转为数组：有名字的分组在前，未分组(smart_link_group_id=0)在后
+      // 保持 groupOptions 的顺序（空分组也排在其应有位置），末尾追加「未分组」
       const result = []
-      for (const gid of Object.keys(groups)) {
-        if (Number(gid) !== 0) result.push(groups[gid])
+      for (const g of (this.groupOptions || [])) {
+        const gid = Number(g.id || 0)
+        if (groups[gid]) {
+          result.push(groups[gid])
+          delete groups[gid]
+        }
       }
-      // 未分组(smart_link_group_id=0)的链接追加在最后
-      if (groups[0]) {
-        result.push(groups[0])
+      // 剩余未匹配的分组（如「未分组」id=0）追加到最后
+      for (const gid of Object.keys(groups)) {
+        result.push(groups[gid])
       }
       return result
     },
@@ -391,6 +407,8 @@ export default {
         if (msg === sse.SseEventClean) {
           _that.shellController.sshResult = ''
           _that.shellController.sourceSshResult = ''
+        } else if (String(msg).indexOf('[SMART_LINK_RUN_DONE]') !== -1) {
+          // 忽略执行完成标记，不展示到日志框
         } else {
           _that.shellController.sourceSshResult += msg
           _that.shellController.sshResult = _that.shellController.sourceSshResult
@@ -408,28 +426,6 @@ export default {
       accountSet.AccountGroupList((response) => {
         if (response && response.ErrCode === 0 && Array.isArray(response.Data)) {
           this.accountGroupOptions = response.Data
-        }
-      })
-    },
-    // migrateOldData 点击触发老数据迁移
-    migrateOldData: function () {
-      if (this.migrating) return
-      this.migrating = true
-      smart_link_set.SmartLinkMigrateOldData((response) => {
-        this.migrating = false
-        if (response && response.ErrCode === 0) {
-          const data = response.Data || {}
-          const parts = [`${data.group_count || 0} 个分组`]
-          if (data.process_fixed_count > 0) parts.push(`${data.process_fixed_count} 条执行逻辑已修复`)
-          if (data.group_fixed_count > 0) parts.push(`${data.group_fixed_count} 条分组已修复`)
-          parts.push(`共 ${data.total_links || 0} 条链接`)
-          parts.push(`新增 ${data.migrated_count || 0} 条`)
-          if (data.skipped_count > 0) parts.push(`跳过 ${data.skipped_count} 条`)
-          if (data.failed_count > 0) parts.push(`失败 ${data.failed_count} 条`)
-          ElMessage.success(`迁移完成：${parts.join('，')}`)
-          this.GetConfigList()
-        } else {
-          ElMessage.error((response && response.ErrMsg) || '迁移失败')
         }
       })
     },
@@ -578,6 +574,38 @@ export default {
           this.GetConfigList()
         } else {
           ElMessage.error('删除失败')
+        }
+      })
+    },
+    // copyLink 以该链接配置为模板新建一条相同配置的新链接 / Duplicate a link as a new one
+    copyLink: function (item) {
+      const _that = this
+      const newItem = {
+        label: (item.label || '未命名') + ' - 副本',
+        link: item.link || '',
+        smart_link_group_id: item.smart_link_group_id || 0,
+        account_list: item.account_list || '',
+        browser_auth_username: item.browser_auth_username || '',
+        browser_auth_password: item.browser_auth_password || '',
+        cookie: item.cookie || '',
+        headers: item.headers || '',
+        open_num: item.open_num || 0,
+        open_type: item.open_type || '',
+        channel: item.channel || '',
+        process_id: item.process_id || 0,
+        download_finds: item.download_finds || '',
+        auto_close_second: item.auto_close_second || 0,
+        weight: item.weight || 0,
+        show_cookies: item.show_cookies || '',
+        filter_uris: item.filter_uris || '',
+        combine_type: item.combine_type || 4,
+      }
+      smart_link_set.SmartLinkItemAdd(newItem, function (response) {
+        if (response.ErrCode === 0) {
+          _that.GetConfigList()
+          ElMessage.success('已复制并新建链接')
+        } else {
+          ElMessage.error('复制失败：' + (response.ErrMsg || ''))
         }
       })
     },
@@ -825,52 +853,234 @@ export default {
 </script>
 
 <style scoped>
-.link-run-page { min-height: calc(100vh - 110px); color: #4a4a4a; }
-.link-run-header-card { background: #fff; border: 1px solid #e8e8e0; border-radius: 12px; padding: 12px 16px; margin-bottom: 10px; }
-.link-run-header-title { margin-bottom: 8px; }
-.link-run-header-title__main { color: #4a4a4a; font-size: 18px; font-weight: 600; }
-.link-run-migrate-tip { font-size: 12px; font-weight: 400; color: #409EFF; cursor: pointer; margin-left: 12px; text-decoration: underline; }
-.link-run-header-title__desc { margin-top: 6px; color: #74806f; font-size: 13px; line-height: 1.6; }
-.link-run-content { padding: 0 2px 2px; }
-.link-run-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.link-run-page {
+  --link-primary: #2f9e6b;
+  --link-primary-hover: #268a5c;
+  --link-primary-soft: #e8f5ee;
+  --link-primary-soft-2: #f1f9f4;
+  --link-accent: #5ace99;
+  --link-border: #e4ece7;
+  --link-bg: #ffffff;
+  --link-bg-soft: #f6faf7;
+  --link-text: #243029;
+  --link-text-2: #6b7d72;
+  --link-shadow: 0 1px 2px rgba(31, 41, 55, 0.04), 0 2px 8px rgba(31, 41, 55, 0.05);
+  --link-shadow-hover: 0 6px 18px rgba(47, 158, 107, 0.16);
+  --link-radius: 12px;
+  min-height: calc(100vh - 110px);
+  color: var(--link-text);
+}
+
+/* 顶部标题卡片 */
+.link-run-header-card {
+  background: var(--link-bg);
+  border: 1px solid var(--link-border);
+  border-radius: var(--link-radius);
+  padding: 16px 20px;
+  margin-bottom: 14px;
+  box-shadow: var(--link-shadow);
+}
+.link-run-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* 主按钮统一为绿色（仅作用于本页，避免影响运行逻辑/流程视图） */
+.link-run-page :deep(.git-action-button--primary),
+.link-run-page :deep(.pl-button--primary) {
+  --git-button-text-color: #ffffff;
+  --git-button-border-color: var(--link-primary);
+  --git-button-background-color: var(--link-primary);
+  --git-button-hover-text-color: #ffffff;
+  --git-button-hover-border-color: var(--link-primary-hover);
+  --git-button-hover-background-color: var(--link-primary-hover);
+  --pl-button-text-color: #ffffff;
+  --pl-button-border-color: var(--link-primary);
+  --pl-button-background-color: var(--link-primary);
+  --pl-button-hover-text-color: #ffffff;
+  --pl-button-hover-border-color: var(--link-primary-hover);
+  --pl-button-hover-background-color: var(--link-primary-hover);
+  color: #ffffff !important;
+}
+
 /* 分组卡片 */
-.link-run-card { padding: 10px 10px 8px; margin-bottom: 10px; background: #fff; border: 1px solid #e6e8de; border-radius: 10px; }
+.link-run-card {
+  padding: 14px 16px 16px;
+  margin-bottom: 14px;
+  background: var(--link-bg);
+  border: 1px solid var(--link-border);
+  border-radius: var(--link-radius);
+  box-shadow: var(--link-shadow);
+}
 /* 分组头 */
-.link-group-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
-.link-group-name { font-size: 18px; font-weight: bold; cursor: pointer; text-decoration: underline; color: #333; }
-.link-group-count { font-size: 11px; color: #999; }
-/* 链接行 - 弹性布局，根据内容自动调整宽度 */
+.link-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.link-group-name {
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--link-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: color .15s ease;
+}
+.link-group-name::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--link-primary);
+  flex-shrink: 0;
+}
+.link-group-name:hover { color: var(--link-primary); }
+.link-group-id {
+  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--link-primary);
+  background: var(--link-primary-soft);
+  border: 1px solid var(--link-border);
+  padding: 1px 7px;
+  border-radius: 6px;
+}
+.link-group-count {
+  font-size: 12px;
+  color: var(--link-text-2);
+  background: var(--link-bg-soft);
+  border: 1px solid var(--link-border);
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+
+/* 链接网格 */
 .link-run-links-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 18px 8px;
+  gap: 12px;
   margin: 0;
 }
-/* 网格链接项 - 宽度由内容决定 */
+/* 链接卡片 */
 .link-grid-item {
-  padding: 8px 10px;
-  border: 1px solid #d6e6cf;
-  border-radius: 6px;
-  background: #f4f9ef;
-  display: inline-flex;
+  position: relative;
+  flex: 1 1 230px;
+  max-width: 340px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--link-border);
+  border-left: 3px solid var(--link-accent);
+  border-radius: 10px;
+  background: var(--link-bg);
+  display: flex;
   flex-direction: column;
-  gap: 6px;
-  flex: 0 0 auto;
-  min-width: 200px;
+  gap: 10px;
+  box-shadow: var(--link-shadow);
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
 }
-.link-grid-item__row { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.link-grid-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--link-shadow-hover);
+  border-color: var(--link-primary);
+}
+.link-grid-item__row { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
 .link-grid-item__row--top { justify-content: space-between; }
+.link-grid-item__row--bottom { gap: 8px; }
 .link-grid-item__row--no-account .link-grid-item__exec {
   width: 100%;
   justify-content: center;
 }
-.link-grid-item__label { font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: underline; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.link-grid-item__label {
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--link-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  text-decoration: none;
+}
+.link-grid-item__id {
+  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--link-primary);
+  background: var(--link-primary-soft);
+  border: 1px solid var(--link-primary-soft);
+  padding: 0 6px;
+  border-radius: 5px;
+  line-height: 18px;
+}
+.link-grid-item__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.link-grid-item__label::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  background-color: var(--link-primary);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23000'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M10%2013a5%205%200%200%200%207.07%207.07l3-3a5%205%200%200%200-7.07-7.07l-1.72%201.71'/%3E%3Cpath%20d='M14%2011a5%205%200%200%200-7.07-7.07l-3%203a5%205%200%200%200%207.07%207.07l1.71-1.71'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23000'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M10%2013a5%205%200%200%200%207.07%207.07l3-3a5%205%200%200%200-7.07-7.07l-1.72%201.71'/%3E%3Cpath%20d='M14%2011a5%205%200%200%200-7.07-7.07l-3%203a5%205%200%200%200%207.07%207.07l1.71-1.71'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.link-grid-item__label:hover { color: var(--link-primary); }
 .link-grid-item__top-right { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0; }
-.link-grid-item__more-icon { cursor: pointer; color: #999; flex-shrink: 0; }
-.link-grid-item__more-icon:hover { color: #409EFF; }
-.link-grid-item__run-num { font-size: 10px; color: green; white-space: nowrap; }
-.link-account-select { width: 140px; }
-.link-grid-item__exec { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
+.link-grid-item__more-icon { cursor: pointer; color: var(--link-text-2); flex-shrink: 0; transition: color .15s ease; }
+.link-grid-item__more-icon:hover { color: var(--link-primary); }
+.link-grid-item__run-num {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--link-primary);
+  white-space: nowrap;
+  background: var(--link-primary-soft);
+  border: 1px solid var(--link-primary-soft);
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+.link-account-select { flex: 1 1 auto; min-width: 0; }
+/* 账号下拉框：默认无边框无背景，悬浮/聚焦才显示绿色边框 */
+.link-account-select :deep(.el-select__wrapper) {
+  box-shadow: 0 0 0 1px transparent;
+  background-color: transparent;
+  transition: box-shadow .15s ease, background-color .15s ease;
+}
+.link-account-select:hover :deep(.el-select__wrapper),
+.link-account-select :deep(.el-select__wrapper.is-focused) {
+  box-shadow: 0 0 0 1px var(--link-primary);
+  background-color: var(--link-bg);
+}
+/* 兼容旧版 el-input 外层（部分场景兜底） */
+.link-account-select :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px transparent !important;
+  background-color: transparent !important;
+}
+.link-account-select:hover :deep(.el-input__wrapper),
+.link-account-select :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px var(--link-primary) !important;
+  background-color: var(--link-bg) !important;
+}
+.link-group-empty {
+  font-size: 13px;
+  color: var(--link-text-2);
+  background: var(--link-bg-soft);
+  border: 1px dashed var(--link-border);
+  border-radius: 8px;
+  padding: 18px 14px;
+  text-align: center;
+}
+.link-grid-item__exec { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; flex: 0 0 auto; }
+
 .smart-link-dialog :deep(.el-dialog__body) { padding-top: 18px; }
 .smart-link-dialog__form { width: 100%; }
 .smart-link-dialog__link-config { width: 100%; }

@@ -10,6 +10,12 @@ function DockerComposeRestart(data , callBack){
 function DockerComposeStop(data , callBack){
     base.BasePost('/api/DockerComposeStop', data, callBack)
 }
+function DockerComposeDown(data , callBack){
+    base.BasePost('/api/DockerComposeDown', data, callBack)
+}
+function DockerComposePull(data , callBack){
+    base.BasePost('/api/DockerComposePull', data, callBack)
+}
 function DockerComposeStart(data , callBack){
     base.BasePost('/api/DockerComposeStart', data, callBack)
 }
@@ -45,6 +51,8 @@ export default {
     DockerComposeList,
     DockerComposeRestart,
     DockerComposeStop,
+    DockerComposeDown,
+    DockerComposePull,
     DockerComposeConfigShow,
     DockerComposeStart,
     DockerComposeStatus,

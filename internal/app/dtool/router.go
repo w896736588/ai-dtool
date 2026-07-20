@@ -493,6 +493,8 @@ func docker(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/DockerComposeStatus`, controller.DockerComposeStatus)
 	tGin.GinPost(`/api/DockerComposeServices`, controller.DockerComposeServices)
 	tGin.GinPost(`/api/DockerComposeStop`, controller.DockerComposeStop)
+	tGin.GinPost(`/api/DockerComposeDown`, controller.DockerComposeDown)
+	tGin.GinPost(`/api/DockerComposePull`, controller.DockerComposePull)
 	tGin.GinPost(`/api/DockerComposeConfigShow`, controller.DockerComposeConfigShow)
 	tGin.GinPost(`/api/DockerComposeStart`, controller.DockerComposeStart)
 	tGin.GinPost(`/api/DockerImageList`, controller.DockerImageList)
@@ -652,6 +654,7 @@ func agentV2Router(tGin *p_gin.Gin) {
 	tGin.GinPost(`/api/AgentV2WorkspaceList`, controller.AgentV2WorkspaceList)
 	tGin.GinPost(`/api/AgentV2WorkspaceSave`, controller.AgentV2WorkspaceSave)
 	tGin.GinPost(`/api/AgentV2WorkspaceDelete`, controller.AgentV2WorkspaceDelete)
+	tGin.GinPost(`/api/AgentV2WorkspaceReorder`, controller.AgentV2WorkspaceReorder)
 	// 会话
 	tGin.GinPost(`/api/AgentV2SessionList`, controller.AgentV2SessionList)
 	tGin.GinPost(`/api/AgentV2SessionCreate`, controller.AgentV2SessionCreate)
